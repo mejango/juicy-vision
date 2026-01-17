@@ -1,0 +1,183 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body {
+    @apply min-h-screen transition-colors duration-200;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  /* Dark mode (default) */
+  .dark body {
+    background-color: #1a1a1a;
+    color: white;
+  }
+
+  /* Light mode */
+  .light body {
+    background-color: #f5f5f5;
+    color: #111827;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .dark ::-webkit-scrollbar-track {
+    background-color: #1a1a1a;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background-color: #2a2a2a;
+  }
+
+  .light ::-webkit-scrollbar-track {
+    background-color: #f5f5f5;
+  }
+
+  .light ::-webkit-scrollbar-thumb {
+    background-color: #e5e5e5;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(245, 166, 35, 0.5);
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/5 backdrop-blur-md border border-white/10;
+  }
+
+  .glass-hover {
+    @apply hover:bg-white/10 hover:border-white/20 transition-all duration-200;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-juice-orange to-juice-cyan bg-clip-text text-transparent;
+  }
+
+  .gradient-text-shimmer {
+    background: linear-gradient(
+      90deg,
+      #F5A623 0%,
+      #5CEBDF 25%,
+      #F5A623 50%,
+      #5CEBDF 75%,
+      #F5A623 100%
+    );
+    background-size: 200% auto;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 3s linear infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 0% center;
+    }
+    100% {
+      background-position: 200% center;
+    }
+  }
+
+  .glow-orange {
+    box-shadow: 0 0 20px rgba(245, 166, 35, 0.3);
+  }
+
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(92, 235, 223, 0.3);
+  }
+}
+
+@layer utilities {
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .safe-area-inset {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Markdown styling - Dark mode */
+.dark .prose-juice {
+  @apply text-gray-200 leading-relaxed;
+}
+
+.dark .prose-juice h1,
+.dark .prose-juice h2,
+.dark .prose-juice h3 {
+  @apply text-white font-semibold mt-4 mb-2;
+}
+
+.dark .prose-juice code:not(pre code) {
+  @apply bg-juice-dark-lighter px-1.5 py-0.5 text-juice-orange font-mono text-sm;
+}
+
+.dark .prose-juice pre {
+  @apply bg-juice-dark-lighter p-4 my-3 overflow-x-auto;
+}
+
+.dark .prose-juice blockquote {
+  @apply border-l-2 border-juice-orange pl-4 italic text-gray-400;
+}
+
+/* Markdown styling - Light mode */
+.light .prose-juice {
+  @apply text-gray-700 leading-relaxed;
+}
+
+.light .prose-juice h1,
+.light .prose-juice h2,
+.light .prose-juice h3 {
+  @apply text-gray-900 font-semibold mt-4 mb-2;
+}
+
+.light .prose-juice code:not(pre code) {
+  @apply bg-juice-light-darker px-1.5 py-0.5 text-juice-orange font-mono text-sm;
+}
+
+.light .prose-juice pre {
+  @apply bg-juice-light-darker p-4 my-3 overflow-x-auto;
+}
+
+.light .prose-juice blockquote {
+  @apply border-l-2 border-juice-orange pl-4 italic text-gray-500;
+}
+
+/* Shared prose styles */
+.prose-juice p {
+  @apply mb-3;
+}
+
+.prose-juice a {
+  @apply text-juice-cyan hover:underline;
+}
+
+.prose-juice ul,
+.prose-juice ol {
+  @apply ml-4 mb-3;
+}
+
+.prose-juice li {
+  @apply mb-1;
+}
+

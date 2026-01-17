@@ -1,0 +1,229 @@
+import { useState, useEffect } from 'react'
+import { HashRouter, Routes, Route } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ParaProvider, Environment } from '@getpara/react-sdk'
+import '@getpara/react-sdk/styles.css'
+import { ChatContainer } from './components/chat'
+import { SettingsPanel } from './components/settings'
+import { useSettingsStore, useChatStore, useThemeStore } from './stores'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      retry: 2,
+    },
+  },
+})
+
+function Header() {
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const { conversations, activeConversationId, createConversation, setActiveConversation, deleteConversation } = useChatStore()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { theme, toggleTheme } = useThemeStore()
+
+  const handleNewChat = () => {
+    createConversation()
+    setSidebarOpen(false)
+  }
+
+  return (
+    <>
+      <header className={`border-b backdrop-blur-sm sticky top-0 z-40 ${
+        theme === 'dark'
+          ? 'border-white/10 bg-juice-dark/90'
+          : 'border-gray-200 bg-juice-light/90'
+      }`}>
+        <div className="flex items-center justify-between px-4 py-3">
+          {/* Left - Menu & Logo */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className={`lg:hidden p-2 ${
+                theme === 'dark'
+                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                  : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            <div className="flex items-center gap-2">
+              <img
+                src={theme === 'dark' ? '/head-dark.png' : '/head-light.png'}
+                alt="Juicy"
+                className="h-14"
+              />
+              <span className="font-semibold gradient-text-shimmer hidden sm:inline">Juicy</span>
+            </div>
+          </div>
+
+          {/* Right - Actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleTheme}
+              className="p-2 text-gray-400 hover:text-white dark:hover:text-white hover:bg-white/10 transition-colors"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="p-2 text-gray-400 hover:text-white dark:hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile sidebar */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
+          <div className={`absolute left-0 top-0 bottom-0 w-72 border-r p-4 ${
+            theme === 'dark'
+              ? 'bg-juice-dark border-white/10'
+              : 'bg-juice-light border-gray-200'
+          }`}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Conversations</h2>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className={`p-2 ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <button
+              onClick={handleNewChat}
+              className="w-full mb-4 px-4 py-2 bg-juice-cyan text-juice-dark font-medium hover:bg-juice-cyan/90 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Chat
+            </button>
+
+            <div className="space-y-1 overflow-y-auto max-h-[calc(100vh-150px)]">
+              {conversations.map((conv) => (
+                <div
+                  key={conv.id}
+                  className={`group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${
+                    conv.id === activeConversationId
+                      ? 'bg-juice-orange/20 ' + (theme === 'dark' ? 'text-white' : 'text-gray-900')
+                      : theme === 'dark'
+                        ? 'text-gray-400 hover:bg-white/10 hover:text-white'
+                        : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                  }`}
+                  onClick={() => {
+                    setActiveConversation(conv.id)
+                    setSidebarOpen(false)
+                  }}
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <span className="truncate flex-1 text-sm">{conv.title}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteConversation(conv.id)
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-300"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </>
+  )
+}
+
+function MainContent({ hasHeader }: { hasHeader: boolean }) {
+  return (
+    <div className={`flex flex-col ${hasHeader ? 'h-[calc(100vh-81px)]' : 'h-screen'}`}>
+      <ChatContainer />
+    </div>
+  )
+}
+
+function AppProviders({ children }: { children: React.ReactNode }) {
+  const { paraApiKey } = useSettingsStore()
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ParaProvider
+        paraClientConfig={{
+          env: Environment.PROD,
+          apiKey: paraApiKey || 'placeholder-key',
+        }}
+        config={{
+          appName: 'Juicy',
+        }}
+      >
+        {children}
+      </ParaProvider>
+    </QueryClientProvider>
+  )
+}
+
+function AppContent() {
+  const { theme } = useThemeStore()
+  const { getActiveConversation } = useChatStore()
+  const conversation = getActiveConversation()
+  const hasMessages = conversation && conversation.messages.length > 0
+
+  useEffect(() => {
+    document.documentElement.className = theme
+  }, [theme])
+
+  return (
+    <div className={`min-h-screen ${theme === 'dark' ? 'bg-juice-dark' : 'bg-juice-light'}`}>
+      {hasMessages && <Header />}
+      <Routes>
+        <Route path="/" element={<MainContent hasHeader={!!hasMessages} />} />
+        <Route path="*" element={<MainContent hasHeader={!!hasMessages} />} />
+      </Routes>
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <AppProviders>
+      <HashRouter>
+        <AppContent />
+      </HashRouter>
+    </AppProviders>
+  )
+}
