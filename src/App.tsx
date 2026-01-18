@@ -57,7 +57,7 @@ function Header() {
               <img
                 src={theme === 'dark' ? '/head-dark.png' : '/head-light.png'}
                 alt="Juicy Vision"
-                className="h-20"
+                className="h-16 -mb-4"
               />
               <span className="text-2xl font-black gradient-text-shimmer hidden sm:inline">Juicy Vision</span>
             </button>
