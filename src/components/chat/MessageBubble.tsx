@@ -26,6 +26,26 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         <div className="flex items-start gap-3 max-w-[85%] md:max-w-[75%]">
           {/* Text content - right aligned */}
           <div className={`text-right ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {/* Display attachments */}
+            {message.attachments && message.attachments.length > 0 && (
+              <div className="flex gap-2 mb-2 justify-end flex-wrap">
+                {message.attachments.map(attachment => (
+                  <img
+                    key={attachment.id}
+                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                    alt={attachment.name}
+                    className="max-w-[200px] max-h-[200px] object-contain rounded border-2 border-juice-cyan cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => {
+                      // Open image in new tab for full view
+                      const win = window.open()
+                      if (win) {
+                        win.document.write(`<img src="data:${attachment.mimeType};base64,${attachment.data}" alt="${attachment.name}" style="max-width: 100%; height: auto;" />`)
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            )}
             {parsed.segments.map((segment, index) => {
               if (segment.type === 'text') {
                 return (

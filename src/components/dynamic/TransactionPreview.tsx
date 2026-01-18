@@ -44,7 +44,7 @@ export default function TransactionPreview({
   parameters,
   explanation,
 }: TransactionPreviewProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 

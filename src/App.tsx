@@ -156,8 +156,8 @@ function AppProviders({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ParaProvider
         paraClientConfig={{
-          env: Environment.PROD,
-          apiKey: paraApiKey || 'placeholder-key',
+          env: Environment.BETA,
+          apiKey: paraApiKey || 'beta_e5108365cf0b2fd615914efb50c3ca82',
         }}
         config={{
           appName: 'Juicy',
@@ -180,8 +180,8 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
           ? 'border-white/20 bg-juice-dark'
           : 'border-gray-300 bg-white'
       }`}>
-        {/* Header with settings and theme */}
-        <div className={`flex items-center justify-between px-4 py-3 border-b ${
+        {/* Header with settings and theme - matches main header height */}
+        <div className={`flex items-center justify-between px-4 pt-4 pb-5 border-b ${
           theme === 'dark' ? 'border-white/10' : 'border-gray-200'
         }`}>
           <div>

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useChatStore, useSettingsStore, useThemeStore, type Message } from '../../stores'
+import { useChatStore, useSettingsStore, useThemeStore, type Message, type Attachment } from '../../stores'
 import { streamChatResponse } from '../../services/claude'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
@@ -60,7 +60,7 @@ export default function ChatContainer() {
   const conversation = getActiveConversation()
   const messages = conversation?.messages || []
 
-  const handleSend = useCallback(async (content: string) => {
+  const handleSend = useCallback(async (content: string, attachments?: Attachment[]) => {
     if (!isConfigured()) {
       setError('Please configure your Claude API key in settings')
       return
@@ -74,8 +74,8 @@ export default function ChatContainer() {
       convId = createConversation()
     }
 
-    // Add user message
-    addMessage(convId, { role: 'user', content })
+    // Add user message with attachments
+    addMessage(convId, { role: 'user', content }, attachments)
 
     // Create assistant message placeholder
     const assistantMsgId = addMessage(convId, { role: 'assistant', content: '', isStreaming: true })
@@ -88,7 +88,7 @@ export default function ChatContainer() {
       const currentConv = useChatStore.getState().conversations.find(c => c.id === convId)
       const apiMessages = currentConv?.messages
         .filter(m => m.id !== assistantMsgId)
-        .map(m => ({ role: m.role, content: m.content })) || []
+        .map(m => ({ role: m.role, content: m.content, attachments: m.attachments })) || []
 
       let fullResponse = ''
 

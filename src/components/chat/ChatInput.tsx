@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react'
 import { useThemeStore } from '../../stores'
+import type { Attachment } from '../../stores/chatStore'
 
 const INITIAL_PLACEHOLDER = "What's your juicy vision?"
 
@@ -19,10 +20,12 @@ const PLACEHOLDER_PHRASES = [
 ]
 
 interface ChatInputProps {
-  onSend: (message: string) => void
+  onSend: (message: string, attachments?: Attachment[]) => void
   disabled?: boolean
   placeholder?: string
 }
+
+const generateId = () => Math.random().toString(36).substring(2, 15)
 
 export default function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
   const [input, setInput] = useState('')
@@ -30,7 +33,9 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
   const [placeholderIndex, setPlaceholderIndex] = useState(() =>
     Math.floor(Math.random() * PLACEHOLDER_PHRASES.length)
   )
+  const [attachments, setAttachments] = useState<Attachment[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme } = useThemeStore()
 
   const currentPlaceholder = placeholder || (isFirstLoad ? INITIAL_PLACEHOLDER : PLACEHOLDER_PHRASES[placeholderIndex])
@@ -44,6 +49,42 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
       }
       return next
     })
+  }
+
+  // Handle file selection
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    Array.from(files).forEach(file => {
+      // Only accept images
+      if (!file.type.startsWith('image/')) return
+
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string
+        // Remove the data:image/xxx;base64, prefix
+        const data = base64.split(',')[1]
+
+        const attachment: Attachment = {
+          id: generateId(),
+          type: 'image',
+          name: file.name,
+          mimeType: file.type,
+          data,
+        }
+        setAttachments(prev => [...prev, attachment])
+      }
+      reader.readAsDataURL(file)
+    })
+
+    // Reset input so same file can be selected again
+    e.target.value = ''
+  }
+
+  // Remove attachment
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id))
   }
 
   // Max 5 lines then scroll (line-height ~24px, so ~120px max)
@@ -84,9 +125,11 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
 
   const handleSend = () => {
     const trimmed = input.trim()
-    if (trimmed && !disabled) {
-      onSend(trimmed)
+    const hasContent = trimmed || attachments.length > 0
+    if (hasContent && !disabled) {
+      onSend(trimmed, attachments.length > 0 ? attachments : undefined)
       setInput('')
+      setAttachments([])
       setIsFirstLoad(false)
       rotatePlaceholder()
       if (textareaRef.current) {
@@ -108,7 +151,62 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
         ? 'border-juice-cyan/20 bg-juice-dark/60'
         : 'border-juice-orange/40 bg-white/60'
     }`}>
+      {/* Attachment previews */}
+      {attachments.length > 0 && (
+        <div className="flex gap-2 mb-3 flex-wrap">
+          {attachments.map(attachment => (
+            <div key={attachment.id} className="relative group">
+              <img
+                src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                alt={attachment.name}
+                className="w-16 h-16 object-cover rounded border-2 border-juice-cyan"
+              />
+              <button
+                onClick={() => handleRemoveAttachment(attachment.id)}
+                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full
+                           flex items-center justify-center text-xs font-bold
+                           opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                ×
+              </button>
+              <span className={`absolute bottom-0 left-0 right-0 text-[10px] truncate px-1
+                ${theme === 'dark' ? 'bg-black/70 text-white' : 'bg-white/70 text-gray-900'}`}>
+                {attachment.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileSelect}
+        className="hidden"
+        multiple
+      />
+
       <div className="flex gap-3 mb-safe">
+        {/* Attachment button */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled}
+          className={`p-3 border-2 border-juice-cyan transition-colors shrink-0
+                     disabled:opacity-50 disabled:cursor-not-allowed
+                     ${theme === 'dark'
+                       ? 'bg-juice-dark-lighter text-white hover:bg-juice-dark'
+                       : 'bg-white text-gray-900 hover:bg-gray-100'
+                     }`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+          </svg>
+        </button>
+
         <textarea
           ref={textareaRef}
           value={input}
@@ -128,7 +226,7 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
 
         <button
           onClick={handleSend}
-          disabled={!input.trim()}
+          disabled={!input.trim() && attachments.length === 0}
           className="p-3 bg-juice-cyan text-black
                      hover:bg-juice-cyan/90 transition-colors
                      disabled:opacity-50 disabled:cursor-not-allowed

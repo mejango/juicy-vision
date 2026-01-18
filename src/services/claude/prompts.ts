@@ -562,7 +562,44 @@ The groups prop is a JSON array of option groups. Each group has:
 
 Use transaction-preview for complex transactions (project creation, cash out, send payouts). **Exception: For payments, just use payment-form directly - it handles everything.**
 
-**IMPORTANT: Keep the explanation brief (1-2 sentences max).** The technical details section auto-expands to show all parameters - that's where users audit the full data. Don't duplicate verbose details in the explanation.
+**IMPORTANT: Keep the explanation brief (1-2 sentences max).** Technical details are shown by default.
+
+**For project launches (launchProject), include ALL parameters verbosely:**
+- Include the full rulesetConfigurations with all metadata fields
+- Include all terminalConfigurations with accounting contexts
+- Include suckerDeploymentConfiguration if deploying cross-chain
+- Show every parameter so users can audit the full configuration before signing
+
+\`\`\`
+<juice-component type="transaction-preview"
+  action="launchProject"
+  contract="JBOmnichainDeployer"
+  chainId="1"
+  parameters='{
+    "projectUri": "ipfs://Qm...",
+    "rulesetConfigurations": [{
+      "duration": 0,
+      "weight": "1000000000000000000000000",
+      "weightCutPercent": 50000000,
+      "metadata": {
+        "reservedPercent": 0,
+        "cashOutTaxRate": 0,
+        "baseCurrency": 2,
+        "pausePay": false,
+        "allowOwnerMinting": true
+      }
+    }],
+    "terminalConfigurations": [
+      {"terminal": "JBMultiTerminal", "tokens": ["USDC"]},
+      {"terminal": "JBSwapTerminal", "tokens": ["any"]}
+    ],
+    "chains": ["Ethereum", "Optimism", "Base", "Arbitrum"]
+  }'
+  explanation="Deploy multi-chain treasury with USDC accounting and decreasing token issuance."
+/>
+\`\`\`
+
+For simpler transactions like cash outs, you can be more concise:
 
 \`\`\`
 <juice-component type="transaction-preview"
@@ -570,8 +607,8 @@ Use transaction-preview for complex transactions (project creation, cash out, se
   contract="JBMultiTerminal"
   chainId="1"
   projectId="542"
-  parameters='{"tokenCount": "10000", "minReclaimed": "0.05 ETH"}'
-  explanation="Cash out 10,000 tokens for at least 0.05 ETH."
+  parameters='{"tokenCount": "10000", "minReclaimed": "50 USDC"}'
+  explanation="Cash out 10,000 tokens for at least 50 USDC."
 />
 \`\`\`
 
@@ -719,7 +756,16 @@ Contract addresses (Ethereum mainnet):
 
 10. **controller** (address): JBController address
 
-**Default project config (USD-based, accepts ETH + any ERC-20):**
+**Default project config (USDC-based treasury, accepts any token via swap):**
+
+The default setup uses USDC as the treasury's accounting token. JBSwapTerminal accepts ETH and any other ERC-20, automatically converting them to USDC. This gives projects stable dollar-denominated accounting while still accepting crypto payments.
+
+**USDC addresses by chain:**
+- Ethereum: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+- Optimism: 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85
+- Base: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+- Arbitrum: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831
+
 \`\`\`json
 {
   "rulesetConfigurations": [{
@@ -756,9 +802,9 @@ Contract addresses (Ethereum mainnet):
     {
       "terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c",
       "accountingContextsToAccept": [{
-        "token": "0x000000000000000000000000000000000000EEEe",
-        "decimals": 18,
-        "currency": 1
+        "token": "<USDC_ADDRESS_FOR_CHAIN>",
+        "decimals": 6,
+        "currency": 2
       }]
     },
     {
@@ -772,6 +818,12 @@ Contract addresses (Ethereum mainnet):
   }
 }
 \`\`\`
+
+**How this works:**
+- JBMultiTerminal (0x528...) accepts USDC directly and holds the treasury balance
+- JBSwapTerminal (0x0c0...) accepts ETH and any ERC-20, auto-swaps to USDC via Uniswap, then forwards to the multi-terminal
+- Payers can send ETH or any token - it all becomes USDC in the treasury
+- Cash outs return USDC to token holders
 
 4. Show transaction-preview for the deployment
 
@@ -1315,11 +1367,66 @@ Ready to proceed?
 
 Remember: Your job is to carefully but confidently help users get to transactions. Be their guide through the Juicebox ecosystem.`
 
+import type { Attachment } from '../../stores/chatStore'
+
+type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+
+interface ImageBlock {
+  type: 'image'
+  source: {
+    type: 'base64'
+    media_type: ImageMediaType
+    data: string
+  }
+}
+
+interface TextBlock {
+  type: 'text'
+  text: string
+}
+
+type ContentBlock = ImageBlock | TextBlock
+
 export const formatConversationHistory = (
-  messages: { role: 'user' | 'assistant'; content: string }[]
+  messages: { role: 'user' | 'assistant'; content: string; attachments?: Attachment[] }[]
 ) => {
-  return messages.map((msg) => ({
-    role: msg.role as 'user' | 'assistant',
-    content: msg.content,
-  }))
+  return messages.map((msg) => {
+    // If message has attachments, format as array of content blocks
+    if (msg.attachments && msg.attachments.length > 0 && msg.role === 'user') {
+      const content: ContentBlock[] = []
+
+      // Add image blocks first
+      for (const attachment of msg.attachments) {
+        if (attachment.type === 'image') {
+          content.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: attachment.mimeType as ImageMediaType,
+              data: attachment.data,
+            },
+          })
+        }
+      }
+
+      // Add text block if there's text content
+      if (msg.content) {
+        content.push({
+          type: 'text',
+          text: msg.content,
+        })
+      }
+
+      return {
+        role: msg.role as 'user' | 'assistant',
+        content,
+      }
+    }
+
+    // Regular message without attachments
+    return {
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    }
+  })
 }

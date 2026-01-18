@@ -1,12 +1,21 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+export interface Attachment {
+  id: string
+  type: 'image'
+  name: string
+  mimeType: string
+  data: string  // base64
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: number
   isStreaming?: boolean
+  attachments?: Attachment[]
 }
 
 export interface Conversation {
@@ -26,7 +35,7 @@ interface ChatState {
   createConversation: () => string
   setActiveConversation: (id: string | null) => void
   getActiveConversation: () => Conversation | undefined
-  addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => string
+  addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>, attachments?: Attachment[]) => string
   updateMessage: (conversationId: string, messageId: string, content: string) => void
   setMessageStreaming: (conversationId: string, messageId: string, isStreaming: boolean) => void
   deleteConversation: (id: string) => void
@@ -66,12 +75,13 @@ export const useChatStore = create<ChatState>()(
         return state.conversations.find((c) => c.id === state.activeConversationId)
       },
 
-      addMessage: (conversationId, message) => {
+      addMessage: (conversationId, message, attachments) => {
         const messageId = generateId()
         const fullMessage: Message = {
           ...message,
           id: messageId,
           timestamp: Date.now(),
+          ...(attachments && attachments.length > 0 ? { attachments } : {}),
         }
 
         set((state) => ({

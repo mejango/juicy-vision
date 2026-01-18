@@ -2,10 +2,11 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { getClaudeClient } from './client'
 import { SYSTEM_PROMPT, formatConversationHistory } from './prompts'
 import { MCP_TOOLS, isMcpTool, executeMcpTool } from '../mcp'
+import type { Attachment } from '../../stores/chatStore'
 
 export interface StreamOptions {
   apiKey: string
-  messages: { role: 'user' | 'assistant'; content: string }[]
+  messages: { role: 'user' | 'assistant'; content: string; attachments?: Attachment[] }[]
   onToken: (token: string) => void
   onComplete: (fullText: string) => void
   onError: (error: Error) => void
@@ -41,7 +42,7 @@ export async function streamChatResponse({
 
       const stream = await client.messages.stream({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: SYSTEM_PROMPT,
         messages: anthropicMessages,
         tools: MCP_TOOLS,
@@ -87,7 +88,7 @@ export async function streamChatResponse({
       const finalMessage = await stream.finalMessage()
       const stopReason = finalMessage.stop_reason
 
-      // Check if we need to handle tool calls
+      // Check if we need to handle tool calls or continuation
       if (stopReason === 'tool_use') {
         // Extract tool use blocks from the response
         const toolUseBlocks = finalMessage.content.filter(
@@ -140,8 +141,20 @@ export async function streamChatResponse({
         // Continue the loop to get Claude's response to tool results
         continueLoop = true
         needsSpaceBefore = true // May need space between previous text and continuation
+      } else if (stopReason === 'max_tokens') {
+        // Response was truncated - continue to get more content
+        anthropicMessages.push({
+          role: 'assistant',
+          content: fullText,
+        })
+        anthropicMessages.push({
+          role: 'user',
+          content: 'Continue where you left off.',
+        })
+        continueLoop = true
+        needsSpaceBefore = true
       } else {
-        // No more tool calls, we're done
+        // end_turn or other - we're done
         continueLoop = false
       }
     }
