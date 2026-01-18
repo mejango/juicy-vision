@@ -15,7 +15,7 @@ export default function WalletButton() {
         </svg>
       }
     >
-      Connect Wallet
+      Connect Account
     </Button>
   )
 }

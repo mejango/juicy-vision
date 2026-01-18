@@ -103,7 +103,7 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
   }
 
   return (
-    <div className={`border-t pt-5 px-4 pb-8 backdrop-blur-md ${
+    <div className={`border-t pt-8 px-6 pb-12 backdrop-blur-md ${
       theme === 'dark'
         ? 'border-juice-cyan/20 bg-juice-dark/60'
         : 'border-juice-orange/40 bg-white/60'
@@ -118,7 +118,7 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
           disabled={disabled}
           rows={1}
           autoFocus
-          className={`flex-1 border-2 border-juice-cyan px-4 pt-3 pb-3.5 focus:outline-none focus:border-[3px] focus:px-[15px] focus:pt-[11px] focus:pb-[13px] resize-none font-semibold leading-6 overflow-y-auto hide-scrollbar ${
+          className={`flex-1 border-2 border-juice-cyan px-4 pt-[11px] pb-[15px] focus:outline-none focus:border-[3px] focus:px-[15px] focus:pt-[10px] focus:pb-[14px] resize-none font-semibold leading-tight overflow-y-auto hide-scrollbar ${
             theme === 'dark'
               ? 'bg-juice-dark-lighter text-white placeholder-white/70'
               : 'bg-white text-gray-900 placeholder-gray-900/50'

@@ -1,3 +1,4 @@
+import { useModal } from '@getpara/react-sdk'
 import { Button } from '../ui'
 
 interface ConnectWalletButtonProps {
@@ -5,9 +6,10 @@ interface ConnectWalletButtonProps {
 }
 
 export default function ConnectWalletButton({ onConnect }: ConnectWalletButtonProps) {
+  const { openModal } = useModal()
+
   const handleClick = () => {
-    // Dispatch custom event for wallet modal
-    window.dispatchEvent(new CustomEvent('juice:open-wallet-modal'))
+    openModal()
     onConnect?.()
   }
 
@@ -22,7 +24,7 @@ export default function ConnectWalletButton({ onConnect }: ConnectWalletButtonPr
         </svg>
       }
     >
-      Connect Wallet
+      Connect Account
     </Button>
   )
 }

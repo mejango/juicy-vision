@@ -28,6 +28,7 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
       return null
 
     case 'connect-wallet':
+    case 'connect-account':
       return <ConnectWalletButton />
 
     case 'project-card':

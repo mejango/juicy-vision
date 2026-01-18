@@ -34,7 +34,7 @@ function Header() {
           ? 'border-white/10 bg-juice-dark/90'
           : 'border-gray-200 bg-juice-light/90'
       }`}>
-        <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center justify-between px-4 py-2">
           {/* Left - Menu & Logo */}
           <div className="flex items-center gap-3">
             <button
@@ -57,9 +57,9 @@ function Header() {
               <img
                 src={theme === 'dark' ? '/head-dark.png' : '/head-light.png'}
                 alt="Juicy Vision"
-                className="h-16"
+                className="h-20"
               />
-              <span className="text-xl font-black gradient-text-shimmer hidden sm:inline">Juicy Vision</span>
+              <span className="text-2xl font-black gradient-text-shimmer hidden sm:inline">Juicy Vision</span>
             </button>
           </div>
         </div>

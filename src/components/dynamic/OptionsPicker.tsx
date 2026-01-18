@@ -125,7 +125,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', onSubm
   }
 
   return (
-    <div className={`rounded-lg border overflow-hidden ${
+    <div className={`rounded-lg border overflow-hidden w-fit ${
       isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
     }`}>
       <div className="p-3 space-y-3">
@@ -209,7 +209,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', onSubm
                     <button
                       key={option.value}
                       onClick={() => handleSelect(group.id, option.value)}
-                      className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-sm rounded border transition-all text-left ${
+                      className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-sm rounded border transition-all text-left whitespace-nowrap ${
                         selected
                           ? isDark
                             ? 'bg-green-500/20 border-green-500'
@@ -235,7 +235,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', onSubm
                         {option.label}
                       </span>
                       {option.sublabel && (
-                        <span className={`ml-auto text-xs ${
+                        <span className={`ml-auto pl-6 text-xs ${
                           isDark ? 'text-gray-300' : 'text-gray-500'
                         }`}>
                           {option.sublabel}
