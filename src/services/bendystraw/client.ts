@@ -1,5 +1,8 @@
 import { GraphQLClient } from 'graphql-request'
+import { createPublicClient, http } from 'viem'
 import { useSettingsStore } from '../../stores'
+import { VIEM_CHAINS, JB_CONTRACTS, ZERO_ADDRESS, type SupportedChainId } from '../../constants'
+import { createCache, CACHE_DURATIONS } from '../../utils'
 import {
   PROJECT_QUERY,
   PROJECTS_QUERY,
@@ -12,6 +15,8 @@ import {
   CONNECTED_CHAINS_QUERY,
   SUCKER_GROUP_BALANCE_QUERY,
   TOKEN_HOLDERS_QUERY,
+  SUCKER_GROUP_PARTICIPANTS_QUERY,
+  PROJECT_SUCKER_GROUP_QUERY,
 } from './queries'
 
 export interface ProjectMetadata {
@@ -42,6 +47,12 @@ export interface Project {
   nftsMintedCount?: number
   paymentsCount: number
   createdAt: number
+  // Token symbol from the deployed ERC20 (e.g., "NANA", "REV")
+  tokenSymbol?: string
+  // Trending fields (7-day window)
+  trendingScore?: string
+  trendingVolume?: string
+  trendingPaymentsCount?: number
 }
 
 export interface Participant {
@@ -517,9 +528,9 @@ export async function fetchIssuanceRate(
         }>
       }
     }>(RECENT_PAY_EVENTS_QUERY, {
-      projectId: parseFloat(projectId),
-      chainId: parseFloat(String(chainId)),
-      version: parseFloat(String(version)),
+      projectId: parseInt(projectId),
+      chainId: chainId,
+      version: version,
     })
 
     const items = data.payEvents?.items
@@ -557,7 +568,8 @@ export async function fetchIssuanceRate(
 // Sucker group balance info
 export interface SuckerGroupBalance {
   totalBalance: string  // Sum of all projects in the group
-  projectBalances: Array<{ chainId: number; projectId: number; balance: string }>
+  totalPaymentsCount: number  // Sum of all payments across the group
+  projectBalances: Array<{ chainId: number; projectId: number; balance: string; paymentsCount: number }>
 }
 
 // Get the total balance across all projects in a sucker group
@@ -573,9 +585,10 @@ export async function fetchSuckerGroupBalance(
       project: {
         id: string
         balance: string
+        paymentsCount: number
         suckerGroup?: {
           projects: {
-            items: Array<{ projectId: number; chainId: number; balance: string }>
+            items: Array<{ projectId: number; chainId: number; balance: string; paymentsCount: number }>
           }
         }
       }
@@ -590,60 +603,198 @@ export async function fetchSuckerGroupBalance(
       // No sucker group, return single project balance
       return {
         totalBalance: data.project.balance,
-        projectBalances: [{ chainId, projectId: parseInt(projectId), balance: data.project.balance }],
+        totalPaymentsCount: data.project.paymentsCount || 0,
+        projectBalances: [{ chainId, projectId: parseInt(projectId), balance: data.project.balance, paymentsCount: data.project.paymentsCount || 0 }],
       }
     }
 
-    // Sum all balances in the group
-    let total = BigInt(0)
+    // Sum all balances and payments in the group
+    let totalBalance = BigInt(0)
+    let totalPayments = 0
     for (const item of items) {
-      total += BigInt(item.balance || '0')
+      totalBalance += BigInt(item.balance || '0')
+      totalPayments += item.paymentsCount || 0
     }
 
     return {
-      totalBalance: total.toString(),
+      totalBalance: totalBalance.toString(),
+      totalPaymentsCount: totalPayments,
       projectBalances: items.map(item => ({
         chainId: item.chainId,
         projectId: item.projectId,
         balance: item.balance,
+        paymentsCount: item.paymentsCount || 0,
       })),
     }
   } catch {
     return {
       totalBalance: '0',
+      totalPaymentsCount: 0,
       projectBalances: [],
     }
   }
 }
 
-// Get unique token holders (owners) count for a project
-// Fetches participants with balance > 0 and deduplicates by wallet
+// Get unique token holders (owners) count for a project across all chains
+// Fetches participants with balance > 0 via suckerGroupId and deduplicates by wallet
 export async function fetchOwnersCount(
   projectId: string,
-  chainId: number
+  chainId: number,
+  version: number = 5
 ): Promise<number> {
   const client = getClient()
 
   try {
-    const data = await client.request<{
-      participants: Array<{ wallet: string; balance: string }>
-    }>(TOKEN_HOLDERS_QUERY, {
-      projectId: parseInt(projectId),
-      chainId,
-      first: 1000, // Get up to 1000 to count unique wallets
+    // First get the suckerGroupId for this project
+    const projectData = await client.request<{
+      project: { suckerGroupId?: string }
+    }>(PROJECT_SUCKER_GROUP_QUERY, {
+      projectId: parseFloat(projectId),
+      chainId: parseFloat(String(chainId)),
+      version: parseFloat(String(version)),
     })
 
-    if (!data.participants || data.participants.length === 0) {
+    const suckerGroupId = projectData.project?.suckerGroupId
+
+    if (!suckerGroupId) {
+      // Fallback to single-chain query if no suckerGroup
+      const data = await client.request<{
+        participants: Array<{ wallet: string; balance: string }>
+      }>(TOKEN_HOLDERS_QUERY, {
+        projectId: parseInt(projectId),
+        chainId,
+        first: 1000,
+      })
+
+      if (!data.participants || data.participants.length === 0) {
+        return 0
+      }
+
+      const uniqueWallets = new Set(
+        data.participants.map(p => p.wallet.toLowerCase())
+      )
+      return uniqueWallets.size
+    }
+
+    // Fetch participants across all chains in the sucker group
+    const data = await client.request<{
+      participants: {
+        totalCount: number
+        items: Array<{ address: string; chainId: number; balance: string }>
+      }
+    }>(SUCKER_GROUP_PARTICIPANTS_QUERY, {
+      suckerGroupId,
+      limit: 1000, // TODO: will break once more than 1000 participants exist
+    })
+
+    if (!data.participants?.items || data.participants.items.length === 0) {
       return 0
     }
 
-    // Deduplicate by wallet address (lowercase)
+    // Deduplicate participants who are on multiple chains
     const uniqueWallets = new Set(
-      data.participants.map(p => p.wallet.toLowerCase())
+      data.participants.items.map(p => p.address.toLowerCase())
     )
 
     return uniqueWallets.size
-  } catch {
+  } catch (err) {
+    console.error('Failed to fetch owners count:', err)
     return 0
+  }
+}
+
+// ETH price cache
+let ethPriceCache: { price: number; timestamp: number } | null = null
+const ETH_PRICE_CACHE_DURATION = 20 * 60 * 1000 // 20 minutes
+
+// Fetch current ETH price in USD
+export async function fetchEthPrice(): Promise<number> {
+  // Check cache
+  if (ethPriceCache && Date.now() - ethPriceCache.timestamp < ETH_PRICE_CACHE_DURATION) {
+    return ethPriceCache.price
+  }
+
+  try {
+    const response = await fetch('https://juicebox.money/api/juicebox/prices/ethusd')
+    const data = await response.json()
+    const price = parseFloat(data.price)
+
+    // Update cache
+    ethPriceCache = { price, timestamp: Date.now() }
+
+    return price
+  } catch (err) {
+    console.error('Failed to fetch ETH price:', err)
+    return ethPriceCache?.price ?? 3000 // Fallback to cached or default
+  }
+}
+
+// ABI for JBTokens.tokenOf and ERC20.symbol
+const TOKEN_ABI = [
+  {
+    name: 'tokenOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'symbol',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+  },
+] as const
+
+// Token symbol cache (caches the project's issued ERC20 token symbol)
+const tokenSymbolCache = createCache<string>(CACHE_DURATIONS.LONG)
+
+// Fetch the project's issued ERC20 token symbol (e.g., NANA for Bananapus)
+// This is different from the base/accounting token (ETH/USDC)
+export async function fetchProjectTokenSymbol(
+  projectId: string,
+  chainId: number
+): Promise<string | null> {
+  const cacheKey = `${chainId}-${projectId}`
+  const cached = tokenSymbolCache.get(cacheKey)
+  if (cached) return cached
+
+  const chain = VIEM_CHAINS[chainId as SupportedChainId]
+  if (!chain) return null
+
+  try {
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(),
+    })
+
+    // Get the token address from JBTokens
+    const tokenAddress = await publicClient.readContract({
+      address: JB_CONTRACTS.JBTokens,
+      abi: TOKEN_ABI,
+      functionName: 'tokenOf',
+      args: [BigInt(projectId)],
+    })
+
+    // Zero address means no ERC20 token deployed yet
+    if (tokenAddress === ZERO_ADDRESS) {
+      return null
+    }
+
+    // Get the symbol from the token contract
+    const symbol = await publicClient.readContract({
+      address: tokenAddress,
+      abi: TOKEN_ABI,
+      functionName: 'symbol',
+    })
+
+    // Cache the result
+    tokenSymbolCache.set(cacheKey, symbol)
+
+    return symbol
+  } catch (err) {
+    console.error('Failed to fetch project token symbol:', err)
+    return null
   }
 }

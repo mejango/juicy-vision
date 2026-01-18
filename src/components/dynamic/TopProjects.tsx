@@ -5,7 +5,7 @@ import { useThemeStore } from '../../stores'
 
 interface TopProjectsProps {
   limit?: number
-  orderBy?: 'volume' | 'volumeUsd' | 'balance' | 'contributorsCount' | 'paymentsCount'
+  orderBy?: 'volume' | 'volumeUsd' | 'balance' | 'contributorsCount' | 'paymentsCount' | 'trendingScore'
 }
 
 const CHAIN_INFO: Record<number, { name: string; color: string }> = {
@@ -38,9 +38,35 @@ function formatVolumeUsd(volumeUsd: string | undefined): string {
   }
 }
 
+function formatTrendingVolume(trendingVolume: string | undefined): string {
+  if (!trendingVolume || trendingVolume === '0') return '$0'
+
+  try {
+    // trendingVolume is in wei (18 decimals)
+    const raw = BigInt(trendingVolume.split('.')[0])
+    const eth = Number(raw) / 1e18
+
+    // Assume ~$3500/ETH for display (rough estimate)
+    const usd = eth * 3500
+
+    if (usd >= 1000000) {
+      return `$${(usd / 1000000).toFixed(1)}M`
+    }
+    if (usd >= 1000) {
+      return `$${(usd / 1000).toFixed(1)}k`
+    }
+    if (usd >= 1) {
+      return `$${usd.toFixed(0)}`
+    }
+    return `$${usd.toFixed(2)}`
+  } catch {
+    return '$0'
+  }
+}
+
 export default function TopProjects({
   limit = 10,
-  orderBy = 'volumeUsd'
+  orderBy = 'trendingScore'
 }: TopProjectsProps) {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -63,26 +89,44 @@ export default function TopProjects({
 
         // Group projects by projectId + version (V4 and V5 are different projects!)
         // Same project can exist on multiple chains, but different versions are separate
-        // Use BigInt for volumeUsd to avoid scientific notation issues with large numbers
-        const grouped = new Map<string, Project & { chainIds: number[]; totalVolumeUsdBigInt: bigint }>()
+        const isTrending = orderBy === 'trendingScore'
+        const grouped = new Map<string, Project & {
+          chainIds: number[]
+          totalScoreBigInt: bigint
+          totalTrendingVolume: bigint
+          totalTrendingPayments: number
+        }>()
 
         for (const project of data) {
           // Key includes version so V4 #1 and V5 #1 stay separate
           const groupKey = `${project.projectId}-v${project.version || 4}`
           const existing = grouped.get(groupKey)
-          // Parse volumeUsd as BigInt (it's an 18-decimal value)
-          const rawVolumeUsd = project.volumeUsd || '0'
-          const projectVolumeUsdBigInt = BigInt(rawVolumeUsd.split('.')[0] || '0')
+
+          // Get the score value based on orderBy
+          const rawScore = isTrending
+            ? (project.trendingScore || '0')
+            : (project.volumeUsd || '0')
+          const projectScoreBigInt = BigInt(rawScore.split('.')[0] || '0')
+          const trendingVolumeBigInt = BigInt((project.trendingVolume || '0').split('.')[0] || '0')
+          const trendingPayments = project.trendingPaymentsCount || 0
 
           if (existing) {
-            // Add to existing group (deduplicate chainIds - convert to number for comparison)
+            // Add to existing group (deduplicate chainIds)
             const chainIdNum = Number(project.chainId)
             if (!existing.chainIds.includes(chainIdNum)) {
               existing.chainIds.push(chainIdNum)
             }
-            existing.totalVolumeUsdBigInt += projectVolumeUsdBigInt
-            // Update volumeUsd string to reflect total (keep full precision, no scientific notation)
-            existing.volumeUsd = existing.totalVolumeUsdBigInt.toString()
+            existing.totalScoreBigInt += projectScoreBigInt
+            existing.totalTrendingVolume += trendingVolumeBigInt
+            existing.totalTrendingPayments += trendingPayments
+            // Update strings to reflect totals
+            if (isTrending) {
+              existing.trendingScore = existing.totalScoreBigInt.toString()
+              existing.trendingVolume = existing.totalTrendingVolume.toString()
+              existing.trendingPaymentsCount = existing.totalTrendingPayments
+            } else {
+              existing.volumeUsd = existing.totalScoreBigInt.toString()
+            }
             // Keep the best metadata (prefer one with logo)
             if (!existing.logoUri && project.logoUri) {
               existing.logoUri = project.logoUri
@@ -93,17 +137,18 @@ export default function TopProjects({
             grouped.set(groupKey, {
               ...project,
               chainIds: [Number(project.chainId)],
-              totalVolumeUsdBigInt: projectVolumeUsdBigInt
+              totalScoreBigInt: projectScoreBigInt,
+              totalTrendingVolume: trendingVolumeBigInt,
+              totalTrendingPayments: trendingPayments,
             })
           }
         }
 
-        // Convert to array, sort by total volume, take top N
+        // Convert to array, sort by score, take top N
         const combined = Array.from(grouped.values())
           .sort((a, b) => {
-            // Compare BigInts for sorting
-            if (a.totalVolumeUsdBigInt > b.totalVolumeUsdBigInt) return -1
-            if (a.totalVolumeUsdBigInt < b.totalVolumeUsdBigInt) return 1
+            if (a.totalScoreBigInt > b.totalScoreBigInt) return -1
+            if (a.totalScoreBigInt < b.totalScoreBigInt) return 1
             return 0
           })
           .slice(0, limit)
@@ -162,8 +207,13 @@ export default function TopProjects({
         isDark ? 'border-white/10' : 'border-gray-100'
       }`}>
         <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Top Projects by Volume
+          {orderBy === 'trendingScore' ? 'Trending Projects' : 'Top Projects by Volume'}
         </span>
+        {orderBy === 'trendingScore' && (
+          <span className={`ml-2 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            7-day window
+          </span>
+        )}
       </div>
 
       {/* Projects list */}
@@ -234,15 +284,19 @@ export default function TopProjects({
                 </div>
               </div>
 
-              {/* Volume */}
+              {/* Volume/Trending info */}
               <div className="text-right">
                 <div className={`font-mono font-medium ${
                   isDark ? 'text-emerald-400' : 'text-emerald-600'
                 }`}>
-                  {formatVolumeUsd(project.volumeUsd)}
+                  {orderBy === 'trendingScore'
+                    ? formatTrendingVolume(project.trendingVolume)
+                    : formatVolumeUsd(project.volumeUsd)}
                 </div>
                 <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  total volume
+                  {orderBy === 'trendingScore'
+                    ? `${project.trendingPaymentsCount || 0} payments`
+                    : 'total volume'}
                 </div>
               </div>
             </button>

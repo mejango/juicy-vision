@@ -1,7 +1,10 @@
-import { useEffect, useState, useMemo } from 'react'
-import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroupBalance, fetchOwnersCount, type Project, type ConnectedChain, type IssuanceRate } from '../../services/bendystraw'
+import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useWallet, useModal } from '@getpara/react-sdk'
+import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
+import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroupBalance, fetchOwnersCount, fetchEthPrice, fetchProjectTokenSymbol, type Project, type ConnectedChain, type IssuanceRate, type SuckerGroupBalance } from '../../services/bendystraw'
 import { resolveIpfsUri, fetchIpfsMetadata, type IpfsProjectMetadata } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore } from '../../stores'
+import { VIEM_CHAINS, USDC_ADDRESSES, type SupportedChainId } from '../../constants'
 
 // Parse HTML/markdown description to clean text with line breaks
 function parseDescription(html: string): string[] {
@@ -59,13 +62,36 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   const [issuanceRate, setIssuanceRate] = useState<IssuanceRate | null>(null)
   // Full metadata from IPFS (has complete description)
   const [fullMetadata, setFullMetadata] = useState<IpfsProjectMetadata | null>(null)
-  // Total balance across sucker group
-  const [totalBalance, setTotalBalance] = useState<string | null>(null)
+  // Sucker group balance (total + per-chain breakdown)
+  const [suckerBalance, setSuckerBalance] = useState<SuckerGroupBalance | null>(null)
+  // ETH price in USD
+  const [ethPrice, setEthPrice] = useState<number | null>(null)
   // Owners count (unique token holders with balance > 0)
   const [ownersCount, setOwnersCount] = useState<number | null>(null)
+  // Tooltip hover states
+  const [showBalanceTooltip, setShowBalanceTooltip] = useState(false)
+  const [showPaymentsTooltip, setShowPaymentsTooltip] = useState(false)
+  // Pay us feature
+  const [payUs, setPayUs] = useState(true)
+  const [juicyIssuanceRate, setJuicyIssuanceRate] = useState<IssuanceRate | null>(null)
+  // Wallet balance state
+  const [walletEthBalance, setWalletEthBalance] = useState<bigint | null>(null)
+  const [walletUsdcBalance, setWalletUsdcBalance] = useState<bigint | null>(null)
+  const [balanceLoading, setBalanceLoading] = useState(false)
+  // Project's issued ERC20 token symbol (e.g., NANA for Bananapus)
+  const [projectTokenSymbol, setProjectTokenSymbol] = useState<string | null>(null)
   const { theme } = useThemeStore()
   const { addTransaction } = useTransactionStore()
   const isDark = theme === 'dark'
+
+  // Para SDK hooks
+  const { data: wallet } = useWallet()
+  const { openModal } = useModal()
+  const isConnected = !!wallet?.address
+
+  // $JUICY project ID (using NANA as placeholder until real deployment)
+  const JUICY_PROJECT_ID = 1
+  const JUICY_FEE_PERCENT = 2.5
 
   // Use connected chains if available, otherwise fall back to all chains
   const availableChains = connectedChains.length > 0 ? connectedChains : ALL_CHAINS
@@ -86,22 +112,36 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
     loadConnectedChains()
   }, [projectId, initialChainId])
 
+  // Fetch $JUICY issuance rate when chain changes
+  useEffect(() => {
+    fetchIssuanceRate(String(JUICY_PROJECT_ID), parseInt(selectedChainId))
+      .then(setJuicyIssuanceRate)
+      .catch(() => setJuicyIssuanceRate(null))
+  }, [selectedChainId])
+
+  // Fetch ETH price on mount
+  useEffect(() => {
+    fetchEthPrice().then(setEthPrice)
+  }, [])
+
   // Fetch project data and issuance rate when chain changes
   useEffect(() => {
     async function load() {
       try {
         setLoading(true)
         const chainIdNum = parseInt(selectedChainId)
-        const [data, rate, groupBalance, owners] = await Promise.all([
+        const [data, rate, groupBalance, owners, tokenSymbol] = await Promise.all([
           fetchProject(currentProjectId, chainIdNum),
           fetchIssuanceRate(currentProjectId, chainIdNum),
           fetchSuckerGroupBalance(currentProjectId, chainIdNum),
           fetchOwnersCount(currentProjectId, chainIdNum),
+          fetchProjectTokenSymbol(currentProjectId, chainIdNum),
         ])
         setProject(data)
         setIssuanceRate(rate)
-        setTotalBalance(groupBalance.totalBalance)
+        setSuckerBalance(groupBalance)
         setOwnersCount(owners)
+        setProjectTokenSymbol(tokenSymbol)
 
         // Fetch full metadata from IPFS if metadataUri available
         if (data.metadataUri) {
@@ -117,14 +157,68 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
     load()
   }, [currentProjectId, selectedChainId])
 
+  // Fetch wallet balances when connected and chain changes
+  const fetchWalletBalances = useCallback(async () => {
+    if (!wallet?.address) {
+      setWalletEthBalance(null)
+      setWalletUsdcBalance(null)
+      return
+    }
+
+    const chainIdNum = parseInt(selectedChainId)
+    const chain = VIEM_CHAINS[chainIdNum as SupportedChainId]
+    if (!chain) return
+
+    setBalanceLoading(true)
+    try {
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(),
+      })
+
+      // Fetch ETH balance
+      const ethBalance = await publicClient.getBalance({
+        address: wallet.address as `0x${string}`,
+      })
+      setWalletEthBalance(ethBalance)
+
+      // Fetch USDC balance
+      const usdcAddress = USDC_ADDRESSES[chainIdNum as SupportedChainId]
+      if (usdcAddress) {
+        const usdcBalance = await publicClient.readContract({
+          address: usdcAddress,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [wallet.address as `0x${string}`],
+        })
+        setWalletUsdcBalance(usdcBalance)
+      }
+    } catch (err) {
+      console.error('Failed to fetch wallet balances:', err)
+    } finally {
+      setBalanceLoading(false)
+    }
+  }, [wallet?.address, selectedChainId])
+
+  useEffect(() => {
+    fetchWalletBalances()
+  }, [fetchWalletBalances])
+
   // Calculate expected tokens based on amount and issuance rate
   const expectedTokens = useMemo(() => {
     if (!issuanceRate || !amount || parseFloat(amount) <= 0) return null
 
     try {
       const amountFloat = parseFloat(amount)
-      // tokensPerEth is already in the right format (tokens per 1 ETH)
-      const tokens = amountFloat * issuanceRate.tokensPerEth
+
+      // Convert to ETH equivalent if paying in USDC
+      let ethEquivalent = amountFloat
+      if (selectedToken === 'USDC' && ethPrice) {
+        ethEquivalent = amountFloat / ethPrice
+      }
+
+      // tokensPerEth is tokens per 1 ETH
+      const tokens = ethEquivalent * issuanceRate.tokensPerEth
 
       if (tokens < 0.01) return null
 
@@ -133,7 +227,53 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
       console.error('Token calc error:', err)
       return null
     }
-  }, [amount, issuanceRate])
+  }, [amount, issuanceRate, selectedToken, ethPrice])
+
+  // Calculate fee and totals for Pay us feature
+  const amountNum = parseFloat(amount) || 0
+  const feeAmount = payUs ? amountNum * (JUICY_FEE_PERCENT / 100) : 0
+  const totalAmount = amountNum + feeAmount
+
+  // Calculate $JUICY tokens from fee (convert to ETH equivalent if USDC)
+  const estimatedJuicyTokens = useMemo(() => {
+    if (!payUs || !juicyIssuanceRate || feeAmount <= 0) return 0
+    let feeEthEquivalent = feeAmount
+    if (selectedToken === 'USDC' && ethPrice) {
+      feeEthEquivalent = feeAmount / ethPrice
+    }
+    return feeEthEquivalent * juicyIssuanceRate.tokensPerEth
+  }, [payUs, juicyIssuanceRate, feeAmount, selectedToken, ethPrice])
+
+  // Check if user has sufficient balance for the payment
+  const checkSufficientBalance = useCallback(() => {
+    if (balanceLoading) return { sufficient: false, reason: 'loading' }
+
+    const paymentAmount = parseFloat(amount) || 0
+    const total = paymentAmount + feeAmount
+
+    // Minimum ETH needed for gas (rough estimate)
+    const minGasEth = 0.001
+    const ethBalanceNum = walletEthBalance ? parseFloat(formatEther(walletEthBalance)) : 0
+
+    if (selectedToken === 'ETH') {
+      // Need ETH for both payment and gas
+      const totalEthNeeded = total + minGasEth
+      if (ethBalanceNum < totalEthNeeded) {
+        return { sufficient: false, reason: 'insufficient_eth', needed: totalEthNeeded, have: ethBalanceNum }
+      }
+    } else if (selectedToken === 'USDC') {
+      // Need USDC for payment and ETH for gas
+      const usdcBalanceNum = walletUsdcBalance ? Number(walletUsdcBalance) / 1e6 : 0
+      if (usdcBalanceNum < total) {
+        return { sufficient: false, reason: 'insufficient_usdc', needed: total, have: usdcBalanceNum }
+      }
+      if (ethBalanceNum < minGasEth) {
+        return { sufficient: false, reason: 'insufficient_gas', needed: minGasEth, have: ethBalanceNum }
+      }
+    }
+
+    return { sufficient: true }
+  }, [amount, feeAmount, selectedToken, walletEthBalance, walletUsdcBalance, balanceLoading])
 
   if (loading) {
     return (
@@ -158,9 +298,41 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
     return eth.toLocaleString(undefined, { maximumFractionDigits: 4 })
   }
 
+  const formatUsd = (wei: string) => {
+    if (!ethPrice) return null
+    const eth = parseFloat(wei) / 1e18
+    const usd = eth * ethPrice
+    return usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+
+  // Calculate total balance USD value
+  const totalBalanceUsd = suckerBalance?.totalBalance ? formatUsd(suckerBalance.totalBalance) : null
+
   const handlePay = async () => {
     if (!amount || parseFloat(amount) <= 0) return
 
+    // Step 1: Check if wallet is connected
+    if (!isConnected) {
+      openModal()
+      return
+    }
+
+    // Step 2: Refresh balances and check if sufficient
+    await fetchWalletBalances()
+    const balanceCheck = checkSufficientBalance()
+
+    if (!balanceCheck.sufficient) {
+      if (balanceCheck.reason === 'loading') {
+        // Wait and retry
+        return
+      }
+      // Insufficient funds - open modal for onramp
+      // Para modal will show options to add funds
+      openModal()
+      return
+    }
+
+    // Step 3: Proceed with payment
     setPaying(true)
     try {
       const txId = addTransaction({
@@ -180,6 +352,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
           amount,
           token: selectedToken,
           memo,
+          // Include fee info for batched transaction
+          payUs,
+          feeAmount: feeAmount.toString(),
+          juicyProjectId: JUICY_PROJECT_ID,
+          totalAmount: totalAmount.toString(),
         }
       }))
       setAmount('')
@@ -193,39 +370,116 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   const projectUrl = `https://juicebox.money/v5/${selectedChainInfo.slug}:${currentProjectId}`
 
   return (
-    <div className="w-full">
+    <div className={`w-full border-l-2 pl-3 ${
+      isDark ? 'border-gray-600' : 'border-gray-300'
+    }`}>
       {/* Card with border - constrained width */}
-      <div className={`border p-4 max-w-md ${
+      <div className={`max-w-md border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
       {/* Header */}
       <div className="flex items-center gap-3 mb-3">
         {logoUrl ? (
-          <img src={logoUrl} alt={project.name} className="w-10 h-10 object-cover" />
+          <img src={logoUrl} alt={project.name} className="w-14 h-14 object-cover" />
         ) : (
-          <div className="w-10 h-10 bg-juice-orange/20 flex items-center justify-center">
-            <span className="text-juice-orange font-bold">{project.name.charAt(0).toUpperCase()}</span>
+          <div className="w-14 h-14 bg-juice-orange/20 flex items-center justify-center">
+            <span className="text-juice-orange font-bold text-xl">{project.name.charAt(0).toUpperCase()}</span>
           </div>
         )}
         <div className="flex-1 min-w-0">
           <h3 className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
             {project.name}
           </h3>
-          <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          <a
+            href={projectUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
+          >
             Project #{currentProjectId}
-          </p>
+          </a>
         </div>
       </div>
 
       {/* Stats - inline, no background */}
       <div className="flex gap-6 mb-3 text-sm">
-        <div>
-          <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>{formatBalance(totalBalance || project.balance)} ETH</span>
+        <div
+          className="relative"
+          onMouseEnter={() => setShowBalanceTooltip(true)}
+          onMouseLeave={() => setShowBalanceTooltip(false)}
+        >
+          <span className={`font-mono cursor-help ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {totalBalanceUsd ? `$${totalBalanceUsd}` : `${formatBalance(suckerBalance?.totalBalance || project.balance)} ETH`}
+          </span>
           <span className={isDark ? 'text-gray-400' : 'text-gray-500'}> balance</span>
+
+          {/* Per-chain breakdown tooltip */}
+          {showBalanceTooltip && suckerBalance && suckerBalance.projectBalances.length > 0 && (
+            <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-20 min-w-[180px] text-xs ${
+              isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+            }`}>
+              {suckerBalance.projectBalances.map(pb => {
+                const chainInfo = CHAIN_INFO[pb.chainId.toString()]
+                if (!chainInfo) return null
+                return (
+                  <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
+                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainInfo.name}</span>
+                    <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      {formatBalance(pb.balance)} ETH
+                    </span>
+                  </div>
+                )
+              })}
+              <div className={`flex justify-between gap-4 pt-1 mt-1 border-t ${
+                isDark ? 'border-white/10' : 'border-gray-100'
+              }`}>
+                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>[All chains]</span>
+                <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {totalBalanceUsd ? `$${totalBalanceUsd}` : `${formatBalance(suckerBalance.totalBalance)} ETH`}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
         <div>
           <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>{ownersCount ?? 0}</span>
-          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}> owners</span>
+          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}> owner{ownersCount !== 1 ? 's' : ''}</span>
+        </div>
+        <div
+          className="relative"
+          onMouseEnter={() => setShowPaymentsTooltip(true)}
+          onMouseLeave={() => setShowPaymentsTooltip(false)}
+        >
+          <span className={`font-mono cursor-help ${isDark ? 'text-white' : 'text-gray-900'}`}>{suckerBalance?.totalPaymentsCount ?? 0}</span>
+          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}> payment{suckerBalance?.totalPaymentsCount !== 1 ? 's' : ''}</span>
+
+          {/* Per-chain payments breakdown tooltip */}
+          {showPaymentsTooltip && suckerBalance && suckerBalance.projectBalances.length > 0 && (
+            <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-20 min-w-[140px] text-xs ${
+              isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+            }`}>
+              {suckerBalance.projectBalances.map(pb => {
+                const chainInfo = CHAIN_INFO[pb.chainId.toString()]
+                if (!chainInfo) return null
+                return (
+                  <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
+                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainInfo.name}</span>
+                    <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      {pb.paymentsCount}
+                    </span>
+                  </div>
+                )
+              })}
+              <div className={`flex justify-between gap-4 pt-1 mt-1 border-t ${
+                isDark ? 'border-white/10' : 'border-gray-100'
+              }`}>
+                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>[All chains]</span>
+                <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {suckerBalance.totalPaymentsCount}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -347,7 +601,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               paying || !amount || parseFloat(amount) <= 0
                 ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                : 'bg-green-500 hover:bg-green-600 text-black'
+                : !isConnected
+                  ? 'bg-juice-cyan hover:bg-juice-cyan/90 text-black'
+                  : !checkSufficientBalance().sufficient
+                    ? 'bg-juice-orange hover:bg-juice-orange/90 text-black'
+                    : 'bg-green-500 hover:bg-green-600 text-black'
             }`}
           >
             {paying ? '...' : 'Pay'}
@@ -371,6 +629,16 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
           ))}
         </div>
 
+        {/* Token preview */}
+        {amountNum > 0 && expectedTokens !== null && (
+          <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+            You get ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}
+            {payUs && estimatedJuicyTokens > 0 && (
+              <span> + {estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} $JUICY</span>
+            )}
+          </div>
+        )}
+
         {/* Memo input */}
         <input
           type="text"
@@ -384,32 +652,38 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
           }`}
         />
 
-        {/* Token count preview */}
-        {expectedTokens !== null && (
-          <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            You'll receive ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens
+      </div>
+
+      {/* Pay Juicy checkbox */}
+      <div className="mt-2">
+        <label className={`group relative flex items-center gap-2 cursor-pointer ${
+          isDark ? 'text-gray-300' : 'text-gray-600'
+        }`}>
+          <input
+            type="checkbox"
+            checked={payUs}
+            onChange={(e) => setPayUs(e.target.checked)}
+            className="w-3.5 h-3.5 rounded border-gray-300 text-juice-orange focus:ring-juice-orange"
+          />
+          <span className="text-sm">Pay Juicy (+{JUICY_FEE_PERCENT}%)</span>
+          {/* Hover tooltip */}
+          <div className={`absolute left-0 bottom-full mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap ${
+            isDark ? 'bg-juice-dark border border-white/20 text-gray-300' : 'bg-white border border-gray-200 text-gray-600 shadow-sm'
+          }`}>
+            Invest in $JUICY, we keep building.
+          </div>
+        </label>
+        {payUs && amountNum > 0 && estimatedJuicyTokens > 0 && (
+          <div className={`ml-6 mt-1 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            {feeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {selectedToken} → ~{estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} $JUICY
           </div>
         )}
       </div>
-
-      {/* Footer link inside card */}
-      <a
-        href={projectUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`text-xs hover:underline ${
-          isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'
-        }`}
-      >
-        View on Juicebox →
-      </a>
       </div>
 
-      {/* Tagline - blockquote style */}
+      {/* Tagline */}
       {(fullMetadata?.tagline || fullMetadata?.projectTagline) && (
-        <div className={`mt-3 pl-3 border-l-2 ${
-          isDark ? 'text-gray-300 border-gray-600' : 'text-gray-600 border-gray-300'
-        }`}>
+        <div className={`mt-3 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
           <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             Tagline
           </div>
@@ -419,11 +693,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
         </div>
       )}
 
-      {/* About section - blockquote style, collapsible */}
+      {/* About section - collapsible */}
       {fullMetadata?.description && (
-        <details className={`mt-3 pl-3 border-l-2 group ${
-          isDark ? 'border-gray-600' : 'border-gray-300'
-        }`}>
+        <details className="mt-3 group">
           <summary className={`text-xs font-medium cursor-pointer list-none flex items-center gap-1 ${
             isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
           }`}>

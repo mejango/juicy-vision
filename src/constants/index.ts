@@ -1,3 +1,6 @@
+// Chain and contract constants
+export * from './chains'
+
 // API Endpoints
 export const BENDYSTRAW_ENDPOINT = 'https://bendystraw.xyz/3ZNJpGtazh5fwYoSW59GWDEj/graphql'
 export const RELAYR_ENDPOINT = 'https://api.relayr.ba5ed.com'

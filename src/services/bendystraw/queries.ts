@@ -14,6 +14,7 @@ export const PROJECT_QUERY = `
       nftsMintedCount
       paymentsCount
       createdAt
+      tokenSymbol
     }
   }
 `
@@ -40,6 +41,9 @@ export const PROJECTS_QUERY = `
         contributorsCount
         paymentsCount
         createdAt
+        trendingScore
+        trendingVolume
+        trendingPaymentsCount
       }
     }
   }
@@ -117,8 +121,9 @@ export const PROJECT_RULESET_QUERY = `
 `
 
 // Query to get recent pay events for calculating current issuance rate
+// Note: payEvents where clause expects Int types
 export const RECENT_PAY_EVENTS_QUERY = `
-  query RecentPayEvents($projectId: Float!, $chainId: Float!, $version: Float!) {
+  query RecentPayEvents($projectId: Int!, $chainId: Int!, $version: Int!) {
     payEvents(
       where: { projectId: $projectId, chainId: $chainId, version: $version }
       limit: 5
@@ -151,18 +156,20 @@ export const CONNECTED_CHAINS_QUERY = `
   }
 `
 
-// Query to get suckerGroup with balance info for total balance calculation
+// Query to get suckerGroup with balance and payments info for total calculations
 export const SUCKER_GROUP_BALANCE_QUERY = `
   query SuckerGroupBalance($projectId: Float!, $chainId: Float!, $version: Float!) {
     project(projectId: $projectId, chainId: $chainId, version: $version) {
       id
       balance
+      paymentsCount
       suckerGroup {
         projects {
           items {
             projectId
             chainId
             balance
+            paymentsCount
           }
         }
       }
@@ -185,6 +192,36 @@ export const TOKEN_HOLDERS_QUERY = `
       id
       wallet
       balance
+    }
+  }
+`
+
+// Query to get participants across all chains via suckerGroupId
+export const SUCKER_GROUP_PARTICIPANTS_QUERY = `
+  query SuckerGroupParticipants($suckerGroupId: String!, $limit: Int) {
+    participants(
+      where: {
+        suckerGroupId: $suckerGroupId
+        balance_gt: "0"
+      }
+      limit: $limit
+    ) {
+      totalCount
+      items {
+        address
+        chainId
+        balance
+      }
+    }
+  }
+`
+
+// Query to get project with suckerGroupId
+export const PROJECT_SUCKER_GROUP_QUERY = `
+  query ProjectSuckerGroup($projectId: Float!, $chainId: Float!, $version: Float!) {
+    project(projectId: $projectId, chainId: $chainId, version: $version) {
+      id
+      suckerGroupId
     }
   }
 `

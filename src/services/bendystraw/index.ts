@@ -12,6 +12,8 @@ export {
   fetchIssuanceRate,
   fetchSuckerGroupBalance,
   fetchOwnersCount,
+  fetchEthPrice,
+  fetchProjectTokenSymbol,
   type Project,
   type ProjectMetadata,
   type Participant,

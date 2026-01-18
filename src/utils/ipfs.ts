@@ -14,6 +14,8 @@ export interface IpfsProjectMetadata {
   twitter?: string
   discord?: string
   telegram?: string
+  // Token symbol (may be stored in metadata)
+  tokenSymbol?: string
   // Additional fields that may be present
   [key: string]: unknown
 }

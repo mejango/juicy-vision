@@ -6,6 +6,7 @@ import '@getpara/react-sdk/styles.css'
 import { ChatContainer, ProtocolActivity } from './components/chat'
 import { SettingsPanel } from './components/settings'
 import { useSettingsStore, useChatStore, useThemeStore } from './stores'
+import { useTransactionExecutor } from './hooks'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -160,7 +161,24 @@ function AppProviders({ children }: { children: React.ReactNode }) {
           apiKey: paraApiKey || 'beta_e5108365cf0b2fd615914efb50c3ca82',
         }}
         config={{
-          appName: 'Juicy',
+          appName: 'Juicy Vision',
+        }}
+        externalWalletConfig={{
+          appDescription: 'Juicy Vision - AI-powered Juicebox interface',
+          appUrl: window.location.origin,
+          appIcon: `${window.location.origin}/head-dark.png`,
+        }}
+        paraModalConfig={{
+          logo: `${window.location.origin}/head-dark.png`,
+          theme: {
+            accentColor: '#F5A623',
+            font: 'Space Mono',
+            borderRadius: 'none',
+          },
+          oAuthMethods: ['GOOGLE', 'APPLE', 'FACEBOOK', 'TWITTER', 'TELEGRAM', 'DISCORD'],
+          authLayout: ['EXTERNAL:FULL', 'AUTH:FULL'],
+          recoverySecretStepEnabled: true,
+          onRampTestMode: true,
         }}
       >
         {children}
@@ -245,6 +263,12 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
   )
 }
 
+// Component that activates transaction execution listener
+function TransactionExecutor() {
+  useTransactionExecutor()
+  return null
+}
+
 function AppContent() {
   const { theme } = useThemeStore()
   const { getActiveConversation } = useChatStore()
@@ -263,6 +287,8 @@ function AppContent() {
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-juice-dark' : 'bg-juice-light'}`}>
+      {/* Transaction executor - listens for pay events */}
+      <TransactionExecutor />
       {/* Main content with right margin for sidebar */}
       <div className="mr-[280px]">
         {hasMessages && <Header />}

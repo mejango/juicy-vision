@@ -246,7 +246,7 @@ The following is your internal knowledge about the underlying protocol. Use this
 |----------|---------|
 | JBDirectory | 0xb98a8f557ce2c67ed48c54a60c0d4562e3906622 |
 | JBProjects | 0x4cdb8dc538a26a5e4d0335e5ee9b5c49b4cd4ad9 |
-| JBTokens | 0xa59e9f424901fb9dbd8913a9a32a081f9425bf36 |
+| JBTokens | 0x4d0edd347fb1fa21589c1e109b3474924be87636 |
 | JBPermissions | 0xba948dab74e875b19cf0e2ca7a4546c0c2defc40 |
 | JBRulesets | 0x5e151460be83eb34e90cc4a847c76f4c98232276 |
 | JBSplits | 0xbe6ec7c01a36ae0b00fceaa72fbf35f7696dd38c |
@@ -489,10 +489,10 @@ This lets users pick which chain's project they want to pay.
 \`\`\`
 
 **When to use top-projects:**
-- User asks about "biggest projects", "top projects", "most popular", "most funded"
-- Showing what projects have raised the most
+- User asks about "biggest projects", "top projects", "most popular", "trending", "what's hot"
+- Showing what projects are getting the most activity RIGHT NOW
 - Providing social proof of protocol usage
-- Default shows top 10 projects ranked by total volume
+- Default shows top 10 TRENDING projects (7-day window)
 
 \`\`\`
 <juice-component type="top-projects" />
@@ -500,10 +500,15 @@ This lets users pick which chain's project they want to pay.
 
 Or with custom options:
 \`\`\`
-<juice-component type="top-projects" limit="5" orderBy="volume" />
+<juice-component type="top-projects" limit="5" orderBy="trendingScore" />
 \`\`\`
 
-Available orderBy values: volume (default), balance, contributorsCount, paymentsCount
+Available orderBy values: trendingScore (default - what's hot now), volumeUsd (all-time volume), balance, contributorsCount, paymentsCount
+
+**Trending algorithm:** trendingScore = trendingVolume × (trendingPaymentsCount)²
+- Projects with many recent payments rank higher than one-time large payments
+- Based on 7-day rolling window
+- Use this when users ask "what's hot", "trending", "biggest right now"
 
 **When to use ruleset-schedule:**
 - Explaining how a project's rules change over time

@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react'
+import { useWallet } from '@getpara/react-sdk'
 import { useThemeStore } from '../../stores'
+import { useWalletBalances, formatEthBalance, formatUsdcBalance } from '../../hooks'
 import type { Attachment } from '../../stores/chatStore'
 
 const INITIAL_PLACEHOLDER = "What's your juicy vision?"
@@ -27,6 +29,11 @@ interface ChatInputProps {
 
 const generateId = () => Math.random().toString(36).substring(2, 15)
 
+// Shorten address for display
+function shortenAddress(address: string, chars = 4): string {
+  return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
+}
+
 export default function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [isFirstLoad, setIsFirstLoad] = useState(true)
@@ -37,6 +44,8 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme } = useThemeStore()
+  const { data: wallet } = useWallet()
+  const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
 
   const currentPlaceholder = placeholder || (isFirstLoad ? INITIAL_PLACEHOLDER : PLACEHOLDER_PHRASES[placeholderIndex])
 
@@ -189,7 +198,7 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
         multiple
       />
 
-      <div className="flex gap-3 mb-safe">
+      <div className="flex gap-3">
         {/* Attachment button */}
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -238,6 +247,24 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
           </svg>
         </button>
       </div>
+
+      {/* Connected wallet display */}
+      {wallet?.address && (
+        <div className="flex gap-3 mt-2">
+          {/* Spacer to align with textarea */}
+          <div className="w-[48px] shrink-0" />
+          <div className={`flex-1 text-xs ${
+            theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+          }`}>
+            <span>Connected as {wallet.ensName || shortenAddress(wallet.address)}</span>
+            {!balancesLoading && (totalEth > 0n || totalUsdc > 0n) && (
+              <span className="ml-2">
+                · {formatEthBalance(totalEth)} ETH · {formatUsdcBalance(totalUsdc)} USDC
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
