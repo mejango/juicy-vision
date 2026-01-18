@@ -1,6 +1,18 @@
 import { GraphQLClient } from 'graphql-request'
 import { useSettingsStore } from '../../stores'
-import { PROJECT_QUERY, PROJECTS_QUERY, PARTICIPANTS_QUERY, SEARCH_PROJECTS_QUERY, ACTIVITY_EVENTS_QUERY } from './queries'
+import {
+  PROJECT_QUERY,
+  PROJECTS_QUERY,
+  PARTICIPANTS_QUERY,
+  SEARCH_PROJECTS_QUERY,
+  ACTIVITY_EVENTS_QUERY,
+  USER_PARTICIPANT_QUERY,
+  PROJECT_RULESET_QUERY,
+  RECENT_PAY_EVENTS_QUERY,
+  CONNECTED_CHAINS_QUERY,
+  SUCKER_GROUP_BALANCE_QUERY,
+  TOKEN_HOLDERS_QUERY,
+} from './queries'
 
 export interface ProjectMetadata {
   name: string
@@ -16,6 +28,7 @@ export interface Project {
   id: string
   projectId: number
   chainId: number
+  version: number
   handle?: string
   owner: string
   metadataUri?: string
@@ -24,11 +37,10 @@ export interface Project {
   description?: string
   logoUri?: string
   volume: string
-  volumeUSD?: string
+  volumeUsd?: string
   balance: string
-  contributorsCount: number
   nftsMintedCount?: number
-  paymentsCount?: number
+  paymentsCount: number
   createdAt: number
 }
 
@@ -46,19 +58,23 @@ function getClient(): GraphQLClient {
   return new GraphQLClient(endpoint)
 }
 
-export async function fetchProject(projectId: string, chainId: number = 1): Promise<Project> {
+export async function fetchProject(projectId: string, chainId: number = 1, version: number = 5): Promise<Project> {
   const client = getClient()
-  const data = await client.request<{ project: Project & { metadata: ProjectMetadata } }>(
+  const data = await client.request<{ project: Project & { metadata: ProjectMetadata | string } }>(
     PROJECT_QUERY,
-    { projectId: parseInt(projectId), chainId }
+    { projectId: parseFloat(projectId), chainId: parseFloat(String(chainId)), version: parseFloat(String(version)) }
   )
 
   const project = data.project
+  // metadata comes back as JSON scalar, parse if string
+  const metadata: ProjectMetadata | undefined =
+    typeof project.metadata === 'string' ? JSON.parse(project.metadata) : project.metadata
+
   return {
     ...project,
-    name: project.metadata?.name || `Project #${projectId}`,
-    description: project.metadata?.description,
-    logoUri: project.metadata?.logoUri,
+    name: metadata?.name || `Project #${projectId}`,
+    description: metadata?.description,
+    logoUri: metadata?.logoUri,
   }
 }
 
@@ -71,16 +87,14 @@ export async function fetchProjects(options: {
   const client = getClient()
   const { first = 20, skip = 0, orderBy = 'volume', orderDirection = 'desc' } = options
 
-  const data = await client.request<{ projects: Array<Project & { metadata: ProjectMetadata }> }>(
+  const data = await client.request<{ projects: { items: Array<Project> } }>(
     PROJECTS_QUERY,
-    { first, skip, orderBy, orderDirection }
+    { limit: first, offset: skip, orderBy, orderDirection }
   )
 
-  return data.projects.map(project => ({
+  return data.projects.items.map(project => ({
     ...project,
-    name: project.metadata?.name || `Project #${project.projectId}`,
-    description: project.metadata?.description,
-    logoUri: project.metadata?.logoUri,
+    name: project.name || `Project #${project.projectId}`,
   }))
 }
 
@@ -313,4 +327,323 @@ export async function fetchActivityEvents(limit: number = 20, offset: number = 0
   )
 
   return data.activityEvents.items.map(transformEvent)
+}
+
+// Check user's token balance for a specific project
+export async function fetchUserTokenBalance(
+  projectId: string,
+  chainId: number,
+  wallet: string
+): Promise<{ balance: string; volume: string } | null> {
+  const client = getClient()
+
+  const data = await client.request<{ participants: Participant[] }>(
+    USER_PARTICIPANT_QUERY,
+    { projectId: parseInt(projectId), chainId, wallet: wallet.toLowerCase() }
+  )
+
+  if (data.participants.length === 0) {
+    return null
+  }
+
+  return {
+    balance: data.participants[0].balance,
+    volume: data.participants[0].volume,
+  }
+}
+
+// Project ruleset info for eligibility checks
+export interface ProjectRuleset {
+  weight: string
+  decayPercent: string
+  duration: number
+  pausePay: boolean
+  allowOwnerMinting: boolean
+  reservedPercent: number
+  cashOutTaxRate: number
+}
+
+export interface ProjectWithRuleset {
+  id: string
+  projectId: number
+  chainId: number
+  owner: string
+  name: string
+  balance: string
+  currentRuleset: ProjectRuleset | null
+}
+
+export async function fetchProjectWithRuleset(
+  projectId: string,
+  chainId: number = 1,
+  version: number = 5
+): Promise<ProjectWithRuleset | null> {
+  const client = getClient()
+
+  try {
+    const data = await client.request<{
+      project: {
+        id: string
+        projectId: number
+        chainId: number
+        owner: string
+        metadata?: { name?: string }
+        currentRuleset?: ProjectRuleset
+        balance: string
+      }
+    }>(PROJECT_RULESET_QUERY, {
+      projectId: parseFloat(projectId),
+      chainId: parseFloat(String(chainId)),
+      version: parseFloat(String(version))
+    })
+
+    if (!data.project) {
+      return null
+    }
+
+    return {
+      id: data.project.id,
+      projectId: data.project.projectId,
+      chainId: data.project.chainId,
+      owner: data.project.owner,
+      name: data.project.metadata?.name || `Project #${projectId}`,
+      balance: data.project.balance,
+      currentRuleset: data.project.currentRuleset || null,
+    }
+  } catch {
+    return null
+  }
+}
+
+// Check if user is project owner
+export async function isProjectOwner(
+  projectId: string,
+  chainId: number,
+  wallet: string
+): Promise<boolean> {
+  const project = await fetchProjectWithRuleset(projectId, chainId)
+  if (!project) return false
+  return project.owner.toLowerCase() === wallet.toLowerCase()
+}
+
+// Check if payments are enabled for a project
+export async function arePaymentsEnabled(
+  projectId: string,
+  chainId: number
+): Promise<{ enabled: boolean; reason?: string }> {
+  const project = await fetchProjectWithRuleset(projectId, chainId)
+
+  if (!project) {
+    return { enabled: false, reason: 'Project not found' }
+  }
+
+  if (!project.currentRuleset) {
+    return { enabled: false, reason: 'No active ruleset' }
+  }
+
+  if (project.currentRuleset.pausePay) {
+    return { enabled: false, reason: 'Payments are currently paused for this project' }
+  }
+
+  return { enabled: true }
+}
+
+// Connected chain info for a project
+export interface ConnectedChain {
+  chainId: number
+  projectId: number
+}
+
+// Get all chains a project exists on via suckerGroup
+// Returns empty array if no suckerGroup found (signals fallback to all chains)
+export async function fetchConnectedChains(
+  projectId: string,
+  chainId: number,
+  version: number = 5
+): Promise<ConnectedChain[]> {
+  const client = getClient()
+
+  try {
+    const data = await client.request<{
+      project: {
+        suckerGroup?: {
+          projects: {
+            items: Array<{ projectId: number; chainId: number }>
+          }
+        }
+      }
+    }>(CONNECTED_CHAINS_QUERY, {
+      projectId: parseFloat(projectId),
+      chainId: parseFloat(String(chainId)),
+      version: parseFloat(String(version)),
+    })
+
+    const items = data.project?.suckerGroup?.projects?.items
+    if (!items || items.length === 0) {
+      return []
+    }
+
+    return items.map(item => ({
+      chainId: item.chainId,
+      projectId: item.projectId,
+    }))
+  } catch {
+    return []
+  }
+}
+
+// Issuance rate info calculated from recent pay events
+export interface IssuanceRate {
+  tokensPerEth: number  // Tokens (in display units) per 1 ETH
+  basedOnPayments: number  // Number of payments used to calculate
+}
+
+// Get the current issuance rate by looking at recent pay events
+// This is more accurate than the weight because it includes any hooks/modifiers
+export async function fetchIssuanceRate(
+  projectId: string,
+  chainId: number,
+  version: number = 5
+): Promise<IssuanceRate | null> {
+  const client = getClient()
+
+  try {
+    const data = await client.request<{
+      payEvents: {
+        items: Array<{
+          amount: string
+          newlyIssuedTokenCount: string
+          timestamp: number
+        }>
+      }
+    }>(RECENT_PAY_EVENTS_QUERY, {
+      projectId: parseFloat(projectId),
+      chainId: parseFloat(String(chainId)),
+      version: parseFloat(String(version)),
+    })
+
+    const items = data.payEvents?.items
+    if (!items || items.length === 0) {
+      return null
+    }
+
+    // Calculate average rate from recent payments
+    let totalTokens = BigInt(0)
+    let totalAmount = BigInt(0)
+
+    for (const event of items) {
+      totalTokens += BigInt(event.newlyIssuedTokenCount)
+      totalAmount += BigInt(event.amount)
+    }
+
+    if (totalAmount === BigInt(0)) {
+      return null
+    }
+
+    // Calculate tokens per ETH (both in 18 decimal format, so they cancel out)
+    // tokens/amount gives us tokens per wei, multiply by 1e18 to get per ETH
+    const tokensPerEth = (Number(totalTokens) / Number(totalAmount))
+
+    return {
+      tokensPerEth,
+      basedOnPayments: items.length,
+    }
+  } catch (err) {
+    console.error('Failed to fetch issuance rate:', err)
+    return null
+  }
+}
+
+// Sucker group balance info
+export interface SuckerGroupBalance {
+  totalBalance: string  // Sum of all projects in the group
+  projectBalances: Array<{ chainId: number; projectId: number; balance: string }>
+}
+
+// Get the total balance across all projects in a sucker group
+export async function fetchSuckerGroupBalance(
+  projectId: string,
+  chainId: number,
+  version: number = 5
+): Promise<SuckerGroupBalance> {
+  const client = getClient()
+
+  try {
+    const data = await client.request<{
+      project: {
+        id: string
+        balance: string
+        suckerGroup?: {
+          projects: {
+            items: Array<{ projectId: number; chainId: number; balance: string }>
+          }
+        }
+      }
+    }>(SUCKER_GROUP_BALANCE_QUERY, {
+      projectId: parseFloat(projectId),
+      chainId: parseFloat(String(chainId)),
+      version: parseFloat(String(version)),
+    })
+
+    const items = data.project?.suckerGroup?.projects?.items
+    if (!items || items.length === 0) {
+      // No sucker group, return single project balance
+      return {
+        totalBalance: data.project.balance,
+        projectBalances: [{ chainId, projectId: parseInt(projectId), balance: data.project.balance }],
+      }
+    }
+
+    // Sum all balances in the group
+    let total = BigInt(0)
+    for (const item of items) {
+      total += BigInt(item.balance || '0')
+    }
+
+    return {
+      totalBalance: total.toString(),
+      projectBalances: items.map(item => ({
+        chainId: item.chainId,
+        projectId: item.projectId,
+        balance: item.balance,
+      })),
+    }
+  } catch {
+    return {
+      totalBalance: '0',
+      projectBalances: [],
+    }
+  }
+}
+
+// Get unique token holders (owners) count for a project
+// Fetches participants with balance > 0 and deduplicates by wallet
+export async function fetchOwnersCount(
+  projectId: string,
+  chainId: number
+): Promise<number> {
+  const client = getClient()
+
+  try {
+    const data = await client.request<{
+      participants: Array<{ wallet: string; balance: string }>
+    }>(TOKEN_HOLDERS_QUERY, {
+      projectId: parseInt(projectId),
+      chainId,
+      first: 1000, // Get up to 1000 to count unique wallets
+    })
+
+    if (!data.participants || data.participants.length === 0) {
+      return 0
+    }
+
+    // Deduplicate by wallet address (lowercase)
+    const uniqueWallets = new Set(
+      data.participants.map(p => p.wallet.toLowerCase())
+    )
+
+    return uniqueWallets.size
+  } catch {
+    return 0
+  }
 }

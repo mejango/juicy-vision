@@ -15,9 +15,12 @@ export default function MessageList({ messages }: MessageListProps) {
 
   return (
     <div className="flex-1 overflow-y-auto hide-scrollbar p-4">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <MessageBubble
+            key={message.id}
+            message={message}
+          />
         ))}
         <div ref={bottomRef} />
       </div>

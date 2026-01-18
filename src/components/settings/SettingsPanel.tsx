@@ -11,10 +11,12 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const {
     claudeApiKey,
     paraApiKey,
+    pinataJwt,
     bendystrawEndpoint,
     relayrEndpoint,
     setClaudeApiKey,
     setParaApiKey,
+    setPinataJwt,
     setBendystrawEndpoint,
     setRelayrEndpoint,
     clearSettings,
@@ -22,6 +24,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
   const [localClaudeKey, setLocalClaudeKey] = useState(claudeApiKey)
   const [localParaKey, setLocalParaKey] = useState(paraApiKey)
+  const [localPinataJwt, setLocalPinataJwt] = useState(pinataJwt)
   const [localBendystraw, setLocalBendystraw] = useState(bendystrawEndpoint)
   const [localRelayr, setLocalRelayr] = useState(relayrEndpoint)
   const [showKeys, setShowKeys] = useState(false)
@@ -30,6 +33,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const handleSave = () => {
     setClaudeApiKey(localClaudeKey)
     setParaApiKey(localParaKey)
+    setPinataJwt(localPinataJwt)
     setBendystrawEndpoint(localBendystraw)
     setRelayrEndpoint(localRelayr)
     onClose()
@@ -40,6 +44,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       clearSettings()
       setLocalClaudeKey('')
       setLocalParaKey('')
+      setLocalPinataJwt('')
     }
   }
 
@@ -100,6 +105,28 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           />
           <p className="mt-1 text-xs text-gray-500">
             For passkey wallet support
+          </p>
+        </div>
+
+        {/* Pinata JWT */}
+        <div>
+          <Input
+            label="Pinata JWT (optional)"
+            type={showKeys ? 'text' : 'password'}
+            value={localPinataJwt}
+            onChange={(e) => setLocalPinataJwt(e.target.value)}
+            placeholder="eyJhbGciOiJS..."
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            For pinning project metadata to IPFS.{' '}
+            <a
+              href="https://app.pinata.cloud/developers/api-keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-juice-cyan hover:underline"
+            >
+              Get a JWT from Pinata
+            </a>
           </p>
         </div>
 

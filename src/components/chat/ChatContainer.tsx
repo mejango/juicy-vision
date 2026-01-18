@@ -1,11 +1,44 @@
-import { useState, useCallback, useRef } from 'react'
-import { useChatStore, useSettingsStore, useThemeStore } from '../../stores'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { useChatStore, useSettingsStore, useThemeStore, type Message } from '../../stores'
 import { streamChatResponse } from '../../services/claude'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
-import ProtocolActivity from './ProtocolActivity'
-import { SettingsPanel } from '../settings'
+import { stripComponents } from '../../utils/messageParser'
+
+// Convert messages to markdown format
+function exportToMarkdown(messages: Message[], title: string): string {
+  const date = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+
+  let md = `# ${title}\n\n`
+  md += `*Exported on ${date}*\n\n---\n\n`
+
+  for (const msg of messages) {
+    const role = msg.role === 'user' ? '**You**' : '**Juicy**'
+    // Strip juice-component tags for cleaner output
+    const content = stripComponents(msg.content)
+    md += `${role}:\n\n${content}\n\n---\n\n`
+  }
+
+  return md
+}
+
+// Trigger download of markdown file
+function downloadMarkdown(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/markdown' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 export default function ChatContainer() {
   const {
@@ -20,9 +53,8 @@ export default function ChatContainer() {
   } = useChatStore()
 
   const { claudeApiKey, isConfigured } = useSettingsStore()
-  const { theme, toggleTheme } = useThemeStore()
+  const { theme } = useThemeStore()
   const [error, setError] = useState<string | null>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const conversation = getActiveConversation()
@@ -91,9 +123,30 @@ export default function ChatContainer() {
     handleSend(text)
   }
 
+  const handleExport = () => {
+    if (!conversation || messages.length === 0) return
+    const md = exportToMarkdown(messages, conversation.title)
+    const filename = `${conversation.title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.md`
+    downloadMarkdown(md, filename)
+  }
+
+  // Listen for messages from dynamic components (e.g., recommendation chips)
+  useEffect(() => {
+    const handleComponentMessage = (event: CustomEvent<{ message: string }>) => {
+      if (event.detail?.message) {
+        handleSend(event.detail.message)
+      }
+    }
+
+    window.addEventListener('juice:send-message', handleComponentMessage as EventListener)
+    return () => {
+      window.removeEventListener('juice:send-message', handleComponentMessage as EventListener)
+    }
+  }, [handleSend])
+
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Main content area (left) - chips, mascot, messages, input */}
+      {/* Main content area - chips, mascot, messages, input */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Error banner */}
         {error && (
@@ -113,89 +166,38 @@ export default function ChatContainer() {
           {messages.length === 0 ? (
             <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
           ) : (
-            <MessageList messages={messages} />
+            <>
+              {/* Export button */}
+              <div className={`flex justify-end px-4 py-2 border-b ${
+                theme === 'dark' ? 'border-white/10' : 'border-gray-200'
+              }`}>
+                <button
+                  onClick={handleExport}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                    theme === 'dark'
+                      ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                      : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Export
+                </button>
+              </div>
+              <MessageList messages={messages} />
+            </>
           )}
         </div>
 
         {/* Input - fixed at bottom */}
-        <div className="shrink-0">
+        <div className="shrink-0 relative z-20">
           <ChatInput
             onSend={handleSend}
             disabled={isStreaming}
-            placeholder="What's your juicy vision?"
           />
         </div>
       </div>
-
-      {/* Activity panel (right) - full height, always pinned */}
-      <div className={`w-[280px] flex-shrink-0 flex flex-col border-l backdrop-blur-md ${
-        theme === 'dark'
-          ? 'border-white/20 bg-juice-dark/80'
-          : 'border-gray-300 bg-white/80'
-      }`}>
-        {/* Header with settings */}
-        <div className={`flex items-center justify-between px-4 py-3 border-b ${
-          theme === 'dark' ? 'border-white/10' : 'border-gray-200'
-        }`}>
-          <div>
-            <h2 className={`font-semibold ${
-              theme === 'dark' ? 'text-white' : 'text-gray-900'
-            }`}>
-              Juicy Activity
-            </h2>
-            <p className={`text-xs ${
-              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              Live
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={toggleTheme}
-              className={`p-2 rounded transition-colors ${
-                theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                  : 'text-gray-500 hover:text-gray-900 hover:bg-black/10'
-              }`}
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {theme === 'dark' ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              )}
-            </button>
-            <button
-              onClick={() => setSettingsOpen(true)}
-              className={`p-2 rounded transition-colors ${
-                theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                  : 'text-gray-500 hover:text-gray-900 hover:bg-black/10'
-              }`}
-              title="Settings"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Activity list */}
-        <div className="flex-1 overflow-y-auto px-4 hide-scrollbar">
-          <ProtocolActivity onProjectClick={handleSuggestionClick} />
-        </div>
-      </div>
-
-      <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   )
 }

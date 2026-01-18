@@ -84,6 +84,10 @@
     animation: shimmer 3s linear infinite;
   }
 
+  .gradient-text-shimmer:hover {
+    animation-play-state: paused;
+  }
+
   @keyframes shimmer {
     0% {
       background-position: 0% center;
@@ -114,6 +118,10 @@
 
   .safe-area-inset {
     padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2.5s ease-in-out infinite;
   }
 }
 
@@ -172,9 +180,12 @@
   @apply text-juice-cyan hover:underline;
 }
 
-.prose-juice ul,
+.prose-juice ul {
+  @apply ml-4 mb-3 list-disc;
+}
+
 .prose-juice ol {
-  @apply ml-4 mb-3;
+  @apply ml-4 mb-3 list-decimal;
 }
 
 .prose-juice li {

@@ -9,29 +9,46 @@ export interface ParsedContent {
 }
 
 const COMPONENT_REGEX = /<juice-component\s+([^>]+)\s*\/>/g
-const ATTR_REGEX = /(\w+)="([^"]+)"/g
+// Match both double-quoted and single-quoted attributes
+const ATTR_REGEX_DOUBLE = /(\w+)="([^"]+)"/g
+const ATTR_REGEX_SINGLE = /(\w+)='([^']+)'/g
+// Detect partial component tag that's still being streamed
+const PARTIAL_COMPONENT_REGEX = /<juice-component(?:\s+[^>]*)?$/
 
 export function parseMessageContent(content: string): ParsedContent {
   const segments: ParsedContent['segments'] = []
   let lastIndex = 0
 
-  const matches = content.matchAll(COMPONENT_REGEX)
+  // Check if there's a partial component tag at the end (still streaming)
+  const partialMatch = content.match(PARTIAL_COMPONENT_REGEX)
+  const contentToProcess = partialMatch
+    ? content.slice(0, partialMatch.index)
+    : content
+  const hasPartialComponent = !!partialMatch
+
+  const matches = contentToProcess.matchAll(COMPONENT_REGEX)
 
   for (const match of matches) {
     // Add text before this component
     if (match.index! > lastIndex) {
-      const textContent = content.slice(lastIndex, match.index)
+      const textContent = contentToProcess.slice(lastIndex, match.index)
       if (textContent.trim()) {
         segments.push({ type: 'text', content: textContent })
       }
     }
 
-    // Parse component attributes
+    // Parse component attributes (both single and double quoted)
     const attrsString = match[1]
     const props: Record<string, string> = {}
 
-    const attrMatches = attrsString.matchAll(ATTR_REGEX)
-    for (const attrMatch of attrMatches) {
+    // Match double-quoted attributes
+    const doubleMatches = attrsString.matchAll(ATTR_REGEX_DOUBLE)
+    for (const attrMatch of doubleMatches) {
+      props[attrMatch[1]] = attrMatch[2]
+    }
+    // Match single-quoted attributes (used for JSON)
+    const singleMatches = attrsString.matchAll(ATTR_REGEX_SINGLE)
+    for (const attrMatch of singleMatches) {
       props[attrMatch[1]] = attrMatch[2]
     }
 
@@ -50,12 +67,24 @@ export function parseMessageContent(content: string): ParsedContent {
     lastIndex = match.index! + match[0].length
   }
 
-  // Add remaining text
-  if (lastIndex < content.length) {
-    const textContent = content.slice(lastIndex)
+  // Add remaining text (before partial component if any)
+  if (lastIndex < contentToProcess.length) {
+    const textContent = contentToProcess.slice(lastIndex)
     if (textContent.trim()) {
       segments.push({ type: 'text', content: textContent })
     }
+  }
+
+  // If there's a partial component being streamed, show loading placeholder
+  if (hasPartialComponent) {
+    segments.push({
+      type: 'component',
+      component: {
+        type: '_loading',
+        props: {},
+        raw: partialMatch![0],
+      },
+    })
   }
 
   // If no components found, return single text segment
@@ -78,8 +107,14 @@ export function extractComponents(content: string): ParsedComponent[] {
     const attrsString = match[1]
     const props: Record<string, string> = {}
 
-    const attrMatches = attrsString.matchAll(ATTR_REGEX)
-    for (const attrMatch of attrMatches) {
+    // Match double-quoted attributes
+    const doubleMatches = attrsString.matchAll(ATTR_REGEX_DOUBLE)
+    for (const attrMatch of doubleMatches) {
+      props[attrMatch[1]] = attrMatch[2]
+    }
+    // Match single-quoted attributes (used for JSON)
+    const singleMatches = attrsString.matchAll(ATTR_REGEX_SINGLE)
+    for (const attrMatch of singleMatches) {
       props[attrMatch[1]] = attrMatch[2]
     }
 

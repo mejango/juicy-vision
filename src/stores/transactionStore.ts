@@ -3,9 +3,21 @@ import { persist } from 'zustand/middleware'
 
 export type TransactionStatus = 'pending' | 'submitted' | 'confirmed' | 'failed'
 
+export type TransactionType =
+  | 'pay'
+  | 'cashout'
+  | 'deploy'
+  | 'sendPayouts'
+  | 'useAllowance'
+  | 'mintTokens'
+  | 'burnTokens'
+  | 'launchProject'
+  | 'queueRuleset'
+  | 'deployERC20'
+
 export interface Transaction {
   id: string
-  type: 'pay' | 'cashout' | 'deploy'
+  type: TransactionType
   projectId?: string
   chainId: number
   amount?: string

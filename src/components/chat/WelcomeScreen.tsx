@@ -199,12 +199,15 @@ function mod(n: number, m: number): number {
 export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
   const { theme } = useThemeStore()
   const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [scale, setScale] = useState(1)
   const isDraggingRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
   const offsetRef = useRef({ x: 0, y: 0 })
+  const scaleRef = useRef(1)
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const hasDraggedRef = useRef(false)
+  const lastPinchDistRef = useRef<number | null>(null)
 
   // Track container size
   useEffect(() => {
@@ -239,6 +242,25 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
     }
 
     const handleTouchMove = (e: TouchEvent) => {
+      // Handle pinch-to-zoom with 2 fingers
+      if (e.touches.length === 2) {
+        e.preventDefault()
+        const touch1 = e.touches[0]
+        const touch2 = e.touches[1]
+        const dist = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
+
+        if (lastPinchDistRef.current !== null) {
+          const delta = dist - lastPinchDistRef.current
+          const zoomSpeed = 0.012 // More sensitive
+          const newScale = Math.max(0.3, Math.min(3, scaleRef.current + delta * zoomSpeed))
+          scaleRef.current = newScale
+          setScale(newScale)
+        }
+        lastPinchDistRef.current = dist
+        return
+      }
+
+      // Single finger drag
       if (!isDraggingRef.current) return
       hasDraggedRef.current = true
       const touch = e.touches[0]
@@ -252,18 +274,44 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
 
     const handleTouchEnd = () => {
       isDraggingRef.current = false
+      lastPinchDistRef.current = null
     }
 
+    // Wheel handler needs to be native to prevent browser zoom (passive: false)
+    const handleWheel = (e: WheelEvent) => {
+      // Ctrl/Cmd + scroll = zoom (prevent browser zoom)
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        const zoomSpeed = 0.008 // More sensitive
+        const newScale = Math.max(0.3, Math.min(3, scaleRef.current - e.deltaY * zoomSpeed))
+        scaleRef.current = newScale
+        setScale(newScale)
+        return
+      }
+
+      // Regular scroll = pan
+      const newOffset = {
+        x: offsetRef.current.x - e.deltaX,
+        y: offsetRef.current.y - e.deltaY,
+      }
+      offsetRef.current = newOffset
+      setOffset(newOffset)
+    }
+
+    const container = containerRef.current
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
-    document.addEventListener('touchmove', handleTouchMove)
+    document.addEventListener('touchmove', handleTouchMove, { passive: false })
     document.addEventListener('touchend', handleTouchEnd)
+    container?.addEventListener('wheel', handleWheel, { passive: false })
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
       document.removeEventListener('touchmove', handleTouchMove)
       document.removeEventListener('touchend', handleTouchEnd)
+      container?.removeEventListener('wheel', handleWheel)
     }
   }, [])
 
@@ -286,15 +334,6 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
     }
   }
 
-  const handleWheel = (e: React.WheelEvent) => {
-    const newOffset = {
-      x: offsetRef.current.x - e.deltaX,
-      y: offsetRef.current.y - e.deltaY,
-    }
-    offsetRef.current = newOffset
-    setOffset(newOffset)
-  }
-
   const handleShuffle = () => {
     // Random jump to a new position
     const newOffset = {
@@ -305,6 +344,11 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
     setOffset(newOffset)
   }
 
+  const handleResetZoom = () => {
+    scaleRef.current = 1
+    setScale(1)
+  }
+
   const handleChipClick = (suggestion: string) => {
     // Only trigger click if we didn't drag
     if (!hasDraggedRef.current) {
@@ -313,26 +357,39 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   }
 
   // Calculate visible chips with wrapping - each row tiles at its own width
+  // Account for scale: when zoomed out, the visible unscaled area is larger
   const visibleChips: { suggestion: string; x: number; y: number; key: string }[] = []
 
   if (containerSize.width > 0 && containerSize.height > 0) {
-    const tilesY = Math.ceil(containerSize.height / GRID_HEIGHT) + 2
+    // Effective visible area expands when zoomed out
+    // Scale factor determines how much larger the unscaled visible area is
+    const scaleFactor = 1 / scale
+    const effectiveWidth = containerSize.width * scaleFactor
+    const effectiveHeight = containerSize.height * scaleFactor
+
+    // Extra tiles needed on each side when zoomed out (centered scaling)
+    const extraTilesX = Math.ceil((effectiveWidth - containerSize.width) / 2 / 300) + 1
+    const extraTilesY = Math.ceil((effectiveHeight - containerSize.height) / 2 / GRID_HEIGHT) + 1
+
+    const tilesY = Math.ceil(containerSize.height / GRID_HEIGHT) + 2 + extraTilesY * 2
 
     rows.forEach((row, rowIdx) => {
       const rowY = rowIdx * (CHIP_HEIGHT + GAP_Y)
       const rowWidth = row.width
 
       // How many horizontal tiles needed for this row
-      const tilesX = Math.ceil(containerSize.width / rowWidth) + 2
+      const tilesX = Math.ceil(containerSize.width / rowWidth) + 2 + extraTilesX * 2
 
-      for (let tileY = -1; tileY < tilesY; tileY++) {
-        for (let tileX = -1; tileX < tilesX; tileX++) {
+      for (let tileY = -1 - extraTilesY; tileY < tilesY - extraTilesY; tileY++) {
+        for (let tileX = -1 - extraTilesX; tileX < tilesX - extraTilesX; tileX++) {
           row.chips.forEach((chip, chipIdx) => {
             const x = chip.x + row.stagger + tileX * rowWidth + mod(offset.x, rowWidth)
             const y = rowY + tileY * GRID_HEIGHT + mod(offset.y, GRID_HEIGHT)
 
-            if (x > -chip.width - 50 && x < containerSize.width + 50 &&
-                y > -CHIP_HEIGHT - 50 && y < containerSize.height + 50) {
+            // Extended visibility check for zoomed out state
+            const padding = 50 + (scaleFactor - 1) * 200
+            if (x > -chip.width - padding && x < containerSize.width + padding &&
+                y > -CHIP_HEIGHT - padding && y < containerSize.height + padding) {
               visibleChips.push({
                 suggestion: chip.suggestion,
                 x,
@@ -351,11 +408,18 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       {/* Full-width chips canvas (background layer) */}
       <div
         ref={containerRef}
-        className="absolute inset-0 cursor-grab active:cursor-grabbing select-none"
+        className="absolute inset-0 cursor-grab active:cursor-grabbing select-none overflow-hidden"
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
-        onWheel={handleWheel}
+        style={{ touchAction: 'none' }}
       >
+        <div
+          className="absolute inset-0"
+          style={{
+            transform: `scale(${scale})`,
+            transformOrigin: 'center center',
+          }}
+        >
           {visibleChips.map((chip) => {
             const isPopular = popularSuggestions.has(chip.suggestion)
             const isPro = proSuggestions.has(chip.suggestion)
@@ -418,19 +482,34 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
               </button>
             )
           })}
+        </div>
       </div>
 
-      {/* Shuffle button - top right of recommendations area */}
-      <button
-        onClick={handleShuffle}
-        className={`absolute top-4 right-[calc(38%+1rem)] px-3 py-1.5 text-sm border transition-colors z-10 ${
-          theme === 'dark'
-            ? 'border-white/30 text-white/70 hover:border-white/50 hover:text-white bg-juice-dark/60 backdrop-blur-sm'
-            : 'border-gray-400 text-gray-600 hover:border-gray-600 hover:text-gray-900 bg-white/60 backdrop-blur-sm'
-        }`}
-      >
-        Shuffle
-      </button>
+      {/* Shuffle & Zoom controls - top right of recommendations area */}
+      <div className="absolute top-4 right-[calc(38%+1rem)] flex gap-2 z-10">
+        {scale !== 1 && (
+          <button
+            onClick={handleResetZoom}
+            className={`px-3 py-1.5 text-sm border transition-colors ${
+              theme === 'dark'
+                ? 'border-white/30 text-white/70 hover:border-white/50 hover:text-white bg-juice-dark/60 backdrop-blur-sm'
+                : 'border-gray-400 text-gray-600 hover:border-gray-600 hover:text-gray-900 bg-white/60 backdrop-blur-sm'
+            }`}
+          >
+            {Math.round(scale * 100)}%
+          </button>
+        )}
+        <button
+          onClick={handleShuffle}
+          className={`px-3 py-1.5 text-sm border transition-colors ${
+            theme === 'dark'
+              ? 'border-white/30 text-white/70 hover:border-white/50 hover:text-white bg-juice-dark/60 backdrop-blur-sm'
+              : 'border-gray-400 text-gray-600 hover:border-gray-600 hover:text-gray-900 bg-white/60 backdrop-blur-sm'
+          }`}
+        >
+          Shuffle
+        </button>
+      </div>
 
       {/* Mascot overlay (on top of chips, right side) */}
       <div className="absolute inset-0 flex pointer-events-none">
@@ -438,11 +517,22 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         <div className="flex-1" />
 
         {/* Right column - Mascot (38% of main content area) */}
-        <div className={`w-[38%] flex-shrink-0 flex flex-col items-center justify-center border-l-4 border-juice-orange backdrop-blur-md pointer-events-auto ${
+        <div className={`w-[38%] flex-shrink-0 flex flex-col items-center justify-center border-l-4 border-juice-orange backdrop-blur-md pointer-events-auto relative ${
           theme === 'dark'
             ? 'bg-juice-dark/60'
             : 'bg-white/60'
         }`}>
+          {/* Pay us button - top right */}
+          <button
+            onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
+            className={`absolute top-4 right-4 px-3 py-1.5 text-sm border transition-colors ${
+              theme === 'dark'
+                ? 'border-green-500/50 text-green-400 hover:border-green-500 hover:bg-green-500/10 bg-juice-dark/60 backdrop-blur-sm'
+                : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50 bg-white/60 backdrop-blur-sm'
+            }`}
+          >
+            Pay us
+          </button>
           <div className="h-[55vh] max-h-[450px] pointer-events-none">
             <img
               src={theme === 'dark' ? '/mascot-dark.png' : '/mascot-light.png'}

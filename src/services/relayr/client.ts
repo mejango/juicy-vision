@@ -92,3 +92,77 @@ export async function getSupportedTokens(chainId: number): Promise<string[]> {
   const response = await fetchApi<{ tokens: string[] }>(`/v1/tokens/${chainId}`)
   return response.tokens
 }
+
+// Juicebox-specific transaction types
+
+export interface JBPayRequest {
+  chainId: number
+  projectId: number
+  amount: string // in wei
+  beneficiary: string
+  minReturnedTokens: string
+  memo: string
+  metadata?: string
+}
+
+export interface JBCashOutRequest {
+  chainId: number
+  projectId: number
+  tokenAmount: string
+  beneficiary: string
+  minReclaimedTokens: string
+  metadata?: string
+}
+
+export interface JBSendPayoutsRequest {
+  chainId: number
+  projectId: number
+  amount: string
+  currency: number // 1 = ETH
+  minTokensPaidOut: string
+}
+
+export interface JBTransactionData {
+  to: string
+  data: string
+  value: string
+  chainId: number
+}
+
+export interface JBTransactionResponse {
+  txData: JBTransactionData
+  estimatedGas: string
+  description: string
+}
+
+// Build transaction data for JBMultiTerminal.pay()
+export async function buildPayTransaction(request: JBPayRequest): Promise<JBTransactionResponse> {
+  return fetchApi<JBTransactionResponse>('/v1/juicebox/pay', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+// Build transaction data for JBMultiTerminal.cashOutTokensOf()
+export async function buildCashOutTransaction(request: JBCashOutRequest): Promise<JBTransactionResponse> {
+  return fetchApi<JBTransactionResponse>('/v1/juicebox/cashout', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+// Build transaction data for JBMultiTerminal.sendPayoutsOf()
+export async function buildSendPayoutsTransaction(request: JBSendPayoutsRequest): Promise<JBTransactionResponse> {
+  return fetchApi<JBTransactionResponse>('/v1/juicebox/sendpayouts', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+// Submit a signed transaction
+export async function submitTransaction(signedTx: string, chainId: number): Promise<SendResponse> {
+  return fetchApi<SendResponse>('/v1/submit', {
+    method: 'POST',
+    body: JSON.stringify({ signedTx, chainId }),
+  })
+}

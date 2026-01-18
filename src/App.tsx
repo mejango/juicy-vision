@@ -3,7 +3,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ParaProvider, Environment } from '@getpara/react-sdk'
 import '@getpara/react-sdk/styles.css'
-import { ChatContainer } from './components/chat'
+import { ChatContainer, ProtocolActivity } from './components/chat'
 import { SettingsPanel } from './components/settings'
 import { useSettingsStore, useChatStore, useThemeStore } from './stores'
 
@@ -20,7 +20,7 @@ function Header() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const { conversations, activeConversationId, createConversation, setActiveConversation, deleteConversation } = useChatStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { theme, toggleTheme } = useThemeStore()
+  const { theme } = useThemeStore()
 
   const handleNewChat = () => {
     createConversation()
@@ -50,44 +50,16 @@ function Header() {
               </svg>
             </button>
 
-            <div className="flex items-center gap-2">
+            <button
+              onClick={() => createConversation()}
+              className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            >
               <img
                 src={theme === 'dark' ? '/head-dark.png' : '/head-light.png'}
-                alt="Juicy"
-                className="h-14"
+                alt="Juicy Vision"
+                className="h-16"
               />
-              <span className="font-semibold gradient-text-shimmer hidden sm:inline">Juicy</span>
-            </div>
-          </div>
-
-          {/* Right - Actions */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleTheme}
-              className="p-2 text-gray-400 hover:text-white dark:hover:text-white hover:bg-white/10 transition-colors"
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {theme === 'dark' ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              )}
-            </button>
-            <button
-              onClick={() => setSettingsOpen(true)}
-              className="p-2 text-gray-400 hover:text-white dark:hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
+              <span className="text-xl font-black gradient-text-shimmer hidden sm:inline">Juicy Vision</span>
             </button>
           </div>
         </div>
@@ -197,6 +169,82 @@ function AppProviders({ children }: { children: React.ReactNode }) {
   )
 }
 
+function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) => void }) {
+  const { theme, toggleTheme } = useThemeStore()
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  return (
+    <>
+      <div className={`w-[280px] flex-shrink-0 flex flex-col border-l h-screen fixed right-0 top-0 z-30 ${
+        theme === 'dark'
+          ? 'border-white/20 bg-juice-dark'
+          : 'border-gray-300 bg-white'
+      }`}>
+        {/* Header with settings and theme */}
+        <div className={`flex items-center justify-between px-4 py-3 border-b ${
+          theme === 'dark' ? 'border-white/10' : 'border-gray-200'
+        }`}>
+          <div>
+            <h2 className={`font-semibold ${
+              theme === 'dark' ? 'text-white' : 'text-gray-900'
+            }`}>
+              Juicy Activity
+            </h2>
+            <p className={`text-xs ${
+              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              Live
+            </p>
+          </div>
+          <div className="flex items-center gap-1">
+            {/* Theme toggle */}
+            <button
+              onClick={toggleTheme}
+              className={`p-2 transition-colors ${
+                theme === 'dark'
+                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                  : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+              )}
+            </button>
+            {/* Settings */}
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className={`p-2 transition-colors ${
+                theme === 'dark'
+                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                  : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              title="Settings"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Activity list */}
+        <div className="flex-1 overflow-y-auto px-4 hide-scrollbar">
+          <ProtocolActivity onProjectClick={onProjectClick} />
+        </div>
+      </div>
+      <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </>
+  )
+}
+
 function AppContent() {
   const { theme } = useThemeStore()
   const { getActiveConversation } = useChatStore()
@@ -207,13 +255,24 @@ function AppContent() {
     document.documentElement.className = theme
   }, [theme])
 
+  // Handle project clicks from activity feed
+  const handleActivityProjectClick = (query: string) => {
+    // Dispatch a custom event that ChatContainer can listen to
+    window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: query } }))
+  }
+
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-juice-dark' : 'bg-juice-light'}`}>
-      {hasMessages && <Header />}
-      <Routes>
-        <Route path="/" element={<MainContent hasHeader={!!hasMessages} />} />
-        <Route path="*" element={<MainContent hasHeader={!!hasMessages} />} />
-      </Routes>
+      {/* Main content with right margin for sidebar */}
+      <div className="mr-[280px]">
+        {hasMessages && <Header />}
+        <Routes>
+          <Route path="/" element={<MainContent hasHeader={!!hasMessages} />} />
+          <Route path="*" element={<MainContent hasHeader={!!hasMessages} />} />
+        </Routes>
+      </div>
+      {/* Full-height activity sidebar */}
+      <ActivitySidebar onProjectClick={handleActivityProjectClick} />
     </div>
   )
 }
