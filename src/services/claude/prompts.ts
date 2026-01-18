@@ -595,39 +595,179 @@ The user can pay directly from the project card. Only add brief context about wh
 2. Explain ruleset configuration options
 3. **Use JBOmnichainDeployer5_1** (0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71) for multi-chain deployment
 
-**launchProjectFor parameters:**
-- \`owner\`: User's wallet address
-- \`projectUri\`: IPFS metadata link (ipfs://Qm...)
-- \`rulesetConfigurations\`: Array of ruleset configs (duration, weight, baseCurrency, etc.)
-- \`terminalConfigurations\`: Array with BOTH terminals:
-  - JBMultiTerminal5_1 (0x52869db3d61dde1e391967f2ce5039ad0ecd371c) - handles ETH payments
-  - JBSwapTerminal (0x0c02e48e55f4451a499e48a53595de55c40f3574) - accepts any ERC-20, auto-swaps
-- \`memo\`: Launch memo
-- \`suckerDeploymentConfiguration\`: Cross-chain config for automatic bridging between chains
-- \`controller\`: JBController5_1 (0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1)
+**launchProjectFor(owner, projectUri, rulesetConfigurations, terminalConfigurations, memo, suckerDeploymentConfiguration, controller)**
 
-**Default terminal setup:**
+Contract addresses (Ethereum mainnet):
+- JBOmnichainDeployer: 0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71
+- JBController: 0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1
+- JBMultiTerminal: 0x52869db3d61dde1e391967f2ce5039ad0ecd371c
+- JBSwapTerminal: 0x0c02e48e55f4451a499e48a53595de55c40f3574
+
+**Parameters:**
+
+1. **owner** (address): User's wallet address - receives project NFT
+
+2. **projectUri** (string): IPFS metadata link (ipfs://Qm...)
+
+3. **rulesetConfigurations** (JBRulesetConfig[]): Array of ruleset configurations
+   \`\`\`
+   JBRulesetConfig {
+     mustStartAtOrAfter: uint48,      // Unix timestamp, use 0 for immediate
+     duration: uint32,                 // Seconds per cycle, 0 = ongoing
+     weight: uint112,                  // Tokens per currency unit (18 decimals)
+     weightCutPercent: uint32,         // Decay per cycle (0-1000000000, where 1B = 100%)
+     approvalHook: address,            // 0x0 for none
+     metadata: JBRulesetMetadata,
+     splitGroups: JBSplitGroup[],
+     fundAccessLimitGroups: JBFundAccessLimitGroup[]
+   }
+   \`\`\`
+
+4. **JBRulesetMetadata** (nested in rulesetConfigurations):
+   \`\`\`
+   JBRulesetMetadata {
+     reservedPercent: uint16,          // 0-10000 (10000 = 100%)
+     cashOutTaxRate: uint16,           // 0-10000 (0 = full refund, 10000 = disabled)
+     baseCurrency: uint32,             // 1 = ETH, 2 = USD
+     pausePay: bool,                   // true = payments disabled
+     pauseCreditTransfers: bool,
+     allowOwnerMinting: bool,          // true = owner can mint tokens
+     allowSetCustomToken: bool,
+     allowTerminalMigration: bool,
+     allowSetTerminals: bool,
+     allowSetController: bool,
+     allowAddAccountingContext: bool,
+     allowAddPriceFeed: bool,
+     ownerMustSendPayouts: bool,
+     holdFees: bool,
+     useTotalSurplusForCashOuts: bool,
+     useDataHookForPay: bool,
+     useDataHookForCashOut: bool,
+     dataHook: address,                // 0x0 for none
+     metadata: uint16                  // Reserved for custom flags
+   }
+   \`\`\`
+
+5. **JBSplitGroup** (nested in rulesetConfigurations):
+   \`\`\`
+   JBSplitGroup {
+     groupId: uint256,                 // uint256(uint160(tokenAddress)) for payouts, 1 for reserved
+     splits: JBSplit[]
+   }
+
+   JBSplit {
+     percent: uint32,                  // Out of 1000000000 (1B = 100%)
+     projectId: uint64,                // 0 for wallet, or project ID to pay
+     beneficiary: address,             // Recipient wallet
+     preferAddToBalance: bool,         // For project payments
+     lockedUntil: uint48,              // Unix timestamp, 0 = unlocked
+     hook: address                     // 0x0 for none
+   }
+   \`\`\`
+
+6. **JBFundAccessLimitGroup** (nested in rulesetConfigurations):
+   \`\`\`
+   JBFundAccessLimitGroup {
+     terminal: address,                // Terminal address
+     token: address,                   // 0xEEEE...EEEe for ETH
+     payoutLimits: JBCurrencyAmount[],
+     surplusAllowances: JBCurrencyAmount[]
+   }
+
+   JBCurrencyAmount {
+     amount: uint224,                  // Amount in currency
+     currency: uint32                  // 1 = ETH, 2 = USD
+   }
+   \`\`\`
+
+7. **terminalConfigurations** (JBTerminalConfig[]): Which terminals accept which tokens
+   \`\`\`
+   JBTerminalConfig {
+     terminal: address,
+     accountingContextsToAccept: JBAccountingContext[]
+   }
+
+   JBAccountingContext {
+     token: address,                   // 0xEEEE...EEEe for ETH
+     decimals: uint8,                  // 18 for ETH
+     currency: uint32                  // 1 = ETH, 2 = USD
+   }
+   \`\`\`
+
+8. **memo** (string): Launch memo
+
+9. **suckerDeploymentConfiguration** (JBSuckerDeploymentConfig): Cross-chain bridging
+   \`\`\`
+   JBSuckerDeploymentConfig {
+     deployerConfigurations: JBSuckerDeployerConfig[],
+     salt: bytes32                     // Non-zero to deploy suckers
+   }
+
+   JBSuckerDeployerConfig {
+     deployer: address,                // Chain-specific sucker deployer
+     mappings: JBTokenMapping[]
+   }
+
+   JBTokenMapping {
+     localToken: address,              // Token on this chain
+     minGas: uint32,                   // Minimum gas for bridge
+     remoteToken: address,             // Token on remote chain
+     minBridgeAmount: uint256          // Minimum amount to bridge
+   }
+   \`\`\`
+
+10. **controller** (address): JBController address
+
+**Default project config (USD-based, accepts ETH + any ERC-20):**
 \`\`\`json
 {
+  "rulesetConfigurations": [{
+    "mustStartAtOrAfter": 0,
+    "duration": 0,
+    "weight": "1000000000000000000000000",
+    "weightCutPercent": 0,
+    "approvalHook": "0x0000000000000000000000000000000000000000",
+    "metadata": {
+      "reservedPercent": 0,
+      "cashOutTaxRate": 0,
+      "baseCurrency": 2,
+      "pausePay": false,
+      "pauseCreditTransfers": false,
+      "allowOwnerMinting": true,
+      "allowSetCustomToken": true,
+      "allowTerminalMigration": true,
+      "allowSetTerminals": true,
+      "allowSetController": true,
+      "allowAddAccountingContext": true,
+      "allowAddPriceFeed": true,
+      "ownerMustSendPayouts": false,
+      "holdFees": false,
+      "useTotalSurplusForCashOuts": false,
+      "useDataHookForPay": false,
+      "useDataHookForCashOut": false,
+      "dataHook": "0x0000000000000000000000000000000000000000",
+      "metadata": 0
+    },
+    "splitGroups": [],
+    "fundAccessLimitGroups": []
+  }],
   "terminalConfigurations": [
     {
       "terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c",
-      "tokensToAccept": ["0x000000000000000000000000000000000000EEEe"]
+      "accountingContextsToAccept": [{
+        "token": "0x000000000000000000000000000000000000EEEe",
+        "decimals": 18,
+        "currency": 1
+      }]
     },
     {
       "terminal": "0x0c02e48e55f4451a499e48a53595de55c40f3574",
-      "tokensToAccept": []
+      "accountingContextsToAccept": []
     }
-  ]
-}
-\`\`\`
-
-**Sucker deployment config** enables cross-chain bridging:
-\`\`\`json
-{
+  ],
   "suckerDeploymentConfiguration": {
-    "deployerConfigurations": [...],
-    "salt": "unique-project-salt"
+    "deployerConfigurations": [],
+    "salt": "0x0000000000000000000000000000000000000000000000000000000000000000"
   }
 }
 \`\`\`
