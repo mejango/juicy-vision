@@ -10,6 +10,7 @@ import RecommendationChips from './RecommendationChips'
 import PriceChart from './PriceChart'
 import ActivityFeed from './ActivityFeed'
 import RulesetSchedule from './RulesetSchedule'
+import { BalanceChart, HoldersChart, VolumeChart } from './charts'
 import OptionsPicker from './OptionsPicker'
 import ProjectChainPicker from './ProjectChainPicker'
 import TopProjects from './TopProjects'
@@ -109,6 +110,33 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
         />
       )
 
+    case 'balance-chart':
+      return (
+        <BalanceChart
+          projectId={props.projectId}
+          chainId={props.chainId}
+          range={props.range as '7d' | '30d' | '90d' | '1y' | 'all' | undefined}
+        />
+      )
+
+    case 'holders-chart':
+      return (
+        <HoldersChart
+          projectId={props.projectId}
+          chainId={props.chainId}
+          limit={props.limit ? parseInt(props.limit, 10) : undefined}
+        />
+      )
+
+    case 'volume-chart':
+      return (
+        <VolumeChart
+          projectId={props.projectId}
+          chainId={props.chainId}
+          range={props.range as '7d' | '30d' | '90d' | '1y' | 'all' | undefined}
+        />
+      )
+
     case 'activity-feed':
       return (
         <ActivityFeed
@@ -141,6 +169,7 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
         <OptionsPicker
           groups={parsedGroups}
           submitLabel={props.submitLabel}
+          allSelectedLabel={props.allSelectedLabel}
         />
       )
 

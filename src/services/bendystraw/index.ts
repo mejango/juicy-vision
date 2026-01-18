@@ -12,8 +12,14 @@ export {
   fetchIssuanceRate,
   fetchSuckerGroupBalance,
   fetchOwnersCount,
+  fetchProjectSuckerGroupId,
   fetchEthPrice,
   fetchProjectTokenSymbol,
+  fetchSuckerGroupMoments,
+  fetchCashOutTaxSnapshots,
+  fetchPayEventsHistory,
+  fetchAggregatedParticipants,
+  calculateFloorPrice,
   type Project,
   type ProjectMetadata,
   type Participant,
@@ -24,6 +30,10 @@ export {
   type ConnectedChain,
   type IssuanceRate,
   type SuckerGroupBalance,
+  type SuckerGroupMoment,
+  type CashOutTaxSnapshot,
+  type PayEventHistoryItem,
+  type AggregatedParticipant,
 } from './client'
 
 export {
@@ -38,4 +48,7 @@ export {
   CONNECTED_CHAINS_QUERY,
   SUCKER_GROUP_BALANCE_QUERY,
   TOKEN_HOLDERS_QUERY,
+  CASH_OUT_TAX_SNAPSHOTS_QUERY,
+  SUCKER_GROUP_MOMENTS_QUERY,
+  PAY_EVENTS_HISTORY_QUERY,
 } from './queries'

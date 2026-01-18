@@ -1,8 +1,16 @@
 import { useRef, useEffect, useState } from 'react'
-import { useThemeStore } from '../../stores'
+import { useThemeStore, useSettingsStore } from '../../stores'
+import { generateRefinementChips, type RefinementChip } from '../../services/claude'
 
 interface WelcomeScreenProps {
   onSuggestionClick: (text: string) => void
+}
+
+interface RefinementState {
+  selected: string
+  selectedPosition: { x: number; y: number }
+  chips: RefinementChip[]
+  loading: boolean
 }
 
 const allSuggestions = [
@@ -12,12 +20,17 @@ const allSuggestions = [
   'How can I start a business?',
   'Help me plan my fundraise',
   'Is it free to create a project?',
+  'What can I build with Juicy?',
+  'Show me the possibilities',
 
   // Discovery
   'Show me successful projects',
   'Show me trending projects',
   'Show me biggest projects right now',
   'Show me creative projects',
+  'What are people building?',
+  'Show me weird projects',
+  'Find something inspiring',
 
   // Finding & supporting projects
   'Find a project to support',
@@ -28,10 +41,21 @@ const allSuggestions = [
   'Find projects by category',
   'Discover new projects',
   'Support a creator I follow',
-  'Pay into Juicebox DAO',
   'Find Ethereum projects',
   'Show me Base projects',
   'Projects on Optimism',
+
+  // Open source & devs
+  'Fund my open source library',
+  'Sustain my GitHub project',
+  'Get paid for my npm package',
+  'Fund my dev tools',
+  'Support protocol development',
+  'Fund infrastructure I maintain',
+  'Get sponsors for my framework',
+  'Fund my VS Code extension',
+  'Monetize my API',
+  'Fund my CLI tool',
 
   // Business & startups
   'Bootstrap my startup',
@@ -41,6 +65,8 @@ const allSuggestions = [
   'How do I split ownership?',
   'How can I make agreements with investors?',
   'How do I share revenue with backers?',
+  'Fund my hardware startup',
+  'Launch a collective business',
 
   // Fundraising campaigns
   'Run a community fundraiser',
@@ -49,6 +75,8 @@ const allSuggestions = [
   'Fund a local initiative',
   'Can I set fundraising goals?',
   'How do refunds work?',
+  'Fund disaster relief',
+  'Support mutual aid',
 
   // Creative projects
   'Can I fund my podcast?',
@@ -57,12 +85,59 @@ const allSuggestions = [
   'Launch my music project',
   'Crowdfund my film',
   'Fund my art collective',
+  'Fund my zine',
+  'Support my webcomic',
+  'Fund my album',
+  'Launch my animation project',
+
+  // Oddball creators
+  'Fund my weird art project',
+  'Start a meme coin with utility',
+  'Fund my experimental theater',
+  'Launch my puppet show',
+  'Fund my street performance',
+  'Crowdfund my tattoo shop',
+  'Fund my urban garden',
+  'Start my vintage arcade',
+  'Fund my escape room',
+  'Launch my food truck',
+  'Fund my cat cafe',
+  'Start my maker space',
+  'Fund my community radio',
+  'Launch my pirate ship bar',
+
+  // Writers & journalists
+  'Fund my newsletter',
+  'Support my journalism',
+  'Fund my book',
+  'Launch my magazine',
+  'Fund investigative reporting',
+  'Support my blog',
+
+  // Education & research
+  'Fund my research',
+  'Support my course',
+  'Fund my tutorial series',
+  'Launch my bootcamp',
+  'Fund my educational content',
+  'Support my mentorship program',
+
+  // Gaming & esports
+  'Fund my esports team',
+  'Launch my gaming community',
+  'Fund my speedrun project',
+  'Support my mod development',
+  'Fund my game server',
 
   // Memberships & communities
   'Can I run a membership program?',
   'Start a fan club',
   'Build a paid community',
   'Can I fundraise for a DAO?',
+  'Run a discord with benefits',
+  'Fund my community garden',
+  'Start a buying club',
+  'Launch a tool library',
 
   // Operations
   'How do supporters get rewarded?',
@@ -70,7 +145,7 @@ const allSuggestions = [
   'How do I withdraw funds?',
   'How do I sell inventory?',
   'How do I manage sales?',
-  'How transparent is the treasury?',
+  'How transparent is the funding?',
   'Can supporters cash out?',
 
   // Platform & whitelabel
@@ -81,7 +156,7 @@ const allSuggestions = [
   'Custom branding for my platform',
   'Run fundraisers for my community',
   'Host multiple projects on my site',
-  'White-label treasury management',
+  'White-label fund management',
   'Create a grants program',
   'Build a giving platform',
 
@@ -98,6 +173,35 @@ const allSuggestions = [
   'Inspire me',
   'What makes a project take off?',
   'Dream big with me',
+  'What if money wasn\'t the problem?',
+  'Help me think bigger',
+  'What would you fund?',
+
+  // Crypto native
+  'Launch a token for my project',
+  'Fund public goods',
+  'Run a retroactive funding round',
+  'Create a quadratic funding pool',
+  'Fund protocol development',
+  'Launch a network state project',
+
+  // Automated money machines
+  'Build an automated revenue machine',
+  'Create a self-sustaining treasury',
+  'Launch a perpetual funding engine',
+  'Money that works while I sleep',
+  'Build an autonomous treasury',
+  'Create a self-growing fund',
+  'Automate my income streams',
+
+  // IRL projects
+  'Fund my community center',
+  'Start a neighborhood project',
+  'Fund my local park cleanup',
+  'Launch a community fridge',
+  'Fund my bike repair collective',
+  'Start a free store',
+  'Fund my community workshop',
 ]
 
 // Popular/recommended starting points
@@ -112,18 +216,26 @@ const popularSuggestions = new Set([
   'Create a fundraising platform',
   'Find a project to support',
   'Discover new projects',
+  'Fund my indie game',
+  'Sustain my GitHub project',
+  'Fund public goods',
+  'What are people building?',
 ])
 
 // Pro/advanced features
 const proSuggestions = new Set([
   'How do I whitelabel Juicy fundraises?',
-  'White-label treasury management',
+  'White-label fund management',
   'How do I split ownership?',
   'How can I make agreements with investors?',
   'Make an auditable political campaign',
   'Embed fundraising in my app',
   'Custom branding for my platform',
   'How do I share revenue with backers?',
+  'Run a retroactive funding round',
+  'Create a quadratic funding pool',
+  'Launch a network state project',
+  'Create a grants program',
 ])
 
 // Interactive demos
@@ -142,6 +254,14 @@ const funSuggestions = new Set([
   'Inspire me',
   'What makes a project take off?',
   'Dream big with me',
+  'What if money wasn\'t the problem?',
+  'Help me think bigger',
+  'What would you fund?',
+  'Fund my weird art project',
+  'Launch my pirate ship bar',
+  'Fund my cat cafe',
+  'Show me weird projects',
+  'Find something inspiring',
 ])
 
 // Layout constants
@@ -198,8 +318,10 @@ function mod(n: number, m: number): number {
 
 export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
   const { theme } = useThemeStore()
+  const { claudeApiKey, isConfigured } = useSettingsStore()
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [scale, setScale] = useState(1)
+  const [refinement, setRefinement] = useState<RefinementState | null>(null)
   const isDraggingRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -349,11 +471,60 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
     setScale(1)
   }
 
-  const handleChipClick = (suggestion: string) => {
+  const handleChipClick = async (suggestion: string, chipX: number, chipY: number) => {
     // Only trigger click if we didn't drag
-    if (!hasDraggedRef.current) {
+    if (hasDraggedRef.current) return
+
+    // If already in refinement mode and clicking the selected chip, start conversation
+    if (refinement?.selected === suggestion) {
+      setRefinement(null)
+      onSuggestionClick(suggestion)
+      return
+    }
+
+    // If API not configured, fall back to direct send
+    if (!isConfigured()) {
+      onSuggestionClick(suggestion)
+      return
+    }
+
+    // Start refinement flow - center view on this chip
+    const centerX = containerSize.width / 2
+    const centerY = containerSize.height / 2
+    const newOffset = {
+      x: offsetRef.current.x + (centerX - chipX),
+      y: offsetRef.current.y + (centerY - chipY),
+    }
+    offsetRef.current = newOffset
+    setOffset(newOffset)
+
+    setRefinement({
+      selected: suggestion,
+      selectedPosition: { x: centerX, y: centerY },
+      chips: [],
+      loading: true
+    })
+
+    try {
+      const chips = await generateRefinementChips(claudeApiKey, [suggestion])
+      setRefinement(prev => prev ? { ...prev, chips, loading: false } : null)
+    } catch {
+      // On error, just start the conversation directly
+      setRefinement(null)
       onSuggestionClick(suggestion)
     }
+  }
+
+  const handleRefinementChipClick = (chip: RefinementChip) => {
+    if (!refinement) return
+    // Start conversation with combined context
+    const message = `${refinement.selected} → ${chip.text}`
+    setRefinement(null)
+    onSuggestionClick(message)
+  }
+
+  const handleCancelRefinement = () => {
+    setRefinement(null)
   }
 
   // Calculate visible chips with wrapping - each row tiles at its own width
@@ -425,35 +596,42 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
             const isPro = proSuggestions.has(chip.suggestion)
             const isDemo = demoSuggestions.has(chip.suggestion)
             const isFun = funSuggestions.has(chip.suggestion)
+            const isSelected = refinement?.selected === chip.suggestion
+            const isDimmed = refinement && !isSelected
             return (
               <button
                 key={chip.key}
-                onMouseUp={() => handleChipClick(chip.suggestion)}
-                onTouchEnd={() => handleChipClick(chip.suggestion)}
-                className={`absolute px-3 py-2 border text-sm transition-colors duration-200 whitespace-nowrap select-none flex items-center gap-2 ${
-                  isPopular
+                onMouseUp={() => handleChipClick(chip.suggestion, chip.x, chip.y)}
+                onTouchEnd={() => handleChipClick(chip.suggestion, chip.x, chip.y)}
+                className={`absolute px-3 py-2 border text-sm transition-all duration-300 whitespace-nowrap select-none flex items-center gap-2 ${
+                  isSelected
                     ? theme === 'dark'
-                      ? 'bg-juice-cyan/10 border-juice-cyan/40 text-juice-cyan hover:bg-juice-cyan/20 hover:border-juice-cyan/60'
-                      : 'bg-juice-cyan/10 border-juice-cyan/50 text-teal-700 hover:bg-juice-cyan/20 hover:border-juice-cyan/70'
-                    : isPro
+                      ? 'bg-juice-cyan/30 border-juice-cyan text-white z-20 scale-110'
+                      : 'bg-juice-cyan/20 border-juice-cyan text-teal-900 z-20 scale-110'
+                    : isPopular
                       ? theme === 'dark'
-                        ? 'bg-juice-orange/10 border-juice-orange/40 text-juice-orange hover:bg-juice-orange/20 hover:border-juice-orange/60'
-                        : 'bg-orange-50 border-juice-orange/50 text-orange-700 hover:bg-orange-100 hover:border-juice-orange/70'
-                      : isDemo
+                        ? 'bg-juice-cyan/10 border-juice-cyan/40 text-juice-cyan hover:bg-juice-cyan/20 hover:border-juice-cyan/60'
+                        : 'bg-juice-cyan/10 border-juice-cyan/50 text-teal-700 hover:bg-juice-cyan/20 hover:border-juice-cyan/70'
+                      : isPro
                         ? theme === 'dark'
-                          ? 'bg-pink-500/10 border-pink-400/40 text-pink-300 hover:bg-pink-500/20 hover:border-pink-400/60'
-                          : 'bg-pink-50 border-pink-400/50 text-pink-700 hover:bg-pink-100 hover:border-pink-400/70'
-                        : isFun
+                          ? 'bg-juice-orange/10 border-juice-orange/40 text-juice-orange hover:bg-juice-orange/20 hover:border-juice-orange/60'
+                          : 'bg-orange-50 border-juice-orange/50 text-orange-700 hover:bg-orange-100 hover:border-juice-orange/70'
+                        : isDemo
                           ? theme === 'dark'
-                            ? 'bg-green-500/10 border-green-400/40 text-green-300 hover:bg-green-500/20 hover:border-green-400/60'
-                            : 'bg-green-50 border-green-400/50 text-green-700 hover:bg-green-100 hover:border-green-400/70'
-                          : theme === 'dark'
-                            ? 'bg-juice-dark-lighter border-white/10 text-gray-300 hover:text-white hover:border-white/30'
-                            : 'bg-juice-light-darker border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400'
+                            ? 'bg-pink-500/10 border-pink-400/40 text-pink-300 hover:bg-pink-500/20 hover:border-pink-400/60'
+                            : 'bg-pink-50 border-pink-400/50 text-pink-700 hover:bg-pink-100 hover:border-pink-400/70'
+                          : isFun
+                            ? theme === 'dark'
+                              ? 'bg-green-500/10 border-green-400/40 text-green-300 hover:bg-green-500/20 hover:border-green-400/60'
+                              : 'bg-green-50 border-green-400/50 text-green-700 hover:bg-green-100 hover:border-green-400/70'
+                            : theme === 'dark'
+                              ? 'bg-juice-dark-lighter border-white/10 text-gray-300 hover:text-white hover:border-white/30'
+                              : 'bg-juice-light-darker border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400'
                 }`}
                 style={{
                   left: chip.x,
                   top: chip.y,
+                  opacity: isDimmed ? 0.3 : 1,
                 }}
               >
                 {chip.suggestion}
@@ -482,6 +660,59 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
               </button>
             )
           })}
+
+          {/* Inline refinement chips - appear below selected chip */}
+          {refinement && !refinement.loading && refinement.chips.length > 0 && (
+            <div
+              className="absolute z-30 flex flex-wrap gap-2 max-w-md"
+              style={{
+                left: refinement.selectedPosition.x - 200,
+                top: refinement.selectedPosition.y + 50,
+              }}
+            >
+              {refinement.chips.map((chip, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleRefinementChipClick(chip)}
+                  className={`px-3 py-2 text-sm border transition-colors whitespace-nowrap ${
+                    theme === 'dark'
+                      ? 'bg-juice-dark border-juice-cyan/60 text-juice-cyan hover:bg-juice-cyan/20 hover:border-juice-cyan'
+                      : 'bg-white border-juice-cyan/60 text-teal-700 hover:bg-juice-cyan/10 hover:border-juice-cyan'
+                  }`}
+                >
+                  {chip.text}
+                </button>
+              ))}
+              <button
+                onClick={handleCancelRefinement}
+                className={`px-3 py-2 text-sm transition-colors ${
+                  theme === 'dark'
+                    ? 'text-gray-500 hover:text-gray-300'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Loading indicator near selected chip */}
+          {refinement?.loading && (
+            <div
+              className="absolute z-30 flex items-center gap-2"
+              style={{
+                left: refinement.selectedPosition.x - 50,
+                top: refinement.selectedPosition.y + 50,
+              }}
+            >
+              <div className={`animate-spin w-4 h-4 border-2 border-t-transparent rounded-full ${
+                theme === 'dark' ? 'border-juice-cyan' : 'border-teal-500'
+              }`} />
+              <span className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                Thinking...
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -517,7 +748,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         <div className="flex-1" />
 
         {/* Right column - Mascot (38% of main content area) */}
-        <div className={`w-[38%] flex-shrink-0 flex flex-col items-center justify-center border-l-4 border-juice-orange backdrop-blur-md pointer-events-auto relative ${
+        <div className={`w-[38%] flex-shrink-0 flex flex-col border-l-4 border-juice-orange backdrop-blur-md pointer-events-auto relative overflow-y-auto hide-scrollbar ${
           theme === 'dark'
             ? 'bg-juice-dark/60'
             : 'bg-white/60'
@@ -525,7 +756,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
           {/* Pay us button - top right */}
           <button
             onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
-            className={`absolute top-4 right-4 px-3 py-1.5 text-sm border transition-colors ${
+            className={`absolute top-4 right-4 z-10 px-3 py-1.5 text-sm border transition-colors ${
               theme === 'dark'
                 ? 'border-green-500/50 text-green-400 hover:border-green-500 hover:bg-green-500/10 bg-juice-dark/60 backdrop-blur-sm'
                 : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50 bg-white/60 backdrop-blur-sm'
@@ -533,20 +764,91 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
           >
             Pay us
           </button>
-          <div className="h-[55vh] max-h-[450px] pointer-events-none">
-            <img
-              src={theme === 'dark' ? '/mascot-dark.png' : '/mascot-light.png'}
-              alt="Juicy Mascot"
-              className="drop-shadow-lg h-full object-contain"
-            />
+
+          {/* Subtle scroll hint arrow - bottom right */}
+          <div className={`absolute bottom-4 right-4 z-10 animate-bounce ${
+            theme === 'dark' ? 'text-gray-600' : 'text-gray-300'
+          }`}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
           </div>
-          <div className="mt-4 pointer-events-none text-center px-6">
-            <p className="text-4xl font-bold text-juice-orange">
-              Fund Your Thing
-            </p>
-            <p className="text-4xl font-bold text-juice-orange">
-              Your Way
-            </p>
+
+          {/* Scrollable content */}
+          <div className="flex flex-col items-center py-8 px-4">
+            <div className="h-[45vh] max-h-[380px] min-h-[200px] pointer-events-none">
+              <img
+                src={theme === 'dark' ? '/mascot-dark.png' : '/mascot-light.png'}
+                alt="Juicy Mascot"
+                className="drop-shadow-lg h-full object-contain"
+              />
+            </div>
+
+            <div className="mt-4 pointer-events-none text-center px-2">
+              <p className="text-lg sm:text-xl font-bold text-juice-orange whitespace-nowrap">
+                Fund Your Thing Your Way
+              </p>
+            </div>
+
+            {/* Spacer to push content below the fold */}
+            <div className="h-[30vh]" />
+
+            {/* $JUICY explainer - below the fold */}
+            <div className={`p-4 max-w-[280px] ${
+              theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+            }`}>
+              <p className="text-xs leading-relaxed">
+                $JUICY is the revenue token that powers this app. When you pay into Juicy Vision, you receive $JUICY tokens proportional to your contribution.
+              </p>
+              <p className="text-xs leading-relaxed mt-3">
+                As the balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business.
+              </p>
+              <p className={`text-xs leading-relaxed mt-3 ${
+                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+              }`}>
+                We run extremely lean. Revenue from the app mostly flows back to $JUICY holders, guaranteed. The more value created, the more everyone benefits. We're in this together.
+              </p>
+              <button
+                onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
+                className={`mt-4 px-3 py-1.5 text-sm border transition-colors ${
+                  theme === 'dark'
+                    ? 'border-green-500/50 text-green-400 hover:border-green-500 hover:bg-green-500/10'
+                    : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50'
+                }`}
+              >
+                Pay us
+              </button>
+              <p className={`text-xs leading-relaxed mt-4 pt-4 border-t ${
+                theme === 'dark' ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-200'
+              }`}>
+                Uses{' '}
+                <a
+                  href="https://revnet.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`underline hover:no-underline ${
+                    theme === 'dark' ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
+                  }`}
+                >
+                  revnets
+                </a>
+                , powered by{' '}
+                <a
+                  href="https://docs.juicebox.money"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`underline hover:no-underline ${
+                    theme === 'dark' ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
+                  }`}
+                >
+                  Juicebox
+                </a>
+                , secured by Ethereum, Optimism, Base, and Arbitrum.
+              </p>
+            </div>
+
+            {/* Bottom padding */}
+            <div className="h-8" />
           </div>
         </div>
       </div>

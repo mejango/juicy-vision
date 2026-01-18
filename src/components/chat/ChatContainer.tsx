@@ -1,9 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useChatStore, useSettingsStore, useThemeStore, type Message, type Attachment } from '../../stores'
-import { streamChatResponse } from '../../services/claude'
+import { streamChatResponse, generateConversationTitle } from '../../services/claude'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
+import WelcomeGreeting from './WelcomeGreeting'
+import ConversationHistory from './ConversationHistory'
+import WalletInfo from './WalletInfo'
 import { stripComponents } from '../../utils/messageParser'
 
 // Convert messages to markdown format
@@ -40,6 +43,67 @@ function downloadMarkdown(content: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+// Generate contextual placeholder based on conversation state
+function getContextualPlaceholder(messages: Message[]): string | undefined {
+  if (messages.length === 0) return undefined // Use default "What's your juicy vision?"
+
+  const lastMessage = messages[messages.length - 1]
+  const messageCount = messages.length
+
+  // If assistant just asked a question, encourage response
+  if (lastMessage.role === 'assistant') {
+    const content = lastMessage.content.toLowerCase()
+
+    // Detecting questions or prompts
+    if (content.includes('?') || content.includes('options-picker') || content.includes('which')) {
+      const questionPrompts = [
+        'Your call...',
+        'Up to you...',
+        'What do you think?',
+        'Your move...',
+        'Go on...',
+      ]
+      return questionPrompts[Math.floor(Math.random() * questionPrompts.length)]
+    }
+
+    // After showing something (project, chart, etc)
+    if (content.includes('project-card') || content.includes('balance-chart')) {
+      const followupPrompts = [
+        'What next?',
+        'Anything else?',
+        'Questions?',
+        'More?',
+      ]
+      return followupPrompts[Math.floor(Math.random() * followupPrompts.length)]
+    }
+  }
+
+  // General conversation continuations based on length
+  if (messageCount >= 6) {
+    const deepConvoPrompts = [
+      'Keep going...',
+      'And then?',
+      'What else?',
+      'Continue...',
+      'More thoughts?',
+    ]
+    return deepConvoPrompts[Math.floor(Math.random() * deepConvoPrompts.length)]
+  }
+
+  if (messageCount >= 2) {
+    const midConvoPrompts = [
+      'Tell me more...',
+      'Go on...',
+      'And?',
+      'What else?',
+      'More...',
+    ]
+    return midConvoPrompts[Math.floor(Math.random() * midConvoPrompts.length)]
+  }
+
+  return undefined
+}
+
 export default function ChatContainer() {
   const {
     activeConversationId,
@@ -50,6 +114,7 @@ export default function ChatContainer() {
     setMessageStreaming,
     isStreaming,
     setIsStreaming,
+    updateConversationTitle,
   } = useChatStore()
 
   const { claudeApiKey, isConfigured } = useSettingsStore()
@@ -99,9 +164,17 @@ export default function ChatContainer() {
           fullResponse += token
           updateMessage(convId!, assistantMsgId, fullResponse)
         },
-        onComplete: () => {
+        onComplete: async () => {
           setMessageStreaming(convId!, assistantMsgId, false)
           setIsStreaming(false)
+
+          // Generate better title after first exchange
+          const conv = useChatStore.getState().conversations.find(c => c.id === convId)
+          if (conv && conv.messages.length === 2) {
+            const userMsg = conv.messages[0]?.content || ''
+            const title = await generateConversationTitle(claudeApiKey, userMsg, fullResponse)
+            updateConversationTitle(convId!, title)
+          }
         },
         onError: (err) => {
           setError(err.message)
@@ -117,7 +190,7 @@ export default function ChatContainer() {
       setError(err instanceof Error ? err.message : 'Unknown error')
       setIsStreaming(false)
     }
-  }, [activeConversationId, claudeApiKey, isConfigured, createConversation, addMessage, updateMessage, setMessageStreaming, setIsStreaming])
+  }, [activeConversationId, claudeApiKey, isConfigured, createConversation, addMessage, updateMessage, setMessageStreaming, setIsStreaming, updateConversationTitle])
 
   const handleSuggestionClick = (text: string) => {
     handleSend(text)
@@ -162,7 +235,8 @@ export default function ChatContainer() {
         )}
 
         {/* Messages or Welcome - scrollable area */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Golden ratio: content ~62%, dock ~38% when on welcome screen */}
+        <div className={`overflow-y-auto ${messages.length === 0 ? 'h-[62vh]' : 'flex-1'}`}>
           {messages.length === 0 ? (
             <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
           ) : (
@@ -190,12 +264,36 @@ export default function ChatContainer() {
           )}
         </div>
 
-        {/* Input - fixed at bottom */}
-        <div className="shrink-0 relative z-20">
-          <ChatInput
-            onSend={handleSend}
-            disabled={isStreaming}
-          />
+        {/* Input dock - golden ratio (38%) when on welcome screen, shrink when chatting */}
+        {/* Whole dock scrolls, prompt sticks at top when scrolled */}
+        <div className={`relative z-20 ${messages.length === 0 ? 'h-[38vh] overflow-y-auto' : 'shrink-0'}`}>
+          {/* Welcome greeting scrolls away */}
+          {messages.length === 0 && (
+            <div className="pt-16">
+              <WelcomeGreeting />
+            </div>
+          )}
+          {/* Prompt bar sticks at top when scrolled */}
+          <div className={messages.length === 0
+            ? `sticky top-0 z-10 ${theme === 'dark' ? 'bg-[#1a1a1a]' : 'bg-white'}`
+            : ''
+          }>
+            <ChatInput
+              onSend={handleSend}
+              disabled={isStreaming}
+              hideBorder={messages.length === 0}
+              hideWalletInfo={messages.length === 0}
+              compact={messages.length === 0}
+              placeholder={messages.length === 0 ? "What's your juicy vision?" : getContextualPlaceholder(messages)}
+            />
+          </div>
+          {/* Wallet info and conversation history scroll */}
+          {messages.length === 0 && (
+            <>
+              <WalletInfo />
+              <ConversationHistory />
+            </>
+          )}
         </div>
       </div>
     </div>

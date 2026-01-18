@@ -41,6 +41,7 @@ interface ChatState {
   deleteConversation: (id: string) => void
   clearAllConversations: () => void
   setIsStreaming: (streaming: boolean) => void
+  updateConversationTitle: (conversationId: string, title: string) => void
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15)
@@ -150,6 +151,14 @@ export const useChatStore = create<ChatState>()(
       clearAllConversations: () => set({ conversations: [], activeConversationId: null }),
 
       setIsStreaming: (streaming) => set({ isStreaming: streaming }),
+
+      updateConversationTitle: (conversationId, title) => {
+        set((state) => ({
+          conversations: state.conversations.map((conv) =>
+            conv.id === conversationId ? { ...conv, title } : conv
+          ),
+        }))
+      },
     }),
     {
       name: 'juice-chat',

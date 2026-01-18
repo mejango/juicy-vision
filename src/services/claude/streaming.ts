@@ -4,6 +4,92 @@ import { SYSTEM_PROMPT, formatConversationHistory } from './prompts'
 import { MCP_TOOLS, isMcpTool, executeMcpTool } from '../mcp'
 import type { Attachment } from '../../stores/chatStore'
 
+export async function generateConversationTitle(
+  apiKey: string,
+  userMessage: string,
+  assistantResponse: string
+): Promise<string> {
+  const client = getClaudeClient(apiKey)
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 50,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate a very short (2-5 words) title for this conversation. Just respond with the title, nothing else.
+
+User asked: "${userMessage.slice(0, 200)}"
+Assistant replied about: "${assistantResponse.slice(0, 300)}"`
+        }
+      ]
+    })
+
+    const titleBlock = response.content[0]
+    if (titleBlock.type === 'text') {
+      return titleBlock.text.trim().replace(/^["']|["']$/g, '')
+    }
+    return userMessage.slice(0, 30)
+  } catch {
+    return userMessage.slice(0, 30)
+  }
+}
+
+export interface RefinementChip {
+  text: string
+  isFinal?: boolean // If true, clicking starts the conversation
+}
+
+export async function generateRefinementChips(
+  apiKey: string,
+  selectionPath: string[]
+): Promise<RefinementChip[]> {
+  const client = getClaudeClient(apiKey)
+
+  const pathDescription = selectionPath.length === 1
+    ? `The user clicked: "${selectionPath[0]}"`
+    : `The user's selection path: ${selectionPath.map(s => `"${s}"`).join(' → ')}`
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 300,
+      messages: [
+        {
+          role: 'user',
+          content: `You help users refine their intent before starting a conversation with a Juicebox fundraising assistant.
+
+${pathDescription}
+
+Generate 4-6 short follow-up options (3-8 words each) that help narrow down what they want. Make them specific and actionable. Include 1-2 options marked as [FINAL] that are specific enough to start a conversation.
+
+Format: One option per line. Mark final options with [FINAL] at the end.
+Example:
+For a solo dev project [FINAL]
+For a team or organization
+With token rewards for backers [FINAL]
+Just exploring options
+
+Be concise. No explanations.`
+        }
+      ]
+    })
+
+    const textBlock = response.content[0]
+    if (textBlock.type !== 'text') return []
+
+    const lines = textBlock.text.trim().split('\n').filter(line => line.trim())
+    return lines.map(line => {
+      const isFinal = line.includes('[FINAL]')
+      const text = line.replace('[FINAL]', '').trim()
+      return { text, isFinal }
+    })
+  } catch {
+    return []
+  }
+}
+
 export interface StreamOptions {
   apiKey: string
   messages: { role: 'user' | 'assistant'; content: string; attachments?: Attachment[] }[]

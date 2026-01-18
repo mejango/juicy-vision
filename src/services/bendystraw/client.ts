@@ -17,6 +17,10 @@ import {
   TOKEN_HOLDERS_QUERY,
   SUCKER_GROUP_PARTICIPANTS_QUERY,
   PROJECT_SUCKER_GROUP_QUERY,
+  CASH_OUT_TAX_SNAPSHOTS_QUERY,
+  SUCKER_GROUP_MOMENTS_QUERY,
+  PAY_EVENTS_HISTORY_QUERY,
+  CASH_OUT_EVENTS_HISTORY_QUERY,
 } from './queries'
 
 export interface ProjectMetadata {
@@ -635,6 +639,30 @@ export async function fetchSuckerGroupBalance(
   }
 }
 
+// Get the suckerGroupId for a project (used for multi-chain aggregation)
+export async function fetchProjectSuckerGroupId(
+  projectId: string,
+  chainId: number,
+  version: number = 5
+): Promise<string | null> {
+  const client = getClient()
+
+  try {
+    const projectData = await client.request<{
+      project: { suckerGroupId?: string }
+    }>(PROJECT_SUCKER_GROUP_QUERY, {
+      projectId: parseFloat(projectId),
+      chainId: parseFloat(String(chainId)),
+      version: parseFloat(String(version)),
+    })
+
+    return projectData.project?.suckerGroupId || null
+  } catch (err) {
+    console.error('Failed to fetch suckerGroupId:', err)
+    return null
+  }
+}
+
 // Get unique token holders (owners) count for a project across all chains
 // Fetches participants with balance > 0 via suckerGroupId and deduplicates by wallet
 export async function fetchOwnersCount(
@@ -796,5 +824,279 @@ export async function fetchProjectTokenSymbol(
   } catch (err) {
     console.error('Failed to fetch project token symbol:', err)
     return null
+  }
+}
+
+// ============================================================================
+// DATA VISUALIZATION QUERIES
+// ============================================================================
+
+// Cash out tax snapshot for floor price history
+export interface CashOutTaxSnapshot {
+  cashOutTax: number
+  start: number
+  duration: number
+  rulesetId: string
+  suckerGroupId: string
+}
+
+// Sucker group moment (balance/supply snapshot)
+export interface SuckerGroupMoment {
+  timestamp: number
+  balance: string
+  tokenSupply: string
+  suckerGroupId: string
+}
+
+// Pay event for volume history
+export interface PayEventHistoryItem {
+  amount: string
+  amountUsd?: string
+  timestamp: number
+  from: string
+  newlyIssuedTokenCount: string
+}
+
+// Cash out event for redemption history
+export interface CashOutEventHistoryItem {
+  reclaimAmount: string
+  tokenCount: string
+  timestamp: number
+  from: string
+}
+
+// Fetch cash out tax snapshots for floor price calculation
+export async function fetchCashOutTaxSnapshots(
+  suckerGroupId: string,
+  limit: number = 1000
+): Promise<CashOutTaxSnapshot[]> {
+  const client = getClient()
+  const allSnapshots: CashOutTaxSnapshot[] = []
+  let cursor: string | null = null
+
+  try {
+    do {
+      const data = await client.request<{
+        cashOutTaxSnapshots: {
+          items: CashOutTaxSnapshot[]
+          pageInfo: { hasNextPage: boolean; endCursor: string }
+        }
+      }>(CASH_OUT_TAX_SNAPSHOTS_QUERY, {
+        suckerGroupId,
+        limit,
+        after: cursor,
+      })
+
+      allSnapshots.push(...data.cashOutTaxSnapshots.items)
+      cursor = data.cashOutTaxSnapshots.pageInfo.hasNextPage
+        ? data.cashOutTaxSnapshots.pageInfo.endCursor
+        : null
+    } while (cursor && allSnapshots.length < 5000) // Safety limit
+
+    return allSnapshots
+  } catch (err) {
+    console.error('Failed to fetch cash out tax snapshots:', err)
+    return []
+  }
+}
+
+// Fetch sucker group moments (balance/supply over time)
+export async function fetchSuckerGroupMoments(
+  suckerGroupId: string,
+  limit: number = 1000
+): Promise<SuckerGroupMoment[]> {
+  const client = getClient()
+  const allMoments: SuckerGroupMoment[] = []
+  let cursor: string | null = null
+
+  try {
+    do {
+      const data = await client.request<{
+        suckerGroupMoments: {
+          items: SuckerGroupMoment[]
+          pageInfo: { hasNextPage: boolean; endCursor: string }
+        }
+      }>(SUCKER_GROUP_MOMENTS_QUERY, {
+        suckerGroupId,
+        limit,
+        after: cursor,
+      })
+
+      allMoments.push(...data.suckerGroupMoments.items)
+      cursor = data.suckerGroupMoments.pageInfo.hasNextPage
+        ? data.suckerGroupMoments.pageInfo.endCursor
+        : null
+    } while (cursor && allMoments.length < 10000) // Safety limit
+
+    return allMoments
+  } catch (err) {
+    console.error('Failed to fetch sucker group moments:', err)
+    return []
+  }
+}
+
+// Fetch pay events history for volume over time
+export async function fetchPayEventsHistory(
+  projectId: string,
+  chainId: number,
+  version: number = 5,
+  limit: number = 1000
+): Promise<PayEventHistoryItem[]> {
+  const client = getClient()
+  const allEvents: PayEventHistoryItem[] = []
+  let cursor: string | null = null
+
+  try {
+    do {
+      const data = await client.request<{
+        payEvents: {
+          items: PayEventHistoryItem[]
+          pageInfo: { hasNextPage: boolean; endCursor: string }
+        }
+      }>(PAY_EVENTS_HISTORY_QUERY, {
+        projectId: parseInt(projectId),
+        chainId,
+        version,
+        limit,
+        after: cursor,
+      })
+
+      allEvents.push(...data.payEvents.items)
+      cursor = data.payEvents.pageInfo.hasNextPage
+        ? data.payEvents.pageInfo.endCursor
+        : null
+    } while (cursor && allEvents.length < 10000) // Safety limit
+
+    return allEvents
+  } catch (err) {
+    console.error('Failed to fetch pay events history:', err)
+    return []
+  }
+}
+
+// Fetch cash out events history for redemption visualization
+export async function fetchCashOutEventsHistory(
+  projectId: string,
+  chainId: number,
+  version: number = 5,
+  limit: number = 1000
+): Promise<CashOutEventHistoryItem[]> {
+  const client = getClient()
+  const allEvents: CashOutEventHistoryItem[] = []
+  let cursor: string | null = null
+
+  try {
+    do {
+      const data = await client.request<{
+        cashOutTokensEvents: {
+          items: CashOutEventHistoryItem[]
+          pageInfo: { hasNextPage: boolean; endCursor: string }
+        }
+      }>(CASH_OUT_EVENTS_HISTORY_QUERY, {
+        projectId: parseInt(projectId),
+        chainId,
+        version,
+        limit,
+        after: cursor,
+      })
+
+      allEvents.push(...data.cashOutTokensEvents.items)
+      cursor = data.cashOutTokensEvents.pageInfo.hasNextPage
+        ? data.cashOutTokensEvents.pageInfo.endCursor
+        : null
+    } while (cursor && allEvents.length < 10000) // Safety limit
+
+    return allEvents
+  } catch (err) {
+    console.error('Failed to fetch cash out events history:', err)
+    return []
+  }
+}
+
+// Calculate floor price from balance, supply, and tax rate
+// Formula: y = (o * x / s) * ((1 - r) + (r * x / s))
+// where r = tax rate, o = balance, s = supply, x = tokens to cash out
+export function calculateFloorPrice(
+  balance: bigint,
+  totalSupply: bigint,
+  cashOutTaxRate: number // 0-10000 basis points
+): number {
+  if (totalSupply === 0n) return 0
+
+  const r = cashOutTaxRate / 10000 // Convert to decimal
+  const oneToken = 10n ** 18n
+
+  // Convert to numbers for calculation (may lose precision for very large values)
+  const x = Number(oneToken) / 1e18 // 1 token
+  const s = Number(totalSupply) / 1e18
+  const o = Number(balance) / 1e18
+
+  if (s === 0) return 0
+
+  // y = (o * x / s) * ((1 - r) + (r * x / s))
+  const floorPrice = (o * x / s) * ((1 - r) + (r * x / s))
+  return floorPrice
+}
+
+// Aggregate participants across chains by address
+export interface AggregatedParticipant {
+  address: string
+  balance: bigint
+  chains: number[]
+  percentage: number
+}
+
+export async function fetchAggregatedParticipants(
+  suckerGroupId: string,
+  limit: number = 100
+): Promise<{ participants: AggregatedParticipant[]; totalSupply: bigint }> {
+  const client = getClient()
+
+  try {
+    const data = await client.request<{
+      participants: {
+        totalCount: number
+        items: Array<{ address: string; chainId: number; balance: string }>
+      }
+    }>(SUCKER_GROUP_PARTICIPANTS_QUERY, {
+      suckerGroupId,
+      limit: 1000, // Get more to aggregate properly
+    })
+
+    if (!data.participants?.items || data.participants.items.length === 0) {
+      return { participants: [], totalSupply: 0n }
+    }
+
+    // Aggregate by address
+    const aggregated: Record<string, { balance: bigint; chains: number[] }> = {}
+
+    for (const p of data.participants.items) {
+      const existing = aggregated[p.address.toLowerCase()] ?? { balance: 0n, chains: [] }
+      aggregated[p.address.toLowerCase()] = {
+        balance: existing.balance + BigInt(p.balance || '0'),
+        chains: [...existing.chains, p.chainId],
+      }
+    }
+
+    // Calculate total supply
+    const totalSupply = Object.values(aggregated).reduce((sum, p) => sum + p.balance, 0n)
+
+    // Convert to array and calculate percentages
+    const participants = Object.entries(aggregated)
+      .map(([address, data]) => ({
+        address,
+        balance: data.balance,
+        chains: [...new Set(data.chains)], // Dedupe chains
+        percentage: totalSupply > 0n
+          ? Number((data.balance * 10000n) / totalSupply) / 100
+          : 0,
+      }))
+      .sort((a, b) => (b.balance > a.balance ? 1 : -1))
+      .slice(0, limit)
+
+    return { participants, totalSupply }
+  } catch (err) {
+    console.error('Failed to fetch aggregated participants:', err)
+    return { participants: [], totalSupply: 0n }
   }
 }

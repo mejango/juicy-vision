@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react'
-import { useWallet } from '@getpara/react-sdk'
+import { useWallet, useLogout } from '@getpara/react-sdk'
 import { useThemeStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance } from '../../hooks'
 import type { Attachment } from '../../stores/chatStore'
@@ -25,6 +25,9 @@ interface ChatInputProps {
   onSend: (message: string, attachments?: Attachment[]) => void
   disabled?: boolean
   placeholder?: string
+  hideBorder?: boolean
+  hideWalletInfo?: boolean
+  compact?: boolean
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15)
@@ -34,7 +37,7 @@ function shortenAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
 }
 
-export default function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
+export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [isFirstLoad, setIsFirstLoad] = useState(true)
   const [placeholderIndex, setPlaceholderIndex] = useState(() =>
@@ -45,6 +48,7 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme } = useThemeStore()
   const { data: wallet } = useWallet()
+  const { logout } = useLogout()
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
 
   const currentPlaceholder = placeholder || (isFirstLoad ? INITIAL_PLACEHOLDER : PLACEHOLDER_PHRASES[placeholderIndex])
@@ -155,10 +159,12 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
   }
 
   return (
-    <div className={`border-t pt-8 px-6 pb-12 backdrop-blur-md ${
+    <div className={`${compact ? 'py-2 px-6' : 'pt-8 px-6 pb-12'} ${
+      hideBorder ? '' : 'border-t backdrop-blur-md'
+    } ${
       theme === 'dark'
-        ? 'border-juice-cyan/20 bg-juice-dark/60'
-        : 'border-juice-orange/40 bg-white/60'
+        ? `border-juice-cyan/20 ${hideBorder ? '' : 'bg-juice-dark/60'}`
+        : `border-juice-orange/40 ${hideBorder ? '' : 'bg-white/60'}`
     }`}>
       {/* Attachment previews */}
       {attachments.length > 0 && (
@@ -249,7 +255,7 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
       </div>
 
       {/* Connected wallet display */}
-      {wallet?.address && (
+      {!hideWalletInfo && wallet?.address && (
         <div className="flex gap-3 mt-2">
           {/* Spacer to align with textarea */}
           <div className="w-[48px] shrink-0" />
@@ -262,6 +268,16 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
                 · {formatEthBalance(totalEth)} ETH · {formatUsdcBalance(totalUsdc)} USDC
               </span>
             )}
+            <button
+              onClick={() => logout()}
+              className={`ml-2 transition-colors ${
+                theme === 'dark'
+                  ? 'text-gray-600 hover:text-gray-400'
+                  : 'text-gray-300 hover:text-gray-500'
+              }`}
+            >
+              · Disconnect
+            </button>
           </div>
         </div>
       )}

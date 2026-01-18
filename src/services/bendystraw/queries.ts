@@ -226,6 +226,104 @@ export const PROJECT_SUCKER_GROUP_QUERY = `
   }
 `
 
+// Query to get cash out tax snapshots for floor price history
+export const CASH_OUT_TAX_SNAPSHOTS_QUERY = `
+  query CashOutTaxSnapshots($suckerGroupId: String!, $limit: Int, $after: String) {
+    cashOutTaxSnapshots(
+      where: { suckerGroupId: $suckerGroupId }
+      orderBy: "start"
+      orderDirection: "asc"
+      limit: $limit
+      after: $after
+    ) {
+      items {
+        cashOutTax
+        start
+        duration
+        rulesetId
+        suckerGroupId
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`
+
+// Query to get sucker group moments (balance/supply snapshots over time)
+export const SUCKER_GROUP_MOMENTS_QUERY = `
+  query SuckerGroupMoments($suckerGroupId: String!, $limit: Int, $after: String) {
+    suckerGroupMoments(
+      where: { suckerGroupId: $suckerGroupId }
+      orderBy: "timestamp"
+      orderDirection: "asc"
+      limit: $limit
+      after: $after
+    ) {
+      items {
+        timestamp
+        balance
+        tokenSupply
+        suckerGroupId
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`
+
+// Query to get pay events for volume over time
+export const PAY_EVENTS_HISTORY_QUERY = `
+  query PayEventsHistory($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int, $after: String) {
+    payEvents(
+      where: { projectId: $projectId, chainId: $chainId, version: $version }
+      limit: $limit
+      orderBy: "timestamp"
+      orderDirection: "asc"
+      after: $after
+    ) {
+      items {
+        amount
+        amountUsd
+        timestamp
+        from
+        newlyIssuedTokenCount
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`
+
+// Query to get cash out events for redemption history
+export const CASH_OUT_EVENTS_HISTORY_QUERY = `
+  query CashOutEventsHistory($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int, $after: String) {
+    cashOutTokensEvents(
+      where: { projectId: $projectId, chainId: $chainId, version: $version }
+      limit: $limit
+      orderBy: "timestamp"
+      orderDirection: "asc"
+      after: $after
+    ) {
+      items {
+        reclaimAmount
+        tokenCount
+        timestamp
+        from
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`
+
 export const ACTIVITY_EVENTS_QUERY = `
   query ActivityEvents($limit: Int, $offset: Int, $orderBy: String, $orderDirection: String) {
     activityEvents(
