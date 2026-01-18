@@ -11,12 +11,14 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const {
     claudeApiKey,
     paraApiKey,
-    pinataJwt,
+    pinataApiKey,
+    pinataApiSecret,
     bendystrawEndpoint,
     relayrEndpoint,
     setClaudeApiKey,
     setParaApiKey,
-    setPinataJwt,
+    setPinataApiKey,
+    setPinataApiSecret,
     setBendystrawEndpoint,
     setRelayrEndpoint,
     clearSettings,
@@ -24,7 +26,8 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
   const [localClaudeKey, setLocalClaudeKey] = useState(claudeApiKey)
   const [localParaKey, setLocalParaKey] = useState(paraApiKey)
-  const [localPinataJwt, setLocalPinataJwt] = useState(pinataJwt)
+  const [localPinataKey, setLocalPinataKey] = useState(pinataApiKey)
+  const [localPinataSecret, setLocalPinataSecret] = useState(pinataApiSecret)
   const [localBendystraw, setLocalBendystraw] = useState(bendystrawEndpoint)
   const [localRelayr, setLocalRelayr] = useState(relayrEndpoint)
   const [showKeys, setShowKeys] = useState(false)
@@ -33,7 +36,8 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const handleSave = () => {
     setClaudeApiKey(localClaudeKey)
     setParaApiKey(localParaKey)
-    setPinataJwt(localPinataJwt)
+    setPinataApiKey(localPinataKey)
+    setPinataApiSecret(localPinataSecret)
     setBendystrawEndpoint(localBendystraw)
     setRelayrEndpoint(localRelayr)
     onClose()
@@ -44,7 +48,8 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       clearSettings()
       setLocalClaudeKey('')
       setLocalParaKey('')
-      setLocalPinataJwt('')
+      setLocalPinataKey('')
+      setLocalPinataSecret('')
     }
   }
 
@@ -108,14 +113,25 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           </p>
         </div>
 
-        {/* Pinata JWT */}
+        {/* Pinata API Key */}
         <div>
           <Input
-            label="Pinata JWT (optional)"
+            label="Pinata API Key (optional)"
             type={showKeys ? 'text' : 'password'}
-            value={localPinataJwt}
-            onChange={(e) => setLocalPinataJwt(e.target.value)}
-            placeholder="eyJhbGciOiJS..."
+            value={localPinataKey}
+            onChange={(e) => setLocalPinataKey(e.target.value)}
+            placeholder="47ca2b..."
+          />
+        </div>
+
+        {/* Pinata API Secret */}
+        <div>
+          <Input
+            label="Pinata API Secret"
+            type={showKeys ? 'text' : 'password'}
+            value={localPinataSecret}
+            onChange={(e) => setLocalPinataSecret(e.target.value)}
+            placeholder="abc123..."
           />
           <p className="mt-1 text-xs text-gray-500">
             For pinning project metadata to IPFS.{' '}
@@ -125,7 +141,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               rel="noopener noreferrer"
               className="text-juice-cyan hover:underline"
             >
-              Get a JWT from Pinata
+              Get API keys from Pinata
             </a>
           </p>
         </div>

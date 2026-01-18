@@ -161,6 +161,8 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
         parsedGroups = props.groups
           ? (typeof props.groups === 'string' ? JSON.parse(props.groups) : props.groups)
           : []
+        // Enable multiSelect for all groups so users can always provide more context
+        parsedGroups = parsedGroups.map((g: Record<string, unknown>) => ({ ...g, multiSelect: true }))
       } catch {
         // JSON not yet complete during streaming
         return null

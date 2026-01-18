@@ -1,4 +1,4 @@
-import { useWallet, useLogout } from '@getpara/react-sdk'
+import { useWallet, useLogout, useModal, ModalStep } from '@getpara/react-sdk'
 import { useThemeStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance } from '../../hooks'
 
@@ -10,9 +10,15 @@ export default function WalletInfo() {
   const { theme } = useThemeStore()
   const { data: wallet } = useWallet()
   const { logout } = useLogout()
+  const { openModal } = useModal()
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
 
   if (!wallet?.address) return null
+
+  const handleTopUp = () => {
+    // Open Para modal to onramp/buy crypto screen
+    openModal({ step: ModalStep.ADD_FUNDS_BUY })
+  }
 
   return (
     <div className="flex gap-3 mt-2 px-6">
@@ -34,11 +40,25 @@ export default function WalletInfo() {
             · Disconnect
           </button>
         </div>
-        {!balancesLoading && (totalEth > 0n || totalUsdc > 0n) && (
-          <div className="mt-1">
-            {formatEthBalance(totalEth)} ETH · {formatUsdcBalance(totalUsdc)} USDC
-          </div>
-        )}
+        <div className="mt-1">
+          {balancesLoading ? (
+            <span className="opacity-50">Loading balances...</span>
+          ) : (
+            <>
+              {formatEthBalance(totalEth)} ETH · {formatUsdcBalance(totalUsdc)} USDC
+              <button
+                onClick={handleTopUp}
+                className={`ml-2 transition-colors ${
+                  theme === 'dark'
+                    ? 'text-juice-cyan/70 hover:text-juice-cyan'
+                    : 'text-teal-500 hover:text-teal-600'
+                }`}
+              >
+                · Top up
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

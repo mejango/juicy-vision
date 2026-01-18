@@ -1,16 +1,8 @@
 import { useRef, useEffect, useState } from 'react'
-import { useThemeStore, useSettingsStore } from '../../stores'
-import { generateRefinementChips, type RefinementChip } from '../../services/claude'
+import { useThemeStore } from '../../stores'
 
 interface WelcomeScreenProps {
   onSuggestionClick: (text: string) => void
-}
-
-interface RefinementState {
-  selected: string
-  selectedPosition: { x: number; y: number }
-  chips: RefinementChip[]
-  loading: boolean
 }
 
 const allSuggestions = [
@@ -318,10 +310,8 @@ function mod(n: number, m: number): number {
 
 export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
   const { theme } = useThemeStore()
-  const { claudeApiKey, isConfigured } = useSettingsStore()
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [scale, setScale] = useState(1)
-  const [refinement, setRefinement] = useState<RefinementState | null>(null)
   const isDraggingRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -373,7 +363,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
 
         if (lastPinchDistRef.current !== null) {
           const delta = dist - lastPinchDistRef.current
-          const zoomSpeed = 0.012 // More sensitive
+          const zoomSpeed = 0.012
           const newScale = Math.max(0.3, Math.min(3, scaleRef.current + delta * zoomSpeed))
           scaleRef.current = newScale
           setScale(newScale)
@@ -405,7 +395,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault()
         e.stopPropagation()
-        const zoomSpeed = 0.008 // More sensitive
+        const zoomSpeed = 0.008
         const newScale = Math.max(0.3, Math.min(3, scaleRef.current - e.deltaY * zoomSpeed))
         scaleRef.current = newScale
         setScale(newScale)
@@ -471,74 +461,30 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
     setScale(1)
   }
 
-  const handleChipClick = async (suggestion: string, chipX: number, chipY: number) => {
+  const handleChipClick = (suggestion: string) => {
     // Only trigger click if we didn't drag
     if (hasDraggedRef.current) return
-
-    // If already in refinement mode and clicking the selected chip, start conversation
-    if (refinement?.selected === suggestion) {
-      setRefinement(null)
-      onSuggestionClick(suggestion)
-      return
-    }
-
-    // If API not configured, fall back to direct send
-    if (!isConfigured()) {
-      onSuggestionClick(suggestion)
-      return
-    }
-
-    // Start refinement flow - center view on this chip
-    const centerX = containerSize.width / 2
-    const centerY = containerSize.height / 2
-    const newOffset = {
-      x: offsetRef.current.x + (centerX - chipX),
-      y: offsetRef.current.y + (centerY - chipY),
-    }
-    offsetRef.current = newOffset
-    setOffset(newOffset)
-
-    setRefinement({
-      selected: suggestion,
-      selectedPosition: { x: centerX, y: centerY },
-      chips: [],
-      loading: true
-    })
-
-    try {
-      const chips = await generateRefinementChips(claudeApiKey, [suggestion])
-      setRefinement(prev => prev ? { ...prev, chips, loading: false } : null)
-    } catch {
-      // On error, just start the conversation directly
-      setRefinement(null)
-      onSuggestionClick(suggestion)
-    }
-  }
-
-  const handleRefinementChipClick = (chip: RefinementChip) => {
-    if (!refinement) return
-    // Start conversation with combined context
-    const message = `${refinement.selected} → ${chip.text}`
-    setRefinement(null)
-    onSuggestionClick(message)
-  }
-
-  const handleCancelRefinement = () => {
-    setRefinement(null)
+    onSuggestionClick(suggestion)
   }
 
   // Calculate visible chips with wrapping - each row tiles at its own width
   // Account for scale: when zoomed out, the visible unscaled area is larger
-  const visibleChips: { suggestion: string; x: number; y: number; key: string }[] = []
+  type ChipData = {
+    suggestion: string
+    x: number
+    y: number
+    key: string
+  }
 
-  if (containerSize.width > 0 && containerSize.height > 0) {
-    // Effective visible area expands when zoomed out
-    // Scale factor determines how much larger the unscaled visible area is
-    const scaleFactor = 1 / scale
+  // Helper to calculate visible chips for a given offset/scale
+  const calculateVisibleChips = (currentOffset: { x: number; y: number }, currentScale: number): ChipData[] => {
+    const chips: ChipData[] = []
+    if (containerSize.width <= 0 || containerSize.height <= 0) return chips
+
+    const scaleFactor = 1 / currentScale
     const effectiveWidth = containerSize.width * scaleFactor
     const effectiveHeight = containerSize.height * scaleFactor
 
-    // Extra tiles needed on each side when zoomed out (centered scaling)
     const extraTilesX = Math.ceil((effectiveWidth - containerSize.width) / 2 / 300) + 1
     const extraTilesY = Math.ceil((effectiveHeight - containerSize.height) / 2 / GRID_HEIGHT) + 1
 
@@ -548,20 +494,18 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       const rowY = rowIdx * (CHIP_HEIGHT + GAP_Y)
       const rowWidth = row.width
 
-      // How many horizontal tiles needed for this row
       const tilesX = Math.ceil(containerSize.width / rowWidth) + 2 + extraTilesX * 2
 
       for (let tileY = -1 - extraTilesY; tileY < tilesY - extraTilesY; tileY++) {
         for (let tileX = -1 - extraTilesX; tileX < tilesX - extraTilesX; tileX++) {
           row.chips.forEach((chip, chipIdx) => {
-            const x = chip.x + row.stagger + tileX * rowWidth + mod(offset.x, rowWidth)
-            const y = rowY + tileY * GRID_HEIGHT + mod(offset.y, GRID_HEIGHT)
+            const x = chip.x + row.stagger + tileX * rowWidth + mod(currentOffset.x, rowWidth)
+            const y = rowY + tileY * GRID_HEIGHT + mod(currentOffset.y, GRID_HEIGHT)
 
-            // Extended visibility check for zoomed out state
             const padding = 50 + (scaleFactor - 1) * 200
             if (x > -chip.width - padding && x < containerSize.width + padding &&
                 y > -CHIP_HEIGHT - padding && y < containerSize.height + padding) {
-              visibleChips.push({
+              chips.push({
                 suggestion: chip.suggestion,
                 x,
                 y,
@@ -572,7 +516,11 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         }
       }
     })
+
+    return chips
   }
+
+  const visibleChips = calculateVisibleChips(offset, scale)
 
   return (
     <div className="flex-1 relative h-full overflow-hidden">
@@ -596,42 +544,35 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
             const isPro = proSuggestions.has(chip.suggestion)
             const isDemo = demoSuggestions.has(chip.suggestion)
             const isFun = funSuggestions.has(chip.suggestion)
-            const isSelected = refinement?.selected === chip.suggestion
-            const isDimmed = refinement && !isSelected
             return (
               <button
                 key={chip.key}
-                onMouseUp={() => handleChipClick(chip.suggestion, chip.x, chip.y)}
-                onTouchEnd={() => handleChipClick(chip.suggestion, chip.x, chip.y)}
-                className={`absolute px-3 py-2 border text-sm transition-all duration-300 whitespace-nowrap select-none flex items-center gap-2 ${
-                  isSelected
+                onMouseUp={() => handleChipClick(chip.suggestion)}
+                onTouchEnd={() => handleChipClick(chip.suggestion)}
+                className={`absolute px-3 py-2 border text-sm transition-colors duration-200 whitespace-nowrap select-none flex items-center gap-2 ${
+                  isPopular
                     ? theme === 'dark'
-                      ? 'bg-juice-cyan/30 border-juice-cyan text-white z-20 scale-110'
-                      : 'bg-juice-cyan/20 border-juice-cyan text-teal-900 z-20 scale-110'
-                    : isPopular
+                      ? 'bg-juice-cyan/10 border-juice-cyan/40 text-juice-cyan hover:bg-juice-cyan/20 hover:border-juice-cyan/60'
+                      : 'bg-juice-cyan/10 border-juice-cyan/50 text-teal-700 hover:bg-juice-cyan/20 hover:border-juice-cyan/70'
+                    : isPro
                       ? theme === 'dark'
-                        ? 'bg-juice-cyan/10 border-juice-cyan/40 text-juice-cyan hover:bg-juice-cyan/20 hover:border-juice-cyan/60'
-                        : 'bg-juice-cyan/10 border-juice-cyan/50 text-teal-700 hover:bg-juice-cyan/20 hover:border-juice-cyan/70'
-                      : isPro
+                        ? 'bg-juice-orange/10 border-juice-orange/40 text-juice-orange hover:bg-juice-orange/20 hover:border-juice-orange/60'
+                        : 'bg-orange-50 border-juice-orange/50 text-orange-700 hover:bg-orange-100 hover:border-juice-orange/70'
+                      : isDemo
                         ? theme === 'dark'
-                          ? 'bg-juice-orange/10 border-juice-orange/40 text-juice-orange hover:bg-juice-orange/20 hover:border-juice-orange/60'
-                          : 'bg-orange-50 border-juice-orange/50 text-orange-700 hover:bg-orange-100 hover:border-juice-orange/70'
-                        : isDemo
+                          ? 'bg-pink-500/10 border-pink-400/40 text-pink-300 hover:bg-pink-500/20 hover:border-pink-400/60'
+                          : 'bg-pink-50 border-pink-400/50 text-pink-700 hover:bg-pink-100 hover:border-pink-400/70'
+                        : isFun
                           ? theme === 'dark'
-                            ? 'bg-pink-500/10 border-pink-400/40 text-pink-300 hover:bg-pink-500/20 hover:border-pink-400/60'
-                            : 'bg-pink-50 border-pink-400/50 text-pink-700 hover:bg-pink-100 hover:border-pink-400/70'
-                          : isFun
-                            ? theme === 'dark'
-                              ? 'bg-green-500/10 border-green-400/40 text-green-300 hover:bg-green-500/20 hover:border-green-400/60'
-                              : 'bg-green-50 border-green-400/50 text-green-700 hover:bg-green-100 hover:border-green-400/70'
-                            : theme === 'dark'
-                              ? 'bg-juice-dark-lighter border-white/10 text-gray-300 hover:text-white hover:border-white/30'
-                              : 'bg-juice-light-darker border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400'
+                            ? 'bg-green-500/10 border-green-400/40 text-green-300 hover:bg-green-500/20 hover:border-green-400/60'
+                            : 'bg-green-50 border-green-400/50 text-green-700 hover:bg-green-100 hover:border-green-400/70'
+                          : theme === 'dark'
+                            ? 'bg-juice-dark-lighter border-white/10 text-gray-300 hover:text-white hover:border-white/30'
+                            : 'bg-juice-light-darker border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400'
                 }`}
                 style={{
                   left: chip.x,
                   top: chip.y,
-                  opacity: isDimmed ? 0.3 : 1,
                 }}
               >
                 {chip.suggestion}
@@ -661,58 +602,6 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
             )
           })}
 
-          {/* Inline refinement chips - appear below selected chip */}
-          {refinement && !refinement.loading && refinement.chips.length > 0 && (
-            <div
-              className="absolute z-30 flex flex-wrap gap-2 max-w-md"
-              style={{
-                left: refinement.selectedPosition.x - 200,
-                top: refinement.selectedPosition.y + 50,
-              }}
-            >
-              {refinement.chips.map((chip, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleRefinementChipClick(chip)}
-                  className={`px-3 py-2 text-sm border transition-colors whitespace-nowrap ${
-                    theme === 'dark'
-                      ? 'bg-juice-dark border-juice-cyan/60 text-juice-cyan hover:bg-juice-cyan/20 hover:border-juice-cyan'
-                      : 'bg-white border-juice-cyan/60 text-teal-700 hover:bg-juice-cyan/10 hover:border-juice-cyan'
-                  }`}
-                >
-                  {chip.text}
-                </button>
-              ))}
-              <button
-                onClick={handleCancelRefinement}
-                className={`px-3 py-2 text-sm transition-colors ${
-                  theme === 'dark'
-                    ? 'text-gray-500 hover:text-gray-300'
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {/* Loading indicator near selected chip */}
-          {refinement?.loading && (
-            <div
-              className="absolute z-30 flex items-center gap-2"
-              style={{
-                left: refinement.selectedPosition.x - 50,
-                top: refinement.selectedPosition.y + 50,
-              }}
-            >
-              <div className={`animate-spin w-4 h-4 border-2 border-t-transparent rounded-full ${
-                theme === 'dark' ? 'border-juice-cyan' : 'border-teal-500'
-              }`} />
-              <span className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                Thinking...
-              </span>
-            </div>
-          )}
         </div>
       </div>
 

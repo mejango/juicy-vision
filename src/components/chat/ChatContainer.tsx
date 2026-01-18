@@ -43,67 +43,6 @@ function downloadMarkdown(content: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-// Generate contextual placeholder based on conversation state
-function getContextualPlaceholder(messages: Message[]): string | undefined {
-  if (messages.length === 0) return undefined // Use default "What's your juicy vision?"
-
-  const lastMessage = messages[messages.length - 1]
-  const messageCount = messages.length
-
-  // If assistant just asked a question, encourage response
-  if (lastMessage.role === 'assistant') {
-    const content = lastMessage.content.toLowerCase()
-
-    // Detecting questions or prompts
-    if (content.includes('?') || content.includes('options-picker') || content.includes('which')) {
-      const questionPrompts = [
-        'Your call...',
-        'Up to you...',
-        'What do you think?',
-        'Your move...',
-        'Go on...',
-      ]
-      return questionPrompts[Math.floor(Math.random() * questionPrompts.length)]
-    }
-
-    // After showing something (project, chart, etc)
-    if (content.includes('project-card') || content.includes('balance-chart')) {
-      const followupPrompts = [
-        'What next?',
-        'Anything else?',
-        'Questions?',
-        'More?',
-      ]
-      return followupPrompts[Math.floor(Math.random() * followupPrompts.length)]
-    }
-  }
-
-  // General conversation continuations based on length
-  if (messageCount >= 6) {
-    const deepConvoPrompts = [
-      'Keep going...',
-      'And then?',
-      'What else?',
-      'Continue...',
-      'More thoughts?',
-    ]
-    return deepConvoPrompts[Math.floor(Math.random() * deepConvoPrompts.length)]
-  }
-
-  if (messageCount >= 2) {
-    const midConvoPrompts = [
-      'Tell me more...',
-      'Go on...',
-      'And?',
-      'What else?',
-      'More...',
-    ]
-    return midConvoPrompts[Math.floor(Math.random() * midConvoPrompts.length)]
-  }
-
-  return undefined
-}
-
 export default function ChatContainer() {
   const {
     activeConversationId,
@@ -124,6 +63,9 @@ export default function ChatContainer() {
 
   const conversation = getActiveConversation()
   const messages = conversation?.messages || []
+
+  // Static placeholder - no longer changes contextually
+  const placeholder = "What's your juicy vision?"
 
   const handleSend = useCallback(async (content: string, attachments?: Attachment[]) => {
     if (!isConfigured()) {
@@ -266,7 +208,10 @@ export default function ChatContainer() {
 
         {/* Input dock - golden ratio (38%) when on welcome screen, shrink when chatting */}
         {/* Whole dock scrolls, prompt sticks at top when scrolled */}
-        <div className={`relative z-20 ${messages.length === 0 ? 'h-[38vh] overflow-y-auto' : 'shrink-0'}`}>
+        <div className={`relative z-20 ${messages.length === 0
+          ? `h-[38vh] overflow-y-auto border-t-4 ${theme === 'dark' ? 'border-juice-cyan' : 'border-juice-orange'}`
+          : 'shrink-0'
+        }`}>
           {/* Welcome greeting scrolls away */}
           {messages.length === 0 && (
             <div className="pt-16">
@@ -284,7 +229,7 @@ export default function ChatContainer() {
               hideBorder={messages.length === 0}
               hideWalletInfo={messages.length === 0}
               compact={messages.length === 0}
-              placeholder={messages.length === 0 ? "What's your juicy vision?" : getContextualPlaceholder(messages)}
+              placeholder={placeholder}
             />
           </div>
           {/* Wallet info and conversation history scroll */}

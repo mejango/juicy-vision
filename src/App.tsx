@@ -30,10 +30,10 @@ function Header() {
 
   return (
     <>
-      <header className={`border-b backdrop-blur-sm sticky top-0 z-40 ${
+      <header className={`border-b sticky top-0 z-40 ${
         theme === 'dark'
-          ? 'border-white/10 bg-juice-dark/90'
-          : 'border-gray-200 bg-juice-light/90'
+          ? 'border-white/10 bg-juice-dark'
+          : 'border-gray-200 bg-white'
       }`}>
         <div className="flex items-center justify-between px-4 pt-2 pb-1">
           {/* Left - Menu & Logo */}
@@ -52,15 +52,25 @@ function Header() {
             </button>
 
             <button
-              onClick={() => createConversation()}
-              className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+              onClick={() => {
+                createConversation()
+                // Focus the prompt bar after creating new conversation
+                setTimeout(() => {
+                  window.dispatchEvent(new CustomEvent('juice:prefill-prompt', {
+                    detail: { text: '', focus: true }
+                  }))
+                }, 100)
+              }}
+              className="flex items-center gap-4 hover:opacity-80 transition-opacity"
             >
               <img
                 src={theme === 'dark' ? '/head-dark.png' : '/head-light.png'}
                 alt="Juicy Vision"
                 className="h-24 -my-4"
               />
-              <span className="text-2xl font-black gradient-text-shimmer hidden sm:inline">Juicy Vision</span>
+              <span className={`text-sm font-medium ${
+                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+              }`}>juicy.vision</span>
             </button>
           </div>
         </div>
@@ -73,7 +83,7 @@ function Header() {
           <div className={`absolute left-0 top-0 bottom-0 w-72 border-r p-4 ${
             theme === 'dark'
               ? 'bg-juice-dark border-white/10'
-              : 'bg-juice-light border-gray-200'
+              : 'bg-white border-gray-200'
           }`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Conversations</h2>
@@ -169,14 +179,14 @@ function AppProviders({ children }: { children: React.ReactNode }) {
           appIcon: `${window.location.origin}/head-dark.png`,
         }}
         paraModalConfig={{
-          logo: `${window.location.origin}/head-dark.png`,
+          logo: `${window.location.origin}/head-light.png`,
           theme: {
             accentColor: '#F5A623',
             font: 'Space Mono',
             borderRadius: 'none',
           },
-          oAuthMethods: ['GOOGLE', 'APPLE', 'FACEBOOK', 'TWITTER', 'TELEGRAM', 'DISCORD'],
-          authLayout: ['EXTERNAL:FULL', 'AUTH:FULL'],
+          oAuthMethods: ['GOOGLE', 'APPLE'],
+          authLayout: ['AUTH:FULL', 'EXTERNAL:FULL'],
           recoverySecretStepEnabled: true,
           onRampTestMode: true,
         }}
@@ -286,7 +296,7 @@ function AppContent() {
   }
 
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'bg-juice-dark' : 'bg-juice-light'}`}>
+    <div className={`min-h-screen ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
       {/* Transaction executor - listens for pay events */}
       <TransactionExecutor />
       {/* Main content with right margin for sidebar */}

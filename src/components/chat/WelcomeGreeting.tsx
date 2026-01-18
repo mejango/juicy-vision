@@ -2,15 +2,23 @@ import { useState } from 'react'
 import { useThemeStore } from '../../stores'
 
 const GREETINGS = [
-  'Welcome, darling.',
-  'Welcome, champion.',
-  'Welcome, dreamer.',
-  'Hey there, visionary.',
+  // Coach energy
+  'Alright, let\'s go.',
+  'Good, you\'re here.',
+  'Don\'t just stand there.',
+  'Well? Let\'s see it.',
+  'So tell me.',
+  // Coach who noticed you showed up just on time
   'There you are.',
+  'Finally.',
+  'Oh good, you made it.',
+  'Cutting it close.',
+  'Right on time. Barely.',
+  'Look who showed up.',
+  // Confident, direct
   'Show me what you got.',
   'Let\'s make it happen.',
   'Ready to squeeze?',
-  'Looking fresh.',
   'Your move.',
 ]
 

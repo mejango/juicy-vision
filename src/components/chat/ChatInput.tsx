@@ -160,11 +160,11 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
 
   return (
     <div className={`${compact ? 'py-2 px-6' : 'pt-8 px-6 pb-12'} ${
-      hideBorder ? '' : 'border-t backdrop-blur-md'
+      hideBorder ? '' : 'border-t'
     } ${
       theme === 'dark'
-        ? `border-juice-cyan/20 ${hideBorder ? '' : 'bg-juice-dark/60'}`
-        : `border-juice-orange/40 ${hideBorder ? '' : 'bg-white/60'}`
+        ? `border-juice-cyan ${hideBorder ? '' : 'bg-juice-dark/90'}`
+        : `border-juice-orange/40 ${hideBorder ? '' : 'bg-white'}`
     }`}>
       {/* Attachment previews */}
       {attachments.length > 0 && (
@@ -247,9 +247,8 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                      disabled:opacity-50 disabled:cursor-not-allowed
                      shrink-0"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3}
-                  d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </button>
       </div>
