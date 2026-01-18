@@ -129,7 +129,7 @@ export default function ChatInput({ onSend, disabled, placeholder }: ChatInputPr
         <button
           onClick={handleSend}
           disabled={!input.trim()}
-          className="p-3 bg-juice-cyan text-juice-orange
+          className="p-3 bg-juice-cyan text-black
                      hover:bg-juice-cyan/90 transition-colors
                      disabled:opacity-50 disabled:cursor-not-allowed
                      shrink-0"
