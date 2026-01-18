@@ -34,7 +34,7 @@ function Header() {
           ? 'border-white/10 bg-juice-dark/90'
           : 'border-gray-200 bg-juice-light/90'
       }`}>
-        <div className="flex items-center justify-between px-4 py-2">
+        <div className="flex items-center justify-between px-4 pt-2 pb-1">
           {/* Left - Menu & Logo */}
           <div className="flex items-center gap-3">
             <button
