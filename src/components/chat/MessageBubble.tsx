@@ -4,6 +4,7 @@ import rehypeRaw from 'rehype-raw'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Message } from '../../stores/chatStore'
+import { useThemeStore } from '../../stores'
 import { parseMessageContent } from '../../utils/messageParser'
 import ComponentRegistry from '../dynamic/ComponentRegistry'
 import ThinkingIndicator from './ThinkingIndicator'
@@ -15,6 +16,8 @@ interface MessageBubbleProps {
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const parsed = parseMessageContent(message.content)
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
@@ -22,7 +25,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         /* User message: text right-aligned with arrow in right margin */
         <div className="flex items-start gap-3 max-w-[85%] md:max-w-[75%]">
           {/* Text content - right aligned */}
-          <div className="text-white text-right">
+          <div className={`text-right ${isDark ? 'text-white' : 'text-gray-900'}`}>
             {parsed.segments.map((segment, index) => {
               if (segment.type === 'text') {
                 return (
@@ -52,7 +55,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         </div>
       ) : (
         /* Assistant message */
-        <div className="w-full bg-transparent text-white px-4 py-3">
+        <div className={`w-full bg-transparent px-4 py-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
           {parsed.segments.map((segment, index) => {
             if (segment.type === 'text') {
               return (

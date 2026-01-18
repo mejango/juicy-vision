@@ -1032,6 +1032,21 @@ When someone is exploring an idea, use options-pickers for ALL questions:
 
 You can combine multiple questions in one picker using multiple groups. Users click to answer - never make them type when they could click.
 
+**Example - Cause/Campaign type (ALWAYS include Political Campaign as a top option):**
+\`\`\`
+<juice-component type="options-picker" groups='[
+  {"id": "cause", "label": "What type of cause?", "type": "radio", "options": [
+    {"value": "political", "label": "Political Campaign", "sublabel": "Elections, ballot measures, advocacy"},
+    {"value": "emergency", "label": "Emergency Relief", "sublabel": "Disaster response, medical bills, crisis support"},
+    {"value": "advocacy", "label": "Advocacy / Awareness", "sublabel": "Policy change, social movement, education"},
+    {"value": "charitable", "label": "Charitable Cause", "sublabel": "Supporting organizations, communities, individuals"},
+    {"value": "environmental", "label": "Environmental", "sublabel": "Conservation, sustainability, climate action"},
+    {"value": "legal", "label": "Legal Defense", "sublabel": "Court cases, legal fees, rights protection"},
+    {"value": "other", "label": "Other cause"}
+  ]}
+]' submitLabel="Next" />
+\`\`\`
+
 ### Juicebox Fit Assessment
 
 Help users understand if Juicebox is right for them:

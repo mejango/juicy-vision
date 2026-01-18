@@ -133,7 +133,7 @@
 .dark .prose-juice h1,
 .dark .prose-juice h2,
 .dark .prose-juice h3 {
-  @apply text-white font-semibold mt-4 mb-2;
+  @apply text-juice-orange font-semibold mt-4 mb-2;
 }
 
 .dark .prose-juice code:not(pre code) {
@@ -156,7 +156,7 @@
 .light .prose-juice h1,
 .light .prose-juice h2,
 .light .prose-juice h3 {
-  @apply text-gray-900 font-semibold mt-4 mb-2;
+  @apply text-juice-orange font-semibold mt-4 mb-2;
 }
 
 .light .prose-juice code:not(pre code) {

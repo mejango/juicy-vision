@@ -226,7 +226,7 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
         }`}>
           <button
             onClick={handleSubmit}
-            className="px-3 py-1 text-sm font-medium bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors"
+            className="px-3 py-1 text-sm font-medium bg-green-500 text-black hover:bg-green-600 transition-colors"
           >
             Pay project
           </button>
@@ -308,7 +308,7 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
         </div>
         <button
           onClick={handleSubmit}
-          className="px-3 py-1 text-sm font-medium bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors"
+          className="px-3 py-1 text-sm font-medium bg-green-500 text-black hover:bg-green-600 transition-colors"
         >
           Pay project
         </button>
