@@ -1,11 +1,20 @@
 // Shared chart utilities and formatting functions
 
-export type TimeRange = '7d' | '30d' | '90d' | '1y' | 'all'
+export type TimeRange = '7d' | '30d' | '90d' | '3m' | '1y' | 'all'
 
 export const RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: '7d', label: '7D' },
   { value: '30d', label: '30D' },
   { value: '90d', label: '90D' },
+  { value: '1y', label: '1Y' },
+  { value: 'all', label: 'All' },
+]
+
+// Extended range options for price charts (matches revnet-app)
+export const PRICE_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
+  { value: '7d', label: '7D' },
+  { value: '30d', label: '30D' },
+  { value: '3m', label: '3M' },
   { value: '1y', label: '1Y' },
   { value: 'all', label: 'All' },
 ]
@@ -21,6 +30,7 @@ export function getRangeStartTimestamp(range: TimeRange): number {
     case '30d':
       return now - 30 * day
     case '90d':
+    case '3m':
       return now - 90 * day
     case '1y':
       return now - 365 * day
@@ -36,7 +46,7 @@ export function formatXAxis(timestamp: number, range: TimeRange): string {
   if (range === '7d') {
     return date.toLocaleDateString('en-US', { weekday: 'short' })
   }
-  if (range === '30d' || range === '90d') {
+  if (range === '30d' || range === '90d' || range === '3m') {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
   return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })

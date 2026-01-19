@@ -9,7 +9,7 @@ import RecommendationChips from './RecommendationChips'
 import PriceChart from './PriceChart'
 import ActivityFeed from './ActivityFeed'
 import RulesetSchedule from './RulesetSchedule'
-import { BalanceChart, HoldersChart, VolumeChart } from './charts'
+import { BalanceChart, HoldersChart, VolumeChart, TokenPriceChart, PoolPriceChart } from './charts'
 import OptionsPicker from './OptionsPicker'
 import ProjectChainPicker from './ProjectChainPicker'
 import TopProjects from './TopProjects'
@@ -133,6 +133,28 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
           projectId={props.projectId}
           chainId={props.chainId}
           range={props.range as '7d' | '30d' | '90d' | '1y' | 'all' | undefined}
+        />
+      )
+
+    case 'token-price-chart':
+      return (
+        <TokenPriceChart
+          projectId={props.projectId}
+          chainId={props.chainId}
+          range={props.range as '7d' | '30d' | '3m' | '1y' | 'all' | undefined}
+          poolAddress={props.poolAddress}
+          projectTokenAddress={props.projectTokenAddress}
+        />
+      )
+
+    case 'pool-price-chart':
+      return (
+        <PoolPriceChart
+          poolAddress={props.poolAddress}
+          projectTokenAddress={props.projectTokenAddress}
+          chainId={props.chainId}
+          tokenSymbol={props.tokenSymbol}
+          range={props.range as '7d' | '30d' | '3m' | '1y' | 'all' | undefined}
         />
       )
 
