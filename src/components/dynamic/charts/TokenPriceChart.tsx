@@ -12,15 +12,15 @@ import { useThemeStore } from '../../../stores'
 import {
   fetchProjectWithRuleset,
   fetchProjectTokenSymbol,
-  fetchRulesetHistory,
+  fetchAllRulesets,
   fetchRevnetStages,
   fetchProjectSuckerGroupId,
   fetchSuckerGroupMoments,
   fetchCashOutTaxSnapshots,
   calculateFloorPrice,
   isRevnet,
-  type RulesetHistoryEntry,
   type RevnetStage,
+  type SimpleRuleset,
   type SuckerGroupMoment,
   type CashOutTaxSnapshot,
 } from '../../../services/bendystraw'
@@ -163,25 +163,22 @@ export default function TokenPriceChart({
           }
         }
 
-        // If no rulesets from Revnet stages (either not a Revnet or fetch failed), use ruleset history
+        // If no rulesets from Revnet stages (either not a Revnet or fetch failed), use allOf
+        // This fetches ALL historical rulesets directly from the contract
         if (loadedRulesets.length === 0) {
-          const history = await fetchRulesetHistory(
-            projectId,
-            parseInt(chainId),
-            project.currentRuleset.id || '1',
-            50
-          )
+          const allRulesets = await fetchAllRulesets(projectId, parseInt(chainId))
 
-          if (history.length > 0) {
-            loadedRulesets = history.map((r: RulesetHistoryEntry) => ({
+          if (allRulesets.length > 0) {
+            // allRulesets are already in SimpleRuleset format with weightCutPercent as raw number
+            loadedRulesets = allRulesets.map((r: SimpleRuleset) => ({
               start: r.start,
               duration: r.duration,
               weight: r.weight,
-              weightCutPercent: r.weightCutPercent / 1e9,
+              weightCutPercent: r.weightCutPercent / 1e9, // Convert from 1e9 basis points
             }))
             loadedProjectStart = loadedRulesets[0]?.start || Math.floor(Date.now() / 1000)
           } else {
-            // Fallback to current ruleset only
+            // Final fallback to current ruleset only
             const current = project.currentRuleset
             const startTime = current.start || Math.floor(Date.now() / 1000) - 86400 * 30
             loadedRulesets = [{

@@ -553,6 +553,17 @@ const JB_RULESETS_ABI = [
     ],
     outputs: [{ name: 'ruleset', type: 'tuple', components: RULESET_COMPONENTS }],
   },
+  {
+    name: 'allOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'startingId', type: 'uint256' },
+      { name: 'size', type: 'uint256' },
+    ],
+    outputs: [{ name: 'rulesets', type: 'tuple[]', components: RULESET_COMPONENTS }],
+  },
 ] as const
 
 export async function fetchProjectWithRuleset(
@@ -1598,6 +1609,52 @@ export async function fetchRulesetHistory(
     return limited
   } catch (err) {
     console.error('Failed to fetch ruleset history:', err)
+    return []
+  }
+}
+
+// Simple ruleset type for price charts (avoids cycle expansion complexity)
+export interface SimpleRuleset {
+  start: number
+  duration: number
+  weight: string
+  weightCutPercent: number
+}
+
+// Fetch all rulesets using allOf for reliable historical data
+// This matches the approach used by revnet-app
+export async function fetchAllRulesets(
+  projectId: string,
+  chainId: number
+): Promise<SimpleRuleset[]> {
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) return []
+
+  try {
+    const MAX_RULESETS = 100
+    const rulesets = await publicClient.readContract({
+      address: JB_CONTRACTS.JBRulesets,
+      abi: JB_RULESETS_ABI,
+      functionName: 'allOf',
+      args: [BigInt(projectId), 0n, BigInt(MAX_RULESETS)],
+    })
+
+    if (!rulesets || rulesets.length === 0) return []
+
+    // Convert to simple ruleset format and filter out empty entries
+    const result: SimpleRuleset[] = rulesets
+      .filter((r) => r.cycleNumber > 0)
+      .map((r) => ({
+        start: Number(r.start),
+        duration: Number(r.duration),
+        weight: String(r.weight),
+        weightCutPercent: Number(r.weightCutPercent),
+      }))
+      .sort((a, b) => a.start - b.start) // Sort chronologically
+
+    return result
+  } catch (err) {
+    console.error('Failed to fetch all rulesets:', err)
     return []
   }
 }
