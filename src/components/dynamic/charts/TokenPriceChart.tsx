@@ -145,23 +145,26 @@ export default function TokenPriceChart({
         const symbol = await fetchProjectTokenSymbol(projectId, parseInt(chainId))
         setTokenSymbol(symbol || 'TOKEN')
 
-        // Check if this is a Revnet - if so, fetch stages
+        // Check if this is a Revnet - if so, try to fetch stages
         const projectIsRevnet = isRevnet(project.owner)
+        let loadedRulesets: Ruleset[] = []
+        let loadedProjectStart = 0
 
         if (projectIsRevnet) {
           const revnetStages = await fetchRevnetStages(projectId, parseInt(chainId))
           if (revnetStages && revnetStages.stages.length > 0) {
-            const stageRulesets: Ruleset[] = revnetStages.stages.map((stage: RevnetStage) => ({
+            loadedRulesets = revnetStages.stages.map((stage: RevnetStage) => ({
               start: stage.startsAtOrAfter,
               duration: stage.issuanceDecayFrequency,
               weight: stage.initialIssuance,
               weightCutPercent: stage.issuanceDecayPercent / 1e9,
             }))
-            setRulesets(stageRulesets)
-            setProjectStart(stageRulesets[0]?.start || Math.floor(Date.now() / 1000))
+            loadedProjectStart = loadedRulesets[0]?.start || Math.floor(Date.now() / 1000)
           }
-        } else {
-          // For regular projects, fetch ruleset history
+        }
+
+        // If no rulesets from Revnet stages (either not a Revnet or fetch failed), use ruleset history
+        if (loadedRulesets.length === 0) {
           const history = await fetchRulesetHistory(
             projectId,
             parseInt(chainId),
@@ -170,27 +173,29 @@ export default function TokenPriceChart({
           )
 
           if (history.length > 0) {
-            const historyRulesets: Ruleset[] = history.map((r: RulesetHistoryEntry) => ({
+            loadedRulesets = history.map((r: RulesetHistoryEntry) => ({
               start: r.start,
               duration: r.duration,
               weight: r.weight,
               weightCutPercent: r.weightCutPercent / 1e9,
             }))
-            setRulesets(historyRulesets)
-            setProjectStart(historyRulesets[0]?.start || Math.floor(Date.now() / 1000))
+            loadedProjectStart = loadedRulesets[0]?.start || Math.floor(Date.now() / 1000)
           } else {
             // Fallback to current ruleset only
             const current = project.currentRuleset
             const startTime = current.start || Math.floor(Date.now() / 1000) - 86400 * 30
-            setRulesets([{
+            loadedRulesets = [{
               start: startTime,
               duration: current.duration,
               weight: current.weight,
               weightCutPercent: parseFloat(current.decayPercent) / 1e9,
-            }])
-            setProjectStart(startTime)
+            }]
+            loadedProjectStart = startTime
           }
         }
+
+        setRulesets(loadedRulesets)
+        setProjectStart(loadedProjectStart)
 
         // Fetch floor price data (sucker group moments and tax snapshots)
         const suckerGroupId = await fetchProjectSuckerGroupId(projectId, parseInt(chainId))
