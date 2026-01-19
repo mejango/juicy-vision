@@ -98,7 +98,7 @@ function findApplicableTaxRate(timestamp: number, taxSnapshots: CashOutTaxSnapsh
 // Chart colors for the price series
 const PRICE_COLORS = {
   issuance: '#10b981', // emerald green
-  cashOut: '#1e3a5f',  // dark blue
+  cashOut: '#94a3b8',  // slate gray (visible on dark backgrounds)
   pool: '#60a5fa',     // light blue
 }
 
