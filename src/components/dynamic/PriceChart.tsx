@@ -1,115 +1,183 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+  ReferenceArea,
+} from 'recharts'
 import { useThemeStore } from '../../stores'
-import { fetchProjectWithRuleset } from '../../services/bendystraw'
+import {
+  fetchProjectWithRuleset,
+  fetchProjectTokenSymbol,
+  fetchRulesetHistory,
+  fetchRevnetStages,
+  isRevnet,
+  type RulesetHistoryEntry,
+  type RevnetStage,
+} from '../../services/bendystraw'
 
 interface PriceChartProps {
   projectId: string
   chainId?: string
-  type?: 'issuance' | 'cashout' | 'all'
-  range?: '7d' | '30d' | '90d' | '1y' | 'all'
+  range?: '1y' | '5y' | '10y' | 'all'
 }
 
 interface DataPoint {
   timestamp: number
-  issuancePrice?: number
-  cashOutPrice?: number
-  cycleStart?: boolean
+  price: number
+  visualX: number
+}
+
+interface Stage {
+  name: string
+  start: number
+}
+
+interface StageArea extends Stage {
+  x1: number
+  x2: number
 }
 
 const RANGE_OPTIONS = [
-  { value: '7d', label: '7D' },
-  { value: '30d', label: '30D' },
-  { value: '90d', label: '90D' },
   { value: '1y', label: '1Y' },
+  { value: '5y', label: '5Y' },
+  { value: '10y', label: '10Y' },
   { value: 'all', label: 'All' },
 ]
 
-// Calculate token price from weight (price = 1/weight in ETH terms, adjusted for 18 decimals)
-function weightToPrice(weight: string): number {
-  const w = parseFloat(weight)
-  if (w === 0) return 0
-  // weight is tokens per ETH (with 18 decimals), price is ETH per token
-  return 1e18 / w
+const SECONDS_PER_DAY = 86400
+
+function getRangeYears(range: string): number {
+  return range === '1y' ? 1 : range === '5y' ? 5 : range === '10y' ? 10 : 50
 }
 
-// Calculate cash out price based on cashOutTaxRate
-function calculateCashOutPrice(issuancePrice: number, cashOutTaxRate: number): number {
-  // cashOutTaxRate of 0 = 100% return, 10000 = 0% return
-  const returnPercent = (10000 - cashOutTaxRate) / 10000
-  return issuancePrice * returnPercent
+// Ruleset type for price calculation
+interface Ruleset {
+  start: number
+  duration: number
+  weight: string
+  weightCutPercent: number
+}
+
+// Calculate the issuance price at a specific timestamp
+// Price = 1 / weight (after applying weight cuts for elapsed cycles)
+function calculatePriceAtTimestamp(timestamp: number, rulesets: Ruleset[]): number | undefined {
+  // Find the active ruleset for this timestamp
+  const active = rulesets.find((r, i) => {
+    const end = rulesets[i + 1]?.start ?? Infinity
+    return timestamp >= r.start && timestamp < end
+  })
+
+  if (!active) return undefined
+
+  const elapsed = timestamp - active.start
+  const cycles = active.duration > 0 ? Math.floor(elapsed / active.duration) : 0
+  const weight = parseFloat(active.weight) / 1e18
+
+  if (weight <= 0) return undefined
+
+  const currentWeight = weight * Math.pow(1 - active.weightCutPercent, cycles)
+  return currentWeight > 0 ? 1 / currentWeight : undefined
 }
 
 export default function PriceChart({
   projectId,
   chainId = '1',
-  type = 'all',
-  range: initialRange = '30d'
+  range: initialRange = '1y',
 }: PriceChartProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
   const [range, setRange] = useState(initialRange)
-  const [showIssuance, setShowIssuance] = useState(type === 'all' || type === 'issuance')
-  const [showCashOut, setShowCashOut] = useState(type === 'all' || type === 'cashout')
-  const [data, setData] = useState<DataPoint[]>([])
+  const [rulesets, setRulesets] = useState<Ruleset[]>([])
+  const [stages, setStages] = useState<Stage[]>([])
   const [loading, setLoading] = useState(true)
-  const [_error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [tokenSymbol, setTokenSymbol] = useState('TOKEN')
 
   useEffect(() => {
-    async function loadPriceData() {
+    async function loadData() {
       setLoading(true)
       setError(null)
 
       try {
         const project = await fetchProjectWithRuleset(projectId, parseInt(chainId))
-
         if (!project || !project.currentRuleset) {
           setError('No ruleset data available')
           setLoading(false)
           return
         }
 
-        const { weight, decayPercent, duration, cashOutTaxRate } = project.currentRuleset
+        // Get token symbol
+        const symbol = await fetchProjectTokenSymbol(projectId, parseInt(chainId))
+        setTokenSymbol(symbol || 'TOKEN')
 
-        // Calculate current issuance price from weight
-        const currentIssuancePrice = weightToPrice(weight)
+        // Check if this is a Revnet - if so, fetch stages
+        const projectIsRevnet = isRevnet(project.owner)
+        let stageData: Stage[] = []
 
-        // Calculate historical prices by working backwards through cycles
-        const now = Date.now() / 1000
-        const points: DataPoint[] = []
-        const decayRate = parseFloat(decayPercent) / 1e9 // Convert to decimal
-        const cycleDuration = duration || 604800 // Default 7 days if no duration
+        if (projectIsRevnet) {
+          const revnetStages = await fetchRevnetStages(projectId, parseInt(chainId))
+          if (revnetStages && revnetStages.stages.length > 0) {
+            // Convert Revnet stages to rulesets for price calculation
+            const stageRulesets: Ruleset[] = revnetStages.stages.map((stage: RevnetStage) => ({
+              start: stage.startsAtOrAfter,
+              duration: stage.issuanceDecayFrequency,
+              weight: stage.initialIssuance,
+              weightCutPercent: stage.issuanceDecayPercent / 1e9, // Convert from basis points
+            }))
+            setRulesets(stageRulesets)
 
-        // Determine number of days to show based on range
-        const rangeDays: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365, 'all': 365 }
-        const numDays = rangeDays[range] || 30
-
-        for (let dayOffset = numDays; dayOffset >= 0; dayOffset--) {
-          const timestamp = now - dayOffset * 86400
-          const cyclesAgo = Math.floor((dayOffset * 86400) / cycleDuration)
-
-          // Price at this point = current price / (1 - decay)^cycles since then
-          // Working backwards: earlier price was lower
-          let historicalPrice = currentIssuancePrice
-          if (decayRate > 0 && cyclesAgo > 0) {
-            historicalPrice = currentIssuancePrice / Math.pow(1 + decayRate, cyclesAgo)
+            // Build stage labels
+            stageData = revnetStages.stages.map((s: RevnetStage, i: number) => ({
+              name: `Stage ${i + 1}`,
+              start: s.startsAtOrAfter,
+            }))
+            setStages(stageData)
+            setLoading(false)
+            return
           }
-
-          const historicalCashOut = calculateCashOutPrice(historicalPrice, cashOutTaxRate)
-
-          // Mark cycle boundaries
-          const dayInCycle = (dayOffset * 86400) % cycleDuration
-          const isCycleStart = dayInCycle < 86400
-
-          points.push({
-            timestamp,
-            issuancePrice: historicalPrice,
-            cashOutPrice: historicalCashOut,
-            cycleStart: isCycleStart,
-          })
         }
 
-        setData(points)
+        // For regular projects, fetch ruleset history
+        const history = await fetchRulesetHistory(
+          projectId,
+          parseInt(chainId),
+          project.currentRuleset.id || '1',
+          50
+        )
+
+        if (history.length > 0) {
+          const historyRulesets: Ruleset[] = history.map((r: RulesetHistoryEntry) => ({
+            start: r.start,
+            duration: r.duration,
+            weight: r.weight,
+            weightCutPercent: r.weightCutPercent / 1e9, // Convert from stored format
+          }))
+          setRulesets(historyRulesets)
+
+          // Build cycle labels
+          stageData = history.map((r: RulesetHistoryEntry) => ({
+            name: `Cycle ${r.cycleNumber}`,
+            start: r.start,
+          }))
+          setStages(stageData)
+        } else {
+          // Fallback to current ruleset only
+          const current = project.currentRuleset
+          setRulesets([{
+            start: current.start || Math.floor(Date.now() / 1000) - 86400 * 30,
+            duration: current.duration,
+            weight: current.weight,
+            weightCutPercent: parseFloat(current.decayPercent) / 1e9,
+          }])
+          setStages([{ name: 'Cycle 1', start: current.start || Math.floor(Date.now() / 1000) }])
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load price data')
       } finally {
@@ -117,165 +185,297 @@ export default function PriceChart({
       }
     }
 
-    loadPriceData()
-  }, [projectId, chainId, range])
+    loadData()
+  }, [projectId, chainId])
 
-  const maxPrice = Math.max(...data.flatMap(d => [d.issuancePrice || 0, d.cashOutPrice || 0]))
-  const minPrice = Math.min(...data.filter(d => d.issuancePrice || d.cashOutPrice).flatMap(d => [d.issuancePrice || Infinity, d.cashOutPrice || Infinity]))
-  const priceRange = maxPrice - minPrice || 1
+  // Prepare chart data
+  const { chartData, stageAreas, sortedStages, todayTimestamp, chartDomain } = useMemo(() => {
+    if (rulesets.length === 0) {
+      return { chartData: [], stageAreas: [], sortedStages: [], todayTimestamp: null, chartDomain: [0, 1] as [number, number] }
+    }
 
-  const chartHeight = 120
-  const chartWidth = 280
+    // Sort rulesets chronologically (oldest first) for price calculation
+    const sortedRulesets = [...rulesets].sort((a, b) => a.start - b.start)
 
-  const getY = (price: number) => {
-    return chartHeight - ((price - minPrice) / priceRange) * (chartHeight - 20) - 10
+    const now = Math.floor(Date.now() / 1000)
+    const projectStart = sortedRulesets[0].start // First ruleset start = project start
+    const rangeSeconds = getRangeYears(range) * 365 * SECONDS_PER_DAY
+
+    // Center "now" in the middle: always use symmetric range around now
+    const desiredStart = now - rangeSeconds / 2
+    const desiredEnd = now + rangeSeconds / 2
+
+    // Data generation starts from project start (can't have data before project exists)
+    const dataStart = Math.max(projectStart, desiredStart)
+    const interval = SECONDS_PER_DAY * 10
+
+    // Generate data points using sorted rulesets
+    const dataPoints: { timestamp: number; price: number }[] = []
+    for (let t = dataStart; t <= desiredEnd; t += interval) {
+      const price = calculatePriceAtTimestamp(t, sortedRulesets)
+      if (price !== undefined && isFinite(price)) {
+        dataPoints.push({ timestamp: t, price })
+      }
+    }
+
+    if (dataPoints.length === 0) {
+      return { chartData: [], stageAreas: [], sortedStages: [], todayTimestamp: null, chartDomain: [0, 1] as [number, number] }
+    }
+
+    // Extend first data point back to chart start to fill dead space
+    // Shows the initial issuance price for the period before project started
+    if (dataPoints.length > 0 && dataPoints[0].timestamp > desiredStart) {
+      dataPoints.unshift({
+        timestamp: desiredStart,
+        price: dataPoints[0].price,
+      })
+    }
+
+    // Use timestamp directly as X (no visual scaling) - this keeps "now" centered
+    const chartData: DataPoint[] = dataPoints.map(d => ({
+      ...d,
+      visualX: d.timestamp,
+    }))
+
+    // Chart domain is always centered on "now" for consistent positioning
+    const chartDomain: [number, number] = [desiredStart, desiredEnd]
+
+    // Sort stages chronologically (oldest first) for area calculation
+    const sortedStages = [...stages].sort((a, b) => a.start - b.start)
+
+    // Calculate stage areas using timestamps
+    const stageAreas: StageArea[] = sortedStages
+      .map((stage, i) => {
+        const nextStart = sortedStages[i + 1]?.start ?? desiredEnd
+        if (stage.start > desiredEnd || nextStart < desiredStart) return null
+        return {
+          ...stage,
+          x1: Math.max(stage.start, desiredStart),
+          x2: Math.min(nextStart, desiredEnd),
+        }
+      })
+      .filter((a): a is StageArea => a !== null)
+
+    return { chartData, stageAreas, sortedStages, todayTimestamp: now, chartDomain }
+  }, [rulesets, stages, range])
+
+  // Custom tooltip
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: DataPoint; value: number }> }) => {
+    if (!active || !payload?.length) return null
+
+    const data = payload[0]?.payload
+    if (!data?.timestamp) return null
+
+    // Find the most recent stage that has started (sortedStages is chronological, so filter and take last)
+    const startedStages = sortedStages.filter((s: Stage) => data.timestamp >= s.start)
+    const stage = startedStages.length > 0 ? startedStages[startedStages.length - 1] : null
+    const value = payload[0].value
+
+    return (
+      <div className={`px-3 py-2 border shadow-lg text-sm ${
+        isDark
+          ? 'bg-zinc-900 border-zinc-700 text-white'
+          : 'bg-white border-gray-200 text-gray-900'
+      }`}>
+        <div className={`text-xs mb-1 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+          {new Date(data.timestamp * 1000).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+        </div>
+        {stage && (
+          <div className={`text-xs mb-2 uppercase tracking-wider font-semibold ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>
+            {stage.name}
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 bg-emerald-400" />
+          <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Price:</span>
+          <span className="font-mono">
+            {value?.toFixed(6)} ETH / {tokenSymbol}
+          </span>
+        </div>
+      </div>
+    )
   }
 
-  const issuancePath = data
-    .filter(d => d.issuancePrice)
-    .map((d, i, arr) => {
-      const x = (i / (arr.length - 1)) * chartWidth
-      const y = getY(d.issuancePrice!)
-      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
-    })
-    .join(' ')
-
-  const cashOutPath = data
-    .filter(d => d.cashOutPrice)
-    .map((d, i, arr) => {
-      const x = (i / (arr.length - 1)) * chartWidth
-      const y = getY(d.cashOutPrice!)
-      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
-    })
-    .join(' ')
+  const formatYAxis = (value: number) => {
+    if (value >= 1) return value.toFixed(2)
+    if (value >= 0.001) return value.toFixed(4)
+    return value.toExponential(2)
+  }
 
   return (
-    <div className={`rounded-lg border overflow-hidden ${
-      isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
-    }`}>
-      {/* Header */}
-      <div className={`px-4 py-3 border-b flex items-center justify-between ${
-        isDark ? 'border-white/10' : 'border-gray-100'
+    <div className="w-full">
+      <div className={`border overflow-hidden ${
+        isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
-        <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Token Price
-        </span>
-        <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-          Project #{projectId}
-        </span>
-      </div>
-
-      {/* Controls */}
-      <div className={`px-4 py-2 flex items-center justify-between gap-2 border-b ${
-        isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'
-      }`}>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowIssuance(!showIssuance)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
-              showIssuance
-                ? 'bg-emerald-500/20 text-emerald-400'
-                : isDark ? 'bg-white/5 text-gray-500' : 'bg-gray-100 text-gray-400'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            Issuance
-          </button>
-          <button
-            onClick={() => setShowCashOut(!showCashOut)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
-              showCashOut
-                ? 'bg-amber-500/20 text-amber-400'
-                : isDark ? 'bg-white/5 text-gray-500' : 'bg-gray-100 text-gray-400'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            Cash Out
-          </button>
-        </div>
-        <div className="flex gap-1">
-          {RANGE_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setRange(opt.value as typeof range)}
-              className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                range === opt.value
-                  ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
-                  : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Chart */}
-      <div className="p-4">
-        {loading ? (
-          <div className={`h-[120px] flex items-center justify-center ${
-            isDark ? 'text-gray-500' : 'text-gray-400'
-          }`}>
-            Loading...
+        {/* Header */}
+        <div className={`px-4 py-3 border-b flex items-center justify-between ${
+          isDark ? 'border-white/10' : 'border-gray-100'
+        }`}>
+          <div>
+            <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Issuance Price Forecast
+            </span>
           </div>
-        ) : (
-          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-[120px]">
-            {/* Grid lines */}
-            {[0, 0.25, 0.5, 0.75, 1].map(pct => (
-              <line
-                key={pct}
-                x1={0}
-                y1={chartHeight - pct * (chartHeight - 20) - 10}
-                x2={chartWidth}
-                y2={chartHeight - pct * (chartHeight - 20) - 10}
-                stroke={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}
-                strokeDasharray="4 4"
-              />
+          <div className="flex gap-1">
+            {RANGE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setRange(opt.value as typeof range)}
+                className={`px-2 py-0.5 text-xs transition-colors ${
+                  range === opt.value
+                    ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
+                    : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {opt.label}
+              </button>
             ))}
+          </div>
+        </div>
 
-            {/* Issuance price line */}
-            {showIssuance && issuancePath && (
-              <path
-                d={issuancePath}
-                fill="none"
-                stroke="#10b981"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
+        {/* Chart */}
+        <div className="px-2 py-3">
+          {loading ? (
+            <div className={`h-[200px] flex items-center justify-center ${
+              isDark ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              Loading...
+            </div>
+          ) : error ? (
+            <div className="h-[200px] flex items-center justify-center text-red-400">
+              {error}
+            </div>
+          ) : chartData.length === 0 ? (
+            <div className={`h-[200px] flex items-center justify-center ${
+              isDark ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              No price data available
+            </div>
+          ) : (
+            <div className="h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ left: 0, right: 12, top: 24, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="priceFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="visualX"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={12}
+                    tickFormatter={(v) => {
+                      const date = new Date(v * 1000)
+                      // For shorter ranges, show month; for longer ranges, show year
+                      if (range === '1y') {
+                        return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+                      } else if (range === '5y') {
+                        return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+                      }
+                      return date.getFullYear().toString()
+                    }}
+                    minTickGap={50}
+                    type="number"
+                    domain={chartDomain}
+                    stroke={isDark ? '#666' : '#999'}
+                    fontSize={11}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={formatYAxis}
+                    width={60}
+                    domain={['auto', 'auto']}
+                    stroke={isDark ? '#666' : '#999'}
+                    fontSize={11}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
 
-            {/* Cash out price line */}
-            {showCashOut && cashOutPath && (
-              <path
-                d={cashOutPath}
-                fill="none"
-                stroke="#f59e0b"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-          </svg>
-        )}
-      </div>
+                  {/* Stage background areas - alternating subtle shading */}
+                  {stageAreas.map((area, i) => (
+                    <ReferenceArea
+                      key={area.name}
+                      x1={area.x1}
+                      x2={area.x2}
+                      fill={isDark
+                        ? i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)'
+                        : i % 2 === 0 ? 'rgba(0,0,0,0.02)' : 'rgba(0,0,0,0.03)'
+                      }
+                      fillOpacity={1}
+                    />
+                  ))}
 
-      {/* Footer with current prices */}
-      <div className={`px-4 py-2 flex gap-4 text-xs ${
-        isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-500'
-      }`}>
-        {showIssuance && data.length > 0 && (
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            {data[data.length - 1]?.issuancePrice?.toFixed(6)} ETH
-          </span>
-        )}
-        {showCashOut && data.length > 0 && (
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            {data[data.length - 1]?.cashOutPrice?.toFixed(6)} ETH
-          </span>
-        )}
+                  {/* Price area */}
+                  <Area
+                    type="stepAfter"
+                    dataKey="price"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    fill="url(#priceFill)"
+                    isAnimationActive={false}
+                  />
+
+                  {/* Stage boundary lines (no labels - labels are inside areas) */}
+                  {stageAreas.slice(1).map((area) => (
+                    <ReferenceLine
+                      key={`line-${area.name}`}
+                      x={area.x1}
+                      stroke={isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)'}
+                      strokeDasharray="3 3"
+                    />
+                  ))}
+
+                  {/* Today indicator */}
+                  {todayTimestamp !== null && (
+                    <ReferenceLine
+                      x={todayTimestamp}
+                      stroke="#f59e0b"
+                      strokeDasharray="4 4"
+                      strokeWidth={1}
+                      label={{
+                        value: 'Today',
+                        position: 'top',
+                        fill: '#f59e0b',
+                        fontSize: 10,
+                      }}
+                    />
+                  )}
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* Footer with current price */}
+        {!loading && !error && chartData.length > 0 && (() => {
+          // Find the data point closest to "now"
+          const now = Math.floor(Date.now() / 1000)
+          const currentPoint = chartData.reduce((closest, point) =>
+            Math.abs(point.timestamp - now) < Math.abs(closest.timestamp - now) ? point : closest
+          , chartData[0])
+          return (
+            <div className={`px-4 py-2 text-xs border-t ${
+              isDark ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'
+            }`}>
+              <span className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-emerald-400" />
+                Current: {currentPoint?.price?.toFixed(6)} ETH / {tokenSymbol}
+              </span>
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

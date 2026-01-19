@@ -158,11 +158,26 @@ function formatSimpleValue(value: unknown, key?: string): string {
     return numValue === 1 ? '1 (ETH)' : numValue === 2 ? '2 (USD)' : String(value)
   }
 
-  if (keyLower.includes('weight') && numValue !== null) {
-    const formatted = numValue >= 1000000
-      ? `${(numValue / 1000000).toLocaleString()}M`
-      : numValue.toLocaleString()
-    return `${formatted} tokens/USD`
+  // Weight has 18 decimals - convert to human readable
+  if (keyLower.includes('weight') && !keyLower.includes('cut')) {
+    // Handle both string (large numbers) and number values
+    let rawWeight: number
+    if (typeof value === 'string' && /^\d+$/.test(value)) {
+      // Large string number - divide by 10^18
+      rawWeight = parseFloat(value) / 1e18
+    } else if (numValue !== null) {
+      // If it's already a reasonable number, use it directly
+      // But if it's huge (> 1 trillion), assume it has 18 decimals
+      rawWeight = numValue > 1e12 ? numValue / 1e18 : numValue
+    } else {
+      return String(value)
+    }
+
+    // Format nicely
+    if (rawWeight >= 1e9) return `${(rawWeight / 1e9).toFixed(1)}B tokens/USD`
+    if (rawWeight >= 1e6) return `${(rawWeight / 1e6).toFixed(1)}M tokens/USD`
+    if (rawWeight >= 1e3) return `${(rawWeight / 1e3).toFixed(1)}K tokens/USD`
+    return `${rawWeight.toLocaleString()} tokens/USD`
   }
 
   if (keyLower.includes('duration') && numValue !== null) {
@@ -230,6 +245,11 @@ function isComplexValue(value: unknown): boolean {
   return false
 }
 
+// Check if value is an empty array
+function isEmptyArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 0
+}
+
 // Get a human-readable label for array items based on parent context
 function getArrayItemLabel(parentName: string, index: number): string {
   const lower = parentName.toLowerCase()
@@ -285,6 +305,19 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '' }: {
     ? getArrayItemLabel(parentName, parseInt(name.slice(1, -1)))
     : formatParamName(name)
 
+  // Handle empty arrays
+  if (isEmptyArray(value)) {
+    return (
+      <div
+        className={`flex justify-between gap-4 py-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}
+        style={{ paddingLeft: indent }}
+      >
+        <span>{displayName}</span>
+        <span className={`font-mono italic ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>empty</span>
+      </div>
+    )
+  }
+
   if (!isComplex) {
     return (
       <div
@@ -300,6 +333,27 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '' }: {
         </span>
       </div>
     )
+  }
+
+  // For single-item arrays with generic "Item 1" labels, skip the header and show content directly
+  if (Array.isArray(value) && value.length === 1) {
+    const label = getArrayItemLabel(name, 0)
+    // Skip the "Item 1" wrapper if it's a generic label
+    if (label.startsWith('Item ')) {
+      const innerValue = value[0]
+      if (typeof innerValue === 'object' && innerValue !== null) {
+        return (
+          <div style={{ paddingLeft: indent }}>
+            <span className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{displayName}</span>
+            <div className={`mt-0.5 space-y-0 border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
+              {Object.entries(innerValue as Record<string, unknown>).map(([k, v]) => (
+                <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} />
+              ))}
+            </div>
+          </div>
+        )
+      }
+    }
   }
 
   const entries = Array.isArray(value)

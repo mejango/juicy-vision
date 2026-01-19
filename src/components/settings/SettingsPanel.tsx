@@ -11,14 +11,14 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const {
     claudeApiKey,
     paraApiKey,
-    pinataApiKey,
-    pinataApiSecret,
+    pinataJwt,
+    ankrApiKey,
     bendystrawEndpoint,
     relayrEndpoint,
     setClaudeApiKey,
     setParaApiKey,
-    setPinataApiKey,
-    setPinataApiSecret,
+    setPinataJwt,
+    setAnkrApiKey,
     setBendystrawEndpoint,
     setRelayrEndpoint,
     clearSettings,
@@ -26,8 +26,8 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
   const [localClaudeKey, setLocalClaudeKey] = useState(claudeApiKey)
   const [localParaKey, setLocalParaKey] = useState(paraApiKey)
-  const [localPinataKey, setLocalPinataKey] = useState(pinataApiKey)
-  const [localPinataSecret, setLocalPinataSecret] = useState(pinataApiSecret)
+  const [localPinataJwt, setLocalPinataJwt] = useState(pinataJwt)
+  const [localAnkrKey, setLocalAnkrKey] = useState(ankrApiKey)
   const [localBendystraw, setLocalBendystraw] = useState(bendystrawEndpoint)
   const [localRelayr, setLocalRelayr] = useState(relayrEndpoint)
   const [showKeys, setShowKeys] = useState(false)
@@ -36,8 +36,8 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const handleSave = () => {
     setClaudeApiKey(localClaudeKey)
     setParaApiKey(localParaKey)
-    setPinataApiKey(localPinataKey)
-    setPinataApiSecret(localPinataSecret)
+    setPinataJwt(localPinataJwt)
+    setAnkrApiKey(localAnkrKey)
     setBendystrawEndpoint(localBendystraw)
     setRelayrEndpoint(localRelayr)
     onClose()
@@ -48,8 +48,8 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       clearSettings()
       setLocalClaudeKey('')
       setLocalParaKey('')
-      setLocalPinataKey('')
-      setLocalPinataSecret('')
+      setLocalPinataJwt('')
+      setLocalAnkrKey('')
     }
   }
 
@@ -113,25 +113,14 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           </p>
         </div>
 
-        {/* Pinata API Key */}
+        {/* Pinata JWT */}
         <div>
           <Input
-            label="Pinata API Key (optional)"
+            label="Pinata JWT (optional)"
             type={showKeys ? 'text' : 'password'}
-            value={localPinataKey}
-            onChange={(e) => setLocalPinataKey(e.target.value)}
-            placeholder="47ca2b..."
-          />
-        </div>
-
-        {/* Pinata API Secret */}
-        <div>
-          <Input
-            label="Pinata API Secret"
-            type={showKeys ? 'text' : 'password'}
-            value={localPinataSecret}
-            onChange={(e) => setLocalPinataSecret(e.target.value)}
-            placeholder="abc123..."
+            value={localPinataJwt}
+            onChange={(e) => setLocalPinataJwt(e.target.value)}
+            placeholder="eyJhbGciOiJIUzI1NiIs..."
           />
           <p className="mt-1 text-xs text-gray-500">
             For pinning project metadata to IPFS.{' '}
@@ -141,7 +130,29 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               rel="noopener noreferrer"
               className="text-juice-cyan hover:underline"
             >
-              Get API keys from Pinata
+              Get JWT from Pinata
+            </a>
+          </p>
+        </div>
+
+        {/* Ankr API Key */}
+        <div>
+          <Input
+            label="Ankr API Key (optional)"
+            type={showKeys ? 'text' : 'password'}
+            value={localAnkrKey}
+            onChange={(e) => setLocalAnkrKey(e.target.value)}
+            placeholder="abc123..."
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            For RPC requests.{' '}
+            <a
+              href="https://www.ankr.com/rpc/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-juice-cyan hover:underline"
+            >
+              Get API key from Ankr
             </a>
           </p>
         </div>

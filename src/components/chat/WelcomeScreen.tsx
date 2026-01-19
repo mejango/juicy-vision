@@ -68,7 +68,6 @@ const allSuggestions = [
   'Can I set fundraising goals?',
   'How do refunds work?',
   'Fund disaster relief',
-  'Support mutual aid',
 
   // Creative projects
   'Can I fund my podcast?',
@@ -568,7 +567,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
                             : 'bg-green-50 border-green-400/50 text-green-700 hover:bg-green-100 hover:border-green-400/70'
                           : theme === 'dark'
                             ? 'bg-juice-dark-lighter border-white/10 text-gray-300 hover:text-white hover:border-white/30'
-                            : 'bg-juice-light-darker border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400'
+                            : 'bg-white border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-400'
                 }`}
                 style={{
                   left: chip.x,
@@ -637,7 +636,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         <div className="flex-1" />
 
         {/* Right column - Mascot (38% of main content area) */}
-        <div className={`w-[38%] flex-shrink-0 flex flex-col border-l-4 border-juice-orange backdrop-blur-md pointer-events-auto relative overflow-y-auto hide-scrollbar ${
+        <div className={`w-[38%] flex-shrink-0 flex flex-col border-l-4 border-b-4 border-juice-orange backdrop-blur-md pointer-events-auto relative overflow-y-auto hide-scrollbar ${
           theme === 'dark'
             ? 'bg-juice-dark/60'
             : 'bg-white/60'

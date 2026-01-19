@@ -135,8 +135,8 @@ export function useTransactionExecutor() {
               status: 'submitted'
             })
             return
-          } catch (batchError) {
-            console.log('Batch not supported, falling back to sequential:', batchError)
+          } catch {
+            // Batch not supported, falling back to sequential
           }
         }
 
@@ -151,13 +151,11 @@ export function useTransactionExecutor() {
         updateTransaction(txId, { hash: projectHash, status: 'submitted' })
 
         // Then pay $JUICY
-        const juicyHash = await walletClient.sendTransaction({
+        await walletClient.sendTransaction({
           to: JB_MULTI_TERMINAL,
           data: buildPayCallData(juicyProjectId, juicyFeeAmount, beneficiary, 'juicy fee'),
           value: juicyFeeAmount,
         })
-
-        console.log('$JUICY payment tx:', juicyHash)
       } else {
         // Single transaction: just pay the project
         const hash = await walletClient.sendTransaction({

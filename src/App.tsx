@@ -35,7 +35,7 @@ function Header() {
           ? 'border-white/10 bg-juice-dark'
           : 'border-gray-200 bg-white'
       }`}>
-        <div className="flex items-center justify-between px-4 pt-2 pb-1">
+        <div className="flex items-center justify-between px-4 pt-4 pb-3">
           {/* Left - Menu & Logo */}
           <div className="flex items-center gap-3">
             <button
@@ -203,13 +203,13 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
 
   return (
     <>
-      <div className={`w-[280px] flex-shrink-0 flex flex-col border-l h-screen fixed right-0 top-0 z-30 ${
+      <div className={`w-[280px] flex-shrink-0 flex flex-col border-l-4 border-juice-orange h-[calc(100vh-9px)] fixed right-1 top-[5px] z-30 ${
         theme === 'dark'
-          ? 'border-white/20 bg-juice-dark'
-          : 'border-gray-300 bg-white'
+          ? 'bg-juice-dark'
+          : 'bg-white'
       }`}>
         {/* Header with settings and theme - matches main header height */}
-        <div className={`flex items-center justify-between px-4 pt-4 pb-5 border-b ${
+        <div className={`flex items-center justify-between px-4 pt-4 pb-10 border-b ${
           theme === 'dark' ? 'border-white/10' : 'border-gray-200'
         }`}>
           <div>
@@ -296,11 +296,11 @@ function AppContent() {
   }
 
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
+    <div className={`h-screen overflow-hidden border-4 border-juice-orange ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
       {/* Transaction executor - listens for pay events */}
       <TransactionExecutor />
       {/* Main content with right margin for sidebar */}
-      <div className="mr-[280px]">
+      <div className="mr-[280px] h-[calc(100%-13px)] mt-[5px] overflow-hidden">
         {hasMessages && <Header />}
         <Routes>
           <Route path="/" element={<MainContent hasHeader={!!hasMessages} />} />

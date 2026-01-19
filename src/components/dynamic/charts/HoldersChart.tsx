@@ -12,9 +12,9 @@ import {
   fetchAggregatedParticipants,
   fetchProject,
   fetchProjectSuckerGroupId,
-  type AggregatedParticipant,
 } from '../../../services/bendystraw'
-import { shortenAddress, formatPercentage, PIE_COLORS } from './utils'
+import { resolveEnsName, truncateAddress } from '../../../utils/ens'
+import { formatPercentage, PIE_COLORS } from './utils'
 
 interface HoldersChartProps {
   projectId: string
@@ -25,9 +25,11 @@ interface HoldersChartProps {
 interface ChartDataPoint {
   name: string
   address: string
+  ensName: string | null
   value: number
   balance: string
   chains: number[]
+  [key: string]: string | number | number[] | null
 }
 
 // Chain name mapping
@@ -70,13 +72,13 @@ export default function HoldersChart({
         // Fetch the actual suckerGroupId from the project
         const suckerGroupId = await fetchProjectSuckerGroupId(projectId, parseInt(chainId))
 
-        if (!suckerGroupId) {
-          setError('No multi-chain data available')
-          return
-        }
-
-        // Fetch aggregated participants
-        const { participants, totalSupply } = await fetchAggregatedParticipants(suckerGroupId, limit)
+        // Fetch aggregated participants (with fallback to single-chain if no suckerGroup or query fails)
+        const { participants } = await fetchAggregatedParticipants(
+          suckerGroupId || '',
+          limit,
+          projectId,
+          parseInt(chainId)
+        )
 
         setTotalHolders(participants.length)
 
@@ -85,10 +87,16 @@ export default function HoldersChart({
           return
         }
 
+        // Resolve ENS names in parallel
+        const ensNames = await Promise.all(
+          participants.map(p => resolveEnsName(p.address))
+        )
+
         // Transform to chart data
-        const chartData: ChartDataPoint[] = participants.map((p) => ({
-          name: shortenAddress(p.address),
+        const chartData: ChartDataPoint[] = participants.map((p, i) => ({
+          name: ensNames[i] || truncateAddress(p.address),
           address: p.address,
+          ensName: ensNames[i],
           value: p.percentage,
           balance: (Number(p.balance) / 1e18).toFixed(2),
           chains: p.chains,
@@ -100,6 +108,7 @@ export default function HoldersChart({
           chartData.push({
             name: 'Others',
             address: '',
+            ensName: null,
             value: 100 - totalPercentage,
             balance: '...',
             chains: [],
@@ -124,14 +133,17 @@ export default function HoldersChart({
     const item = payload[0].payload as ChartDataPoint
 
     return (
-      <div className={`px-3 py-2 rounded-lg border shadow-lg text-sm ${
+      <div className={`px-3 py-2 border shadow-lg text-sm ${
         isDark
           ? 'bg-zinc-900 border-zinc-700 text-white'
           : 'bg-white border-gray-200 text-gray-900'
       }`}>
         {item.address ? (
           <>
-            <div className="font-mono text-xs mb-1">{item.address}</div>
+            {item.ensName && (
+              <div className="font-medium mb-1">{item.ensName}</div>
+            )}
+            <div className="font-mono text-xs mb-1 opacity-70">{item.address}</div>
             <div className="flex items-center gap-2">
               <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>
                 {item.balance} tokens
@@ -164,14 +176,14 @@ export default function HoldersChart({
     if (!payload) return null
 
     return (
-      <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center mt-2">
+      <div className="flex flex-wrap gap-x-3 gap-y-1.5 justify-center mt-4">
         {payload.slice(0, 5).map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-1.5 text-xs">
             <span
-              className="w-2 h-2 rounded-full"
+              className="w-2.5 h-2.5"
               style={{ backgroundColor: entry.color }}
             />
-            <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>
+            <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
               {entry.value}
             </span>
           </div>
@@ -186,75 +198,77 @@ export default function HoldersChart({
   }
 
   return (
-    <div className={`rounded-lg border overflow-hidden ${
-      isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
-    }`}>
-      {/* Header */}
-      <div className={`px-4 py-3 border-b flex items-center justify-between ${
-        isDark ? 'border-white/10' : 'border-gray-100'
+    <div className="w-full">
+      <div className={`max-w-md border overflow-hidden ${
+        isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
-        <div>
-          <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Token Holders
-          </span>
-          {projectName && (
-            <span className={`ml-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {projectName}
+        {/* Header */}
+        <div className={`px-4 py-3 border-b flex items-center justify-between ${
+          isDark ? 'border-white/10' : 'border-gray-100'
+        }`}>
+          <div>
+            <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Token Holders
+            </span>
+            {projectName && (
+              <span className={`ml-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {projectName}
+              </span>
+            )}
+          </div>
+          {totalHolders > 0 && (
+            <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              Top {Math.min(limit, totalHolders)} holders
             </span>
           )}
         </div>
-        {totalHolders > 0 && (
-          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Top {Math.min(limit, totalHolders)} holders
-          </span>
-        )}
-      </div>
 
-      {/* Chart */}
-      <div className="p-4">
-        {loading ? (
-          <div className={`h-[220px] flex items-center justify-center ${
-            isDark ? 'text-gray-500' : 'text-gray-400'
-          }`}>
-            Loading...
-          </div>
-        ) : error ? (
-          <div className={`h-[220px] flex items-center justify-center text-red-400`}>
-            {error}
-          </div>
-        ) : data.length === 0 ? (
-          <div className={`h-[220px] flex items-center justify-center ${
-            isDark ? 'text-gray-500' : 'text-gray-400'
-          }`}>
-            No holder data available
-          </div>
-        ) : (
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={data}
-                  cx="50%"
-                  cy="45%"
-                  innerRadius="45%"
-                  outerRadius="75%"
-                  paddingAngle={1}
-                  dataKey="value"
-                  nameKey="name"
-                >
-                  {data.map((_, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={PIE_COLORS[index % PIE_COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-                <Legend content={renderLegend} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+        {/* Chart */}
+        <div className="p-4">
+          {loading ? (
+            <div className={`h-[300px] flex items-center justify-center ${
+              isDark ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              Loading...
+            </div>
+          ) : error ? (
+            <div className={`h-[300px] flex items-center justify-center text-red-400`}>
+              {error}
+            </div>
+          ) : data.length === 0 ? (
+            <div className={`h-[300px] flex items-center justify-center ${
+              isDark ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              No holder data available
+            </div>
+          ) : (
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={data}
+                    cx="50%"
+                    cy="42%"
+                    innerRadius="40%"
+                    outerRadius="80%"
+                    paddingAngle={1}
+                    dataKey="value"
+                    nameKey="name"
+                  >
+                    {data.map((_, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={PIE_COLORS[index % PIE_COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend content={renderLegend} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -41,15 +41,22 @@ export default function MessageList({ messages }: MessageListProps) {
     <div
       ref={containerRef}
       onScroll={handleScroll}
-      className="flex-1 overflow-y-auto hide-scrollbar p-4"
+      className="p-4"
     >
       <div className="max-w-5xl mx-auto">
-        {messages.map((message) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-          />
-        ))}
+        {messages.map((message, index) => {
+          // Find last assistant message index
+          const lastAssistantIndex = messages.reduce((acc, m, i) =>
+            m.role === 'assistant' ? i : acc, -1
+          )
+          return (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              isLastAssistant={message.role === 'assistant' && index === lastAssistantIndex}
+            />
+          )
+        })}
         <div ref={bottomRef} />
       </div>
     </div>

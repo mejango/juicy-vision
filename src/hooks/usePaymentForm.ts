@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useWallet, useModal } from '@getpara/react-sdk'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
-import { VIEM_CHAINS, USDC_ADDRESSES, type SupportedChainId } from '../constants'
+import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../constants'
 import { fetchIssuanceRate, type IssuanceRate } from '../services/bendystraw'
 import { useTransactionStore } from '../stores'
 
@@ -90,9 +90,10 @@ export function usePaymentForm({
 
     setBalanceLoading(true)
     try {
+      const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
       const publicClient = createPublicClient({
         chain,
-        transport: http(),
+        transport: http(rpcUrl),
       })
 
       const ethBalance = await publicClient.getBalance({

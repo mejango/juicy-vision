@@ -11,13 +11,88 @@ import ThinkingIndicator from './ThinkingIndicator'
 
 interface MessageBubbleProps {
   message: Message
+  isLastAssistant?: boolean
 }
 
-export default function MessageBubble({ message }: MessageBubbleProps) {
+// Check if response appears to be cut off mid-stream
+function looksIncomplete(content: string): boolean {
+  if (!content || content.length < 50) return false
+
+  const trimmed = content.trim()
+  if (!trimmed) return false
+
+  // Ends with incomplete code block
+  const codeBlockCount = (trimmed.match(/```/g) || []).length
+  if (codeBlockCount % 2 !== 0) return true
+
+  // Ends mid-word or with hanging punctuation
+  if (/[a-zA-Z]{2,}$/.test(trimmed) && !/[.!?:;)\]}"']$/.test(trimmed)) {
+    // Ends with letters but no punctuation - likely cut off
+    const lastLine = trimmed.split('\n').pop() || ''
+    // Unless it's a heading, list item, or component
+    if (!lastLine.startsWith('#') && !lastLine.startsWith('-') && !lastLine.startsWith('*') && !lastLine.includes('juice-component')) {
+      return true
+    }
+  }
+
+  // Ends with ellipsis that isn't intentional
+  if (trimmed.endsWith('...') || trimmed.endsWith('…')) {
+    // Check if it's a "thinking" type phrase which is intentional
+    const lastSentence = trimmed.slice(-100)
+    if (!lastSentence.includes('Let me') && !lastSentence.includes('I\'ll')) {
+      return true
+    }
+  }
+
+  // Check if response promises action but doesn't deliver
+  // Only trigger if NO component exists in the entire response
+  const hasComponent = trimmed.includes('juice-component')
+
+  // If there's already a component, the response is likely complete
+  if (hasComponent) {
+    return false
+  }
+
+  // Look at the last ~150 chars for promise phrases that imply more to come
+  const tail = trimmed.slice(-150).toLowerCase()
+  const promisePhrases = [
+    'let me understand',
+    'let me show',
+    'let me design',
+    'let me suggest',
+    'let me ask',
+    'here\'s what',
+    'here are the',
+  ]
+
+  for (const phrase of promisePhrases) {
+    if (tail.includes(phrase)) {
+      return true
+    }
+  }
+
+  // Ends with colon suggesting more content should follow
+  if (trimmed.endsWith(':')) {
+    return true
+  }
+
+  return false
+}
+
+export default function MessageBubble({ message, isLastAssistant }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const parsed = parseMessageContent(message.content)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+
+  // Show continue button if this is the last assistant message and looks incomplete
+  const showContinue = !isUser && isLastAssistant && !message.isStreaming && looksIncomplete(message.content)
+
+  const handleContinue = () => {
+    window.dispatchEvent(new CustomEvent('juice:send-message', {
+      detail: { message: 'Please continue where you left off.' }
+    }))
+  }
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
@@ -122,6 +197,20 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           {/* Streaming indicator with juice-themed verbs */}
           {message.isStreaming && (
             <ThinkingIndicator />
+          )}
+
+          {/* Continue button for cut-off responses */}
+          {showContinue && (
+            <button
+              onClick={handleContinue}
+              className={`mt-3 px-3 py-1.5 text-xs transition-colors ${
+                isDark
+                  ? 'text-gray-500 border border-gray-700 hover:text-gray-400 hover:border-gray-600'
+                  : 'text-gray-400 border border-gray-300 hover:text-gray-500 hover:border-gray-400'
+              }`}
+            >
+              Continue →
+            </button>
           )}
         </div>
       )}

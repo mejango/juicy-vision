@@ -7,19 +7,34 @@ import type { Attachment } from '../../stores/chatStore'
 const INITIAL_PLACEHOLDER = "What's your juicy vision?"
 
 const PLACEHOLDER_PHRASES = [
-  'Give it a squeeze...',
-  'Add something juicy...',
-  'Drop some juice...',
-  'Pour your thoughts...',
-  'Squeeze out an idea...',
-  'Spill the juice...',
-  'Fresh pressed thoughts...',
-  'Ripe for the picking...',
-  'Got pulp?',
-  'Blend something up...',
-  'From concentrate...',
+  // Questions & prompts
+  'What project are you curious about?',
+  'Any treasury moves on your mind?',
+  'Which revnet catches your eye?',
+  'Got a project ID to explore?',
+  'Wanna check some token economics?',
+  // Playful juice theme
+  'Fresh squeeze incoming...',
+  'Pour another thought...',
   'Extra pulp welcome...',
+  'Got more juice?',
+  'Keep it flowing...',
+  'What else is brewing?',
+  // Action-oriented
+  'Ready to pay a project?',
+  'Need to cash out some tokens?',
+  'Looking for payout splits?',
+  'Checking on a treasury?',
+  // Casual vibes
+  "What's next?",
+  "I'm listening...",
+  'Hit me with it...',
+  'Go on...',
+  'Tell me more...',
 ]
+
+// Interval for cycling placeholder (in ms)
+const PLACEHOLDER_CYCLE_INTERVAL = 4000
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: Attachment[]) => void
@@ -63,6 +78,17 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       return next
     })
   }
+
+  // Auto-cycle placeholder when input is empty and not first load
+  useEffect(() => {
+    if (isFirstLoad || input.trim() || disabled) return
+
+    const interval = setInterval(() => {
+      rotatePlaceholder()
+    }, PLACEHOLDER_CYCLE_INTERVAL)
+
+    return () => clearInterval(interval)
+  }, [isFirstLoad, input, disabled])
 
   // Handle file selection
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
@@ -163,8 +189,8 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       hideBorder ? '' : 'border-t'
     } ${
       theme === 'dark'
-        ? `border-juice-cyan ${hideBorder ? '' : 'bg-juice-dark/90'}`
-        : `border-juice-orange/40 ${hideBorder ? '' : 'bg-white'}`
+        ? `border-white/10 ${hideBorder ? '' : 'bg-juice-dark/90'}`
+        : `border-gray-200 ${hideBorder ? '' : 'bg-white'}`
     }`}>
       {/* Attachment previews */}
       {attachments.length > 0 && (

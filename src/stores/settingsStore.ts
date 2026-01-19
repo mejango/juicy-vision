@@ -6,15 +6,15 @@ const CURRENT_BENDYSTRAW_ENDPOINT = 'https://bendystraw.xyz/3ZNJpGtazh5fwYoSW59G
 interface SettingsState {
   claudeApiKey: string
   paraApiKey: string
-  pinataApiKey: string
-  pinataApiSecret: string
+  pinataJwt: string
+  ankrApiKey: string
   bendystrawEndpoint: string
   relayrEndpoint: string
 
   setClaudeApiKey: (key: string) => void
   setParaApiKey: (key: string) => void
-  setPinataApiKey: (key: string) => void
-  setPinataApiSecret: (secret: string) => void
+  setPinataJwt: (jwt: string) => void
+  setAnkrApiKey: (key: string) => void
   setBendystrawEndpoint: (endpoint: string) => void
   setRelayrEndpoint: (endpoint: string) => void
   clearSettings: () => void
@@ -27,23 +27,23 @@ export const useSettingsStore = create<SettingsState>()(
     (set, get) => ({
       claudeApiKey: '',
       paraApiKey: '',
-      pinataApiKey: '',
-      pinataApiSecret: '',
+      pinataJwt: '',
+      ankrApiKey: '',
       bendystrawEndpoint: CURRENT_BENDYSTRAW_ENDPOINT,
       relayrEndpoint: 'https://api.relayr.ba5ed.com',
 
       setClaudeApiKey: (key) => set({ claudeApiKey: key }),
       setParaApiKey: (key) => set({ paraApiKey: key }),
-      setPinataApiKey: (key) => set({ pinataApiKey: key }),
-      setPinataApiSecret: (secret) => set({ pinataApiSecret: secret }),
+      setPinataJwt: (jwt) => set({ pinataJwt: jwt }),
+      setAnkrApiKey: (key) => set({ ankrApiKey: key }),
       setBendystrawEndpoint: (endpoint) => set({ bendystrawEndpoint: endpoint }),
       setRelayrEndpoint: (endpoint) => set({ relayrEndpoint: endpoint }),
 
       clearSettings: () => set({
         claudeApiKey: '',
         paraApiKey: '',
-        pinataApiKey: '',
-        pinataApiSecret: '',
+        pinataJwt: '',
+        ankrApiKey: '',
       }),
 
       isConfigured: () => {
@@ -53,26 +53,26 @@ export const useSettingsStore = create<SettingsState>()(
 
       isPinataConfigured: () => {
         const state = get()
-        return Boolean(state.pinataApiKey && state.pinataApiSecret)
+        return Boolean(state.pinataJwt)
       },
     }),
     {
       name: 'juice-settings',
-      version: 4,
+      version: 5,
       migrate: (persistedState: unknown, version: number) => {
-        const state = persistedState as SettingsState & { pinataJwt?: string }
+        const state = persistedState as SettingsState & { pinataApiKey?: string; pinataApiSecret?: string }
         if (version < 2) {
           return {
             ...state,
             bendystrawEndpoint: CURRENT_BENDYSTRAW_ENDPOINT,
           }
         }
-        if (version < 4) {
-          // Migration: convert pinataJwt to pinataApiKey/Secret
+        if (version < 5) {
+          // Migration: remove old pinataApiKey/Secret, use pinataJwt
           return {
             ...state,
-            pinataApiKey: '',
-            pinataApiSecret: '',
+            pinataJwt: '',
+            ankrApiKey: '',
           }
         }
         return state

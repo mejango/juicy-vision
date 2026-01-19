@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useWallet } from '@getpara/react-sdk'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
-import { VIEM_CHAINS, USDC_ADDRESSES, type SupportedChainId } from '../constants'
+import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../constants'
 
 const CHAIN_IDS = Object.keys(VIEM_CHAINS).map(Number) as SupportedChainId[]
 
@@ -36,9 +36,10 @@ export function useWalletBalances(): WalletBalances {
       const results = await Promise.all(
         CHAIN_IDS.map(async (chainId) => {
           const chain = VIEM_CHAINS[chainId]
+          const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
           const publicClient = createPublicClient({
             chain,
-            transport: http(),
+            transport: http(rpcUrl),
           })
 
           const [ethBalance, usdcBalance] = await Promise.all([

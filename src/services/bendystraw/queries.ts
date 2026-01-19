@@ -4,6 +4,7 @@ export const PROJECT_QUERY = `
       id
       projectId
       chainId
+      version
       handle
       owner
       metadataUri
@@ -49,20 +50,24 @@ export const PROJECTS_QUERY = `
   }
 `
 
+// Uses Bendystraw schema with projectId/chainId filters and limit/items format
 export const PARTICIPANTS_QUERY = `
-  query Participants($projectId: Int!, $chainId: Int, $first: Int) {
+  query Participants($projectId: Int!, $chainId: Int!, $limit: Int) {
     participants(
-      where: { project_: { projectId: $projectId, chainId: $chainId } }
-      first: $first
-      orderBy: balance
-      orderDirection: desc
+      where: { projectId: $projectId, chainId: $chainId }
+      limit: $limit
+      orderBy: "balance"
+      orderDirection: "desc"
     ) {
-      id
-      wallet
-      balance
-      volume
-      stakedBalance
-      lastPaidTimestamp
+      totalCount
+      items {
+        id
+        address
+        balance
+        volume
+        stakedBalance
+        lastPaidTimestamp
+      }
     }
   }
 `
@@ -86,27 +91,32 @@ export const SEARCH_PROJECTS_QUERY = `
 `
 
 // Query to check a specific user's token balance for a project
+// Uses Bendystraw schema with projectId/chainId/address filters
 export const USER_PARTICIPANT_QUERY = `
-  query UserParticipant($projectId: Int!, $chainId: Int, $wallet: String!) {
+  query UserParticipant($projectId: Int!, $chainId: Int!, $address: String!) {
     participants(
       where: {
-        project_: { projectId: $projectId, chainId: $chainId }
-        wallet: $wallet
+        projectId: $projectId
+        chainId: $chainId
+        address: $address
       }
-      first: 1
+      limit: 1
     ) {
-      id
-      wallet
-      balance
-      volume
-      stakedBalance
-      lastPaidTimestamp
+      totalCount
+      items {
+        id
+        address
+        balance
+        volume
+        stakedBalance
+        lastPaidTimestamp
+      }
     }
   }
 `
 
 // Query to get project info for permission checks
-// Note: Ruleset data must be fetched from the blockchain directly
+// Note: currentRuleset is fetched separately via on-chain reads
 export const PROJECT_RULESET_QUERY = `
   query ProjectRuleset($projectId: Float!, $chainId: Float!, $version: Float!) {
     project(projectId: $projectId, chainId: $chainId, version: $version) {
@@ -178,20 +188,25 @@ export const SUCKER_GROUP_BALANCE_QUERY = `
 `
 
 // Query to get participants (token holders) with balance > 0 for owners count
+// Uses Bendystraw schema with projectId/chainId filters and limit/items format
 export const TOKEN_HOLDERS_QUERY = `
-  query TokenHolders($projectId: Int!, $chainId: Int, $first: Int) {
+  query TokenHolders($projectId: Int!, $chainId: Int!, $limit: Int) {
     participants(
       where: {
-        project_: { projectId: $projectId, chainId: $chainId }
+        projectId: $projectId
+        chainId: $chainId
         balance_gt: "0"
       }
-      first: $first
-      orderBy: balance
-      orderDirection: desc
+      limit: $limit
+      orderBy: "balance"
+      orderDirection: "desc"
     ) {
-      id
-      wallet
-      balance
+      totalCount
+      items {
+        address
+        chainId
+        balance
+      }
     }
   }
 `
@@ -216,12 +231,40 @@ export const SUCKER_GROUP_PARTICIPANTS_QUERY = `
   }
 `
 
-// Query to get project with suckerGroupId
+// Query to get project with suckerGroupId (also fetches balance for single-chain projects)
 export const PROJECT_SUCKER_GROUP_QUERY = `
   query ProjectSuckerGroup($projectId: Float!, $chainId: Float!, $version: Float!) {
     project(projectId: $projectId, chainId: $chainId, version: $version) {
       id
+      balance
+      volume
+      volumeUsd
+      paymentsCount
       suckerGroupId
+    }
+  }
+`
+
+// Query to get suckerGroup directly by ID with aggregated balance
+export const SUCKER_GROUP_BY_ID_QUERY = `
+  query SuckerGroupById($id: String!) {
+    suckerGroup(id: $id) {
+      id
+      balance
+      tokenSupply
+      paymentsCount
+      contributorsCount
+      projects {
+        items {
+          projectId
+          chainId
+          balance
+          tokenSupply
+          paymentsCount
+          decimals
+          currency
+        }
+      }
     }
   }
 `
@@ -291,6 +334,8 @@ export const PAY_EVENTS_HISTORY_QUERY = `
         timestamp
         from
         newlyIssuedTokenCount
+        txHash
+        memo
       }
       pageInfo {
         hasNextPage
@@ -312,9 +357,10 @@ export const CASH_OUT_EVENTS_HISTORY_QUERY = `
     ) {
       items {
         reclaimAmount
-        tokenCount
+        cashOutCount
         timestamp
         from
+        txHash
       }
       pageInfo {
         hasNextPage

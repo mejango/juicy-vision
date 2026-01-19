@@ -209,7 +209,7 @@ export default function ChatContainer() {
         {/* Input dock - golden ratio (38%) when on welcome screen, shrink when chatting */}
         {/* Whole dock scrolls, prompt sticks at top when scrolled */}
         <div className={`relative z-20 ${messages.length === 0
-          ? `h-[38vh] overflow-y-auto border-t-4 ${theme === 'dark' ? 'border-juice-cyan' : 'border-juice-orange'}`
+          ? 'h-[38vh] overflow-y-auto'
           : 'shrink-0'
         }`}>
           {/* Welcome greeting scrolls away */}

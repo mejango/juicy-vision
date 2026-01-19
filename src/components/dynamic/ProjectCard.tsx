@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useWallet, useModal } from '@getpara/react-sdk'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
-import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroupBalance, fetchOwnersCount, fetchEthPrice, fetchProjectTokenSymbol, type Project, type ConnectedChain, type IssuanceRate, type SuckerGroupBalance } from '../../services/bendystraw'
+import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroupBalance, fetchOwnersCount, fetchEthPrice, fetchProjectTokenSymbol, fetchProjectWithRuleset, type Project, type ConnectedChain, type IssuanceRate, type SuckerGroupBalance } from '../../services/bendystraw'
 import { resolveIpfsUri, fetchIpfsMetadata, type IpfsProjectMetadata } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore } from '../../stores'
-import { VIEM_CHAINS, USDC_ADDRESSES, type SupportedChainId } from '../../constants'
+import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
 
 // Parse HTML/markdown description to clean text with line breaks
 function parseDescription(html: string): string[] {
@@ -130,18 +130,38 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
       try {
         setLoading(true)
         const chainIdNum = parseInt(selectedChainId)
-        const [data, rate, groupBalance, owners, tokenSymbol] = await Promise.all([
+
+        const [data, groupBalance, owners, tokenSymbol] = await Promise.all([
           fetchProject(currentProjectId, chainIdNum),
-          fetchIssuanceRate(currentProjectId, chainIdNum),
           fetchSuckerGroupBalance(currentProjectId, chainIdNum),
           fetchOwnersCount(currentProjectId, chainIdNum),
           fetchProjectTokenSymbol(currentProjectId, chainIdNum),
         ])
         setProject(data)
-        setIssuanceRate(rate)
         setSuckerBalance(groupBalance)
         setOwnersCount(owners)
         setProjectTokenSymbol(tokenSymbol)
+
+        // Fetch issuance rate for current chain (tokens are issued on the chain where payment happens)
+        // First try from recent pay events, then fall back to ruleset weight
+        let rate = await fetchIssuanceRate(currentProjectId, chainIdNum)
+
+        // If no rate from pay events, calculate from ruleset weight
+        if (!rate || rate.tokensPerEth === 0) {
+          const projectRuleset = await fetchProjectWithRuleset(currentProjectId, chainIdNum)
+          if (projectRuleset?.currentRuleset?.weight) {
+            // Weight is tokens (18 decimals) per unit of base currency
+            // For USDC projects (6 decimals), we need to account for decimal difference
+            const weight = BigInt(projectRuleset.currentRuleset.weight)
+            const decimals = groupBalance.decimals ?? 18
+            // tokensPerWei = weight / 1e18 gives tokens per 1 unit of currency
+            // For USDC (6 decimals): multiply by 1e12 to get tokens per USDC-wei
+            const decimalAdjustment = decimals === 6 ? 1e12 : 1
+            const tokensPerWei = (Number(weight) / 1e18) * decimalAdjustment
+            rate = { tokensPerEth: tokensPerWei, basedOnPayments: 0 }
+          }
+        }
+        setIssuanceRate(rate)
 
         // Fetch full metadata from IPFS if metadataUri available
         if (data.metadataUri) {
@@ -171,9 +191,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
 
     setBalanceLoading(true)
     try {
+      const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
       const publicClient = createPublicClient({
         chain,
-        transport: http(),
+        transport: http(rpcUrl),
       })
 
       // Fetch ETH balance
@@ -205,29 +226,52 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   }, [fetchWalletBalances])
 
   // Calculate expected tokens based on amount and issuance rate
+  // issuanceRate.tokensPerEth is calculated from recent pay events:
+  // - For ETH projects: tokens per ETH-wei (18 decimals)
+  // - For USDC projects: tokens per USDC-wei (6 decimals)
   const expectedTokens = useMemo(() => {
-    if (!issuanceRate || !amount || parseFloat(amount) <= 0) return null
+    if (!issuanceRate || !amount || parseFloat(amount) <= 0) {
+      return null
+    }
 
     try {
       const amountFloat = parseFloat(amount)
+      const projectCurrency = suckerBalance?.currency ?? 1 // 1=ETH, 2=USD
 
-      // Convert to ETH equivalent if paying in USDC
-      let ethEquivalent = amountFloat
-      if (selectedToken === 'USDC' && ethPrice) {
-        ethEquivalent = amountFloat / ethPrice
+      // Convert payment amount to the project's native currency wei
+      let paymentInProjectWei: number
+
+      if (projectCurrency === 2) {
+        // Project accepts USDC (6 decimals)
+        if (selectedToken === 'USDC') {
+          // Paying USDC to USDC project - direct conversion
+          paymentInProjectWei = amountFloat * 1e6
+        } else {
+          // Paying ETH to USDC project - convert ETH to USD
+          paymentInProjectWei = ethPrice ? amountFloat * ethPrice * 1e6 : 0
+        }
+      } else {
+        // Project accepts ETH (18 decimals)
+        if (selectedToken === 'ETH') {
+          // Paying ETH to ETH project - direct conversion
+          paymentInProjectWei = amountFloat * 1e18
+        } else {
+          // Paying USDC to ETH project - convert USD to ETH
+          paymentInProjectWei = ethPrice ? (amountFloat / ethPrice) * 1e18 : 0
+        }
       }
 
-      // tokensPerEth is tokens per 1 ETH
-      const tokens = ethEquivalent * issuanceRate.tokensPerEth
+      // tokensPerWei from pay events (tokens in 18 decimals / payment in project decimals)
+      const tokensWei = paymentInProjectWei * issuanceRate.tokensPerEth
+      const tokens = tokensWei / 1e18 // Convert to display units
 
       if (tokens < 0.01) return null
 
       return tokens
-    } catch (err) {
-      console.error('Token calc error:', err)
+    } catch {
       return null
     }
-  }, [amount, issuanceRate, selectedToken, ethPrice])
+  }, [amount, issuanceRate, selectedToken, ethPrice, suckerBalance?.currency])
 
   // Calculate fee and totals for Pay us feature
   const amountNum = parseFloat(amount) || 0
@@ -293,20 +337,27 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
     )
   }
 
-  const formatBalance = (wei: string) => {
-    const eth = parseFloat(wei) / 1e18
-    return eth.toLocaleString(undefined, { maximumFractionDigits: 4 })
+  const formatBalance = (wei: string, decimals: number = 18) => {
+    const value = parseFloat(wei) / Math.pow(10, decimals)
+    return value.toLocaleString(undefined, { maximumFractionDigits: 4 })
   }
 
-  const formatUsd = (wei: string) => {
+  const formatUsd = (balance: string, currency: number = 1, decimals: number = 18) => {
+    const value = parseFloat(balance) / Math.pow(10, decimals)
+    // If currency is USD (2), the balance is already in USD
+    if (currency === 2) {
+      return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+    // Currency is ETH (1), convert to USD
     if (!ethPrice) return null
-    const eth = parseFloat(wei) / 1e18
-    const usd = eth * ethPrice
+    const usd = value * ethPrice
     return usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
-  // Calculate total balance USD value
-  const totalBalanceUsd = suckerBalance?.totalBalance ? formatUsd(suckerBalance.totalBalance) : null
+  // Calculate total balance USD value using currency/decimals from suckerBalance
+  const totalBalanceUsd = suckerBalance?.totalBalance
+    ? formatUsd(suckerBalance.totalBalance, suckerBalance.currency, suckerBalance.decimals)
+    : null
 
   const handlePay = async () => {
     if (!amount || parseFloat(amount) <= 0) return
@@ -370,15 +421,13 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   const projectUrl = `https://juicebox.money/v5/${selectedChainInfo.slug}:${currentProjectId}`
 
   return (
-    <div className={`w-full border-l-2 pl-3 ${
-      isDark ? 'border-gray-600' : 'border-gray-300'
-    }`}>
+    <div className="w-full">
       {/* Card with border - constrained width */}
       <div className={`max-w-md border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
       {/* Header */}
-      <div className="flex items-center gap-3 mb-3">
+      <div className="flex items-center gap-3 mb-2">
         {logoUrl ? (
           <img src={logoUrl} alt={project.name} className="w-14 h-14 object-cover" />
         ) : (
@@ -401,6 +450,13 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
         </div>
       </div>
 
+      {/* Tagline - inside card near name */}
+      {(fullMetadata?.tagline || fullMetadata?.projectTagline) && (
+        <p className={`text-sm italic mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          {fullMetadata.tagline || fullMetadata.projectTagline}
+        </p>
+      )}
+
       {/* Stats - inline, no background */}
       <div className="flex gap-6 mb-3 text-sm">
         <div
@@ -409,7 +465,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
           onMouseLeave={() => setShowBalanceTooltip(false)}
         >
           <span className={`font-mono cursor-help ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {totalBalanceUsd ? `$${totalBalanceUsd}` : `${formatBalance(suckerBalance?.totalBalance || project.balance)} ETH`}
+            {totalBalanceUsd ? `$${totalBalanceUsd}` : `${formatBalance(suckerBalance?.totalBalance || project.balance, suckerBalance?.decimals || 18)} ${suckerBalance?.currency === 2 ? 'USDC' : 'ETH'}`}
           </span>
           <span className={isDark ? 'text-gray-400' : 'text-gray-500'}> balance</span>
 
@@ -421,11 +477,13 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
               {suckerBalance.projectBalances.map(pb => {
                 const chainInfo = CHAIN_INFO[pb.chainId.toString()]
                 if (!chainInfo) return null
+                const pbCurrency = pb.currency ?? suckerBalance.currency
+                const pbDecimals = pb.decimals ?? suckerBalance.decimals
                 return (
                   <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
                     <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainInfo.name}</span>
                     <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {formatBalance(pb.balance)} ETH
+                      {pbCurrency === 2 ? `$${formatBalance(pb.balance, pbDecimals)}` : `${formatBalance(pb.balance, pbDecimals)} ETH`}
                     </span>
                   </div>
                 )
@@ -435,7 +493,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
               }`}>
                 <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>[All chains]</span>
                 <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {totalBalanceUsd ? `$${totalBalanceUsd}` : `${formatBalance(suckerBalance.totalBalance)} ETH`}
+                  {totalBalanceUsd ? `$${totalBalanceUsd}` : `${formatBalance(suckerBalance.totalBalance, suckerBalance.decimals)} ${suckerBalance.currency === 2 ? 'USDC' : 'ETH'}`}
                 </span>
               </div>
             </div>
@@ -601,11 +659,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               paying || !amount || parseFloat(amount) <= 0
                 ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                : !isConnected
-                  ? 'bg-juice-cyan hover:bg-juice-cyan/90 text-black'
-                  : !checkSufficientBalance().sufficient
-                    ? 'bg-juice-orange hover:bg-juice-orange/90 text-black'
-                    : 'bg-green-500 hover:bg-green-600 text-black'
+                : 'bg-green-500 hover:bg-green-600 text-black'
             }`}
           >
             {paying ? '...' : 'Pay'}
@@ -679,30 +733,17 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
           </div>
         )}
       </div>
-      </div>
 
-      {/* Tagline */}
-      {(fullMetadata?.tagline || fullMetadata?.projectTagline) && (
-        <div className={`mt-3 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Tagline
-          </div>
-          <p className="text-sm italic">
-            {fullMetadata.tagline || fullMetadata.projectTagline}
-          </p>
-        </div>
-      )}
-
-      {/* About section - collapsible */}
+      {/* About section - collapsible, inside card */}
       {fullMetadata?.description && (
-        <details className="mt-3 group">
+        <details className="mt-4 group">
           <summary className={`text-xs font-medium cursor-pointer list-none flex items-center gap-1 ${
             isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
           }`}>
             <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            About
+            More
           </summary>
           <div className={`mt-2 text-sm space-y-2 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
             {parseDescription(fullMetadata.description).map((paragraph, i) => (
@@ -711,6 +752,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
           </div>
         </details>
       )}
+      </div>
     </div>
   )
 }

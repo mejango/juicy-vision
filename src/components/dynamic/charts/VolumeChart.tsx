@@ -12,13 +12,12 @@ import { useThemeStore } from '../../../stores'
 import {
   fetchPayEventsHistory,
   fetchProject,
+  fetchConnectedChains,
 } from '../../../services/bendystraw'
 import {
   TimeRange,
   RANGE_OPTIONS,
   formatXAxis,
-  formatYAxis,
-  formatEthValue,
   getRangeStartTimestamp,
   calculateYDomain,
   CHART_COLORS,
@@ -37,42 +36,59 @@ interface DataPoint {
   count: number
 }
 
-// Aggregate pay events into daily buckets
+// Aggregate pay events into daily buckets, filling all days in range
 function aggregateByDay(
   events: Array<{ amount: string; timestamp: number }>,
-  rangeStart: number
+  rangeStart: number,
+  rangeEnd: number = Math.floor(Date.now() / 1000)
 ): DataPoint[] {
-  const buckets: Record<string, { volume: bigint; count: number; timestamp: number }> = {}
+  // Create buckets for events
+  const eventBuckets: Record<string, { volume: bigint; count: number }> = {}
 
   for (const event of events) {
     if (event.timestamp < rangeStart) continue
 
     const date = new Date(event.timestamp * 1000)
     const dayKey = date.toISOString().split('T')[0]
-    const dayTimestamp = Math.floor(new Date(dayKey).getTime() / 1000)
 
-    if (!buckets[dayKey]) {
-      buckets[dayKey] = { volume: 0n, count: 0, timestamp: dayTimestamp }
+    if (!eventBuckets[dayKey]) {
+      eventBuckets[dayKey] = { volume: 0n, count: 0 }
     }
 
-    buckets[dayKey].volume += BigInt(event.amount)
-    buckets[dayKey].count += 1
+    eventBuckets[dayKey].volume += BigInt(event.amount)
+    eventBuckets[dayKey].count += 1
   }
 
-  return Object.entries(buckets)
-    .map(([date, data]) => ({
-      timestamp: data.timestamp,
-      date,
-      volume: Number(data.volume) / 1e18,
-      count: data.count,
-    }))
-    .sort((a, b) => a.timestamp - b.timestamp)
+  // Generate all days in the range for proper time-based positioning
+  const result: DataPoint[] = []
+  const startDate = new Date(rangeStart * 1000)
+  startDate.setUTCHours(0, 0, 0, 0)
+  const endDate = new Date(rangeEnd * 1000)
+  endDate.setUTCHours(0, 0, 0, 0)
+
+  const currentDate = new Date(startDate)
+  while (currentDate <= endDate) {
+    const dayKey = currentDate.toISOString().split('T')[0]
+    const dayTimestamp = Math.floor(currentDate.getTime() / 1000)
+    const bucket = eventBuckets[dayKey]
+
+    result.push({
+      timestamp: dayTimestamp,
+      date: dayKey,
+      volume: bucket ? Number(bucket.volume) / 1e18 : 0,
+      count: bucket ? bucket.count : 0,
+    })
+
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1)
+  }
+
+  return result
 }
 
 export default function VolumeChart({
   projectId,
   chainId = '1',
-  range: initialRange = '30d',
+  range: initialRange = '1y',
 }: VolumeChartProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -98,15 +114,40 @@ export default function VolumeChart({
           setProjectName(metadata?.name || '')
         }
 
-        // Fetch pay events
-        const events = await fetchPayEventsHistory(projectId, parseInt(chainId))
+        // Fetch connected chains (sucker group)
+        const connectedChains = await fetchConnectedChains(projectId, parseInt(chainId))
 
-        setRawEvents(events.map(e => ({
+        // If we have connected chains, fetch pay events from all of them
+        const chainsToFetch = connectedChains.length > 0
+          ? connectedChains
+          : [{ projectId: parseInt(projectId), chainId: parseInt(chainId) }]
+
+        // Fetch pay events from all chains in parallel
+        const allEventsPromises = chainsToFetch.map(async (chain) => {
+          try {
+            const events = await fetchPayEventsHistory(
+              String(chain.projectId),
+              chain.chainId
+            )
+            return events.map(e => ({
+              amount: e.amount,
+              timestamp: e.timestamp,
+              chainId: chain.chainId,
+            }))
+          } catch {
+            return []
+          }
+        })
+
+        const allEventsArrays = await Promise.all(allEventsPromises)
+        const allEvents = allEventsArrays.flat()
+
+        setRawEvents(allEvents.map(e => ({
           amount: e.amount,
           timestamp: e.timestamp,
         })))
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load volume data')
+        setError(err instanceof Error ? err.message : 'Failed to load payment data')
       } finally {
         setLoading(false)
       }
@@ -117,8 +158,9 @@ export default function VolumeChart({
 
   // Aggregate data based on selected range
   const data = useMemo(() => {
+    const now = Math.floor(Date.now() / 1000)
     const rangeStart = getRangeStartTimestamp(range)
-    return aggregateByDay(rawEvents, rangeStart)
+    return aggregateByDay(rawEvents, rangeStart, now)
   }, [rawEvents, range])
 
   // Calculate totals
@@ -128,8 +170,14 @@ export default function VolumeChart({
     return { volume: totalVolume, count: totalCount }
   }, [data])
 
-  // Calculate Y domain
-  const yDomain = calculateYDomain(data.map(d => d.volume))
+  // Calculate Y domain for count
+  const yDomain = calculateYDomain(data.map(d => d.count))
+
+  // Format Y axis for counts (integers)
+  const formatCountAxis = (value: number) => {
+    if (value >= 1000) return `${(value / 1000).toFixed(0)}k`
+    return String(Math.round(value))
+  }
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload }: any) => {
@@ -139,7 +187,7 @@ export default function VolumeChart({
     const date = new Date(point.timestamp * 1000)
 
     return (
-      <div className={`px-3 py-2 rounded-lg border shadow-lg text-sm ${
+      <div className={`px-3 py-2 border shadow-lg text-sm ${
         isDark
           ? 'bg-zinc-900 border-zinc-700 text-white'
           : 'bg-white border-gray-200 text-gray-900'
@@ -152,70 +200,73 @@ export default function VolumeChart({
           })}
         </div>
         <div className="font-mono font-medium">
-          {formatEthValue(point.volume)}
-        </div>
-        <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>
           {point.count} payment{point.count !== 1 ? 's' : ''}
         </div>
+        {point.volume > 0 && (
+          <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>
+            {point.volume.toFixed(4)} ETH
+          </div>
+        )}
       </div>
     )
   }
 
   return (
-    <div className={`rounded-lg border overflow-hidden ${
-      isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
-    }`}>
-      {/* Header */}
-      <div className={`px-4 py-3 border-b flex items-center justify-between ${
-        isDark ? 'border-white/10' : 'border-gray-100'
+    <div className="w-full">
+      <div className={`border overflow-hidden ${
+        isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
-        <div>
-          <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Payment Volume
-          </span>
-          {projectName && (
-            <span className={`ml-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {projectName}
+        {/* Header */}
+        <div className={`px-4 py-3 border-b flex items-center justify-between ${
+          isDark ? 'border-white/10' : 'border-gray-100'
+        }`}>
+          <div>
+            <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Payments
             </span>
-          )}
+            {projectName && (
+              <span className={`ml-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {projectName}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-1">
+            {RANGE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setRange(opt.value)}
+                className={`px-2 py-0.5 text-xs transition-colors ${
+                  range === opt.value
+                    ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
+                    : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex gap-1">
-          {RANGE_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setRange(opt.value)}
-              className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                range === opt.value
-                  ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
-                  : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* Chart */}
-      <div className="p-4">
+      <div className="px-2 py-3">
         {loading ? (
-          <div className={`h-[200px] flex items-center justify-center ${
+          <div className={`h-[180px] flex items-center justify-center ${
             isDark ? 'text-gray-500' : 'text-gray-400'
           }`}>
             Loading...
           </div>
         ) : error ? (
-          <div className={`h-[200px] flex items-center justify-center text-red-400`}>
+          <div className={`h-[180px] flex items-center justify-center text-red-400`}>
             {error}
           </div>
         ) : data.length === 0 ? (
-          <div className={`h-[200px] flex items-center justify-center ${
+          <div className={`h-[180px] flex items-center justify-center ${
             isDark ? 'text-gray-500' : 'text-gray-400'
           }`}>
             No payment data for this range
           </div>
         ) : (
-          <div className="h-[200px]">
+          <div className="h-[180px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data}>
                 <CartesianGrid
@@ -233,18 +284,18 @@ export default function VolumeChart({
                 />
                 <YAxis
                   domain={yDomain}
-                  tickFormatter={formatYAxis}
+                  tickFormatter={formatCountAxis}
                   stroke={isDark ? '#666' : '#999'}
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
-                  width={50}
+                  width={35}
+                  allowDecimals={false}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<CustomTooltip />} cursor={false} />
                 <Bar
-                  dataKey="volume"
+                  dataKey="count"
                   fill={CHART_COLORS.secondary}
-                  radius={[2, 2, 0, 0]}
                 />
               </BarChart>
             </ResponsiveContainer>
@@ -252,20 +303,21 @@ export default function VolumeChart({
         )}
       </div>
 
-      {/* Footer with totals */}
-      {!loading && !error && data.length > 0 && (
-        <div className={`px-4 py-2 text-xs border-t flex gap-4 ${
-          isDark ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'
-        }`}>
-          <span className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.secondary }} />
-            Total: {formatEthValue(totals.volume)}
-          </span>
-          <span>
-            {totals.count} payment{totals.count !== 1 ? 's' : ''}
-          </span>
-        </div>
-      )}
+        {/* Footer with totals */}
+        {!loading && !error && data.length > 0 && (
+          <div className={`px-4 py-2 text-xs border-t flex gap-4 ${
+            isDark ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'
+          }`}>
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2" style={{ backgroundColor: CHART_COLORS.secondary }} />
+              {totals.count} payment{totals.count !== 1 ? 's' : ''}
+            </span>
+            <span>
+              {totals.volume.toFixed(4)} ETH total
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

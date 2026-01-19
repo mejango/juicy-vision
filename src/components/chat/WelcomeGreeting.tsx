@@ -13,7 +13,7 @@ const GREETINGS = [
   'Finally.',
   'Oh good, you made it.',
   'Cutting it close.',
-  'Right on time. Barely.',
+  'Right on time.',
   'Look who showed up.',
   // Confident, direct
   'Show me what you got.',

@@ -1,7 +1,6 @@
 import { ParsedComponent } from '../../utils/messageParser'
 import ConnectWalletButton from './ConnectWalletButton'
 import ProjectCard from './ProjectCard'
-import PaymentForm from './PaymentForm'
 import TransactionStatus from './TransactionStatus'
 import TransactionPreview from './TransactionPreview'
 import CashOutForm from './CashOutForm'
@@ -42,8 +41,9 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
       )
 
     case 'payment-form':
+      // Deprecated: use project-card instead (has built-in payment)
       return (
-        <PaymentForm
+        <ProjectCard
           projectId={props.projectId}
           chainId={props.chainId}
         />
@@ -105,8 +105,7 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
         <PriceChart
           projectId={props.projectId}
           chainId={props.chainId}
-          type={props.type as 'issuance' | 'cashout' | 'all' | undefined}
-          range={props.range as '7d' | '30d' | '90d' | '1y' | 'all' | undefined}
+          range={props.range as '1y' | '5y' | '10y' | 'all' | undefined}
         />
       )
 

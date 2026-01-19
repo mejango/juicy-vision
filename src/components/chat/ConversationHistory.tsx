@@ -78,14 +78,14 @@ export default function ConversationHistory() {
             <div
               key={conv.id}
               onClick={() => handleSelectConversation(conv.id)}
-              className={`group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+              className={`group flex items-center justify-between py-2 cursor-pointer transition-colors ${
                 conv.id === activeConversationId
                   ? theme === 'dark'
-                    ? 'bg-white/10 text-white'
-                    : 'bg-gray-200 text-gray-900'
+                    ? 'text-white'
+                    : 'text-gray-900'
                   : theme === 'dark'
-                    ? 'hover:bg-white/5 text-gray-400'
-                    : 'hover:bg-gray-100 text-gray-500'
+                    ? 'text-gray-400 hover:text-gray-200'
+                    : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               <div className="flex-1 min-w-0">

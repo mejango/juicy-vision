@@ -139,10 +139,10 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
   }
 
   return (
-    <div className={`rounded-lg border overflow-hidden inline-block ${
+    <div className={`border overflow-hidden inline-block max-w-lg ${
       isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
     }`}>
-      <div className="p-3 space-y-3">
+      <div className="p-4 space-y-4">
         {groups.map(group => (
           <div key={group.id} className="space-y-1.5">
             <div className={`text-xs font-medium uppercase tracking-wide ${
@@ -153,14 +153,14 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
             {/* Chips layout - horizontal wrap */}
             {(group.type === 'chips' || !group.type) && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {group.options.map(option => {
                   const selected = isSelected(group.id, option.value, group.multiSelect)
                   return (
                     <button
                       key={option.value}
                       onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
-                      className={`px-2.5 py-1 text-sm rounded border transition-all ${
+                      className={`px-3 py-1.5 text-sm border transition-all ${
                         selected
                           ? isDark
                             ? 'bg-green-500/20 border-green-500 text-green-400'
@@ -188,7 +188,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
             {/* Toggle layout - 2 options side by side */}
             {group.type === 'toggle' && group.options.length === 2 && (
-              <div className={`inline-flex rounded border ${
+              <div className={`inline-flex border ${
                 isDark ? 'border-white/10' : 'border-gray-200'
               }`}>
                 {group.options.map((option, idx) => {
@@ -197,8 +197,8 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                     <button
                       key={option.value}
                       onClick={() => handleSelect(group.id, option.value)}
-                      className={`px-3 py-1.5 text-sm font-medium transition-all ${
-                        idx === 0 ? 'rounded-l' : 'rounded-r border-l'
+                      className={`px-4 py-2 text-sm font-medium transition-all ${
+                        idx === 1 ? 'border-l' : ''
                       } ${isDark ? 'border-white/10' : 'border-gray-200'} ${
                         isSelected
                           ? 'bg-green-500 text-white'
@@ -216,14 +216,14 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
             {/* Radio layout - vertical stack (supports multiSelect) */}
             {group.type === 'radio' && (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {group.options.map(option => {
                   const selected = isSelected(group.id, option.value, group.multiSelect)
                   return (
                     <button
                       key={option.value}
                       onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
-                      className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-sm rounded border transition-all text-left ${
+                      className={`w-full flex items-center gap-3 px-3 py-2 text-sm border transition-all text-left ${
                         selected
                           ? isDark
                             ? 'bg-green-500/20 border-green-500'
@@ -235,7 +235,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                     >
                       {/* Checkbox for multiSelect, radio for single select */}
                       {group.multiSelect ? (
-                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${
+                        <div className={`w-5 h-5 border-2 flex items-center justify-center shrink-0 ${
                           selected
                             ? 'border-green-500 bg-green-500'
                             : isDark ? 'border-gray-500' : 'border-gray-300'
@@ -247,13 +247,13 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                           )}
                         </div>
                       ) : (
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        <div className={`w-5 h-5 border-2 flex items-center justify-center shrink-0 ${
                           selected
                             ? 'border-green-500'
                             : isDark ? 'border-gray-500' : 'border-gray-300'
                         }`}>
                           {selected && (
-                            <div className="w-2 h-2 rounded-full bg-green-500" />
+                            <div className="w-2.5 h-2.5 bg-green-500" />
                           )}
                         </div>
                       )}
@@ -264,7 +264,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                         {option.label}
                       </span>
                       {option.sublabel && (
-                        <span className={`ml-auto pl-4 text-xs whitespace-nowrap ${
+                        <span className={`ml-auto pl-4 text-xs text-right ${
                           isDark ? 'text-gray-400' : 'text-gray-500'
                         }`}>
                           {option.sublabel}
@@ -290,7 +290,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
         const buttonLabel = allSelected ? allSelectedLabel : submitLabel
 
         return (
-          <div className={`px-3 py-2 border-t flex flex-col gap-2 ${
+          <div className={`px-4 py-3 border-t flex flex-col gap-3 ${
             isDark ? 'border-white/10' : 'border-gray-100'
           }`}>
             <div className={`text-xs leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -304,11 +304,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
             </div>
             <button
               onClick={handleSubmit}
-              className="self-end px-3 py-1 text-sm font-medium text-green-500 hover:text-green-400 border border-green-500/50 hover:border-green-400 rounded transition-colors animate-shimmer"
-              style={{
-                background: 'linear-gradient(110deg, transparent 25%, rgba(34, 197, 94, 0.1) 50%, transparent 75%)',
-                backgroundSize: '200% 100%',
-              }}
+              className="self-end px-4 py-1.5 text-sm font-bold border-2 bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600 transition-colors"
             >
               {buttonLabel}
             </button>

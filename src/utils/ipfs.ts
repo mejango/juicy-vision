@@ -96,7 +96,7 @@ export function resolveIpfsUri(uri: string | undefined | null): string | null {
 }
 
 // ============================================
-// IPFS Pinning Functions (requires Pinata JWT)
+// IPFS Pinning Functions (requires Pinata API key)
 // ============================================
 
 export interface PinataResponse {
@@ -139,7 +139,7 @@ export async function pinJson(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${jwt}`,
+      'Authorization': `Bearer ${jwt}`,
     },
     body: JSON.stringify(body),
   })
@@ -175,7 +175,7 @@ export async function pinFile(
   const response = await fetch(`${PINATA_API_URL}/pinning/pinFileToIPFS`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${jwt}`,
+      'Authorization': `Bearer ${jwt}`,
     },
     body: formData,
   })
@@ -245,7 +245,7 @@ export async function testPinataConnection(jwt: string): Promise<boolean> {
     const response = await fetch(`${PINATA_API_URL}/data/testAuthentication`, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${jwt}`,
+        'Authorization': `Bearer ${jwt}`,
       },
     })
     return response.ok

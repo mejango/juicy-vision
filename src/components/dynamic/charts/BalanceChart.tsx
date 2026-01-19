@@ -120,7 +120,7 @@ export default function BalanceChart({
     const date = new Date(point.timestamp * 1000)
 
     return (
-      <div className={`px-3 py-2 rounded-lg border shadow-lg text-sm ${
+      <div className={`px-3 py-2 border shadow-lg text-sm ${
         isDark
           ? 'bg-zinc-900 border-zinc-700 text-white'
           : 'bg-white border-gray-200 text-gray-900'
@@ -140,60 +140,61 @@ export default function BalanceChart({
   }
 
   return (
-    <div className={`rounded-lg border overflow-hidden ${
-      isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
-    }`}>
-      {/* Header */}
-      <div className={`px-4 py-3 border-b flex items-center justify-between ${
-        isDark ? 'border-white/10' : 'border-gray-100'
+    <div className="w-full">
+      <div className={`border overflow-hidden ${
+        isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
-        <div>
-          <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Treasury Balance
-          </span>
-          {projectName && (
-            <span className={`ml-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {projectName}
+        {/* Header */}
+        <div className={`px-4 py-3 border-b flex items-center justify-between ${
+          isDark ? 'border-white/10' : 'border-gray-100'
+        }`}>
+          <div>
+            <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Balance
             </span>
-          )}
+            {projectName && (
+              <span className={`ml-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {projectName}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-1">
+            {RANGE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setRange(opt.value)}
+                className={`px-2 py-0.5 text-xs transition-colors ${
+                  range === opt.value
+                    ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
+                    : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex gap-1">
-          {RANGE_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setRange(opt.value)}
-              className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                range === opt.value
-                  ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
-                  : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* Chart */}
-      <div className="p-4">
+      <div className="px-2 py-3">
         {loading ? (
-          <div className={`h-[200px] flex items-center justify-center ${
+          <div className={`h-[180px] flex items-center justify-center ${
             isDark ? 'text-gray-500' : 'text-gray-400'
           }`}>
             Loading...
           </div>
         ) : error ? (
-          <div className={`h-[200px] flex items-center justify-center text-red-400`}>
+          <div className={`h-[180px] flex items-center justify-center text-red-400`}>
             {error}
           </div>
         ) : filteredData.length === 0 ? (
-          <div className={`h-[200px] flex items-center justify-center ${
+          <div className={`h-[180px] flex items-center justify-center ${
             isDark ? 'text-gray-500' : 'text-gray-400'
           }`}>
             No data available for this range
           </div>
         ) : (
-          <div className="h-[200px]">
+          <div className="h-[180px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={filteredData}>
                 <defs>
@@ -238,17 +239,18 @@ export default function BalanceChart({
         )}
       </div>
 
-      {/* Footer with current value */}
-      {!loading && !error && filteredData.length > 0 && (
-        <div className={`px-4 py-2 text-xs border-t ${
-          isDark ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'
-        }`}>
-          <span className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.primary }} />
-            Current: {formatEthValue(filteredData[filteredData.length - 1]?.balance || 0)}
-          </span>
-        </div>
-      )}
+        {/* Footer with current value */}
+        {!loading && !error && filteredData.length > 0 && (
+          <div className={`px-4 py-2 text-xs border-t ${
+            isDark ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'
+          }`}>
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2" style={{ backgroundColor: CHART_COLORS.primary }} />
+              Current: {formatEthValue(filteredData[filteredData.length - 1]?.balance || 0)}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
