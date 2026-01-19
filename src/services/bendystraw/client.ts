@@ -1276,6 +1276,44 @@ export async function fetchProjectTokenSymbol(
   }
 }
 
+// Token address cache (caches the project's issued ERC20 token address)
+const tokenAddressCache = createCache<string>(CACHE_DURATIONS.LONG)
+
+// Fetch the project's issued ERC20 token address
+export async function fetchProjectTokenAddress(
+  projectId: string,
+  chainId: number,
+  version: number = 5
+): Promise<string | null> {
+  const cacheKey = `token-addr-${chainId}-${projectId}-v${version}`
+  const cached = tokenAddressCache.get(cacheKey)
+  if (cached) return cached
+
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) return null
+
+  try {
+    const tokenAddress = await publicClient.readContract({
+      address: JB_CONTRACTS.JBTokens,
+      abi: TOKEN_ABI,
+      functionName: 'tokenOf',
+      args: [BigInt(projectId)],
+    })
+
+    // Zero address means no ERC20 token deployed yet
+    if (tokenAddress === ZERO_ADDRESS) {
+      return null
+    }
+
+    // Cache and return the address
+    tokenAddressCache.set(cacheKey, tokenAddress)
+    return tokenAddress
+  } catch (err) {
+    console.error('Failed to fetch project token address:', err)
+    return null
+  }
+}
+
 // ============================================================================
 // REVNET HELPERS
 // ============================================================================
@@ -2133,7 +2171,8 @@ export async function fetchCashOutEventsHistory(
 export function calculateFloorPrice(
   balance: bigint,
   totalSupply: bigint,
-  cashOutTaxRate: number // 0-10000 basis points
+  cashOutTaxRate: number, // 0-10000 basis points
+  balanceDecimals: number = 18 // 18 for ETH, 6 for USDC
 ): number {
   if (totalSupply === 0n) return 0
 
@@ -2143,7 +2182,9 @@ export function calculateFloorPrice(
   // Convert to numbers for calculation (may lose precision for very large values)
   const x = Number(oneToken) / 1e18 // 1 token
   const s = Number(totalSupply) / 1e18
-  const o = Number(balance) / 1e18
+  // Use the correct decimals for balance (18 for ETH, 6 for USDC)
+  const balanceDivisor = Math.pow(10, balanceDecimals)
+  const o = Number(balance) / balanceDivisor
 
   if (s === 0) return 0
 

@@ -459,7 +459,7 @@ Embed interactive elements in your responses:
 | transaction-preview | Explain tx before signing | (see below) |
 | recommendation-chips | Quick action suggestions | chips (optional) |
 | options-picker | Radio buttons & toggles for user choices | groups (JSON) |
-| token-price-chart | Token price visualization (issuance, cash out, pool) | projectId, chainId, poolAddress (optional), projectTokenAddress (optional) |
+| token-price-chart | Token price visualization (issuance, cash out, pool) | projectId, chainId |
 | balance-chart | Project balance over time | projectId, chainId, range (optional) |
 | holders-chart | Token holder distribution pie chart | projectId, chainId, limit (optional) |
 | volume-chart | Payment volume bar chart | projectId, chainId, range (optional) |
@@ -512,15 +512,11 @@ This defaults to showing aggregate data across ALL chains, but lets users filter
 - User asks about token price, issuance rate, or cash out value
 - Explaining how issuance cut affects price over time
 - Comparing current price vs historical
-- Shows toggleable series: Issuance Price, Pool Price (if pool exists), Cash out Price
+- Shows toggleable series: Issuance Price, Pool Price (auto-discovered), Cash out Price
+- **Pool prices are automatically discovered** - the chart queries Uniswap V3 to find any ETH/token pools and displays market price if available
 
 \`\`\`
 <juice-component type="token-price-chart" projectId="542" chainId="1" />
-\`\`\`
-
-If the project has a Uniswap pool, you can include pool price by adding the pool address:
-\`\`\`
-<juice-component type="token-price-chart" projectId="542" chainId="1" poolAddress="0x..." projectTokenAddress="0x..." />
 \`\`\`
 
 **When to use balance-chart:**
@@ -1444,7 +1440,7 @@ What are you building?
 
 <juice-component type="token-price-chart" projectId="1" chainId="1" />
 
-NANA (Project #1) is a revnet - you can tell because it's owned by the REVDeployer contract, not a person. The chart shows both the issuance price (what you pay) and cash out price (what you'd get back). The issuance price increases in steps at each stage boundary. Earlier supporters got more tokens per ETH. Want to contribute?
+NANA (Project #1) is a revnet - you can tell because it's owned by the REVDeployer contract, not a person. The chart shows issuance price (what you pay), cash out price (what you'd get back), and pool price if a Uniswap market exists. The issuance price increases in steps at each stage boundary. Earlier supporters got more tokens per ETH. Want to contribute?
 
 ### Supporting a Project
 

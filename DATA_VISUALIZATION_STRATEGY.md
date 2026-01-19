@@ -101,6 +101,70 @@ The current PriceChart uses vanilla SVG. This is fine for simple charts but beco
 
 ---
 
+## 3.5 AMM Pool Price Integration
+
+### Uniswap V3 Subgraph Price Semantics
+
+**CRITICAL:** The Uniswap V3 subgraph price fields have specific semantics that are easy to get wrong:
+
+```
+token0Price = how many token0 you get for 1 token1
+token1Price = how many token1 you get for 1 token0
+```
+
+**To get "quote per project token" (e.g., USDC per PROJECT or ETH per PROJECT):**
+- If project token is token0: use `token1Price` directly (NO inversion)
+- If project token is token1: use `token0Price` directly (NO inversion)
+
+**Common mistake:** Inverting the price when it's already in the correct direction.
+
+```typescript
+// WRONG - double inversion
+const priceStr = isToken0 ? item.token1Price : item.token0Price;
+const ethPerToken = 1 / parseFloat(priceStr); // DON'T DO THIS
+
+// CORRECT - use directly
+const priceStr = isToken0 ? item.token1Price : item.token0Price;
+const quotePerToken = parseFloat(priceStr); // Use as-is
+```
+
+### Pool Discovery
+
+Check pools in order of preference:
+1. WETH pools (most liquid for ETH-based projects)
+2. USDC pools (for USD-based projects)
+
+Fee tiers to check (in order of likelihood): 10000 (1%), 3000 (0.3%), 500 (0.05%)
+
+### Chain-Specific Factory Addresses
+
+**CRITICAL:** Base uses a different Uniswap V3 factory address than other chains:
+
+| Chain | Factory Address |
+|-------|-----------------|
+| Ethereum (1) | `0x1F98431c8aD98523631AE4a59f267346ea31F984` |
+| Optimism (10) | `0x1F98431c8aD98523631AE4a59f267346ea31F984` |
+| Arbitrum (42161) | `0x1F98431c8aD98523631AE4a59f267346ea31F984` |
+| **Base (8453)** | `0x33128a8fC17869897dcE68Ed026d694621f6FDfD` |
+
+### The Graph API
+
+Pool price history requires The Graph's decentralized network:
+
+```
+https://gateway.thegraph.com/api/{API_KEY}/subgraphs/id/{SUBGRAPH_ID}
+```
+
+**Subgraph IDs per chain:**
+- Ethereum: `6XvRX3WHSvzBVTiPdF66XSBVbxWuHqijWANbjJxRDyzr`
+- Optimism: `38P996LTWvW4SKb8BP6bbJZ8pqsa6efRzreNMzaYkUCH`
+- Arbitrum: `3SvHymr16c2tfWziXuGYfa4kaRGDV7XbBb85hMeBHE9p`
+- Base: `HMuAwufqZ1YCRmzL2SfHTVkzZovC9VL2UAKhjvRqKiR1`
+
+An API key is required for production use. Without one, pool price history is unavailable.
+
+---
+
 ## 4. Data Architecture Patterns
 
 ### Pattern 1: Server-Side Aggregation (From revnet-app)
@@ -230,19 +294,28 @@ y = (o * x / s) * ((1 - r) + (r * x / s))
 
 Where:
 - r = cash out tax rate (0 to 1, e.g., 0.05 for 5%)
-- o = surplus (treasury balance in wei)
+- o = surplus (treasury balance in base token units)
 - s = total token supply
 - x = tokens to cash out (use 1 token = 1e18 for per-token price)
 - y = base tokens returned (floor price per token)
 ```
 
+**CRITICAL: Balance Decimals**
+
+The balance must be divided by the correct number of decimals based on the project's base currency:
+- **ETH projects**: 18 decimals (use `1e18`)
+- **USDC projects**: 6 decimals (use `1e6`)
+
+Using wrong decimals will give wildly incorrect results (e.g., `1.28e-16` instead of `0.000128`).
+
 TypeScript implementation:
 
 ```typescript
 function calculateFloorPrice(
-  balance: bigint,      // Treasury balance in wei
-  totalSupply: bigint,  // Total token supply
-  cashOutTaxRate: number // 0-10000 (basis points)
+  balance: bigint,        // Treasury balance in wei/smallest unit
+  totalSupply: bigint,    // Total token supply (always 18 decimals)
+  cashOutTaxRate: number, // 0-10000 (basis points)
+  balanceDecimals: number = 18 // 18 for ETH, 6 for USDC
 ): number {
   if (totalSupply === 0n) return 0;
 
@@ -252,11 +325,21 @@ function calculateFloorPrice(
   // y = (o * x / s) * ((1 - r) + (r * x / s))
   const x = Number(oneToken) / 1e18; // 1 token
   const s = Number(totalSupply) / 1e18;
-  const o = Number(balance) / 1e18;
+  const balanceDivisor = Math.pow(10, balanceDecimals);
+  const o = Number(balance) / balanceDivisor; // Use correct decimals!
 
   const floorPrice = (o * x / s) * ((1 - r) + (r * x / s));
   return floorPrice;
 }
+```
+
+**Usage:**
+```typescript
+// ETH-based project
+const floorPriceEth = calculateFloorPrice(balance, supply, taxRate, 18);
+
+// USDC-based project
+const floorPriceUsdc = calculateFloorPrice(balance, supply, taxRate, 6);
 ```
 
 ---

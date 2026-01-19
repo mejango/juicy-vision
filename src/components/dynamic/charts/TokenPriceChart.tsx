@@ -8,18 +8,16 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { useThemeStore } from '../../../stores'
+import { useThemeStore, useSettingsStore, DEFAULT_THEGRAPH_API_KEY } from '../../../stores'
 import {
   fetchProjectWithRuleset,
   fetchProjectTokenSymbol,
+  fetchProjectTokenAddress,
   fetchAllRulesets,
-  fetchRevnetStages,
   fetchProjectSuckerGroupId,
   fetchSuckerGroupMoments,
   fetchCashOutTaxSnapshots,
   calculateFloorPrice,
-  isRevnet,
-  type RevnetStage,
   type SimpleRuleset,
   type SuckerGroupMoment,
   type CashOutTaxSnapshot,
@@ -28,7 +26,9 @@ import {
   fetchPoolPriceHistory,
   shouldUseHourlyData,
   getPoolRangeStartTimestamp,
+  discoverUniswapPool,
   type PoolPriceDataPoint,
+  type PoolInfo,
 } from '../../../services/uniswap'
 import {
   TimeRange,
@@ -110,6 +110,7 @@ export default function TokenPriceChart({
   projectTokenAddress,
 }: TokenPriceChartProps) {
   const { theme } = useThemeStore()
+  const { theGraphApiKey } = useSettingsStore()
   const isDark = theme === 'dark'
 
   const [range, setRange] = useState<TimeRange>(initialRange)
@@ -121,6 +122,9 @@ export default function TokenPriceChart({
   const [error, setError] = useState<string | null>(null)
   const [tokenSymbol, setTokenSymbol] = useState('TOKEN')
   const [projectStart, setProjectStart] = useState<number>(0)
+  // Auto-discovered pool info
+  const [discoveredPool, setDiscoveredPool] = useState<PoolInfo | null>(null)
+  const [tokenAddress, setTokenAddress] = useState<string | null>(null)
 
   // Toggle state for series visibility
   const [showIssuance, setShowIssuance] = useState(true)
@@ -145,50 +149,32 @@ export default function TokenPriceChart({
         const symbol = await fetchProjectTokenSymbol(projectId, parseInt(chainId))
         setTokenSymbol(symbol || 'TOKEN')
 
-        // Check if this is a Revnet - if so, try to fetch stages
-        const projectIsRevnet = isRevnet(project.owner)
+        // Fetch all historical rulesets using JBRulesets.allOf
         let loadedRulesets: Ruleset[] = []
         let loadedProjectStart = 0
 
-        if (projectIsRevnet) {
-          const revnetStages = await fetchRevnetStages(projectId, parseInt(chainId))
-          if (revnetStages && revnetStages.stages.length > 0) {
-            loadedRulesets = revnetStages.stages.map((stage: RevnetStage) => ({
-              start: stage.startsAtOrAfter,
-              duration: stage.issuanceDecayFrequency,
-              weight: stage.initialIssuance,
-              weightCutPercent: stage.issuanceDecayPercent / 1e9,
-            }))
-            loadedProjectStart = loadedRulesets[0]?.start || Math.floor(Date.now() / 1000)
-          }
-        }
+        const allRulesets = await fetchAllRulesets(projectId, parseInt(chainId))
 
-        // If no rulesets from Revnet stages (either not a Revnet or fetch failed), use allOf
-        // This fetches ALL historical rulesets directly from the contract
-        if (loadedRulesets.length === 0) {
-          const allRulesets = await fetchAllRulesets(projectId, parseInt(chainId))
-
-          if (allRulesets.length > 0) {
-            // allRulesets are already in SimpleRuleset format with weightCutPercent as raw number
-            loadedRulesets = allRulesets.map((r: SimpleRuleset) => ({
-              start: r.start,
-              duration: r.duration,
-              weight: r.weight,
-              weightCutPercent: r.weightCutPercent / 1e9, // Convert from 1e9 basis points
-            }))
-            loadedProjectStart = loadedRulesets[0]?.start || Math.floor(Date.now() / 1000)
-          } else {
-            // Final fallback to current ruleset only
-            const current = project.currentRuleset
-            const startTime = current.start || Math.floor(Date.now() / 1000) - 86400 * 30
-            loadedRulesets = [{
-              start: startTime,
-              duration: current.duration,
-              weight: current.weight,
-              weightCutPercent: parseFloat(current.decayPercent) / 1e9,
-            }]
-            loadedProjectStart = startTime
-          }
+        if (allRulesets.length > 0) {
+          // allRulesets are already in SimpleRuleset format with weightCutPercent as raw number
+          loadedRulesets = allRulesets.map((r: SimpleRuleset) => ({
+            start: r.start,
+            duration: r.duration,
+            weight: r.weight,
+            weightCutPercent: r.weightCutPercent / 1e9, // Convert from 1e9 basis points
+          }))
+          loadedProjectStart = loadedRulesets[0]?.start || Math.floor(Date.now() / 1000)
+        } else {
+          // Fallback to current ruleset only
+          const current = project.currentRuleset
+          const startTime = current.start || Math.floor(Date.now() / 1000) - 86400 * 30
+          loadedRulesets = [{
+            start: startTime,
+            duration: current.duration,
+            weight: current.weight,
+            weightCutPercent: parseFloat(current.decayPercent) / 1e9,
+          }]
+          loadedProjectStart = startTime
         }
 
         setRulesets(loadedRulesets)
@@ -205,6 +191,21 @@ export default function TokenPriceChart({
           setMoments(momentsData)
           setTaxSnapshots(taxData)
         }
+
+        // Auto-discover Uniswap pool if no pool address was provided
+        if (!poolAddress) {
+          const tokenAddr = await fetchProjectTokenAddress(projectId, parseInt(chainId))
+          console.log('[TokenPriceChart] Token address:', tokenAddr)
+          setTokenAddress(tokenAddr)
+
+          if (tokenAddr) {
+            const pool = await discoverUniswapPool(tokenAddr, parseInt(chainId))
+            console.log('[TokenPriceChart] Discovered pool:', pool)
+            setDiscoveredPool(pool)
+          } else {
+            console.log('[TokenPriceChart] No token address found, skipping pool discovery')
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load price data')
       } finally {
@@ -213,12 +214,19 @@ export default function TokenPriceChart({
     }
 
     loadData()
-  }, [projectId, chainId])
+  }, [projectId, chainId, poolAddress])
 
-  // Load pool price data when pool address is provided
+  // Determine if this is a USD-based project (USDC pool)
+  const isUsdBased = discoveredPool?.quoteToken === 'USDC'
+
+  // Load pool price data when pool is available (explicit or discovered)
   useEffect(() => {
     async function loadPoolData() {
-      if (!poolAddress || !projectTokenAddress) {
+      // Use explicit pool address if provided, otherwise use discovered pool
+      const effectivePoolAddress = poolAddress || discoveredPool?.address
+      const effectiveTokenAddress = projectTokenAddress || tokenAddress
+
+      if (!effectivePoolAddress || !effectiveTokenAddress) {
         setPoolPriceData([])
         return
       }
@@ -228,11 +236,12 @@ export default function TokenPriceChart({
         const useHourly = shouldUseHourlyData(range)
 
         const priceData = await fetchPoolPriceHistory(
-          poolAddress,
-          projectTokenAddress,
+          effectivePoolAddress,
+          effectiveTokenAddress,
           parseInt(chainId),
           startTimestamp,
-          useHourly
+          useHourly,
+          theGraphApiKey || DEFAULT_THEGRAPH_API_KEY
         )
 
         setPoolPriceData(priceData)
@@ -243,7 +252,7 @@ export default function TokenPriceChart({
     }
 
     loadPoolData()
-  }, [poolAddress, projectTokenAddress, chainId, range, projectStart])
+  }, [poolAddress, projectTokenAddress, discoveredPool, tokenAddress, chainId, range, projectStart, theGraphApiKey])
 
   // Prepare chart data
   const chartData = useMemo(() => {
@@ -263,6 +272,11 @@ export default function TokenPriceChart({
     // Normalize timestamp to day boundary
     const toDayBoundary = (ts: number) => Math.floor(ts / DAY_SECONDS) * DAY_SECONDS
 
+    // For USD-based projects (USDC pools), don't convert - show raw values
+    // The pool price is already in USDC, and for USDC-terminal projects,
+    // issuance/floor are also effectively in USDC-equivalent terms
+    // This keeps all three lines on the same scale
+
     // Generate issuance price data at daily intervals
     const interval = DAY_SECONDS
     for (let t = rangeStart; t <= rangeEnd; t += interval) {
@@ -277,6 +291,9 @@ export default function TokenPriceChart({
     }
 
     // Add floor price data from moments
+    // Use correct decimals for balance: 6 for USDC, 18 for ETH
+    const balanceDecimals = isUsdBased ? 6 : 18
+
     if (moments.length > 0 && taxSnapshots.length > 0) {
       for (const moment of moments) {
         const dayTs = toDayBoundary(moment.timestamp)
@@ -286,7 +303,7 @@ export default function TokenPriceChart({
         const supply = BigInt(moment.tokenSupply)
         const taxRate = findApplicableTaxRate(moment.timestamp, taxSnapshots)
 
-        const floorPrice = calculateFloorPrice(balance, supply, taxRate)
+        const floorPrice = calculateFloorPrice(balance, supply, taxRate, balanceDecimals)
 
         if (floorPrice > 0) {
           const existing = dataByDay.get(dayTs) || { timestamp: dayTs }
@@ -296,7 +313,7 @@ export default function TokenPriceChart({
       }
     }
 
-    // Add pool price data
+    // Add pool price data (already in correct denomination - USD for USDC pools, ETH for ETH pools)
     for (const poolPoint of poolPriceData) {
       const dayTs = toDayBoundary(poolPoint.timestamp)
       if (dayTs < rangeStart) continue
@@ -335,7 +352,7 @@ export default function TokenPriceChart({
     }
 
     return sortedData
-  }, [rulesets, moments, taxSnapshots, poolPriceData, range, projectStart])
+  }, [rulesets, moments, taxSnapshots, poolPriceData, range, projectStart, isUsdBased])
 
   // Check if we have data for each series
   const hasIssuanceData = chartData.some(d => d.issuancePrice !== undefined)
@@ -386,21 +403,21 @@ export default function TokenPriceChart({
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.issuance }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Issuance:</span>
-            <span className="font-mono">{formatPrice(data.issuancePrice)} ETH</span>
+            <span className="font-mono">{formatPrice(data.issuancePrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
         {data.poolPrice !== undefined && showPool && (
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.pool }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Pool:</span>
-            <span className="font-mono">{formatPrice(data.poolPrice)} ETH</span>
+            <span className="font-mono">{formatPrice(data.poolPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
         {data.cashOutPrice !== undefined && showCashOut && (
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.cashOut }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Cash out:</span>
-            <span className="font-mono">{formatPrice(data.cashOutPrice)} ETH</span>
+            <span className="font-mono">{formatPrice(data.cashOutPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
       </div>
@@ -464,8 +481,8 @@ export default function TokenPriceChart({
                 color={PRICE_COLORS.issuance}
                 onClick={() => setShowIssuance(!showIssuance)}
               />
-              {/* Only show pool toggle if pool address is provided */}
-              {poolAddress && (
+              {/* Show pool toggle if pool address is provided or discovered */}
+              {(poolAddress || discoveredPool) && (
                 <ToggleButton
                   label="Pool Price"
                   active={showPool}
@@ -603,19 +620,19 @@ export default function TokenPriceChart({
             {showIssuance && currentIssuancePrice !== undefined && (
               <span className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.issuance }} />
-                Issuance: {formatPrice(currentIssuancePrice)} ETH / {tokenSymbol}
+                Issuance: {formatPrice(currentIssuancePrice)} {isUsdBased ? 'USDC' : 'ETH'} / {tokenSymbol}
               </span>
             )}
             {showPool && currentPoolPrice !== undefined && (
               <span className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.pool }} />
-                Pool: {formatPrice(currentPoolPrice)} ETH / {tokenSymbol}
+                Pool: {formatPrice(currentPoolPrice)} {isUsdBased ? 'USDC' : 'ETH'} / {tokenSymbol}
               </span>
             )}
             {showCashOut && currentCashOutPrice !== undefined && (
               <span className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.cashOut }} />
-                Cash out: {formatPrice(currentCashOutPrice)} ETH / {tokenSymbol}
+                Cash out: {formatPrice(currentCashOutPrice)} {isUsdBased ? 'USDC' : 'ETH'} / {tokenSymbol}
               </span>
             )}
           </div>

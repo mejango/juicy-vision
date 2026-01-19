@@ -13,12 +13,14 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     paraApiKey,
     pinataJwt,
     ankrApiKey,
+    theGraphApiKey,
     bendystrawEndpoint,
     relayrEndpoint,
     setClaudeApiKey,
     setParaApiKey,
     setPinataJwt,
     setAnkrApiKey,
+    setTheGraphApiKey,
     setBendystrawEndpoint,
     setRelayrEndpoint,
     clearSettings,
@@ -28,6 +30,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [localParaKey, setLocalParaKey] = useState(paraApiKey)
   const [localPinataJwt, setLocalPinataJwt] = useState(pinataJwt)
   const [localAnkrKey, setLocalAnkrKey] = useState(ankrApiKey)
+  const [localTheGraphKey, setLocalTheGraphKey] = useState(theGraphApiKey)
   const [localBendystraw, setLocalBendystraw] = useState(bendystrawEndpoint)
   const [localRelayr, setLocalRelayr] = useState(relayrEndpoint)
   const [showKeys, setShowKeys] = useState(false)
@@ -38,6 +41,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     setParaApiKey(localParaKey)
     setPinataJwt(localPinataJwt)
     setAnkrApiKey(localAnkrKey)
+    setTheGraphApiKey(localTheGraphKey)
     setBendystrawEndpoint(localBendystraw)
     setRelayrEndpoint(localRelayr)
     onClose()
@@ -50,6 +54,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       setLocalParaKey('')
       setLocalPinataJwt('')
       setLocalAnkrKey('')
+      setLocalTheGraphKey('')
     }
   }
 
@@ -153,6 +158,28 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               className="text-juice-cyan hover:underline"
             >
               Get API key from Ankr
+            </a>
+          </p>
+        </div>
+
+        {/* The Graph API Key */}
+        <div>
+          <Input
+            label="The Graph API Key"
+            type={showKeys ? 'text' : 'password'}
+            value={localTheGraphKey}
+            onChange={(e) => setLocalTheGraphKey(e.target.value)}
+            placeholder="02c70b717f22ba9a341a29655139ebd9"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            For Uniswap pool price history. Default key provided.{' '}
+            <a
+              href="https://thegraph.com/studio/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-juice-cyan hover:underline"
+            >
+              Get your own from The Graph
             </a>
           </p>
         </div>

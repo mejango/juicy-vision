@@ -1,11 +1,173 @@
-// Uniswap V3 Subgraph service for fetching pool price history
+// Uniswap V3 service for pool discovery and price history
+import { createPublicClient, http, type Address } from 'viem'
+import { mainnet, optimism, arbitrum, base } from 'viem/chains'
 
-// Subgraph IDs per chain (from The Graph)
+// Subgraph IDs per chain (from The Graph - matching revnet-app)
 const UNISWAP_SUBGRAPH_IDS: Record<number, string> = {
-  1: '5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV', // Ethereum Mainnet
-  10: 'A3Np3RQbaBA6oKJgiwDJeo5T3zrYfGHPWFYayMwtNDum', // Optimism
-  42161: '5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV', // Arbitrum
-  8453: 'ESnjgAG9NjfmHypk4Huu4PVvz55fUwpyrRqHF21thoLJ', // Base
+  1: '6XvRX3WHSvzBVTiPdF66XSBVbxWuHqijWANbjJxRDyzr', // Ethereum Mainnet
+  10: '38P996LTWvW4SKb8BP6bbJZ8pqsa6efRzreNMzaYkUCH', // Optimism
+  42161: '3SvHymr16c2tfWziXuGYfa4kaRGDV7XbBb85hMeBHE9p', // Arbitrum
+  8453: 'HMuAwufqZ1YCRmzL2SfHTVkzZovC9VL2UAKhjvRqKiR1', // Base
+}
+
+// WETH addresses per chain
+const WETH_ADDRESSES: Record<number, Address> = {
+  1: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // Ethereum Mainnet
+  10: '0x4200000000000000000000000000000000000006', // Optimism
+  42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // Arbitrum
+  8453: '0x4200000000000000000000000000000000000006', // Base
+}
+
+// USDC addresses per chain (native USDC where available)
+const USDC_ADDRESSES: Record<number, Address> = {
+  1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // Ethereum Mainnet
+  10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', // Optimism (native USDC)
+  42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Arbitrum (native USDC)
+  8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Base (native USDC)
+}
+
+// Quote tokens to check for pools (in order of preference)
+export type QuoteToken = 'WETH' | 'USDC'
+
+// Uniswap V3 Factory addresses per chain
+// Note: Base uses a different factory address than other chains
+const UNISWAP_V3_FACTORY: Record<number, Address> = {
+  1: '0x1F98431c8aD98523631AE4a59f267346ea31F984',     // Ethereum Mainnet
+  10: '0x1F98431c8aD98523631AE4a59f267346ea31F984',    // Optimism
+  42161: '0x1F98431c8aD98523631AE4a59f267346ea31F984', // Arbitrum
+  8453: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD',  // Base (different!)
+}
+
+// Fee tiers to check (in basis points: 500 = 0.05%, 3000 = 0.3%, 10000 = 1%)
+const FEE_TIERS = [10000, 3000, 500] as const
+
+// Uniswap V3 Factory ABI (just getPool function)
+const FACTORY_ABI = [
+  {
+    name: 'getPool',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'tokenA', type: 'address' },
+      { name: 'tokenB', type: 'address' },
+      { name: 'fee', type: 'uint24' },
+    ],
+    outputs: [{ name: 'pool', type: 'address' }],
+  },
+] as const
+
+// Viem chains mapping - using Record with union of supported chain types
+const VIEM_CHAINS: Record<number, typeof mainnet | typeof optimism | typeof arbitrum | typeof base> = {
+  1: mainnet,
+  10: optimism,
+  42161: arbitrum,
+  8453: base,
+}
+
+// RPC endpoints
+const RPC_ENDPOINTS: Record<number, string> = {
+  1: 'https://eth.llamarpc.com',
+  10: 'https://optimism.llamarpc.com',
+  42161: 'https://arbitrum.llamarpc.com',
+  8453: 'https://base.llamarpc.com',
+}
+
+// Cache for pool addresses
+const poolAddressCache = new Map<string, { address: Address | null; timestamp: number }>()
+const POOL_CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+
+export interface PoolInfo {
+  address: Address
+  fee: number
+  projectTokenAddress: Address
+  quoteToken: QuoteToken
+  quoteTokenAddress: Address
+}
+
+// Discover Uniswap V3 pool for a project token
+export async function discoverUniswapPool(
+  projectTokenAddress: string,
+  chainId: number
+): Promise<PoolInfo | null> {
+  const cacheKey = `${projectTokenAddress.toLowerCase()}-${chainId}`
+  const cached = poolAddressCache.get(cacheKey)
+
+  if (cached && Date.now() - cached.timestamp < POOL_CACHE_DURATION) {
+    if (!cached.address) return null
+    // Note: we don't cache quoteToken info, so we return WETH as default
+    return {
+      address: cached.address,
+      fee: 10000,
+      projectTokenAddress: projectTokenAddress as Address,
+      quoteToken: 'WETH',
+      quoteTokenAddress: WETH_ADDRESSES[chainId],
+    }
+  }
+
+  const weth = WETH_ADDRESSES[chainId]
+  const usdc = USDC_ADDRESSES[chainId]
+  const chain = VIEM_CHAINS[chainId]
+  const rpc = RPC_ENDPOINTS[chainId]
+  const factory = UNISWAP_V3_FACTORY[chainId]
+
+  if (!chain || !rpc || !factory) {
+    console.warn(`[AMM] Unsupported chain ${chainId} for pool discovery`)
+    return null
+  }
+
+  try {
+    const client = createPublicClient({
+      chain,
+      transport: http(rpc),
+    })
+
+    const tokenAddress = projectTokenAddress as Address
+
+    console.log(`[AMM] Discovering pool for token ${tokenAddress} on chain ${chainId}, factory: ${factory}`)
+
+    // Build list of quote tokens to check
+    const quoteTokens: { token: QuoteToken; address: Address }[] = []
+    if (weth) quoteTokens.push({ token: 'WETH', address: weth })
+    if (usdc) quoteTokens.push({ token: 'USDC', address: usdc })
+
+    // Try each quote token and fee tier to find a pool
+    for (const { token: quoteToken, address: quoteAddress } of quoteTokens) {
+      console.log(`[AMM] Checking ${quoteToken} pools (${quoteAddress})...`)
+
+      for (const fee of FEE_TIERS) {
+        const poolAddress = await client.readContract({
+          address: factory,
+          abi: FACTORY_ABI,
+          functionName: 'getPool',
+          args: [tokenAddress, quoteAddress, fee],
+        })
+
+        console.log(`[AMM] ${quoteToken} fee tier ${fee}: pool = ${poolAddress}`)
+
+        // Check if pool exists (not zero address)
+        if (poolAddress && poolAddress !== '0x0000000000000000000000000000000000000000') {
+          poolAddressCache.set(cacheKey, { address: poolAddress, timestamp: Date.now() })
+          console.log(`[AMM] Found ${quoteToken} pool at ${poolAddress} with fee ${fee}`)
+          return {
+            address: poolAddress,
+            fee,
+            projectTokenAddress: tokenAddress,
+            quoteToken,
+            quoteTokenAddress: quoteAddress,
+          }
+        }
+      }
+    }
+
+    console.log('[AMM] No pool found for token')
+
+    // No pool found
+    poolAddressCache.set(cacheKey, { address: null, timestamp: Date.now() })
+    return null
+  } catch (err) {
+    console.error('[AMM] Failed to discover pool:', err)
+    return null
+  }
 }
 
 const SECONDS_PER_DAY = 86400
@@ -36,22 +198,20 @@ interface PoolDataResponse {
   } | null
 }
 
-function getSubgraphUrl(chainId: number): string | null {
+function getSubgraphUrl(chainId: number, apiKey?: string): string | null {
   const subgraphId = UNISWAP_SUBGRAPH_IDS[chainId]
   if (!subgraphId) return null
 
-  // Use The Graph's decentralized network
-  // Note: In production, you'd want to use an API key
-  // For now, use the public gateway which has rate limits
-  const apiKey = import.meta.env.VITE_THEGRAPH_API_KEY
+  // Use The Graph's decentralized network with API key
+  const key = apiKey || import.meta.env.VITE_THEGRAPH_API_KEY
 
-  if (apiKey) {
-    return `https://gateway.thegraph.com/api/${apiKey}/subgraphs/id/${subgraphId}`
+  if (key) {
+    return `https://gateway.thegraph.com/api/${key}/subgraphs/id/${subgraphId}`
   }
 
-  // Fallback to hosted service (deprecated but still works)
-  // This is a fallback - the decentralized network is preferred
-  return `https://api.thegraph.com/subgraphs/id/${subgraphId}`
+  // No API key available - cannot access decentralized network
+  console.warn('[AMM] No Graph API key available - pool price history unavailable')
+  return null
 }
 
 function buildPoolQuery(poolAddress: string, startTimestamp: number, useHourly: boolean): string {
@@ -103,7 +263,8 @@ export async function fetchPoolPriceHistory(
   projectTokenAddress: string,
   chainId: number,
   startTimestamp: number,
-  useHourly: boolean = false
+  useHourly: boolean = false,
+  theGraphApiKey?: string
 ): Promise<PoolPriceDataPoint[]> {
   const cacheKey = `${poolAddress}-${chainId}-${startTimestamp}-${useHourly}`
   const cached = poolDataCache.get(cacheKey)
@@ -112,7 +273,7 @@ export async function fetchPoolPriceHistory(
     return cached.data
   }
 
-  const url = getSubgraphUrl(chainId)
+  const url = getSubgraphUrl(chainId, theGraphApiKey)
   if (!url) {
     console.warn(`[AMM] No subgraph URL for chain ${chainId}`)
     return []
@@ -159,8 +320,12 @@ export async function fetchPoolPriceHistory(
     }
 
     // Extract price data
-    // If project token is token0, we want token1Price (ETH per project token)
-    // If project token is token1, we want token0Price (ETH per project token)
+    // Uniswap V3 subgraph price semantics:
+    // - token0Price = how many token0 you get for 1 token1
+    // - token1Price = how many token1 you get for 1 token0
+    //
+    // If project token is token0, token1Price gives us "quote per project token" (e.g., USDC per PROJECT)
+    // If project token is token1, token0Price gives us "quote per project token" (e.g., ETH per PROJECT)
     const rawData = useHourly ? poolHourData : poolDayData
 
     if (!rawData || rawData.length === 0) {
@@ -175,24 +340,20 @@ export async function fetchPoolPriceHistory(
         : (item as PoolDayData).date
 
       // Get the appropriate price based on token position
+      // If project is token0: token1Price = quote per project (what we want)
+      // If project is token1: token0Price = quote per project (what we want)
       const priceStr = isToken0
         ? (item as PoolHourData | PoolDayData).token1Price
         : (item as PoolHourData | PoolDayData).token0Price
 
-      const price = parseFloat(priceStr)
+      const quotePerToken = parseFloat(priceStr)
 
       // Filter out invalid prices
-      if (isNaN(price) || price <= 0 || !isFinite(price)) {
+      if (isNaN(quotePerToken) || quotePerToken <= 0 || !isFinite(quotePerToken)) {
         continue
       }
 
-      // The price from Uniswap is tokens per ETH, we want ETH per token
-      // So we need to invert it
-      const ethPerToken = 1 / price
-
-      if (isFinite(ethPerToken) && ethPerToken > 0) {
-        priceData.push({ timestamp, price: ethPerToken })
-      }
+      priceData.push({ timestamp, price: quotePerToken })
     }
 
     // Sort by timestamp

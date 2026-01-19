@@ -2,12 +2,14 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 const CURRENT_BENDYSTRAW_ENDPOINT = 'https://bendystraw.xyz/3ZNJpGtazh5fwYoSW59GWDEj/graphql'
+export const DEFAULT_THEGRAPH_API_KEY = '02c70b717f22ba9a341a29655139ebd9'
 
 interface SettingsState {
   claudeApiKey: string
   paraApiKey: string
   pinataJwt: string
   ankrApiKey: string
+  theGraphApiKey: string
   bendystrawEndpoint: string
   relayrEndpoint: string
 
@@ -15,6 +17,7 @@ interface SettingsState {
   setParaApiKey: (key: string) => void
   setPinataJwt: (jwt: string) => void
   setAnkrApiKey: (key: string) => void
+  setTheGraphApiKey: (key: string) => void
   setBendystrawEndpoint: (endpoint: string) => void
   setRelayrEndpoint: (endpoint: string) => void
   clearSettings: () => void
@@ -29,6 +32,7 @@ export const useSettingsStore = create<SettingsState>()(
       paraApiKey: '',
       pinataJwt: '',
       ankrApiKey: '',
+      theGraphApiKey: DEFAULT_THEGRAPH_API_KEY,
       bendystrawEndpoint: CURRENT_BENDYSTRAW_ENDPOINT,
       relayrEndpoint: 'https://api.relayr.ba5ed.com',
 
@@ -36,6 +40,7 @@ export const useSettingsStore = create<SettingsState>()(
       setParaApiKey: (key) => set({ paraApiKey: key }),
       setPinataJwt: (jwt) => set({ pinataJwt: jwt }),
       setAnkrApiKey: (key) => set({ ankrApiKey: key }),
+      setTheGraphApiKey: (key) => set({ theGraphApiKey: key }),
       setBendystrawEndpoint: (endpoint) => set({ bendystrawEndpoint: endpoint }),
       setRelayrEndpoint: (endpoint) => set({ relayrEndpoint: endpoint }),
 
@@ -44,6 +49,7 @@ export const useSettingsStore = create<SettingsState>()(
         paraApiKey: '',
         pinataJwt: '',
         ankrApiKey: '',
+        theGraphApiKey: '',
       }),
 
       isConfigured: () => {
@@ -58,21 +64,30 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'juice-settings',
-      version: 5,
+      version: 6,
       migrate: (persistedState: unknown, version: number) => {
-        const state = persistedState as SettingsState & { pinataApiKey?: string; pinataApiSecret?: string }
+        let state = persistedState as SettingsState & { pinataApiKey?: string; pinataApiSecret?: string }
+
+        // Apply migrations cumulatively
         if (version < 2) {
-          return {
+          state = {
             ...state,
             bendystrawEndpoint: CURRENT_BENDYSTRAW_ENDPOINT,
           }
         }
         if (version < 5) {
           // Migration: remove old pinataApiKey/Secret, use pinataJwt
-          return {
+          state = {
             ...state,
             pinataJwt: '',
             ankrApiKey: '',
+          }
+        }
+        if (version < 6) {
+          // Migration: add theGraphApiKey with default
+          state = {
+            ...state,
+            theGraphApiKey: DEFAULT_THEGRAPH_API_KEY,
           }
         }
         return state
