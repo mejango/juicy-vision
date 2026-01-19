@@ -5,6 +5,10 @@ import TransactionStatus from './TransactionStatus'
 import TransactionPreview from './TransactionPreview'
 import CashOutForm from './CashOutForm'
 import SendPayoutsForm from './SendPayoutsForm'
+import SendReservedTokensForm from './SendReservedTokensForm'
+import UseSurplusAllowanceForm from './UseSurplusAllowanceForm'
+import DeployERC20Form from './DeployERC20Form'
+import QueueRulesetForm from './QueueRulesetForm'
 import RecommendationChips from './RecommendationChips'
 import PriceChart from './PriceChart'
 import ActivityFeed from './ActivityFeed'
@@ -60,6 +64,38 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
     case 'send-payouts-form':
       return (
         <SendPayoutsForm
+          projectId={props.projectId}
+          chainId={props.chainId}
+        />
+      )
+
+    case 'send-reserved-tokens-form':
+      return (
+        <SendReservedTokensForm
+          projectId={props.projectId}
+          chainId={props.chainId}
+        />
+      )
+
+    case 'use-surplus-allowance-form':
+      return (
+        <UseSurplusAllowanceForm
+          projectId={props.projectId}
+          chainId={props.chainId}
+        />
+      )
+
+    case 'deploy-erc20-form':
+      return (
+        <DeployERC20Form
+          projectId={props.projectId}
+          chainId={props.chainId}
+        />
+      )
+
+    case 'queue-ruleset-form':
+      return (
+        <QueueRulesetForm
           projectId={props.projectId}
           chainId={props.chainId}
         />

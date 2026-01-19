@@ -370,6 +370,30 @@ export const CASH_OUT_EVENTS_HISTORY_QUERY = `
   }
 `
 
+// Query to get Revnet operator via permission holders
+// The operator is the address with isRevnetOperator=true and account=REV_DEPLOYER
+export const REVNET_OPERATOR_QUERY = `
+  query RevnetOperator($projectId: Int!, $chainId: Int!) {
+    permissionHolders(
+      where: {
+        projectId: $projectId
+        chainId: $chainId
+        isRevnetOperator: true
+      }
+      limit: 10
+    ) {
+      items {
+        operator
+        account
+        projectId
+        chainId
+        isRevnetOperator
+        permissions
+      }
+    }
+  }
+`
+
 export const ACTIVITY_EVENTS_QUERY = `
   query ActivityEvents($limit: Int, $offset: Int, $orderBy: String, $orderDirection: String) {
     activityEvents(

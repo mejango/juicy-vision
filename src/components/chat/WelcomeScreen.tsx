@@ -605,7 +605,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       </div>
 
       {/* Shuffle & Zoom controls - top right of recommendations area */}
-      <div className="absolute top-4 right-[calc(38%+1rem)] flex gap-2 z-10">
+      <div className="absolute top-4 right-4 flex gap-2 z-10">
         {scale !== 1 && (
           <button
             onClick={handleResetZoom}
@@ -628,117 +628,6 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         >
           Shuffle
         </button>
-      </div>
-
-      {/* Mascot overlay (on top of chips, right side) */}
-      <div className="absolute inset-0 flex pointer-events-none">
-        {/* Left spacer - chips visible area */}
-        <div className="flex-1" />
-
-        {/* Right column - Mascot (38% of main content area) */}
-        <div className={`w-[38%] flex-shrink-0 flex flex-col border-l-4 border-b-4 border-juice-orange backdrop-blur-md pointer-events-auto relative overflow-y-auto hide-scrollbar ${
-          theme === 'dark'
-            ? 'bg-juice-dark/60'
-            : 'bg-white/60'
-        }`}>
-          {/* Pay us button - top right */}
-          <button
-            onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
-            className={`absolute top-4 right-4 z-10 px-3 py-1.5 text-sm border transition-colors ${
-              theme === 'dark'
-                ? 'border-green-500/50 text-green-400 hover:border-green-500 hover:bg-green-500/10 bg-juice-dark/60 backdrop-blur-sm'
-                : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50 bg-white/60 backdrop-blur-sm'
-            }`}
-          >
-            Pay us
-          </button>
-
-          {/* Subtle scroll hint arrow - bottom right */}
-          <div className={`absolute bottom-4 right-4 z-10 animate-bounce ${
-            theme === 'dark' ? 'text-gray-600' : 'text-gray-300'
-          }`}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-          </div>
-
-          {/* Scrollable content */}
-          <div className="flex flex-col items-center py-8 px-4">
-            <div className="h-[45vh] max-h-[380px] min-h-[200px] pointer-events-none">
-              <img
-                src={theme === 'dark' ? '/mascot-dark.png' : '/mascot-light.png'}
-                alt="Juicy Mascot"
-                className="drop-shadow-lg h-full object-contain"
-              />
-            </div>
-
-            <div className="mt-4 pointer-events-none text-center px-2">
-              <p className="text-lg sm:text-xl font-bold text-juice-orange whitespace-nowrap">
-                Fund Your Thing Your Way
-              </p>
-            </div>
-
-            {/* Spacer to push content below the fold */}
-            <div className="h-[30vh]" />
-
-            {/* $JUICY explainer - below the fold */}
-            <div className={`p-4 max-w-[280px] ${
-              theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
-            }`}>
-              <p className="text-xs leading-relaxed">
-                $JUICY is the revenue token that powers this app. When you pay into Juicy Vision, you receive $JUICY tokens proportional to your contribution.
-              </p>
-              <p className="text-xs leading-relaxed mt-3">
-                As the balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business.
-              </p>
-              <p className={`text-xs leading-relaxed mt-3 ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                We run extremely lean. Revenue from the app mostly flows back to $JUICY holders, guaranteed. The more value created, the more everyone benefits. We're in this together.
-              </p>
-              <button
-                onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
-                className={`mt-4 px-3 py-1.5 text-sm border transition-colors ${
-                  theme === 'dark'
-                    ? 'border-green-500/50 text-green-400 hover:border-green-500 hover:bg-green-500/10'
-                    : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50'
-                }`}
-              >
-                Pay us
-              </button>
-              <p className={`text-xs leading-relaxed mt-4 pt-4 border-t ${
-                theme === 'dark' ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-200'
-              }`}>
-                Uses{' '}
-                <a
-                  href="https://revnet.app"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`underline hover:no-underline ${
-                    theme === 'dark' ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
-                  }`}
-                >
-                  revnets
-                </a>
-                , powered by{' '}
-                <a
-                  href="https://docs.juicebox.money"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`underline hover:no-underline ${
-                    theme === 'dark' ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
-                  }`}
-                >
-                  Juicebox
-                </a>
-                , secured by Ethereum, Optimism, Base, and Arbitrum.
-              </p>
-            </div>
-
-            {/* Bottom padding */}
-            <div className="h-8" />
-          </div>
-        </div>
       </div>
     </div>
   )

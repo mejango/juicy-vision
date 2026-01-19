@@ -10,6 +10,10 @@ export {
   buildCashOutTransaction,
   buildSendPayoutsTransaction,
   submitTransaction,
+  // Omnichain ruleset queueing
+  buildQueueRulesetTransaction,
+  buildOmnichainQueueRulesetTransactions,
+  calculateSynchronizedStartTime,
   // Types
   type QuoteRequest,
   type Quote,
@@ -21,4 +25,13 @@ export {
   type JBSendPayoutsRequest,
   type JBTransactionData,
   type JBTransactionResponse,
+  type JBRulesetMetadataConfig,
+  type JBSplitConfig,
+  type JBSplitGroupConfig,
+  type JBCurrencyAmountConfig,
+  type JBFundAccessLimitGroupConfig,
+  type JBRulesetConfig,
+  type JBQueueRulesetRequest,
+  type JBOmnichainQueueRequest,
+  type JBOmnichainQueueResponse,
 } from './client'

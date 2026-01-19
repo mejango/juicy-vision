@@ -4,21 +4,17 @@ import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
   fetchProject,
-  fetchDistributablePayout,
   fetchConnectedChains,
   fetchProjectSplits,
   fetchProjectWithRuleset,
   type Project,
-  type DistributablePayout,
   type ConnectedChain,
-  type JBSplitData,
   type FundAccessLimits,
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
-import { resolveEnsName, truncateAddress } from '../../utils/ens'
-import { SendPayoutsModal } from '../payment'
+import { UseSurplusAllowanceModal } from '../payment'
 
-interface SendPayoutsFormProps {
+interface UseSurplusAllowanceFormProps {
   projectId: string
   chainId?: string
 }
@@ -31,14 +27,15 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string
   42161: { name: 'Arbitrum', shortName: 'ARB', slug: 'arb', color: '#28A0F0' },
 }
 
-// Per-chain payout data
-interface ChainPayoutData {
+// Per-chain surplus allowance data
+interface ChainSurplusData {
   chainId: number
   projectId: number
-  distributablePayout: DistributablePayout | null
-  payoutSplits: JBSplitData[]
   fundAccessLimits: FundAccessLimits | null
   balance: string
+  surplusAllowance: bigint
+  usedSurplusAllowance: bigint
+  isUnlimited: boolean
   baseCurrency: number // 1 = ETH, 2 = USD
 }
 
@@ -49,7 +46,7 @@ function InlineChainSelector({
   onSelect,
   isDark,
 }: {
-  chainData: ChainPayoutData[]
+  chainData: ChainSurplusData[]
   selectedChainId: number | null
   onSelect: (chainId: number) => void
   isDark: boolean
@@ -61,6 +58,7 @@ function InlineChainSelector({
       {chainData.map(cd => {
         const chain = CHAIN_INFO[cd.chainId] || { name: `Chain ${cd.chainId}`, shortName: String(cd.chainId), color: '#888888' }
         const isSelected = selectedChainId === cd.chainId
+        const hasAllowance = cd.surplusAllowance > 0n || cd.isUnlimited
         return (
           <button
             key={cd.chainId}
@@ -80,6 +78,9 @@ function InlineChainSelector({
               style={{ backgroundColor: chain.color }}
             />
             {chain.shortName}
+            {hasAllowance && (
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" title="Has surplus allowance" />
+            )}
           </button>
         )
       })}
@@ -87,12 +88,17 @@ function InlineChainSelector({
   )
 }
 
-export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayoutsFormProps) {
+// Helper to check if unlimited
+const isUnlimitedValue = (amount: bigint | undefined): boolean => {
+  if (!amount) return false
+  return amount > BigInt('1000000000000000000000000000000')
+}
+
+export default function UseSurplusAllowanceForm({ projectId, chainId = '1' }: UseSurplusAllowanceFormProps) {
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [amount, setAmount] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [showSplits, setShowSplits] = useState(false)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -101,19 +107,35 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
   const isConnected = !!wallet?.address
 
   // Omnichain state
-  const [chainPayoutData, setChainPayoutData] = useState<ChainPayoutData[]>([])
+  const [chainSurplusData, setChainSurplusData] = useState<ChainSurplusData[]>([])
   const [selectedChainId, setSelectedChainId] = useState<number>(parseInt(chainId))
-  const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
 
-  const isOmnichain = chainPayoutData.length > 1
+  const isOmnichain = chainSurplusData.length > 1
 
   // Get active chain data
-  const activeChainData = chainPayoutData.find(cd => cd.chainId === selectedChainId) || chainPayoutData[0]
+  const activeChainData = chainSurplusData.find(cd => cd.chainId === selectedChainId) || chainSurplusData[0]
   const chainInfo = CHAIN_INFO[selectedChainId] || CHAIN_INFO[1]
   const baseCurrency = activeChainData?.baseCurrency || 1
   const currencyLabel = baseCurrency === 2 ? 'USDC' : 'ETH'
 
-  // Fetch project data and distributable payout for all chains
+  // Calculate available surplus
+  const surplusAllowance = activeChainData?.surplusAllowance || 0n
+  const usedSurplusAllowance = activeChainData?.usedSurplusAllowance || 0n
+  const isUnlimited = activeChainData?.isUnlimited || false
+  const treasuryBalance = activeChainData ? parseFloat(activeChainData.balance) / 1e18 : 0
+
+  // Available = min(allowance - used, treasury balance) for non-unlimited
+  // For unlimited, available = treasury balance
+  const availableAllowance = isUnlimited
+    ? treasuryBalance
+    : Math.min(
+        parseFloat(formatEther(surplusAllowance > usedSurplusAllowance ? surplusAllowance - usedSurplusAllowance : 0n)),
+        treasuryBalance
+      )
+
+  const allowanceDisabled = !isUnlimited && surplusAllowance === 0n
+
+  // Fetch data for all chains
   useEffect(() => {
     async function load() {
       try {
@@ -132,16 +154,12 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
           ? connectedChains
           : [{ chainId: primaryChainId, projectId: parseInt(projectId) }]
 
-        // Fetch payout data from all chains in parallel
-        const chainDataPromises = chainsToFetch.map(async (chain): Promise<ChainPayoutData> => {
+        // Fetch surplus data from all chains in parallel
+        const chainDataPromises = chainsToFetch.map(async (chain): Promise<ChainSurplusData> => {
           try {
-            const [payoutData, chainProject] = await Promise.all([
-              fetchDistributablePayout(String(chain.projectId), chain.chainId),
-              fetchProjectWithRuleset(String(chain.projectId), chain.chainId),
-            ])
+            const chainProject = await fetchProjectWithRuleset(String(chain.projectId), chain.chainId)
 
-            // Fetch splits if we have a ruleset
-            let payoutSplits: JBSplitData[] = []
+            // Fetch fund access limits if we have a ruleset
             let fundAccessLimits: FundAccessLimits | null = null
             if (chainProject?.currentRuleset?.id) {
               const splitsData = await fetchProjectSplits(
@@ -149,60 +167,46 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
                 chain.chainId,
                 chainProject.currentRuleset.id
               )
-              payoutSplits = splitsData.payoutSplits
               fundAccessLimits = splitsData.fundAccessLimits || null
             }
+
+            // Extract surplus allowance info
+            const surplusAllowanceData = fundAccessLimits?.surplusAllowances?.[0]
+            const surplusAllowanceAmount = surplusAllowanceData?.amount
+              ? BigInt(surplusAllowanceData.amount)
+              : 0n
 
             return {
               chainId: chain.chainId,
               projectId: chain.projectId,
-              distributablePayout: payoutData,
-              payoutSplits,
               fundAccessLimits,
               balance: chainProject?.balance || '0',
+              surplusAllowance: surplusAllowanceAmount,
+              usedSurplusAllowance: 0n, // Would need on-chain read for actual used value
+              isUnlimited: isUnlimitedValue(surplusAllowanceAmount),
               baseCurrency: chainProject?.currentRuleset?.baseCurrency || 1,
             }
           } catch (err) {
-            console.error(`Failed to fetch payout data for chain ${chain.chainId}:`, err)
+            console.error(`Failed to fetch surplus data for chain ${chain.chainId}:`, err)
             return {
               chainId: chain.chainId,
               projectId: chain.projectId,
-              distributablePayout: null,
-              payoutSplits: [],
               fundAccessLimits: null,
               balance: '0',
+              surplusAllowance: 0n,
+              usedSurplusAllowance: 0n,
+              isUnlimited: false,
               baseCurrency: 1,
             }
           }
         })
 
         const allChainData = await Promise.all(chainDataPromises)
-        setChainPayoutData(allChainData)
+        setChainSurplusData(allChainData)
 
-        // Set initial selected chain
-        setSelectedChainId(primaryChainId)
-
-        // Resolve ENS names for split beneficiaries
-        const allBeneficiaries = new Set<string>()
-        allChainData.forEach(cd => {
-          cd.payoutSplits.forEach(split => {
-            if (split.beneficiary && split.projectId === 0) {
-              allBeneficiaries.add(split.beneficiary.toLowerCase())
-            }
-          })
-        })
-
-        const ensPromises = Array.from(allBeneficiaries).map(async addr => {
-          const ens = await resolveEnsName(addr)
-          return { addr, ens }
-        })
-
-        const ensResults = await Promise.all(ensPromises)
-        const ensMap: Record<string, string> = {}
-        ensResults.forEach(({ addr, ens }) => {
-          if (ens) ensMap[addr] = ens
-        })
-        setSplitEnsNames(ensMap)
+        // Set initial selected chain to one with allowance, or primary
+        const chainWithAllowance = allChainData.find(cd => cd.surplusAllowance > 0n || cd.isUnlimited)
+        setSelectedChainId(chainWithAllowance?.chainId || primaryChainId)
 
       } catch (err) {
         console.error('Failed to load project:', err)
@@ -213,35 +217,10 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
     load()
   }, [projectId, chainId])
 
-  // Available balance for payouts
-  const availableBalance = (() => {
-    if (activeChainData?.distributablePayout) {
-      try {
-        return parseFloat(formatEther(activeChainData.distributablePayout.available))
-      } catch {
-        return 0
-      }
-    }
-    return 0
-  })()
-
-  // Check if payouts are disabled
-  const payoutsDisabled = activeChainData?.distributablePayout
-    ? activeChainData.distributablePayout.limit === 0n
-    : true
-
-  // Calculate fee and net payout
   const amountNum = parseFloat(amount) || 0
-  const protocolFee = amountNum * 0.025
-  const netPayout = amountNum - protocolFee
 
-  // Get payout limit info
-  const payoutLimit = activeChainData?.distributablePayout?.limit || 0n
-  const usedPayout = activeChainData?.distributablePayout?.used || 0n
-  const isUnlimited = payoutLimit > BigInt('1000000000000000000000000000000')
-
-  const handleSendPayouts = () => {
-    if (!amount || parseFloat(amount) <= 0) return
+  const handleUseSurplus = () => {
+    if (!amount || amountNum <= 0) return
 
     if (!isConnected) {
       openModal()
@@ -277,13 +256,13 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
           {logoUrl ? (
             <img src={logoUrl} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" />
           ) : (
-            <div className="w-14 h-14 bg-juice-orange/20 flex items-center justify-center">
-              <span className="text-2xl">📤</span>
+            <div className="w-14 h-14 bg-purple-500/20 flex items-center justify-center">
+              <span className="text-2xl">💰</span>
             </div>
           )}
           <div className="flex-1 min-w-0">
             <h3 className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Distribute Payouts
+              Use Surplus Allowance
             </h3>
             <a
               href={projectUrl}
@@ -303,7 +282,7 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
               Select chain:
             </div>
             <InlineChainSelector
-              chainData={chainPayoutData}
+              chainData={chainSurplusData}
               selectedChainId={selectedChainId}
               onSelect={setSelectedChainId}
               isDark={isDark}
@@ -311,142 +290,61 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
           </div>
         )}
 
-        {/* Payout Limit Status */}
+        {/* Surplus Allowance Status */}
         <div className={`p-3 mb-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
           <div className="flex justify-between items-center mb-2">
             <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Payout Limit
+              Surplus Allowance
             </span>
             <span className={`text-xs font-mono ${
-              payoutsDisabled ? 'text-amber-400' : isUnlimited ? 'text-emerald-400' : ''
+              allowanceDisabled ? 'text-amber-400' : isUnlimited ? 'text-emerald-400' : ''
             }`}>
-              {payoutsDisabled
+              {allowanceDisabled
                 ? 'None'
                 : isUnlimited
                   ? 'Unlimited'
-                  : `${parseFloat(formatEther(payoutLimit)).toFixed(4)} ${currencyLabel}`
+                  : `${parseFloat(formatEther(surplusAllowance)).toFixed(4)} ${currencyLabel}`
               }
             </span>
           </div>
-          {!payoutsDisabled && !isUnlimited && (
+
+          {!allowanceDisabled && !isUnlimited && (
             <>
               <div className="flex justify-between items-center mb-1">
                 <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   Used this cycle
                 </span>
                 <span className="text-xs font-mono">
-                  {parseFloat(formatEther(usedPayout)).toFixed(4)} {currencyLabel}
+                  {parseFloat(formatEther(usedSurplusAllowance)).toFixed(4)} {currencyLabel}
                 </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className={`text-xs font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                  Available to distribute
-                </span>
-                <span className={`text-xs font-mono font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                  {availableBalance.toFixed(4)} {currencyLabel}
-                </span>
-              </div>
-              {/* Progress bar */}
-              <div className={`mt-2 h-1.5 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}>
-                <div
-                  className="h-full bg-emerald-500 transition-all"
-                  style={{
-                    width: `${Math.min(100, Number(usedPayout) / Number(payoutLimit) * 100)}%`
-                  }}
-                />
               </div>
             </>
           )}
-        </div>
 
-        {/* Splits Preview */}
-        {activeChainData && activeChainData.payoutSplits.length > 0 && (
-          <div className={`mb-3 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-            <button
-              onClick={() => setShowSplits(!showSplits)}
-              className={`w-full flex items-center justify-between py-2 text-xs ${
-                isDark ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <span className="font-medium">
-                Payout Recipients ({activeChainData.payoutSplits.length})
-              </span>
-              <span>{showSplits ? '▲' : '▼'}</span>
-            </button>
-
-            {showSplits && (
-              <div className={`space-y-1.5 py-2 ${isDark ? 'border-t border-white/10' : 'border-t border-gray-200'}`}>
-                {activeChainData.payoutSplits.map((split, idx) => {
-                  const percent = (split.percent / 1e9) * 100
-                  const beneficiaryKey = split.beneficiary.toLowerCase()
-                  const displayName = splitEnsNames[beneficiaryKey] || truncateAddress(split.beneficiary)
-                  const isProject = split.projectId > 0
-
-                  // Calculate estimated amount if we have an amount entered
-                  const estimatedAmount = amountNum > 0
-                    ? (netPayout * percent / 100).toFixed(4)
-                    : null
-
-                  return (
-                    <div key={idx} className={`flex items-center justify-between p-2 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
-                      <div className="flex items-center gap-2">
-                        {isProject ? (
-                          <span className="text-xs px-1.5 py-0.5 bg-purple-500/20 text-purple-400">
-                            Project #{split.projectId}
-                          </span>
-                        ) : (
-                          <span className="font-mono text-xs text-juice-orange">
-                            {displayName}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {estimatedAmount && (
-                          <span className={`font-mono text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {estimatedAmount} {currencyLabel}
-                          </span>
-                        )}
-                        <span className="font-mono text-xs text-emerald-400">{percent.toFixed(2)}%</span>
-                      </div>
-                    </div>
-                  )
-                })}
-                {/* Project treasury remainder */}
-                {(() => {
-                  const totalPercent = activeChainData.payoutSplits.reduce((sum, s) => sum + (s.percent / 1e9) * 100, 0)
-                  const remainder = 100 - totalPercent
-                  if (remainder > 0.01) {
-                    const estimatedAmount = amountNum > 0
-                      ? (netPayout * remainder / 100).toFixed(4)
-                      : null
-                    return (
-                      <div className={`flex items-center justify-between p-2 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
-                        <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          Project treasury
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {estimatedAmount && (
-                            <span className={`font-mono text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {estimatedAmount} {currencyLabel}
-                            </span>
-                          )}
-                          <span className="font-mono text-xs text-emerald-400">{remainder.toFixed(2)}%</span>
-                        </div>
-                      </div>
-                    )
-                  }
-                  return null
-                })()}
-              </div>
-            )}
+          <div className="flex justify-between items-center">
+            <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Treasury balance
+            </span>
+            <span className="text-xs font-mono">
+              {treasuryBalance.toFixed(4)} {currencyLabel}
+            </span>
           </div>
-        )}
+
+          <div className={`flex justify-between items-center mt-2 pt-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+            <span className={`text-xs font-medium ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>
+              Available to withdraw
+            </span>
+            <span className={`text-xs font-mono font-medium ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>
+              {availableAllowance.toFixed(4)} {currencyLabel}
+            </span>
+          </div>
+        </div>
 
         {/* Form */}
         <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
           <div className="flex items-center justify-between mb-2">
             <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Amount to distribute
+              Amount to withdraw
             </div>
           </div>
 
@@ -461,14 +359,14 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
                 type="number"
                 step="0.01"
                 min="0"
-                max={availableBalance}
+                max={availableAllowance}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.0"
-                disabled={payoutsDisabled}
+                disabled={allowanceDisabled || availableAllowance <= 0}
                 className={`flex-1 px-3 py-2 text-sm bg-transparent outline-none ${
                   isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
-                } ${payoutsDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                } ${allowanceDisabled || availableAllowance <= 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
               <span className={`px-3 py-2 text-sm border-l ${
                 isDark ? 'border-white/10 text-gray-400' : 'border-gray-200 text-gray-500'
@@ -477,23 +375,23 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
               </span>
             </div>
             <button
-              onClick={handleSendPayouts}
-              disabled={!amount || parseFloat(amount) <= 0 || payoutsDisabled}
+              onClick={handleUseSurplus}
+              disabled={!amount || amountNum <= 0 || allowanceDisabled || availableAllowance <= 0}
               className={`px-5 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
-                !amount || parseFloat(amount) <= 0 || payoutsDisabled
+                !amount || amountNum <= 0 || allowanceDisabled || availableAllowance <= 0
                   ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                  : 'bg-juice-orange hover:bg-juice-orange/90 text-black'
+                  : 'bg-purple-500 hover:bg-purple-500/90 text-white'
               }`}
             >
-              Send
+              Withdraw
             </button>
           </div>
 
           {/* Quick amount options */}
-          {!payoutsDisabled && availableBalance > 0 && (
+          {!allowanceDisabled && availableAllowance > 0 && (
             <div className="flex gap-2 mt-2">
               {[0.25, 0.5, 0.75].map(fraction => {
-                const val = (availableBalance * fraction).toFixed(4)
+                const val = (availableAllowance * fraction).toFixed(4)
                 return (
                   <button
                     key={fraction}
@@ -509,37 +407,32 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
                 )
               })}
               <button
-                onClick={() => setAmount(availableBalance.toFixed(4))}
+                onClick={() => setAmount(availableAllowance.toFixed(4))}
                 className={`flex-1 px-2 py-1 text-xs transition-colors ${
-                  amount === availableBalance.toFixed(4)
-                    ? isDark ? 'bg-juice-orange/30 text-juice-orange' : 'bg-orange-100 text-orange-700'
-                    : isDark ? 'bg-juice-orange/10 text-juice-orange hover:bg-juice-orange/20' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'
+                  amount === availableAllowance.toFixed(4)
+                    ? isDark ? 'bg-purple-500/30 text-purple-400' : 'bg-purple-100 text-purple-700'
+                    : isDark ? 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20' : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
                 }`}
               >
                 max
               </button>
             </div>
           )}
-
-          {/* Fee preview */}
-          {amountNum > 0 && (
-            <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Net to splits: <span className="font-mono">{netPayout.toFixed(4)} {currencyLabel}</span>
-              <span className={isDark ? 'text-gray-500' : 'text-gray-400'}> (2.5% fee)</span>
-            </div>
-          )}
         </div>
 
         {/* Info */}
         <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          {payoutsDisabled
-            ? 'No payout limit is configured for this ruleset. Payouts are not available.'
-            : 'Distribute treasury funds to the payout split recipients. A 2.5% protocol fee applies.'}
+          {allowanceDisabled
+            ? 'No surplus allowance is configured for this ruleset. The project owner cannot withdraw surplus funds.'
+            : isUnlimited
+              ? 'The project has unlimited surplus allowance. This is typically used by Revnets to facilitate loans against treasury funds.'
+              : 'Withdraw funds from the treasury surplus. Only the project owner can use this allowance.'
+          }
         </p>
       </div>
 
       {/* Modal */}
-      <SendPayoutsModal
+      <UseSurplusAllowanceModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
         projectId={projectId}

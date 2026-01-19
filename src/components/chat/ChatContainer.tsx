@@ -43,7 +43,12 @@ function downloadMarkdown(content: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export default function ChatContainer() {
+interface ChatContainerProps {
+  topOnly?: boolean
+  bottomOnly?: boolean
+}
+
+export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProps = {}) {
   const {
     activeConversationId,
     getActiveConversation,
@@ -59,7 +64,9 @@ export default function ChatContainer() {
   const { claudeApiKey, isConfigured } = useSettingsStore()
   const { theme } = useThemeStore()
   const [error, setError] = useState<string | null>(null)
+  const [isPromptStuck, setIsPromptStuck] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const dockRef = useRef<HTMLDivElement | null>(null)
 
   const conversation = getActiveConversation()
   const messages = conversation?.messages || []
@@ -159,8 +166,22 @@ export default function ChatContainer() {
     }
   }, [handleSend])
 
+  // Detect when dock is scrolled to show background on sticky prompt
+  useEffect(() => {
+    const dock = dockRef.current
+    if (!dock) return
+
+    const handleScroll = () => {
+      // Show background when scrolled more than a few pixels
+      setIsPromptStuck(dock.scrollTop > 10)
+    }
+
+    dock.addEventListener('scroll', handleScroll)
+    return () => dock.removeEventListener('scroll', handleScroll)
+  }, [messages.length])
+
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden relative">
       {/* Main content area - chips, mascot, messages, input */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Error banner */}
@@ -176,13 +197,52 @@ export default function ChatContainer() {
           </div>
         )}
 
-        {/* Messages or Welcome - scrollable area */}
-        {/* Golden ratio: content ~62%, dock ~38% when on welcome screen */}
-        <div className={`overflow-y-auto ${messages.length === 0 ? 'h-[62vh]' : 'flex-1'}`}>
-          {messages.length === 0 ? (
-            <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
-          ) : (
-            <>
+        {messages.length === 0 ? (
+          <>
+            {/* Welcome screen (recommendations) - only show if topOnly or neither specified */}
+            {(topOnly || (!topOnly && !bottomOnly)) && (
+              <div className="flex-1 overflow-hidden">
+                <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
+              </div>
+            )}
+
+            {/* Prompt dock - only show if bottomOnly or neither specified */}
+            {(bottomOnly || (!topOnly && !bottomOnly)) && (
+              <div
+                ref={dockRef}
+                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0 z-20 h-[38%] border-t-4 border-juice-orange'} overflow-y-auto backdrop-blur-md ${
+                  theme === 'dark' ? 'bg-juice-dark/80' : 'bg-white/80'
+                }`}
+              >
+                {/* Spacer to position prompt at 38% from top (golden ratio) */}
+                <div className="h-[38%]" />
+                {/* Welcome greeting */}
+                <WelcomeGreeting />
+                {/* Prompt bar sticks at top when scrolled - background only when stuck */}
+                <div className={`sticky top-0 z-10 transition-colors ${
+                  isPromptStuck
+                    ? theme === 'dark' ? 'bg-juice-dark/95 backdrop-blur-sm' : 'bg-white/95 backdrop-blur-sm'
+                    : ''
+                }`}>
+                  <ChatInput
+                    onSend={handleSend}
+                    disabled={isStreaming}
+                    hideBorder={true}
+                    hideWalletInfo={true}
+                    compact={true}
+                    placeholder={placeholder}
+                  />
+                </div>
+                {/* Wallet info and conversation history scroll */}
+                <WalletInfo />
+                <ConversationHistory />
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Messages scrollable area */}
+            <div className="overflow-y-auto flex-1">
               {/* Export button */}
               <div className={`flex justify-end px-4 py-2 border-b ${
                 theme === 'dark' ? 'border-white/10' : 'border-gray-200'
@@ -202,44 +262,21 @@ export default function ChatContainer() {
                 </button>
               </div>
               <MessageList messages={messages} />
-            </>
-          )}
-        </div>
-
-        {/* Input dock - golden ratio (38%) when on welcome screen, shrink when chatting */}
-        {/* Whole dock scrolls, prompt sticks at top when scrolled */}
-        <div className={`relative z-20 ${messages.length === 0
-          ? 'h-[38vh] overflow-y-auto'
-          : 'shrink-0'
-        }`}>
-          {/* Welcome greeting scrolls away */}
-          {messages.length === 0 && (
-            <div className="pt-16">
-              <WelcomeGreeting />
             </div>
-          )}
-          {/* Prompt bar sticks at top when scrolled */}
-          <div className={messages.length === 0
-            ? `sticky top-0 z-10 ${theme === 'dark' ? 'bg-[#1a1a1a]' : 'bg-white'}`
-            : ''
-          }>
-            <ChatInput
-              onSend={handleSend}
-              disabled={isStreaming}
-              hideBorder={messages.length === 0}
-              hideWalletInfo={messages.length === 0}
-              compact={messages.length === 0}
-              placeholder={placeholder}
-            />
-          </div>
-          {/* Wallet info and conversation history scroll */}
-          {messages.length === 0 && (
-            <>
-              <WalletInfo />
-              <ConversationHistory />
-            </>
-          )}
-        </div>
+
+            {/* Input dock - normal position when chatting */}
+            <div className="shrink-0">
+              <ChatInput
+                onSend={handleSend}
+                disabled={isStreaming}
+                hideBorder={false}
+                hideWalletInfo={false}
+                compact={false}
+                placeholder={placeholder}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

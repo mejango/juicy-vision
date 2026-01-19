@@ -1,7 +1,7 @@
 import { GraphQLClient } from 'graphql-request'
 import { createPublicClient, http } from 'viem'
 import { useSettingsStore } from '../../stores'
-import { VIEM_CHAINS, ZERO_ADDRESS, REV_DEPLOYER, JB_CONTRACTS, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
+import { VIEM_CHAINS, ZERO_ADDRESS, REV_DEPLOYER, JB_CONTRACTS, JB_CONTRACTS_V5, RPC_ENDPOINTS, USDC_ADDRESSES, type SupportedChainId } from '../../constants'
 import { createCache, CACHE_DURATIONS } from '../../utils'
 import {
   PROJECT_QUERY,
@@ -21,6 +21,7 @@ import {
   SUCKER_GROUP_MOMENTS_QUERY,
   PAY_EVENTS_HISTORY_QUERY,
   CASH_OUT_EVENTS_HISTORY_QUERY,
+  REVNET_OPERATOR_QUERY,
 } from './queries'
 
 export interface ProjectMetadata {
@@ -42,15 +43,22 @@ export interface ProjectRuleset {
   weight: string
   weightCutPercent?: number
   decayPercent: string
+  // Ruleset metadata flags
   pausePay: boolean
+  pauseCreditTransfers?: boolean
   allowOwnerMinting: boolean
   allowSetCustomToken?: boolean
   allowTerminalMigration?: boolean
-  allowSetController?: boolean
   allowSetTerminals?: boolean
-  allowCreditTransfers?: boolean
+  allowSetController?: boolean
+  allowAddAccountingContext?: boolean
+  allowAddPriceFeed?: boolean
+  ownerMustSendPayouts?: boolean
   holdFees?: boolean
   useTotalSurplusForCashOuts?: boolean
+  useDataHookForPay?: boolean
+  useDataHookForCashOut?: boolean
+  dataHook?: string
   reservedPercent: number
   cashOutTaxRate: number
   baseCurrency?: number
@@ -517,6 +525,59 @@ const RULESET_COMPONENTS = [
   { name: 'metadata', type: 'uint256' },
 ] as const
 
+// Decode packed ruleset metadata from uint256
+// JB V5 metadata packing (from JBRulesetMetadataResolver):
+// - reservedPercent: bits 0-15 (uint16)
+// - cashOutTaxRate: bits 16-31 (uint16)
+// - baseCurrency: bits 32-63 (uint32)
+// - pausePay: bit 64
+// - pauseCreditTransfers: bit 65
+// - allowOwnerMinting: bit 66
+// - allowSetCustomToken: bit 67
+// - allowTerminalMigration: bit 68
+// - allowSetTerminals: bit 69
+// - allowSetController: bit 70
+// - allowAddAccountingContext: bit 71
+// - allowAddPriceFeed: bit 72
+// - ownerMustSendPayouts: bit 73
+// - holdFees: bit 74
+// - useTotalSurplusForCashOuts: bit 75
+// - useDataHookForPay: bit 76
+// - useDataHookForCashOut: bit 77
+// - dataHook: bits 80-239 (address, 160 bits)
+// - metadata: bits 240-255 (uint16)
+function decodeRulesetMetadata(packed: bigint) {
+  const getBits = (value: bigint, start: number, length: number): bigint => {
+    const mask = (1n << BigInt(length)) - 1n
+    return (value >> BigInt(start)) & mask
+  }
+  const getBit = (value: bigint, bit: number): boolean => {
+    return ((value >> BigInt(bit)) & 1n) === 1n
+  }
+
+  return {
+    reservedPercent: Number(getBits(packed, 0, 16)),
+    cashOutTaxRate: Number(getBits(packed, 16, 16)),
+    baseCurrency: Number(getBits(packed, 32, 32)),
+    pausePay: getBit(packed, 64),
+    pauseCreditTransfers: getBit(packed, 65),
+    allowOwnerMinting: getBit(packed, 66),
+    allowSetCustomToken: getBit(packed, 67),
+    allowTerminalMigration: getBit(packed, 68),
+    allowSetTerminals: getBit(packed, 69),
+    allowSetController: getBit(packed, 70),
+    allowAddAccountingContext: getBit(packed, 71),
+    allowAddPriceFeed: getBit(packed, 72),
+    ownerMustSendPayouts: getBit(packed, 73),
+    holdFees: getBit(packed, 74),
+    useTotalSurplusForCashOuts: getBit(packed, 75),
+    useDataHookForPay: getBit(packed, 76),
+    useDataHookForCashOut: getBit(packed, 77),
+    dataHook: `0x${getBits(packed, 80, 160).toString(16).padStart(40, '0')}` as `0x${string}`,
+    metadata: Number(getBits(packed, 240, 16)),
+  }
+}
+
 // ABI for JBRulesets - multiple functions for ruleset queries
 const JB_RULESETS_ABI = [
   {
@@ -606,10 +667,14 @@ export async function fetchProjectWithRuleset(
 
     // Fetch ruleset from on-chain via the project's controller
     // Important: Projects can have different controllers, so we must look up via JBDirectory
+    // ALSO: Revnets use V5 contracts, non-Revnets use V5.1 contracts
     let currentRuleset: ProjectRuleset | null = null
     const publicClient = getPublicClient(chainId)
     if (publicClient) {
       try {
+        // Determine if project is a Revnet to use correct JBRulesets version
+        const projectIsRevnet = isRevnet(data.project.owner)
+        const rulesetsContract = projectIsRevnet ? JB_CONTRACTS_V5.JBRulesets : JB_CONTRACTS.JBRulesets
 
         // Get the controller address for this project from JBDirectory
         const controllerAddress = await publicClient.readContract({
@@ -621,12 +686,42 @@ export async function fetchProjectWithRuleset(
 
         if (controllerAddress && controllerAddress !== ZERO_ADDRESS) {
           // Call the controller's currentRulesetOf - returns both ruleset AND decoded metadata
-          const [ruleset, metadata] = await publicClient.readContract({
+          let [ruleset, metadata] = await publicClient.readContract({
             address: controllerAddress,
             abi: JB_CONTROLLER_ABI,
             functionName: 'currentRulesetOf',
             args: [BigInt(projectId)],
           })
+
+          // If cycleNumber is 0, try JBRulesets.currentOf directly, then fallback to upcomingOf
+          if (ruleset.cycleNumber === 0) {
+            // First try currentOf from JBRulesets (controller may return zeros for some projects)
+            // Use the correct JBRulesets version based on project type
+            const currentRulesetDirect = await publicClient.readContract({
+              address: rulesetsContract,
+              abi: JB_RULESETS_ABI,
+              functionName: 'currentOf',
+              args: [BigInt(projectId)],
+            })
+            if (currentRulesetDirect.cycleNumber > 0) {
+              ruleset = currentRulesetDirect
+              // Need to decode metadata manually since we're not using the controller
+              const rawMetadata = currentRulesetDirect.metadata
+              metadata = decodeRulesetMetadata(rawMetadata)
+            } else {
+              // Fallback to upcomingOf if currentOf also returns 0
+              const upcomingRuleset = await publicClient.readContract({
+                address: rulesetsContract,
+                abi: JB_RULESETS_ABI,
+                functionName: 'upcomingOf',
+                args: [BigInt(projectId)],
+              })
+              if (upcomingRuleset.cycleNumber > 0) {
+                ruleset = upcomingRuleset
+                metadata = decodeRulesetMetadata(upcomingRuleset.metadata)
+              }
+            }
+          }
 
           // Only set if there's a valid ruleset (cycleNumber > 0)
           if (ruleset.cycleNumber > 0) {
@@ -640,14 +735,20 @@ export async function fetchProjectWithRuleset(
               decayPercent: String(ruleset.weightCutPercent),
               // Use properly decoded metadata from controller
               pausePay: metadata.pausePay,
+              pauseCreditTransfers: metadata.pauseCreditTransfers,
               allowOwnerMinting: metadata.allowOwnerMinting,
               allowSetCustomToken: metadata.allowSetCustomToken,
               allowTerminalMigration: metadata.allowTerminalMigration,
-              allowSetController: metadata.allowSetController,
               allowSetTerminals: metadata.allowSetTerminals,
-              allowCreditTransfers: !metadata.pauseCreditTransfers,
+              allowSetController: metadata.allowSetController,
+              allowAddAccountingContext: metadata.allowAddAccountingContext,
+              allowAddPriceFeed: metadata.allowAddPriceFeed,
+              ownerMustSendPayouts: metadata.ownerMustSendPayouts,
               holdFees: metadata.holdFees,
               useTotalSurplusForCashOuts: metadata.useTotalSurplusForCashOuts,
+              useDataHookForPay: metadata.useDataHookForPay,
+              useDataHookForCashOut: metadata.useDataHookForCashOut,
+              dataHook: metadata.dataHook,
               reservedPercent: Number(metadata.reservedPercent),
               cashOutTaxRate: Number(metadata.cashOutTaxRate),
               baseCurrency: Number(metadata.baseCurrency),
@@ -757,6 +858,7 @@ const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffff
 // Fetch the distributable payout amount for a project
 // This is the payout limit minus what's already been distributed this ruleset
 // Returns available amount based on fund access limits, NOT the total balance
+// IMPORTANT: Uses V5 or V5.1 contracts based on whether project is a Revnet
 export async function fetchDistributablePayout(
   projectId: string,
   chainId: number
@@ -765,9 +867,12 @@ export async function fetchDistributablePayout(
   if (!publicClient) return null
 
   try {
-    // Get current ruleset from JBRulesets
+    // Get the correct contracts for this project (V5 for Revnets, V5.1 for others)
+    const contracts = await getContractsForProject(projectId, chainId)
+
+    // Get current ruleset from the correct JBRulesets version
     const ruleset = await publicClient.readContract({
-      address: JB_CONTRACTS.JBRulesets,
+      address: contracts.JBRulesets,
       abi: JB_RULESETS_ABI,
       functionName: 'currentOf',
       args: [BigInt(projectId)],
@@ -777,20 +882,20 @@ export async function fetchDistributablePayout(
       return { available: 0n, limit: 0n, used: 0n, currency: 1 }
     }
 
-    // Get payout limit for ETH (currency 1)
+    // Get payout limit for ETH (currency 1) - use correct terminal
     const payoutLimit = await publicClient.readContract({
       address: JB_CONTRACTS.JBFundAccessLimits,
       abi: JB_FUND_ACCESS_LIMITS_ABI,
       functionName: 'payoutLimitOf',
-      args: [BigInt(projectId), BigInt(ruleset.id), JB_CONTRACTS.JBMultiTerminal, NATIVE_TOKEN, 1n],
+      args: [BigInt(projectId), BigInt(ruleset.id), contracts.JBMultiTerminal, NATIVE_TOKEN, 1n],
     })
 
-    // Get used payout limit
+    // Get used payout limit - use correct terminal
     const usedPayoutLimit = await publicClient.readContract({
       address: JB_CONTRACTS.JBFundAccessLimits,
       abi: JB_FUND_ACCESS_LIMITS_ABI,
       functionName: 'usedPayoutLimitOf',
-      args: [JB_CONTRACTS.JBMultiTerminal, BigInt(projectId), BigInt(ruleset.id), NATIVE_TOKEN, 1n],
+      args: [contracts.JBMultiTerminal, BigInt(projectId), BigInt(ruleset.id), NATIVE_TOKEN, 1n],
     })
 
     // Handle different payout limit scenarios:
@@ -1314,6 +1419,51 @@ export async function fetchProjectTokenAddress(
   }
 }
 
+/**
+ * Fetch pending reserved tokens that haven't been distributed yet
+ * This is read from the JBController's pendingReservedTokenBalanceOf function
+ */
+export async function fetchPendingReservedTokens(
+  projectId: string,
+  chainId: number
+): Promise<string> {
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) return '0'
+
+  try {
+    // Get the controller address for this project
+    const controllerAddress = await publicClient.readContract({
+      address: JB_CONTRACTS.JBDirectory,
+      abi: JB_DIRECTORY_ABI,
+      functionName: 'controllerOf',
+      args: [BigInt(projectId)],
+    })
+
+    if (!controllerAddress || controllerAddress === ZERO_ADDRESS) {
+      return '0'
+    }
+
+    // Call pendingReservedTokenBalanceOf on the controller
+    const pending = await publicClient.readContract({
+      address: controllerAddress,
+      abi: [{
+        name: 'pendingReservedTokenBalanceOf',
+        type: 'function',
+        stateMutability: 'view',
+        inputs: [{ name: 'projectId', type: 'uint256' }],
+        outputs: [{ name: '', type: 'uint256' }],
+      }] as const,
+      functionName: 'pendingReservedTokenBalanceOf',
+      args: [BigInt(projectId)],
+    })
+
+    return String(pending)
+  } catch (err) {
+    console.error('Failed to fetch pending reserved tokens:', err)
+    return '0'
+  }
+}
+
 // ============================================================================
 // REVNET HELPERS
 // ============================================================================
@@ -1322,6 +1472,72 @@ export async function fetchProjectTokenAddress(
 export function isRevnet(owner: string): boolean {
   // REVDeployer uses CREATE2 so same address on all chains
   return owner.toLowerCase() === REV_DEPLOYER.toLowerCase()
+}
+
+// Get the correct versioned contracts for a project by querying JBDirectory
+// JBDirectory.controllerOf and primaryTerminalOf tell us exactly which contracts the project uses
+// V5 JBController uses V5 JBRulesets, V5.1 JBController uses V5.1 JBRulesets
+export async function getContractsForProject(
+  projectId: string,
+  chainId: number
+): Promise<{
+  JBRulesets: `0x${string}`
+  JBController: `0x${string}`
+  JBMultiTerminal: `0x${string}`
+  isRevnet: boolean
+}> {
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) {
+    // Default to V5.1 if we can't check
+    return {
+      JBRulesets: JB_CONTRACTS.JBRulesets,
+      JBController: JB_CONTRACTS.JBController,
+      JBMultiTerminal: JB_CONTRACTS.JBMultiTerminal,
+      isRevnet: false,
+    }
+  }
+
+  try {
+    // Get the actual controller for this project from JBDirectory
+    const controllerAddress = await publicClient.readContract({
+      address: JB_CONTRACTS.JBDirectory,
+      abi: JB_DIRECTORY_ABI,
+      functionName: 'controllerOf',
+      args: [BigInt(projectId)],
+    })
+
+    // Check if the controller is V5 or V5.1 by comparing addresses
+    // V5 JBController: 0x27da30646502e2f642be5281322ae8c394f7668a
+    // V5.1 JBController: 0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1
+    const isV5Controller = controllerAddress.toLowerCase() === JB_CONTRACTS_V5.JBController.toLowerCase()
+
+    if (isV5Controller) {
+      // V5 controller means V5 rulesets and terminal
+      return {
+        JBRulesets: JB_CONTRACTS_V5.JBRulesets,
+        JBController: JB_CONTRACTS_V5.JBController,
+        JBMultiTerminal: JB_CONTRACTS_V5.JBMultiTerminal,
+        isRevnet: true, // V5 is typically used for Revnets
+      }
+    }
+
+    // V5.1 controller (or any other) uses V5.1 rulesets
+    return {
+      JBRulesets: JB_CONTRACTS.JBRulesets,
+      JBController: controllerAddress as `0x${string}`,
+      JBMultiTerminal: JB_CONTRACTS.JBMultiTerminal,
+      isRevnet: false,
+    }
+  } catch (err) {
+    console.error('Failed to determine project version from JBDirectory:', err)
+    // Default to V5.1 on error
+    return {
+      JBRulesets: JB_CONTRACTS.JBRulesets,
+      JBController: JB_CONTRACTS.JBController,
+      JBMultiTerminal: JB_CONTRACTS.JBMultiTerminal,
+      isRevnet: false,
+    }
+  }
 }
 
 // ABI for REVDeployer.configurationOf
@@ -1385,19 +1601,14 @@ const REV_DEPLOYER_ABI = [
       },
     ],
   },
-  {
-    name: 'stageOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'revnetId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
 ] as const
 
 // Cache for Revnet operator addresses
 const revnetOperatorCache = createCache<string>(CACHE_DURATIONS.LONG)
 
 // Fetch the operator (splitOperator) for a Revnet project
+// Uses bendystraw permissionHolders query to find the address with isRevnetOperator=true
+// The split operator is identified by having isRevnetOperator=true AND account=REV_DEPLOYER
 export async function fetchRevnetOperator(
   projectId: string,
   chainId: number
@@ -1406,29 +1617,45 @@ export async function fetchRevnetOperator(
   const cached = revnetOperatorCache.get(cacheKey)
   if (cached) return cached
 
-  const publicClient = getPublicClient(chainId)
-  if (!publicClient) return null
+  const client = getClient()
 
   try {
-    // Get the configuration from REVDeployer
-    const config = await publicClient.readContract({
-      address: REV_DEPLOYER,
-      abi: REV_DEPLOYER_ABI,
-      functionName: 'configurationOf',
-      args: [BigInt(projectId)],
+    // Query permissionHolders for this project where isRevnetOperator is true
+    const data = await client.request<{
+      permissionHolders: {
+        items: Array<{
+          operator: string
+          account: string
+          projectId: number
+          chainId: number
+          isRevnetOperator: boolean
+        }>
+      }
+    }>(REVNET_OPERATOR_QUERY, {
+      projectId: parseInt(projectId),
+      chainId,
     })
 
-    const splitOperator = config.splitOperator
+    // Find the operator where account is REV_DEPLOYER (the project owner for Revnets)
+    const operatorRecord = data.permissionHolders?.items?.find(
+      (item) => item.account.toLowerCase() === REV_DEPLOYER.toLowerCase()
+    )
+
+    if (!operatorRecord) {
+      return null
+    }
+
+    const operator = operatorRecord.operator
 
     // If zero address, return null
-    if (splitOperator === ZERO_ADDRESS) {
+    if (operator === ZERO_ADDRESS) {
       return null
     }
 
     // Cache the result
-    revnetOperatorCache.set(cacheKey, splitOperator)
+    revnetOperatorCache.set(cacheKey, operator)
 
-    return splitOperator
+    return operator
   } catch (err) {
     console.error('Failed to fetch Revnet operator:', err)
     return null
@@ -1488,14 +1715,6 @@ export async function fetchRevnetStages(
   if (!publicClient) return null
 
   try {
-    // Get current stage number
-    const currentStage = await publicClient.readContract({
-      address: REV_DEPLOYER,
-      abi: REV_DEPLOYER_ABI,
-      functionName: 'stageOf',
-      args: [BigInt(projectId)],
-    })
-
     // Get full configuration including stages
     const config = await publicClient.readContract({
       address: REV_DEPLOYER,
@@ -1505,7 +1724,20 @@ export async function fetchRevnetStages(
     })
 
     const stageConfigs = config.stageConfigurations
-    const currentStageNum = Number(currentStage)
+    if (!stageConfigs || stageConfigs.length === 0) {
+      return null
+    }
+
+    // Calculate current stage from timestamps
+    // The current stage is the last stage whose startsAtOrAfter has passed
+    const now = Math.floor(Date.now() / 1000)
+    let currentStageNum = 1
+    for (let i = 0; i < stageConfigs.length; i++) {
+      const startsAt = Number(stageConfigs[i].startsAtOrAfter)
+      if (startsAt <= now) {
+        currentStageNum = i + 1
+      }
+    }
 
     const stages: RevnetStage[] = stageConfigs.map((stage, index) => ({
       stageNumber: index + 1,
@@ -1521,14 +1753,15 @@ export async function fetchRevnetStages(
     }))
 
     return { stages, currentStage: currentStageNum }
-  } catch (err) {
-    console.error('Failed to fetch Revnet stages:', err)
+  } catch {
+    // Silently fail - configurationOf may not exist on older REVDeployer versions
     return null
   }
 }
 
 // Fetch historical rulesets by enumerating all cycles from cycle 1 to current
 // Returns array with current first, then past rulesets (newest to oldest)
+// IMPORTANT: Uses V5 or V5.1 JBRulesets based on whether project is a Revnet
 export async function fetchRulesetHistory(
   projectId: string,
   chainId: number,
@@ -1539,12 +1772,16 @@ export async function fetchRulesetHistory(
   if (!publicClient) return []
 
   try {
-    // First, get the current ruleset to know what cycle we're on
+    // Get the correct contracts for this project (V5 for Revnets, V5.1 for others)
+    const contracts = await getContractsForProject(projectId, chainId)
+
+    // First, get the ACTUAL current ruleset to know what cycle we're on
+    // Must use currentOf (not getRulesetOf) to get the computed current cycle number
     const currentRuleset = await publicClient.readContract({
-      address: JB_CONTRACTS.JBRulesets,
+      address: contracts.JBRulesets,
       abi: JB_RULESETS_ABI,
-      functionName: 'getRulesetOf',
-      args: [BigInt(projectId), BigInt(currentRulesetId)],
+      functionName: 'currentOf',
+      args: [BigInt(projectId)],
     })
 
     if (currentRuleset.cycleNumber === 0) return []
@@ -1568,7 +1805,7 @@ export async function fetchRulesetHistory(
     while (rulesetId > 0n && count < 50) {
       try {
         const ruleset = await publicClient.readContract({
-          address: JB_CONTRACTS.JBRulesets,
+          address: contracts.JBRulesets,
           abi: JB_RULESETS_ABI,
           functionName: 'getRulesetOf',
           args: [BigInt(projectId), rulesetId],
@@ -1661,6 +1898,7 @@ export interface SimpleRuleset {
 
 // Fetch all rulesets using allOf for reliable historical data
 // This matches the approach used by revnet-app
+// IMPORTANT: Uses V5 or V5.1 JBRulesets based on whether project is a Revnet
 export async function fetchAllRulesets(
   projectId: string,
   chainId: number
@@ -1669,9 +1907,12 @@ export async function fetchAllRulesets(
   if (!publicClient) return []
 
   try {
+    // Get the correct contracts for this project (V5 for Revnets, V5.1 for others)
+    const contracts = await getContractsForProject(projectId, chainId)
+
     const MAX_RULESETS = 100
     const rulesets = await publicClient.readContract({
-      address: JB_CONTRACTS.JBRulesets,
+      address: contracts.JBRulesets,
       abi: JB_RULESETS_ABI,
       functionName: 'allOf',
       args: [BigInt(projectId), 0n, BigInt(MAX_RULESETS)],
@@ -1698,6 +1939,7 @@ export async function fetchAllRulesets(
 }
 
 // Fetch queued and upcoming rulesets
+// IMPORTANT: Uses V5 or V5.1 JBRulesets based on whether project is a Revnet
 export async function fetchQueuedRulesets(
   projectId: string,
   chainId: number
@@ -1706,12 +1948,15 @@ export async function fetchQueuedRulesets(
   if (!publicClient) return {}
 
   try {
+    // Get the correct contracts for this project (V5 for Revnets, V5.1 for others)
+    const contracts = await getContractsForProject(projectId, chainId)
+
     const result: { queued?: RulesetHistoryEntry; upcoming?: RulesetHistoryEntry } = {}
 
     // Get latest queued ruleset
     try {
       const [queuedRuleset, _approvalStatus] = await publicClient.readContract({
-        address: JB_CONTRACTS.JBRulesets,
+        address: contracts.JBRulesets,
         abi: JB_RULESETS_ABI,
         functionName: 'latestQueuedOf',
         args: [BigInt(projectId)],
@@ -1735,7 +1980,7 @@ export async function fetchQueuedRulesets(
     // Get upcoming ruleset (next cycle)
     try {
       const upcomingRuleset = await publicClient.readContract({
-        address: JB_CONTRACTS.JBRulesets,
+        address: contracts.JBRulesets,
         abi: JB_RULESETS_ABI,
         functionName: 'upcomingOf',
         args: [BigInt(projectId)],
@@ -1768,6 +2013,7 @@ export async function fetchQueuedRulesets(
 // ============================================================================
 
 // JBSplits ABI for reading split configurations
+// JBSplit struct order from juice-sdk-core (different from storage layout!)
 const JB_SPLITS_ABI = [
   {
     inputs: [
@@ -1779,11 +2025,11 @@ const JB_SPLITS_ABI = [
     outputs: [
       {
         components: [
-          { name: 'preferAddToBalance', type: 'bool' },
-          { name: 'percent', type: 'uint256' },
-          { name: 'projectId', type: 'uint256' },
+          { name: 'percent', type: 'uint32' },
+          { name: 'projectId', type: 'uint64' },
           { name: 'beneficiary', type: 'address' },
-          { name: 'lockedUntil', type: 'uint256' },
+          { name: 'preferAddToBalance', type: 'bool' },
+          { name: 'lockedUntil', type: 'uint48' },
           { name: 'hook', type: 'address' },
         ],
         name: 'splits',
@@ -1841,9 +2087,17 @@ const JB_FUND_ACCESS_LIMITS_SPLITS_ABI = [
   },
 ] as const
 
-// Split group IDs
-const SPLIT_GROUP_PAYOUT = 1n
-const SPLIT_GROUP_RESERVED = 2n
+// Split group IDs (JB v5) - see JBSplitGroupIds.sol and JBMultiTerminal
+// Reserved token splits = group 1 (JBSplitGroupIds.RESERVED_TOKENS)
+// Payout splits = uint256(uint160(token)) - computed from the payout token address
+const SPLIT_GROUP_RESERVED = 1n
+
+// Helper to compute payout split group ID from token address
+// In JB v5, payout split groups are keyed by uint256(uint160(token))
+function getPayoutSplitGroup(tokenAddress: `0x${string}`): bigint {
+  // Convert address to uint160, then to bigint
+  return BigInt(tokenAddress)
+}
 
 // Split recipient
 export interface JBSplitData {
@@ -1870,6 +2124,7 @@ export interface ProjectSplitsData {
 
 /**
  * Fetch project splits (payout and reserved token recipients)
+ * Splits are stored per (projectId, rulesetId, groupId) - query directly with the rulesetId
  */
 export async function fetchProjectSplits(
   projectId: string,
@@ -1879,86 +2134,126 @@ export async function fetchProjectSplits(
   const publicClient = getPublicClient(chainId)
   if (!publicClient) return { payoutSplits: [], reservedSplits: [] }
 
-  // Type for raw split data from contract
+  // Type for raw split data from contract (matches viem decoded types)
+  // uint32 -> number, uint64 -> bigint, uint48 -> number
   type RawSplit = {
+    percent: number       // uint32
+    projectId: bigint     // uint64
+    beneficiary: string   // address
     preferAddToBalance: boolean
-    percent: bigint
-    projectId: bigint
-    beneficiary: string
-    lockedUntil: bigint
-    hook: string
+    lockedUntil: number   // uint48
+    hook: string          // address
   }
 
+  const ethToken = '0x000000000000000000000000000000000000EEEe' as `0x${string}`
+  const usdcToken = USDC_ADDRESSES[chainId as SupportedChainId] || null
+
+  const mapSplit = (s: RawSplit): JBSplitData => ({
+    preferAddToBalance: s.preferAddToBalance,
+    percent: s.percent,              // already number
+    projectId: Number(s.projectId),  // bigint to number
+    beneficiary: s.beneficiary,
+    lockedUntil: s.lockedUntil,      // already number
+    hook: s.hook,
+  })
+
   try {
-    // Wrap each call separately to handle individual failures gracefully
+    const rsId = BigInt(rulesetId)
+
+    // Fetch splits directly for this rulesetId
     let payoutSplitsRaw: RawSplit[] = []
     let reservedSplitsRaw: RawSplit[] = []
 
     try {
-      payoutSplitsRaw = await publicClient.readContract({
+      const result = await publicClient.readContract({
         address: JB_CONTRACTS.JBSplits,
         abi: JB_SPLITS_ABI,
         functionName: 'splitsOf',
-        args: [BigInt(projectId), BigInt(rulesetId), SPLIT_GROUP_PAYOUT],
-      }) as RawSplit[]
-    } catch {
-      // Payout splits not available
-    }
-
-    try {
-      reservedSplitsRaw = await publicClient.readContract({
-        address: JB_CONTRACTS.JBSplits,
-        abi: JB_SPLITS_ABI,
-        functionName: 'splitsOf',
-        args: [BigInt(projectId), BigInt(rulesetId), SPLIT_GROUP_RESERVED],
-      }) as RawSplit[]
+        args: [BigInt(projectId), rsId, SPLIT_GROUP_RESERVED],
+      })
+      reservedSplitsRaw = [...result] as RawSplit[]
     } catch {
       // Reserved splits not available
     }
 
-    const mapSplit = (s: RawSplit): JBSplitData => ({
-      preferAddToBalance: s.preferAddToBalance,
-      percent: Number(s.percent),
-      projectId: Number(s.projectId),
-      beneficiary: s.beneficiary,
-      lockedUntil: Number(s.lockedUntil),
-      hook: s.hook,
-    })
+    // Try fetching payout splits for ETH first, then USDC
+    // Payout split group = uint256(uint160(token))
+    try {
+      const ethPayoutGroup = getPayoutSplitGroup(ethToken)
+      const result = await publicClient.readContract({
+        address: JB_CONTRACTS.JBSplits,
+        abi: JB_SPLITS_ABI,
+        functionName: 'splitsOf',
+        args: [BigInt(projectId), rsId, ethPayoutGroup],
+      })
+      payoutSplitsRaw = [...result] as RawSplit[]
+    } catch {
+      // ETH payout splits not available
+    }
+
+    // If no ETH payout splits found, try USDC
+    if (payoutSplitsRaw.length === 0 && usdcToken) {
+      try {
+        const usdcPayoutGroup = getPayoutSplitGroup(usdcToken)
+        const result = await publicClient.readContract({
+          address: JB_CONTRACTS.JBSplits,
+          abi: JB_SPLITS_ABI,
+          functionName: 'splitsOf',
+          args: [BigInt(projectId), rsId, usdcPayoutGroup],
+        })
+        payoutSplitsRaw = [...result] as RawSplit[]
+      } catch {
+        // USDC payout splits not available
+      }
+    }
 
     const payoutSplits = payoutSplitsRaw.map(mapSplit)
     const reservedSplits = reservedSplitsRaw.map(mapSplit)
 
-    // Also try to fetch fund access limits
+    // Fetch fund access limits - try ETH first, then USDC
     let fundAccessLimits: FundAccessLimits | undefined
-    try {
-      const ethToken = '0x000000000000000000000000000000000000EEEe' as `0x${string}`
-      const [payoutLimitsRaw, surplusAllowancesRaw] = await Promise.all([
-        publicClient.readContract({
-          address: JB_CONTRACTS.JBFundAccessLimits,
-          abi: JB_FUND_ACCESS_LIMITS_SPLITS_ABI,
-          functionName: 'payoutLimitsOf',
-          args: [BigInt(projectId), BigInt(rulesetId), JB_CONTRACTS.JBMultiTerminal, ethToken],
-        }),
-        publicClient.readContract({
-          address: JB_CONTRACTS.JBFundAccessLimits,
-          abi: JB_FUND_ACCESS_LIMITS_SPLITS_ABI,
-          functionName: 'surplusAllowancesOf',
-          args: [BigInt(projectId), BigInt(rulesetId), JB_CONTRACTS.JBMultiTerminal, ethToken],
-        }),
-      ])
 
-      fundAccessLimits = {
-        payoutLimits: payoutLimitsRaw.map(p => ({
-          amount: String(p.amount),
-          currency: Number(p.currency),
-        })),
-        surplusAllowances: surplusAllowancesRaw.map(s => ({
-          amount: String(s.amount),
-          currency: Number(s.currency),
-        })),
+    const fetchLimitsForToken = async (token: `0x${string}`): Promise<FundAccessLimits | null> => {
+      try {
+        const [payoutLimitsRaw, surplusAllowancesRaw] = await Promise.all([
+          publicClient.readContract({
+            address: JB_CONTRACTS.JBFundAccessLimits,
+            abi: JB_FUND_ACCESS_LIMITS_SPLITS_ABI,
+            functionName: 'payoutLimitsOf',
+            args: [BigInt(projectId), rsId, JB_CONTRACTS.JBMultiTerminal, token],
+          }),
+          publicClient.readContract({
+            address: JB_CONTRACTS.JBFundAccessLimits,
+            abi: JB_FUND_ACCESS_LIMITS_SPLITS_ABI,
+            functionName: 'surplusAllowancesOf',
+            args: [BigInt(projectId), rsId, JB_CONTRACTS.JBMultiTerminal, token],
+          }),
+        ])
+
+        if (payoutLimitsRaw.length > 0 || surplusAllowancesRaw.length > 0) {
+          return {
+            payoutLimits: payoutLimitsRaw.map(p => ({
+              amount: String(p.amount),
+              currency: Number(p.currency),
+            })),
+            surplusAllowances: surplusAllowancesRaw.map(s => ({
+              amount: String(s.amount),
+              currency: Number(s.currency),
+            })),
+          }
+        }
+        return null
+      } catch {
+        return null
       }
-    } catch {
-      // Fund access limits not available
+    }
+
+    // Try ETH first
+    fundAccessLimits = await fetchLimitsForToken(ethToken) || undefined
+
+    // Try USDC if ETH didn't return results
+    if (!fundAccessLimits && usdcToken) {
+      fundAccessLimits = await fetchLimitsForToken(usdcToken) || undefined
     }
 
     return { payoutSplits, reservedSplits, fundAccessLimits }

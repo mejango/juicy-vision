@@ -475,7 +475,7 @@ export default function TokenPriceChart({
             {/* Toggle buttons */}
             <div className="flex items-center gap-2 flex-wrap">
               <ToggleButton
-                label="Issuance Price"
+                label="Issuance price"
                 active={showIssuance}
                 disabled={!hasIssuanceData}
                 color={PRICE_COLORS.issuance}
@@ -484,7 +484,7 @@ export default function TokenPriceChart({
               {/* Show pool toggle if pool address is provided or discovered */}
               {(poolAddress || discoveredPool) && (
                 <ToggleButton
-                  label="Pool Price"
+                  label="Pool price"
                   active={showPool}
                   disabled={!hasPoolData}
                   color={PRICE_COLORS.pool}
@@ -492,7 +492,7 @@ export default function TokenPriceChart({
                 />
               )}
               <ToggleButton
-                label="Cash out Price"
+                label="Cash out price"
                 active={showCashOut}
                 disabled={!hasCashOutData}
                 color={PRICE_COLORS.cashOut}

@@ -166,3 +166,148 @@ export async function submitTransaction(signedTx: string, chainId: number): Prom
     body: JSON.stringify({ signedTx, chainId }),
   })
 }
+
+// Omnichain ruleset queueing
+
+export interface JBRulesetMetadataConfig {
+  reservedPercent: number         // 0-10000 (10000 = 100%)
+  cashOutTaxRate: number          // 0-10000 (0 = full refund, 10000 = disabled)
+  baseCurrency: number            // 1 = ETH, 2 = USD
+  pausePay: boolean
+  pauseCreditTransfers: boolean
+  allowOwnerMinting: boolean
+  allowSetCustomToken: boolean
+  allowTerminalMigration: boolean
+  allowSetTerminals: boolean
+  allowSetController: boolean
+  allowAddAccountingContext: boolean
+  allowAddPriceFeed: boolean
+  ownerMustSendPayouts: boolean
+  holdFees: boolean
+  useTotalSurplusForCashOuts: boolean
+  useDataHookForPay: boolean
+  useDataHookForCashOut: boolean
+  dataHook: string
+  metadata: number
+}
+
+export interface JBSplitConfig {
+  percent: number                  // Out of 1000000000 (1B = 100%)
+  projectId: number                // 0 for wallet, or project ID to pay
+  beneficiary: string              // Recipient wallet
+  preferAddToBalance: boolean
+  lockedUntil: number              // Unix timestamp, 0 = unlocked
+  hook: string                     // 0x0 for none
+}
+
+export interface JBSplitGroupConfig {
+  groupId: string                  // uint256 - use token address for payouts, "1" for reserved
+  splits: JBSplitConfig[]
+}
+
+export interface JBCurrencyAmountConfig {
+  amount: string                   // Amount in currency (as string for bigint)
+  currency: number                 // 1 = ETH, 2 = USD
+}
+
+export interface JBFundAccessLimitGroupConfig {
+  terminal: string                 // Terminal address
+  token: string                    // 0xEEEE...EEEe for ETH
+  payoutLimits: JBCurrencyAmountConfig[]
+  surplusAllowances: JBCurrencyAmountConfig[]
+}
+
+export interface JBRulesetConfig {
+  mustStartAtOrAfter: number       // Unix timestamp, use 0 for immediate
+  duration: number                 // Seconds per cycle, 0 = ongoing
+  weight: string                   // Tokens per currency unit (as string for bigint)
+  weightCutPercent: number         // Decay per cycle (0-1000000000)
+  approvalHook: string             // 0x0 for none
+  metadata: JBRulesetMetadataConfig
+  splitGroups: JBSplitGroupConfig[]
+  fundAccessLimitGroups: JBFundAccessLimitGroupConfig[]
+}
+
+export interface JBQueueRulesetRequest {
+  chainId: number
+  projectId: number
+  rulesetConfigurations: JBRulesetConfig[]
+  memo: string
+}
+
+export interface JBOmnichainQueueRequest {
+  chainIds: number[]               // All chains to queue on
+  projectIds: Record<number, number>  // chainId -> projectId mapping
+  rulesetConfigurations: JBRulesetConfig[]
+  memo: string
+  mustStartAtOrAfter?: number      // Optional override, otherwise calculated
+}
+
+export interface JBOmnichainQueueResponse {
+  transactions: Array<{
+    chainId: number
+    projectId: number
+    txData: JBTransactionData
+    estimatedGas: string
+  }>
+  synchronizedStartTime: number    // The coordinated start time used
+}
+
+// Calculate synchronized start time for omnichain deployment
+// Uses 5 minutes in the future to ensure all chains can finalize
+export function calculateSynchronizedStartTime(): number {
+  const now = Math.floor(Date.now() / 1000)
+  const fiveMinutesFromNow = now + (5 * 60) // 5 minutes buffer
+  return fiveMinutesFromNow
+}
+
+// Build transaction data for JBController.queueRulesetsOf()
+export async function buildQueueRulesetTransaction(request: JBQueueRulesetRequest): Promise<JBTransactionResponse> {
+  return fetchApi<JBTransactionResponse>('/v1/juicebox/queueRuleset', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+// Build omnichain queue ruleset transactions with synchronized start time
+export async function buildOmnichainQueueRulesetTransactions(
+  request: JBOmnichainQueueRequest
+): Promise<JBOmnichainQueueResponse> {
+  // Calculate synchronized start time if not provided
+  const synchronizedStartTime = request.mustStartAtOrAfter ?? calculateSynchronizedStartTime()
+
+  // Apply synchronized start time to all ruleset configurations
+  const synchronizedConfigs = request.rulesetConfigurations.map(config => ({
+    ...config,
+    mustStartAtOrAfter: synchronizedStartTime,
+  }))
+
+  // Build transactions for each chain
+  const transactionPromises = request.chainIds.map(async chainId => {
+    const projectId = request.projectIds[chainId]
+    if (!projectId) {
+      throw new Error(`No project ID found for chain ${chainId}`)
+    }
+
+    const response = await buildQueueRulesetTransaction({
+      chainId,
+      projectId,
+      rulesetConfigurations: synchronizedConfigs,
+      memo: request.memo,
+    })
+
+    return {
+      chainId,
+      projectId,
+      txData: response.txData,
+      estimatedGas: response.estimatedGas,
+    }
+  })
+
+  const transactions = await Promise.all(transactionPromises)
+
+  return {
+    transactions,
+    synchronizedStartTime,
+  }
+}

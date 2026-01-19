@@ -3,7 +3,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ParaProvider, Environment } from '@getpara/react-sdk'
 import '@getpara/react-sdk/styles.css'
-import { ChatContainer, ProtocolActivity } from './components/chat'
+import { ChatContainer, ProtocolActivity, MascotPanel } from './components/chat'
 import { SettingsPanel } from './components/settings'
 import { useSettingsStore, useChatStore, useThemeStore } from './stores'
 import { useTransactionExecutor } from './hooks'
@@ -152,10 +152,10 @@ function Header() {
   )
 }
 
-function MainContent({ hasHeader }: { hasHeader: boolean }) {
+function MainContent({ topOnly, bottomOnly }: { topOnly?: boolean; bottomOnly?: boolean }) {
   return (
-    <div className={`flex flex-col ${hasHeader ? 'h-[calc(100vh-81px)]' : 'h-screen'}`}>
-      <ChatContainer />
+    <div className="flex flex-col h-full">
+      <ChatContainer topOnly={topOnly} bottomOnly={bottomOnly} />
     </div>
   )
 }
@@ -203,17 +203,17 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
 
   return (
     <>
-      <div className={`w-[280px] flex-shrink-0 flex flex-col border-l-4 border-juice-orange h-[calc(100vh-9px)] fixed right-1 top-[5px] z-30 ${
+      <div className={`w-full flex flex-col h-full ${
         theme === 'dark'
           ? 'bg-juice-dark'
           : 'bg-white'
       }`}>
         {/* Header with settings and theme - matches main header height */}
-        <div className={`flex items-center justify-between px-4 pt-4 pb-10 border-b ${
+        <div className={`flex items-start justify-between px-4 pt-4 pb-10 border-b ${
           theme === 'dark' ? 'border-white/10' : 'border-gray-200'
         }`}>
           <div>
-            <h2 className={`font-semibold ${
+            <h2 className={`text-sm font-semibold whitespace-nowrap ${
               theme === 'dark' ? 'text-white' : 'text-gray-900'
             }`}>
               Juicy Activity
@@ -224,7 +224,7 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
               Live
             </p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 -mt-1">
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
@@ -296,19 +296,38 @@ function AppContent() {
   }
 
   return (
-    <div className={`h-screen overflow-hidden border-4 border-juice-orange ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
+    <div className={`h-screen overflow-hidden border-4 border-juice-orange flex ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
       {/* Transaction executor - listens for pay events */}
       <TransactionExecutor />
-      {/* Main content with right margin for sidebar */}
-      <div className="mr-[280px] h-[calc(100%-13px)] mt-[5px] overflow-hidden">
+      {/* Main content area (everything except activity) */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden">
         {hasMessages && <Header />}
-        <Routes>
-          <Route path="/" element={<MainContent hasHeader={!!hasMessages} />} />
-          <Route path="*" element={<MainContent hasHeader={!!hasMessages} />} />
-        </Routes>
+        {/* Top 62%: Recommendations + Mascot side by side */}
+        <div className="h-[62%] flex">
+          {/* Recommendations: 62% of this row */}
+          <div className="w-[62%] overflow-hidden">
+            <Routes>
+              <Route path="/" element={<MainContent topOnly />} />
+              <Route path="*" element={<MainContent topOnly />} />
+            </Routes>
+          </div>
+          {/* Mascot: 38% of this row (62% of the 38% total right side) */}
+          <div className="w-[38%] border-l-4 border-juice-orange">
+            <MascotPanel onSuggestionClick={(text) => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: text } }))} />
+          </div>
+        </div>
+        {/* Bottom 38%: Prompt dock spanning full width */}
+        <div className="h-[38%] border-t-4 border-juice-orange">
+          <Routes>
+            <Route path="/" element={<MainContent bottomOnly />} />
+            <Route path="*" element={<MainContent bottomOnly />} />
+          </Routes>
+        </div>
       </div>
-      {/* Full-height activity sidebar */}
-      <ActivitySidebar onProjectClick={handleActivityProjectClick} />
+      {/* Activity sidebar: full height, far right */}
+      <div className="w-[calc(38%*0.38)] border-l-4 border-juice-orange">
+        <ActivitySidebar onProjectClick={handleActivityProjectClick} />
+      </div>
     </div>
   )
 }

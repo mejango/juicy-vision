@@ -2,28 +2,23 @@ import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useWallet, useClient } from '@getpara/react-sdk'
 import { createParaViemClient } from '@getpara/viem-v2-integration'
-import { parseEther, encodeFunctionData, http, type Chain } from 'viem'
+import { encodeFunctionData, http, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import { useWalletBalances, formatEthBalance } from '../../hooks'
 
 // Contract constants
-const JB_MULTI_TERMINAL = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
+const JB_CONTROLLER = '0x8C32BBA37a7C42b3A1Fa25E2eaF4D6539C481a16' as const
 
-const TERMINAL_SEND_PAYOUTS_ABI = [
+const CONTROLLER_SEND_RESERVED_ABI = [
   {
-    name: 'sendPayoutsOf',
+    name: 'sendReservedTokensToSplitsOf',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
       { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'currency', type: 'uint256' },
-      { name: 'minTokensPaidOut', type: 'uint256' },
     ],
-    outputs: [{ name: 'amountPaidOut', type: 'uint256' }],
+    outputs: [{ name: 'tokenCount', type: 'uint256' }],
   },
 ] as const
 
@@ -48,29 +43,27 @@ const EXPLORER_URLS: Record<number, string> = {
   42161: 'https://arbiscan.io/tx/',
 }
 
-interface SendPayoutsModalProps {
+interface SendReservedTokensModalProps {
   isOpen: boolean
   onClose: () => void
   projectId: string
   projectName?: string
   chainId: number
-  amount: string
-  baseCurrency?: number // 1 = ETH, 2 = USD
-  splits?: Array<{ beneficiary: string; percent: number }>
+  tokenSymbol: string
+  amount: string // Raw amount in wei
 }
 
-type PayoutStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
+type DistributeStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
 
-export default function SendPayoutsModal({
+export default function SendReservedTokensModal({
   isOpen,
   onClose,
   projectId,
   projectName,
   chainId,
+  tokenSymbol,
   amount,
-  baseCurrency = 1,
-  splits = [],
-}: SendPayoutsModalProps) {
+}: SendReservedTokensModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { data: wallet } = useWallet()
@@ -78,15 +71,12 @@ export default function SendPayoutsModal({
   const { addTransaction, updateTransaction } = useTransactionStore()
   const { totalEth } = useWalletBalances()
 
-  const [status, setStatus] = useState<PayoutStatus>('preview')
+  const [status, setStatus] = useState<DistributeStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const chainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`
-  const currencyLabel = baseCurrency === 2 ? 'USDC' : 'ETH'
-  const amountNum = parseFloat(amount) || 0
-  const protocolFee = amountNum * 0.025 // 2.5% protocol fee
-  const netPayout = amountNum - protocolFee
+  const tokenAmount = parseFloat(amount) / 1e18
   const hasGasBalance = totalEth >= 0.001
 
   // Reset state when modal opens
@@ -118,10 +108,10 @@ export default function SendPayoutsModal({
     try {
       // Create transaction record
       const txId = addTransaction({
-        type: 'deploy', // Reusing for now
+        type: 'deploy',
         projectId,
         chainId,
-        amount,
+        amount: tokenAmount.toString(),
         status: 'pending',
       })
 
@@ -130,24 +120,16 @@ export default function SendPayoutsModal({
         transport: http(),
       })
 
-      const payoutAmount = parseEther(amount)
-
       const callData = encodeFunctionData({
-        abi: TERMINAL_SEND_PAYOUTS_ABI,
-        functionName: 'sendPayoutsOf',
-        args: [
-          BigInt(projectId),
-          NATIVE_TOKEN,
-          payoutAmount,
-          BigInt(baseCurrency), // Currency (1 = ETH, 2 = USD)
-          0n, // minTokensPaidOut
-        ],
+        abi: CONTROLLER_SEND_RESERVED_ABI,
+        functionName: 'sendReservedTokensToSplitsOf',
+        args: [BigInt(projectId)],
       })
 
       setStatus('pending')
 
       const hash = await walletClient.sendTransaction({
-        to: JB_MULTI_TERMINAL,
+        to: JB_CONTROLLER,
         data: callData,
         value: 0n,
       })
@@ -156,11 +138,11 @@ export default function SendPayoutsModal({
       updateTransaction(txId, { hash, status: 'submitted' })
       setStatus('confirmed')
     } catch (err) {
-      console.error('Send payouts failed:', err)
+      console.error('Send reserved tokens failed:', err)
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [paraClient, wallet, chainId, projectId, amount, addTransaction, updateTransaction])
+  }, [paraClient, wallet, chainId, projectId, tokenAmount, addTransaction, updateTransaction])
 
   if (!isOpen) return null
 
@@ -182,13 +164,13 @@ export default function SendPayoutsModal({
         }`}>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 flex items-center justify-center text-xl ${
-              isDark ? 'bg-juice-orange/20' : 'bg-orange-100'
+              isDark ? 'bg-amber-500/20' : 'bg-amber-100'
             }`}>
-              📤
+              🎟️
             </div>
             <div>
               <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {status === 'confirmed' ? 'Payouts Sent' : status === 'failed' ? 'Payout Failed' : 'Confirm Payouts'}
+                {status === 'confirmed' ? 'Tokens Distributed' : status === 'failed' ? 'Distribution Failed' : 'Confirm Distribution'}
               </h2>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 {chainName}
@@ -213,8 +195,8 @@ export default function SendPayoutsModal({
         <div className="p-5 space-y-4">
           {/* Status Messages */}
           {status === 'signing' && (
-            <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-orange/10' : 'bg-orange-50'}`}>
-              <div className="animate-spin w-5 h-5 border-2 border-juice-orange border-t-transparent rounded-full" />
+            <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-amber-500/10' : 'bg-amber-50'}`}>
+              <div className="animate-spin w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full" />
               <div>
                 <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   Waiting for signature...
@@ -249,7 +231,7 @@ export default function SendPayoutsModal({
               </div>
               <div>
                 <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Payouts distributed
+                  {tokenSymbol} distributed
                 </p>
                 {txHash && (
                   <a
@@ -276,7 +258,7 @@ export default function SendPayoutsModal({
             </div>
           )}
 
-          {/* Payout Details */}
+          {/* Distribution Details */}
           {(status === 'preview' || status === 'signing' || status === 'pending') && (
             <>
               {/* Project */}
@@ -289,57 +271,20 @@ export default function SendPayoutsModal({
                 </div>
               </div>
 
-              {/* Amount breakdown */}
+              {/* Amount */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Amount</span>
-                  <span className={`font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {amountNum.toFixed(4)} {currencyLabel}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                    Protocol fee (2.5%)
-                  </span>
-                  <span className={`font-mono ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                    -{protocolFee.toFixed(4)} {currencyLabel}
-                  </span>
-                </div>
-
-                <div className={`flex justify-between items-center pt-2 border-t ${
-                  isDark ? 'border-white/10' : 'border-gray-200'
-                }`}>
-                  <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Net to splits</span>
-                  <span className={`font-mono font-bold text-lg ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                    {netPayout.toFixed(4)} {currencyLabel}
+                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Reserved {tokenSymbol}</span>
+                  <span className={`font-mono font-medium text-lg ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
+                    {tokenAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
                   </span>
                 </div>
               </div>
 
-              {/* Splits preview */}
-              {splits.length > 0 && (
-                <div className={`p-3 space-y-1 text-sm ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                  <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    Recipients
-                  </div>
-                  {splits.slice(0, 3).map((split, i) => (
-                    <div key={i} className="flex justify-between">
-                      <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {split.beneficiary.slice(0, 6)}...{split.beneficiary.slice(-4)}
-                      </span>
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        {split.percent}%
-                      </span>
-                    </div>
-                  ))}
-                  {splits.length > 3 && (
-                    <div className={`text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      +{splits.length - 3} more
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
+                These tokens will be distributed to the configured reserved token recipients.
+                Anyone can trigger this distribution.
+              </div>
 
               {/* Gas balance check */}
               <div className={`flex justify-between items-center text-sm ${
@@ -347,7 +292,7 @@ export default function SendPayoutsModal({
               }`}>
                 <span>Your ETH balance (for gas)</span>
                 <span className={`font-mono ${!hasGasBalance ? 'text-red-400' : ''}`}>
-                  {formatEthBalance(totalEth)} {currencyLabel}
+                  {formatEthBalance(totalEth)} ETH
                 </span>
               </div>
 
@@ -365,20 +310,8 @@ export default function SendPayoutsModal({
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Distributed</span>
-                  <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {amountNum.toFixed(4)} {currencyLabel}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Protocol fee</span>
-                  <span className={`font-mono ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                    -{protocolFee.toFixed(4)} {currencyLabel}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Sent to splits</span>
-                  <span className={`font-mono text-green-500`}>
-                    {netPayout.toFixed(4)} {currencyLabel}
+                  <span className={`font-mono text-amber-400`}>
+                    {tokenAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
                   </span>
                 </div>
               </div>
@@ -403,9 +336,9 @@ export default function SendPayoutsModal({
               <button
                 onClick={handleConfirm}
                 disabled={!hasGasBalance}
-                className="flex-1 py-3 font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-3 font-bold bg-amber-500 text-black hover:bg-amber-500/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Send Payouts
+                Distribute {tokenSymbol}
               </button>
             </div>
           )}
@@ -419,7 +352,7 @@ export default function SendPayoutsModal({
           {(status === 'confirmed' || status === 'failed') && (
             <button
               onClick={onClose}
-              className="w-full py-3 font-medium bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors"
+              className="w-full py-3 font-medium bg-amber-500 text-black hover:bg-amber-500/90 transition-colors"
             >
               Done
             </button>

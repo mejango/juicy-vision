@@ -1,3 +1,7 @@
 export { default as PayModal } from './PayModal'
 export { default as CashOutModal } from './CashOutModal'
 export { default as SendPayoutsModal } from './SendPayoutsModal'
+export { default as SendReservedTokensModal } from './SendReservedTokensModal'
+export { default as UseSurplusAllowanceModal } from './UseSurplusAllowanceModal'
+export { default as DeployERC20Modal } from './DeployERC20Modal'
+export { default as QueueRulesetModal } from './QueueRulesetModal'

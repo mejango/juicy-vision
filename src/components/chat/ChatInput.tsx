@@ -185,12 +185,12 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   }
 
   return (
-    <div className={`${compact ? 'py-2 px-6' : 'pt-8 px-6 pb-12'} ${
+    <div className={`${compact ? 'py-4 px-6' : 'pt-8 px-6 pb-12'} ${
       hideBorder ? '' : 'border-t'
     } ${
       theme === 'dark'
-        ? `border-white/10 ${hideBorder ? '' : 'bg-juice-dark/90'}`
-        : `border-gray-200 ${hideBorder ? '' : 'bg-white'}`
+        ? `border-white/10 ${hideBorder ? 'bg-transparent' : 'bg-juice-dark/90'}`
+        : `border-gray-200 ${hideBorder ? 'bg-transparent' : 'bg-white'}`
     }`}>
       {/* Attachment previews */}
       {attachments.length > 0 && (
@@ -238,8 +238,8 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           className={`p-3 border-2 border-juice-cyan transition-colors shrink-0
                      disabled:opacity-50 disabled:cursor-not-allowed
                      ${theme === 'dark'
-                       ? 'bg-juice-dark-lighter text-white hover:bg-juice-dark'
-                       : 'bg-white text-gray-900 hover:bg-gray-100'
+                       ? 'bg-white/5 text-white hover:bg-white/10'
+                       : 'bg-black/5 text-gray-900 hover:bg-black/10'
                      }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -259,8 +259,8 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           autoFocus
           className={`flex-1 border-2 border-juice-cyan px-4 pt-[11px] pb-[15px] focus:outline-none focus:border-[3px] focus:px-[15px] focus:pt-[10px] focus:pb-[14px] resize-none font-semibold leading-tight overflow-y-auto hide-scrollbar ${
             theme === 'dark'
-              ? 'bg-juice-dark-lighter text-white placeholder-white/70'
-              : 'bg-white text-gray-900 placeholder-gray-900/50'
+              ? 'bg-white/5 text-white placeholder-white/70'
+              : 'bg-black/5 text-gray-900 placeholder-gray-900/50'
           }`}
           style={{ minHeight: '48px' }}
         />

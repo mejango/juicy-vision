@@ -13,7 +13,7 @@ interface ActivityItemProps {
 
 export default function ActivityItem({ event, onProjectClick }: ActivityItemProps) {
   const { theme } = useThemeStore()
-  const { action, amount, txHash, from, fromContext } = getEventInfo(event)
+  const { action, amount, txHash, from } = getEventInfo(event)
   const chain = CHAINS[event.chainId] || { name: '?', color: '#888', explorer: 'https://etherscan.io' }
   const projectName = event.project?.name || 'Unknown Project'
   const logoUri = resolveIpfsUri(event.project?.logoUri)
@@ -36,65 +36,65 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
   return (
     <div
       onClick={handleClick}
-      className={`flex gap-3 px-4 py-3 -mx-4 border-b cursor-pointer transition-colors ${
+      className={`relative overflow-hidden px-3 py-2 -mx-4 border-b cursor-pointer transition-colors ${
         theme === 'dark'
           ? 'border-white/10 hover:bg-white/5'
           : 'border-gray-200 hover:bg-black/5'
       }`}
     >
-      {/* Project Logo */}
-      <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border ${
-        theme === 'dark' ? 'border-gray-600 bg-juice-dark-lighter' : 'border-gray-300 bg-gray-100'
-      }`}>
-        {logoUri ? (
-          <img src={logoUri} alt={projectName} className="w-full h-full object-cover" />
-        ) : (
-          <div className={`w-full h-full flex items-center justify-center text-xs font-bold ${
-            theme === 'dark' ? 'bg-juice-orange/20 text-juice-orange' : 'bg-juice-orange/10 text-juice-orange'
-          }`}>
-            {projectName.charAt(0).toUpperCase()}
-          </div>
-        )}
-      </div>
+      {/* Background logo */}
+      {logoUri && (
+        <div
+          className="absolute right-0 top-1/2 -translate-y-1/2 w-16 h-16 opacity-20"
+          style={{
+            backgroundImage: `url(${logoUri})`,
+            backgroundSize: 'contain',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+          }}
+        />
+      )}
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        {/* Project name + chain */}
-        <div className="flex items-center gap-2">
-          <span className={`font-medium truncate ${
+      {/* Content overlay */}
+      <div className="relative z-10">
+        {/* Top row: Project name + chain + time */}
+        <div className="flex items-center gap-1.5">
+          <span className={`text-xs font-medium truncate ${
             theme === 'dark' ? 'text-juice-cyan' : 'text-teal-600'
           }`}>
-            {projectName.length > 20 ? `${projectName.slice(0, 20)}...` : projectName}
+            {projectName.length > 12 ? `${projectName.slice(0, 12)}…` : projectName}
           </span>
           <span
-            className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-            style={{ backgroundColor: `${chain.color}20`, color: chain.color }}
+            className="text-[8px] font-bold px-1 py-0.5 rounded"
+            style={{ backgroundColor: `${chain.color}30`, color: chain.color }}
           >
             {chain.name}
           </span>
+          <span className={`text-[10px] ml-auto ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+            {formatTimeAgo(event.timestamp)}
+          </span>
         </div>
 
-        {/* Action */}
-        <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-          {action}
+        {/* Middle row: Action + Amount */}
+        <div className="flex items-baseline gap-1.5 mt-0.5">
+          <span className={`text-[10px] ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+            {action}
+          </span>
+          {amount && (
+            <span className={`text-xs font-semibold ${
+              theme === 'dark' ? 'text-juice-orange' : 'text-orange-600'
+            }`}>
+              {amount}
+            </span>
+          )}
         </div>
 
-        {/* Amount */}
-        {amount && (
-          <div className={`font-semibold ${
-            theme === 'dark' ? 'text-juice-orange' : 'text-orange-600'
-          }`}>
-            {amount}
-          </div>
-        )}
-
-        {/* Metadata - each on own line */}
-        <div className={`text-xs mt-1.5 space-y-0.5 ${
+        {/* Bottom row: From + tx link */}
+        <div className={`flex items-center gap-2 mt-0.5 text-[10px] ${
           theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
         }`}>
-          <div>{formatTimeAgo(event.timestamp)}</div>
           {from && (
-            <div>{fromContext} {ensName || truncateAddress(from)}</div>
+            <span className="truncate">{ensName || truncateAddress(from)}</span>
           )}
           {txHash && (
             <a
@@ -102,10 +102,10 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 hover:text-juice-cyan"
+              className="ml-auto hover:text-juice-cyan flex items-center gap-0.5"
             >
-              <span>View tx</span>
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span>tx</span>
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
