@@ -1,13 +1,15 @@
-import { useModal } from '@getpara/react-sdk'
 import { Button } from '../ui'
 
-export default function WalletButton() {
-  const { openModal } = useModal()
+// Dispatch event to open wallet panel
+function openWalletPanel() {
+  window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+}
 
+export default function WalletButton() {
   return (
     <Button
       variant="primary"
-      onClick={() => openModal()}
+      onClick={openWalletPanel}
       icon={
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

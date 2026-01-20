@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react'
-import { useWallet, useLogout } from '@getpara/react-sdk'
+import { useAccount, useDisconnect, useEnsName } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance } from '../../hooks'
 import type { Attachment } from '../../stores/chatStore'
@@ -62,8 +62,9 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme } = useThemeStore()
-  const { data: wallet } = useWallet()
-  const { logout } = useLogout()
+  const { address, isConnected } = useAccount()
+  const { data: ensName } = useEnsName({ address })
+  const { disconnect } = useDisconnect()
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
 
   const currentPlaceholder = placeholder || (isFirstLoad ? INITIAL_PLACEHOLDER : PLACEHOLDER_PHRASES[placeholderIndex])
@@ -280,21 +281,21 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       </div>
 
       {/* Connected wallet display */}
-      {!hideWalletInfo && wallet?.address && (
+      {!hideWalletInfo && isConnected && address && (
         <div className="flex gap-3 mt-2">
           {/* Spacer to align with textarea */}
           <div className="w-[48px] shrink-0" />
           <div className={`flex-1 text-xs ${
             theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
           }`}>
-            <span>Connected as {wallet.ensName || shortenAddress(wallet.address)}</span>
+            <span>Connected as {ensName || shortenAddress(address)}</span>
             {!balancesLoading && (totalEth > 0n || totalUsdc > 0n) && (
               <span className="ml-2">
                 · {formatEthBalance(totalEth)} ETH · {formatUsdcBalance(totalUsdc)} USDC
               </span>
             )}
             <button
-              onClick={() => logout()}
+              onClick={() => disconnect()}
               className={`ml-2 transition-colors ${
                 theme === 'dark'
                   ? 'text-gray-600 hover:text-gray-400'

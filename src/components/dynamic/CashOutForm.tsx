@@ -1,45 +1,56 @@
 import { useState, useEffect } from 'react'
-import { useWallet, useModal } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
-import { fetchProject, fetchIssuanceRate, type Project, type IssuanceRate } from '../../services/bendystraw'
+import { fetchProject, fetchIssuanceRate, fetchConnectedChains, type Project, type IssuanceRate, type ConnectedChain } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { CashOutModal } from '../payment'
+import { CHAINS, ALL_CHAIN_IDS, CURRENCIES } from '../../constants'
 
 interface CashOutFormProps {
   projectId: string
   chainId?: string
 }
 
-const CHAIN_INFO: Record<string, { name: string; slug: string }> = {
-  '1': { name: 'Ethereum', slug: 'eth' },
-  '10': { name: 'Optimism', slug: 'op' },
-  '8453': { name: 'Base', slug: 'base' },
-  '42161': { name: 'Arbitrum', slug: 'arb' },
-}
-
-export default function CashOutForm({ projectId, chainId = '1' }: CashOutFormProps) {
+export default function CashOutForm({ projectId, chainId: initialChainId = '1' }: CashOutFormProps) {
   const [project, setProject] = useState<Project | null>(null)
   const [issuanceRate, setIssuanceRate] = useState<IssuanceRate | null>(null)
   const [loading, setLoading] = useState(true)
   const [tokenAmount, setTokenAmount] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [selectedChainId, setSelectedChainId] = useState(initialChainId)
+  const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
+  const [chainDropdownOpen, setChainDropdownOpen] = useState(false)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const { data: wallet } = useWallet()
-  const { openModal } = useModal()
-  const isConnected = !!wallet?.address
+  const { isConnected } = useAccount()
 
-  const chainInfo = CHAIN_INFO[chainId] || CHAIN_INFO['1']
+  const chainInfo = CHAINS[parseInt(selectedChainId)] || CHAINS[1]
 
-  // Fetch project data
+  // Determine currency from project's baseCurrency
+  const baseCurrency = project?.baseCurrency || 1
+  const currencySymbol = baseCurrency === 2 ? 'USDC' : 'ETH'
+
+  // Use connected chains if available, otherwise fall back to single chain
+  const availableChains = connectedChains.length > 0
+    ? connectedChains
+    : [{ chainId: parseInt(initialChainId), projectId: parseInt(projectId) }]
+
+  // Fetch project data and connected chains
   useEffect(() => {
     async function load() {
       try {
         setLoading(true)
+        const chainIdNum = parseInt(selectedChainId)
+
+        // Fetch connected chains first
+        const chains = await fetchConnectedChains(projectId, chainIdNum)
+        setConnectedChains(chains)
+
+        // Fetch project data for selected chain
         const [data, rate] = await Promise.all([
-          fetchProject(projectId, parseInt(chainId)),
-          fetchIssuanceRate(projectId, parseInt(chainId)),
+          fetchProject(projectId, chainIdNum),
+          fetchIssuanceRate(projectId, chainIdNum),
         ])
         setProject(data)
         setIssuanceRate(rate)
@@ -50,7 +61,7 @@ export default function CashOutForm({ projectId, chainId = '1' }: CashOutFormPro
       }
     }
     load()
-  }, [projectId, chainId])
+  }, [projectId, selectedChainId])
 
   // Calculate estimated return (in whatever currency the project holds)
   const tokenNum = parseFloat(tokenAmount) || 0
@@ -58,11 +69,16 @@ export default function CashOutForm({ projectId, chainId = '1' }: CashOutFormPro
     ? tokenNum / issuanceRate.tokensPerEth
     : 0
 
+  // Dispatch event to open wallet panel
+  const openWalletPanel = () => {
+    window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+  }
+
   const handleCashOut = () => {
     if (!tokenAmount || parseFloat(tokenAmount) <= 0) return
 
     if (!isConnected) {
-      openModal()
+      openWalletPanel()
       return
     }
 
@@ -112,9 +128,53 @@ export default function CashOutForm({ projectId, chainId = '1' }: CashOutFormPro
               {project?.name || `Project #${projectId}`}
             </a>
           </div>
-          <span className={`px-2 py-0.5 text-xs font-medium ${isDark ? 'bg-white/10 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
-            {chainInfo.name}
-          </span>
+          {/* Chain selector - show dropdown if multiple chains available */}
+          {availableChains.length > 1 ? (
+            <div className="relative">
+              <button
+                onClick={() => setChainDropdownOpen(!chainDropdownOpen)}
+                className={`px-2 py-0.5 text-xs font-medium flex items-center gap-1 ${
+                  isDark ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {chainInfo.shortName}
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {chainDropdownOpen && (
+                <div className={`absolute right-0 mt-1 py-1 min-w-[120px] border z-10 ${
+                  isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
+                }`}>
+                  {availableChains.map(chain => {
+                    const info = CHAINS[chain.chainId]
+                    if (!info) return null
+                    return (
+                      <button
+                        key={chain.chainId}
+                        onClick={() => {
+                          setSelectedChainId(String(chain.chainId))
+                          setChainDropdownOpen(false)
+                        }}
+                        className={`w-full px-3 py-1.5 text-xs text-left flex items-center gap-2 ${
+                          selectedChainId === String(chain.chainId)
+                            ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
+                            : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: info.color }} />
+                        {info.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className={`px-2 py-0.5 text-xs font-medium ${isDark ? 'bg-white/10 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+              {chainInfo.shortName}
+            </span>
+          )}
         </div>
 
         {/* Form */}
@@ -180,7 +240,7 @@ export default function CashOutForm({ projectId, chainId = '1' }: CashOutFormPro
           {/* Estimated return */}
           {tokenNum > 0 && estimatedReturn > 0 && (
             <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-              Estimated return: ~{estimatedReturn.toFixed(4)}
+              Estimated return: ~{estimatedReturn.toFixed(baseCurrency === 2 ? 2 : 4)} {currencySymbol}
             </div>
           )}
         </div>
@@ -197,9 +257,10 @@ export default function CashOutForm({ projectId, chainId = '1' }: CashOutFormPro
         onClose={() => setShowModal(false)}
         projectId={projectId}
         projectName={project?.name}
-        chainId={parseInt(chainId)}
+        chainId={parseInt(selectedChainId)}
         tokenAmount={tokenAmount}
         estimatedReturn={estimatedReturn}
+        currencySymbol={currencySymbol}
       />
     </div>
   )

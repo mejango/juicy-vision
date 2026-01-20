@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useWallet, useClient } from '@getpara/react-sdk'
-import { createParaViemClient } from '@getpara/viem-v2-integration'
-import { encodeFunctionData, http, keccak256, toBytes, type Chain } from 'viem'
+import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
+import { encodeFunctionData, keccak256, toBytes, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
-import { useThemeStore, useTransactionStore } from '../../stores'
-import { useWalletBalances, formatEthBalance } from '../../hooks'
+import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
+import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
 
 // Contract constants
 const JB_CONTROLLER = '0x8C32BBA37a7C42b3A1Fa25E2eaF4D6539C481a16' as const
@@ -69,10 +68,16 @@ export default function DeployERC20Modal({
 }: DeployERC20ModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { data: wallet } = useWallet()
-  const paraClient = useClient()
+  const { address } = useAccount()
+  const { data: walletClient } = useWalletClient()
+  const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
   const { totalEth } = useWalletBalances()
+
+  // Managed mode support
+  const { mode, isAuthenticated } = useAuthStore()
+  const isManagedMode = mode === 'managed' && isAuthenticated()
+  const { address: managedAddress } = useManagedWallet()
 
   const [status, setStatus] = useState<DeployStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
@@ -91,9 +96,18 @@ export default function DeployERC20Modal({
   }, [isOpen])
 
   const handleConfirm = useCallback(async () => {
-    if (!paraClient || !wallet?.address) {
-      setError('Wallet not connected')
-      return
+    // Check wallet connection based on mode
+    const activeAddress = isManagedMode ? managedAddress : address
+    if (isManagedMode) {
+      if (!managedAddress) {
+        setError('Managed wallet not available')
+        return
+      }
+    } else {
+      if (!walletClient || !address) {
+        setError('Wallet not connected')
+        return
+      }
     }
 
     setStatus('signing')
@@ -117,13 +131,8 @@ export default function DeployERC20Modal({
         status: 'pending',
       })
 
-      const walletClient = createParaViemClient(paraClient, {
-        chain,
-        transport: http(),
-      })
-
       // Generate a salt based on project, timestamp, and wallet address for uniqueness
-      const saltInput = `${projectId}-${tokenSymbol}-${Date.now()}-${wallet.address}`
+      const saltInput = `${projectId}-${tokenSymbol}-${Date.now()}-${activeAddress}`
       const salt = keccak256(toBytes(saltInput))
 
       const callData = encodeFunctionData({
@@ -139,11 +148,20 @@ export default function DeployERC20Modal({
 
       setStatus('pending')
 
-      const hash = await walletClient.sendTransaction({
-        to: JB_CONTROLLER,
-        data: callData,
-        value: 0n,
-      })
+      let hash: string
+
+      if (isManagedMode) {
+        // Execute via backend for managed mode
+        hash = await executeManagedTransaction(chainId, JB_CONTROLLER, callData, '0')
+      } else {
+        // Execute via wallet for self-custody mode
+        await switchChainAsync({ chainId })
+        hash = await walletClient!.sendTransaction({
+          to: JB_CONTROLLER,
+          data: callData,
+          value: 0n,
+        })
+      }
 
       setTxHash(hash)
       updateTransaction(txId, { hash, status: 'submitted' })
@@ -153,7 +171,7 @@ export default function DeployERC20Modal({
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [paraClient, wallet, chainId, projectId, tokenName, tokenSymbol, addTransaction, updateTransaction])
+  }, [walletClient, address, chainId, projectId, tokenName, tokenSymbol, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress])
 
   if (!isOpen) return null
 

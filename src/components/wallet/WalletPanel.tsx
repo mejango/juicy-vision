@@ -1,15 +1,7 @@
 import { useState } from 'react'
-import {
-  useWallet,
-  useLogout,
-  useVerifyOAuth,
-  useLoginExternalWallet,
-  useVerifyExternalWallet,
-  useWaitForWalletCreation,
-  useClient,
-} from '@getpara/react-sdk'
-import { useThemeStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, formatUsdcBalance } from '../../hooks'
+import { useAccount, useConnect, useDisconnect, useBalance, useEnsName } from 'wagmi'
+import { useThemeStore, useAuthStore } from '../../stores'
+import { useManagedWallet } from '../../hooks'
 import { Modal } from '../ui'
 
 interface WalletPanelProps {
@@ -21,93 +13,320 @@ function shortenAddress(address: string, chars = 6): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
 }
 
-// Auth method selector
-function AuthOptions({ onOAuth, onExternalWallet, isPending }: {
-  onOAuth: (method: 'GOOGLE' | 'APPLE') => void
-  onExternalWallet: () => void
-  isPending: boolean
+// Mode selector - self-custody vs managed
+function ModeSelector({ onSelectMode }: {
+  onSelectMode: (mode: 'self_custody' | 'managed') => void
 }) {
   const { theme } = useThemeStore()
 
   return (
     <div className="space-y-3">
       <p className={`text-sm text-center mb-4 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-        Connect to manage your funds and execute transactions
+        How would you like to connect?
       </p>
 
-      {/* OAuth Options */}
+      {/* Self-custody - Browser wallet */}
       <button
-        onClick={() => onOAuth('GOOGLE')}
-        disabled={isPending}
-        className={`w-full p-3 border-2 flex items-center justify-center gap-3 font-medium transition-all
-          disabled:opacity-50 disabled:cursor-not-allowed
+        onClick={() => onSelectMode('self_custody')}
+        className={`w-full p-4 border-2 text-left transition-all
           ${theme === 'dark'
-            ? 'border-white/20 bg-white/5 text-white hover:bg-white/10 hover:border-white/30'
-            : 'border-gray-200 bg-white text-gray-900 hover:bg-gray-50 hover:border-gray-300'
+            ? 'border-juice-cyan/50 bg-juice-cyan/10 hover:bg-juice-cyan/20 hover:border-juice-cyan'
+            : 'border-teal-500 bg-teal-50 hover:bg-teal-100'
           }`}
       >
-        <svg className="w-5 h-5" viewBox="0 0 24 24">
-          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-        </svg>
-        Continue with Google
+        <div className="flex items-center gap-3">
+          <svg className={`w-6 h-6 ${theme === 'dark' ? 'text-juice-cyan' : 'text-teal-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+          <div>
+            <div className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+              Connect Wallet
+            </div>
+            <div className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              Use MetaMask, Rainbow, or other wallet
+            </div>
+          </div>
+        </div>
       </button>
 
+      {/* Managed - Email */}
       <button
-        onClick={() => onOAuth('APPLE')}
-        disabled={isPending}
-        className={`w-full p-3 border-2 flex items-center justify-center gap-3 font-medium transition-all
-          disabled:opacity-50 disabled:cursor-not-allowed
+        onClick={() => onSelectMode('managed')}
+        className={`w-full p-4 border-2 text-left transition-all
           ${theme === 'dark'
-            ? 'border-white/20 bg-white/5 text-white hover:bg-white/10 hover:border-white/30'
-            : 'border-gray-200 bg-white text-gray-900 hover:bg-gray-50 hover:border-gray-300'
+            ? 'border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/30'
+            : 'border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300'
           }`}
       >
-        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-        </svg>
-        Continue with Apple
-      </button>
-
-      <div className={`flex items-center gap-3 my-4 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-        <div className={`flex-1 border-t ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`} />
-        <span className="text-xs">or</span>
-        <div className={`flex-1 border-t ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`} />
-      </div>
-
-      {/* External Wallet */}
-      <button
-        onClick={onExternalWallet}
-        disabled={isPending}
-        className={`w-full p-3 border-2 flex items-center justify-center gap-3 font-medium transition-all
-          disabled:opacity-50 disabled:cursor-not-allowed
-          ${theme === 'dark'
-            ? 'border-juice-cyan/50 bg-juice-cyan/10 text-juice-cyan hover:bg-juice-cyan/20'
-            : 'border-teal-500 bg-teal-50 text-teal-700 hover:bg-teal-100'
-          }`}
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-        Connect Wallet
+        <div className="flex items-center gap-3">
+          <svg className={`w-6 h-6 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          <div>
+            <div className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+              Continue with Email
+            </div>
+            <div className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              We'll manage a wallet for you
+            </div>
+          </div>
+        </div>
       </button>
     </div>
   )
 }
 
-// Connected wallet view
-function WalletView({ onTopUp, onDisconnect }: {
+// Self-custody wallet connection
+function SelfCustodyConnect({ onBack }: { onBack: () => void }) {
+  const { theme } = useThemeStore()
+  const { setMode } = useAuthStore()
+  const { connect, connectors, isPending, error } = useConnect()
+
+  const handleConnect = (connector: typeof connectors[number]) => {
+    setMode('self_custody')
+    connect({ connector })
+  }
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={onBack}
+        className={`flex items-center gap-2 text-sm ${
+          theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back
+      </button>
+
+      <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+        Connect your wallet to manage funds directly
+      </p>
+
+      {error && (
+        <div className={`p-3 text-sm border-2 ${
+          theme === 'dark'
+            ? 'border-red-500/50 bg-red-500/10 text-red-400'
+            : 'border-red-300 bg-red-50 text-red-600'
+        }`}>
+          {error.message}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {connectors.map((connector) => (
+          <button
+            key={connector.id}
+            onClick={() => handleConnect(connector)}
+            disabled={isPending}
+            className={`w-full p-3 border-2 flex items-center justify-center gap-3 font-medium transition-all
+              disabled:opacity-50 disabled:cursor-not-allowed
+              ${theme === 'dark'
+                ? 'border-white/20 bg-white/5 text-white hover:bg-white/10 hover:border-white/30'
+                : 'border-gray-200 bg-white text-gray-900 hover:bg-gray-50 hover:border-gray-300'
+              }`}
+          >
+            {connector.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Email OTP flow for managed mode
+function EmailAuth({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => void }) {
+  const { theme } = useThemeStore()
+  const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
+  const [step, setStep] = useState<'email' | 'code'>('email')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [devCode, setDevCode] = useState<string | null>(null)
+
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+
+  const handleRequestCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/request-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to send code')
+      }
+
+      // In dev mode, the code is returned directly
+      if (data.data.code) {
+        setDevCode(data.data.code)
+      }
+
+      setStep('code')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send code')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/verify-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code }),
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        throw new Error(data.error || 'Invalid code')
+      }
+
+      // Store auth data
+      const authStore = useAuthStore.getState()
+      authStore.setMode('managed')
+      // The authStore will handle storing the token and user
+      // For now, we trigger login through the store
+      await authStore.login(email, code)
+
+      onSuccess()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Verification failed')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={onBack}
+        className={`flex items-center gap-2 text-sm ${
+          theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back
+      </button>
+
+      {error && (
+        <div className={`p-3 text-sm border-2 ${
+          theme === 'dark'
+            ? 'border-red-500/50 bg-red-500/10 text-red-400'
+            : 'border-red-300 bg-red-50 text-red-600'
+        }`}>
+          {error}
+        </div>
+      )}
+
+      {step === 'email' ? (
+        <form onSubmit={handleRequestCode} className="space-y-4">
+          <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+            Enter your email to receive a one-time code
+          </p>
+
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            required
+            className={`w-full p-3 border-2 font-mono transition-colors outline-none
+              ${theme === 'dark'
+                ? 'border-white/20 bg-white/5 text-white placeholder-gray-500 focus:border-juice-orange'
+                : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-juice-orange'
+              }`}
+          />
+
+          <button
+            type="submit"
+            disabled={isLoading || !email}
+            className="w-full p-3 bg-juice-orange text-black font-medium hover:bg-juice-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? 'Sending...' : 'Send Code'}
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={handleVerifyCode} className="space-y-4">
+          <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+            Enter the 6-digit code sent to <strong>{email}</strong>
+          </p>
+
+          {devCode && (
+            <div className={`p-3 text-sm border-2 ${
+              theme === 'dark'
+                ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400'
+                : 'border-yellow-300 bg-yellow-50 text-yellow-700'
+            }`}>
+              Dev mode: Your code is <strong className="font-mono">{devCode}</strong>
+            </div>
+          )}
+
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="000000"
+            required
+            maxLength={6}
+            className={`w-full p-3 border-2 font-mono text-2xl text-center tracking-[0.5em] transition-colors outline-none
+              ${theme === 'dark'
+                ? 'border-white/20 bg-white/5 text-white placeholder-gray-500 focus:border-juice-orange'
+                : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-juice-orange'
+              }`}
+          />
+
+          <button
+            type="submit"
+            disabled={isLoading || code.length !== 6}
+            className="w-full p-3 bg-juice-orange text-black font-medium hover:bg-juice-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? 'Verifying...' : 'Verify Code'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStep('email')}
+            className={`w-full text-sm ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
+          >
+            Use a different email
+          </button>
+        </form>
+      )}
+    </div>
+  )
+}
+
+// Connected wallet view (self-custody)
+function SelfCustodyWalletView({ onTopUp, onDisconnect }: {
   onTopUp: () => void
   onDisconnect: () => void
 }) {
   const { theme } = useThemeStore()
-  const { data: wallet } = useWallet()
-  const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
+  const { address } = useAccount()
+  const { data: ensName } = useEnsName({ address })
+  const { data: ethBalance } = useBalance({ address })
 
-  if (!wallet?.address) return null
+  if (!address) return null
 
   return (
     <div className="space-y-4">
@@ -119,7 +338,7 @@ function WalletView({ onTopUp, onDisconnect }: {
           <span className={`text-xs uppercase tracking-wide ${
             theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
           }`}>
-            Account
+            Wallet
           </span>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-green-500" />
@@ -129,50 +348,33 @@ function WalletView({ onTopUp, onDisconnect }: {
           </div>
         </div>
         <div className={`font-mono text-lg ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-          {wallet.ensName || shortenAddress(wallet.address)}
+          {ensName || shortenAddress(address)}
         </div>
-        {wallet.ensName && (
+        {ensName && (
           <div className={`font-mono text-sm mt-1 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-            {shortenAddress(wallet.address)}
+            {shortenAddress(address)}
           </div>
         )}
       </div>
 
-      {/* Balances */}
+      {/* Balance */}
       <div className={`p-4 border-2 ${
         theme === 'dark' ? 'border-white/20 bg-white/5' : 'border-gray-200 bg-gray-50'
       }`}>
         <div className={`text-xs uppercase tracking-wide mb-3 ${
           theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
         }`}>
-          Total Balance
+          Balance
         </div>
-        {balancesLoading ? (
-          <div className={`animate-pulse h-8 rounded ${
-            theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'
-          }`} />
-        ) : (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className={`flex items-center gap-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                <span className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-xs">Ξ</span>
-                ETH
-              </span>
-              <span className={`font-mono font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                {formatEthBalance(totalEth)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className={`flex items-center gap-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                <span className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-xs">$</span>
-                USDC
-              </span>
-              <span className={`font-mono font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                {formatUsdcBalance(totalUsdc)}
-              </span>
-            </div>
-          </div>
-        )}
+        <div className="flex items-center justify-between">
+          <span className={`flex items-center gap-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+            <span className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-xs">Ξ</span>
+            ETH
+          </span>
+          <span className={`font-mono font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+            {ethBalance ? parseFloat(ethBalance.formatted).toFixed(4) : '0.0000'}
+          </span>
+        </div>
       </div>
 
       {/* Actions */}
@@ -201,26 +403,169 @@ function WalletView({ onTopUp, onDisconnect }: {
   )
 }
 
-// Top up / onramp view
-function TopUpView({ onBack }: { onBack: () => void }) {
+// Managed account view
+function ManagedAccountView({ onDisconnect }: { onDisconnect: () => void }) {
   const { theme } = useThemeStore()
-  const { data: wallet } = useWallet()
+  const { user } = useAuthStore()
+  const { address, balances, loading } = useManagedWallet()
+  const [copied, setCopied] = useState(false)
 
-  // For now, link to popular onramps with the user's address
+  if (!user) return null
+
+  const copyAddress = () => {
+    if (address) {
+      navigator.clipboard.writeText(address)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Account display */}
+      <div className={`p-4 border-2 ${
+        theme === 'dark' ? 'border-white/20 bg-white/5' : 'border-gray-200 bg-gray-50'
+      }`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className={`text-xs uppercase tracking-wide ${
+            theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+          }`}>
+            Managed Account
+          </span>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <span className={`text-xs ${theme === 'dark' ? 'text-green-400' : 'text-green-600'}`}>
+              Active
+            </span>
+          </div>
+        </div>
+        <div className={`text-lg ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+          {user.email}
+        </div>
+      </div>
+
+      {/* Wallet address */}
+      {address && (
+        <div className={`p-4 border-2 ${
+          theme === 'dark' ? 'border-white/20 bg-white/5' : 'border-gray-200 bg-gray-50'
+        }`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-xs uppercase tracking-wide ${
+              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              Wallet Address
+            </span>
+            <button
+              onClick={copyAddress}
+              className={`text-xs px-2 py-1 transition-colors ${
+                theme === 'dark'
+                  ? 'text-juice-cyan hover:bg-white/10'
+                  : 'text-cyan-600 hover:bg-gray-100'
+              }`}
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <div className={`font-mono text-sm break-all ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+            {shortenAddress(address, 10)}
+          </div>
+        </div>
+      )}
+
+      {/* Balance display */}
+      {loading ? (
+        <div className={`p-4 border-2 ${
+          theme === 'dark' ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'
+        }`}>
+          <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+            Loading balances...
+          </div>
+        </div>
+      ) : balances.length > 0 ? (
+        <div className={`p-4 border-2 ${
+          theme === 'dark' ? 'border-white/20 bg-white/5' : 'border-gray-200 bg-gray-50'
+        }`}>
+          <div className={`text-xs uppercase tracking-wide mb-3 ${
+            theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+          }`}>
+            Token Balances
+          </div>
+          <div className="space-y-2">
+            {balances.map((balance, i) => {
+              const formatted = Number(balance.balance) / Math.pow(10, balance.decimals)
+              return (
+                <div key={i} className="flex items-center justify-between">
+                  <span className={theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}>
+                    {balance.tokenSymbol}
+                  </span>
+                  <span className={`font-mono ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                    {formatted.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : address ? (
+        <div className={`p-4 border-2 ${
+          theme === 'dark' ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'
+        }`}>
+          <div className={`text-sm text-center ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+            No token balances yet
+          </div>
+        </div>
+      ) : null}
+
+      {/* Info about custodial wallet */}
+      <div className={`p-4 border-2 ${
+        theme === 'dark' ? 'border-juice-orange/30 bg-juice-orange/10' : 'border-orange-200 bg-orange-50'
+      }`}>
+        <div className={`text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+          Your project tokens are held in a secure custodial wallet. You can transfer them to your own wallet anytime with a 30-day security hold.
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        <button
+          onClick={onDisconnect}
+          className={`flex-1 p-3 border-2 font-medium transition-colors ${
+            theme === 'dark'
+              ? 'border-red-500/50 text-red-400 hover:bg-red-500/10'
+              : 'border-red-300 text-red-600 hover:bg-red-50'
+          }`}
+        >
+          Sign Out
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Top up view
+function TopUpView({ onBack, address }: { onBack: () => void; address?: string }) {
+  const { theme } = useThemeStore()
+
   const onrampLinks = [
     {
       name: 'Coinbase',
-      url: `https://pay.coinbase.com/buy/select-asset?addresses={"${wallet?.address}":["ethereum","base","optimism","arbitrum"]}&presetFiatAmount=50`,
+      url: address
+        ? `https://pay.coinbase.com/buy/select-asset?addresses={"${address}":["ethereum","base","optimism","arbitrum"]}&presetFiatAmount=50`
+        : 'https://pay.coinbase.com',
       icon: '🔵',
     },
     {
       name: 'MoonPay',
-      url: `https://www.moonpay.com/buy?defaultCurrencyCode=eth&walletAddress=${wallet?.address}`,
+      url: address
+        ? `https://www.moonpay.com/buy?defaultCurrencyCode=eth&walletAddress=${address}`
+        : 'https://www.moonpay.com',
       icon: '🌙',
     },
     {
       name: 'Transak',
-      url: `https://global.transak.com/?cryptoCurrencyCode=ETH&walletAddress=${wallet?.address}`,
+      url: address
+        ? `https://global.transak.com/?cryptoCurrencyCode=ETH&walletAddress=${address}`
+        : 'https://global.transak.com',
       icon: '🔄',
     },
   ]
@@ -266,118 +611,88 @@ function TopUpView({ onBack }: { onBack: () => void }) {
         ))}
       </div>
 
-      <div className={`text-xs text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-        Your address: {wallet?.address ? shortenAddress(wallet.address, 8) : '...'}
-      </div>
+      {address && (
+        <div className={`text-xs text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+          Your address: {shortenAddress(address, 8)}
+        </div>
+      )}
     </div>
   )
 }
 
 export default function WalletPanel({ isOpen, onClose }: WalletPanelProps) {
-  const { theme } = useThemeStore()
-  const { data: wallet } = useWallet()
-  const { logout } = useLogout()
-  const { verifyOAuthAsync, isPending: oauthPending } = useVerifyOAuth()
-  const { loginExternalWalletAsync, isPending: externalPending } = useLoginExternalWallet()
-  const { verifyExternalWalletAsync } = useVerifyExternalWallet()
-  const { waitForWalletCreationAsync } = useWaitForWalletCreation()
-  const paraClient = useClient()
+  const { mode, logout: authLogout, isAuthenticated } = useAuthStore()
+  const { address, isConnected: walletConnected } = useAccount()
+  const { disconnect } = useDisconnect()
 
-  const [view, setView] = useState<'auth' | 'wallet' | 'topup'>('auth')
-  const [error, setError] = useState<string | null>(null)
+  const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'wallet' | 'topup'>('select')
 
-  const isConnected = !!wallet?.address
-  const currentView = isConnected ? (view === 'topup' ? 'topup' : 'wallet') : 'auth'
-  const isPending = oauthPending || externalPending
+  // Determine current state
+  const isSelfCustodyConnected = mode === 'self_custody' && walletConnected
+  const isManagedConnected = mode === 'managed' && isAuthenticated()
 
-  const handleOAuth = async (method: 'GOOGLE' | 'APPLE') => {
-    setError(null)
-    try {
-      const result = await verifyOAuthAsync({ method })
-
-      // Check if we need to wait for wallet creation
-      if (result && 'needsWallet' in result && result.needsWallet) {
-        await waitForWalletCreationAsync({})
-      }
-    } catch (err) {
-      console.error('OAuth error:', err)
-      setError(err instanceof Error ? err.message : 'Authentication failed')
-    }
-  }
-
-  const handleExternalWallet = async () => {
-    setError(null)
-    try {
-      // This will trigger the browser's wallet selection
-      // For now, we'll use the modal's external wallet flow as a fallback
-      // In a more complete implementation, we'd directly integrate with wagmi/viem
-      if (paraClient) {
-        // Try to get injected provider (MetaMask, etc.)
-        const ethereum = (window as { ethereum?: { request: (args: { method: string }) => Promise<string[]> } }).ethereum
-        if (ethereum) {
-          const accounts = await ethereum.request({ method: 'eth_requestAccounts' })
-          if (accounts && accounts.length > 0) {
-            const result = await loginExternalWalletAsync({
-              externalWallet: {
-                address: accounts[0],
-                type: 'EVM',
-              },
-            })
-
-            if (result && 'needsVerify' in result && result.needsVerify) {
-              // Need to sign a message to verify
-              await verifyExternalWalletAsync({})
-            }
-          }
-        } else {
-          setError('No wallet detected. Please install MetaMask or another browser wallet.')
-        }
-      }
-    } catch (err) {
-      console.error('External wallet error:', err)
-      setError(err instanceof Error ? err.message : 'Wallet connection failed')
-    }
-  }
+  const currentView = (() => {
+    if (view === 'topup') return 'topup'
+    if (isSelfCustodyConnected) return 'wallet'
+    if (isManagedConnected) return 'managed'
+    return view
+  })()
 
   const handleDisconnect = async () => {
-    await logout()
-    setView('auth')
+    if (mode === 'self_custody') {
+      disconnect()
+    } else {
+      await authLogout()
+    }
+    setView('select')
+  }
+
+  const getTitle = () => {
+    switch (currentView) {
+      case 'select': return 'Connect'
+      case 'self_custody': return 'Connect Wallet'
+      case 'managed': return 'Account'
+      case 'wallet': return 'Wallet'
+      case 'topup': return 'Add Funds'
+      default: return 'Connect'
+    }
   }
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={currentView === 'auth' ? 'Connect Account' : currentView === 'topup' ? 'Add Funds' : 'Account'}
-      size="sm"
-    >
-      {error && (
-        <div className={`mb-4 p-3 text-sm border-2 ${
-          theme === 'dark'
-            ? 'border-red-500/50 bg-red-500/10 text-red-400'
-            : 'border-red-300 bg-red-50 text-red-600'
-        }`}>
-          {error}
-        </div>
-      )}
-
-      {currentView === 'auth' && (
-        <AuthOptions
-          onOAuth={handleOAuth}
-          onExternalWallet={handleExternalWallet}
-          isPending={isPending}
+    <Modal isOpen={isOpen} onClose={onClose} title={getTitle()} size="sm">
+      {currentView === 'select' && (
+        <ModeSelector
+          onSelectMode={(selectedMode) => setView(selectedMode)}
         />
       )}
 
-      {currentView === 'wallet' && (
-        <WalletView
+      {currentView === 'self_custody' && (
+        <SelfCustodyConnect onBack={() => setView('select')} />
+      )}
+
+      {currentView === 'managed' && !isManagedConnected && (
+        <EmailAuth
+          onBack={() => setView('select')}
+          onSuccess={() => setView('select')}
+        />
+      )}
+
+      {currentView === 'managed' && isManagedConnected && (
+        <ManagedAccountView onDisconnect={handleDisconnect} />
+      )}
+
+      {currentView === 'wallet' && isSelfCustodyConnected && (
+        <SelfCustodyWalletView
           onTopUp={() => setView('topup')}
           onDisconnect={handleDisconnect}
         />
       )}
 
       {currentView === 'topup' && (
-        <TopUpView onBack={() => setView('wallet')} />
+        <TopUpView
+          onBack={() => setView(isSelfCustodyConnected ? 'wallet' : 'select')}
+          address={address}
+        />
       )}
     </Modal>
   )

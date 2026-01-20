@@ -1,15 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useWallet, useClient } from '@getpara/react-sdk'
-import { createParaViemClient } from '@getpara/viem-v2-integration'
-import { parseEther, encodeFunctionData, http, type Chain } from 'viem'
+import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
+import { parseEther, encodeFunctionData, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
-import { useThemeStore, useTransactionStore } from '../../stores'
-import { useWalletBalances, formatEthBalance } from '../../hooks'
+import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
+import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { CHAINS as CHAIN_INFO, NATIVE_TOKEN } from '../../constants'
 
 // Contract constants
 const JB_MULTI_TERMINAL = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
 
 const TERMINAL_SEND_PAYOUTS_ABI = [
   {
@@ -27,25 +26,12 @@ const TERMINAL_SEND_PAYOUTS_ABI = [
   },
 ] as const
 
+// viem chain objects for wallet operations
 const CHAINS: Record<number, Chain> = {
   1: mainnet,
   10: optimism,
   8453: base,
   42161: arbitrum,
-}
-
-const CHAIN_NAMES: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  8453: 'Base',
-  42161: 'Arbitrum',
-}
-
-const EXPLORER_URLS: Record<number, string> = {
-  1: 'https://etherscan.io/tx/',
-  10: 'https://optimistic.etherscan.io/tx/',
-  8453: 'https://basescan.org/tx/',
-  42161: 'https://arbiscan.io/tx/',
 }
 
 interface SendPayoutsModalProps {
@@ -73,16 +59,23 @@ export default function SendPayoutsModal({
 }: SendPayoutsModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { data: wallet } = useWallet()
-  const paraClient = useClient()
+  const { address } = useAccount()
+  const { data: walletClient } = useWalletClient()
+  const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
   const { totalEth } = useWalletBalances()
+
+  // Managed mode support
+  const { mode, isAuthenticated } = useAuthStore()
+  const isManagedMode = mode === 'managed' && isAuthenticated()
+  const { address: managedAddress } = useManagedWallet()
 
   const [status, setStatus] = useState<PayoutStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const chainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`
+  const chainInfo = CHAIN_INFO[chainId] || CHAIN_INFO[1]
+  const chainName = chainInfo.name
   const currencyLabel = baseCurrency === 2 ? 'USDC' : 'ETH'
   const amountNum = parseFloat(amount) || 0
   const protocolFee = amountNum * 0.025 // 2.5% protocol fee
@@ -99,9 +92,17 @@ export default function SendPayoutsModal({
   }, [isOpen])
 
   const handleConfirm = useCallback(async () => {
-    if (!paraClient || !wallet?.address) {
-      setError('Wallet not connected')
-      return
+    // Check wallet connection based on mode
+    if (isManagedMode) {
+      if (!managedAddress) {
+        setError('Managed wallet not available')
+        return
+      }
+    } else {
+      if (!walletClient || !address) {
+        setError('Wallet not connected')
+        return
+      }
     }
 
     setStatus('signing')
@@ -125,11 +126,6 @@ export default function SendPayoutsModal({
         status: 'pending',
       })
 
-      const walletClient = createParaViemClient(paraClient, {
-        chain,
-        transport: http(),
-      })
-
       const payoutAmount = parseEther(amount)
 
       const callData = encodeFunctionData({
@@ -146,11 +142,20 @@ export default function SendPayoutsModal({
 
       setStatus('pending')
 
-      const hash = await walletClient.sendTransaction({
-        to: JB_MULTI_TERMINAL,
-        data: callData,
-        value: 0n,
-      })
+      let hash: string
+
+      if (isManagedMode) {
+        // Execute via backend for managed mode
+        hash = await executeManagedTransaction(chainId, JB_MULTI_TERMINAL, callData, '0')
+      } else {
+        // Execute via wallet for self-custody mode
+        await switchChainAsync({ chainId })
+        hash = await walletClient!.sendTransaction({
+          to: JB_MULTI_TERMINAL,
+          data: callData,
+          value: 0n,
+        })
+      }
 
       setTxHash(hash)
       updateTransaction(txId, { hash, status: 'submitted' })
@@ -160,7 +165,7 @@ export default function SendPayoutsModal({
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [paraClient, wallet, chainId, projectId, amount, addTransaction, updateTransaction])
+  }, [walletClient, address, chainId, projectId, amount, baseCurrency, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress])
 
   if (!isOpen) return null
 
@@ -253,7 +258,7 @@ export default function SendPayoutsModal({
                 </p>
                 {txHash && (
                   <a
-                    href={`${EXPLORER_URLS[chainId]}${txHash}`}
+                    href={`${chainInfo.explorerTx}${txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-juice-cyan hover:underline"

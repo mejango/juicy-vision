@@ -1,0 +1,123 @@
+name: AI Training Pipeline
+
+on:
+  # Run weekly on Sundays at midnight UTC
+  schedule:
+    - cron: '0 0 * * 0'
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Force run even with few conversations'
+        required: false
+        default: 'false'
+
+env:
+  TRAINING_OUTPUT_DIR: ./training-output
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v2.x
+
+      - name: Run Training Pipeline
+        working-directory: ./backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TRAINING_OUTPUT_DIR: ${{ env.TRAINING_OUTPUT_DIR }}
+        run: |
+          deno run \
+            --allow-net \
+            --allow-env \
+            --allow-read \
+            --allow-write \
+            scripts/training/run.ts
+
+      - name: Upload Training Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-output-${{ github.run_number }}
+          path: backend/training-output/
+          retention-days: 90
+
+      - name: Check for Critical Suggestions
+        id: check_critical
+        working-directory: ./backend
+        run: |
+          # Check if there are critical priority suggestions
+          CRITICAL=$(cat training-output/prompt-patches-*.json 2>/dev/null | jq '[.[] | select(.priority == "critical")] | length' || echo "0")
+          echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
+
+          HIGH=$(cat training-output/prompt-patches-*.json 2>/dev/null | jq '[.[] | select(.priority == "high")] | length' || echo "0")
+          echo "high_count=$HIGH" >> $GITHUB_OUTPUT
+
+      - name: Create Issue for Critical Findings
+        if: steps.check_critical.outputs.critical_count > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const glob = require('glob');
+
+            // Read the latest report
+            const reportFiles = glob.sync('backend/training-output/training-report-*.md');
+            const latestReport = reportFiles.sort().pop();
+            const reportContent = fs.readFileSync(latestReport, 'utf8');
+
+            // Read prompt additions
+            const additionFiles = glob.sync('backend/training-output/prompt-additions-*.md');
+            const latestAdditions = additionFiles.sort().pop();
+            const additionsContent = fs.readFileSync(latestAdditions, 'utf8');
+
+            const issueBody = `## AI Training Pipeline Results
+
+            **Run:** #${{ github.run_number }}
+            **Date:** ${new Date().toISOString()}
+
+            ### Critical Issues Found: ${{ steps.check_critical.outputs.critical_count }}
+            ### High Priority Issues: ${{ steps.check_critical.outputs.high_count }}
+
+            ---
+
+            ## Training Report
+
+            ${reportContent.slice(0, 3000)}
+
+            ---
+
+            ## Suggested Prompt Additions
+
+            ${additionsContent.slice(0, 5000)}
+
+            ---
+
+            [View full artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[AI Training] ${new Date().toISOString().split('T')[0]} - ${{ steps.check_critical.outputs.critical_count }} critical issues`,
+              body: issueBody,
+              labels: ['ai-training', 'automated']
+            });
+
+      - name: Summary
+        run: |
+          echo "## Training Pipeline Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Critical suggestions:** ${{ steps.check_critical.outputs.critical_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **High priority suggestions:** ${{ steps.check_critical.outputs.high_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Artifacts uploaded. Review prompt-additions and few-shot-examples files." >> $GITHUB_STEP_SUMMARY

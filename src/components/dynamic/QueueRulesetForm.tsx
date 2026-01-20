@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useWallet, useModal } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { formatEther, parseEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
@@ -176,9 +176,12 @@ export default function QueueRulesetForm({ projectId, chainId = '1' }: QueueRule
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const { data: wallet } = useWallet()
-  const { openModal } = useModal()
-  const isConnected = !!wallet?.address
+  const { isConnected } = useAccount()
+
+  // Dispatch event to open wallet panel
+  const openWalletPanel = () => {
+    window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+  }
 
   // Omnichain state
   const [chainRulesetData, setChainRulesetData] = useState<ChainRulesetData[]>([])
@@ -338,7 +341,7 @@ export default function QueueRulesetForm({ projectId, chainId = '1' }: QueueRule
     if (selectedChains.length === 0) return
 
     if (!isConnected) {
-      openModal()
+      openWalletPanel()
       return
     }
 

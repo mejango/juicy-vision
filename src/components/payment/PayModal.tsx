@@ -1,15 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useWallet, useClient } from '@getpara/react-sdk'
-import { createParaViemClient } from '@getpara/viem-v2-integration'
-import { parseEther, encodeFunctionData, http, type Hex, type Address, type Chain } from 'viem'
+import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
+import { parseEther, encodeFunctionData, type Hex, type Address, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
-import { useThemeStore, useTransactionStore } from '../../stores'
-import { useWalletBalances, formatEthBalance } from '../../hooks'
+import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
+import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { CHAINS as CHAIN_INFO, NATIVE_TOKEN } from '../../constants'
 
 // Contract constants
 const JB_MULTI_TERMINAL = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
 
 const TERMINAL_PAY_ABI = [
   {
@@ -29,25 +28,12 @@ const TERMINAL_PAY_ABI = [
   },
 ] as const
 
+// viem chain objects for wallet operations
 const CHAINS: Record<number, Chain> = {
   1: mainnet,
   10: optimism,
   8453: base,
   42161: arbitrum,
-}
-
-const CHAIN_NAMES: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  8453: 'Base',
-  42161: 'Arbitrum',
-}
-
-const EXPLORER_URLS: Record<number, string> = {
-  1: 'https://etherscan.io/tx/',
-  10: 'https://optimistic.etherscan.io/tx/',
-  8453: 'https://basescan.org/tx/',
-  42161: 'https://arbiscan.io/tx/',
 }
 
 interface PayModalProps {
@@ -63,6 +49,8 @@ interface PayModalProps {
   juicyProjectId: number
   estimatedTokens?: number
   estimatedJuicyTokens?: number
+  /** Token symbol for display - 'ETH' or 'USDC'. Defaults to 'ETH' */
+  token?: 'ETH' | 'USDC'
 }
 
 type PaymentStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
@@ -80,19 +68,27 @@ export default function PayModal({
   juicyProjectId,
   estimatedTokens = 0,
   estimatedJuicyTokens = 0,
+  token = 'ETH',
 }: PayModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { data: wallet } = useWallet()
-  const paraClient = useClient()
+  const { address, isConnected } = useAccount()
+  const { data: walletClient } = useWalletClient()
+  const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
   const { totalEth } = useWalletBalances()
+
+  // Managed mode support
+  const { mode, isAuthenticated } = useAuthStore()
+  const isManagedMode = mode === 'managed' && isAuthenticated()
+  const { address: managedAddress } = useManagedWallet()
 
   const [status, setStatus] = useState<PaymentStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const chainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`
+  const chainInfo = CHAIN_INFO[chainId] || CHAIN_INFO[1]
+  const chainName = chainInfo.name
   const amountNum = parseFloat(amount) || 0
   const feeNum = parseFloat(feeAmount) || 0
   const totalAmount = amountNum + feeNum
@@ -129,15 +125,24 @@ export default function PayModal({
   }, [])
 
   const handleConfirm = async () => {
-    if (!paraClient || !wallet?.address) {
-      setError('Wallet not connected')
-      return
+    // Check wallet connection based on mode
+    const activeAddress = isManagedMode ? managedAddress : address
+    if (isManagedMode) {
+      if (!managedAddress) {
+        setError('Managed wallet not available')
+        return
+      }
+    } else {
+      if (!walletClient || !address || !isConnected) {
+        setError('Wallet not connected')
+        return
+      }
     }
 
     setStatus('signing')
     setError(null)
 
-    const beneficiary = wallet.address as Address
+    const beneficiary = activeAddress as Address
     const chain = CHAINS[chainId]
 
     if (!chain) {
@@ -156,78 +161,102 @@ export default function PayModal({
         status: 'pending',
       })
 
-      const walletClient = createParaViemClient(paraClient, {
-        chain,
-        transport: http(),
-      })
-
       const projectAmount = parseEther(amount)
       const juicyFeeAmount = payUs ? parseEther(feeAmount) : 0n
 
       setStatus('pending')
 
-      if (payUs && juicyFeeAmount > 0n) {
-        // Try batched transaction first
-        const calls = [
-          {
-            to: JB_MULTI_TERMINAL as Address,
-            data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
-            value: projectAmount,
-          },
-          {
-            to: JB_MULTI_TERMINAL as Address,
-            data: buildPayCallData(juicyProjectId, juicyFeeAmount, beneficiary, 'juicy fee'),
-            value: juicyFeeAmount,
-          },
-        ]
+      if (isManagedMode) {
+        // Execute via backend for managed mode
+        const projectCallData = buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo)
+        const hash = await executeManagedTransaction(chainId, JB_MULTI_TERMINAL, projectCallData, projectAmount.toString())
+        setTxHash(hash)
+        updateTransaction(txId, { hash, status: 'submitted' })
 
-        const walletWithBatch = walletClient as typeof walletClient & { sendCalls?: unknown }
-        if (typeof walletWithBatch.sendCalls === 'function') {
-          try {
-            const batchResult = await (walletWithBatch.sendCalls as (params: unknown) => Promise<{ id?: string }>)({
-              account: beneficiary,
-              chain,
-              calls,
-            })
-            const hash = batchResult.id || String(batchResult)
-            setTxHash(hash)
-            updateTransaction(txId, { hash, status: 'submitted' })
-            setStatus('confirmed')
-            return
-          } catch {
-            // Batch not supported, falling back to sequential
-          }
+        // Send JUICY fee if enabled
+        if (payUs && juicyFeeAmount > 0n) {
+          const feeCallData = buildPayCallData(juicyProjectId, juicyFeeAmount, beneficiary, 'juicy fee')
+          await executeManagedTransaction(chainId, JB_MULTI_TERMINAL, feeCallData, juicyFeeAmount.toString())
         }
-
-        // Sequential fallback
-        const projectHash = await walletClient.sendTransaction({
-          to: JB_MULTI_TERMINAL,
-          data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
-          value: projectAmount,
-        })
-
-        setTxHash(projectHash)
-        updateTransaction(txId, { hash: projectHash, status: 'submitted' })
-
-        // Send JUICY fee
-        await walletClient.sendTransaction({
-          to: JB_MULTI_TERMINAL,
-          data: buildPayCallData(juicyProjectId, juicyFeeAmount, beneficiary, 'juicy fee'),
-          value: juicyFeeAmount,
-        })
 
         setStatus('confirmed')
       } else {
-        // Single transaction
-        const hash = await walletClient.sendTransaction({
-          to: JB_MULTI_TERMINAL,
-          data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
-          value: projectAmount,
-        })
+        // Execute via wallet for self-custody mode
+        // Switch to the correct chain if needed
+        const currentChainId = await walletClient!.getChainId()
+        if (currentChainId !== chainId) {
+          await switchChainAsync({ chainId })
+        }
 
-        setTxHash(hash)
-        updateTransaction(txId, { hash, status: 'submitted' })
-        setStatus('confirmed')
+        if (payUs && juicyFeeAmount > 0n) {
+          // Try batched transaction first
+          const calls = [
+            {
+              to: JB_MULTI_TERMINAL as Address,
+              data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
+              value: projectAmount,
+            },
+            {
+              to: JB_MULTI_TERMINAL as Address,
+              data: buildPayCallData(juicyProjectId, juicyFeeAmount, beneficiary, 'juicy fee'),
+              value: juicyFeeAmount,
+            },
+          ]
+
+          const walletWithBatch = walletClient as typeof walletClient & { sendCalls?: unknown }
+          if (typeof walletWithBatch.sendCalls === 'function') {
+            try {
+              const batchResult = await (walletWithBatch.sendCalls as (params: unknown) => Promise<{ id?: string }>)({
+                account: beneficiary,
+                chain,
+                calls,
+              })
+              const hash = batchResult.id || String(batchResult)
+              setTxHash(hash)
+              updateTransaction(txId, { hash, status: 'submitted' })
+              setStatus('confirmed')
+              return
+            } catch {
+              // Batch not supported, falling back to sequential
+            }
+          }
+
+          // Sequential fallback
+          const projectHash = await walletClient!.sendTransaction({
+            to: JB_MULTI_TERMINAL,
+            data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
+            value: projectAmount,
+            chain,
+            account: address,
+          })
+
+          setTxHash(projectHash)
+          updateTransaction(txId, { hash: projectHash, status: 'submitted' })
+
+          // Send JUICY fee
+          await walletClient!.sendTransaction({
+            to: JB_MULTI_TERMINAL,
+            data: buildPayCallData(juicyProjectId, juicyFeeAmount, beneficiary, 'juicy fee'),
+            value: juicyFeeAmount,
+            chain,
+            account: address,
+          })
+
+          setStatus('confirmed')
+        } else {
+          // Single transaction
+          const hash = await walletClient!.sendTransaction({
+            to: JB_MULTI_TERMINAL,
+            data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
+            value: projectAmount,
+            chain,
+            account: address,
+          })
+
+          setTxHash(hash)
+          updateTransaction(txId, { hash, status: 'submitted' })
+          setStatus('confirmed')
+        }
       }
     } catch (err) {
       console.error('Payment failed:', err)
@@ -327,7 +356,7 @@ export default function PayModal({
                 </p>
                 {txHash && (
                   <a
-                    href={`${EXPLORER_URLS[chainId]}${txHash}`}
+                    href={`${chainInfo.explorerTx}${txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-juice-cyan hover:underline"
@@ -373,7 +402,7 @@ export default function PayModal({
                 <div className="flex justify-between items-center">
                   <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Amount</span>
                   <span className={`font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {amountNum.toFixed(4)} ETH
+                    {amountNum.toFixed(token === 'USDC' ? 2 : 4)} {token}
                   </span>
                 </div>
 
@@ -383,7 +412,7 @@ export default function PayModal({
                       + Pay us (2.5%)
                     </span>
                     <span className={`font-mono ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
-                      {feeNum.toFixed(4)} ETH
+                      {feeNum.toFixed(token === 'USDC' ? 2 : 4)} {token}
                     </span>
                   </div>
                 )}
@@ -393,7 +422,7 @@ export default function PayModal({
                 }`}>
                   <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Total</span>
                   <span className={`font-mono font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {totalAmount.toFixed(4)} ETH
+                    {totalAmount.toFixed(token === 'USDC' ? 2 : 4)} {token}
                   </span>
                 </div>
               </div>
@@ -404,7 +433,7 @@ export default function PayModal({
               }`}>
                 <span>Your balance</span>
                 <span className={`font-mono ${!hasEnoughBalance ? 'text-red-400' : ''}`}>
-                  {formatEthBalance(totalEth)} ETH
+                  {formatEthBalance(totalEth)} {token}
                 </span>
               </div>
 
@@ -430,7 +459,7 @@ export default function PayModal({
                 <div className="flex justify-between items-center">
                   <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Paid</span>
                   <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {totalAmount.toFixed(4)} ETH
+                    {totalAmount.toFixed(token === 'USDC' ? 2 : 4)} {token}
                   </span>
                 </div>
                 {estimatedTokens > 0 && (

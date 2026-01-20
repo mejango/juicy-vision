@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useWallet, useModal } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import {
   fetchProject,
@@ -98,9 +98,11 @@ export default function SendReservedTokensForm({ projectId, chainId = '1' }: Sen
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const { data: wallet } = useWallet()
-  const { openModal } = useModal()
-  const isConnected = !!wallet?.address
+  const { isConnected } = useAccount()
+
+  const openWalletPanel = () => {
+    window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+  }
 
   // Omnichain state
   const [chainReservedData, setChainReservedData] = useState<ChainReservedData[]>([])
@@ -226,7 +228,7 @@ export default function SendReservedTokensForm({ projectId, chainId = '1' }: Sen
     if (pendingTokens <= 0) return
 
     if (!isConnected) {
-      openModal()
+      openWalletPanel()
       return
     }
 

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { useWallet, useModal } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../constants'
 import { fetchIssuanceRate, type IssuanceRate } from '../services/bendystraw'
@@ -48,6 +48,11 @@ export interface UsePaymentFormReturn {
 const JUICY_PROJECT_ID = 1
 const JUICY_FEE_PERCENT = 2.5
 
+// Dispatch event to open wallet panel
+function openWalletPanel() {
+  window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+}
+
 export function usePaymentForm({
   projectId,
   chainId,
@@ -64,10 +69,8 @@ export function usePaymentForm({
   const [walletUsdcBalance, setWalletUsdcBalance] = useState<bigint | null>(null)
   const [balanceLoading, setBalanceLoading] = useState(false)
 
-  const { data: wallet } = useWallet()
-  const { openModal } = useModal()
+  const { address, isConnected } = useAccount()
   const { addTransaction } = useTransactionStore()
-  const isConnected = !!wallet?.address
 
   // Fetch $JUICY issuance rate when chain changes
   useEffect(() => {
@@ -78,7 +81,7 @@ export function usePaymentForm({
 
   // Fetch wallet balances
   const fetchWalletBalances = useCallback(async () => {
-    if (!wallet?.address) {
+    if (!address) {
       setWalletEthBalance(null)
       setWalletUsdcBalance(null)
       return
@@ -97,7 +100,7 @@ export function usePaymentForm({
       })
 
       const ethBalance = await publicClient.getBalance({
-        address: wallet.address as `0x${string}`,
+        address: address as `0x${string}`,
       })
       setWalletEthBalance(ethBalance)
 
@@ -107,7 +110,7 @@ export function usePaymentForm({
           address: usdcAddress,
           abi: erc20Abi,
           functionName: 'balanceOf',
-          args: [wallet.address as `0x${string}`],
+          args: [address as `0x${string}`],
         })
         setWalletUsdcBalance(usdcBalance)
       }
@@ -116,7 +119,7 @@ export function usePaymentForm({
     } finally {
       setBalanceLoading(false)
     }
-  }, [wallet?.address, chainId])
+  }, [address, chainId])
 
   useEffect(() => {
     fetchWalletBalances()
@@ -187,14 +190,14 @@ export function usePaymentForm({
     if (!amount || parseFloat(amount) <= 0) return
 
     if (!isConnected) {
-      openModal()
+      openWalletPanel()
       return
     }
 
     await fetchWalletBalances()
     if (!balanceCheck.sufficient) {
       if (balanceCheck.reason === 'loading') return
-      openModal()
+      openWalletPanel()
       return
     }
 
@@ -228,7 +231,7 @@ export function usePaymentForm({
     } finally {
       setPaying(false)
     }
-  }, [amount, isConnected, balanceCheck, projectId, chainId, selectedToken, memo, payUs, feeAmount, totalAmount, openModal, fetchWalletBalances, addTransaction])
+  }, [amount, isConnected, balanceCheck, projectId, chainId, selectedToken, memo, payUs, feeAmount, totalAmount, fetchWalletBalances, addTransaction])
 
   return {
     amount,

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Input, Modal } from '../ui'
-import { useSettingsStore, useThemeStore } from '../../stores'
+import { useSettingsStore, useThemeStore, useAuthStore } from '../../stores'
+import { useManagedWallet } from '../../hooks'
 
 interface SettingsPanelProps {
   isOpen: boolean
@@ -35,6 +36,9 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [localRelayr, setLocalRelayr] = useState(relayrEndpoint)
   const [showKeys, setShowKeys] = useState(false)
   const { theme } = useThemeStore()
+  const { mode, user, isAuthenticated, logout } = useAuthStore()
+  const { address: managedAddress } = useManagedWallet()
+  const isManagedMode = mode === 'managed' && isAuthenticated()
 
   const handleSave = () => {
     setClaudeApiKey(localClaudeKey)
@@ -61,6 +65,63 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Settings" size="md">
       <div className="space-y-4">
+        {/* Managed Account Section */}
+        {isManagedMode && user && (
+          <>
+            <div className={`p-4 border-2 ${theme === 'dark' ? 'border-juice-cyan/30 bg-juice-cyan/5' : 'border-cyan-200 bg-cyan-50'}`}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className={`text-sm font-semibold ${theme === 'dark' ? 'text-juice-cyan' : 'text-cyan-700'}`}>
+                  Managed Account
+                </h3>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className={`text-xs ${theme === 'dark' ? 'text-green-400' : 'text-green-600'}`}>
+                    Active
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <span className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>Email</span>
+                  <p className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                    {user.email}
+                  </p>
+                </div>
+
+                {managedAddress && (
+                  <div>
+                    <span className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>Wallet Address</span>
+                    <p className={`font-mono text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {managedAddress}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  logout()
+                  onClose()
+                }}
+                className={`mt-4 w-full py-2 text-sm font-medium border transition-colors ${
+                  theme === 'dark'
+                    ? 'border-red-500/50 text-red-400 hover:bg-red-500/10'
+                    : 'border-red-200 text-red-600 hover:bg-red-50'
+                }`}
+              >
+                Sign Out
+              </button>
+            </div>
+
+            <div className={`border-t pt-4 ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
+              <h3 className={`text-sm font-medium mb-3 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                API Keys
+              </h3>
+            </div>
+          </>
+        )}
+
         {/* Claude API Key */}
         <div>
           <Input

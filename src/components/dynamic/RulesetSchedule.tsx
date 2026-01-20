@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useWallet } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import {
   fetchProjectWithRuleset,
@@ -677,18 +677,18 @@ export default function RulesetSchedule({
     : splitsChainId
 
   // Get wallet for permission checking
-  const { data: wallet } = useWallet()
+  const { address } = useAccount()
 
   // Check if connected wallet is project owner or operator
   const canManage = useMemo(() => {
-    if (!wallet?.address) return false
-    const walletAddr = wallet.address.toLowerCase()
+    if (!address) return false
+    const walletAddr = address.toLowerCase()
     // Check if owner (direct ownership)
     if (owner && walletAddr === owner.toLowerCase()) return true
     // Check if operator (for Revnets)
     if (operator && walletAddr === operator.toLowerCase()) return true
     return false
-  }, [wallet?.address, owner, operator])
+  }, [address, owner, operator])
 
   // Get chain name for prompts
   const getChainName = (cId: number) => CHAIN_INFO[cId]?.name || `Chain ${cId}`

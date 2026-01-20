@@ -1,4 +1,4 @@
-import { useModal, useWallet } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { Button } from '../ui'
 import { useWalletBalances } from '../../hooks'
 
@@ -6,16 +6,19 @@ interface ConnectWalletButtonProps {
   onConnect?: () => void
 }
 
+// Dispatch event to open wallet panel
+function openWalletPanel() {
+  window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+}
+
 export default function ConnectWalletButton({ onConnect }: ConnectWalletButtonProps) {
-  const { openModal } = useModal()
-  const { data: wallet } = useWallet()
+  const { isConnected } = useAccount()
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
 
-  const isConnected = !!wallet?.address
   const hasNoFunds = isConnected && !balancesLoading && totalEth < 0.0001 && totalUsdc < 1
 
   const handleClick = () => {
-    openModal()
+    openWalletPanel()
     onConnect?.()
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { useWallet, useModal } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroupBalance, fetchOwnersCount, fetchEthPrice, fetchProjectTokenSymbol, fetchProjectWithRuleset, type Project, type ConnectedChain, type IssuanceRate, type SuckerGroupBalance } from '../../services/bendystraw'
 import { resolveIpfsUri, fetchIpfsMetadata, type IpfsProjectMetadata } from '../../utils/ipfs'
@@ -84,10 +84,12 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   const { addTransaction } = useTransactionStore()
   const isDark = theme === 'dark'
 
-  // Para SDK hooks
-  const { data: wallet } = useWallet()
-  const { openModal } = useModal()
-  const isConnected = !!wallet?.address
+  // wagmi hooks
+  const { address, isConnected } = useAccount()
+
+  const openWalletPanel = () => {
+    window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+  }
 
   // $JUICY project ID (using NANA as placeholder until real deployment)
   const JUICY_PROJECT_ID = 1
@@ -179,7 +181,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
 
   // Fetch wallet balances when connected and chain changes
   const fetchWalletBalances = useCallback(async () => {
-    if (!wallet?.address) {
+    if (!address) {
       setWalletEthBalance(null)
       setWalletUsdcBalance(null)
       return
@@ -199,7 +201,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
 
       // Fetch ETH balance
       const ethBalance = await publicClient.getBalance({
-        address: wallet.address as `0x${string}`,
+        address: address as `0x${string}`,
       })
       setWalletEthBalance(ethBalance)
 
@@ -210,7 +212,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
           address: usdcAddress,
           abi: erc20Abi,
           functionName: 'balanceOf',
-          args: [wallet.address as `0x${string}`],
+          args: [address as `0x${string}`],
         })
         setWalletUsdcBalance(usdcBalance)
       }
@@ -219,7 +221,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
     } finally {
       setBalanceLoading(false)
     }
-  }, [wallet?.address, selectedChainId])
+  }, [address, selectedChainId])
 
   useEffect(() => {
     fetchWalletBalances()
@@ -364,7 +366,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
 
     // Step 1: Check if wallet is connected
     if (!isConnected) {
-      openModal()
+      openWalletPanel()
       return
     }
 
@@ -377,9 +379,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
         // Wait and retry
         return
       }
-      // Insufficient funds - open modal for onramp
-      // Para modal will show options to add funds
-      openModal()
+      // Insufficient funds - open wallet panel for top up options
+      openWalletPanel()
       return
     }
 

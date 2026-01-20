@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { formatEther } from 'viem'
-import { useWallet, useModal } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import type { ResolvedNFTTier } from '../../services/nft'
@@ -14,6 +14,11 @@ interface NFTTierCardProps {
   ethPrice?: number
 }
 
+// Dispatch event to open wallet panel
+function openWalletPanel() {
+  window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+}
+
 export default function NFTTierCard({
   tier,
   projectId,
@@ -24,10 +29,8 @@ export default function NFTTierCard({
 }: NFTTierCardProps) {
   const { theme } = useThemeStore()
   const { addTransaction } = useTransactionStore()
-  const { data: wallet } = useWallet()
-  const { openModal } = useModal()
+  const { isConnected } = useAccount()
   const isDark = theme === 'dark'
-  const isConnected = !!wallet?.address
 
   const [minting, setMinting] = useState(false)
   const [quantity, setQuantity] = useState(1)
@@ -39,7 +42,7 @@ export default function NFTTierCard({
 
   const handleMint = async () => {
     if (!isConnected) {
-      openModal()
+      openWalletPanel()
       return
     }
 

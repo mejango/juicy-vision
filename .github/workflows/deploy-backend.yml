@@ -1,0 +1,47 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths: ['backend/**']
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: us-east1
+  SERVICE: juicy-vision-api
+  REGISTRY: us-east1-docker.pkg.dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build & Push
+        run: |
+          gcloud auth configure-docker $REGISTRY
+          docker build -t $REGISTRY/$PROJECT_ID/juicy-vision/api:${{ github.sha }} backend/
+          docker push $REGISTRY/$PROJECT_ID/juicy-vision/api:${{ github.sha }}
+
+      - name: Deploy
+        run: |
+          gcloud run deploy $SERVICE \
+            --image $REGISTRY/$PROJECT_ID/juicy-vision/api:${{ github.sha }} \
+            --region $REGION \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 10 \
+            --memory 512Mi \
+            --set-secrets "DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,ANTHROPIC_API_KEY=anthropic-key:latest,STRIPE_SECRET_KEY=stripe-secret:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook:latest,RESERVES_PRIVATE_KEY=reserves-key:latest,CRON_SECRET=cron-secret:latest,BENDYSTRAW_API_KEY=bendystraw-key:latest,THEGRAPH_API_KEY=thegraph-key:latest,ANKR_API_KEY=ankr-key:latest"

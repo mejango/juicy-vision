@@ -2,8 +2,10 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { changeLanguage } from '../i18n'
 
-const CURRENT_BENDYSTRAW_ENDPOINT = 'https://bendystraw.xyz/3ZeR8bs2mmAuDXoJSkZnmF7Z/graphql'
-export const DEFAULT_THEGRAPH_API_KEY = '02c70b717f22ba9a341a29655139ebd9'
+// Public Bendystraw endpoint - users can configure custom endpoints in settings
+const DEFAULT_BENDYSTRAW_ENDPOINT = 'https://api.bendystraw.xyz/graphql'
+// No default API key - users must provide their own in settings
+export const DEFAULT_THEGRAPH_API_KEY = ''
 
 export type Language = 'en' | 'zh' | 'pt' | 'es'
 
@@ -45,7 +47,7 @@ export const useSettingsStore = create<SettingsState>()(
       pinataJwt: '',
       ankrApiKey: '',
       theGraphApiKey: DEFAULT_THEGRAPH_API_KEY,
-      bendystrawEndpoint: CURRENT_BENDYSTRAW_ENDPOINT,
+      bendystrawEndpoint: DEFAULT_BENDYSTRAW_ENDPOINT,
       relayrEndpoint: 'https://api.relayr.ba5ed.com',
       language: 'en',
 
@@ -95,7 +97,7 @@ export const useSettingsStore = create<SettingsState>()(
         if (version < 2) {
           state = {
             ...state,
-            bendystrawEndpoint: CURRENT_BENDYSTRAW_ENDPOINT,
+            bendystrawEndpoint: DEFAULT_BENDYSTRAW_ENDPOINT,
           }
         }
         if (version < 5) {

@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useWallet, useClient } from '@getpara/react-sdk'
-import { createParaViemClient } from '@getpara/viem-v2-integration'
-import { encodeFunctionData, http, type Chain } from 'viem'
+import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
+import { encodeFunctionData, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
-import { useThemeStore, useTransactionStore } from '../../stores'
-import { useWalletBalances, formatEthBalance } from '../../hooks'
+import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
+import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { type JBRulesetConfig } from '../../services/relayr'
 
 // Contract constants - JBController5_1
@@ -161,10 +160,16 @@ export default function QueueRulesetModal({
 }: QueueRulesetModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { data: wallet } = useWallet()
-  const paraClient = useClient()
+  const { address } = useAccount()
+  const { data: walletClient } = useWalletClient()
+  const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
   const { totalEth } = useWalletBalances()
+
+  // Managed mode support
+  const { mode, isAuthenticated } = useAuthStore()
+  const isManagedMode = mode === 'managed' && isAuthenticated()
+  const { address: managedAddress } = useManagedWallet()
 
   const [chainStates, setChainStates] = useState<ChainTxState[]>([])
   const [currentChainIndex, setCurrentChainIndex] = useState<number>(-1)
@@ -263,8 +268,15 @@ export default function QueueRulesetModal({
 
   // Queue ruleset on a single chain
   const queueOnChain = useCallback(async (chainData: ChainRulesetData) => {
-    if (!paraClient || !wallet?.address) {
-      throw new Error('Wallet not connected')
+    // Check wallet connection based on mode
+    if (isManagedMode) {
+      if (!managedAddress) {
+        throw new Error('Managed wallet not available')
+      }
+    } else {
+      if (!walletClient || !address) {
+        throw new Error('Wallet not connected')
+      }
     }
 
     const chain = CHAINS[chainData.chainId]
@@ -283,11 +295,6 @@ export default function QueueRulesetModal({
         status: 'pending',
       })
 
-      const walletClient = createParaViemClient(paraClient, {
-        chain,
-        transport: http(),
-      })
-
       const rulesetArgs = buildRulesetArgs()
 
       const callData = encodeFunctionData({
@@ -302,11 +309,20 @@ export default function QueueRulesetModal({
 
       updateChainState(chainData.chainId, { status: 'submitted' })
 
-      const hash = await walletClient.sendTransaction({
-        to: JB_CONTROLLER,
-        data: callData,
-        value: 0n,
-      })
+      let hash: string
+
+      if (isManagedMode) {
+        // Execute via backend for managed mode
+        hash = await executeManagedTransaction(chainData.chainId, JB_CONTROLLER, callData, '0')
+      } else {
+        // Execute via wallet for self-custody mode
+        await switchChainAsync({ chainId: chainData.chainId })
+        hash = await walletClient!.sendTransaction({
+          to: JB_CONTROLLER,
+          data: callData,
+          value: 0n,
+        })
+      }
 
       updateChainState(chainData.chainId, { status: 'confirmed', txHash: hash })
       updateTransaction(txId, { hash, status: 'submitted' })
@@ -317,11 +333,16 @@ export default function QueueRulesetModal({
       updateChainState(chainData.chainId, { status: 'failed', error: errorMessage })
       throw err
     }
-  }, [paraClient, wallet, memo, buildRulesetArgs, addTransaction, updateTransaction, updateChainState])
+  }, [walletClient, address, memo, buildRulesetArgs, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress])
 
   // Start the queuing process
   const handleStart = useCallback(async () => {
-    if (!paraClient || !wallet?.address || chainRulesetData.length === 0) return
+    // Check wallet connection based on mode
+    if (isManagedMode) {
+      if (!managedAddress || chainRulesetData.length === 0) return
+    } else {
+      if (!walletClient || !address || chainRulesetData.length === 0) return
+    }
 
     setIsStarted(true)
 
@@ -337,7 +358,7 @@ export default function QueueRulesetModal({
     }
 
     setCurrentChainIndex(-1)
-  }, [paraClient, wallet, chainRulesetData, queueOnChain])
+  }, [walletClient, address, chainRulesetData, queueOnChain, isManagedMode, managedAddress])
 
   if (!isOpen) return null
 

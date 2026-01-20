@@ -103,6 +103,12 @@ export interface Participant {
 }
 
 function getClient(): GraphQLClient {
+  // If backend API is configured, use the proxy endpoint to keep API keys secure
+  const apiUrl = import.meta.env.VITE_API_URL
+  if (apiUrl) {
+    return new GraphQLClient(`${apiUrl}/api/proxy/bendystraw`)
+  }
+  // Fallback to direct endpoint (requires user to configure in settings)
   const endpoint = useSettingsStore.getState().bendystrawEndpoint
   return new GraphQLClient(endpoint)
 }

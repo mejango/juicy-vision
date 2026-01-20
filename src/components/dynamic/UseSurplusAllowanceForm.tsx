@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useWallet, useModal } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
@@ -102,9 +102,12 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1' }: Us
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const { data: wallet } = useWallet()
-  const { openModal } = useModal()
-  const isConnected = !!wallet?.address
+  const { isConnected } = useAccount()
+
+  // Dispatch event to open wallet panel
+  const openWalletPanel = () => {
+    window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+  }
 
   // Omnichain state
   const [chainSurplusData, setChainSurplusData] = useState<ChainSurplusData[]>([])
@@ -223,7 +226,7 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1' }: Us
     if (!amount || amountNum <= 0) return
 
     if (!isConnected) {
-      openModal()
+      openWalletPanel()
       return
     }
 

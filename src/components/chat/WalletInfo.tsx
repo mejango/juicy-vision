@@ -1,4 +1,4 @@
-import { useWallet, useLogout, useModal, ModalStep } from '@getpara/react-sdk'
+import { useAccount, useDisconnect, useEnsName } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance } from '../../hooks'
 
@@ -6,18 +6,23 @@ function shortenAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
 }
 
+// Dispatch event to open wallet panel
+function openWalletPanel() {
+  window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+}
+
 export default function WalletInfo() {
   const { theme } = useThemeStore()
-  const { data: wallet } = useWallet()
-  const { logout } = useLogout()
-  const { openModal } = useModal()
+  const { address, isConnected } = useAccount()
+  const { data: ensName } = useEnsName({ address })
+  const { disconnect } = useDisconnect()
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
 
-  if (!wallet?.address) return null
+  if (!isConnected || !address) return null
 
   const handleTopUp = () => {
-    // Open Para modal to onramp/buy crypto screen
-    openModal({ step: ModalStep.ADD_FUNDS_BUY })
+    // Open wallet panel to show funding options
+    openWalletPanel()
   }
 
   return (
@@ -28,9 +33,9 @@ export default function WalletInfo() {
         theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
       }`}>
         <div>
-          <span>Connected as {wallet.ensName || shortenAddress(wallet.address)}</span>
+          <span>Connected as {ensName || shortenAddress(address)}</span>
           <button
-            onClick={() => logout()}
+            onClick={() => disconnect()}
             className={`ml-2 transition-colors ${
               theme === 'dark'
                 ? 'text-gray-600 hover:text-gray-400'

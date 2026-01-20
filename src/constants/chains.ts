@@ -8,30 +8,27 @@ export const VIEM_CHAINS = {
   42161: arbitrum,
 } as const
 
-// Ankr API key for RPC endpoints
-const ANKR_API_KEY = '4157139e2df23efe70685c5f1d9e63aac4862abca52613777308041e997f0d74'
-
-// RPC endpoints for each chain (Ankr with API key as primary)
+// RPC endpoints for each chain (public endpoints - users can configure custom RPCs in settings)
 export const RPC_ENDPOINTS: Record<number, string[]> = {
   1: [
-    `https://rpc.ankr.com/eth/${ANKR_API_KEY}`,
     'https://ethereum.publicnode.com',
     'https://eth.drpc.org',
+    'https://rpc.ankr.com/eth',
   ],
   10: [
-    `https://rpc.ankr.com/optimism/${ANKR_API_KEY}`,
     'https://optimism.publicnode.com',
     'https://mainnet.optimism.io',
+    'https://rpc.ankr.com/optimism',
   ],
   8453: [
-    `https://rpc.ankr.com/base/${ANKR_API_KEY}`,
     'https://base.publicnode.com',
     'https://mainnet.base.org',
+    'https://rpc.ankr.com/base',
   ],
   42161: [
-    `https://rpc.ankr.com/arbitrum/${ANKR_API_KEY}`,
     'https://arbitrum-one.publicnode.com',
     'https://arb1.arbitrum.io/rpc',
+    'https://rpc.ankr.com/arbitrum',
   ],
 }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useWallet, useModal } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import {
   fetchProject,
@@ -89,9 +89,11 @@ export default function DeployERC20Form({ projectId, chainId = '1' }: DeployERC2
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const { data: wallet } = useWallet()
-  const { openModal } = useModal()
-  const isConnected = !!wallet?.address
+  const { isConnected } = useAccount()
+
+  const openWalletPanel = () => {
+    window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+  }
 
   // Omnichain state
   const [chainTokenData, setChainTokenData] = useState<ChainTokenData[]>([])
@@ -188,7 +190,7 @@ export default function DeployERC20Form({ projectId, chainId = '1' }: DeployERC2
     if (!tokenName.trim() || !tokenSymbol.trim()) return
 
     if (!isConnected) {
-      openModal()
+      openWalletPanel()
       return
     }
 

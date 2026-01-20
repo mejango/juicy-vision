@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ParaProvider, Environment } from '@getpara/react-sdk'
-import '@getpara/react-sdk/styles.css'
+import { WagmiProvider, createConfig, http } from 'wagmi'
+import { mainnet, optimism, base, arbitrum } from 'wagmi/chains'
+import { injected, walletConnect } from 'wagmi/connectors'
 import { useTranslation } from 'react-i18next'
 import { ChatContainer, ProtocolActivity, MascotPanel } from './components/chat'
 import { SettingsPanel } from './components/settings'
-import { useSettingsStore, useChatStore, useThemeStore } from './stores'
+import { useChatStore, useThemeStore } from './stores'
 import { useTransactionExecutor } from './hooks'
 
 const queryClient = new QueryClient({
@@ -161,40 +162,36 @@ function MainContent({ topOnly, bottomOnly }: { topOnly?: boolean; bottomOnly?: 
   )
 }
 
-function AppProviders({ children }: { children: React.ReactNode }) {
-  const { paraApiKey } = useSettingsStore()
+// Wagmi configuration for self-custody wallet connection
+const wagmiConfig = createConfig({
+  chains: [mainnet, optimism, base, arbitrum],
+  connectors: [
+    injected(),
+    walletConnect({
+      projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'juicy-vision',
+      metadata: {
+        name: 'Juicy Vision',
+        description: 'AI-powered Juicebox interface',
+        url: window.location.origin,
+        icons: [`${window.location.origin}/head-dark.png`],
+      },
+    }),
+  ],
+  transports: {
+    [mainnet.id]: http('https://rpc.ankr.com/eth'),
+    [optimism.id]: http('https://rpc.ankr.com/optimism'),
+    [base.id]: http('https://rpc.ankr.com/base'),
+    [arbitrum.id]: http('https://rpc.ankr.com/arbitrum'),
+  },
+})
 
+function AppProviders({ children }: { children: React.ReactNode }) {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ParaProvider
-        paraClientConfig={{
-          env: Environment.BETA,
-          apiKey: paraApiKey || 'beta_e5108365cf0b2fd615914efb50c3ca82',
-        }}
-        config={{
-          appName: 'Juicy Vision',
-        }}
-        externalWalletConfig={{
-          appDescription: 'Juicy Vision - AI-powered Juicebox interface',
-          appUrl: window.location.origin,
-          appIcon: `${window.location.origin}/head-dark.png`,
-        }}
-        paraModalConfig={{
-          logo: `${window.location.origin}/head-light.png`,
-          theme: {
-            accentColor: '#F5A623',
-            font: 'Space Mono',
-            borderRadius: 'none',
-          },
-          oAuthMethods: ['GOOGLE', 'APPLE'],
-          authLayout: ['AUTH:FULL', 'EXTERNAL:FULL'],
-          recoverySecretStepEnabled: true,
-          onRampTestMode: true,
-        }}
-      >
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
         {children}
-      </ParaProvider>
-    </QueryClientProvider>
+      </QueryClientProvider>
+    </WagmiProvider>
   )
 }
 

@@ -1,7 +1,6 @@
 import { useEffect, useCallback } from 'react'
-import { useClient, useWallet } from '@getpara/react-sdk'
-import { createParaViemClient } from '@getpara/viem-v2-integration'
-import { parseEther, encodeFunctionData, http, type Hex, type Address, type Chain } from 'viem'
+import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
+import { parseEther, encodeFunctionData, type Hex, type Address, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useTransactionStore } from '../stores'
 
@@ -52,8 +51,9 @@ interface PayEventDetail {
 }
 
 export function useTransactionExecutor() {
-  const paraClient = useClient()
-  const { data: wallet } = useWallet()
+  const { address, isConnected } = useAccount()
+  const { data: walletClient } = useWalletClient()
+  const { switchChainAsync } = useSwitchChain()
   const { updateTransaction } = useTransactionStore()
 
   const buildPayCallData = useCallback((
@@ -78,14 +78,14 @@ export function useTransactionExecutor() {
   }, [])
 
   const executePayTransaction = useCallback(async (detail: PayEventDetail) => {
-    if (!paraClient || !wallet?.address) {
+    if (!walletClient || !address) {
       console.error('Wallet not connected')
       updateTransaction(detail.txId, { status: 'failed' })
       return
     }
 
     const { txId, projectId, chainId, amount, memo, payUs, feeAmount, juicyProjectId } = detail
-    const beneficiary = wallet.address as Address
+    const beneficiary = address as Address
     const chain = CHAINS[chainId]
 
     if (!chain) {
@@ -95,11 +95,11 @@ export function useTransactionExecutor() {
     }
 
     try {
-      // Create wallet client from Para
-      const walletClient = createParaViemClient(paraClient, {
-        chain,
-        transport: http(),
-      })
+      // Switch to the correct chain if needed
+      const currentChainId = await walletClient.getChainId()
+      if (currentChainId !== chainId) {
+        await switchChainAsync({ chainId })
+      }
 
       const projectAmount = parseEther(amount)
       const juicyFeeAmount = payUs ? parseEther(feeAmount) : 0n
@@ -146,6 +146,8 @@ export function useTransactionExecutor() {
           to: JB_MULTI_TERMINAL,
           data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
           value: projectAmount,
+          chain,
+          account: address,
         })
 
         updateTransaction(txId, { hash: projectHash, status: 'submitted' })
@@ -155,6 +157,8 @@ export function useTransactionExecutor() {
           to: JB_MULTI_TERMINAL,
           data: buildPayCallData(juicyProjectId, juicyFeeAmount, beneficiary, 'juicy fee'),
           value: juicyFeeAmount,
+          chain,
+          account: address,
         })
       } else {
         // Single transaction: just pay the project
@@ -162,6 +166,8 @@ export function useTransactionExecutor() {
           to: JB_MULTI_TERMINAL,
           data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
           value: projectAmount,
+          chain,
+          account: address,
         })
 
         updateTransaction(txId, { hash, status: 'submitted' })
@@ -170,7 +176,7 @@ export function useTransactionExecutor() {
       console.error('Transaction failed:', error)
       updateTransaction(txId, { status: 'failed' })
     }
-  }, [paraClient, wallet, updateTransaction, buildPayCallData])
+  }, [walletClient, address, switchChainAsync, updateTransaction, buildPayCallData])
 
   // Listen for pay events
   useEffect(() => {
@@ -186,8 +192,7 @@ export function useTransactionExecutor() {
   }, [executePayTransaction])
 
   return {
-    isConnected: !!paraClient && !!wallet?.address,
-    address: wallet?.address,
-    ensName: wallet?.ensName,
+    isConnected,
+    address,
   }
 }

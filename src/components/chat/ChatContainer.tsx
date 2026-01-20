@@ -8,7 +8,7 @@ import WelcomeScreen from './WelcomeScreen'
 import WelcomeGreeting from './WelcomeGreeting'
 import ConversationHistory from './ConversationHistory'
 import WalletInfo from './WalletInfo'
-import { SettingsPanel } from '../settings'
+import { SettingsPanel, PrivacySelector } from '../settings'
 import { stripComponents } from '../../utils/messageParser'
 
 // Convert messages to markdown format
@@ -285,6 +285,8 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
                       </div>
                     )}
                   </div>
+                  {/* Privacy mode */}
+                  <PrivacySelector />
                   {/* Theme toggle */}
                   <button
                     onClick={toggleTheme}

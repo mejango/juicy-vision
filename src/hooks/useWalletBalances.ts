@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useWallet } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../constants'
 
@@ -17,14 +17,14 @@ export interface WalletBalances {
 }
 
 export function useWalletBalances(): WalletBalances {
-  const { data: wallet } = useWallet()
+  const { address } = useAccount()
   const [totalEth, setTotalEth] = useState<bigint>(0n)
   const [totalUsdc, setTotalUsdc] = useState<bigint>(0n)
   const [perChain, setPerChain] = useState<WalletBalances['perChain']>([])
   const [loading, setLoading] = useState(false)
 
   const fetchBalances = useCallback(async () => {
-    if (!wallet?.address) {
+    if (!address) {
       setTotalEth(0n)
       setTotalUsdc(0n)
       setPerChain([])
@@ -44,13 +44,13 @@ export function useWalletBalances(): WalletBalances {
 
           const [ethBalance, usdcBalance] = await Promise.all([
             publicClient.getBalance({
-              address: wallet.address as `0x${string}`,
+              address: address as `0x${string}`,
             }),
             publicClient.readContract({
               address: USDC_ADDRESSES[chainId],
               abi: erc20Abi,
               functionName: 'balanceOf',
-              args: [wallet.address as `0x${string}`],
+              args: [address as `0x${string}`],
             }).catch(() => 0n),
           ])
 
@@ -73,7 +73,7 @@ export function useWalletBalances(): WalletBalances {
     } finally {
       setLoading(false)
     }
-  }, [wallet?.address])
+  }, [address])
 
   useEffect(() => {
     fetchBalances()

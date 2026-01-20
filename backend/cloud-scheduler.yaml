@@ -1,0 +1,69 @@
+# GCP Cloud Scheduler Jobs for Juicy Vision
+# Deploy with: gcloud scheduler jobs create http <job-name> --location=<location> --config=cloud-scheduler.yaml
+#
+# Prerequisites:
+# 1. Cloud Scheduler API enabled
+# 2. Cloud Run service deployed
+# 3. Service account with Cloud Run Invoker role
+
+# ============================================================================
+# Transfer Execution Job
+# Runs hourly to execute transfers that have completed the 7-day hold period
+# ============================================================================
+
+# Create with:
+# gcloud scheduler jobs create http juicy-vision-transfers \
+#   --location=us-east1 \
+#   --schedule="0 * * * *" \
+#   --uri="https://YOUR_CLOUD_RUN_URL/api/cron/transfers" \
+#   --http-method=POST \
+#   --oidc-service-account-email=YOUR_SERVICE_ACCOUNT@YOUR_PROJECT.iam.gserviceaccount.com \
+#   --oidc-token-audience=https://YOUR_CLOUD_RUN_URL
+
+# ============================================================================
+# Maintenance Job (Alternative: runs all maintenance tasks in one call)
+# Runs hourly to execute transfers, cleanup sessions, and cleanup rate limits
+# ============================================================================
+
+# Create with:
+# gcloud scheduler jobs create http juicy-vision-maintenance \
+#   --location=us-east1 \
+#   --schedule="0 * * * *" \
+#   --uri="https://YOUR_CLOUD_RUN_URL/api/cron/maintenance" \
+#   --http-method=POST \
+#   --oidc-service-account-email=YOUR_SERVICE_ACCOUNT@YOUR_PROJECT.iam.gserviceaccount.com \
+#   --oidc-token-audience=https://YOUR_CLOUD_RUN_URL
+
+# ============================================================================
+# Environment Variables Required
+# ============================================================================
+#
+# When deploying Cloud Run, ensure these are set:
+#
+# DENO_ENV=production
+# CRON_SECRET=<secure-random-string>
+# GCP_SERVICE_ACCOUNT=<service-account-email>
+# DATABASE_URL=<postgres-connection-string>
+# JWT_SECRET=<secure-random-string>
+# RESERVES_PRIVATE_KEY=<wallet-private-key>
+#
+# For KMS (when implemented):
+# GCP_PROJECT_ID=<your-project>
+# GCP_KEY_RING_ID=<key-ring-id>
+# GCP_CRYPTO_KEY_ID=<crypto-key-id>
+# GCP_LOCATION_ID=us-east1
+
+# ============================================================================
+# Testing Cron Endpoints Locally
+# ============================================================================
+#
+# Using curl with the development secret:
+#
+# curl -X POST http://localhost:3001/api/cron/transfers \
+#   -H "X-Cron-Secret: dev-cron-secret"
+#
+# curl -X POST http://localhost:3001/api/cron/maintenance \
+#   -H "X-Cron-Secret: dev-cron-secret"
+#
+# curl http://localhost:3001/api/cron/health \
+#   -H "X-Cron-Secret: dev-cron-secret"

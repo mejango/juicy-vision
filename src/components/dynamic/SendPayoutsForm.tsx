@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useWallet, useModal } from '@getpara/react-sdk'
+import { useAccount } from 'wagmi'
 import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
@@ -96,9 +96,11 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const { data: wallet } = useWallet()
-  const { openModal } = useModal()
-  const isConnected = !!wallet?.address
+  const { isConnected } = useAccount()
+
+  const openWalletPanel = () => {
+    window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+  }
 
   // Omnichain state
   const [chainPayoutData, setChainPayoutData] = useState<ChainPayoutData[]>([])
@@ -244,7 +246,7 @@ export default function SendPayoutsForm({ projectId, chainId = '1' }: SendPayout
     if (!amount || parseFloat(amount) <= 0) return
 
     if (!isConnected) {
-      openModal()
+      openWalletPanel()
       return
     }
 

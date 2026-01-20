@@ -198,15 +198,21 @@ interface PoolDataResponse {
   } | null
 }
 
-function getSubgraphUrl(chainId: number, apiKey?: string): string | null {
+// Returns { url, useProxy } for TheGraph requests
+function getSubgraphConfig(chainId: number, apiKey?: string): { url: string; useProxy: boolean } | null {
   const subgraphId = UNISWAP_SUBGRAPH_IDS[chainId]
   if (!subgraphId) return null
 
-  // Use The Graph's decentralized network with API key
-  const key = apiKey || import.meta.env.VITE_THEGRAPH_API_KEY
+  // If backend API is configured, use the proxy endpoint to keep API keys secure
+  const backendUrl = import.meta.env.VITE_API_URL
+  if (backendUrl) {
+    return { url: `${backendUrl}/api/proxy/thegraph/uniswap`, useProxy: true }
+  }
 
+  // Use The Graph's decentralized network with API key (direct access)
+  const key = apiKey || import.meta.env.VITE_THEGRAPH_API_KEY
   if (key) {
-    return `https://gateway.thegraph.com/api/${key}/subgraphs/id/${subgraphId}`
+    return { url: `https://gateway.thegraph.com/api/${key}/subgraphs/id/${subgraphId}`, useProxy: false }
   }
 
   // No API key available - cannot access decentralized network
@@ -273,8 +279,8 @@ export async function fetchPoolPriceHistory(
     return cached.data
   }
 
-  const url = getSubgraphUrl(chainId, theGraphApiKey)
-  if (!url) {
+  const config = getSubgraphConfig(chainId, theGraphApiKey)
+  if (!config) {
     console.warn(`[AMM] No subgraph URL for chain ${chainId}`)
     return []
   }
@@ -282,10 +288,15 @@ export async function fetchPoolPriceHistory(
   try {
     const query = buildPoolQuery(poolAddress, startTimestamp, useHourly)
 
-    const response = await fetch(url, {
+    // Use different request format for proxy vs direct access
+    const body = config.useProxy
+      ? JSON.stringify({ chainId, query })  // Proxy expects chainId + query
+      : JSON.stringify({ query })            // Direct access just needs query
+
+    const response = await fetch(config.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query }),
+      body,
     })
 
     if (!response.ok) {
