@@ -3,6 +3,69 @@
 const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/'
 const PINATA_API_URL = 'https://api.pinata.cloud'
 
+/**
+ * Project location metadata - Juicebox Ecosystem Standard
+ *
+ * PRIVACY NOTE: All location data is PUBLIC and stored on IPFS.
+ * Projects should only include information they're comfortable sharing publicly.
+ *
+ * Use cases:
+ * - Physical businesses: city/region/country
+ * - Online-only projects: { type: 'online' }
+ * - Global communities: { type: 'global', name: 'Worldwide' }
+ * - Events: specific venue or city
+ * - Privacy-conscious: country only, or omit entirely
+ */
+export interface ProjectLocation {
+  /**
+   * Human-readable location description
+   * Examples: "San Francisco, CA", "Berlin", "Online", "Global", "Southeast Asia"
+   * Keep as general or specific as you're comfortable with
+   */
+  name?: string
+
+  /**
+   * Location type indicator
+   * - 'physical': Has a specific physical location
+   * - 'online': Fully online/digital project
+   * - 'hybrid': Both physical presence and online
+   * - 'global': Operates worldwide, no specific location
+   * - 'multiple': Multiple distinct locations
+   */
+  type?: 'physical' | 'online' | 'hybrid' | 'global' | 'multiple'
+
+  /**
+   * ISO 3166-1 alpha-2 country code (e.g., "US", "DE", "JP")
+   * Useful for filtering/search without revealing exact location
+   */
+  countryCode?: string
+
+  /**
+   * Country name (human-readable)
+   */
+  country?: string
+
+  /**
+   * City name (optional - only if comfortable sharing)
+   */
+  city?: string
+
+  /**
+   * State, province, or region (optional)
+   */
+  region?: string
+
+  /**
+   * Geographic coordinates for mapping (optional)
+   * Only include if you want to appear on maps
+   * Consider using approximate coordinates (city center) rather than exact address
+   */
+  coordinates?: {
+    lat: number
+    lng: number
+  }
+}
+
 // Full project metadata structure from IPFS
 export interface IpfsProjectMetadata {
   name: string
@@ -16,6 +79,12 @@ export interface IpfsProjectMetadata {
   telegram?: string
   // Token symbol (may be stored in metadata)
   tokenSymbol?: string
+  /**
+   * Project location - PUBLIC DATA
+   * Only include information you're comfortable sharing publicly.
+   * Omit this field entirely if you prefer not to share location.
+   */
+  location?: ProjectLocation
   // Additional fields that may be present
   [key: string]: unknown
 }
@@ -200,6 +269,13 @@ export interface JBProjectMetadata {
   twitter?: string
   discord?: string
   telegram?: string
+  /**
+   * Project location - PUBLIC DATA
+   * Only include information you're comfortable sharing publicly.
+   * This data will be stored on IPFS and visible to anyone.
+   * Omit this field entirely if you prefer not to share location.
+   */
+  location?: ProjectLocation
   // payButton and payDisclosure for custom pay UI
   payButton?: string
   payDisclosure?: string

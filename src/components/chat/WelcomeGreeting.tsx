@@ -12,7 +12,7 @@ const GREETINGS = [
   'There you are.',
   'Finally.',
   'Oh good, you made it.',
-  'Cutting it close.',
+  'Let\'s get to work.',
   'Right on time.',
   'Look who showed up.',
   // Confident, direct
@@ -27,7 +27,7 @@ export default function WelcomeGreeting() {
   const [greeting] = useState(() => GREETINGS[Math.floor(Math.random() * GREETINGS.length)])
 
   return (
-    <div className="flex gap-3 px-6 mb-4">
+    <div className="flex gap-3 px-6 pb-3">
       {/* Spacer to align with textarea */}
       <div className="w-[48px] shrink-0" />
       <div className={`text-sm font-medium ${

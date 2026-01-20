@@ -13,7 +13,7 @@ import RecommendationChips from './RecommendationChips'
 import PriceChart from './PriceChart'
 import ActivityFeed from './ActivityFeed'
 import RulesetSchedule from './RulesetSchedule'
-import { BalanceChart, HoldersChart, VolumeChart, TokenPriceChart, PoolPriceChart } from './charts'
+import { BalanceChart, HoldersChart, VolumeChart, TokenPriceChart, PoolPriceChart, MultiChainCashOutChart } from './charts'
 import OptionsPicker from './OptionsPicker'
 import ProjectChainPicker from './ProjectChainPicker'
 import TopProjects from './TopProjects'
@@ -119,13 +119,30 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
     case 'recommendation-chips':
       // Parse chips from JSON string if provided
       let parsedChips
+      let chipsParseError = false
       try {
         parsedChips = props.chips
           ? (typeof props.chips === 'string' ? JSON.parse(props.chips) : props.chips)
           : undefined
       } catch {
-        // JSON not yet complete during streaming
-        return null
+        // JSON not yet complete during streaming - check if it looks incomplete
+        const chipsStr = props.chips || ''
+        if (chipsStr.includes('{') && !chipsStr.endsWith(']')) {
+          // Incomplete JSON - still streaming
+          return (
+            <div className="glass p-3 text-gray-400 text-sm animate-pulse">
+              Loading suggestions...
+            </div>
+          )
+        }
+        chipsParseError = true
+      }
+      if (chipsParseError) {
+        return (
+          <div className="glass p-3 text-red-400 text-sm">
+            Failed to load suggestions. Try asking again.
+          </div>
+        )
       }
       return (
         <RecommendationChips
@@ -194,6 +211,16 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
         />
       )
 
+    case 'multi-chain-cash-out-chart':
+      return (
+        <MultiChainCashOutChart
+          projectId={props.projectId}
+          chainId={props.chainId}
+          chains={props.chains}
+          range={props.range as '7d' | '30d' | '3m' | '1y' | 'all' | undefined}
+        />
+      )
+
     case 'activity-feed':
       return (
         <ActivityFeed
@@ -214,15 +241,31 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
     case 'options-picker':
       // Parse groups from JSON string if provided
       let parsedGroups
+      let optionsParseError = false
       try {
         parsedGroups = props.groups
           ? (typeof props.groups === 'string' ? JSON.parse(props.groups) : props.groups)
           : []
-        // Enable multiSelect for all groups so users can always provide more context
-        parsedGroups = parsedGroups.map((g: Record<string, unknown>) => ({ ...g, multiSelect: true }))
       } catch {
-        // JSON not yet complete during streaming
-        return null
+        // JSON not yet complete during streaming - check if it looks like incomplete JSON
+        const groupsStr = props.groups || ''
+        if (groupsStr.includes('{') && !groupsStr.endsWith(']')) {
+          // Incomplete JSON - still streaming
+          return (
+            <div className="glass p-3 text-gray-400 text-sm animate-pulse">
+              Loading options...
+            </div>
+          )
+        }
+        optionsParseError = true
+        parsedGroups = []
+      }
+      if (optionsParseError) {
+        return (
+          <div className="glass p-3 text-red-400 text-sm">
+            Failed to load options. Try asking again.
+          </div>
+        )
       }
       return (
         <OptionsPicker

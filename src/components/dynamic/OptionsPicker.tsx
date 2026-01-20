@@ -11,9 +11,11 @@ interface Option {
 interface OptionGroup {
   id: string
   label: string
-  options: Option[]
-  type?: 'radio' | 'toggle' | 'chips'
+  options?: Option[]
+  type?: 'radio' | 'toggle' | 'chips' | 'text' | 'textarea'
   multiSelect?: boolean // Allow multiple selections for chips
+  placeholder?: string // Placeholder for text/textarea inputs
+  optional?: boolean // Mark field as optional (shows "(optional)" label)
 }
 
 interface OptionsPickerProps {
@@ -33,26 +35,35 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
+  // Track if the picker has been submitted (to show idle state)
+  const [hasSubmitted, setHasSubmitted] = useState(false)
+
   // Initialize with pre-selected options or first option of each group
   const [selections, setSelections] = useState<Record<string, string | string[]>>(() => {
     const initial: Record<string, string | string[]> = {}
     groups.forEach(g => {
+      // Text inputs start empty
+      if (g.type === 'text' || g.type === 'textarea') {
+        initial[g.id] = ''
+        return
+      }
+      const options = g.options || []
       if (g.multiSelect) {
         // For multiSelect, check for pre-selected options first
-        const preSelected = g.options.filter(o => o.selected).map(o => o.value)
+        const preSelected = options.filter(o => o.selected).map(o => o.value)
         if (preSelected.length > 0) {
           initial[g.id] = preSelected
         } else {
           // Fallback to first option
-          initial[g.id] = g.options.length > 0 ? [g.options[0].value] : []
+          initial[g.id] = options.length > 0 ? [options[0].value] : []
         }
       } else {
         // For single select, check for pre-selected option first
-        const preSelected = g.options.find(o => o.selected)
+        const preSelected = options.find(o => o.selected)
         if (preSelected) {
           initial[g.id] = preSelected.value
-        } else if (g.options.length > 0) {
-          initial[g.id] = g.options[0].value
+        } else if (options.length > 0) {
+          initial[g.id] = options[0].value
         }
       }
     })
@@ -93,6 +104,9 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
   }
 
   const handleSubmit = () => {
+    // Mark as submitted to show idle state on button
+    setHasSubmitted(true)
+
     // Check if any "other" option is selected - if so, prefill prompt and focus
     for (const g of groups) {
       const sel = selections[g.id]
@@ -122,11 +136,12 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     // Build response message for normal selections
     const parts = groups.map(g => {
       const sel = selections[g.id]
+      const options = g.options || []
       if (Array.isArray(sel)) {
-        const labels = sel.map(v => g.options.find(o => o.value === v)?.label || v)
+        const labels = sel.map(v => options.find(o => o.value === v)?.label || v)
         return `${g.label}: ${labels.join(', ')}`
       }
-      const selected = g.options.find(o => o.value === sel)
+      const selected = options.find(o => o.value === sel)
       return `${g.label}: ${selected?.label || sel}`
     })
     const message = parts.join(', ')
@@ -149,12 +164,19 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
               isDark ? 'text-gray-400' : 'text-gray-500'
             }`}>
               {group.label}
+              {group.optional && (
+                <span className={`ml-1 font-normal normal-case ${
+                  isDark ? 'text-gray-500' : 'text-gray-400'
+                }`}>
+                  (optional)
+                </span>
+              )}
             </div>
 
             {/* Chips layout - horizontal wrap */}
             {(group.type === 'chips' || !group.type) && (
               <div className="flex flex-wrap gap-2">
-                {group.options.map(option => {
+                {(group.options || []).map(option => {
                   const selected = isSelected(group.id, option.value, group.multiSelect)
                   return (
                     <button
@@ -163,8 +185,8 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                       className={`px-3 py-1.5 text-sm border transition-all ${
                         selected
                           ? isDark
-                            ? 'bg-green-500/20 border-green-500 text-green-400'
-                            : 'bg-green-50 border-green-500 text-green-700'
+                            ? 'border-green-500 text-green-400'
+                            : 'border-green-500 text-green-700'
                           : isDark
                             ? 'bg-white/5 border-white/10 text-gray-300 hover:border-white/30'
                             : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-400'
@@ -187,11 +209,11 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
             )}
 
             {/* Toggle layout - 2 options side by side */}
-            {group.type === 'toggle' && group.options.length === 2 && (
+            {group.type === 'toggle' && (group.options || []).length === 2 && (
               <div className={`inline-flex border ${
                 isDark ? 'border-white/10' : 'border-gray-200'
               }`}>
-                {group.options.map((option, idx) => {
+                {(group.options || []).map((option, idx) => {
                   const isSelected = selections[group.id] === option.value
                   return (
                     <button
@@ -217,17 +239,17 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
             {/* Radio layout - vertical stack (supports multiSelect) */}
             {group.type === 'radio' && (
               <div className="space-y-2">
-                {group.options.map(option => {
+                {(group.options || []).map(option => {
                   const selected = isSelected(group.id, option.value, group.multiSelect)
                   return (
                     <button
                       key={option.value}
                       onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
-                      className={`w-full flex items-center gap-3 px-3 py-2 text-sm border transition-all text-left ${
+                      className={`w-full flex items-start gap-3 px-3 py-2 text-sm border transition-all text-left ${
                         selected
                           ? isDark
-                            ? 'bg-green-500/20 border-green-500'
-                            : 'bg-green-50 border-green-500'
+                            ? 'border-green-500'
+                            : 'border-green-500'
                           : isDark
                             ? 'bg-white/5 border-white/10 hover:border-white/30'
                             : 'bg-gray-50 border-gray-200 hover:border-gray-400'
@@ -235,7 +257,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                     >
                       {/* Checkbox for multiSelect, radio for single select */}
                       {group.multiSelect ? (
-                        <div className={`w-5 h-5 border-2 flex items-center justify-center shrink-0 ${
+                        <div className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
                           selected
                             ? 'border-green-500 bg-green-500'
                             : isDark ? 'border-gray-500' : 'border-gray-300'
@@ -247,33 +269,65 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                           )}
                         </div>
                       ) : (
-                        <div className={`w-5 h-5 border-2 flex items-center justify-center shrink-0 ${
+                        <div className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
                           selected
                             ? 'border-green-500'
                             : isDark ? 'border-gray-500' : 'border-gray-300'
                         }`}>
                           {selected && (
-                            <div className="w-2.5 h-2.5 bg-green-500" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
                           )}
                         </div>
                       )}
-                      <span className={`shrink-0 ${selected
-                        ? isDark ? 'text-green-400' : 'text-green-700'
-                        : isDark ? 'text-gray-300' : 'text-gray-600'
-                      }`}>
-                        {option.label}
-                      </span>
-                      {option.sublabel && (
-                        <span className={`ml-auto pl-4 text-xs text-right ${
-                          isDark ? 'text-gray-400' : 'text-gray-500'
+                      <div className="flex flex-col min-w-0 text-left">
+                        <span className={`${selected
+                          ? isDark ? 'text-green-400' : 'text-green-700'
+                          : isDark ? 'text-gray-300' : 'text-gray-600'
                         }`}>
-                          {option.sublabel}
+                          {option.label}
                         </span>
-                      )}
+                        {option.sublabel && (
+                          <span className={`text-xs text-left ${
+                            isDark ? 'text-gray-400' : 'text-gray-500'
+                          }`}>
+                            {option.sublabel}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   )
                 })}
               </div>
+            )}
+
+            {/* Text input */}
+            {group.type === 'text' && (
+              <input
+                type="text"
+                value={(selections[group.id] as string) || ''}
+                onChange={(e) => setSelections(prev => ({ ...prev, [group.id]: e.target.value }))}
+                placeholder={group.placeholder}
+                className={`w-full px-3 py-2 text-sm border transition-colors outline-none ${
+                  isDark
+                    ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-green-500'
+                    : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-green-500'
+                }`}
+              />
+            )}
+
+            {/* Textarea input */}
+            {group.type === 'textarea' && (
+              <textarea
+                value={(selections[group.id] as string) || ''}
+                onChange={(e) => setSelections(prev => ({ ...prev, [group.id]: e.target.value }))}
+                placeholder={group.placeholder}
+                rows={3}
+                className={`w-full px-3 py-2 text-sm border transition-colors outline-none resize-none ${
+                  isDark
+                    ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-green-500'
+                    : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-green-500'
+                }`}
+              />
             )}
           </div>
         ))}
@@ -285,7 +339,8 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
         const allSelected = allSelectedLabel && groups.every(g => {
           if (!g.multiSelect) return true
           const sel = selections[g.id]
-          return Array.isArray(sel) && sel.length === g.options.length
+          const options = g.options || []
+          return Array.isArray(sel) && sel.length === options.length
         })
         const buttonLabel = allSelected ? allSelectedLabel : submitLabel
 
@@ -296,15 +351,22 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
             <div className={`text-xs leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
               {groups.map(g => {
                 const sel = selections[g.id]
+                const options = g.options || []
                 if (Array.isArray(sel)) {
-                  return sel.map(v => g.options.find(o => o.value === v)?.label).filter(Boolean).join(', ')
+                  return sel.map(v => options.find(o => o.value === v)?.label).filter(Boolean).join(', ')
                 }
-                return g.options.find(o => o.value === sel)?.label
+                return options.find(o => o.value === sel)?.label
               }).filter(Boolean).join(' · ')}
             </div>
             <button
               onClick={handleSubmit}
-              className="self-end px-4 py-1.5 text-sm font-bold border-2 bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600 transition-colors"
+              className={`self-end px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
+                hasSubmitted
+                  ? isDark
+                    ? 'bg-transparent text-gray-500 border-gray-600 hover:text-gray-400 hover:border-gray-500'
+                    : 'bg-transparent text-gray-400 border-gray-300 hover:text-gray-500 hover:border-gray-400'
+                  : 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
+              }`}
             >
               {buttonLabel}
             </button>

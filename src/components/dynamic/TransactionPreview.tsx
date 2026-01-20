@@ -36,6 +36,72 @@ const ACTION_ICONS: Record<string, string> = {
   deployERC20: '🎟️',
 }
 
+// Known JB ecosystem addresses (same on all chains)
+const JB_ADDRESSES: Record<string, string> = {
+  // Shared contracts (V5 and V5.1)
+  '0x885f707efa18d2cb12f05a3a8eba6b4b26c8c1d4': 'JBProjects',
+  '0x4d0edd347fb1fa21589c1e109b3474924be87636': 'JBTokens',
+  '0x0061e516886a0540f63157f112c0588ee0651dcf': 'JBDirectory',
+  '0x7160a322fea44945a6ef9adfd65c322258df3c5e': 'JBSplits',
+  '0x3a46b21720c8b70184b0434a2293b2fdcc497ce7': 'JBFundAccessLimits',
+  '0xba948dab74e875b19cf0e2ca7a4546c0c2defc40': 'JBPermissions',
+  '0x6e92e3b5ce1e7a4344c6d27c0c54efd00df92fb6': 'JBPrices',
+  '0xf76f7124f73abc7c30b2f76121afd4c52be19442': 'JBFeelessAddresses',
+  // V5.1 contracts
+  '0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1': 'JBController5_1',
+  '0x52869db3d61dde1e391967f2ce5039ad0ecd371c': 'JBMultiTerminal5_1',
+  '0xd4257005ca8d27bbe11f356453b0e4692414b056': 'JBRulesets5_1',
+  '0x82239c5a21f0e09573942caa41c580fa36e27071': 'JBTerminalStore5_1',
+  '0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71': 'JBOmnichainDeployer5_1',
+  // V5 contracts (Revnets)
+  '0x27da30646502e2f642be5281322ae8c394f7668a': 'JBController',
+  '0x2db6d704058e552defe415753465df8df0361846': 'JBMultiTerminal',
+  '0x6292281d69c3593fcf6ea074e5797341476ab428': 'JBRulesets',
+  '0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d': 'REVDeployer',
+  // Hooks and extensions
+  '0xfe9c4f3e5c27ffd8ee523c6ca388aaa95692c25d': 'JBBuybackHook',
+  '0x0c02e48e55f4451a499e48a53595de55c40f3574': 'JBSwapTerminal',
+  // Suckers
+  '0x696c7e794fe2a7c2e3b7da4ae91733345fc1bf68': 'JBSuckerRegistry',
+  // Native token (JBConstants.NATIVE_TOKEN)
+  '0x000000000000000000000000000000000000eeee': 'NATIVE_TOKEN (ETH)',
+  // Zero address
+  '0x0000000000000000000000000000000000000000': 'None',
+}
+
+// Chain-aware token addresses (different per chain)
+const CHAIN_TOKENS: Record<string, Record<string, string>> = {
+  // Ethereum mainnet
+  '1': {
+    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 'USDC',
+  },
+  // Optimism
+  '10': {
+    '0x0b2c639c533813f4aa9d7837caf62653d097ff85': 'USDC',
+  },
+  // Base
+  '8453': {
+    '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': 'USDC',
+  },
+  // Arbitrum
+  '42161': {
+    '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',
+  },
+}
+
+// Get human-readable name for a known address (chain-aware for tokens)
+function getAddressLabel(address: string, chainId?: string): string | null {
+  const lower = address.toLowerCase()
+
+  // Check chain-specific tokens first
+  if (chainId && CHAIN_TOKENS[chainId]?.[lower]) {
+    return CHAIN_TOKENS[chainId][lower]
+  }
+
+  // Fall back to global addresses
+  return JB_ADDRESSES[lower] || null
+}
+
 export default function TransactionPreview({
   action,
   contract,
@@ -128,7 +194,7 @@ export default function TransactionPreview({
             )}
 
             {Object.entries(parsedParams).map(([key, value]) => (
-              <ParamRow key={key} name={key} value={value} isDark={isDark} />
+              <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
             ))}
           </div>
         )}
@@ -147,7 +213,7 @@ function formatParamName(key: string): string {
 }
 
 // Helper to format simple parameter values with context-aware descriptions
-function formatSimpleValue(value: unknown, key?: string): string {
+function formatSimpleValue(value: unknown, key?: string, chainId?: string): string {
   if (value === null || value === undefined) return 'null'
 
   const keyLower = (key || '').toLowerCase().replace(/\s+/g, '')
@@ -156,6 +222,21 @@ function formatSimpleValue(value: unknown, key?: string): string {
   // Context-aware formatting based on parameter name
   if (keyLower.includes('basecurrency') && numValue !== null) {
     return numValue === 1 ? '1 (ETH)' : numValue === 2 ? '2 (USD)' : String(value)
+  }
+
+  // Currency field (JBAccountingContext uses uint32 currency codes)
+  // Currency = uint32(uint160(tokenAddress)) - lowest 32 bits of the token address
+  if (keyLower === 'currency' && numValue !== null) {
+    // Known currency codes: uint32(uint160(tokenAddress))
+    const currencyLabels: Record<number, string> = {
+      // NATIVE_TOKEN (JBConstants.NATIVE_TOKEN): 0x000000000000000000000000000000000000EEEe -> u32 = 61166
+      61166: 'ETH',
+      // USDC addresses vary by chain - these are the Ethereum mainnet USDC code
+      // Other chains: Optimism=3530704773, Base=3169378579, Arbitrum=1156540465
+      909516616: 'USDC',
+    }
+    const label = currencyLabels[numValue]
+    return label ? `${numValue.toLocaleString()} (${label})` : numValue.toLocaleString()
   }
 
   // Weight has 18 decimals - convert to human readable
@@ -213,27 +294,24 @@ function formatSimpleValue(value: unknown, key?: string): string {
   if (typeof value === 'number') return value.toLocaleString()
   if (typeof value !== 'string') return String(value)
 
-  // Handle addresses
+  // Handle addresses - show label if known JB address, always show full address
   if (value.startsWith('0x') && value.length === 42) {
-    return `${value.slice(0, 6)}...${value.slice(-4)}`
+    const label = getAddressLabel(value, chainId)
+    return label ? `${label} (${value})` : value
   }
 
-  // Handle IPFS URIs
+  // Handle IPFS URIs - show full URI
   if (value.startsWith('ipfs://')) {
-    return `${value.slice(0, 20)}...`
+    return value
   }
 
-  // Handle large numbers (likely wei)
+  // Handle large numbers (likely wei) - show both formats
   if (/^\d{18,}$/.test(value)) {
     const eth = parseFloat(value) / 1e18
-    return `${eth.toFixed(4)} ETH`
+    return `${eth.toFixed(4)} ETH (${value})`
   }
 
-  // Truncate long strings
-  if (value.length > 40) {
-    return `${value.slice(0, 37)}...`
-  }
-
+  // Show full value, no truncation
   return value
 }
 
@@ -287,12 +365,13 @@ function getParamTooltip(name: string): string | undefined {
 }
 
 // Component to render a parameter row with support for nested objects
-function ParamRow({ name, value, isDark, depth = 0, parentName = '' }: {
+function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '' }: {
   name: string;
   value: unknown;
   isDark: boolean;
   depth?: number;
   parentName?: string;
+  chainId?: string;
 }) {
   const [expanded, setExpanded] = useState(depth < 2) // Auto-expand first 2 levels
   const isComplex = isComplexValue(value)
@@ -319,18 +398,32 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '' }: {
   }
 
   if (!isComplex) {
+    const formattedValue = formatSimpleValue(value, name, chainId)
+
+    const handleCopy = () => {
+      if (typeof value === 'string') {
+        navigator.clipboard.writeText(value)
+      }
+    }
+
     return (
       <div
-        className={`flex justify-between gap-4 py-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}
+        className={`py-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}
         style={{ paddingLeft: indent }}
-        title={tooltip ? `${tooltip}\n\nRaw: ${rawValue}` : `Raw: ${rawValue}`}
+        title={tooltip ? `${tooltip}\n\nRaw: ${rawValue}` : undefined}
       >
-        <span className={`shrink-0 ${tooltip ? 'underline decoration-dotted cursor-help' : ''}`}>
-          {displayName}
-        </span>
-        <span className="font-mono text-right truncate">
-          {formatSimpleValue(value, name)}
-        </span>
+        <div className="flex justify-between gap-4">
+          <span className={`shrink-0 ${tooltip ? 'underline decoration-dotted cursor-help' : ''}`}>
+            {displayName}
+          </span>
+          <span
+            className="font-mono text-right break-all cursor-pointer hover:underline"
+            onClick={handleCopy}
+            title="Click to copy"
+          >
+            {formattedValue}
+          </span>
+        </div>
       </div>
     )
   }
@@ -347,7 +440,7 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '' }: {
             <span className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{displayName}</span>
             <div className={`mt-0.5 space-y-0 border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
               {Object.entries(innerValue as Record<string, unknown>).map(([k, v]) => (
-                <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} />
+                <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} />
               ))}
             </div>
           </div>
@@ -383,7 +476,7 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '' }: {
       {expanded && (
         <div className={`mt-0.5 space-y-0 border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
           {entries.map(([k, v]) => (
-            <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} />
+            <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} />
           ))}
         </div>
       )}

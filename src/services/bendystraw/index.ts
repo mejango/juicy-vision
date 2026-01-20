@@ -16,6 +16,7 @@ export {
   fetchEthPrice,
   fetchProjectTokenSymbol,
   fetchProjectTokenAddress,
+  fetchProjectTokenSupply,
   fetchSuckerGroupMoments,
   fetchCashOutTaxSnapshots,
   fetchPayEventsHistory,

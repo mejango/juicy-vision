@@ -96,7 +96,57 @@ export function parseMessageContent(content: string): ParsedContent {
 }
 
 export function stripComponents(content: string): string {
-  return content.replace(COMPONENT_REGEX, '').trim()
+  // Replace components with descriptive placeholders for better exports
+  return content.replace(COMPONENT_REGEX, (_match, attrsString) => {
+    const props: Record<string, string> = {}
+
+    // Match double-quoted attributes
+    const doubleMatches = attrsString.matchAll(ATTR_REGEX_DOUBLE)
+    for (const attrMatch of doubleMatches) {
+      props[attrMatch[1]] = attrMatch[2]
+    }
+    // Match single-quoted attributes
+    const singleMatches = attrsString.matchAll(ATTR_REGEX_SINGLE)
+    for (const attrMatch of singleMatches) {
+      props[attrMatch[1]] = attrMatch[2]
+    }
+
+    const componentType = props.type || 'unknown'
+
+    // Generate descriptive placeholder based on component type
+    switch (componentType) {
+      case 'token-price-chart':
+        return `[Chart: Token price over time]`
+      case 'multi-chain-cash-out-chart':
+        return `[Chart: Per-chain cash out values]`
+      case 'project-card':
+        return `[Project card with payment form]`
+      case 'project-chain-picker':
+        return `[Project chain selection]`
+      case 'options-picker':
+        return `[Options picker]`
+      case 'balance-chart':
+        return `[Chart: Balance over time]`
+      case 'holders-chart':
+        return `[Chart: Token holder distribution]`
+      case 'volume-chart':
+        return `[Chart: Payment volume]`
+      case 'activity-feed':
+        return `[Activity feed]`
+      case 'ruleset-schedule':
+        return `[Ruleset schedule view]`
+      case 'cash-out-form':
+        return `[Cash out form]`
+      case 'connect-account':
+        return `[Connect wallet button]`
+      case 'recommendation-chips':
+        return `[Suggested actions]`
+      case 'top-projects':
+        return `[Top projects list]`
+      default:
+        return `[${componentType} component]`
+    }
+  }).trim()
 }
 
 export function extractComponents(content: string): ParsedComponent[] {

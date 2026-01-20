@@ -52,9 +52,9 @@ export default function CashOutForm({ projectId, chainId = '1' }: CashOutFormPro
     load()
   }, [projectId, chainId])
 
-  // Calculate estimated ETH return
+  // Calculate estimated return (in whatever currency the project holds)
   const tokenNum = parseFloat(tokenAmount) || 0
-  const estimatedEth = issuanceRate && tokenNum > 0
+  const estimatedReturn = issuanceRate && tokenNum > 0
     ? tokenNum / issuanceRate.tokensPerEth
     : 0
 
@@ -120,7 +120,7 @@ export default function CashOutForm({ projectId, chainId = '1' }: CashOutFormPro
         {/* Form */}
         <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
           <div className={`text-sm font-medium mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Burn tokens for ETH
+            Burn tokens for funds
           </div>
 
           {/* Amount input */}
@@ -178,16 +178,16 @@ export default function CashOutForm({ projectId, chainId = '1' }: CashOutFormPro
           </div>
 
           {/* Estimated return */}
-          {tokenNum > 0 && estimatedEth > 0 && (
+          {tokenNum > 0 && estimatedReturn > 0 && (
             <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-              You receive ~{estimatedEth.toFixed(4)} ETH
+              Estimated return: ~{estimatedReturn.toFixed(4)}
             </div>
           )}
         </div>
 
         {/* Info */}
         <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          Burn your tokens to receive ETH from the treasury. Amount depends on balance and cash out tax rate.
+          Burn your tokens to receive funds from the project. Amount depends on balance and cash out tax rate.
         </p>
       </div>
 
@@ -199,7 +199,7 @@ export default function CashOutForm({ projectId, chainId = '1' }: CashOutFormPro
         projectName={project?.name}
         chainId={parseInt(chainId)}
         tokenAmount={tokenAmount}
-        estimatedEth={estimatedEth}
+        estimatedReturn={estimatedReturn}
       />
     </div>
   )

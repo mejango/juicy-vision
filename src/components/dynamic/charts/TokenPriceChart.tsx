@@ -13,6 +13,7 @@ import {
   fetchProjectWithRuleset,
   fetchProjectTokenSymbol,
   fetchProjectTokenAddress,
+  fetchProjectTokenSupply,
   fetchAllRulesets,
   fetchProjectSuckerGroupId,
   fetchSuckerGroupMoments,
@@ -183,13 +184,40 @@ export default function TokenPriceChart({
         // Fetch floor price data (sucker group moments and tax snapshots)
         const suckerGroupId = await fetchProjectSuckerGroupId(projectId, parseInt(chainId))
 
+        let hasSuckerGroupData = false
         if (suckerGroupId) {
           const [momentsData, taxData] = await Promise.all([
             fetchSuckerGroupMoments(suckerGroupId),
             fetchCashOutTaxSnapshots(suckerGroupId),
           ])
-          setMoments(momentsData)
-          setTaxSnapshots(taxData)
+          if (momentsData.length > 0 && taxData.length > 0) {
+            setMoments(momentsData)
+            setTaxSnapshots(taxData)
+            hasSuckerGroupData = true
+          }
+        }
+
+        // Fallback: Create a single current cash out price point if no sucker group data
+        if (!hasSuckerGroupData && project.currentRuleset?.cashOutTaxRate !== undefined) {
+          const tokenSupply = await fetchProjectTokenSupply(projectId, parseInt(chainId))
+          if (tokenSupply && project.balance) {
+            const now = Math.floor(Date.now() / 1000)
+            // Create a synthetic moment with current balance and supply
+            setMoments([{
+              timestamp: now,
+              balance: project.balance,
+              tokenSupply: tokenSupply,
+              suckerGroupId: '',
+            }])
+            // Create a synthetic tax snapshot with current ruleset's cash out tax rate
+            setTaxSnapshots([{
+              cashOutTax: project.currentRuleset.cashOutTaxRate,
+              start: loadedProjectStart,
+              duration: project.currentRuleset.duration,
+              rulesetId: '',
+              suckerGroupId: '',
+            }])
+          }
         }
 
         // Auto-discover Uniswap pool if no pool address was provided

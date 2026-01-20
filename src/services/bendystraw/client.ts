@@ -1315,7 +1315,7 @@ export async function fetchEthPrice(): Promise<number> {
   }
 }
 
-// ABI for JBTokens.tokenOf and ERC20.symbol
+// ABI for JBTokens.tokenOf, totalSupplyOf and ERC20.symbol
 const TOKEN_ABI = [
   {
     name: 'tokenOf',
@@ -1323,6 +1323,13 @@ const TOKEN_ABI = [
     stateMutability: 'view',
     inputs: [{ name: 'projectId', type: 'uint256' }],
     outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'totalSupplyOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
   },
   {
     name: 'symbol',
@@ -1415,6 +1422,32 @@ export async function fetchProjectTokenAddress(
     return tokenAddress
   } catch (err) {
     console.error('Failed to fetch project token address:', err)
+    return null
+  }
+}
+
+/**
+ * Fetch the total token supply for a project from JBTokens on-chain
+ * Returns the total supply as a bigint string, or null on error
+ */
+export async function fetchProjectTokenSupply(
+  projectId: string,
+  chainId: number
+): Promise<string | null> {
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) return null
+
+  try {
+    const totalSupply = await publicClient.readContract({
+      address: JB_CONTRACTS.JBTokens,
+      abi: TOKEN_ABI,
+      functionName: 'totalSupplyOf',
+      args: [BigInt(projectId)],
+    })
+
+    return totalSupply.toString()
+  } catch (err) {
+    console.error('Failed to fetch project token supply:', err)
     return null
   }
 }

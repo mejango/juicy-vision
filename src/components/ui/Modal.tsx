@@ -47,7 +47,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
       {/* Modal content */}
       <div
         className={`
-          relative w-full ${sizes[size]}
+          relative w-full ${sizes[size]} max-h-[90vh] flex flex-col
           border transform transition-all
           animate-in fade-in zoom-in-95 duration-200
           ${theme === 'dark'
@@ -58,7 +58,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
       >
         {/* Header */}
         {title && (
-          <div className={`flex items-center justify-between px-6 py-4 border-b ${
+          <div className={`flex items-center justify-between px-6 py-4 border-b shrink-0 ${
             theme === 'dark' ? 'border-white/10' : 'border-gray-200'
           }`}>
             <h2 className={`text-lg font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{title}</h2>
@@ -78,7 +78,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
         )}
 
         {/* Body */}
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto">
           {children}
         </div>
       </div>

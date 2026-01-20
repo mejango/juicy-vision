@@ -208,8 +208,8 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
           ? 'bg-juice-dark'
           : 'bg-white'
       }`}>
-        {/* Header with settings and theme - matches main header height */}
-        <div className={`flex items-start justify-between px-4 pt-4 pb-10 border-b ${
+        {/* Header with settings and theme */}
+        <div className={`flex items-center justify-between px-4 py-2 border-b ${
           theme === 'dark' ? 'border-white/10' : 'border-gray-200'
         }`}>
           <div>
@@ -224,7 +224,7 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
               Live
             </p>
           </div>
-          <div className="flex items-center gap-1 -mt-1">
+          <div className="flex items-center gap-1">
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
@@ -300,29 +300,50 @@ function AppContent() {
       {/* Transaction executor - listens for pay events */}
       <TransactionExecutor />
       {/* Main content area (everything except activity) */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
-        {hasMessages && <Header />}
-        {/* Top 62%: Recommendations + Mascot side by side */}
-        <div className="h-[62%] flex">
-          {/* Recommendations: 62% of this row */}
-          <div className="w-[62%] overflow-hidden">
-            <Routes>
-              <Route path="/" element={<MainContent topOnly />} />
-              <Route path="*" element={<MainContent topOnly />} />
-            </Routes>
-          </div>
-          {/* Mascot: 38% of this row (62% of the 38% total right side) */}
-          <div className="w-[38%] border-l-4 border-juice-orange">
-            <MascotPanel onSuggestionClick={(text) => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: text } }))} />
-          </div>
-        </div>
-        {/* Bottom 38%: Prompt dock spanning full width */}
-        <div className="h-[38%] border-t-4 border-juice-orange">
-          <Routes>
-            <Route path="/" element={<MainContent bottomOnly />} />
-            <Route path="*" element={<MainContent bottomOnly />} />
-          </Routes>
-        </div>
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        {hasMessages ? (
+          <>
+            <Header />
+            {/* Chat mode: full-width messages + input at bottom */}
+            <div className="flex-1 overflow-hidden">
+              <Routes>
+                <Route path="/" element={<MainContent />} />
+                <Route path="*" element={<MainContent />} />
+              </Routes>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Welcome mode: recommendations as full background, overlays on top */}
+            {/* Full-screen recommendations background layer */}
+            <div className="absolute inset-0 z-0">
+              <Routes>
+                <Route path="/" element={<MainContent topOnly />} />
+                <Route path="*" element={<MainContent topOnly />} />
+              </Routes>
+            </div>
+
+            {/* Overlay layout */}
+            <div className="relative z-10 flex flex-col h-full pointer-events-none">
+              {/* Top section: 62% height */}
+              <div className="h-[62%] flex">
+                {/* Spacer for recs area - no overlay here, recs show through */}
+                <div className="flex-1" />
+                {/* Mascot: translucent overlay */}
+                <div className="w-[27.53%] border-l-4 border-juice-orange pointer-events-auto">
+                  <MascotPanel onSuggestionClick={(text) => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: text } }))} />
+                </div>
+              </div>
+              {/* Prompt dock: 38% height, translucent overlay */}
+              <div className="h-[38%] border-t-4 border-juice-orange pointer-events-auto">
+                <Routes>
+                  <Route path="/" element={<MainContent bottomOnly />} />
+                  <Route path="*" element={<MainContent bottomOnly />} />
+                </Routes>
+              </div>
+            </div>
+          </>
+        )}
       </div>
       {/* Activity sidebar: full height, far right */}
       <div className="w-[calc(38%*0.38)] border-l-4 border-juice-orange">

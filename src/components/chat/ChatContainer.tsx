@@ -117,12 +117,27 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
           setMessageStreaming(convId!, assistantMsgId, false)
           setIsStreaming(false)
 
-          // Generate better title after first exchange
+          // Generate/refine title at key milestones
+          // After first exchange, then periodically as context deepens
           const conv = useChatStore.getState().conversations.find(c => c.id === convId)
-          if (conv && conv.messages.length === 2) {
-            const userMsg = conv.messages[0]?.content || ''
-            const title = await generateConversationTitle(claudeApiKey, userMsg, fullResponse)
-            updateConversationTitle(convId!, title)
+          if (conv) {
+            const messageCount = conv.messages.length
+            // Generate title after: first exchange (2), then at 4, 8, 12 messages
+            const shouldUpdateTitle = messageCount === 2 ||
+              (messageCount >= 4 && messageCount % 4 === 0)
+
+            if (shouldUpdateTitle) {
+              const apiMessages = conv.messages.map(m => ({
+                role: m.role,
+                content: m.content
+              }))
+              const title = await generateConversationTitle(
+                claudeApiKey,
+                apiMessages,
+                conv.title
+              )
+              updateConversationTitle(convId!, title)
+            }
           }
         },
         onError: (err) => {
@@ -153,7 +168,12 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
   }
 
   // Listen for messages from dynamic components (e.g., recommendation chips)
+  // Only listen if we're the instance with the input (bottomOnly or neither specified)
+  // This prevents duplicate message handling when split into topOnly/bottomOnly
   useEffect(() => {
+    // Skip if we're topOnly (no input to handle messages)
+    if (topOnly) return
+
     const handleComponentMessage = (event: CustomEvent<{ message: string }>) => {
       if (event.detail?.message) {
         handleSend(event.detail.message)
@@ -164,7 +184,7 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
     return () => {
       window.removeEventListener('juice:send-message', handleComponentMessage as EventListener)
     }
-  }, [handleSend])
+  }, [handleSend, topOnly])
 
   // Detect when dock is scrolled to show background on sticky prompt
   useEffect(() => {
@@ -183,7 +203,7 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
   return (
     <div className="flex h-full overflow-hidden relative">
       {/* Main content area - chips, mascot, messages, input */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
         {/* Error banner */}
         {error && (
           <div className="bg-red-500/20 border-b border-red-500/50 px-4 py-2 text-red-300 text-sm shrink-0">
@@ -210,14 +230,14 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
             {(bottomOnly || (!topOnly && !bottomOnly)) && (
               <div
                 ref={dockRef}
-                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0 z-20 h-[38%] border-t-4 border-juice-orange'} overflow-y-auto backdrop-blur-md ${
-                  theme === 'dark' ? 'bg-juice-dark/80' : 'bg-white/80'
+                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0 z-30 h-[38%] border-t-4 border-juice-orange'} overflow-y-auto backdrop-blur-md ${
+                  theme === 'dark' ? 'bg-juice-dark/85' : 'bg-white/85'
                 }`}
               >
-                {/* Spacer to position prompt at 38% from top (golden ratio) */}
-                <div className="h-[38%]" />
-                {/* Welcome greeting */}
-                <WelcomeGreeting />
+                {/* Spacer to position content at 38% from top (golden ratio) - includes greeting */}
+                <div className="h-[38%] flex flex-col justify-end">
+                  <WelcomeGreeting />
+                </div>
                 {/* Prompt bar sticks at top when scrolled - background only when stuck */}
                 <div className={`sticky top-0 z-10 transition-colors ${
                   isPromptStuck
@@ -233,6 +253,13 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
                     placeholder={placeholder}
                   />
                 </div>
+                {/* Subtext hint - scrolls with content */}
+                <div className="flex gap-3 px-6 pb-4">
+                  <div className="w-[48px] shrink-0" />
+                  <div className={`text-xs ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`}>
+                    or ask about any juicebox ecosystem project
+                  </div>
+                </div>
                 {/* Wallet info and conversation history scroll */}
                 <WalletInfo />
                 <ConversationHistory />
@@ -241,40 +268,44 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
           </>
         ) : (
           <>
-            {/* Messages scrollable area */}
-            <div className="overflow-y-auto flex-1">
-              {/* Export button */}
-              <div className={`flex justify-end px-4 py-2 border-b ${
-                theme === 'dark' ? 'border-white/10' : 'border-gray-200'
-              }`}>
-                <button
-                  onClick={handleExport}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                    theme === 'dark'
-                      ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                      : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Export
-                </button>
+            {/* Messages scrollable area - only show if topOnly or neither specified */}
+            {(topOnly || (!topOnly && !bottomOnly)) && (
+              <div className="overflow-y-auto flex-1">
+                {/* Export button */}
+                <div className={`flex justify-end px-4 py-2 border-b ${
+                  theme === 'dark' ? 'border-white/10' : 'border-gray-200'
+                }`}>
+                  <button
+                    onClick={handleExport}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                      theme === 'dark'
+                        ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Export
+                  </button>
+                </div>
+                <MessageList messages={messages} />
               </div>
-              <MessageList messages={messages} />
-            </div>
+            )}
 
-            {/* Input dock - normal position when chatting */}
-            <div className="shrink-0">
-              <ChatInput
-                onSend={handleSend}
-                disabled={isStreaming}
-                hideBorder={false}
-                hideWalletInfo={false}
-                compact={false}
-                placeholder={placeholder}
-              />
-            </div>
+            {/* Input dock - only show if bottomOnly or neither specified */}
+            {(bottomOnly || (!topOnly && !bottomOnly)) && (
+              <div className={`${bottomOnly ? 'h-full flex flex-col justify-center' : 'shrink-0'}`}>
+                <ChatInput
+                  onSend={handleSend}
+                  disabled={isStreaming}
+                  hideBorder={false}
+                  hideWalletInfo={false}
+                  compact={false}
+                  placeholder={placeholder}
+                />
+              </div>
+            )}
           </>
         )}
       </div>

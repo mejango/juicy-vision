@@ -6,10 +6,18 @@ import type { Attachment } from '../../stores/chatStore'
 
 export async function generateConversationTitle(
   apiKey: string,
-  userMessage: string,
-  assistantResponse: string
+  messages: { role: 'user' | 'assistant'; content: string }[],
+  currentTitle?: string
 ): Promise<string> {
   const client = getClaudeClient(apiKey)
+
+  // Build conversation summary for context
+  const conversationSummary = messages
+    .slice(-6) // Use last 6 messages for context
+    .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 200)}`)
+    .join('\n\n')
+
+  const isUpdate = currentTitle && currentTitle !== 'New Chat' && messages.length > 2
 
   try {
     const response = await client.messages.create({
@@ -18,10 +26,15 @@ export async function generateConversationTitle(
       messages: [
         {
           role: 'user',
-          content: `Generate a very short (2-5 words) title for this conversation. Just respond with the title, nothing else.
+          content: isUpdate
+            ? `The conversation title is currently "${currentTitle}". Based on the latest context, generate a more specific title (2-5 words) that captures what the user is actually building or exploring. If the current title is already good, respond with exactly that title. Just respond with the title, nothing else.
 
-User asked: "${userMessage.slice(0, 200)}"
-Assistant replied about: "${assistantResponse.slice(0, 300)}"`
+Recent conversation:
+${conversationSummary}`
+            : `Generate a very short (2-5 words) title for this conversation about someone's project or question. Focus on what they're trying to build, fund, or understand. Just respond with the title, nothing else.
+
+Conversation:
+${conversationSummary}`
         }
       ]
     })
@@ -30,15 +43,62 @@ Assistant replied about: "${assistantResponse.slice(0, 300)}"`
     if (titleBlock.type === 'text') {
       return titleBlock.text.trim().replace(/^["']|["']$/g, '')
     }
-    return userMessage.slice(0, 30)
+    return currentTitle || messages[0]?.content.slice(0, 30) || 'New Chat'
   } catch {
-    return userMessage.slice(0, 30)
+    return currentTitle || messages[0]?.content.slice(0, 30) || 'New Chat'
   }
 }
 
 export interface RefinementChip {
   text: string
   isFinal?: boolean // If true, clicking starts the conversation
+}
+
+export async function generateIdentitySuggestions(
+  apiKey: string,
+  identities: string[]
+): Promise<string[]> {
+  if (identities.length === 0) return []
+
+  const client = getClaudeClient(apiKey)
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 2000,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate 80 short, punchy prompts (3-10 words each) for someone who identifies as: ${identities.map(i => `"${i}"`).join(' AND ')}.
+
+These are for a Juicebox fundraising/treasury platform. The prompts should be things this person might want to do or explore.
+
+Mix these types evenly:
+- Action prompts ("Fund my X", "Launch a Y", "Build a Z")
+- Questions ("How do I...", "What's the best way to...")
+- Discovery ("Show me...", "Find projects that...")
+- Bold/ambitious ideas ("Build an empire...", "Create the next...")
+- Practical/tactical tasks ("Set up...", "Configure...")
+- Specific project ideas ("Fund my cat cafe", "Launch a zine")
+
+Be creative, specific, and FUN. Match the vibe of these identities. No generic prompts. Surprise me.
+
+Format: One prompt per line. No numbering, bullets, or explanations.`
+        }
+      ]
+    })
+
+    const textBlock = response.content[0]
+    if (textBlock.type !== 'text') return []
+
+    return textBlock.text
+      .trim()
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0 && line.length < 60)
+  } catch {
+    return []
+  }
 }
 
 export async function generateRefinementChips(

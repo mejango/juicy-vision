@@ -40,15 +40,14 @@ export default function ThinkingIndicator() {
   )
 
   return (
-    <span className="inline-flex items-center gap-1.5 text-juice-orange/80 italic">
-      {/* Flickering lightning bolt */}
+    <span className="inline-flex items-center gap-1.5 text-juice-orange font-semibold">
+      {/* Glitchy lightning bolt */}
       <svg
         className="w-4 h-4"
         viewBox="0 0 24 24"
         fill="currentColor"
         style={{
-          animation: 'zap 2s ease-in-out infinite',
-          filter: 'drop-shadow(0 0 3px currentColor)',
+          animation: 'zap 1.2s steps(1) infinite',
         }}
       >
         <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
@@ -56,17 +55,30 @@ export default function ThinkingIndicator() {
       <span>{verb}...</span>
       <style>{`
         @keyframes zap {
-          0%, 100% { opacity: 0.5; filter: drop-shadow(0 0 2px currentColor); }
-          10% { opacity: 1; filter: drop-shadow(0 0 6px currentColor); }
-          12% { opacity: 0.3; }
-          14% { opacity: 1; filter: drop-shadow(0 0 8px currentColor); }
-          20% { opacity: 0.7; filter: drop-shadow(0 0 3px currentColor); }
-          50% { opacity: 0.5; filter: drop-shadow(0 0 2px currentColor); }
-          70% { opacity: 0.6; }
-          72% { opacity: 1; filter: drop-shadow(0 0 6px currentColor); }
-          75% { opacity: 0.4; }
-          77% { opacity: 0.9; filter: drop-shadow(0 0 5px currentColor); }
-          85% { opacity: 0.5; filter: drop-shadow(0 0 2px currentColor); }
+          0% { opacity: 0.4; }
+          5% { opacity: 1; }
+          8% { opacity: 0.2; }
+          10% { opacity: 1; }
+          15% { opacity: 0.6; }
+          18% { opacity: 0; }
+          20% { opacity: 1; }
+          25% { opacity: 0.5; }
+          30% { opacity: 0.8; }
+          32% { opacity: 0.1; }
+          35% { opacity: 1; }
+          50% { opacity: 0.7; }
+          55% { opacity: 0; }
+          57% { opacity: 1; }
+          60% { opacity: 0.3; }
+          65% { opacity: 0.9; }
+          70% { opacity: 0.4; }
+          75% { opacity: 1; }
+          78% { opacity: 0; }
+          80% { opacity: 0.8; }
+          85% { opacity: 0.5; }
+          90% { opacity: 1; }
+          95% { opacity: 0.2; }
+          100% { opacity: 0.6; }
         }
       `}</style>
     </span>

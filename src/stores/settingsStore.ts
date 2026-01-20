@@ -1,8 +1,23 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-const CURRENT_BENDYSTRAW_ENDPOINT = 'https://bendystraw.xyz/3ZNJpGtazh5fwYoSW59GWDEj/graphql'
+const CURRENT_BENDYSTRAW_ENDPOINT = 'https://bendystraw.xyz/3ZeR8bs2mmAuDXoJSkZnmF7Z/graphql'
 export const DEFAULT_THEGRAPH_API_KEY = '02c70b717f22ba9a341a29655139ebd9'
+
+export type Language = 'en' | 'es' | 'zh' | 'ja' | 'ko' | 'fr' | 'de' | 'pt' | 'ru' | 'ar'
+
+export const LANGUAGES: { code: Language; label: string; native: string }[] = [
+  { code: 'en', label: 'English', native: 'English' },
+  { code: 'es', label: 'Spanish', native: 'Español' },
+  { code: 'zh', label: 'Chinese', native: '中文' },
+  { code: 'ja', label: 'Japanese', native: '日本語' },
+  { code: 'ko', label: 'Korean', native: '한국어' },
+  { code: 'fr', label: 'French', native: 'Français' },
+  { code: 'de', label: 'German', native: 'Deutsch' },
+  { code: 'pt', label: 'Portuguese', native: 'Português' },
+  { code: 'ru', label: 'Russian', native: 'Русский' },
+  { code: 'ar', label: 'Arabic', native: 'العربية' },
+]
 
 interface SettingsState {
   claudeApiKey: string
@@ -12,6 +27,7 @@ interface SettingsState {
   theGraphApiKey: string
   bendystrawEndpoint: string
   relayrEndpoint: string
+  language: Language
 
   setClaudeApiKey: (key: string) => void
   setParaApiKey: (key: string) => void
@@ -20,6 +36,7 @@ interface SettingsState {
   setTheGraphApiKey: (key: string) => void
   setBendystrawEndpoint: (endpoint: string) => void
   setRelayrEndpoint: (endpoint: string) => void
+  setLanguage: (lang: Language) => void
   clearSettings: () => void
   isConfigured: () => boolean
   isPinataConfigured: () => boolean
@@ -35,6 +52,7 @@ export const useSettingsStore = create<SettingsState>()(
       theGraphApiKey: DEFAULT_THEGRAPH_API_KEY,
       bendystrawEndpoint: CURRENT_BENDYSTRAW_ENDPOINT,
       relayrEndpoint: 'https://api.relayr.ba5ed.com',
+      language: 'en',
 
       setClaudeApiKey: (key) => set({ claudeApiKey: key }),
       setParaApiKey: (key) => set({ paraApiKey: key }),
@@ -43,6 +61,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTheGraphApiKey: (key) => set({ theGraphApiKey: key }),
       setBendystrawEndpoint: (endpoint) => set({ bendystrawEndpoint: endpoint }),
       setRelayrEndpoint: (endpoint) => set({ relayrEndpoint: endpoint }),
+      setLanguage: (lang) => set({ language: lang }),
 
       clearSettings: () => set({
         claudeApiKey: '',
@@ -64,7 +83,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'juice-settings',
-      version: 6,
+      version: 7,
       migrate: (persistedState: unknown, version: number) => {
         let state = persistedState as SettingsState & { pinataApiKey?: string; pinataApiSecret?: string }
 
@@ -88,6 +107,13 @@ export const useSettingsStore = create<SettingsState>()(
           state = {
             ...state,
             theGraphApiKey: DEFAULT_THEGRAPH_API_KEY,
+          }
+        }
+        if (version < 7) {
+          // Migration: add language preference
+          state = {
+            ...state,
+            language: 'en',
           }
         }
         return state

@@ -14,9 +14,9 @@ interface MessageBubbleProps {
   isLastAssistant?: boolean
 }
 
-// Check if response appears to be cut off mid-stream
+// Check if response appears to be cut off or incomplete
 function looksIncomplete(content: string): boolean {
-  if (!content || content.length < 50) return false
+  if (!content || content.length < 30) return false
 
   const trimmed = content.trim()
   if (!trimmed) return false
@@ -37,11 +37,12 @@ function looksIncomplete(content: string): boolean {
 
   // Ends with ellipsis that isn't intentional
   if (trimmed.endsWith('...') || trimmed.endsWith('…')) {
-    // Check if it's a "thinking" type phrase which is intentional
-    const lastSentence = trimmed.slice(-100)
-    if (!lastSentence.includes('Let me') && !lastSentence.includes('I\'ll')) {
-      return true
-    }
+    return true
+  }
+
+  // Ends with colon suggesting more content should follow
+  if (trimmed.endsWith(':')) {
+    return true
   }
 
   // Check if response promises action but doesn't deliver
@@ -53,27 +54,54 @@ function looksIncomplete(content: string): boolean {
     return false
   }
 
-  // Look at the last ~150 chars for promise phrases that imply more to come
-  const tail = trimmed.slice(-150).toLowerCase()
+  // Check for conversational responses that should have follow-ups
+  const lower = trimmed.toLowerCase()
+  const lastSentence = lower.slice(-200)
+
+  // Phrases that indicate the assistant should continue with more content
   const promisePhrases = [
     'let me understand',
     'let me show',
     'let me design',
     'let me suggest',
     'let me ask',
+    'let me help',
+    'let me explain',
+    'let me break',
+    'let me walk',
     'here\'s what',
     'here are the',
+    'i\'ll need to',
+    'first, i need',
+    'to help you',
   ]
 
   for (const phrase of promisePhrases) {
-    if (tail.includes(phrase)) {
+    if (lastSentence.includes(phrase)) {
       return true
     }
   }
 
-  // Ends with colon suggesting more content should follow
-  if (trimmed.endsWith(':')) {
-    return true
+  // Short response without a question or action item is likely incomplete
+  // (unless it's a simple acknowledgment)
+  if (trimmed.length < 200 && !trimmed.includes('?') && !hasComponent) {
+    // Check if it ends with a promise-like statement
+    if (lastSentence.includes('approach') ||
+        lastSentence.includes('understand') ||
+        lastSentence.includes('help you') ||
+        lastSentence.includes('work with')) {
+      return true
+    }
+  }
+
+  // Response ends with period but doesn't ask a question or provide options
+  // and is relatively short - likely incomplete
+  if (trimmed.endsWith('.') && trimmed.length < 300 && !trimmed.includes('?')) {
+    // Check for "setup" sentences that imply more to come
+    const endsWithSetup = /\b(approach|understand|process|look at|examine|review|consider|design|plan|strategy)\s*\.\s*$/i.test(trimmed)
+    if (endsWithSetup) {
+      return true
+    }
   }
 
   return false
@@ -203,13 +231,13 @@ export default function MessageBubble({ message, isLastAssistant }: MessageBubbl
           {showContinue && (
             <button
               onClick={handleContinue}
-              className={`mt-3 px-3 py-1.5 text-xs transition-colors ${
+              className={`mt-4 px-4 py-2 text-sm transition-colors ${
                 isDark
-                  ? 'text-gray-500 border border-gray-700 hover:text-gray-400 hover:border-gray-600'
-                  : 'text-gray-400 border border-gray-300 hover:text-gray-500 hover:border-gray-400'
+                  ? 'text-juice-orange/80 border border-juice-orange/30 hover:text-juice-orange hover:border-juice-orange/50 hover:bg-juice-orange/5'
+                  : 'text-juice-orange border border-juice-orange/40 hover:border-juice-orange/60 hover:bg-juice-orange/5'
               }`}
             >
-              Continue →
+              Continue
             </button>
           )}
         </div>

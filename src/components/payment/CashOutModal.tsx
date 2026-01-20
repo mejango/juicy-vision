@@ -59,7 +59,7 @@ interface CashOutModalProps {
   chainId: number
   tokenAmount: string
   tokenSymbol?: string
-  estimatedEth?: number
+  estimatedReturn?: number
   cashOutTaxRate?: number
 }
 
@@ -73,7 +73,7 @@ export default function CashOutModal({
   chainId,
   tokenAmount,
   tokenSymbol = 'tokens',
-  estimatedEth = 0,
+  estimatedReturn = 0,
   cashOutTaxRate = 0,
 }: CashOutModalProps) {
   const { theme } = useThemeStore()
@@ -316,13 +316,13 @@ export default function CashOutModal({
                   </div>
                 )}
 
-                {estimatedEth > 0 && (
+                {estimatedReturn > 0 && (
                   <div className={`flex justify-between items-center pt-2 border-t ${
                     isDark ? 'border-white/10' : 'border-gray-200'
                   }`}>
                     <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>You receive</span>
                     <span className={`font-mono font-bold text-lg ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                      ~{estimatedEth.toFixed(4)} ETH
+                      ~{estimatedReturn.toFixed(4)}
                     </span>
                   </div>
                 )}
@@ -345,7 +345,7 @@ export default function CashOutModal({
               )}
 
               <div className={`p-3 text-sm ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                Your tokens will be burned and you'll receive ETH based on the treasury balance and cash out tax rate.
+                Your tokens will be burned and you'll receive funds based on the project balance and cash out tax rate.
               </div>
             </>
           )}
@@ -360,11 +360,11 @@ export default function CashOutModal({
                     -{tokenNum.toLocaleString()} {tokenSymbol}
                   </span>
                 </div>
-                {estimatedEth > 0 && (
+                {estimatedReturn > 0 && (
                   <div className="flex justify-between items-center">
                     <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Received</span>
                     <span className={`font-mono text-green-500`}>
-                      ~{estimatedEth.toFixed(4)} ETH
+                      ~{estimatedReturn.toFixed(4)}
                     </span>
                   </div>
                 )}
