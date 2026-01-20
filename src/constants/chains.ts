@@ -102,5 +102,13 @@ export const JB_CONTRACTS = JB_CONTRACTS_5_1
 // This is the owner of all Revnet projects - uses V5 contracts, NOT V5.1
 export const REV_DEPLOYER = '0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d' as `0x${string}`
 
+// 721 Hook Contracts (same deterministic address on all chains via CREATE2)
+export const JB721_CONTRACTS = {
+  // JB721TiersHookStore - stores tier data for all 721 hooks
+  JB721TiersHookStore: '0x4ae9af188c2b63cba768e53f7e6c1b62b2e86ce7' as `0x${string}`,
+  // JB721TiersHookDeployer - deploys new 721 hooks
+  JB721TiersHookDeployer: '0x116e79c39a70ab6ac32399ed59b3b104e4d8df6c' as `0x${string}`,
+} as const
+
 // Zero address constant
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`

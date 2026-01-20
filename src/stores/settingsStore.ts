@@ -1,22 +1,17 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { changeLanguage } from '../i18n'
 
 const CURRENT_BENDYSTRAW_ENDPOINT = 'https://bendystraw.xyz/3ZeR8bs2mmAuDXoJSkZnmF7Z/graphql'
 export const DEFAULT_THEGRAPH_API_KEY = '02c70b717f22ba9a341a29655139ebd9'
 
-export type Language = 'en' | 'es' | 'zh' | 'ja' | 'ko' | 'fr' | 'de' | 'pt' | 'ru' | 'ar'
+export type Language = 'en' | 'zh' | 'pt' | 'es'
 
 export const LANGUAGES: { code: Language; label: string; native: string }[] = [
   { code: 'en', label: 'English', native: 'English' },
-  { code: 'es', label: 'Spanish', native: 'Español' },
   { code: 'zh', label: 'Chinese', native: '中文' },
-  { code: 'ja', label: 'Japanese', native: '日本語' },
-  { code: 'ko', label: 'Korean', native: '한국어' },
-  { code: 'fr', label: 'French', native: 'Français' },
-  { code: 'de', label: 'German', native: 'Deutsch' },
   { code: 'pt', label: 'Portuguese', native: 'Português' },
-  { code: 'ru', label: 'Russian', native: 'Русский' },
-  { code: 'ar', label: 'Arabic', native: 'العربية' },
+  { code: 'es', label: 'Spanish', native: 'Español' },
 ]
 
 interface SettingsState {
@@ -61,7 +56,10 @@ export const useSettingsStore = create<SettingsState>()(
       setTheGraphApiKey: (key) => set({ theGraphApiKey: key }),
       setBendystrawEndpoint: (endpoint) => set({ bendystrawEndpoint: endpoint }),
       setRelayrEndpoint: (endpoint) => set({ relayrEndpoint: endpoint }),
-      setLanguage: (lang) => set({ language: lang }),
+      setLanguage: (lang) => {
+        changeLanguage(lang)
+        set({ language: lang })
+      },
 
       clearSettings: () => set({
         claudeApiKey: '',
@@ -84,6 +82,12 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'juice-settings',
       version: 7,
+      onRehydrateStorage: () => (state) => {
+        // Sync i18n with persisted language on app start
+        if (state?.language) {
+          changeLanguage(state.language)
+        }
+      },
       migrate: (persistedState: unknown, version: number) => {
         let state = persistedState as SettingsState & { pinataApiKey?: string; pinataApiSecret?: string }
 

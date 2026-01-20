@@ -14,6 +14,7 @@ export type TransactionType =
   | 'launchProject'
   | 'queueRuleset'
   | 'deployERC20'
+  | 'mint-nft'
 
 export interface Transaction {
   id: string
@@ -27,6 +28,9 @@ export interface Transaction {
   error?: string
   createdAt: number
   updatedAt: number
+  // NFT minting fields
+  tierId?: number
+  quantity?: number
 }
 
 interface TransactionState {

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useChatStore, useSettingsStore, useThemeStore, type Message, type Attachment } from '../../stores'
+import { useTranslation } from 'react-i18next'
+import { useChatStore, useSettingsStore, useThemeStore, LANGUAGES, type Message, type Attachment } from '../../stores'
 import { streamChatResponse, generateConversationTitle } from '../../services/claude'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
@@ -7,6 +8,7 @@ import WelcomeScreen from './WelcomeScreen'
 import WelcomeGreeting from './WelcomeGreeting'
 import ConversationHistory from './ConversationHistory'
 import WalletInfo from './WalletInfo'
+import { SettingsPanel } from '../settings'
 import { stripComponents } from '../../utils/messageParser'
 
 // Convert messages to markdown format
@@ -61,10 +63,13 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
     updateConversationTitle,
   } = useChatStore()
 
-  const { claudeApiKey, isConfigured } = useSettingsStore()
-  const { theme } = useThemeStore()
+  const { claudeApiKey, isConfigured, language, setLanguage } = useSettingsStore()
+  const { theme, toggleTheme } = useThemeStore()
+  const { t } = useTranslation()
   const [error, setError] = useState<string | null>(null)
   const [isPromptStuck, setIsPromptStuck] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [langMenuOpen, setLangMenuOpen] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const dockRef = useRef<HTMLDivElement | null>(null)
 
@@ -230,12 +235,96 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
             {(bottomOnly || (!topOnly && !bottomOnly)) && (
               <div
                 ref={dockRef}
-                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0 z-30 h-[38%] border-t-4 border-juice-orange'} overflow-y-auto backdrop-blur-md ${
-                  theme === 'dark' ? 'bg-juice-dark/85' : 'bg-white/85'
+                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0 z-30 h-[38%] border-t-4 border-juice-orange'} overflow-y-auto backdrop-blur-md relative ${
+                  theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75'
                 }`}
               >
-                {/* Spacer to position content at 38% from top (golden ratio) - includes greeting */}
-                <div className="h-[38%] flex flex-col justify-end">
+                {/* Theme, Settings & Language controls - top right */}
+                <div className="absolute top-3 right-4 flex items-center gap-1 z-50">
+                  {/* Language selector */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setLangMenuOpen(!langMenuOpen)}
+                      className={`px-2 py-1 text-xs transition-colors ${
+                        theme === 'dark'
+                          ? 'text-gray-400 hover:text-white'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                    >
+                      {LANGUAGES.find(l => l.code === language)?.native || 'English'}
+                    </button>
+                    {langMenuOpen && (
+                      <div
+                        className={`absolute top-full right-0 mt-1 py-1 border shadow-lg ${
+                          theme === 'dark'
+                            ? 'bg-juice-dark border-white/20'
+                            : 'bg-white border-gray-200'
+                        }`}
+                        onMouseLeave={() => setLangMenuOpen(false)}
+                      >
+                        {LANGUAGES.map(lang => (
+                          <button
+                            key={lang.code}
+                            onClick={() => {
+                              setLanguage(lang.code)
+                              setLangMenuOpen(false)
+                            }}
+                            className={`w-full px-4 py-2 text-sm text-left whitespace-nowrap transition-colors ${
+                              language === lang.code
+                                ? theme === 'dark'
+                                  ? 'bg-green-500/20 text-green-400'
+                                  : 'bg-green-50 text-green-700'
+                                : theme === 'dark'
+                                  ? 'text-white/80 hover:bg-white/10'
+                                  : 'text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {lang.native}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* Theme toggle */}
+                  <button
+                    onClick={toggleTheme}
+                    className={`p-1.5 transition-colors ${
+                      theme === 'dark'
+                        ? 'text-gray-400 hover:text-white'
+                        : 'text-gray-500 hover:text-gray-900'
+                    }`}
+                    title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                  >
+                    {theme === 'dark' ? (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                      </svg>
+                    )}
+                  </button>
+                  {/* Settings */}
+                  <button
+                    onClick={() => setSettingsOpen(true)}
+                    className={`p-1.5 transition-colors ${
+                      theme === 'dark'
+                        ? 'text-gray-400 hover:text-white'
+                        : 'text-gray-500 hover:text-gray-900'
+                    }`}
+                    title="Settings"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Spacer to position prompt at 38% from top (golden ratio) - includes greeting */}
+                {/* Subtracts 1rem for ChatInput's py-4 top padding */}
+                <div className="h-[calc(38%-1rem)] flex flex-col justify-end">
                   <WelcomeGreeting />
                 </div>
                 {/* Prompt bar sticks at top when scrolled - background only when stuck */}
@@ -257,7 +346,7 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
                 <div className="flex gap-3 px-6 pb-4">
                   <div className="w-[48px] shrink-0" />
                   <div className={`text-xs ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`}>
-                    or ask about any juicebox ecosystem project
+                    {t('dock.askAbout', 'or ask about any juicebox ecosystem project')}
                   </div>
                 </div>
                 {/* Wallet info and conversation history scroll */}
@@ -309,6 +398,7 @@ export default function ChatContainer({ topOnly, bottomOnly }: ChatContainerProp
           </>
         )}
       </div>
+      <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   )
 }

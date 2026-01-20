@@ -1,30 +1,29 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 
-const GREETINGS = [
-  // Coach energy
-  'Alright, let\'s go.',
-  'Good, you\'re here.',
-  'Don\'t just stand there.',
-  'Well? Let\'s see it.',
-  'So tell me.',
-  // Coach who noticed you showed up just on time
-  'There you are.',
-  'Finally.',
-  'Oh good, you made it.',
-  'Let\'s get to work.',
-  'Right on time.',
-  'Look who showed up.',
-  // Confident, direct
-  'Show me what you got.',
-  'Let\'s make it happen.',
-  'Ready to squeeze?',
-  'Your move.',
+const GREETING_KEYS = [
+  'alrightLetsGo',
+  'goodYoureHere',
+  'dontJustStandThere',
+  'wellLetsSeeIt',
+  'soTellMe',
+  'thereYouAre',
+  'finally',
+  'ohGoodYouMadeIt',
+  'letsGetToWork',
+  'rightOnTime',
+  'lookWhoShowedUp',
+  'showMeWhatYouGot',
+  'letsMakeItHappen',
+  'readyToSqueeze',
+  'yourMove',
 ]
 
 export default function WelcomeGreeting() {
   const { theme } = useThemeStore()
-  const [greeting] = useState(() => GREETINGS[Math.floor(Math.random() * GREETINGS.length)])
+  const { t } = useTranslation()
+  const [greetingKey] = useState(() => GREETING_KEYS[Math.floor(Math.random() * GREETING_KEYS.length)])
 
   return (
     <div className="flex gap-3 px-6 pb-3">
@@ -33,7 +32,7 @@ export default function WelcomeGreeting() {
       <div className={`text-sm font-medium ${
         theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
       }`}>
-        {greeting}
+        {t(`greetings.${greetingKey}`)}
       </div>
     </div>
   )

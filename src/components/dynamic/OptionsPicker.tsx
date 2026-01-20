@@ -194,7 +194,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                     >
                       <span className="font-medium">{option.label}</span>
                       {option.sublabel && (
-                        <span className={`ml-1.5 text-xs ${
+                        <span className={`ml-3 text-xs ${
                           selected
                             ? isDark ? 'text-green-400/70' : 'text-green-600'
                             : isDark ? 'text-gray-400' : 'text-gray-500'
@@ -287,7 +287,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                           {option.label}
                         </span>
                         {option.sublabel && (
-                          <span className={`text-xs text-left ${
+                          <span className={`mt-0.5 text-xs text-left ${
                             isDark ? 'text-gray-400' : 'text-gray-500'
                           }`}>
                             {option.sublabel}

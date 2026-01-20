@@ -189,7 +189,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       hideBorder ? '' : 'border-t'
     } ${
       theme === 'dark'
-        ? `border-white/10 ${hideBorder ? 'bg-transparent' : 'bg-juice-dark/90'}`
+        ? `border-white/10 ${hideBorder ? 'bg-transparent' : 'bg-juice-dark/80'}`
         : `border-gray-200 ${hideBorder ? 'bg-transparent' : 'bg-white'}`
     }`}>
       {/* Attachment previews */}

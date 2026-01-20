@@ -1,4 +1,7 @@
+import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
+import { fetchSuckerGroupBalance, fetchEthPrice } from '../../services/bendystraw'
 
 interface MascotPanelProps {
   onSuggestionClick: (text: string) => void
@@ -6,29 +9,53 @@ interface MascotPanelProps {
 
 export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
   const { theme } = useThemeStore()
+  const { t } = useTranslation()
+  const [balanceUsd, setBalanceUsd] = useState<number | null>(null)
+
+  // Fetch NANA (project 1) balance on mount
+  useEffect(() => {
+    async function loadBalance() {
+      try {
+        const [balance, ethPrice] = await Promise.all([
+          fetchSuckerGroupBalance('1', 1), // NANA project ID 1 on mainnet
+          fetchEthPrice(),
+        ])
+        if (balance && ethPrice) {
+          // Convert balance from wei to ETH, then to USD
+          const balanceEth = parseFloat(balance.totalBalance) / 1e18
+          setBalanceUsd(balanceEth * ethPrice)
+        }
+      } catch (err) {
+        console.error('Failed to fetch NANA balance:', err)
+      }
+    }
+    loadBalance()
+  }, [])
 
   return (
     <div className={`w-full h-full flex flex-col backdrop-blur-md relative overflow-y-auto hide-scrollbar ${
       theme === 'dark'
-        ? 'bg-juice-dark/85'
-        : 'bg-white/85'
+        ? 'bg-juice-dark/75'
+        : 'bg-white/75'
     }`}>
-      {/* Pay us button - top right */}
-      <button
-        onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
-        className={`absolute top-4 right-4 z-10 px-3 py-1.5 text-sm border transition-colors ${
-          theme === 'dark'
-            ? 'border-green-500/50 text-green-400 hover:border-green-500 hover:bg-green-500/10 bg-juice-dark/60 backdrop-blur-sm'
-            : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50 bg-white/60 backdrop-blur-sm'
-        }`}
-      >
-        Pay us
-      </button>
+      {/* Pay us - top right */}
+      <div className="absolute top-4 right-4 z-10">
+        <button
+          onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
+          className={`px-3 py-1.5 text-sm border transition-colors ${
+            theme === 'dark'
+              ? 'border-green-500/50 text-green-400 hover:border-green-500 hover:bg-green-500/10 bg-juice-dark/60 backdrop-blur-sm'
+              : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50 bg-white/60 backdrop-blur-sm'
+          }`}
+        >
+          {t('ui.payUs', 'Pay us')}
+        </button>
+      </div>
 
-      {/* Subtle scroll hint arrow - below the title fold */}
-      <div className={`absolute right-4 z-10 animate-bounce ${
+      {/* Subtle scroll hint arrow - bottom right corner */}
+      <div className={`absolute right-2 bottom-2 z-10 animate-bounce ${
         theme === 'dark' ? 'text-gray-600' : 'text-gray-300'
-      }`} style={{ top: 'calc(100vh * 0.62 + 16px)' }}>
+      }`}>
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
         </svg>
@@ -38,7 +65,7 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
       <div className="flex-1 flex flex-col items-center px-4">
         {/* First section: visible fold - mascot bottom-aligned within container */}
         <div className="shrink-0 w-full flex flex-col items-center justify-end" style={{ height: 'calc(100vh * 0.62 - 8px)' }}>
-          <div className="flex-1 flex items-end justify-center pointer-events-none pb-2" style={{ maxHeight: 'calc(100vh * 0.52)' }}>
+          <div className="flex-1 flex items-end justify-center pointer-events-none" style={{ maxHeight: 'calc(100vh * 0.52)' }}>
             <img
               src={theme === 'dark' ? '/mascot-dark.png' : '/mascot-light.png'}
               alt="Juicy Mascot"
@@ -46,9 +73,9 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
             />
           </div>
 
-          <div className="pb-4 pointer-events-none text-center px-2">
-            <p className="text-lg sm:text-xl font-bold text-juice-orange whitespace-nowrap">
-              Fund Your Thing Your Way
+          <div className="pb-4 pointer-events-none text-center px-4 -mt-6">
+            <p className="text-sm sm:text-base md:text-lg font-bold text-juice-orange whitespace-pre-line">
+              {t('mascot.tagline', 'Fund Your Thing Your Way')}
             </p>
           </div>
         </div>
@@ -59,15 +86,15 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
           }`}>
             <p className="text-xs leading-relaxed">
-              $JUICY is the revenue token that powers this app. When you pay into Juicy Vision, you receive $JUICY tokens proportional to your contribution.
+              {t('juicyExplainer.paragraph1')}
             </p>
             <p className="text-xs leading-relaxed mt-3">
-              As the balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business.
+              {t('juicyExplainer.paragraph2')}
             </p>
             <p className={`text-xs leading-relaxed mt-3 ${
               theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
             }`}>
-              We run lean. LLM costs add up, but every dollar you pay backs the $JUICY token. 80% of new tokens go to payers like you, 10% to open source contributors, and 10% to JBX. The more Juicy grows, the more everyone earns. We're building this together.
+              {t('juicyExplainer.paragraph3')}
             </p>
             <button
               onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
@@ -77,8 +104,15 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
                   : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50'
               }`}
             >
-              Pay us
+              {t('ui.payUs', 'Pay us')}
             </button>
+            {balanceUsd !== null && (
+              <p className={`text-xs font-mono mt-2 ${
+                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+              }`}>
+                {t('ui.nanaBalance', 'NANA balance')} ${balanceUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+            )}
             <p className={`text-xs leading-relaxed mt-4 pt-4 border-t ${
               theme === 'dark' ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-200'
             }`}>

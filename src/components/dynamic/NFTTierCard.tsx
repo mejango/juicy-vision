@@ -1,0 +1,230 @@
+import { useState } from 'react'
+import { formatEther } from 'viem'
+import { useWallet, useModal } from '@getpara/react-sdk'
+import { useThemeStore, useTransactionStore } from '../../stores'
+import { resolveIpfsUri } from '../../utils/ipfs'
+import type { ResolvedNFTTier } from '../../services/nft'
+
+interface NFTTierCardProps {
+  tier: ResolvedNFTTier
+  projectId: string
+  chainId: number
+  compact?: boolean
+  showMintAction?: boolean
+  ethPrice?: number
+}
+
+export default function NFTTierCard({
+  tier,
+  projectId,
+  chainId,
+  compact = false,
+  showMintAction = true,
+  ethPrice,
+}: NFTTierCardProps) {
+  const { theme } = useThemeStore()
+  const { addTransaction } = useTransactionStore()
+  const { data: wallet } = useWallet()
+  const { openModal } = useModal()
+  const isDark = theme === 'dark'
+  const isConnected = !!wallet?.address
+
+  const [minting, setMinting] = useState(false)
+  const [quantity, setQuantity] = useState(1)
+
+  const imageUrl = resolveIpfsUri(tier.imageUri)
+  const priceEth = parseFloat(formatEther(tier.price))
+  const priceUsd = ethPrice ? priceEth * ethPrice : null
+  const soldOut = tier.remainingSupply === 0
+
+  const handleMint = async () => {
+    if (!isConnected) {
+      openModal()
+      return
+    }
+
+    setMinting(true)
+    try {
+      const txId = addTransaction({
+        type: 'mint-nft',
+        projectId,
+        chainId,
+        tierId: tier.tierId,
+        quantity,
+        status: 'pending',
+      })
+
+      window.dispatchEvent(new CustomEvent('juice:mint-nft', {
+        detail: {
+          txId,
+          projectId,
+          chainId,
+          tierId: tier.tierId,
+          quantity,
+          price: tier.price.toString(),
+        }
+      }))
+    } finally {
+      setMinting(false)
+    }
+  }
+
+  if (compact) {
+    return (
+      <div className={`flex items-center gap-3 p-3 border ${
+        isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
+      }`}>
+        {/* Thumbnail */}
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={tier.name}
+            className="w-12 h-12 object-cover"
+          />
+        ) : (
+          <div className={`w-12 h-12 flex items-center justify-center ${
+            isDark ? 'bg-white/10' : 'bg-gray-100'
+          }`}>
+            <span className={`text-lg ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              #{tier.tierId}
+            </span>
+          </div>
+        )}
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <h4 className={`font-medium text-sm truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {tier.name}
+          </h4>
+          <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            {tier.remainingSupply} / {tier.initialSupply} available
+          </div>
+        </div>
+
+        {/* Price & Action */}
+        <div className="text-right">
+          <div className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {priceEth.toFixed(4)} ETH
+          </div>
+          {priceUsd && (
+            <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              ~${priceUsd.toFixed(2)}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`border overflow-hidden ${
+      isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
+    } ${soldOut ? 'opacity-60' : ''}`}>
+      {/* Image */}
+      <div className="aspect-square relative overflow-hidden">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={tier.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className={`w-full h-full flex items-center justify-center ${
+            isDark ? 'bg-white/5' : 'bg-gray-100'
+          }`}>
+            <span className={`text-4xl font-bold ${isDark ? 'text-gray-600' : 'text-gray-300'}`}>
+              #{tier.tierId}
+            </span>
+          </div>
+        )}
+
+        {/* Supply badge */}
+        <div className={`absolute top-2 right-2 px-2 py-0.5 text-xs font-medium ${
+          soldOut
+            ? 'bg-red-500/90 text-white'
+            : isDark ? 'bg-black/70 text-white' : 'bg-white/90 text-gray-900'
+        }`}>
+          {soldOut ? 'Sold Out' : `${tier.remainingSupply} left`}
+        </div>
+
+        {/* Category badge */}
+        {tier.category > 0 && (
+          <div className={`absolute top-2 left-2 px-2 py-0.5 text-xs font-medium ${
+            isDark ? 'bg-juice-orange/90 text-black' : 'bg-juice-orange text-white'
+          }`}>
+            Category {tier.category}
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="p-4">
+        <h3 className={`font-semibold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          {tier.name}
+        </h3>
+
+        {tier.description && (
+          <p className={`text-sm mb-3 line-clamp-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            {tier.description}
+          </p>
+        )}
+
+        {/* Price */}
+        <div className="flex items-baseline gap-2 mb-3">
+          <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {priceEth.toFixed(4)} ETH
+          </span>
+          {priceUsd && (
+            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              (~${priceUsd.toFixed(2)})
+            </span>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div className={`flex gap-4 text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          <div>
+            <span className="font-medium">Supply:</span> {tier.initialSupply}
+          </div>
+          {tier.votingUnits > 0n && (
+            <div>
+              <span className="font-medium">Votes:</span> {tier.votingUnits.toString()}
+            </div>
+          )}
+        </div>
+
+        {/* Mint action */}
+        {showMintAction && (
+          <div className="flex gap-2">
+            {!soldOut && tier.initialSupply > 1 && (
+              <select
+                value={quantity}
+                onChange={(e) => setQuantity(Number(e.target.value))}
+                className={`px-2 py-2 text-sm border ${
+                  isDark
+                    ? 'bg-juice-dark border-white/10 text-white'
+                    : 'bg-white border-gray-200 text-gray-900'
+                }`}
+              >
+                {Array.from({ length: Math.min(tier.remainingSupply, 10) }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={handleMint}
+              disabled={minting || soldOut}
+              className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                minting || soldOut
+                  ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                  : 'bg-green-500 hover:bg-green-600 text-black'
+              }`}
+            >
+              {minting ? 'Minting...' : soldOut ? 'Sold Out' : 'Mint'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

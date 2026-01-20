@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App'
 import './index.css'
+import './i18n' // Initialize i18n
 
 // Register service worker for PWA
 const updateSW = registerSW({

@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
-import { useThemeStore, useSettingsStore, LANGUAGES } from '../../stores'
+import { useTranslation } from 'react-i18next'
+import { useThemeStore } from '../../stores'
 
 interface WelcomeScreenProps {
   onSuggestionClick: (text: string) => void
@@ -7,6 +8,985 @@ interface WelcomeScreenProps {
 
 // Identity traits for filtering - empathetic, human-centered
 type TraitId = 'maker' | 'artist' | 'community' | 'supporter' | 'visionary' | 'coder' | 'changemaker' | 'entrepreneur' | 'gamer' | 'researcher' | 'local' | 'curious' | 'dreamer' | 'rebel' | 'degen' | 'introvert' | 'chaotic' | 'normie' | 'rich' | 'giving' | 'lazy' | 'famous' | 'anon' | 'touched-grass' | 'climate' | 'health' | 'creative' | 'food' | 'science' | 'ai' | 'web3'
+
+// Map English suggestion text -> i18n key (for suggestions that have translations)
+const suggestionKeyMap: Record<string, string> = {
+  'What is Juicy?': 'whatIsJuicy',
+  'How do I start a fundraiser?': 'howDoIStartAFundraiser',
+  'How can I start a business?': 'howCanIStartABusiness',
+  'Help me plan my fundraise': 'helpMePlanMyFundraise',
+  'Is it free to create a project?': 'isItFreeToCreateAProject',
+  'What can I build with Juicy?': 'whatCanIBuildWithJuicy',
+  'Show me how it works': 'showMeHowItWorks',
+  'Walk me through the basics': 'walkMeThroughTheBasics',
+  'What makes Juicy different?': 'whatMakesJuicyDifferent',
+  'How does the money flow?': 'howDoesTheMoneyFlow',
+  'Show me successful projects': 'showMeSuccessfulProjects',
+  'Show me trending projects': 'showMeTrendingProjects',
+  'Show me biggest projects right now': 'showMeBiggestProjects',
+  'Show me creative projects': 'showMeCreativeProjects',
+  'What are people building?': 'whatArePeopleBuilding',
+  'Show me weird projects': 'showMeWeirdProjects',
+  'Find something inspiring': 'findSomethingInspiring',
+  'Show me projects like mine': 'showMeProjectsLikeMine',
+  'What launched this week?': 'whatLaunchedThisWeek',
+  'Show me underfunded gems': 'showMeUnderfundedGems',
+  'Find a project to support': 'findAProjectToSupport',
+  'What projects need funding?': 'whatProjectsNeedFunding',
+  'Show me projects I can pay into': 'showMeProjectsICanPayInto',
+  'Support an open source project': 'supportAnOpenSourceProject',
+  'Back an indie developer': 'backAnIndieDeveloper',
+  'Find projects by category': 'findProjectsByCategory',
+  'Discover new projects': 'discoverNewProjects',
+  'Fund my open source library': 'fundMyOpenSourceLibrary',
+  'Sustain my GitHub project': 'sustainMyGitHubProject',
+  'Bootstrap my startup': 'bootstrapMyStartup',
+  'Launch my small business': 'launchMySmallBusiness',
+  'Fund my side project': 'fundMySideProject',
+  'Start my billion dollar business': 'startMyBillionDollarBusiness',
+  'Build the next unicorn': 'buildTheNextUnicorn',
+  'Launch my empire': 'launchMyEmpire',
+  'Fund world domination': 'fundWorldDomination',
+  'Create generational wealth': 'createGenerationalWealth',
+  'Build something that outlives me': 'buildSomethingThatOutlivesMe',
+  'Start a movement': 'startAMovement',
+  'Change an industry': 'changeAnIndustry',
+  'Disrupt everything': 'disruptEverything',
+  'Run a community fundraiser': 'runACommunityFundraiser',
+  'Organize a charity drive': 'organizeACharityDrive',
+  'Fund disaster relief': 'fundDisasterRelief',
+  'Fund mutual aid': 'fundMutualAid',
+  'Fund my album': 'fundMyAlbum',
+  'Launch my music project': 'launchMyMusicProject',
+  'Fund my podcast': 'fundMyPodcast',
+  'Fund my indie game': 'fundMyIndieGame',
+  'Crowdfund my film': 'crowdfundMyFilm',
+  'Fund my art collective': 'fundMyArtCollective',
+  'Support my webcomic': 'supportMyWebcomic',
+  'Launch my animation project': 'launchMyAnimationProject',
+  'Fund my documentary': 'fundMyDocumentary',
+  'Fund my newsletter': 'fundMyNewsletter',
+  'Support my journalism': 'supportMyJournalism',
+  'Fund my book': 'fundMyBook',
+  'Fund my weird art project': 'fundMyWeirdArtProject',
+  'Start a meme coin with utility': 'startAMemeCoinWithUtility',
+  'Fund my research': 'fundMyResearch',
+  'Support my course': 'supportMyCourse',
+  'Fund my tutorial series': 'fundMyTutorialSeries',
+  'Fund my esports team': 'fundMyEsportsTeam',
+  'Launch my gaming community': 'launchMyGamingCommunity',
+  'Can I run a membership program?': 'canIRunAMembershipProgram',
+  'Start a fan club': 'startAFanClub',
+  'Build a paid community': 'buildAPaidCommunity',
+  'Fund my community garden': 'fundMyCommunityGarden',
+  'Fund my community center': 'fundMyCommunityCenter',
+  'Start a neighborhood project': 'startANeighborhoodProject',
+  'Launch my food truck': 'launchMyFoodTruck',
+  'Fund my cat cafe': 'fundMyCatCafe',
+  'Fund my coworking space': 'fundMyCoworkingSpace',
+  'Start my hackerspace': 'startMyHackerspace',
+  'How do supporters get rewarded?': 'howDoSupportersGetRewarded',
+  'How can I reward supporters?': 'howCanIRewardSupporters',
+  'Can supporters cash out?': 'canSupportersCashOut',
+  'How do I whitelabel Juicy?': 'howDoIWhitelabelJuicy',
+  'Create a grants program': 'createAGrantsProgram',
+  'Run a retroactive funding round': 'runARetroactiveFundingRound',
+  'Create a quadratic funding pool': 'createAQuadraticFundingPool',
+  'Launch a revnet': 'launchARevnet',
+  'Fund public goods': 'fundPublicGoods',
+  'Fund protocol development': 'fundProtocolDevelopment',
+  'Build an automated revenue machine': 'buildAnAutomatedRevenueMachine',
+  'Create a self-sustaining treasury': 'createASelfSustainingTreasury',
+  'Launch a perpetual funding engine': 'launchAPerpetualFundingEngine',
+  'Money that works while I sleep': 'moneyThatWorksWhileISleep',
+  'Build a prediction game on Juicebox': 'buildAPredictionGameOnJuicebox',
+  'Create a tournament with prize pools': 'createATournamentWithPrizePools',
+  'Build a betting pool for my friends': 'buildABettingPoolForMyFriends',
+  'Show me a live fundraise': 'showMeALiveFundraise',
+  'Pay into a project': 'payIntoAProject',
+  'Create a simple project': 'createASimpleProject',
+  'Walk me through a payment': 'walkMeThroughAPayment',
+  'Show me cash out in action': 'showMeCashOutInAction',
+  'Tell me a success story': 'tellMeASuccessStory',
+  'What could go right?': 'whatCouldGoRight',
+  'Inspire me': 'inspireMe',
+  'Dream big with me': 'dreamBigWithMe',
+  "What if money wasn't the problem?": 'whatIfMoneyWasntTheProblem',
+  'Help me think bigger': 'helpMeThinkBigger',
+  "Show me what's possible": 'showMeWhatsPossible',
+  'Fund my YouTube channel': 'fundMyYouTubeChannel',
+  'Monetize my expertise': 'monetizeMyExpertise',
+  'Fund my online course': 'fundMyOnlineCourse',
+  'Build my personal brand': 'buildMyPersonalBrand',
+  'Fund my AI startup': 'fundMyAIStartup',
+  'Build AI-powered tools': 'buildAIPoweredTools',
+  'Build an AI agent': 'buildAnAIAgent',
+  'Fund my climate tech': 'fundMyClimateTech',
+  'Fund my solar project': 'fundMySolarProject',
+  'Fund my health tech': 'fundMyHealthTech',
+  'Build mental health app': 'buildMentalHealthApp',
+  'Launch my wellness platform': 'launchMyWellnessPlatform',
+  'Fund my social app': 'fundMySocialApp',
+  'Launch my productivity app': 'launchMyProductivityApp',
+  'Fund my online community': 'fundMyOnlineCommunity',
+  'Build a membership platform': 'buildAMembershipPlatform',
+  'Fund my restaurant': 'fundMyRestaurant',
+  'Launch my coffee roaster': 'launchMyCoffeeRoaster',
+  'Fund my brewery': 'fundMyBrewery',
+  'Fund my fashion brand': 'fundMyFashionBrand',
+  'Launch my streetwear': 'launchMyStreetwear',
+  'Fund my sports team': 'fundMySportsTeam',
+  'Fund my film': 'fundMyFilm',
+  // Discovery
+  'Support a creator I follow': 'supportACreatorIFollow',
+  'Find Ethereum projects': 'findEthereumProjects',
+  'Show me Base projects': 'showMeBaseProjects',
+  'Projects on Optimism': 'projectsOnOptimism',
+  'Projects on Arbitrum': 'projectsOnArbitrum',
+  'Find projects in my city': 'findProjectsInMyCity',
+  'Show me climate projects': 'showMeClimateProjects',
+  'Find education projects': 'findEducationProjects',
+  // Developer tools
+  'Get paid for my npm package': 'getPaidForMyNpmPackage',
+  'Fund my dev tools': 'fundMyDevTools',
+  'Support protocol development': 'supportProtocolDevelopment',
+  'Fund infrastructure I maintain': 'fundInfrastructureIMaintain',
+  'Get sponsors for my framework': 'getSponsorsForMyFramework',
+  'Fund my VS Code extension': 'fundMyVSCodeExtension',
+  'Monetize my API': 'monetizeMyAPI',
+  'Fund my CLI tool': 'fundMyCLITool',
+  'Fund my database project': 'fundMyDatabaseProject',
+  'Support my security research': 'supportMySecurityResearch',
+  'Fund my compiler': 'fundMyCompiler',
+  'Maintain critical infrastructure': 'maintainCriticalInfrastructure',
+  'Fund my programming language': 'fundMyProgrammingLanguage',
+  // Ambitious
+  'Go from zero to IPO': 'goFromZeroToIPO',
+  'Build my legacy': 'buildMyLegacy',
+  'Replace a broken system': 'replaceABrokenSystem',
+  'Fund the future I want to see': 'fundTheFutureIWantToSee',
+  'Build critical infrastructure': 'buildCriticalInfrastructure',
+  'Create a new category': 'createANewCategory',
+  // Business
+  'Start a worker-owned co-op': 'startAWorkerOwnedCoop',
+  'Fund my hardware startup': 'fundMyHardwareStartup',
+  'Launch a collective business': 'launchACollectiveBusiness',
+  'Start my consulting firm': 'startMyConsultingFirm',
+  'Fund my SaaS product': 'fundMySaaSProduct',
+  'Launch my marketplace': 'launchMyMarketplace',
+  'Fund my physical product': 'fundMyPhysicalProduct',
+  'Start my agency': 'startMyAgency',
+  'Fund my franchise': 'fundMyFranchise',
+  'Launch my service business': 'launchMyServiceBusiness',
+  'Fund my subscription business': 'fundMySubscriptionBusiness',
+  // Investment
+  'How do I split ownership?': 'howDoISplitOwnership',
+  'How can I make agreements with investors?': 'howCanIMakeAgreementsWithInvestors',
+  'How do I share revenue with backers?': 'howDoIShareRevenueWithBackers',
+  'Create investor agreements': 'createInvestorAgreements',
+  'Set up revenue sharing': 'setUpRevenueSharing',
+  'Configure profit distribution': 'configureProfitDistribution',
+  'Manage cap table on-chain': 'manageCapTableOnChain',
+  'Create vesting schedules': 'createVestingSchedules',
+  'Set up milestone payments': 'setUpMilestonePayments',
+  // Fundraising
+  'Make an auditable political campaign': 'makeAnAuditablePoliticalCampaign',
+  'Fund a local initiative': 'fundALocalInitiative',
+  'Run a matching campaign': 'runAMatchingCampaign',
+  'Launch a crowdfund with deadline': 'launchACrowdfundWithDeadline',
+  'Set up recurring donations': 'setUpRecurringDonations',
+  'Create a giving circle': 'createAGivingCircle',
+  'Start mutual fund': 'startMutualFund',
+  // Music & Audio
+  'Start my record label': 'startMyRecordLabel',
+  'Fund my audio drama': 'fundMyAudioDrama',
+  'Launch my radio show': 'launchMyRadioShow',
+  'Fund my sound design studio': 'fundMySoundDesignStudio',
+  'Support my music venue': 'supportMyMusicVenue',
+  // Visual
+  'Launch my photography project': 'launchMyPhotographyProject',
+  'Fund my VR experience': 'fundMyVRExperience',
+  'Support my NFT collection': 'supportMyNFTCollection',
+  'Fund my gallery': 'fundMyGallery',
+  // Written
+  'Launch my magazine': 'launchMyMagazine',
+  'Fund investigative reporting': 'fundInvestigativeReporting',
+  'Support my blog': 'supportMyBlog',
+  'Fund my zine': 'fundMyZine',
+  'Launch my publishing house': 'launchMyPublishingHouse',
+  'Fund my translation project': 'fundMyTranslationProject',
+  'Support independent media': 'supportIndependentMedia',
+  // Weird & Wonderful
+  'Fund my experimental theater': 'fundMyExperimentalTheater',
+  'Launch my puppet show': 'launchMyPuppetShow',
+  'Fund my street performance': 'fundMyStreetPerformance',
+  'Fund my escape room': 'fundMyEscapeRoom',
+  'Launch my pirate ship bar': 'launchMyPirateShipBar',
+  'Fund my immersive experience': 'fundMyImmersiveExperience',
+  'Start my mystery dinner theater': 'startMyMysteryDinnerTheater',
+  'Fund my haunted house': 'fundMyHauntedHouse',
+  'Launch my themed restaurant': 'launchMyThemedRestaurant',
+  'Fund my artistic protest': 'fundMyArtisticProtest',
+  // Education
+  'Launch my bootcamp': 'launchMyBootcamp',
+  'Fund my educational content': 'fundMyEducationalContent',
+  'Support my mentorship program': 'supportMyMentorshipProgram',
+  'Fund my thesis': 'fundMyThesis',
+  'Launch my learning platform': 'launchMyLearningPlatform',
+  'Fund my scholarship program': 'fundMyScholarshipProgram',
+  'Support my lab': 'supportMyLab',
+  'Fund my field research': 'fundMyFieldResearch',
+  'Launch my workshop series': 'launchMyWorkshopSeries',
+  // Community + Education + Business
+  'Start a community bootcamp business': 'startACommunityBootcampBusiness',
+  'Launch a cohort-based course with membership': 'launchACohortBasedCourseWithMembership',
+  'Build a paid learning community': 'buildAPaidLearningCommunity',
+  'Start a tutoring collective': 'startATutoringCollective',
+  'Launch a coding bootcamp for my community': 'launchACodingBootcampForMyCommunity',
+  'Build a community education startup': 'buildACommunityEducationStartup',
+  'Start a membership-based workshop business': 'startAMembershipBasedWorkshopBusiness',
+  'Fund my community teaching studio': 'fundMyCommunityTeachingStudio',
+  'Launch a local skills training business': 'launchALocalSkillsTrainingBusiness',
+  'Build an education co-op': 'buildAnEducationCoop',
+  'Start a neighborhood tutoring business': 'startANeighborhoodTutoringBusiness',
+  'Launch a community apprenticeship program': 'launchACommunityApprenticeshipProgram',
+  'Build a peer learning membership': 'buildAPeerLearningMembership',
+  'Start a community mentorship business': 'startACommunityMentorshipBusiness',
+  'Fund my teaching collective': 'fundMyTeachingCollective',
+  // Gaming
+  'Fund my speedrun project': 'fundMySpeedrunProject',
+  'Support my mod development': 'supportMyModDevelopment',
+  'Fund my game server': 'fundMyGameServer',
+  'Launch my tournament series': 'launchMyTournamentSeries',
+  'Fund my game studio': 'fundMyGameStudio',
+  'Support my streaming setup': 'supportMyStreamingSetup',
+  'Fund my board game': 'fundMyBoardGame',
+  'Launch my arcade': 'launchMyArcade',
+  // Community & Social
+  'Can I fundraise for a collective?': 'canIFundraiseForACollective',
+  'Run a discord with benefits': 'runADiscordWithBenefits',
+  'Start a buying club': 'startABuyingClub',
+  'Launch a tool library': 'launchAToolLibrary',
+  'Fund my community kitchen': 'fundMyCommunityKitchen',
+  'Launch my social club': 'launchMySocialClub',
+  // Local & IRL
+  'Fund my local park cleanup': 'fundMyLocalParkCleanup',
+  'Launch a community fridge': 'launchACommunityFridge',
+  'Fund my bike repair collective': 'fundMyBikeRepairCollective',
+  'Start a free store': 'startAFreeStore',
+  'Fund my community workshop': 'fundMyCommunityWorkshop',
+  'Crowdfund my tattoo shop': 'crowdfundMyTattooShop',
+  'Fund my urban garden': 'fundMyUrbanGarden',
+  'Start my vintage arcade': 'startMyVintageArcade',
+  'Start my maker space': 'startMyMakerSpace',
+  'Fund my community radio': 'fundMyCommunityRadio',
+  'Launch my skate park': 'launchMySkatePark',
+  'Fund my climbing gym': 'fundMyClimbingGym',
+  // Operations
+  'How do I withdraw funds?': 'howDoIWithdrawFunds',
+  'How transparent is the funding?': 'howTransparentIsTheFunding',
+  'How do refunds work?': 'howDoRefundsWork',
+  'Can I set funding goals?': 'canISetFundingGoals',
+  'How do I add team members?': 'howDoIAddTeamMembers',
+  'How do I update my project?': 'howDoIUpdateMyProject',
+  // Platform & Infrastructure
+  'Create a fundraising platform': 'createAFundraisingPlatform',
+  'Build my own crowdfunding site': 'buildMyOwnCrowdfundingSite',
+  'Embed fundraising in my app': 'embedFundraisingInMyApp',
+  'White-label fund management': 'whiteLabelFundManagement',
+  'Build a giving platform': 'buildAGivingPlatform',
+  'Run fundraisers for my community': 'runFundraisersForMyCommunity',
+  'Host multiple projects on my site': 'hostMultipleProjectsOnMySite',
+  'Build a philanthropy dashboard': 'buildAPhilanthropyDashboard',
+  'Create an impact marketplace': 'createAnImpactMarketplace',
+  // Advanced
+  'Custom branding for my platform': 'customBrandingForMyPlatform',
+  'Launch a network state project': 'launchANetworkStateProject',
+  'Set up cross-chain fundraising': 'setUpCrossChainFundraising',
+  'Create programmable payouts': 'createProgrammablePayouts',
+  'Build custom approval flows': 'buildCustomApprovalFlows',
+  'Configure complex splits': 'configureComplexSplits',
+  'Set up staged releases': 'setUpStagedReleases',
+  // Crypto Native
+  'Launch a token for my project': 'launchATokenForMyProject',
+  'Create a treasury for my group': 'createATreasuryForMyGroup',
+  'Set up on-chain governance': 'setUpOnChainGovernance',
+  'Fund Ethereum infrastructure': 'fundEthereumInfrastructure',
+  'Support blockchain research': 'supportBlockchainResearch',
+  'Fund decentralization': 'fundDecentralization',
+  'Build web3 public goods': 'buildWeb3PublicGoods',
+  // Autonomous
+  'Build an autonomous treasury': 'buildAnAutonomousTreasury',
+  'Create a self-growing fund': 'createASelfGrowingFund',
+  'Set up automated distributions': 'setUpAutomatedDistributions',
+  'Create trustless payouts': 'createTrustlessPayouts',
+  // JB Games
+  'Create a sports bracket with real stakes': 'createASportsBracketWithRealStakes',
+  'Launch a fantasy league with payouts': 'launchAFantasyLeagueWithPayouts',
+  'Build a World Cup game like Defifa': 'buildAWorldCupGameLikeDefifa',
+  'Make a prediction market game': 'makeAPredictionMarketGame',
+  'Create a poker league treasury': 'createAPokerLeagueTreasury',
+  'Build a coordination game': 'buildACoordinationGame',
+  'Create a collective action mechanism': 'createACollectiveActionMechanism',
+  'Launch a staking game': 'launchAStakingGame',
+  'Build a commitment device': 'buildACommitmentDevice',
+  'Create a savings game': 'createASavingsGame',
+  'Launch a group challenge with stakes': 'launchAGroupChallengeWithStakes',
+  'Build a bonding curve game': 'buildABondingCurveGame',
+  'Create a token launch game': 'createATokenLaunchGame',
+  'Design an economic experiment': 'designAnEconomicExperiment',
+  'Build a market simulation': 'buildAMarketSimulation',
+  'Create an auction game': 'createAnAuctionGame',
+  'Launch a Dutch auction': 'launchADutchAuction',
+  'Build a social token platform': 'buildASocialTokenPlatform',
+  'Create a reputation system': 'createAReputationSystem',
+  'Launch a governance game': 'launchAGovernanceGame',
+  'Build a voting mechanism': 'buildAVotingMechanism',
+  'Create a delegation market': 'createADelegationMarket',
+  // JB Infrastructure
+  "Use JB as my app's payment layer": 'useJBAsMyAppsPaymentLayer',
+  'Build my app on Juicebox rails': 'buildMyAppOnJuiceboxRails',
+  'JB as backend for my dapp': 'jbAsBackendForMyDapp',
+  'Embed JB mechanics in my game': 'embedJBMechanicsInMyGame',
+  'Use JB for in-game economies': 'useJBForInGameEconomies',
+  'Build on JB primitives': 'buildOnJBPrimitives',
+  // Demos
+  'Demo the token mechanics': 'demoTheTokenMechanics',
+  'Try a test transaction': 'tryATestTransaction',
+  // Inspirational
+  'What makes a project take off?': 'whatMakesAProjectTakeOff',
+  'What would you fund?': 'whatWouldYouFund',
+  "Who's doing it right?": 'whosDoingItRight',
+  // Lazy
+  'Make money while I sleep': 'makeMoneyWhileISleep',
+  'Set it and forget it treasury': 'setItAndForgetItTreasury',
+  'Passive income on autopilot': 'passiveIncomeOnAutopilot',
+  'Zero maintenance fundraising': 'zeroMaintenanceFundraising',
+  'Let the code do the work': 'letTheCodeDoTheWork',
+  'Automated revenue streams': 'automatedRevenueStreams',
+  'Trustless income machine': 'trustlessIncomeMachine',
+  'Self-running project': 'selfRunningProject',
+  'Hands-off treasury management': 'handsOffTreasuryManagement',
+  'Perpetual motion money': 'perpetualMotionMoney',
+  'Fire and forget funding': 'fireAndForgetFunding',
+  'Run a project from my couch': 'runAProjectFromMyCouch',
+  'Minimal effort maximum returns': 'minimalEffortMaximumReturns',
+  'Automate my side hustle': 'automateMySideHustle',
+  'Build once collect forever': 'buildOnceCollectForever',
+  'No meetings required': 'noMeetingsRequired',
+  'Async-first treasury': 'asyncFirstTreasury',
+  'Let smart contracts handle it': 'letSmartContractsHandleIt',
+  'Programmable passive income': 'programmablePassiveIncome',
+  'Self-sustaining without me': 'selfSustainingWithoutMe',
+  // Degen
+  'Ape into something new': 'apeIntoSomethingNew',
+  'Launch a meme treasury': 'launchAMemeTreasury',
+  'Degen funding pool': 'degenFundingPool',
+  'High risk high reward project': 'highRiskHighRewardProject',
+  'Ponzinomics but ethical': 'ponzinomicsButEthical',
+  'Token go up treasury': 'tokenGoUpTreasury',
+  'Betting pool for degens': 'bettingPoolForDegens',
+  'Prediction market mayhem': 'predictionMarketMayhem',
+  'Fantasy sports with real stakes': 'fantasySportsWithRealStakes',
+  'Arcade token economy': 'arcadeTokenEconomy',
+  'Bonding curve experiments': 'bondingCurveExperiments',
+  'Revnet for the culture': 'revnetForTheCulture',
+  'Gamified treasury': 'gamifiedTreasury',
+  'Speculation station': 'speculationStation',
+  'Diamond hands treasury': 'diamondHandsTreasury',
+  'WAGMI fund': 'wagmiFund',
+  'To the moon project': 'toTheMoonProject',
+  'Degen collective treasury': 'degenCollectiveTreasury',
+  'Floor price treasury': 'floorPriceTreasury',
+  'Mint and pray': 'mintAndPray',
+  // Chaotic
+  'Fund beautiful chaos': 'fundBeautifulChaos',
+  'Weird experiment treasury': 'weirdExperimentTreasury',
+  'Chaotic good funding': 'chaoticGoodFunding',
+  'Disrupt for fun': 'disruptForFun',
+  'Meme lord treasury': 'memeLordTreasury',
+  'Absurdist art fund': 'absurdistArtFund',
+  'Chaos magic project': 'chaosMagicProject',
+  'Random acts of funding': 'randomActsOfFunding',
+  'Experimental mayhem': 'experimentalMayhem',
+  'Pirate radio treasury': 'pirateRadioTreasury',
+  'Underground weird stuff': 'undergroundWeirdStuff',
+  'Subversive art collective': 'subversiveArtCollective',
+  'Anarchy but organized': 'anarchyButOrganized',
+  'Controlled demolition fund': 'controlledDemolitionFund',
+  'Creative destruction treasury': 'creativeDestructionTreasury',
+  'Break things beautifully': 'breakThingsBeautifully',
+  'Fund the inexplicable': 'fundTheInexplicable',
+  'Mystery box treasury': 'mysteryBoxTreasury',
+  'Haunted house collective': 'hauntedHouseCollective',
+  'Immersive chaos experience': 'immersiveChaosExperience',
+  // Rich
+  'Path to my first million': 'pathToMyFirstMillion',
+  'Wealth building machine': 'wealthBuildingMachine',
+  'Empire starts here': 'empireStartsHere',
+  'From broke to rich': 'fromBrokeToRich',
+  'Revenue maximization': 'revenueMaximization',
+  'Profit-first treasury': 'profitFirstTreasury',
+  'Unicorn trajectory': 'unicornTrajectory',
+  'IPO preparation fund': 'ipoPreparationFund',
+  'Wealth accumulation engine': 'wealthAccumulationEngine',
+  'Money printing operation': 'moneyPrintingOperation',
+  'Bootstrap to billions': 'bootstrapToBillions',
+  'Startup to acquisition': 'startupToAcquisition',
+  'Revenue rocket ship': 'revenueRocketShip',
+  'Profit margins on steroids': 'profitMarginsOnSteroids',
+  'Wealth generation protocol': 'wealthGenerationProtocol',
+  'Get rich systematically': 'getRichSystematically',
+  'Million dollar project': 'millionDollarProject',
+  'Exit strategy treasury': 'exitStrategyTreasury',
+  'Compound wealth fund': 'compoundWealthFund',
+  'Financial freedom machine': 'financialFreedomMachine',
+  // Public Good
+  'Fund public goods forever': 'fundPublicGoodsForever',
+  'Open source sustainability': 'openSourceSustainability',
+  'Free stuff for everyone': 'freeStuffForEveryone',
+  'Community first always': 'communityFirstAlways',
+  'Give it all away': 'giveItAllAway',
+  'Mutual aid network': 'mutualAidNetwork',
+  'Scholarship for strangers': 'scholarshipForStrangers',
+  'Relief fund for anyone': 'reliefFundForAnyone',
+  'Charity without overhead': 'charityWithoutOverhead',
+  'Free education treasury': 'freeEducationTreasury',
+  'Commons funding pool': 'commonsFundingPool',
+  'Nonprofit for coral reefs': 'nonprofitForCoralReefs',
+  'Altruism as a service': 'altruismAsAService',
+  'Help without expectation': 'helpWithoutExpectation',
+  'Pure public benefit': 'purePublicBenefit',
+  'Community wealth fund': 'communityWealthFund',
+  'Share the wealth treasury': 'shareTheWealthTreasury',
+  'Collective benefit pool': 'collectiveBenefitPool',
+  'Free forever project': 'freeForeverProject',
+  'Gift economy treasury': 'giftEconomyTreasury',
+  // Anon
+  'Anonymous treasury': 'anonymousTreasury',
+  'Pseudonymous project': 'pseudonymousProject',
+  'No KYC required': 'noKYCRequired',
+  'Privacy-first funding': 'privacyFirstFunding',
+  'Trustless and faceless': 'trustlessAndFaceless',
+  'Anonymous collective': 'anonymousCollective',
+  'Decentralized identity fund': 'decentralizedIdentityFund',
+  'On-chain only presence': 'onChainOnlyPresence',
+  'Protocol-native project': 'protocolNativeProject',
+  'API-driven treasury': 'apiDrivenTreasury',
+  'No doxxing allowed': 'noDoxxingAllowed',
+  'Anonymous art fund': 'anonymousArtFund',
+  'Pseudonymous media outlet': 'pseudonymousMediaOutlet',
+  'Privacy-preserving treasury': 'privacyPreservingTreasury',
+  'Autonomous collective': 'autonomousCollective',
+  'Anon dev fund': 'anonDevFund',
+  'Pseudonymous publishing': 'pseudonymousPublishing',
+  'Anonymous research fund': 'anonymousResearchFund',
+  'No-name collective': 'noNameCollective',
+  'Shadow treasury': 'shadowTreasury',
+  // Famous
+  'Launch my media empire': 'launchMyMediaEmpire',
+  'Viral content treasury': 'viralContentTreasury',
+  'Influencer launch fund': 'influencerLaunchFund',
+  'Famous overnight project': 'famousOvernightProject',
+  'Content creator treasury': 'contentCreatorTreasury',
+  'Streaming career fund': 'streamingCareerFund',
+  'Podcast to millions': 'podcastToMillions',
+  'Newsletter empire': 'newsletterEmpire',
+  'Film festival fund': 'filmFestivalFund',
+  'Documentary series treasury': 'documentarySeriesTreasury',
+  'Music industry disruption': 'musicIndustryDisruption',
+  'Album launch treasury': 'albumLaunchTreasury',
+  'Media mogul starter': 'mediaMogulStarter',
+  'Journalism that matters': 'journalismThatMatters',
+  'Breaking news fund': 'breakingNewsFund',
+  'Viral moment treasury': 'viralMomentTreasury',
+  'Fame machine project': 'fameMachineProject',
+  'Audience building fund': 'audienceBuildingFund',
+  'Clout treasury': 'cloutTreasury',
+  'Main character energy fund': 'mainCharacterEnergyFund',
+  // Normie
+  'Just a regular business': 'justARegularBusiness',
+  'Normal small business fund': 'normalSmallBusinessFund',
+  'Simple service business': 'simpleServiceBusiness',
+  'Consulting practice treasury': 'consultingPracticeTreasury',
+  'Agency starter fund': 'agencyStarterFund',
+  'Coffee shop crowdfund': 'coffeeShopCrowdfund',
+  'Food truck launch': 'foodTruckLaunch',
+  'Tattoo parlor fund': 'tattooParlorFund',
+  'Vintage shop treasury': 'vintageShopTreasury',
+  'Climbing gym fund': 'climbingGymFund',
+  'Skate shop starter': 'skateShopStarter',
+  'Regular retail business': 'regularRetailBusiness',
+  'Basic service company': 'basicServiceCompany',
+  'Traditional business model': 'traditionalBusinessModel',
+  'Simple honest work fund': 'simpleHonestWorkFund',
+  'Main street business': 'mainStreetBusiness',
+  'Neighborhood shop fund': 'neighborhoodShopFund',
+  'Local service treasury': 'localServiceTreasury',
+  'Family business fund': 'familyBusinessFund',
+  'Classic entrepreneurship': 'classicEntrepreneurship',
+  // Touch Grass
+  'Touch grass treasury': 'touchGrassTreasury',
+  'Outdoor project fund': 'outdoorProjectFund',
+  'Nature connection fund': 'natureConnectionFund',
+  'Local park improvement': 'localParkImprovement',
+  'Community garden expansion': 'communityGardenExpansion',
+  'Neighborhood beautification': 'neighborhoodBeautification',
+  'Urban farming collective': 'urbanFarmingCollective',
+  'Outdoor adventure fund': 'outdoorAdventureFund',
+  'Trail maintenance treasury': 'trailMaintenanceTreasury',
+  'Beach cleanup fund': 'beachCleanupFund',
+  'River restoration project': 'riverRestorationProject',
+  'Green space treasury': 'greenSpaceTreasury',
+  'Fresh air collective': 'freshAirCollective',
+  'Farmers market fund': 'farmersMarketFund',
+  'Outdoor fitness treasury': 'outdoorFitnessTreasury',
+  'Bike path project': 'bikePathProject',
+  'Hiking club treasury': 'hikingClubTreasury',
+  'Nature education fund': 'natureEducationFund',
+  'Wildlife preservation': 'wildlifePreservation',
+  'Outdoor community space': 'outdoorCommunitySpace',
+  // Creator Economy
+  'Launch my Twitch career': 'launchMyTwitchCareer',
+  'Monetize my TikTok content': 'monetizeMyTikTokContent',
+  'Fund my creator studio': 'fundMyCreatorStudio',
+  'Launch my merch line': 'launchMyMerchLine',
+  'Fund my content creation': 'fundMyContentCreation',
+  'Start my Patreon alternative': 'startMyPatreonAlternative',
+  'Build a creator collective': 'buildACreatorCollective',
+  'Fund my video production': 'fundMyVideoProduction',
+  'Launch my livestream setup': 'launchMyLivestreamSetup',
+  'Fund my content house': 'fundMyContentHouse',
+  'Start my media company': 'startMyMediaCompany',
+  'Build my audience first': 'buildMyAudienceFirst',
+  'Launch my coaching business': 'launchMyCoachingBusiness',
+  'Build my speaking career': 'buildMySpeakingCareer',
+  'Fund my brand deals': 'fundMyBrandDeals',
+  'Create my creator fund': 'createMyCreatorFund',
+  // Web3 & Crypto
+  'Launch my token': 'launchMyToken',
+  'Build a DAO from scratch': 'buildADAOFromScratch',
+  'Create on-chain governance': 'createOnChainGovernance',
+  'Fund my protocol': 'fundMyProtocol',
+  'Build decentralized infrastructure': 'buildDecentralizedInfrastructure',
+  'Launch my L2': 'launchMyL2',
+  'Fund my rollup': 'fundMyRollup',
+  'Build a bridge': 'buildABridge',
+  'Create a DEX': 'createADEX',
+  'Fund my wallet app': 'fundMyWalletApp',
+  'Build an NFT marketplace': 'buildAnNFTMarketplace',
+  'Launch my staking protocol': 'launchMyStakingProtocol',
+  'Create a lending platform': 'createALendingPlatform',
+  'Fund my oracle network': 'fundMyOracleNetwork',
+  'Build a privacy protocol': 'buildAPrivacyProtocol',
+  'Launch my identity solution': 'launchMyIdentitySolution',
+  'Create a social graph': 'createASocialGraph',
+  'Fund my data availability layer': 'fundMyDataAvailabilityLayer',
+  'Build cross-chain tooling': 'buildCrossChainTooling',
+  'Launch my MEV solution': 'launchMyMEVSolution',
+  // AI & Tech
+  'Train my own model': 'trainMyOwnModel',
+  'Fund my ML research': 'fundMyMLResearch',
+  'Create an AI assistant': 'createAnAIAssistant',
+  'Build AI infrastructure': 'buildAIInfrastructure',
+  'Fund my data company': 'fundMyDataCompany',
+  'Launch my AI API': 'launchMyAIAPI',
+  'Fund my robotics project': 'fundMyRoboticsProject',
+  'Create autonomous systems': 'createAutonomousSystems',
+  'Build my AI lab': 'buildMyAILab',
+  'Fund my computer vision project': 'fundMyComputerVisionProject',
+  'Launch my NLP startup': 'launchMyNLPStartup',
+  'Build generative AI tools': 'buildGenerativeAITools',
+  'Fund my AI hardware': 'fundMyAIHardware',
+  'Create AI for good': 'createAIForGood',
+  'Build ethical AI': 'buildEthicalAI',
+  'Fund my AI safety research': 'fundMyAISafetyResearch',
+  'Launch my AI studio': 'launchMyAIStudio',
+  // Sustainability
+  'Build renewable energy': 'buildRenewableEnergy',
+  'Launch my carbon removal': 'launchMyCarbonRemoval',
+  'Fund my reforestation': 'fundMyReforestation',
+  'Create circular economy': 'createCircularEconomy',
+  'Build sustainable fashion': 'buildSustainableFashion',
+  'Fund my zero-waste business': 'fundMyZeroWasteBusiness',
+  'Launch my recycling startup': 'launchMyRecyclingStartup',
+  'Create sustainable packaging': 'createSustainablePackaging',
+  'Fund my clean tech': 'fundMyCleanTech',
+  'Build green infrastructure': 'buildGreenInfrastructure',
+  'Launch my climate tech': 'launchMyClimateTech',
+  'Fund my ocean cleanup': 'fundMyOceanCleanup',
+  'Create sustainable agriculture': 'createSustainableAgriculture',
+  'Build vertical farming': 'buildVerticalFarming',
+  'Fund my food tech': 'fundMyFoodTech',
+  'Launch my plant-based startup': 'launchMyPlantBasedStartup',
+  'Create lab-grown products': 'createLabGrownProducts',
+  'Fund my biodiversity project': 'fundMyBiodiversityProject',
+  'Build regenerative systems': 'buildRegenerativeSystems',
+  // Health & Wellness
+  'Fund my fitness startup': 'fundMyFitnessStartup',
+  'Create telehealth solution': 'createTelehealthSolution',
+  'Build medical devices': 'buildMedicalDevices',
+  'Fund my biotech research': 'fundMyBiotechResearch',
+  'Launch my longevity project': 'launchMyLongevityProject',
+  'Create personalized medicine': 'createPersonalizedMedicine',
+  'Fund my diagnostics startup': 'fundMyDiagnosticsStartup',
+  'Build health data platform': 'buildHealthDataPlatform',
+  'Launch my therapy app': 'launchMyTherapyApp',
+  'Fund my meditation startup': 'fundMyMeditationStartup',
+  'Create sleep technology': 'createSleepTechnology',
+  'Build nutrition platform': 'buildNutritionPlatform',
+  'Fund my wearables company': 'fundMyWearablesCompany',
+  'Launch my health community': 'launchMyHealthCommunity',
+  'Create patient support': 'createPatientSupport',
+  'Fund my clinical trials': 'fundMyClinicalTrials',
+  'Build healthcare access': 'buildHealthcareAccess',
+  // Finance & Fintech
+  'Fund my neobank': 'fundMyNeobank',
+  'Build payment infrastructure': 'buildPaymentInfrastructure',
+  'Launch my investing app': 'launchMyInvestingApp',
+  'Create savings platform': 'createSavingsPlatform',
+  'Fund my insurance startup': 'fundMyInsuranceStartup',
+  'Build credit solutions': 'buildCreditSolutions',
+  'Launch my remittance service': 'launchMyRemittanceService',
+  'Create financial education': 'createFinancialEducation',
+  'Fund my trading platform': 'fundMyTradingPlatform',
+  'Build wealth management': 'buildWealthManagement',
+  'Launch my robo-advisor': 'launchMyRoboAdvisor',
+  'Create expense tracking': 'createExpenseTracking',
+  'Fund my accounting software': 'fundMyAccountingSoftware',
+  'Build invoicing tools': 'buildInvoicingTools',
+  'Launch my payroll startup': 'launchMyPayrollStartup',
+  'Create tax solutions': 'createTaxSolutions',
+  'Fund my lending startup': 'fundMyLendingStartup',
+  'Build credit scoring': 'buildCreditScoring',
+  'Launch my financial API': 'launchMyFinancialAPI',
+  'Create embedded finance': 'createEmbeddedFinance',
+  // Social Impact
+  'Fund my nonprofit': 'fundMyNonprofit',
+  'Build impact measurement': 'buildImpactMeasurement',
+  'Launch my social enterprise': 'launchMySocialEnterprise',
+  'Create employment programs': 'createEmploymentPrograms',
+  'Fund my housing project': 'fundMyHousingProject',
+  'Build affordable housing': 'buildAffordableHousing',
+  'Launch my homeless solution': 'launchMyHomelessSolution',
+  'Create food security': 'createFoodSecurity',
+  'Fund my education nonprofit': 'fundMyEducationNonprofit',
+  'Build literacy programs': 'buildLiteracyPrograms',
+  'Launch my youth program': 'launchMyYouthProgram',
+  'Create elder care': 'createElderCare',
+  'Fund my disability services': 'fundMyDisabilityServices',
+  'Build accessibility tools': 'buildAccessibilityTools',
+  'Launch my refugee support': 'launchMyRefugeeSupport',
+  'Create immigrant services': 'createImmigrantServices',
+  'Fund my justice reform': 'fundMyJusticeReform',
+  'Build rehabilitation programs': 'buildRehabilitationPrograms',
+  'Launch my reentry services': 'launchMyReentryServices',
+  'Create community healing': 'createCommunityHealing',
+  // Infrastructure
+  'Fund my cloud startup': 'fundMyCloudStartup',
+  'Build developer tools': 'buildDeveloperTools',
+  'Launch my DevOps platform': 'launchMyDevOpsPlatform',
+  'Create monitoring solutions': 'createMonitoringSolutions',
+  'Fund my security startup': 'fundMySecurityStartup',
+  'Build authentication': 'buildAuthentication',
+  'Launch my identity platform': 'launchMyIdentityPlatform',
+  'Create access management': 'createAccessManagement',
+  'Fund my networking startup': 'fundMyNetworkingStartup',
+  'Build edge computing': 'buildEdgeComputing',
+  'Launch my CDN': 'launchMyCDN',
+  'Create serverless platform': 'createServerlessPlatform',
+  'Fund my container platform': 'fundMyContainerPlatform',
+  'Build orchestration tools': 'buildOrchestrationTools',
+  'Launch my observability': 'launchMyObservability',
+  'Create logging platform': 'createLoggingPlatform',
+  'Fund my database startup': 'fundMyDatabaseStartup',
+  'Build data pipelines': 'buildDataPipelines',
+  'Launch my analytics platform': 'launchMyAnalyticsPlatform',
+  'Create BI tools': 'createBITools',
+  // Marketplaces
+  'Fund my two-sided marketplace': 'fundMyTwoSidedMarketplace',
+  'Build a services marketplace': 'buildAServicesMarketplace',
+  'Launch my talent platform': 'launchMyTalentPlatform',
+  'Create a freelancer marketplace': 'createAFreelancerMarketplace',
+  'Fund my rental marketplace': 'fundMyRentalMarketplace',
+  'Build peer-to-peer platform': 'buildPeerToPeerPlatform',
+  'Launch my resale marketplace': 'launchMyResaleMarketplace',
+  'Create a B2B marketplace': 'createAB2BMarketplace',
+  'Fund my vertical marketplace': 'fundMyVerticalMarketplace',
+  'Build a niche marketplace': 'buildANicheMarketplace',
+  'Launch my local marketplace': 'launchMyLocalMarketplace',
+  'Create a global marketplace': 'createAGlobalMarketplace',
+  'Fund my commodity marketplace': 'fundMyCommodityMarketplace',
+  'Build a digital goods marketplace': 'buildADigitalGoodsMarketplace',
+  'Launch my subscription marketplace': 'launchMySubscriptionMarketplace',
+  'Create a managed marketplace': 'createAManagedMarketplace',
+  'Fund my reverse marketplace': 'fundMyReverseMarketplace',
+  'Build an auction marketplace': 'buildAnAuctionMarketplace',
+  'Launch my wholesale marketplace': 'launchMyWholesaleMarketplace',
+  'Create a curated marketplace': 'createACuratedMarketplace',
+  // Consumer Apps
+  'Build a dating app': 'buildADatingApp',
+  'Launch my messaging app': 'launchMyMessagingApp',
+  'Create a photo app': 'createAPhotoApp',
+  'Fund my video app': 'fundMyVideoApp',
+  'Build a music app': 'buildAMusicApp',
+  'Create a notes app': 'createANotesApp',
+  'Fund my calendar app': 'fundMyCalendarApp',
+  'Build a task manager': 'buildATaskManager',
+  'Launch my habit tracker': 'launchMyHabitTracker',
+  'Create a journal app': 'createAJournalApp',
+  'Fund my language app': 'fundMyLanguageApp',
+  'Build a learning app': 'buildALearningApp',
+  'Launch my kids app': 'launchMyKidsApp',
+  'Create a family app': 'createAFamilyApp',
+  'Fund my travel app': 'fundMyTravelApp',
+  'Build a maps alternative': 'buildAMapsAlternative',
+  'Launch my food app': 'launchMyFoodApp',
+  'Create a recipe app': 'createARecipeApp',
+  // Enterprise
+  'Fund my enterprise SaaS': 'fundMyEnterpriseSaaS',
+  'Build sales tools': 'buildSalesTools',
+  'Launch my CRM alternative': 'launchMyCRMAlternative',
+  'Create marketing automation': 'createMarketingAutomation',
+  'Fund my HR platform': 'fundMyHRPlatform',
+  'Build recruiting tools': 'buildRecruitingTools',
+  'Launch my onboarding platform': 'launchMyOnboardingPlatform',
+  'Create employee engagement': 'createEmployeeEngagement',
+  'Fund my collaboration tools': 'fundMyCollaborationTools',
+  'Build project management': 'buildProjectManagement',
+  'Launch my knowledge base': 'launchMyKnowledgeBase',
+  'Create documentation tools': 'createDocumentationTools',
+  'Fund my workflow automation': 'fundMyWorkflowAutomation',
+  'Build no-code platform': 'buildNoCodePlatform',
+  'Launch my integration platform': 'launchMyIntegrationPlatform',
+  'Create API management': 'createAPIManagement',
+  'Fund my compliance tools': 'fundMyComplianceTools',
+  'Build risk management': 'buildRiskManagement',
+  'Launch my procurement platform': 'launchMyProcurementPlatform',
+  'Create vendor management': 'createVendorManagement',
+  // Media & Entertainment
+  'Fund my streaming service': 'fundMyStreamingService',
+  'Build a music platform': 'buildAMusicPlatform',
+  'Launch my podcast network': 'launchMyPodcastNetwork',
+  'Create a video platform': 'createAVideoPlatform',
+  'Fund my live events': 'fundMyLiveEvents',
+  'Build virtual concerts': 'buildVirtualConcerts',
+  'Launch my sports platform': 'launchMySportsPlatform',
+  'Create a betting platform': 'createABettingPlatform',
+  'Fund my news platform': 'fundMyNewsPlatform',
+  'Build a journalism startup': 'buildAJournalismStartup',
+  'Launch my content network': 'launchMyContentNetwork',
+  'Create a studio': 'createAStudio',
+  'Fund my production company': 'fundMyProductionCompany',
+  'Build a talent agency': 'buildATalentAgency',
+  'Launch my rights management': 'launchMyRightsManagement',
+  'Create royalty distribution': 'createRoyaltyDistribution',
+  'Fund my licensing platform': 'fundMyLicensingPlatform',
+  'Build syndication network': 'buildSyndicationNetwork',
+  'Launch my advertising platform': 'launchMyAdvertisingPlatform',
+  'Create brand partnerships': 'createBrandPartnerships',
+  // Real World Assets
+  'Fund my real estate project': 'fundMyRealEstateProject',
+  'Build property technology': 'buildPropertyTechnology',
+  'Launch my tokenized assets': 'launchMyTokenizedAssets',
+  'Create fractional ownership': 'createFractionalOwnership',
+  'Fund my art investment': 'fundMyArtInvestment',
+  'Build collectibles platform': 'buildCollectiblesPlatform',
+  'Launch my wine fund': 'launchMyWineFund',
+  'Create luxury goods market': 'createLuxuryGoodsMarket',
+  'Fund my car investment': 'fundMyCarInvestment',
+  'Build equipment leasing': 'buildEquipmentLeasing',
+  'Launch my infrastructure fund': 'launchMyInfrastructureFund',
+  'Create renewable energy tokens': 'createRenewableEnergyTokens',
+  'Fund my commodity trading': 'fundMyCommodityTrading',
+  'Build precious metals platform': 'buildPreciousMetalsPlatform',
+  'Launch my carbon credits': 'launchMyCarbonCredits',
+  'Create ESG investing': 'createESGInvesting',
+  'Fund my farmland project': 'fundMyFarmlandProject',
+  'Build agriculture investment': 'buildAgricultureInvestment',
+  'Launch my timber fund': 'launchMyTimberFund',
+  'Create natural resources fund': 'createNaturalResourcesFund',
+  // Community Building
+  'Build a private network': 'buildAPrivateNetwork',
+  'Create an alumni network': 'createAnAlumniNetwork',
+  'Fund my professional community': 'fundMyProfessionalCommunity',
+  'Build an interest-based community': 'buildAnInterestBasedCommunity',
+  'Launch my fan community': 'launchMyFanCommunity',
+  'Create a creator community': 'createACreatorCommunity',
+  'Fund my location-based community': 'fundMyLocationBasedCommunity',
+  'Build a neighborhood app': 'buildANeighborhoodApp',
+  'Launch my hobby community': 'launchMyHobbyCommunity',
+  'Create a support group': 'createASupportGroup',
+  'Fund my accountability community': 'fundMyAccountabilityCommunity',
+  'Build a mastermind group': 'buildAMastermindGroup',
+  'Launch my peer group': 'launchMyPeerGroup',
+  'Create a cohort community': 'createACohortCommunity',
+  'Fund my network state': 'fundMyNetworkState',
+  'Build a digital nation': 'buildADigitalNation',
+  'Launch my virtual city': 'launchMyVirtualCity',
+  'Create a coordinated community': 'createACoordinatedCommunity',
+  // Science & Research
+  'Fund my scientific research': 'fundMyScientificResearch',
+  'Build research infrastructure': 'buildResearchInfrastructure',
+  'Launch my citizen science': 'launchMyCitizenScience',
+  'Create open research': 'createOpenResearch',
+  'Fund my academic project': 'fundMyAcademicProject',
+  'Build research collaboration': 'buildResearchCollaboration',
+  'Launch my lab equipment': 'launchMyLabEquipment',
+  'Create research datasets': 'createResearchDatasets',
+  'Fund my clinical research': 'fundMyClinicalResearch',
+  'Build biomedical research': 'buildBiomedicalResearch',
+  'Launch my physics project': 'launchMyPhysicsProject',
+  'Create chemistry research': 'createChemistryResearch',
+  'Fund my space research': 'fundMySpaceResearch',
+  'Build astronomy project': 'buildAstronomyProject',
+  'Launch my oceanography': 'launchMyOceanography',
+  'Create geology research': 'createGeologyResearch',
+  'Fund my archaeology': 'fundMyArchaeology',
+  'Build paleontology project': 'buildPaleontologyProject',
+  'Launch my anthropology': 'launchMyAnthropology',
+  'Create linguistics research': 'createLinguisticsResearch',
+  'Sequence an unknown genome': 'sequenceAnUnknownGenome',
+  'Map the ocean floor': 'mapTheOceanFloor',
+  'Discover a new species': 'discoverANewSpecies',
+  'Fund my telescope time': 'fundMyTelescopeTime',
+  'Build a particle detector': 'buildAParticleDetector',
+  'Study dark matter': 'studyDarkMatter',
+  'Research quantum computing': 'researchQuantumComputing',
+  'Fund my fusion research': 'fundMyFusionResearch',
+  'Decode ancient DNA': 'decodeAncientDNA',
+  'Model climate systems': 'modelClimateSystems',
+  // Arts & Culture
+  'Fund my museum': 'fundMyMuseum',
+  'Build a cultural center': 'buildACulturalCenter',
+  'Launch my arts festival': 'launchMyArtsFestival',
+  'Create a residency program': 'createAResidencyProgram',
+  'Fund my public art': 'fundMyPublicArt',
+  'Build a sculpture garden': 'buildASculptureGarden',
+  'Launch my performance venue': 'launchMyPerformanceVenue',
+  'Create a dance company': 'createADanceCompany',
+  'Fund my orchestra': 'fundMyOrchestra',
+  'Build a choir program': 'buildAChoirProgram',
+  'Launch my opera company': 'launchMyOperaCompany',
+  'Create a theater company': 'createATheaterCompany',
+  'Fund my comedy venue': 'fundMyComedyVenue',
+  'Build an improv theater': 'buildAnImprovTheater',
+  'Launch my circus': 'launchMyCircus',
+  'Create a magic show': 'createAMagicShow',
+  'Fund my cultural preservation': 'fundMyCulturalPreservation',
+  'Build heritage sites': 'buildHeritageSites',
+  'Launch my historical society': 'launchMyHistoricalSociety',
+  'Create archival project': 'createArchivalProject',
+  // Sports & Fitness
+  'Build a sports league': 'buildASportsLeague',
+  'Launch my fitness brand': 'launchMyFitnessBrand',
+  'Create a gym chain': 'createAGymChain',
+  'Fund my athletic training': 'fundMyAthleticTraining',
+  'Build sports technology': 'buildSportsTechnology',
+  'Launch my fantasy sports': 'launchMyFantasySports',
+  'Create sports analytics': 'createSportsAnalytics',
+  'Fund my sports media': 'fundMySportsMedia',
+  'Build a sports network': 'buildASportsNetwork',
+  'Launch my athlete fund': 'launchMyAthleteFund',
+  'Create sports scholarships': 'createSportsScholarships',
+  'Fund my sports facility': 'fundMySportsFacility',
+  'Build sports infrastructure': 'buildSportsInfrastructure',
+  'Launch my adventure sports': 'launchMyAdventureSports',
+  'Create outdoor recreation': 'createOutdoorRecreation',
+  'Fund my extreme sports': 'fundMyExtremeSports',
+  'Build action sports media': 'buildActionSportsMedia',
+  'Launch my fitness app': 'launchMyFitnessApp',
+  'Create workout content': 'createWorkoutContent',
+  // Food & Beverage
+  'Build a restaurant chain': 'buildARestaurantChain',
+  'Launch my ghost kitchen': 'launchMyGhostKitchen',
+  'Create a meal delivery': 'createAMealDelivery',
+  'Fund my food brand': 'fundMyFoodBrand',
+  'Build a CPG company': 'buildACPGCompany',
+  'Launch my beverage brand': 'launchMyBeverageBrand',
+  'Create a brewery': 'createABrewery',
+  'Fund my distillery': 'fundMyDistillery',
+  'Build a winery': 'buildAWinery',
+  'Create a tea company': 'createATeaCompany',
+  'Fund my bakery': 'fundMyBakery',
+  'Build a chocolate company': 'buildAChocolateCompany',
+  'Launch my ice cream brand': 'launchMyIceCreamBrand',
+  'Create a snack company': 'createASnackCompany',
+  'Fund my sauce company': 'fundMySauceCompany',
+  'Build a condiment brand': 'buildACondimentBrand',
+  'Launch my specialty food': 'launchMySpecialtyFood',
+  'Create a farmers market': 'createAFarmersMarket',
+  // Fashion & Beauty
+  'Build a clothing line': 'buildAClothingLine',
+  'Create a luxury brand': 'createALuxuryBrand',
+  'Fund my sustainable fashion': 'fundMySustainableFashion',
+  'Build an accessories brand': 'buildAnAccessoriesBrand',
+  'Launch my jewelry line': 'launchMyJewelryLine',
+  'Create a watch brand': 'createAWatchBrand',
+  'Fund my beauty brand': 'fundMyBeautyBrand',
+  'Build a skincare line': 'buildASkincareLine',
+  'Launch my makeup brand': 'launchMyMakeupBrand',
+  'Create a haircare line': 'createAHaircareLine',
+  'Fund my fragrance brand': 'fundMyFragranceBrand',
+  'Build a wellness brand': 'buildAWellnessBrand',
+  'Launch my athleisure': 'launchMyAthleisure',
+  'Create a footwear brand': 'createAFootwearBrand',
+  'Fund my eyewear brand': 'fundMyEyewearBrand',
+  'Build a bag brand': 'buildABagBrand',
+  'Launch my fashion tech': 'launchMyFashionTech',
+  'Create a virtual fashion': 'createAVirtualFashion',
+  // Hardware & IoT
+  'Build consumer electronics': 'buildConsumerElectronics',
+  'Launch my smart home': 'launchMySmartHome',
+  'Create IoT devices': 'createIoTDevices',
+  'Fund my wearable tech': 'fundMyWearableTech',
+  'Launch my robotics company': 'launchMyRoboticsCompany',
+  'Create automation tools': 'createAutomationTools',
+  'Fund my drone company': 'fundMyDroneCompany',
+  'Build autonomous vehicles': 'buildAutonomousVehicles',
+  'Launch my mobility startup': 'launchMyMobilityStartup',
+  'Create e-bikes': 'createEBikes',
+  'Fund my scooter company': 'fundMyScooterCompany',
+  'Build electric vehicles': 'buildElectricVehicles',
+  'Launch my charging network': 'launchMyChargingNetwork',
+  'Create battery technology': 'createBatteryTechnology',
+  'Fund my solar company': 'fundMySolarCompany',
+  'Build energy storage': 'buildEnergyStorage',
+  'Launch my semiconductor': 'launchMySemiconductor',
+  'Create chip design': 'createChipDesign',
+  // Identity traits (vibe chips)
+  'making things': 'makingThings',
+  'expressing myself': 'expressingMyself',
+  'bringing people together': 'bringingPeopleTogether',
+  'looking to support': 'lookingToSupport',
+  'thinking big': 'thinkingBig',
+  'writing code': 'writingCode',
+  "fixing what's broken": 'fixingWhatsBroken',
+  'starting a business': 'startingABusiness',
+  'playing games': 'playingGames',
+  'learning & teaching': 'learningAndTeaching',
+  'helping my neighborhood': 'helpingMyNeighborhood',
+  'just exploring': 'justExploring',
+  'dreaming impossible things': 'dreamingImpossibleThings',
+  'fighting the system': 'fightingTheSystem',
+  'being a degen': 'beingADegen',
+  'avoiding people': 'avoidingPeople',
+  'causing chaos': 'causingChaos',
+  'being normal': 'beingNormal',
+  'getting rich': 'gettingRich',
+  'giving back': 'givingBack',
+  'doing less work': 'doingLessWork',
+  'getting famous': 'gettingFamous',
+  'staying anonymous': 'stayingAnonymous',
+  'touching grass': 'touchingGrass',
+  'saving the planet': 'savingThePlanet',
+  'improving health': 'improvingHealth',
+  'creating things': 'creatingThings',
+  'making food': 'makingFood',
+  'doing science': 'doingScience',
+  'building AI': 'buildingAI',
+  'going onchain': 'goingOnchain',
+}
 
 interface Trait {
   id: TraitId
@@ -637,7 +1617,7 @@ const allSuggestions = [
   'Charity without overhead',
   'Free education treasury',
   'Commons funding pool',
-  'Nonprofit but onchain',
+  'Nonprofit for coral reefs',
   'Altruism as a service',
   'Help without expectation',
   'Pure public benefit',
@@ -1064,6 +2044,16 @@ const allSuggestions = [
   'Build paleontology project',
   'Launch my anthropology',
   'Create linguistics research',
+  'Sequence an unknown genome',
+  'Map the ocean floor',
+  'Discover a new species',
+  'Fund my telescope time',
+  'Build a particle detector',
+  'Study dark matter',
+  'Research quantum computing',
+  'Fund my fusion research',
+  'Decode ancient DNA',
+  'Model climate systems',
 
   // === NEW - ARTS & CULTURE ===
   'Fund my museum',
@@ -1700,8 +2690,7 @@ function shuffle<T>(array: T[]): T[] {
 
 export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
   const { theme } = useThemeStore()
-  const { language, setLanguage } = useSettingsStore()
-  const [langMenuOpen, setLangMenuOpen] = useState(false)
+  const { t } = useTranslation()
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [scale, setScale] = useState(1)
   const isDraggingRef = useRef(false)
@@ -1931,31 +2920,59 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
 
   return (
     <div className="flex-1 relative h-full overflow-hidden">
+      {/* Shuffle & Zoom controls - top right of visible area */}
+      <div className="absolute top-4 right-[29%] z-50 flex items-center gap-2">
+        {scale !== 1 && (
+          <button
+            onClick={handleResetZoom}
+            className={`px-3 py-1.5 text-sm border transition-colors ${
+              theme === 'dark'
+                ? 'border-white/40 text-white/80 hover:border-white/60 hover:text-white bg-juice-dark/70 backdrop-blur-sm'
+                : 'border-gray-400 text-gray-600 hover:border-gray-600 hover:text-gray-900 bg-white/70 backdrop-blur-sm'
+            }`}
+          >
+            {Math.round(scale * 100)}%
+          </button>
+        )}
+        <button
+          onClick={handleShuffle}
+          className={`px-3 py-1.5 text-sm border transition-colors ${
+            theme === 'dark'
+              ? 'border-white/40 text-white/80 hover:border-white/60 hover:text-white bg-juice-dark/70 backdrop-blur-sm'
+              : 'border-gray-400 text-gray-600 hover:border-gray-600 hover:text-gray-900 bg-white/70 backdrop-blur-sm'
+          }`}
+        >
+          {t('ui.shuffle', 'Shuffle')}
+        </button>
+      </div>
+
       {/* Selected categories - top left */}
       {selectedTraits.size > 0 && (
         <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
-          {Array.from(selectedTraits).map(traitId => {
-            const trait = traits.find(t => t.id === traitId)
-            if (!trait) return null
-            return (
-              <button
-                key={traitId}
-                onClick={() => toggleTrait(traitId)}
-                className={`px-3 py-2 text-sm border flex items-center gap-2 transition-colors ${
-                  theme === 'dark'
-                    ? 'bg-juice-dark/80 backdrop-blur-sm border-juice-orange text-juice-orange hover:bg-juice-dark'
-                    : 'bg-white/80 backdrop-blur-sm border-juice-orange text-orange-700 hover:bg-white'
-                }`}
-              >
-                {trait.label}
-                <span className="text-xs opacity-60">×</span>
-              </button>
-            )
-          })}
-          <span className={`text-xs ${
+            {Array.from(selectedTraits).map(traitId => {
+              const trait = traits.find(t => t.id === traitId)
+              if (!trait) return null
+              const traitKey = suggestionKeyMap[trait.label]
+              const translatedLabel = traitKey ? t(`suggestions.${traitKey}`, trait.label) : trait.label
+              return (
+                <button
+                  key={traitId}
+                  onClick={() => toggleTrait(traitId)}
+                  className={`px-3 py-2 text-sm border flex items-center gap-2 transition-colors ${
+                    theme === 'dark'
+                      ? 'bg-juice-dark/70 backdrop-blur-sm border-juice-orange text-juice-orange hover:bg-juice-dark'
+                      : 'bg-white/70 backdrop-blur-sm border-juice-orange text-orange-700 hover:bg-white'
+                  }`}
+                >
+                  {translatedLabel}
+                  <span className="text-xs opacity-60">×</span>
+                </button>
+              )
+            })}
+            <span className={`text-xs ${
             theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
           }`}>
-            {filteredSuggestions.length} matches
+            {filteredSuggestions.length} {t('ui.matches', 'matches')}
           </span>
         </div>
       )}
@@ -2027,12 +3044,16 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
                           const isDemo = demoSuggestions.has(suggestion)
                           const isFun = funSuggestions.has(suggestion)
                           const isBold = boldSuggestions.has(suggestion)
+                          // Compute translated display text - use this for both display and click
+                          const displayText = suggestionKeyMap[suggestion]
+                            ? t(`suggestions.${suggestionKeyMap[suggestion]}`, suggestion)
+                            : suggestion
 
                           return (
                             <button
                               key={`${tileX}_${chipIdx}`}
-                              onMouseUp={() => handleChipClick(suggestion)}
-                              onTouchEnd={() => handleChipClick(suggestion)}
+                              onMouseUp={() => handleChipClick(displayText)}
+                              onTouchEnd={() => handleChipClick(displayText)}
                               className={`px-3 py-2 border text-sm whitespace-nowrap select-none flex items-center gap-2 transition-[background-color,border-color,color] duration-100 ${
                                 isCategoryChip
                                   ? theme === 'dark'
@@ -2059,36 +3080,37 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
                                               ? 'bg-green-500/20 border-green-400/40 text-green-300 hover:bg-green-500/35 hover:border-green-400'
                                               : 'bg-green-50 border-green-400/50 text-green-700 hover:bg-green-100 hover:border-green-500'
                                             : theme === 'dark'
-                                              ? 'bg-gray-700/50 border-white/10 text-gray-300 hover:bg-gray-600/60 hover:border-white/25 hover:text-white'
+                                              ? 'bg-gray-700/40 border-white/10 text-gray-300 hover:bg-gray-600/50 hover:border-white/25 hover:text-white'
                                               : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900'
                               }`}
                               style={{ height: CHIP_HEIGHT }}
                             >
-                              {suggestion}
+                              {/* Display translated text */}
+                              {displayText}
                               {/* Only show the PRIMARY badge */}
                               {isCategoryChip ? (
                                 <span className="text-[10px] uppercase tracking-wide font-semibold text-yellow-400">
-                                  id
+                                  {t('badges.id', 'id')}
                                 </span>
                               ) : isBold ? (
                                 <span className="text-[10px] uppercase tracking-wide font-semibold text-purple-400">
-                                  bold
+                                  {t('badges.bold', 'bold')}
                                 </span>
                               ) : isPopular ? (
                                 <span className="text-[10px] uppercase tracking-wide text-juice-cyan/70">
-                                  popular
+                                  {t('badges.popular', 'popular')}
                                 </span>
                               ) : isPro ? (
                                 <span className="text-[10px] uppercase tracking-wide font-semibold text-yellow-400">
-                                  pro
+                                  {t('badges.pro', 'pro')}
                                 </span>
                               ) : isDemo ? (
                                 <span className="text-[10px] uppercase tracking-wide font-semibold text-pink-400">
-                                  demo
+                                  {t('badges.demo', 'demo')}
                                 </span>
                               ) : isFun ? (
                                 <span className="text-[10px] uppercase tracking-wide font-semibold text-green-400">
-                                  fun
+                                  {t('badges.fun', 'fun')}
                                 </span>
                               ) : null}
                             </button>
@@ -2106,76 +3128,6 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         </div>
       </div>
 
-      {/* Shuffle, Zoom & Language controls - top right of recommendations area */}
-      <div className="absolute top-4 right-4 flex gap-2 z-50">
-        {/* Language selector */}
-        <div className="relative">
-          <button
-            onClick={() => setLangMenuOpen(!langMenuOpen)}
-            className={`px-3 py-1.5 text-sm border transition-colors ${
-              theme === 'dark'
-                ? 'border-white/40 text-white/80 hover:border-white/60 hover:text-white bg-juice-dark/80 backdrop-blur-sm'
-                : 'border-gray-400 text-gray-600 hover:border-gray-600 hover:text-gray-900 bg-white/80 backdrop-blur-sm'
-            }`}
-          >
-            {LANGUAGES.find(l => l.code === language)?.native || 'English'}
-          </button>
-          {langMenuOpen && (
-            <div
-              className={`absolute top-full right-0 mt-1 py-1 border shadow-lg max-h-64 overflow-y-auto ${
-                theme === 'dark'
-                  ? 'bg-juice-dark border-white/20'
-                  : 'bg-white border-gray-200'
-              }`}
-              onMouseLeave={() => setLangMenuOpen(false)}
-            >
-              {LANGUAGES.map(lang => (
-                <button
-                  key={lang.code}
-                  onClick={() => {
-                    setLanguage(lang.code)
-                    setLangMenuOpen(false)
-                  }}
-                  className={`w-full px-4 py-2 text-sm text-left whitespace-nowrap transition-colors ${
-                    language === lang.code
-                      ? theme === 'dark'
-                        ? 'bg-green-500/20 text-green-400'
-                        : 'bg-green-50 text-green-700'
-                      : theme === 'dark'
-                        ? 'text-white/80 hover:bg-white/10'
-                        : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {lang.native}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {scale !== 1 && (
-          <button
-            onClick={handleResetZoom}
-            className={`px-3 py-1.5 text-sm border transition-colors ${
-              theme === 'dark'
-                ? 'border-white/40 text-white/80 hover:border-white/60 hover:text-white bg-juice-dark/80 backdrop-blur-sm'
-                : 'border-gray-400 text-gray-600 hover:border-gray-600 hover:text-gray-900 bg-white/80 backdrop-blur-sm'
-            }`}
-          >
-            {Math.round(scale * 100)}%
-          </button>
-        )}
-        <button
-          onClick={handleShuffle}
-          className={`px-3 py-1.5 text-sm border transition-colors ${
-            theme === 'dark'
-              ? 'border-white/40 text-white/80 hover:border-white/60 hover:text-white bg-juice-dark/80 backdrop-blur-sm'
-              : 'border-gray-400 text-gray-600 hover:border-gray-600 hover:text-gray-900 bg-white/80 backdrop-blur-sm'
-          }`}
-        >
-          Shuffle
-        </button>
-      </div>
     </div>
   )
 }

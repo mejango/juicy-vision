@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useChatStore } from '../../stores'
 import { useThemeStore } from '../../stores'
 
@@ -17,6 +18,7 @@ function formatTimeAgo(timestamp: number): string {
 
 export default function ConversationHistory() {
   const { theme } = useThemeStore()
+  const { t } = useTranslation()
   const {
     conversations,
     activeConversationId,
@@ -56,7 +58,7 @@ export default function ConversationHistory() {
           <span className={`text-xs font-medium ${
             theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
           }`}>
-            Recent
+            {t('ui.recent', 'Recent')}
           </span>
           <div className="flex items-center gap-3">
             <button
@@ -67,7 +69,7 @@ export default function ConversationHistory() {
                   : 'text-gray-300 hover:text-red-500'
               }`}
             >
-              Clear all
+              {t('ui.clearAll', 'Clear all')}
             </button>
           </div>
         </div>

@@ -17,6 +17,11 @@ import { BalanceChart, HoldersChart, VolumeChart, TokenPriceChart, PoolPriceChar
 import OptionsPicker from './OptionsPicker'
 import ProjectChainPicker from './ProjectChainPicker'
 import TopProjects from './TopProjects'
+import NFTGallery from './NFTGallery'
+import NFTCard from './NFTCard'
+import Storefront from './Storefront'
+import LandingPagePreview from './LandingPagePreview'
+import SuccessVisualization from './SuccessVisualization'
 
 interface ComponentRegistryProps {
   component: ParsedComponent
@@ -287,6 +292,59 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
         <TopProjects
           limit={props.limit ? parseInt(props.limit, 10) : undefined}
           orderBy={props.orderBy as 'volume' | 'volumeUsd' | 'balance' | 'contributorsCount' | 'paymentsCount' | undefined}
+        />
+      )
+
+    case 'nft-gallery':
+      return (
+        <NFTGallery
+          projectId={props.projectId}
+          chainId={props.chainId}
+          columns={props.columns}
+          showMintActions={props.showMintActions}
+        />
+      )
+
+    case 'nft-card':
+      return (
+        <NFTCard
+          projectId={props.projectId}
+          tierId={props.tierId}
+          chainId={props.chainId}
+        />
+      )
+
+    case 'storefront':
+      return (
+        <Storefront
+          projectId={props.projectId}
+          chainId={props.chainId}
+          sortBy={props.sortBy}
+          filterCategory={props.filterCategory}
+          showSoldOut={props.showSoldOut}
+        />
+      )
+
+    case 'landing-page-preview':
+      return (
+        <LandingPagePreview
+          projectId={props.projectId}
+          chainId={props.chainId}
+          layout={props.layout}
+          showComponents={props.showComponents}
+          title={props.title}
+          subtitle={props.subtitle}
+        />
+      )
+
+    case 'success-visualization':
+      return (
+        <SuccessVisualization
+          targetRaise={props.targetRaise}
+          supporterCount={props.supporterCount}
+          timeframe={props.timeframe}
+          growthRate={props.growthRate}
+          avgContribution={props.avgContribution}
         />
       )
 

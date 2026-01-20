@@ -143,6 +143,16 @@ export function stripComponents(content: string): string {
         return `[Suggested actions]`
       case 'top-projects':
         return `[Top projects list]`
+      case 'nft-gallery':
+        return `[NFT gallery grid]`
+      case 'nft-card':
+        return `[NFT tier card]`
+      case 'storefront':
+        return `[NFT storefront marketplace]`
+      case 'landing-page-preview':
+        return `[Landing page preview]`
+      case 'success-visualization':
+        return `[Growth projection visualization]`
       default:
         return `[${componentType} component]`
     }
