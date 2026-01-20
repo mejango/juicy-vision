@@ -10,6 +10,8 @@ import { walletRouter } from './src/routes/wallet.ts';
 import { eventsRouter } from './src/routes/events.ts';
 import { cronRouter } from './src/routes/cron.ts';
 import { proxyRouter } from './src/routes/proxy.ts';
+import { stripeWebhookRouter } from './src/routes/stripe-webhook.ts';
+import { contextRouter } from './src/routes/context.ts';
 import { getConfig } from './src/utils/config.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
@@ -85,6 +87,8 @@ app.route('/api/wallet', walletRouter);
 app.route('/api/events', eventsRouter);
 app.route('/api/cron', cronRouter);
 app.route('/api/proxy', proxyRouter);
+app.route('/api/stripe/webhook', stripeWebhookRouter);
+app.route('/api/context', contextRouter);
 
 // ============================================================================
 // Error Handling
@@ -184,6 +188,11 @@ console.log(`
 ║    POST /api/wallet/transfer  - Request transfer          ║
 ║    POST /api/events/stream    - Log events                ║
 ║                                                           ║
+║  Context Endpoints:                                       ║
+║    GET  /api/context/omnichain - Omnichain knowledge      ║
+║    GET  /api/context/tools     - Available AI tools       ║
+║    GET  /api/context/chains    - Supported chains         ║
+║                                                           ║
 ║  Proxy Endpoints:                                         ║
 ║    POST /api/proxy/bendystraw - Bendystraw GraphQL        ║
 ║    POST /api/proxy/thegraph/* - TheGraph subgraphs        ║
@@ -192,6 +201,9 @@ console.log(`
 ║  Cron Endpoints (GCP Cloud Scheduler):                    ║
 ║    POST /api/cron/transfers   - Execute ready transfers   ║
 ║    POST /api/cron/maintenance - Run all maintenance jobs  ║
+║                                                           ║
+║  Webhooks:                                                ║
+║    POST /api/stripe/webhook   - Stripe payment events     ║
 ╚═══════════════════════════════════════════════════════════╝
 `);
 

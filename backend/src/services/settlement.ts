@@ -20,8 +20,8 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { mainnet, optimism, arbitrum, base } from 'viem/chains';
 
-// Settlement delay in days
-const SETTLEMENT_DELAY_DAYS = 7;
+// Default settlement delay in days (used when no risk score provided)
+const DEFAULT_SETTLEMENT_DELAY_DAYS = 7;
 
 // Maximum retries before marking as failed
 const MAX_RETRIES = 5;
@@ -94,6 +94,12 @@ interface SettlementResult {
 
 /**
  * Create a pending fiat payment after Stripe payment succeeds
+ * Settlement delay is calculated based on Stripe Radar risk score:
+ * - Low risk (0-20): Immediate settlement (0 days)
+ * - Medium risk (21-40): 7 days
+ * - Higher risk (41-60): 30 days
+ * - High risk (61-80): 60 days
+ * - Very high risk (81-100): 120 days
  */
 export async function createPendingPayment(params: {
   userId: string | null;
@@ -105,16 +111,21 @@ export async function createPendingPayment(params: {
   chainId: number;
   memo?: string;
   beneficiaryAddress: string;
+  riskScore?: number;
+  settlementDelayDays?: number;
 }): Promise<string> {
+  // Use provided delay or default
+  const delayDays = params.settlementDelayDays ?? DEFAULT_SETTLEMENT_DELAY_DAYS;
+
   const settlesAt = new Date();
-  settlesAt.setDate(settlesAt.getDate() + SETTLEMENT_DELAY_DAYS);
+  settlesAt.setDate(settlesAt.getDate() + delayDays);
 
   const [row] = await query<{ id: string }>(
     `INSERT INTO pending_fiat_payments (
       user_id, stripe_payment_intent_id, stripe_charge_id,
       amount_usd, amount_cents, project_id, chain_id, memo,
-      beneficiary_address, settles_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      beneficiary_address, settles_at, risk_score, settlement_delay_days
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING id`,
     [
       params.userId,
@@ -127,6 +138,8 @@ export async function createPendingPayment(params: {
       params.memo || null,
       params.beneficiaryAddress,
       settlesAt,
+      params.riskScore ?? null,
+      delayDays,
     ]
   );
 
@@ -135,6 +148,8 @@ export async function createPendingPayment(params: {
     amountUsd: params.amountUsd,
     projectId: params.projectId,
     chainId: params.chainId,
+    riskScore: params.riskScore,
+    settlementDelayDays: delayDays,
     settlesAt: settlesAt.toISOString(),
   });
 

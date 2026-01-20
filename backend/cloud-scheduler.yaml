@@ -8,7 +8,13 @@
 
 # ============================================================================
 # Transfer Execution Job
-# Runs hourly to execute transfers that have completed the 7-day hold period
+# Runs hourly to execute transfers that have passed their settlement delay.
+# Settlement delay is based on Stripe Radar risk score:
+#   - Low risk (0-20): Immediate settlement via webhook (no cron needed)
+#   - Medium risk (21-40): 7 days
+#   - Higher risk (41-60): 30 days
+#   - High risk (61-80): 60 days
+#   - Very high risk (81-100): 120 days
 # ============================================================================
 
 # Create with:
