@@ -64,7 +64,7 @@ export function getEventInfo(event: ActivityEvent): EventInfo {
       }
     case 'mintTokens':
       return {
-        action: 'Minted tokens',
+        action: 'Minted',
         amount: `${formatAmount(event.tokenCount)} tokens`,
         txHash: event.txHash,
         from: event.beneficiary || event.from,
@@ -72,7 +72,7 @@ export function getEventInfo(event: ActivityEvent): EventInfo {
       }
     case 'burn':
       return {
-        action: 'Burned tokens',
+        action: 'Burned',
         amount: `${formatAmount(event.amount)} tokens`,
         txHash: event.txHash,
         from: event.from,
@@ -118,7 +118,7 @@ export function getEventInfo(event: ActivityEvent): EventInfo {
     case 'unknown':
     default:
       return {
-        action: 'Activity',
+        action: 'Transaction',
         txHash: event.txHash || '',
         from: event.from || '',
         fromContext: 'By',

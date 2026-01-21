@@ -113,8 +113,9 @@ export default function MessageBubble({ message, isLastAssistant }: MessageBubbl
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  // Show continue button if this is the last assistant message and looks incomplete
-  const showContinue = !isUser && isLastAssistant && !message.isStreaming && looksIncomplete(message.content)
+  // Continue button disabled - AI responses with components are complete
+  // The looksIncomplete heuristic was too aggressive and caused sporadic button appearances
+  const showContinue = false
 
   const handleContinue = () => {
     window.dispatchEvent(new CustomEvent('juice:send-message', {
@@ -126,52 +127,61 @@ export default function MessageBubble({ message, isLastAssistant }: MessageBubbl
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
       {isUser ? (
         /* User message: text right-aligned with arrow in right margin */
-        <div className="flex items-start gap-3 max-w-[85%] md:max-w-[75%]">
-          {/* Text content - right aligned */}
-          <div className={`text-right ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {/* Display attachments */}
-            {message.attachments && message.attachments.length > 0 && (
-              <div className="flex gap-2 mb-2 justify-end flex-wrap">
-                {message.attachments.map(attachment => (
-                  <img
-                    key={attachment.id}
-                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                    alt={attachment.name}
-                    className="max-w-[200px] max-h-[200px] object-contain rounded border-2 border-juice-cyan cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => {
-                      // Open image in new tab for full view
-                      const win = window.open()
-                      if (win) {
-                        win.document.write(`<img src="data:${attachment.mimeType};base64,${attachment.data}" alt="${attachment.name}" style="max-width: 100%; height: auto;" />`)
-                      }
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-            {parsed.segments.map((segment, index) => {
-              if (segment.type === 'text') {
-                return (
-                  <p key={index} className="whitespace-pre-wrap">{segment.content}</p>
-                )
-              } else {
-                return (
-                  <div key={index} className="my-3">
-                    <ComponentRegistry component={segment.component} />
-                  </div>
-                )
-              }
-            })}
-          </div>
-          {/* Lightning bolt in right margin */}
-          <div className="shrink-0 pt-0.5">
-            <svg
-              className="w-5 h-5 text-juice-orange"
-              fill="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+        <div className={`max-w-[85%] md:max-w-[75%] text-right ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          {/* Sender name for multi-chat - above the message row */}
+          {message.senderName && (
+            <p className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              {message.senderName}
+            </p>
+          )}
+          {/* Message content + lightning bolt row */}
+          <div className="flex items-start gap-3">
+            {/* Text content */}
+            <div>
+              {/* Display attachments */}
+              {message.attachments && message.attachments.length > 0 && (
+                <div className="flex gap-2 mb-2 justify-end flex-wrap">
+                  {message.attachments.map(attachment => (
+                    <img
+                      key={attachment.id}
+                      src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                      alt={attachment.name}
+                      className="max-w-[200px] max-h-[200px] object-contain rounded border-2 border-juice-cyan cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => {
+                        // Open image in new tab for full view
+                        const win = window.open()
+                        if (win) {
+                          win.document.write(`<img src="data:${attachment.mimeType};base64,${attachment.data}" alt="${attachment.name}" style="max-width: 100%; height: auto;" />`)
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+              {parsed.segments.map((segment, index) => {
+                if (segment.type === 'text') {
+                  return (
+                    <p key={index} className="whitespace-pre-wrap">{segment.content}</p>
+                  )
+                } else {
+                  return (
+                    <div key={index} className="my-3">
+                      <ComponentRegistry component={segment.component} />
+                    </div>
+                  )
+                }
+              })}
+            </div>
+            {/* Lightning bolt - aligned with message text top */}
+            <div className="shrink-0 pt-0.5">
+              <svg
+                className="w-5 h-5 text-juice-orange"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
           </div>
         </div>
       ) : (

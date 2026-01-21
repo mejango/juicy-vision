@@ -138,6 +138,113 @@ function SelfCustodyConnect({ onBack }: { onBack: () => void }) {
   )
 }
 
+// Auth method selector for managed mode
+function AuthMethodSelector({ onSelectMethod, onBack }: {
+  onSelectMethod: (method: 'passkey' | 'email') => void
+  onBack: () => void
+}) {
+  const { theme } = useThemeStore()
+  const { isPasskeyAvailable, loginWithPasskey, isLoading } = useAuthStore()
+  const [error, setError] = useState<string | null>(null)
+  const passkeySupported = isPasskeyAvailable()
+
+  const handlePasskeyLogin = async () => {
+    setError(null)
+    try {
+      await loginWithPasskey()
+    } catch (err) {
+      // If passkey fails, show error but allow fallback to email
+      setError(err instanceof Error ? err.message : 'Passkey authentication failed')
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={onBack}
+        className={`flex items-center gap-2 text-sm ${
+          theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back
+      </button>
+
+      <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+        Choose how to sign in
+      </p>
+
+      {error && (
+        <div className={`p-3 text-sm border-2 ${
+          theme === 'dark'
+            ? 'border-red-500/50 bg-red-500/10 text-red-400'
+            : 'border-red-300 bg-red-50 text-red-600'
+        }`}>
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {/* Passkey option - shown first if supported */}
+        {passkeySupported && (
+          <button
+            onClick={handlePasskeyLogin}
+            disabled={isLoading}
+            className={`w-full p-4 border-2 text-left transition-all disabled:opacity-50
+              ${theme === 'dark'
+                ? 'border-juice-cyan/50 bg-juice-cyan/10 hover:bg-juice-cyan/20 hover:border-juice-cyan'
+                : 'border-teal-500 bg-teal-50 hover:bg-teal-100'
+              }`}
+          >
+            <div className="flex items-center gap-3">
+              <svg className={`w-6 h-6 ${theme === 'dark' ? 'text-juice-cyan' : 'text-teal-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+              </svg>
+              <div>
+                <div className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                  {isLoading ? 'Authenticating...' : 'Passkey / Biometric'}
+                </div>
+                <div className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Face ID, Touch ID, or security key
+                </div>
+              </div>
+            </div>
+          </button>
+        )}
+
+        {/* Email OTP option */}
+        <button
+          onClick={() => onSelectMethod('email')}
+          disabled={isLoading}
+          className={`w-full p-4 border-2 text-left transition-all disabled:opacity-50
+            ${theme === 'dark'
+              ? 'border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/30'
+              : 'border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300'
+            }`}
+        >
+          <div className="flex items-center gap-3">
+            <svg className={`w-6 h-6 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <div>
+              <div className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                Email Code
+              </div>
+              <div className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                We'll send a one-time code
+              </div>
+            </div>
+          </div>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // Email OTP flow for managed mode
 function EmailAuth({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => void }) {
   const { theme } = useThemeStore()
@@ -406,9 +513,36 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect }: {
 // Managed account view
 function ManagedAccountView({ onDisconnect }: { onDisconnect: () => void }) {
   const { theme } = useThemeStore()
-  const { user } = useAuthStore()
+  const { user, passkeys, loadPasskeys, registerPasskey, deletePasskey, isPasskeyAvailable, isLoading } = useAuthStore()
   const { address, balances, loading } = useManagedWallet()
   const [copied, setCopied] = useState(false)
+  const [showPasskeys, setShowPasskeys] = useState(false)
+  const [passkeyError, setPasskeyError] = useState<string | null>(null)
+
+  // Load passkeys when showing them
+  const handleShowPasskeys = async () => {
+    setShowPasskeys(true)
+    await loadPasskeys()
+  }
+
+  const handleAddPasskey = async () => {
+    setPasskeyError(null)
+    try {
+      await registerPasskey()
+    } catch (err) {
+      setPasskeyError(err instanceof Error ? err.message : 'Failed to add passkey')
+    }
+  }
+
+  const handleDeletePasskey = async (id: string) => {
+    if (confirm('Remove this passkey? You can always add it back later.')) {
+      try {
+        await deletePasskey(id)
+      } catch (err) {
+        setPasskeyError(err instanceof Error ? err.message : 'Failed to remove passkey')
+      }
+    }
+  }
 
   if (!user) return null
 
@@ -525,6 +659,102 @@ function ManagedAccountView({ onDisconnect }: { onDisconnect: () => void }) {
         </div>
       </div>
 
+      {/* Passkey Management */}
+      {isPasskeyAvailable() && (
+        <div className={`p-4 border-2 ${
+          theme === 'dark' ? 'border-white/20 bg-white/5' : 'border-gray-200 bg-gray-50'
+        }`}>
+          <div className="flex items-center justify-between mb-3">
+            <span className={`text-xs uppercase tracking-wide ${
+              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              Passkeys
+            </span>
+            {!showPasskeys && (
+              <button
+                onClick={handleShowPasskeys}
+                className={`text-xs px-2 py-1 transition-colors ${
+                  theme === 'dark'
+                    ? 'text-juice-cyan hover:bg-white/10'
+                    : 'text-cyan-600 hover:bg-gray-100'
+                }`}
+              >
+                Manage
+              </button>
+            )}
+          </div>
+
+          {!showPasskeys ? (
+            <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              {user.passkeyEnabled
+                ? 'Passkey enabled for quick sign-in'
+                : 'Add a passkey for faster, passwordless sign-in'}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {passkeyError && (
+                <div className={`p-2 text-xs border ${
+                  theme === 'dark'
+                    ? 'border-red-500/50 bg-red-500/10 text-red-400'
+                    : 'border-red-300 bg-red-50 text-red-600'
+                }`}>
+                  {passkeyError}
+                </div>
+              )}
+
+              {passkeys.length > 0 ? (
+                <div className="space-y-2">
+                  {passkeys.map((pk) => (
+                    <div
+                      key={pk.id}
+                      className={`flex items-center justify-between p-2 border ${
+                        theme === 'dark' ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className={`w-4 h-4 ${theme === 'dark' ? 'text-juice-cyan' : 'text-cyan-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                        </svg>
+                        <span className={`text-sm ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                          {pk.displayName || pk.deviceType || 'Passkey'}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleDeletePasskey(pk.id)}
+                        className={`text-xs px-2 py-1 ${
+                          theme === 'dark'
+                            ? 'text-red-400 hover:bg-red-500/10'
+                            : 'text-red-500 hover:bg-red-50'
+                        }`}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                  No passkeys registered yet
+                </div>
+              )}
+
+              <button
+                onClick={handleAddPasskey}
+                disabled={isLoading}
+                className={`w-full p-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                  theme === 'dark'
+                    ? 'bg-juice-cyan/20 text-juice-cyan hover:bg-juice-cyan/30 border border-juice-cyan/50'
+                    : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100 border border-cyan-200'
+                }`}
+              >
+                {isLoading ? 'Adding...' : 'Add Passkey'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex gap-2">
         <button
@@ -625,7 +855,7 @@ export default function WalletPanel({ isOpen, onClose }: WalletPanelProps) {
   const { address, isConnected: walletConnected } = useAccount()
   const { disconnect } = useDisconnect()
 
-  const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'wallet' | 'topup'>('select')
+  const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'auth_method' | 'email_auth' | 'wallet' | 'topup'>('select')
 
   // Determine current state
   const isSelfCustodyConnected = mode === 'self_custody' && walletConnected
@@ -633,6 +863,8 @@ export default function WalletPanel({ isOpen, onClose }: WalletPanelProps) {
 
   const currentView = (() => {
     if (view === 'topup') return 'topup'
+    if (view === 'auth_method') return 'auth_method'
+    if (view === 'email_auth') return 'email_auth'
     if (isSelfCustodyConnected) return 'wallet'
     if (isManagedConnected) return 'managed'
     return view
@@ -651,6 +883,8 @@ export default function WalletPanel({ isOpen, onClose }: WalletPanelProps) {
     switch (currentView) {
       case 'select': return 'Connect'
       case 'self_custody': return 'Connect Wallet'
+      case 'auth_method': return 'Sign In'
+      case 'email_auth': return 'Email Sign In'
       case 'managed': return 'Account'
       case 'wallet': return 'Wallet'
       case 'topup': return 'Add Funds'
@@ -662,7 +896,13 @@ export default function WalletPanel({ isOpen, onClose }: WalletPanelProps) {
     <Modal isOpen={isOpen} onClose={onClose} title={getTitle()} size="sm">
       {currentView === 'select' && (
         <ModeSelector
-          onSelectMode={(selectedMode) => setView(selectedMode)}
+          onSelectMode={(selectedMode) => {
+            if (selectedMode === 'managed') {
+              setView('auth_method')
+            } else {
+              setView(selectedMode)
+            }
+          }}
         />
       )}
 
@@ -670,10 +910,33 @@ export default function WalletPanel({ isOpen, onClose }: WalletPanelProps) {
         <SelfCustodyConnect onBack={() => setView('select')} />
       )}
 
-      {currentView === 'managed' && !isManagedConnected && (
-        <EmailAuth
+      {currentView === 'auth_method' && (
+        <AuthMethodSelector
+          onSelectMethod={(method) => {
+            if (method === 'email') {
+              setView('email_auth')
+            }
+            // Passkey login is handled in AuthMethodSelector
+          }}
           onBack={() => setView('select')}
+        />
+      )}
+
+      {currentView === 'email_auth' && (
+        <EmailAuth
+          onBack={() => setView('auth_method')}
           onSuccess={() => setView('select')}
+        />
+      )}
+
+      {currentView === 'managed' && !isManagedConnected && (
+        <AuthMethodSelector
+          onSelectMethod={(method) => {
+            if (method === 'email') {
+              setView('email_auth')
+            }
+          }}
+          onBack={() => setView('select')}
         />
       )}
 

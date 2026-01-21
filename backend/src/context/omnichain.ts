@@ -326,7 +326,7 @@ export const OMNICHAIN_TOOLS = [
   {
     name: 'get_cross_chain_balance',
     description:
-      'Get a user\\'s project token balance across all chains where the project exists. Returns per-chain and total balances.',
+      "Get a user's project token balance across all chains where the project exists. Returns per-chain and total balances.",
     input_schema: {
       type: 'object' as const,
       properties: {

@@ -123,6 +123,29 @@
   .animate-shimmer {
     animation: shimmer 2.5s ease-in-out infinite;
   }
+
+  /* Juicy component loading shimmer */
+  .component-shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(245, 166, 35, 0.15) 25%,
+      rgba(92, 235, 223, 0.15) 50%,
+      rgba(245, 166, 35, 0.15) 75%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: component-shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes component-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
 }
 
 /* Markdown styling - Dark mode */

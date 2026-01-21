@@ -121,6 +121,8 @@ export function stripComponents(content: string): string {
         return `[Chart: Per-chain cash out values]`
       case 'project-card':
         return `[Project card with payment form]`
+      case 'note-card':
+        return `[Note card for leaving messages]`
       case 'project-chain-picker':
         return `[Project chain selection]`
       case 'options-picker':
@@ -139,8 +141,6 @@ export function stripComponents(content: string): string {
         return `[Cash out form]`
       case 'connect-account':
         return `[Connect wallet button]`
-      case 'recommendation-chips':
-        return `[Suggested actions]`
       case 'top-projects':
         return `[Top projects list]`
       case 'nft-gallery':

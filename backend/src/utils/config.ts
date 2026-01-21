@@ -63,6 +63,11 @@ export function loadConfig(): EnvConfig {
     bendystrawApiKey: getEnv('BENDYSTRAW_API_KEY', ''),
     theGraphApiKey: getEnv('THEGRAPH_API_KEY', ''),
     ankrApiKey: getEnv('ANKR_API_KEY', ''),
+
+    // IPFS (Pinata)
+    ipfsApiUrl: getEnv('IPFS_API_URL', 'https://api.pinata.cloud'),
+    ipfsApiKey: getEnv('IPFS_API_KEY', ''),
+    ipfsApiSecret: getEnv('IPFS_API_SECRET', ''),
   };
 }
 

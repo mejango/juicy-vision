@@ -303,4 +303,9 @@ export interface EnvConfig {
   bendystrawApiKey: string;   // Bendystraw GraphQL API
   theGraphApiKey: string;     // The Graph Uniswap subgraph
   ankrApiKey: string;         // Ankr RPC endpoints (optional)
+
+  // IPFS (Pinata)
+  ipfsApiUrl?: string;        // Pinata API URL
+  ipfsApiKey?: string;        // Pinata API key
+  ipfsApiSecret?: string;     // Pinata API secret
 }

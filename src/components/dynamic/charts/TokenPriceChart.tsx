@@ -497,37 +497,12 @@ export default function TokenPriceChart({
       <div className={`border overflow-hidden ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
-        {/* Header with toggles and range selector */}
+        {/* Header with title, toggles, and range selector */}
         <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            {/* Toggle buttons */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <ToggleButton
-                label="Issuance price"
-                active={showIssuance}
-                disabled={!hasIssuanceData}
-                color={PRICE_COLORS.issuance}
-                onClick={() => setShowIssuance(!showIssuance)}
-              />
-              {/* Show pool toggle if pool address is provided or discovered */}
-              {(poolAddress || discoveredPool) && (
-                <ToggleButton
-                  label="Pool price"
-                  active={showPool}
-                  disabled={!hasPoolData}
-                  color={PRICE_COLORS.pool}
-                  onClick={() => setShowPool(!showPool)}
-                />
-              )}
-              <ToggleButton
-                label="Cash out price"
-                active={showCashOut}
-                disabled={!hasCashOutData}
-                color={PRICE_COLORS.cashOut}
-                onClick={() => setShowCashOut(!showCashOut)}
-              />
-            </div>
-
+          <div className="flex items-center justify-between gap-4 mb-2">
+            <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Token Price History
+            </span>
             {/* Range selector */}
             <div className="flex gap-1">
               {PRICE_RANGE_OPTIONS.map(opt => (
@@ -544,6 +519,33 @@ export default function TokenPriceChart({
                 </button>
               ))}
             </div>
+          </div>
+          {/* Toggle buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <ToggleButton
+              label="Issuance price"
+              active={showIssuance}
+              disabled={!hasIssuanceData}
+              color={PRICE_COLORS.issuance}
+              onClick={() => setShowIssuance(!showIssuance)}
+            />
+            {/* Show pool toggle if pool address is provided or discovered */}
+            {(poolAddress || discoveredPool) && (
+              <ToggleButton
+                label="Pool price"
+                active={showPool}
+                disabled={!hasPoolData}
+                color={PRICE_COLORS.pool}
+                onClick={() => setShowPool(!showPool)}
+              />
+            )}
+            <ToggleButton
+              label="Cash out price"
+              active={showCashOut}
+              disabled={!hasCashOutData}
+              color={PRICE_COLORS.cashOut}
+              onClick={() => setShowCashOut(!showCashOut)}
+            />
           </div>
         </div>
 

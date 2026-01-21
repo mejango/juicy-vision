@@ -16,8 +16,9 @@ export interface WalletBalances {
   loading: boolean
 }
 
-export function useWalletBalances(): WalletBalances {
-  const { address } = useAccount()
+export function useWalletBalances(overrideAddress?: string): WalletBalances {
+  const { address: connectedAddress } = useAccount()
+  const address = overrideAddress || connectedAddress
   const [totalEth, setTotalEth] = useState<bigint>(0n)
   const [totalUsdc, setTotalUsdc] = useState<bigint>(0n)
   const [perChain, setPerChain] = useState<WalletBalances['perChain']>([])

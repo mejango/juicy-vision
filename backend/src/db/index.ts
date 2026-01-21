@@ -38,23 +38,15 @@ export async function execute(sql: string, args?: unknown[]): Promise<number> {
   }
 }
 
-// Transaction helper
+// Transaction helper - passes raw connection for tagged template support
 export async function transaction<T>(
-  fn: (query: typeof query, execute: typeof execute) => Promise<T>
+  fn: (client: { queryObject: <U>(sql: TemplateStringsArray | string, ...args: unknown[]) => Promise<{ rows: U[]; rowCount?: number }> }) => Promise<T>
 ): Promise<T> {
   const pool = getPool();
   const connection = await pool.connect();
   try {
     await connection.queryObject('BEGIN');
-    const boundQuery = async <U>(sql: string, args?: unknown[]): Promise<U[]> => {
-      const result = await connection.queryObject<U>(sql, args);
-      return result.rows;
-    };
-    const boundExecute = async (sql: string, args?: unknown[]): Promise<number> => {
-      const result = await connection.queryObject(sql, args);
-      return result.rowCount ?? 0;
-    };
-    const result = await fn(boundQuery, boundExecute);
+    const result = await fn(connection);
     await connection.queryObject('COMMIT');
     return result;
   } catch (error) {

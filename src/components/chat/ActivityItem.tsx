@@ -36,7 +36,7 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
   return (
     <div
       onClick={handleClick}
-      className={`relative overflow-hidden px-3 py-2 -mx-4 border-b cursor-pointer transition-colors ${
+      className={`relative overflow-hidden px-3 py-3 -mx-4 border-b cursor-pointer transition-colors ${
         theme === 'dark'
           ? 'border-white/10 hover:bg-white/5'
           : 'border-gray-200 hover:bg-black/5'
@@ -57,20 +57,14 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
 
       {/* Content overlay */}
       <div className="relative z-10">
-        {/* Top row: Project name + chain + time */}
-        <div className="flex items-center gap-1.5">
-          <span className={`text-xs font-medium truncate ${
+        {/* Top row: Project name + time */}
+        <div className="flex items-center gap-2">
+          <span className={`flex-1 min-w-0 text-xs font-medium truncate ${
             theme === 'dark' ? 'text-juice-cyan' : 'text-teal-600'
           }`}>
-            {projectName.length > 12 ? `${projectName.slice(0, 12)}…` : projectName}
+            {projectName}
           </span>
-          <span
-            className="text-[8px] font-bold px-1 py-0.5 rounded"
-            style={{ backgroundColor: `${chain.color}30`, color: chain.color }}
-          >
-            {chain.name}
-          </span>
-          <span className={`text-[10px] ml-auto ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+          <span className={`text-[10px] shrink-0 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
             {formatTimeAgo(event.timestamp)}
           </span>
         </div>
@@ -89,12 +83,21 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
           )}
         </div>
 
-        {/* Bottom row: From + tx link */}
-        <div className={`flex items-center gap-2 mt-0.5 text-[10px] ${
+        {/* Bottom row: "address on CHAIN" + link icon */}
+        <div className={`flex items-center gap-1.5 mt-0.5 text-[10px] ${
           theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
         }`}>
           {from && (
-            <span className="truncate">{ensName || truncateAddress(from)}</span>
+            <>
+              <span className="truncate">{ensName || truncateAddress(from)}</span>
+              <span>on</span>
+              <span
+                className="text-[8px] font-bold px-1 py-0.5 rounded"
+                style={{ backgroundColor: `${chain.color}80`, color: 'rgba(255,255,255,0.85)' }}
+              >
+                {chain.shortName || chain.name}
+              </span>
+            </>
           )}
           {txHash && (
             <a
@@ -102,9 +105,8 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="ml-auto hover:text-juice-cyan flex items-center gap-0.5"
+              className="hover:text-juice-cyan"
             >
-              <span>tx</span>
               <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />

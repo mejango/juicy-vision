@@ -5,17 +5,23 @@ import { secureHeaders } from 'hono/secure-headers';
 import { timing } from 'hono/timing';
 
 import { authRouter } from './src/routes/auth.ts';
-import { chatRouter } from './src/routes/chat.ts';
+import { multiChatRouter } from './src/routes/multiChat.ts';
 import { walletRouter } from './src/routes/wallet.ts';
 import { eventsRouter } from './src/routes/events.ts';
 import { cronRouter } from './src/routes/cron.ts';
 import { proxyRouter } from './src/routes/proxy.ts';
 import { stripeWebhookRouter } from './src/routes/stripe-webhook.ts';
 import { contextRouter } from './src/routes/context.ts';
+import { localeRouter } from './src/routes/locale.ts';
+import { inviteRouter } from './src/routes/invite.ts';
+import { passkeyRouter } from './src/routes/passkey.ts';
+import { siweRouter } from './src/routes/siwe.ts';
+import { debugRouter, logDebugEvent } from './src/routes/debug.ts';
 import { getConfig } from './src/utils/config.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
 import { executeReadyTransfers } from './src/services/wallet.ts';
+import { cleanupExpiredChallenges } from './src/services/passkey.ts';
 import { runMigrations } from './src/db/migrate.ts';
 
 // Run migrations before starting the server
@@ -48,18 +54,35 @@ app.use(
     },
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Session-ID', 'X-Wallet-Session'],
   })
 );
 
-// Security headers
-app.use('*', secureHeaders());
+// Security headers - allow cross-origin resources for WalletConnect
+app.use('*', secureHeaders({
+  crossOriginResourcePolicy: 'cross-origin',
+}));
 
 // Request logging
 app.use('*', logger());
 
 // Response timing
 app.use('*', timing());
+
+// Debug event logging for API calls
+app.use('/api/*', async (c, next) => {
+  const start = Date.now();
+  await next();
+  const duration = Date.now() - start;
+
+  // Log to debug dashboard
+  logDebugEvent('api_call', 'api', {
+    method: c.req.method,
+    path: c.req.path,
+    status: c.res.status,
+    duration,
+  });
+});
 
 // ============================================================================
 // Health Check
@@ -82,13 +105,18 @@ app.get('/health', (c) => {
 // ============================================================================
 
 app.route('/api/auth', authRouter);
-app.route('/api/chat', chatRouter);
+app.route('/api/auth/siwe', siweRouter);
+app.route('/api/chat', multiChatRouter);
 app.route('/api/wallet', walletRouter);
 app.route('/api/events', eventsRouter);
 app.route('/api/cron', cronRouter);
 app.route('/api/proxy', proxyRouter);
 app.route('/api/stripe/webhook', stripeWebhookRouter);
 app.route('/api/context', contextRouter);
+app.route('/api/locale', localeRouter);
+app.route('/api/chat', inviteRouter);
+app.route('/api/passkey', passkeyRouter);
+app.route('/api/debug', debugRouter);
 
 // ============================================================================
 // Error Handling
@@ -160,6 +188,15 @@ if (config.env === 'development') {
       console.error('[Dev] Failed to execute transfers:', error);
     }
   }, 60 * 60 * 1000);
+
+  // Cleanup expired passkey challenges every 10 minutes
+  setInterval(async () => {
+    try {
+      await cleanupExpiredChallenges();
+    } catch (error) {
+      console.error('[Dev] Failed to cleanup passkey challenges:', error);
+    }
+  }, 10 * 60 * 1000);
 } else {
   console.log('Production mode: Use GCP Cloud Scheduler for cron jobs');
 }
@@ -177,33 +214,37 @@ console.log(`
 ║  Environment: ${config.env.padEnd(42)}║
 ║  Port: ${port.toString().padEnd(49)}║
 ║                                                           ║
-║  Endpoints:                                               ║
+║  Auth & User:                                             ║
 ║    POST /api/auth/register    - Register new user         ║
 ║    POST /api/auth/login       - Login                     ║
 ║    GET  /api/auth/me          - Get current user          ║
-║    POST /api/chat/message     - Send chat message         ║
-║    POST /api/chat/stream      - Stream chat (SSE)         ║
+║                                                           ║
+║  Passkey (WebAuthn):                                      ║
+║    GET  /api/passkey/register/options - Registration opts ║
+║    POST /api/passkey/register/verify  - Complete register ║
+║    GET  /api/passkey/authenticate/options - Auth options  ║
+║    POST /api/passkey/authenticate/verify  - Complete auth ║
+║                                                           ║
+║  Chat:                                                    ║
+║    POST /api/chat             - Create chat               ║
+║    GET  /api/chat             - List user's chats         ║
+║    GET  /api/chat/:id         - Get chat details          ║
+║    POST /api/chat/:id/messages - Send message             ║
+║    GET  /api/chat/:id/ws      - WebSocket connection      ║
+║    POST /api/chat/:id/ai/invoke - Invoke AI response      ║
+║                                                           ║
+║  Wallet:                                                  ║
 ║    GET  /api/wallet/address   - Get custodial address     ║
 ║    GET  /api/wallet/balances  - Get token balances        ║
 ║    POST /api/wallet/transfer  - Request transfer          ║
-║    POST /api/events/stream    - Log events                ║
-║                                                           ║
-║  Context Endpoints:                                       ║
-║    GET  /api/context/omnichain - Omnichain knowledge      ║
-║    GET  /api/context/tools     - Available AI tools       ║
-║    GET  /api/context/chains    - Supported chains         ║
 ║                                                           ║
 ║  Proxy Endpoints:                                         ║
 ║    POST /api/proxy/bendystraw - Bendystraw GraphQL        ║
-║    POST /api/proxy/thegraph/* - TheGraph subgraphs        ║
 ║    POST /api/proxy/rpc/:chain - JSON-RPC proxy            ║
 ║                                                           ║
-║  Cron Endpoints (GCP Cloud Scheduler):                    ║
-║    POST /api/cron/transfers   - Execute ready transfers   ║
-║    POST /api/cron/maintenance - Run all maintenance jobs  ║
-║                                                           ║
-║  Webhooks:                                                ║
-║    POST /api/stripe/webhook   - Stripe payment events     ║
+║  Debug (Development Only):                                ║
+║    GET  /api/debug           - Debug dashboard            ║
+║    GET  /api/debug/stream    - Real-time event stream     ║
 ╚═══════════════════════════════════════════════════════════╝
 `);
 

@@ -1,5 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import {
+  isPasskeySupported,
+  loginWithPasskey as passkeyLogin,
+  registerPasskey as passkeyRegister,
+  listPasskeys,
+  deletePasskey as passkeyDelete,
+  renamePasskey as passkeyRename,
+} from '../services/passkey'
 
 // ============================================================================
 // Types
@@ -57,6 +65,15 @@ export interface ManagedUser {
   email: string
   privacyMode: PrivacyMode
   hasCustodialWallet: boolean
+  passkeyEnabled?: boolean
+}
+
+export interface PasskeyInfo {
+  id: string
+  displayName: string | null
+  deviceType: string | null
+  createdAt: string
+  lastUsedAt: string | null
 }
 
 // ============================================================================
@@ -122,6 +139,15 @@ interface AuthState {
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
 
+  // Passkey actions
+  passkeys: PasskeyInfo[]
+  loginWithPasskey: (email?: string) => Promise<void>
+  registerPasskey: (displayName?: string) => Promise<PasskeyInfo>
+  loadPasskeys: () => Promise<void>
+  deletePasskey: (id: string) => Promise<void>
+  renamePasskey: (id: string, displayName: string) => Promise<void>
+  isPasskeyAvailable: () => boolean
+
   // Session management
   startSession: (entryPoint?: string) => Promise<string>
   endSession: (rating?: number, feedback?: string) => Promise<void>
@@ -144,6 +170,7 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       error: null,
       currentSessionId: null,
+      passkeys: [],
 
       // Mode setters
       setMode: (mode) => {
@@ -253,6 +280,105 @@ export const useAuthStore = create<AuthState>()(
           set({ user: null, token: null, mode: 'self_custody' })
         }
       },
+
+      // Passkey actions
+      loginWithPasskey: async (email?: string) => {
+        set({ isLoading: true, error: null })
+        try {
+          const result = await passkeyLogin(email)
+          set({
+            user: {
+              id: result.user.id,
+              email: result.user.email,
+              privacyMode: result.user.privacyMode as PrivacyMode,
+              hasCustodialWallet: false,
+              passkeyEnabled: result.user.passkeyEnabled,
+            },
+            token: result.token,
+            mode: 'managed',
+            privacyMode: result.user.privacyMode as PrivacyMode,
+            isLoading: false,
+          })
+        } catch (error) {
+          set({
+            error: error instanceof Error ? error.message : 'Passkey login failed',
+            isLoading: false,
+          })
+          throw error
+        }
+      },
+
+      registerPasskey: async (displayName?: string) => {
+        const state = get()
+        if (!state.token) {
+          throw new Error('Must be logged in to register a passkey')
+        }
+
+        set({ isLoading: true, error: null })
+        try {
+          const passkey = await passkeyRegister(state.token, displayName)
+          // Refresh passkeys list
+          const passkeys = await listPasskeys(state.token)
+          set({
+            passkeys,
+            isLoading: false,
+            user: state.user ? { ...state.user, passkeyEnabled: true } : null,
+          })
+          return passkey
+        } catch (error) {
+          set({
+            error: error instanceof Error ? error.message : 'Passkey registration failed',
+            isLoading: false,
+          })
+          throw error
+        }
+      },
+
+      loadPasskeys: async () => {
+        const state = get()
+        if (!state.token) return
+
+        try {
+          const passkeys = await listPasskeys(state.token)
+          set({ passkeys })
+        } catch {
+          // Ignore errors
+        }
+      },
+
+      deletePasskey: async (id: string) => {
+        const state = get()
+        if (!state.token) return
+
+        try {
+          await passkeyDelete(state.token, id)
+          set({ passkeys: state.passkeys.filter((p) => p.id !== id) })
+          // Check if user still has passkeys
+          if (state.passkeys.length <= 1 && state.user) {
+            set({ user: { ...state.user, passkeyEnabled: false } })
+          }
+        } catch (error) {
+          throw error
+        }
+      },
+
+      renamePasskey: async (id: string, displayName: string) => {
+        const state = get()
+        if (!state.token) return
+
+        try {
+          await passkeyRename(state.token, id, displayName)
+          set({
+            passkeys: state.passkeys.map((p) =>
+              p.id === id ? { ...p, displayName } : p
+            ),
+          })
+        } catch (error) {
+          throw error
+        }
+      },
+
+      isPasskeyAvailable: () => isPasskeySupported(),
 
       // Session management
       startSession: async (entryPoint) => {

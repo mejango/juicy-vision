@@ -27,8 +27,8 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1' }
 
   const chainInfo = CHAINS[parseInt(selectedChainId)] || CHAINS[1]
 
-  // Determine currency from project's baseCurrency
-  const baseCurrency = project?.baseCurrency || 1
+  // Determine currency from project's baseCurrency (if available)
+  const baseCurrency = (project as { baseCurrency?: number } | null)?.baseCurrency || 1
   const currencySymbol = baseCurrency === 2 ? 'USDC' : 'ETH'
 
   // Use connected chains if available, otherwise fall back to single chain

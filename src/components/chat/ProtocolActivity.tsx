@@ -16,6 +16,9 @@ export default function ProtocolActivity({ onProjectClick }: ProtocolActivityPro
   const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const loaderRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  // Track server offset separately from events.length (which includes polled new events)
+  const serverOffsetRef = useRef(0)
 
   // Initial load
   useEffect(() => {
@@ -26,7 +29,8 @@ export default function ProtocolActivity({ onProjectClick }: ProtocolActivityPro
         const data = await fetchActivityEvents(ACTIVITY_PAGE_SIZE, 0)
         if (mounted) {
           setEvents(data)
-          setHasMore(data.length === ACTIVITY_PAGE_SIZE)
+          serverOffsetRef.current = ACTIVITY_PAGE_SIZE // Track what we requested, not what came back
+          setHasMore(data.length > 0) // If we got any events, assume there might be more
           setLoading(false)
         }
       } catch (err) {
@@ -68,20 +72,32 @@ export default function ProtocolActivity({ onProjectClick }: ProtocolActivityPro
 
     setLoadingMore(true)
     try {
-      const data = await fetchActivityEvents(ACTIVITY_PAGE_SIZE, events.length)
-      setEvents(prev => [...prev, ...data])
-      setHasMore(data.length === ACTIVITY_PAGE_SIZE)
+      const offset = serverOffsetRef.current
+      const data = await fetchActivityEvents(ACTIVITY_PAGE_SIZE, offset)
+      serverOffsetRef.current = offset + ACTIVITY_PAGE_SIZE // Track what we requested
+      setEvents(prev => {
+        // Dedupe in case of overlap with polled events
+        const existingIds = new Set(prev.map(e => e.id))
+        const newEvents = data.filter(e => !existingIds.has(e.id))
+        return [...prev, ...newEvents]
+      })
+      // Only stop if we got zero events (truly exhausted)
+      setHasMore(data.length > 0)
     } catch {
       // Silently fail
     } finally {
       setLoadingMore(false)
     }
-  }, [events.length, loadingMore, hasMore])
+  }, [loadingMore, hasMore])
 
   // Intersection observer for infinite scroll
   useEffect(() => {
     const loader = loaderRef.current
-    if (!loader) return
+    const container = containerRef.current
+    if (!loader || !container) return
+
+    // Find the scrollable parent (the one with overflow-y-auto)
+    const scrollableParent = container.closest('.overflow-y-auto') as HTMLElement | null
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -89,7 +105,11 @@ export default function ProtocolActivity({ onProjectClick }: ProtocolActivityPro
           loadMore()
         }
       },
-      { threshold: 0.1 }
+      {
+        root: scrollableParent, // Use scrollable parent instead of viewport
+        threshold: 0.1,
+        rootMargin: '100px' // Load more before reaching the very bottom
+      }
     )
 
     observer.observe(loader)
@@ -97,7 +117,7 @@ export default function ProtocolActivity({ onProjectClick }: ProtocolActivityPro
   }, [loadMore, hasMore, loadingMore])
 
   return (
-    <div className="h-full">
+    <div ref={containerRef} className="h-full">
       {loading ? (
         <div className="py-8 text-center">
           <div className="inline-block w-6 h-6 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />

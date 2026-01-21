@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getConfig } from '../utils/config.ts';
 import { OMNICHAIN_CONTEXT, OMNICHAIN_TOOLS } from '../context/omnichain.ts';
 import { handleOmnichainTool } from './omnichain.ts';
+import { SYSTEM_PROMPT } from '@shared/prompts.ts';
 
 // ============================================================================
 // Rate Limiting (Simple in-memory implementation)
@@ -115,26 +116,8 @@ export interface ClaudeRequest {
   includeOmnichainContext?: boolean; // Default true - adds JB omnichain knowledge
 }
 
-// ============================================================================
-// Default System Prompt
-// ============================================================================
-
-const DEFAULT_SYSTEM_PROMPT = `You are Juicy Vision, an AI assistant specialized in helping users understand and interact with Juicebox projects.
-
-You have deep knowledge of:
-- Juicebox V5 protocol mechanics
-- Omnichain projects and cross-chain token bridging
-- Project tokens, terminals, and treasury management
-- Suckers (cross-chain bridge contracts)
-
-When users ask about bridging tokens or moving assets between chains, use your omnichain tools to:
-1. Check available bridge routes (get_sucker_pairs)
-2. Show pending/claimable transactions (get_bridge_transactions)
-3. Generate transaction data for bridging operations
-
-Always explain what each step does and provide the transaction data users need to execute in their wallet.
-
-Be helpful, accurate, and proactive in suggesting relevant actions.`;
+// System prompt imported from @shared/prompts.ts (single source of truth)
+// To edit the prompt, update /shared/prompts.ts
 
 /**
  * Build the full system prompt including omnichain context
@@ -143,7 +126,7 @@ function buildSystemPrompt(customSystem?: string, includeOmnichain = true): stri
   const parts: string[] = [];
 
   // Start with default or custom system
-  parts.push(customSystem || DEFAULT_SYSTEM_PROMPT);
+  parts.push(customSystem || SYSTEM_PROMPT);
 
   // Add omnichain knowledge if enabled
   if (includeOmnichain) {

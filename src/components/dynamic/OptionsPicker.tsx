@@ -333,8 +333,17 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
         ))}
       </div>
 
-      {/* Submit row */}
+      {/* Submit row - only show if there are options to submit */}
       {(() => {
+        // Check if we have any groups with actual options
+        const hasAnyOptions = groups.some(g => {
+          if (g.type === 'text' || g.type === 'textarea') return true // Text inputs always count
+          return (g.options || []).length > 0
+        })
+
+        // Don't show submit button if no options available
+        if (!hasAnyOptions) return null
+
         // Check if all options are selected in multiSelect groups
         const allSelected = allSelectedLabel && groups.every(g => {
           if (!g.multiSelect) return true

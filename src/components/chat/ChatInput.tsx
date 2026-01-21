@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react'
 import { useAccount, useDisconnect, useEnsName } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance } from '../../hooks'
+import { hasValidWalletSession, clearWalletSession } from '../../services/siwe'
+import { getPasskeyWallet, clearPasskeyWallet } from '../../services/passkeyWallet'
 import type { Attachment } from '../../stores/chatStore'
 
 const INITIAL_PLACEHOLDER = "What's your juicy vision?"
@@ -43,6 +45,9 @@ interface ChatInputProps {
   hideBorder?: boolean
   hideWalletInfo?: boolean
   compact?: boolean
+  showDockButtons?: boolean
+  onThemeClick?: () => void
+  onSettingsClick?: () => void
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15)
@@ -52,20 +57,23 @@ function shortenAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
 }
 
-export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact }: ChatInputProps) {
+export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [isFirstLoad, setIsFirstLoad] = useState(true)
   const [placeholderIndex, setPlaceholderIndex] = useState(() =>
     Math.floor(Math.random() * PLACEHOLDER_PHRASES.length)
   )
   const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [passkeyWallet, setPasskeyWallet] = useState(() => getPasskeyWallet())
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { theme } = useThemeStore()
+  const { theme, toggleTheme } = useThemeStore()
   const { address, isConnected } = useAccount()
   const { data: ensName } = useEnsName({ address })
   const { disconnect } = useDisconnect()
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
+  // Fetch balances for passkey wallet address
+  const { totalEth: passkeyEth, totalUsdc: passkeyUsdc, loading: passkeyBalancesLoading } = useWalletBalances(passkeyWallet?.address)
 
   const currentPlaceholder = placeholder || (isFirstLoad ? INITIAL_PLACEHOLDER : PLACEHOLDER_PHRASES[placeholderIndex])
 
@@ -132,9 +140,14 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
 
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      const scrollHeight = textareaRef.current.scrollHeight
-      textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`
+      // Only auto-resize when there's content, otherwise use min height
+      if (input.trim()) {
+        textareaRef.current.style.height = 'auto'
+        const scrollHeight = textareaRef.current.scrollHeight
+        textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`
+      } else {
+        textareaRef.current.style.height = '48px'
+      }
     }
   }, [input])
 
@@ -163,6 +176,23 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     }
   }, [])
 
+  // Listen for passkey wallet changes
+  useEffect(() => {
+    const handlePasskeyChange = () => {
+      setPasskeyWallet(getPasskeyWallet())
+    }
+    // Listen for connect/disconnect events
+    window.addEventListener('juice:passkey-connected', handlePasskeyChange)
+    window.addEventListener('juice:passkey-disconnected', handlePasskeyChange)
+    // Also check on storage changes (for multi-tab sync)
+    window.addEventListener('storage', handlePasskeyChange)
+    return () => {
+      window.removeEventListener('juice:passkey-connected', handlePasskeyChange)
+      window.removeEventListener('juice:passkey-disconnected', handlePasskeyChange)
+      window.removeEventListener('storage', handlePasskeyChange)
+    }
+  }, [])
+
   const handleSend = () => {
     const trimmed = input.trim()
     const hasContent = trimmed || attachments.length > 0
@@ -186,12 +216,10 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   }
 
   return (
-    <div className={`${compact ? 'py-4 px-6' : 'pt-8 px-6 pb-12'} ${
-      hideBorder ? '' : 'border-t'
-    } ${
+    <div className={`${compact ? 'pb-4 px-6' : 'pt-8 px-6 pb-12'} ${
       theme === 'dark'
-        ? `border-white/10 ${hideBorder ? 'bg-transparent' : 'bg-juice-dark/80'}`
-        : `border-gray-200 ${hideBorder ? 'bg-transparent' : 'bg-white'}`
+        ? `${hideBorder ? 'bg-transparent' : 'bg-juice-dark/95'}`
+        : `${hideBorder ? 'bg-transparent' : 'bg-white/95'}`
     }`}>
       {/* Attachment previews */}
       {attachments.length > 0 && (
@@ -231,16 +259,49 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
         multiple
       />
 
-      <div className="flex gap-3">
+      {/* Theme and Settings buttons - above input */}
+      {showDockButtons && (
+        <div className="flex justify-end gap-2 mb-2">
+          <button
+            onClick={onThemeClick || toggleTheme}
+            className={`p-1.5 transition-colors ${
+              theme === 'dark'
+                ? 'text-gray-500 hover:text-gray-300'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+            title="Toggle theme"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+          </button>
+          <button
+            onClick={onSettingsClick}
+            className={`p-1.5 transition-colors ${
+              theme === 'dark'
+                ? 'text-gray-500 hover:text-gray-300'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+            title="Settings"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      <div className="flex gap-3 items-start">
         {/* Attachment button */}
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          className={`p-3 border-2 border-juice-cyan transition-colors shrink-0
-                     disabled:opacity-50 disabled:cursor-not-allowed
+          className={`p-3 h-[48px] w-[48px] transition-colors shrink-0 flex items-center justify-center
+                     disabled:opacity-50 disabled:cursor-not-allowed border
                      ${theme === 'dark'
-                       ? 'bg-white/5 text-white hover:bg-white/10'
-                       : 'bg-black/5 text-gray-900 hover:bg-black/10'
+                       ? 'text-gray-400 hover:text-juice-cyan border-white/20'
+                       : 'text-gray-500 hover:text-teal-600 border-gray-300'
                      }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -266,44 +327,79 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           style={{ minHeight: '48px' }}
         />
 
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() && attachments.length === 0}
-          className="p-3 bg-juice-cyan text-black
-                     hover:bg-juice-cyan/90 transition-colors
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     shrink-0"
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </button>
       </div>
 
-      {/* Connected wallet display */}
-      {!hideWalletInfo && isConnected && address && (
-        <div className="flex gap-3 mt-2">
+      {/* Wallet status display */}
+      {!hideWalletInfo && (
+        <div className="flex gap-3 mt-2 items-center">
           {/* Spacer to align with textarea */}
           <div className="w-[48px] shrink-0" />
           <div className={`flex-1 text-xs ${
             theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
           }`}>
-            <span>Connected as {ensName || shortenAddress(address)}</span>
-            {!balancesLoading && (totalEth > 0n || totalUsdc > 0n) && (
-              <span className="ml-2">
-                · {formatEthBalance(totalEth)} ETH · {formatUsdcBalance(totalUsdc)} USDC
-              </span>
+            {isConnected && address ? (
+              <>
+                <span className="inline-flex items-center gap-1.5">
+                  {hasValidWalletSession() ? (
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Signed in" />
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50" title="Not signed in" />
+                  )}
+                  Connected as {ensName || shortenAddress(address)}
+                </span>
+                {!balancesLoading && (totalEth > 0n || totalUsdc > 0n) && (
+                  <span className="ml-2">
+                    · {formatEthBalance(totalEth)} ETH · {formatUsdcBalance(totalUsdc)} USDC
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    clearWalletSession()
+                    disconnect()
+                  }}
+                  className={`ml-2 transition-colors ${
+                    theme === 'dark'
+                      ? 'text-gray-600 hover:text-gray-400'
+                      : 'text-gray-300 hover:text-gray-500'
+                  }`}
+                >
+                  · Disconnect
+                </button>
+              </>
+            ) : passkeyWallet ? (
+              <>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Passkey wallet" />
+                  Connected as {shortenAddress(passkeyWallet.address)}
+                </span>
+                {!passkeyBalancesLoading && (passkeyEth > 0n || passkeyUsdc > 0n) && (
+                  <span className="ml-2">
+                    · {formatEthBalance(passkeyEth)} ETH · {formatUsdcBalance(passkeyUsdc)} USDC
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    clearPasskeyWallet()
+                    setPasskeyWallet(null)
+                  }}
+                  className={`ml-2 transition-colors ${
+                    theme === 'dark'
+                      ? 'text-gray-600 hover:text-gray-400'
+                      : 'text-gray-300 hover:text-gray-500'
+                  }`}
+                >
+                  · Disconnect
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('juice:open-auth-modal'))}
+                className="inline-flex items-center gap-1.5 transition-colors hover:text-gray-300"
+              >
+                <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50" />
+                Account not yet connected
+              </button>
             )}
-            <button
-              onClick={() => disconnect()}
-              className={`ml-2 transition-colors ${
-                theme === 'dark'
-                  ? 'text-gray-600 hover:text-gray-400'
-                  : 'text-gray-300 hover:text-gray-500'
-              }`}
-            >
-              · Disconnect
-            </button>
           </div>
         </div>
       )}

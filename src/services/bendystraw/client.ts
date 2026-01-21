@@ -397,7 +397,10 @@ export async function fetchActivityEvents(limit: number = 20, offset: number = 0
     { limit, offset, orderBy: 'timestamp', orderDirection: 'desc' }
   )
 
-  return data.activityEvents.items.map(transformEvent)
+  // Filter out unknown events (events where no recognized type is present)
+  return data.activityEvents.items
+    .map(transformEvent)
+    .filter(event => event.type !== 'unknown')
 }
 
 // Check user's token balance for a specific project

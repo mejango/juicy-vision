@@ -1,0 +1,1016 @@
+/**
+ * Multi-Person Chat Service
+ *
+ * Handles:
+ * - Chat creation and management
+ * - Member permissions (founder → admin → member)
+ * - Message sending with encryption
+ * - Token gating verification
+ * - AI invocation with billing
+ */
+
+import { query, queryOne, execute, transaction } from '../db/index.ts';
+import {
+  generateGroupKey,
+  distributeGroupKeyToMembers,
+  encryptMessage,
+  decryptMessage,
+  getGroupKeyForMember,
+  rotateGroupKey,
+  getOrCreateUserKeypair,
+  type GroupKey,
+} from './encryption.ts';
+import {
+  broadcastChatMessage,
+  broadcastMemberJoined,
+  broadcastMemberLeft,
+  broadcastKeyRotation,
+} from './websocket.ts';
+import { createPublicClient, http, type Address, parseUnits } from 'viem';
+import { mainnet, optimism, base, arbitrum } from 'viem/chains';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export type ChatRole = 'founder' | 'admin' | 'member';
+
+export interface Chat {
+  id: string;
+  founderAddress: string;
+  founderUserId?: string;
+  name?: string;
+  description?: string;
+  isPublic: boolean;
+  ipfsCid?: string;
+  lastArchivedAt?: Date;
+  tokenGate?: TokenGate;
+  aiBalanceWei: bigint;
+  aiTotalSpentWei: bigint;
+  encrypted: boolean;
+  encryptionVersion: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TokenGate {
+  enabled: boolean;
+  chainId: number;
+  tokenAddress: string;
+  projectId?: number; // For JB projects
+  minBalance: bigint;
+}
+
+export interface ChatMember {
+  id: string;
+  chatId: string;
+  memberAddress: string;
+  memberUserId?: string;
+  role: ChatRole;
+  canInvite: boolean;
+  canInvokeAi: boolean;
+  canManageMembers: boolean;
+  publicKey?: string;
+  isActive: boolean;
+  joinedAt: Date;
+  leftAt?: Date;
+}
+
+export interface ChatMessage {
+  id: string;
+  chatId: string;
+  senderAddress: string;
+  senderUserId?: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  isEncrypted: boolean;
+  aiCostWei?: bigint;
+  aiModel?: string;
+  signature?: string;
+  replyToId?: string;
+  ipfsCid?: string;
+  createdAt: Date;
+  editedAt?: Date;
+  deletedAt?: Date;
+}
+
+export interface CreateChatParams {
+  founderAddress: string;
+  founderUserId?: string;
+  name?: string;
+  description?: string;
+  isPublic?: boolean;
+  encrypted?: boolean;
+  tokenGate?: Omit<TokenGate, 'enabled'>;
+}
+
+export interface SendMessageParams {
+  chatId: string;
+  senderAddress: string;
+  senderUserId?: string;
+  content: string;
+  signature?: string; // Required for external wallets
+  replyToId?: string;
+}
+
+export interface ImportMessageParams {
+  chatId: string;
+  senderAddress: string;
+  senderUserId?: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+// ============================================================================
+// Database Types
+// ============================================================================
+
+interface DbChat {
+  id: string;
+  founder_address: string;
+  founder_user_id: string | null;
+  name: string | null;
+  description: string | null;
+  is_public: boolean;
+  ipfs_cid: string | null;
+  last_archived_at: Date | null;
+  token_gate_enabled: boolean;
+  token_gate_chain_id: number | null;
+  token_gate_token_address: string | null;
+  token_gate_project_id: number | null;
+  token_gate_min_balance: string | null;
+  ai_balance_wei: string;
+  ai_total_spent_wei: string;
+  encrypted: boolean;
+  encryption_version: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface DbChatMember {
+  id: string;
+  chat_id: string;
+  member_address: string;
+  member_user_id: string | null;
+  role: ChatRole;
+  can_invite: boolean;
+  can_invoke_ai: boolean;
+  can_manage_members: boolean;
+  public_key: string | null;
+  is_active: boolean;
+  joined_at: Date;
+  left_at: Date | null;
+}
+
+interface DbChatMessage {
+  id: string;
+  chat_id: string;
+  sender_address: string;
+  sender_user_id: string | null;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  is_encrypted: boolean;
+  ai_cost_wei: string | null;
+  ai_model: string | null;
+  signature: string | null;
+  reply_to_id: string | null;
+  ipfs_cid: string | null;
+  created_at: Date;
+  edited_at: Date | null;
+  deleted_at: Date | null;
+}
+
+// ============================================================================
+// Converters
+// ============================================================================
+
+function dbToChat(db: DbChat): Chat {
+  return {
+    id: db.id,
+    founderAddress: db.founder_address,
+    founderUserId: db.founder_user_id ?? undefined,
+    name: db.name ?? undefined,
+    description: db.description ?? undefined,
+    isPublic: db.is_public,
+    ipfsCid: db.ipfs_cid ?? undefined,
+    lastArchivedAt: db.last_archived_at ?? undefined,
+    tokenGate: db.token_gate_enabled
+      ? {
+          enabled: true,
+          chainId: db.token_gate_chain_id!,
+          tokenAddress: db.token_gate_token_address!,
+          projectId: db.token_gate_project_id ?? undefined,
+          minBalance: BigInt(db.token_gate_min_balance ?? '0'),
+        }
+      : undefined,
+    aiBalanceWei: BigInt(db.ai_balance_wei),
+    aiTotalSpentWei: BigInt(db.ai_total_spent_wei),
+    encrypted: db.encrypted,
+    encryptionVersion: db.encryption_version,
+    createdAt: db.created_at,
+    updatedAt: db.updated_at,
+  };
+}
+
+function dbToMember(db: DbChatMember): ChatMember {
+  return {
+    id: db.id,
+    chatId: db.chat_id,
+    memberAddress: db.member_address,
+    memberUserId: db.member_user_id ?? undefined,
+    role: db.role,
+    canInvite: db.can_invite,
+    canInvokeAi: db.can_invoke_ai,
+    canManageMembers: db.can_manage_members,
+    publicKey: db.public_key ?? undefined,
+    isActive: db.is_active,
+    joinedAt: db.joined_at,
+    leftAt: db.left_at ?? undefined,
+  };
+}
+
+function dbToMessage(db: DbChatMessage): ChatMessage {
+  return {
+    id: db.id,
+    chatId: db.chat_id,
+    senderAddress: db.sender_address,
+    senderUserId: db.sender_user_id ?? undefined,
+    role: db.role,
+    content: db.content,
+    isEncrypted: db.is_encrypted,
+    aiCostWei: db.ai_cost_wei ? BigInt(db.ai_cost_wei) : undefined,
+    aiModel: db.ai_model ?? undefined,
+    signature: db.signature ?? undefined,
+    replyToId: db.reply_to_id ?? undefined,
+    ipfsCid: db.ipfs_cid ?? undefined,
+    createdAt: db.created_at,
+    editedAt: db.edited_at ?? undefined,
+    deletedAt: db.deleted_at ?? undefined,
+  };
+}
+
+// ============================================================================
+// Chat CRUD
+// ============================================================================
+
+/**
+ * Create a new multi-person chat
+ */
+export async function createChat(params: CreateChatParams): Promise<Chat> {
+  const {
+    founderAddress,
+    founderUserId,
+    name,
+    description,
+    isPublic = true,
+    encrypted = false,
+    tokenGate,
+  } = params;
+
+  // Create chat in transaction
+  const chatId = await transaction(async (client) => {
+    // Insert chat
+    const result = await client.queryObject<{ id: string }>`
+      INSERT INTO multi_chats (
+        founder_address, founder_user_id, name, description, is_public, encrypted,
+        token_gate_enabled, token_gate_chain_id, token_gate_token_address,
+        token_gate_project_id, token_gate_min_balance
+      ) VALUES (
+        ${founderAddress}, ${founderUserId ?? null}, ${name ?? null}, ${description ?? null},
+        ${isPublic}, ${encrypted},
+        ${!!tokenGate}, ${tokenGate?.chainId ?? null}, ${tokenGate?.tokenAddress ?? null},
+        ${tokenGate?.projectId ?? null}, ${tokenGate?.minBalance?.toString() ?? null}
+      ) RETURNING id
+    `;
+
+    const chatId = result.rows[0].id;
+
+    // Add founder as member with full permissions
+    await client.queryObject`
+      INSERT INTO multi_chat_members (
+        chat_id, member_address, member_user_id, role,
+        can_invite, can_invoke_ai, can_manage_members
+      ) VALUES (
+        ${chatId}, ${founderAddress}, ${founderUserId ?? null}, 'founder',
+        TRUE, TRUE, TRUE
+      )
+    `;
+
+    return chatId;
+  });
+
+  // If encrypted, generate and distribute group key
+  if (encrypted) {
+    const groupKey = generateGroupKey();
+    await distributeGroupKeyToMembers(chatId, groupKey);
+  }
+
+  return (await getChatById(chatId))!;
+}
+
+/**
+ * Get chat by ID
+ */
+export async function getChatById(chatId: string): Promise<Chat | null> {
+  const db = await queryOne<DbChat>(
+    'SELECT * FROM multi_chats WHERE id = $1',
+    [chatId]
+  );
+  return db ? dbToChat(db) : null;
+}
+
+/**
+ * Get chats for a user/address
+ */
+export async function getChatsForAddress(address: string): Promise<Chat[]> {
+  const results = await query<DbChat>(
+    `SELECT mc.* FROM multi_chats mc
+     JOIN multi_chat_members mcm ON mcm.chat_id = mc.id
+     WHERE mcm.member_address = $1 AND mcm.is_active = TRUE
+     ORDER BY mc.updated_at DESC`,
+    [address]
+  );
+  return results.map(dbToChat);
+}
+
+/**
+ * Get public chats for discovery
+ */
+export async function getPublicChats(limit = 50, offset = 0): Promise<Chat[]> {
+  const results = await query<DbChat>(
+    `SELECT * FROM multi_chats
+     WHERE is_public = TRUE
+     ORDER BY created_at DESC
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return results.map(dbToChat);
+}
+
+// ============================================================================
+// Member Management
+// ============================================================================
+
+/**
+ * Get a member record
+ */
+export async function getMember(
+  chatId: string,
+  address: string
+): Promise<ChatMember | null> {
+  const db = await queryOne<DbChatMember>(
+    `SELECT * FROM multi_chat_members
+     WHERE chat_id = $1 AND member_address = $2`,
+    [chatId, address]
+  );
+  return db ? dbToMember(db) : null;
+}
+
+/**
+ * Get all active members of a chat
+ */
+export async function getChatMembers(chatId: string): Promise<ChatMember[]> {
+  const results = await query<DbChatMember>(
+    `SELECT * FROM multi_chat_members
+     WHERE chat_id = $1 AND is_active = TRUE
+     ORDER BY joined_at ASC`,
+    [chatId]
+  );
+  return results.map(dbToMember);
+}
+
+/**
+ * Check if address can perform an action
+ */
+export async function checkPermission(
+  chatId: string,
+  address: string,
+  action: 'read' | 'write' | 'invite' | 'invoke_ai' | 'manage_members'
+): Promise<boolean> {
+  const member = await getMember(chatId, address);
+  if (!member || !member.isActive) {
+    // Check if chat is public for read access
+    if (action === 'read') {
+      const chat = await getChatById(chatId);
+      return chat?.isPublic ?? false;
+    }
+    return false;
+  }
+
+  switch (action) {
+    case 'read':
+    case 'write':
+      return true; // All members can read/write
+    case 'invite':
+      return member.canInvite;
+    case 'invoke_ai':
+      return member.canInvokeAi;
+    case 'manage_members':
+      return member.canManageMembers;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Add a member to chat
+ */
+export async function addMember(
+  chatId: string,
+  inviterAddress: string,
+  newMemberAddress: string,
+  newMemberUserId?: string,
+  role: ChatRole = 'member'
+): Promise<ChatMember> {
+  // Check inviter permission
+  const canInvite = await checkPermission(chatId, inviterAddress, 'invite');
+  if (!canInvite) {
+    throw new Error('Not authorized to invite members');
+  }
+
+  // Check token gate
+  const chat = await getChatById(chatId);
+  if (!chat) throw new Error('Chat not found');
+
+  if (chat.tokenGate?.enabled) {
+    const hasBalance = await verifyTokenBalance(
+      newMemberAddress,
+      chat.tokenGate
+    );
+    if (!hasBalance) {
+      throw new Error('Insufficient token balance to join chat');
+    }
+  }
+
+  // Check if already a member
+  const existing = await getMember(chatId, newMemberAddress);
+  if (existing?.isActive) {
+    throw new Error('Already a member');
+  }
+
+  // Get public key for new member if they're a managed wallet user
+  let publicKey: string | undefined;
+  if (newMemberUserId) {
+    const keypair = await getOrCreateUserKeypair(newMemberUserId);
+    publicKey = keypair.publicKey;
+  }
+
+  // Determine permissions based on role
+  const permissions = {
+    founder: { canInvite: true, canInvokeAi: true, canManageMembers: true },
+    admin: { canInvite: true, canInvokeAi: true, canManageMembers: true },
+    member: { canInvite: false, canInvokeAi: true, canManageMembers: false },
+  }[role];
+
+  if (existing) {
+    // Reactivate existing member
+    await execute(
+      `UPDATE multi_chat_members
+       SET is_active = TRUE, role = $1, can_invite = $2, can_invoke_ai = $3,
+           can_manage_members = $4, public_key = $5, left_at = NULL
+       WHERE chat_id = $6 AND member_address = $7`,
+      [
+        role,
+        permissions.canInvite,
+        permissions.canInvokeAi,
+        permissions.canManageMembers,
+        publicKey ?? null,
+        chatId,
+        newMemberAddress,
+      ]
+    );
+  } else {
+    // Insert new member
+    await execute(
+      `INSERT INTO multi_chat_members (
+         chat_id, member_address, member_user_id, role,
+         can_invite, can_invoke_ai, can_manage_members, public_key
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        chatId,
+        newMemberAddress,
+        newMemberUserId ?? null,
+        role,
+        permissions.canInvite,
+        permissions.canInvokeAi,
+        permissions.canManageMembers,
+        publicKey ?? null,
+      ]
+    );
+  }
+
+  // If chat is encrypted, distribute group key to new member
+  if (chat.encrypted && publicKey) {
+    const groupKey = generateGroupKey(); // Get current key
+    // In a real implementation, we'd retrieve the current key
+    await distributeGroupKeyToMembers(chatId, groupKey);
+  }
+
+  // Broadcast member joined
+  broadcastMemberJoined(chatId, newMemberAddress, role);
+
+  return (await getMember(chatId, newMemberAddress))!;
+}
+
+/**
+ * Add a member via invite link (no inviter permission check)
+ */
+export async function addMemberViaInvite(
+  chatId: string,
+  params: {
+    address: string;
+    userId?: string;
+    role: ChatRole;
+    canSendMessages?: boolean;
+    canInviteOthers?: boolean;
+  }
+): Promise<ChatMember> {
+  const { address, userId, role, canSendMessages = true, canInviteOthers = false } = params;
+
+  // Check if already a member
+  const existing = await getMember(chatId, address);
+  if (existing?.isActive) {
+    throw new Error('Already a member');
+  }
+
+  // Check token gate
+  const chat = await getChatById(chatId);
+  if (!chat) throw new Error('Chat not found');
+
+  if (chat.tokenGate?.enabled) {
+    const hasBalance = await verifyTokenBalance(address, chat.tokenGate);
+    if (!hasBalance) {
+      throw new Error('Insufficient token balance to join chat');
+    }
+  }
+
+  // Get public key for new member if they're a managed wallet user
+  let publicKey: string | undefined;
+  if (userId) {
+    const keypair = await getOrCreateUserKeypair(userId);
+    publicKey = keypair.publicKey;
+  }
+
+  // Base permissions from role, but override with invite-specific permissions
+  const basePermissions = {
+    founder: { canInvite: true, canInvokeAi: true, canManageMembers: true },
+    admin: { canInvite: true, canInvokeAi: true, canManageMembers: true },
+    member: { canInvite: false, canInvokeAi: true, canManageMembers: false },
+  }[role];
+
+  const permissions = {
+    canInvite: canInviteOthers ?? basePermissions.canInvite,
+    canInvokeAi: basePermissions.canInvokeAi,
+    canManageMembers: role === 'admin' || role === 'founder' ? basePermissions.canManageMembers : false,
+  };
+
+  if (existing) {
+    // Reactivate existing member
+    await execute(
+      `UPDATE multi_chat_members
+       SET is_active = TRUE, role = $1, can_invite = $2, can_invoke_ai = $3,
+           can_manage_members = $4, public_key = $5, left_at = NULL
+       WHERE chat_id = $6 AND member_address = $7`,
+      [
+        role,
+        permissions.canInvite,
+        permissions.canInvokeAi,
+        permissions.canManageMembers,
+        publicKey ?? null,
+        chatId,
+        address,
+      ]
+    );
+  } else {
+    // Insert new member
+    await execute(
+      `INSERT INTO multi_chat_members (
+         chat_id, member_address, member_user_id, role,
+         can_invite, can_invoke_ai, can_manage_members, public_key
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        chatId,
+        address,
+        userId ?? null,
+        role,
+        permissions.canInvite,
+        permissions.canInvokeAi,
+        permissions.canManageMembers,
+        publicKey ?? null,
+      ]
+    );
+  }
+
+  // If chat is encrypted, distribute group key to new member
+  if (chat.encrypted && publicKey) {
+    const groupKey = generateGroupKey();
+    await distributeGroupKeyToMembers(chatId, groupKey);
+  }
+
+  // Broadcast member joined
+  broadcastMemberJoined(chatId, address, role);
+
+  return (await getMember(chatId, address))!;
+}
+
+/**
+ * Remove a member from chat
+ */
+export async function removeMember(
+  chatId: string,
+  removerAddress: string,
+  targetAddress: string
+): Promise<void> {
+  // Check permission (can manage members, or removing self)
+  if (removerAddress !== targetAddress) {
+    const canManage = await checkPermission(chatId, removerAddress, 'manage_members');
+    if (!canManage) {
+      throw new Error('Not authorized to remove members');
+    }
+  }
+
+  // Can't remove founder
+  const chat = await getChatById(chatId);
+  if (chat?.founderAddress === targetAddress && removerAddress !== targetAddress) {
+    throw new Error('Cannot remove the founder');
+  }
+
+  await execute(
+    `UPDATE multi_chat_members
+     SET is_active = FALSE, left_at = NOW()
+     WHERE chat_id = $1 AND member_address = $2`,
+    [chatId, targetAddress]
+  );
+
+  // Rotate group key if chat is encrypted
+  if (chat?.encrypted) {
+    const newKey = await rotateGroupKey(chatId);
+    await distributeGroupKeyToMembers(chatId, newKey);
+    broadcastKeyRotation(chatId, newKey.version);
+  }
+
+  broadcastMemberLeft(chatId, targetAddress);
+}
+
+/**
+ * Update member permissions
+ */
+export async function updateMemberPermissions(
+  chatId: string,
+  updaterAddress: string,
+  targetAddress: string,
+  permissions: Partial<{
+    role: ChatRole;
+    canInvite: boolean;
+    canInvokeAi: boolean;
+    canManageMembers: boolean;
+  }>
+): Promise<ChatMember> {
+  // Only founder can change roles, admins can change other permissions
+  const updaterMember = await getMember(chatId, updaterAddress);
+  if (!updaterMember) throw new Error('Not a member');
+
+  if (permissions.role && updaterMember.role !== 'founder') {
+    throw new Error('Only founder can change roles');
+  }
+
+  if (!updaterMember.canManageMembers) {
+    throw new Error('Not authorized to manage members');
+  }
+
+  // Build update query
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  let paramIndex = 1;
+
+  if (permissions.role !== undefined) {
+    updates.push(`role = $${paramIndex++}`);
+    values.push(permissions.role);
+  }
+  if (permissions.canInvite !== undefined) {
+    updates.push(`can_invite = $${paramIndex++}`);
+    values.push(permissions.canInvite);
+  }
+  if (permissions.canInvokeAi !== undefined) {
+    updates.push(`can_invoke_ai = $${paramIndex++}`);
+    values.push(permissions.canInvokeAi);
+  }
+  if (permissions.canManageMembers !== undefined) {
+    updates.push(`can_manage_members = $${paramIndex++}`);
+    values.push(permissions.canManageMembers);
+  }
+
+  if (updates.length === 0) {
+    return (await getMember(chatId, targetAddress))!;
+  }
+
+  values.push(chatId, targetAddress);
+  await execute(
+    `UPDATE multi_chat_members SET ${updates.join(', ')}
+     WHERE chat_id = $${paramIndex++} AND member_address = $${paramIndex}`,
+    values
+  );
+
+  return (await getMember(chatId, targetAddress))!;
+}
+
+// ============================================================================
+// Messages
+// ============================================================================
+
+/**
+ * Send a message to a chat
+ */
+export async function sendMessage(params: SendMessageParams): Promise<ChatMessage> {
+  const { chatId, senderAddress, senderUserId, content, signature, replyToId } = params;
+
+  // Check permission
+  const canWrite = await checkPermission(chatId, senderAddress, 'write');
+  if (!canWrite) {
+    throw new Error('Not authorized to send messages');
+  }
+
+  const chat = await getChatById(chatId);
+  if (!chat) throw new Error('Chat not found');
+
+  let finalContent = content;
+  let isEncrypted = false;
+
+  // Encrypt if chat uses encryption
+  if (chat.encrypted) {
+    // Get group key for sender
+    const member = await getMember(chatId, senderAddress);
+    if (member?.publicKey) {
+      // For managed wallets, we can encrypt server-side
+      // In production, encryption should happen client-side
+      const groupKey = await getGroupKeyForMember(
+        chatId,
+        senderAddress,
+        '' // Private key - in production this wouldn't be available server-side
+      );
+      if (groupKey) {
+        finalContent = await encryptMessage(content, groupKey.key);
+        isEncrypted = true;
+      }
+    }
+  }
+
+  // Insert message
+  const result = await query<{ id: string }>(
+    `INSERT INTO multi_chat_messages (
+       chat_id, sender_address, sender_user_id, role, content,
+       is_encrypted, signature, reply_to_id
+     ) VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
+     RETURNING id`,
+    [chatId, senderAddress, senderUserId ?? null, finalContent, isEncrypted, signature ?? null, replyToId ?? null]
+  );
+
+  const messageId = result[0].id;
+
+  // Update chat's updated_at
+  await execute('UPDATE multi_chats SET updated_at = NOW() WHERE id = $1', [chatId]);
+
+  // Broadcast to connected clients (user messages)
+  broadcastChatMessage(chatId, messageId, finalContent, senderAddress, isEncrypted, 'user');
+
+  return (await getMessageById(messageId))!;
+}
+
+/**
+ * Import a message during chat migration (bypasses permission checks)
+ * Used when migrating local chats to persistent storage
+ */
+export async function importMessage(params: ImportMessageParams): Promise<ChatMessage> {
+  const { chatId, senderAddress, senderUserId, role, content } = params;
+
+  const chat = await getChatById(chatId);
+  if (!chat) throw new Error('Chat not found');
+
+  // Insert message directly without permission checks
+  const result = await query<{ id: string }>(
+    `INSERT INTO multi_chat_messages (
+       chat_id, sender_address, sender_user_id, role, content,
+       is_encrypted, signature, reply_to_id
+     ) VALUES ($1, $2, $3, $4, $5, FALSE, NULL, NULL)
+     RETURNING id`,
+    [chatId, senderAddress, senderUserId ?? null, role, content]
+  );
+
+  const messageId = result[0].id;
+
+  // Update chat's updated_at
+  await execute('UPDATE multi_chats SET updated_at = NOW() WHERE id = $1', [chatId]);
+
+  return (await getMessageById(messageId))!;
+}
+
+/**
+ * Get message by ID
+ */
+export async function getMessageById(messageId: string): Promise<ChatMessage | null> {
+  const db = await queryOne<DbChatMessage>(
+    'SELECT * FROM multi_chat_messages WHERE id = $1',
+    [messageId]
+  );
+  return db ? dbToMessage(db) : null;
+}
+
+/**
+ * Get messages for a chat
+ */
+export async function getChatMessages(
+  chatId: string,
+  limit = 100,
+  beforeId?: string
+): Promise<ChatMessage[]> {
+  let sql = `SELECT * FROM multi_chat_messages
+             WHERE chat_id = $1 AND deleted_at IS NULL`;
+  const params: unknown[] = [chatId];
+
+  if (beforeId) {
+    sql += ` AND created_at < (SELECT created_at FROM multi_chat_messages WHERE id = $2)`;
+    params.push(beforeId);
+  }
+
+  sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+  params.push(limit);
+
+  const results = await query<DbChatMessage>(sql, params);
+  return results.map(dbToMessage).reverse(); // Return in chronological order
+}
+
+/**
+ * Soft delete a message
+ */
+export async function deleteMessage(
+  messageId: string,
+  requesterAddress: string
+): Promise<void> {
+  const message = await getMessageById(messageId);
+  if (!message) throw new Error('Message not found');
+
+  // Only sender or admins can delete
+  if (message.senderAddress !== requesterAddress) {
+    const canManage = await checkPermission(message.chatId, requesterAddress, 'manage_members');
+    if (!canManage) {
+      throw new Error('Not authorized to delete this message');
+    }
+  }
+
+  await execute(
+    'UPDATE multi_chat_messages SET deleted_at = NOW() WHERE id = $1',
+    [messageId]
+  );
+}
+
+// ============================================================================
+// Token Gating
+// ============================================================================
+
+// Chain configs for token balance checks
+const chainConfigs = {
+  1: { chain: mainnet, rpc: 'https://eth.llamarpc.com' },
+  10: { chain: optimism, rpc: 'https://optimism.llamarpc.com' },
+  8453: { chain: base, rpc: 'https://base.llamarpc.com' },
+  42161: { chain: arbitrum, rpc: 'https://arbitrum.llamarpc.com' },
+};
+
+const ERC20_ABI = [
+  {
+    name: 'balanceOf',
+    type: 'function',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+] as const;
+
+/**
+ * Verify token balance for gated chat access
+ */
+export async function verifyTokenBalance(
+  address: string,
+  tokenGate: TokenGate
+): Promise<boolean> {
+  const config = chainConfigs[tokenGate.chainId as keyof typeof chainConfigs];
+  if (!config) {
+    console.warn(`Unknown chain ID: ${tokenGate.chainId}`);
+    return false;
+  }
+
+  const client = createPublicClient({
+    chain: config.chain,
+    transport: http(config.rpc),
+  });
+
+  try {
+    const balance = await client.readContract({
+      address: tokenGate.tokenAddress as Address,
+      abi: ERC20_ABI,
+      functionName: 'balanceOf',
+      args: [address as Address],
+    });
+
+    return balance >= tokenGate.minBalance;
+  } catch (error) {
+    console.error('Failed to check token balance:', error);
+    return false;
+  }
+}
+
+// ============================================================================
+// AI Billing
+// ============================================================================
+
+const AI_COST_PER_REQUEST = parseUnits('0.001', 18); // 0.001 ETH per AI invocation (example)
+
+/**
+ * Check if chat has sufficient AI balance
+ */
+export async function hasAiBalance(chatId: string): Promise<boolean> {
+  const chat = await getChatById(chatId);
+  if (!chat) return false;
+  return chat.aiBalanceWei >= AI_COST_PER_REQUEST;
+}
+
+/**
+ * Deduct AI cost from chat balance
+ */
+export async function deductAiCost(
+  chatId: string,
+  messageId: string,
+  model: string,
+  tokensUsed: number
+): Promise<bigint> {
+  const cost = AI_COST_PER_REQUEST; // Could be dynamic based on tokens
+
+  await transaction(async (client) => {
+    // Deduct from balance
+    await client.queryObject`
+      UPDATE multi_chats
+      SET ai_balance_wei = (ai_balance_wei::numeric - ${cost.toString()})::text,
+          ai_total_spent_wei = (ai_total_spent_wei::numeric + ${cost.toString()})::text
+      WHERE id = ${chatId}
+    `;
+
+    // Record billing
+    await client.queryObject`
+      INSERT INTO ai_billing (chat_id, type, amount_wei, message_id, model, tokens_used)
+      VALUES (${chatId}, 'usage', ${cost.toString()}, ${messageId}, ${model}, ${tokensUsed})
+    `;
+  });
+
+  return cost;
+}
+
+/**
+ * Add AI balance to chat (after payment)
+ */
+export async function addAiBalance(
+  chatId: string,
+  amountWei: bigint,
+  payerAddress: string,
+  txHash?: string,
+  projectId?: number,
+  chainId?: number
+): Promise<void> {
+  await transaction(async (client) => {
+    // Add to balance
+    await client.queryObject`
+      UPDATE multi_chats
+      SET ai_balance_wei = (ai_balance_wei::numeric + ${amountWei.toString()})::text
+      WHERE id = ${chatId}
+    `;
+
+    // Record deposit
+    await client.queryObject`
+      INSERT INTO ai_billing (chat_id, type, amount_wei, payer_address, tx_hash, project_id, chain_id)
+      VALUES (${chatId}, 'deposit', ${amountWei.toString()}, ${payerAddress}, ${txHash ?? null}, ${projectId ?? null}, ${chainId ?? null})
+    `;
+  });
+}
+
+// ============================================================================
+// Feedback
+// ============================================================================
+
+export type JuicyRating = 'wow' | 'great' | 'meh' | 'bad';
+
+/**
+ * Submit feedback for a chat
+ */
+export async function submitFeedback(
+  chatId: string,
+  userAddress: string,
+  userId: string | undefined,
+  rating: JuicyRating,
+  customFeedback?: string
+): Promise<void> {
+  await execute(
+    `INSERT INTO juicy_feedback (chat_id, user_address, user_id, rating, custom_feedback)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (chat_id, user_address) DO UPDATE
+     SET rating = $4, custom_feedback = $5`,
+    [chatId, userAddress, userId ?? null, rating, customFeedback ?? null]
+  );
+}

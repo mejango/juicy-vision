@@ -1,0 +1,967 @@
+/**
+ * Multi-Person Chat API Routes
+ *
+ * Supports both:
+ * - Authenticated users (JWT token) with managed wallets
+ * - External wallets (SIWE session) for self-custody users
+ */
+
+import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
+import { upgradeWebSocket } from 'hono/deno';
+import { requireAuth, optionalAuth } from '../middleware/auth.ts';
+import {
+  createChat,
+  getChatById,
+  getChatsForAddress,
+  getPublicChats,
+  getChatMembers,
+  getMember,
+  addMember,
+  removeMember,
+  updateMemberPermissions,
+  sendMessage,
+  getChatMessages,
+  deleteMessage,
+  checkPermission,
+  submitFeedback,
+  type CreateChatParams,
+  type JuicyRating,
+} from '../services/multiChat.ts';
+import {
+  getAiBalanceStatus,
+  canInvokeAi,
+  generateSqueezePayment,
+  encodePayCalldata,
+  confirmPayment,
+  getBillingHistory,
+  getSqueezePromptMessage,
+  AI_PRICING,
+  SUPPORTED_CHAINS,
+} from '../services/aiBilling.ts';
+import {
+  archiveChat,
+  fetchArchivedChat,
+  getLatestArchiveCid,
+} from '../services/ipfs.ts';
+import {
+  registerConnection,
+  removeConnection,
+  handleWsMessage,
+  getOnlineMembers,
+  type WsClient,
+} from '../services/websocket.ts';
+import { queryOne, execute } from '../db/index.ts';
+import { getConfig } from '../utils/config.ts';
+
+const multiChatRouter = new Hono();
+
+// ============================================================================
+// Middleware - Wallet Session Auth
+// ============================================================================
+
+interface WalletSession {
+  address: string;
+  userId?: string; // Linked user ID if managed wallet
+  sessionId?: string; // Anonymous session ID
+  isAnonymous?: boolean;
+}
+
+declare module 'hono' {
+  interface ContextVariableMap {
+    walletSession?: WalletSession;
+  }
+}
+
+/**
+ * Extract wallet session from header or query param
+ */
+async function extractWalletSession(
+  authHeader: string | undefined,
+  sessionToken: string | undefined
+): Promise<WalletSession | null> {
+  const token = sessionToken || authHeader?.replace('Bearer ', '');
+  if (!token) return null;
+
+  // First try JWT token validation (for managed wallets)
+  const { validateSession } = await import('../services/auth.ts');
+  const { getCustodialAddress } = await import('../services/wallet.ts');
+
+  const jwtResult = await validateSession(token);
+  if (jwtResult) {
+    const address = await getCustodialAddress(jwtResult.user.custodialAddressIndex ?? 0);
+    return {
+      address,
+      userId: jwtResult.user.id,
+    };
+  }
+
+  // Try SIWE session token (for self-custody wallets)
+  const session = await queryOne<{
+    wallet_address: string;
+    expires_at: Date;
+  }>(
+    `SELECT wallet_address, expires_at FROM wallet_sessions
+     WHERE session_token = $1 AND expires_at > NOW()`,
+    [token]
+  );
+
+  if (session) {
+    // Check if this wallet is linked to a user
+    const user = await queryOne<{ id: string }>(
+      `SELECT u.id FROM users u
+       JOIN multi_chat_members mcm ON mcm.member_user_id = u.id
+       WHERE mcm.member_address = $1
+       LIMIT 1`,
+      [session.wallet_address]
+    );
+
+    return {
+      address: session.wallet_address,
+      userId: user?.id,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Middleware that requires wallet session OR user auth OR anonymous session
+ * Anonymous sessions use X-Session-ID header and get a pseudo-address
+ */
+async function requireWalletOrAuth(c: any, next: any) {
+  // First try JWT auth
+  const authHeader = c.req.header('Authorization');
+  const user = c.get('user');
+
+  if (user) {
+    // User authenticated - get their custodial address
+    const { getCustodialAddress } = await import('../services/wallet.ts');
+    const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
+    c.set('walletSession', { address, userId: user.id } as WalletSession);
+    return next();
+  }
+
+  // Try wallet session
+  const sessionToken = c.req.query('session') || c.req.header('X-Wallet-Session');
+  const walletSession = await extractWalletSession(authHeader, sessionToken);
+
+  if (walletSession) {
+    c.set('walletSession', walletSession);
+    return next();
+  }
+
+  // Try anonymous session (X-Session-ID header)
+  const sessionId = c.req.header('X-Session-ID');
+  if (sessionId && sessionId.startsWith('ses_')) {
+    // Create a pseudo-address from the session ID for anonymous users
+    // This allows them to own chats and create invites
+    const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+    c.set('walletSession', {
+      address: pseudoAddress,
+      sessionId,
+      isAnonymous: true,
+    } as WalletSession);
+    return next();
+  }
+
+  return c.json({ success: false, error: 'Authentication required' }, 401);
+}
+
+// ============================================================================
+// Chat CRUD Routes
+// ============================================================================
+
+const CreateChatSchema = z.object({
+  name: z.string().max(255).optional(),
+  description: z.string().max(2000).optional(),
+  isPublic: z.boolean().default(true),
+  encrypted: z.boolean().default(false),
+  tokenGate: z.object({
+    chainId: z.number(),
+    tokenAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    projectId: z.number().optional(),
+    minBalance: z.string(), // BigInt as string
+  }).optional(),
+});
+
+// POST /multi-chat - Create a new chat
+multiChatRouter.post(
+  '/',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', CreateChatSchema),
+  async (c) => {
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      const chat = await createChat({
+        founderAddress: walletSession.address,
+        founderUserId: walletSession.userId,
+        name: body.name,
+        description: body.description,
+        isPublic: body.isPublic,
+        encrypted: body.encrypted,
+        tokenGate: body.tokenGate ? {
+          chainId: body.tokenGate.chainId,
+          tokenAddress: body.tokenGate.tokenAddress,
+          projectId: body.tokenGate.projectId,
+          minBalance: BigInt(body.tokenGate.minBalance),
+        } : undefined,
+      });
+
+      return c.json({ success: true, data: serializeChat(chat) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create chat';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// GET /multi-chat - List user's chats
+multiChatRouter.get(
+  '/',
+  optionalAuth,
+  requireWalletOrAuth,
+  async (c) => {
+    const walletSession = c.get('walletSession')!;
+    const chats = await getChatsForAddress(walletSession.address);
+    return c.json({ success: true, data: chats.map(serializeChat) });
+  }
+);
+
+// GET /multi-chat/public - Discover public chats
+multiChatRouter.get('/public', async (c) => {
+  const limit = parseInt(c.req.query('limit') || '50', 10);
+  const offset = parseInt(c.req.query('offset') || '0', 10);
+  const chats = await getPublicChats(limit, offset);
+  return c.json({ success: true, data: chats.map(serializeChat) });
+});
+
+// GET /multi-chat/:chatId - Get chat details
+multiChatRouter.get('/:chatId', optionalAuth, async (c) => {
+  const chatId = c.req.param('chatId');
+  const chat = await getChatById(chatId);
+
+  if (!chat) {
+    return c.json({ success: false, error: 'Chat not found' }, 404);
+  }
+
+  // Try to get wallet session (including anonymous)
+  let walletSession = c.get('walletSession');
+
+  // If no wallet session from optionalAuth, check for anonymous session
+  if (!walletSession) {
+    const sessionId = c.req.header('X-Session-ID');
+    if (sessionId && sessionId.startsWith('ses_')) {
+      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+      walletSession = {
+        address: pseudoAddress,
+        sessionId,
+        isAnonymous: true,
+      };
+    }
+  }
+
+  // Check read permission for private chats
+  if (!chat.isPublic) {
+    if (!walletSession) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+    const canRead = await checkPermission(chatId, walletSession.address, 'read');
+    if (!canRead) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+  }
+
+  const members = await getChatMembers(chatId);
+  const onlineMembers = getOnlineMembers(chatId);
+
+  return c.json({
+    success: true,
+    data: {
+      ...serializeChat(chat),
+      members: members.map(serializeMember),
+      onlineMembers,
+    },
+  });
+});
+
+// ============================================================================
+// Member Management Routes
+// ============================================================================
+
+// GET /multi-chat/:chatId/members - Get members
+multiChatRouter.get(
+  '/:chatId/members',
+  optionalAuth,
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const chat = await getChatById(chatId);
+
+    if (!chat) {
+      return c.json({ success: false, error: 'Chat not found' }, 404);
+    }
+
+    // Try to get wallet session (including anonymous)
+    let walletSession = c.get('walletSession');
+    if (!walletSession) {
+      const sessionId = c.req.header('X-Session-ID');
+      if (sessionId && sessionId.startsWith('ses_')) {
+        const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+        walletSession = {
+          address: pseudoAddress,
+          sessionId,
+          isAnonymous: true,
+        };
+      }
+    }
+
+    // Check read permission for private chats
+    if (!chat.isPublic && walletSession) {
+      const canRead = await checkPermission(chatId, walletSession.address, 'read');
+      if (!canRead) {
+        return c.json({ success: false, error: 'Access denied' }, 403);
+      }
+    } else if (!chat.isPublic) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+
+    const members = await getChatMembers(chatId);
+    return c.json({ success: true, data: members.map(serializeMember) });
+  }
+);
+
+const AddMemberSchema = z.object({
+  address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  role: z.enum(['admin', 'member']).default('member'),
+});
+
+// POST /multi-chat/:chatId/members - Add member
+multiChatRouter.post(
+  '/:chatId/members',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', AddMemberSchema),
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      const member = await addMember(
+        chatId,
+        walletSession.address,
+        body.address,
+        undefined, // userId will be looked up if they register
+        body.role
+      );
+      return c.json({ success: true, data: serializeMember(member) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to add member';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// DELETE /multi-chat/:chatId/members/:address - Remove member
+multiChatRouter.delete(
+  '/:chatId/members/:address',
+  optionalAuth,
+  requireWalletOrAuth,
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const targetAddress = c.req.param('address');
+    const walletSession = c.get('walletSession')!;
+
+    try {
+      await removeMember(chatId, walletSession.address, targetAddress);
+      return c.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to remove member';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// PATCH /multi-chat/:chatId/members/:address - Update member permissions
+const UpdatePermissionsSchema = z.object({
+  role: z.enum(['admin', 'member']).optional(),
+  canInvite: z.boolean().optional(),
+  canInvokeAi: z.boolean().optional(),
+  canManageMembers: z.boolean().optional(),
+});
+
+multiChatRouter.patch(
+  '/:chatId/members/:address',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', UpdatePermissionsSchema),
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const targetAddress = c.req.param('address');
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      const member = await updateMemberPermissions(
+        chatId,
+        walletSession.address,
+        targetAddress,
+        body
+      );
+      return c.json({ success: true, data: serializeMember(member) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update permissions';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// ============================================================================
+// Message Routes
+// ============================================================================
+
+const SendMessageSchema = z.object({
+  content: z.string().min(1).max(10000),
+  signature: z.string().optional(), // Required for external wallets
+  replyToId: z.string().uuid().optional(),
+});
+
+// POST /multi-chat/:chatId/messages - Send message
+multiChatRouter.post(
+  '/:chatId/messages',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', SendMessageSchema),
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      const message = await sendMessage({
+        chatId,
+        senderAddress: walletSession.address,
+        senderUserId: walletSession.userId,
+        content: body.content,
+        signature: body.signature,
+        replyToId: body.replyToId,
+      });
+      return c.json({ success: true, data: serializeMessage(message) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to send message';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// GET /multi-chat/:chatId/messages - Get messages
+multiChatRouter.get('/:chatId/messages', optionalAuth, async (c) => {
+  const chatId = c.req.param('chatId');
+  const limit = parseInt(c.req.query('limit') || '100', 10);
+  const beforeId = c.req.query('before');
+
+  // Check permission
+  const chat = await getChatById(chatId);
+  if (!chat) {
+    return c.json({ success: false, error: 'Chat not found' }, 404);
+  }
+
+  // Try to get wallet session (including anonymous)
+  let walletSession = c.get('walletSession');
+  if (!walletSession) {
+    const sessionId = c.req.header('X-Session-ID');
+    if (sessionId && sessionId.startsWith('ses_')) {
+      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+      walletSession = {
+        address: pseudoAddress,
+        sessionId,
+        isAnonymous: true,
+      };
+    }
+  }
+
+  if (!chat.isPublic && walletSession) {
+    const canRead = await checkPermission(chatId, walletSession.address, 'read');
+    if (!canRead) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+  } else if (!chat.isPublic) {
+    return c.json({ success: false, error: 'Access denied' }, 403);
+  }
+
+  const messages = await getChatMessages(chatId, limit, beforeId);
+  return c.json({ success: true, data: messages.map(serializeMessage) });
+});
+
+// DELETE /multi-chat/:chatId/messages/:messageId - Delete message
+multiChatRouter.delete(
+  '/:chatId/messages/:messageId',
+  optionalAuth,
+  requireWalletOrAuth,
+  async (c) => {
+    const messageId = c.req.param('messageId');
+    const walletSession = c.get('walletSession')!;
+
+    try {
+      await deleteMessage(messageId, walletSession.address);
+      return c.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete message';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// ============================================================================
+// AI Billing Routes
+// ============================================================================
+
+// GET /multi-chat/:chatId/ai/balance - Get AI balance
+multiChatRouter.get(
+  '/:chatId/ai/balance',
+  optionalAuth,
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const balance = await getAiBalanceStatus(chatId);
+
+    if (!balance) {
+      return c.json({ success: false, error: 'Chat not found' }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        ...balance,
+        balanceWei: balance.balanceWei.toString(),
+        totalSpentWei: balance.totalSpentWei.toString(),
+        message: getSqueezePromptMessage(balance) || undefined,
+      },
+    });
+  }
+);
+
+// GET /multi-chat/:chatId/ai/can-invoke - Check if AI can be invoked
+multiChatRouter.get(
+  '/:chatId/ai/can-invoke',
+  optionalAuth,
+  requireWalletOrAuth,
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const walletSession = c.get('walletSession')!;
+
+    // Check member permission
+    const canInvokePermission = await checkPermission(chatId, walletSession.address, 'invoke_ai');
+    if (!canInvokePermission) {
+      return c.json({
+        success: true,
+        data: { allowed: false, reason: 'You do not have permission to invoke AI in this chat' },
+      });
+    }
+
+    // Check balance
+    const result = await canInvokeAi(chatId);
+    return c.json({
+      success: true,
+      data: {
+        ...result,
+        balance: result.balance ? {
+          ...result.balance,
+          balanceWei: result.balance.balanceWei.toString(),
+          totalSpentWei: result.balance.totalSpentWei.toString(),
+        } : undefined,
+      },
+    });
+  }
+);
+
+// GET /multi-chat/:chatId/ai/squeeze - Get payment data for "squeezing" the bot
+const SqueezeSchema = z.object({
+  chainId: z.coerce.number(),
+  amount: z.string().optional(), // Amount in ETH
+});
+
+multiChatRouter.get(
+  '/:chatId/ai/squeeze',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('query', SqueezeSchema),
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const walletSession = c.get('walletSession')!;
+    const { chainId, amount } = c.req.valid('query');
+
+    if (!SUPPORTED_CHAINS[chainId as keyof typeof SUPPORTED_CHAINS]) {
+      return c.json({ success: false, error: 'Unsupported chain' }, 400);
+    }
+
+    const amountWei = amount
+      ? BigInt(Math.floor(parseFloat(amount) * 1e18))
+      : AI_PRICING.recommendedDeposit;
+
+    const payment = generateSqueezePayment(
+      chatId,
+      chainId,
+      amountWei,
+      walletSession.address as `0x${string}`
+    );
+
+    const calldata = encodePayCalldata(payment);
+
+    return c.json({
+      success: true,
+      data: {
+        payment: {
+          ...payment,
+          amountWei: payment.amountWei.toString(),
+        },
+        transaction: {
+          to: calldata.to,
+          value: calldata.value.toString(),
+          data: calldata.data,
+        },
+        pricing: {
+          costPerRequest: AI_PRICING.costPerRequest.toString(),
+          minDeposit: AI_PRICING.minDeposit.toString(),
+          recommendedDeposit: AI_PRICING.recommendedDeposit.toString(),
+          estimatedRequests: Number(amountWei / AI_PRICING.costPerRequest),
+        },
+      },
+    });
+  }
+);
+
+// POST /multi-chat/:chatId/ai/confirm-payment - Confirm payment
+const ConfirmPaymentSchema = z.object({
+  txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+  chainId: z.number(),
+  amountWei: z.string(),
+});
+
+multiChatRouter.post(
+  '/:chatId/ai/confirm-payment',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', ConfirmPaymentSchema),
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      await confirmPayment({
+        chatId,
+        txHash: body.txHash,
+        chainId: body.chainId,
+        amountWei: BigInt(body.amountWei),
+        payerAddress: walletSession.address,
+        projectId: 1, // NANA
+      });
+
+      const balance = await getAiBalanceStatus(chatId);
+      return c.json({
+        success: true,
+        data: {
+          newBalance: balance?.balanceWei.toString(),
+          estimatedRequestsRemaining: balance?.estimatedRequestsRemaining,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to confirm payment';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// GET /multi-chat/:chatId/ai/history - Get billing history
+multiChatRouter.get(
+  '/:chatId/ai/history',
+  optionalAuth,
+  requireWalletOrAuth,
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const limit = parseInt(c.req.query('limit') || '50', 10);
+    const history = await getBillingHistory(chatId, limit);
+
+    return c.json({
+      success: true,
+      data: history.map((r) => ({
+        ...r,
+        amountWei: r.amountWei.toString(),
+      })),
+    });
+  }
+);
+
+// POST /multi-chat/:chatId/ai/invoke - Invoke AI to respond to the chat (streaming)
+const InvokeAiSchema = z.object({
+  prompt: z.string().min(1).max(10000),
+});
+
+multiChatRouter.post(
+  '/:chatId/ai/invoke',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', InvokeAiSchema),
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      // Check if user can invoke AI
+      const canInvokePermission = await checkPermission(chatId, walletSession.address, 'invoke_ai');
+      if (!canInvokePermission) {
+        return c.json({ success: false, error: 'You do not have permission to invoke AI in this chat' }, 403);
+      }
+
+      // Get previous messages for context
+      const previousMessages = await getChatMessages(chatId, 50);
+      const chatHistory = previousMessages.map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+
+      // Add the new prompt to history
+      chatHistory.push({ role: 'user', content: body.prompt });
+
+      // Import services
+      const { streamMessage } = await import('../services/claude.ts');
+      const { importMessage } = await import('../services/multiChat.ts');
+      const { streamAiToken, broadcastChatMessage } = await import('../services/websocket.ts');
+
+      // Generate a message ID upfront for streaming
+      const messageId = crypto.randomUUID();
+      const assistantAddress = '0x0000000000000000000000000000000000000000';
+
+      // Stream Claude response and broadcast tokens via WebSocket
+      let fullContent = '';
+
+      for await (const event of streamMessage(chatId, { messages: chatHistory })) {
+        if (event.type === 'text') {
+          const token = event.data as string;
+          fullContent += token;
+          // Broadcast each token to connected clients
+          streamAiToken(chatId, messageId, token, false);
+        }
+      }
+
+      // Signal streaming is done
+      streamAiToken(chatId, messageId, '', true);
+
+      // Store the complete AI response as a message
+      const aiMessage = await importMessage({
+        chatId,
+        senderAddress: assistantAddress,
+        role: 'assistant',
+        content: fullContent,
+      });
+
+      return c.json({ success: true, data: serializeMessage(aiMessage) });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to invoke AI';
+      return c.json({ success: false, error: errorMessage }, 500);
+    }
+  }
+);
+
+// ============================================================================
+// IPFS Archival Routes
+// ============================================================================
+
+// POST /multi-chat/:chatId/archive - Archive chat to IPFS
+multiChatRouter.post(
+  '/:chatId/archive',
+  optionalAuth,
+  requireWalletOrAuth,
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const walletSession = c.get('walletSession')!;
+
+    // Only admins can archive
+    const canManage = await checkPermission(chatId, walletSession.address, 'manage_members');
+    if (!canManage) {
+      return c.json({ success: false, error: 'Only admins can archive' }, 403);
+    }
+
+    try {
+      const cid = await archiveChat(chatId);
+      return c.json({ success: true, data: { cid } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to archive';
+      return c.json({ success: false, error: message }, 500);
+    }
+  }
+);
+
+// GET /multi-chat/:chatId/archive - Get archive info
+multiChatRouter.get('/:chatId/archive', async (c) => {
+  const chatId = c.req.param('chatId');
+  const cid = await getLatestArchiveCid(chatId);
+
+  if (!cid) {
+    return c.json({ success: false, error: 'No archive available' }, 404);
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      cid,
+      gateway: `https://gateway.pinata.cloud/ipfs/${cid}`,
+    },
+  });
+});
+
+// GET /multi-chat/archive/:cid - Fetch archived chat
+multiChatRouter.get('/archive/:cid', async (c) => {
+  const cid = c.req.param('cid');
+
+  try {
+    const archive = await fetchArchivedChat(cid);
+    return c.json({ success: true, data: archive });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch archive';
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
+// ============================================================================
+// Feedback Route
+// ============================================================================
+
+const FeedbackSchema = z.object({
+  rating: z.enum(['wow', 'great', 'meh', 'bad']),
+  customFeedback: z.string().max(500).optional(),
+});
+
+// POST /multi-chat/:chatId/feedback - Submit feedback
+multiChatRouter.post(
+  '/:chatId/feedback',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', FeedbackSchema),
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      await submitFeedback(
+        chatId,
+        walletSession.address,
+        walletSession.userId,
+        body.rating as JuicyRating,
+        body.customFeedback
+      );
+      return c.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to submit feedback';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// ============================================================================
+// WebSocket Route
+// ============================================================================
+
+// Upgrade to WebSocket for real-time messaging
+multiChatRouter.get(
+  '/:chatId/ws',
+  upgradeWebSocket((c) => {
+    const chatId = c.req.param('chatId');
+    const sessionToken = c.req.query('session');
+    const sessionId = c.req.query('sessionId');
+    let client: WsClient | null = null;
+
+    return {
+      async onOpen(_event, ws) {
+        // Try token-based auth first
+        let walletSession = await extractWalletSession(undefined, sessionToken);
+
+        // Fall back to anonymous session if no token auth
+        if (!walletSession && sessionId && sessionId.startsWith('ses_')) {
+          // Create pseudo-address from session ID (same logic as requireWalletOrAuth)
+          const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+          walletSession = {
+            address: pseudoAddress,
+            sessionId,
+            isAnonymous: true,
+          };
+        }
+
+        if (!walletSession) {
+          ws.close(4001, 'Authentication required');
+          return;
+        }
+
+        // Check permission
+        const canRead = await checkPermission(chatId, walletSession.address, 'read');
+        if (!canRead) {
+          ws.close(4003, 'Access denied');
+          return;
+        }
+
+        // Register connection
+        client = {
+          socket: ws.raw as WebSocket,
+          address: walletSession.address,
+          userId: walletSession.userId,
+          chatId,
+          connectedAt: new Date(),
+        };
+
+        registerConnection(client);
+      },
+
+      onMessage(event, ws) {
+        if (!client) return;
+        handleWsMessage(client, event.data.toString());
+      },
+
+      onClose(_event, _ws) {
+        if (client) {
+          removeConnection(client);
+        }
+      },
+
+      onError(_event, _ws) {
+        if (client) {
+          removeConnection(client);
+        }
+      },
+    };
+  })
+);
+
+// ============================================================================
+// Serializers (convert BigInt to strings for JSON)
+// ============================================================================
+
+function serializeChat(chat: any) {
+  return {
+    ...chat,
+    aiBalanceWei: chat.aiBalanceWei?.toString(),
+    aiTotalSpentWei: chat.aiTotalSpentWei?.toString(),
+    tokenGate: chat.tokenGate ? {
+      ...chat.tokenGate,
+      minBalance: chat.tokenGate.minBalance?.toString(),
+    } : undefined,
+  };
+}
+
+function serializeMember(member: any) {
+  return member;
+}
+
+function serializeMessage(message: any) {
+  return {
+    ...message,
+    aiCostWei: message.aiCostWei?.toString(),
+  };
+}
+
+export { multiChatRouter };

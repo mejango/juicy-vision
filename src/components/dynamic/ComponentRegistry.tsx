@@ -1,6 +1,7 @@
 import { ParsedComponent } from '../../utils/messageParser'
 import ConnectWalletButton from './ConnectWalletButton'
 import ProjectCard from './ProjectCard'
+import NoteCard from './NoteCard'
 import TransactionStatus from './TransactionStatus'
 import TransactionPreview from './TransactionPreview'
 import CashOutForm from './CashOutForm'
@@ -9,7 +10,6 @@ import SendReservedTokensForm from './SendReservedTokensForm'
 import UseSurplusAllowanceForm from './UseSurplusAllowanceForm'
 import DeployERC20Form from './DeployERC20Form'
 import QueueRulesetForm from './QueueRulesetForm'
-import RecommendationChips from './RecommendationChips'
 import PriceChart from './PriceChart'
 import ActivityFeed from './ActivityFeed'
 import RulesetSchedule from './RulesetSchedule'
@@ -32,8 +32,7 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
 
   switch (type) {
     case '_loading':
-      // Loading placeholder for components still being streamed
-      // Don't show dots here - ThinkingIndicator already handles this
+      // ThinkingIndicator already shows loading state, no need for extra shimmer
       return null
 
     case 'connect-wallet':
@@ -55,6 +54,16 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
         <ProjectCard
           projectId={props.projectId}
           chainId={props.chainId}
+        />
+      )
+
+    case 'note-card':
+      // Note-focused card: memo is primary, payment is optional (defaults to 0)
+      return (
+        <NoteCard
+          projectId={props.projectId}
+          chainId={props.chainId}
+          defaultNote={props.defaultNote}
         />
       )
 
@@ -118,43 +127,6 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
           projectId={props.projectId}
           parameters={props.parameters}
           explanation={props.explanation}
-        />
-      )
-
-    case 'recommendation-chips':
-      // Parse chips from JSON string if provided
-      let parsedChips
-      let chipsParseError = false
-      try {
-        parsedChips = props.chips
-          ? (typeof props.chips === 'string' ? JSON.parse(props.chips) : props.chips)
-          : undefined
-      } catch {
-        // JSON not yet complete during streaming - check if it looks incomplete
-        const chipsStr = props.chips || ''
-        if (chipsStr.includes('{') && !chipsStr.endsWith(']')) {
-          // Incomplete JSON - still streaming
-          return (
-            <div className="glass p-3 text-gray-400 text-sm animate-pulse">
-              Loading suggestions...
-            </div>
-          )
-        }
-        chipsParseError = true
-      }
-      if (chipsParseError) {
-        return (
-          <div className="glass p-3 text-red-400 text-sm">
-            Failed to load suggestions. Try asking again.
-          </div>
-        )
-      }
-      return (
-        <RecommendationChips
-          chips={parsedChips}
-          onSelect={(prompt) => {
-            window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: prompt } }))
-          }}
         />
       )
 
@@ -252,18 +224,12 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
           ? (typeof props.groups === 'string' ? JSON.parse(props.groups) : props.groups)
           : []
       } catch {
-        // JSON not yet complete during streaming - check if it looks like incomplete JSON
-        const groupsStr = props.groups || ''
-        if (groupsStr.includes('{') && !groupsStr.endsWith(']')) {
-          // Incomplete JSON - still streaming
-          return (
-            <div className="glass p-3 text-gray-400 text-sm animate-pulse">
-              Loading options...
-            </div>
-          )
-        }
         optionsParseError = true
         parsedGroups = []
+      }
+      // If no groups data at all, don't render anything (e.g., from exported markdown placeholder)
+      if (!props.groups || parsedGroups.length === 0) {
+        return null
       }
       if (optionsParseError) {
         return (

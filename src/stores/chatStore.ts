@@ -16,6 +16,10 @@ export interface Message {
   timestamp: number
   isStreaming?: boolean
   attachments?: Attachment[]
+  // Multi-chat sender info
+  senderName?: string
+  senderAddress?: string
+  createdAt?: string
 }
 
 export interface Conversation {
