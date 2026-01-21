@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { formatEther, parseEther } from 'viem'
+import { formatEther, formatUnits, parseUnits, parseEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
   fetchProject,
@@ -16,7 +16,7 @@ import {
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { calculateSynchronizedStartTime, type JBRulesetConfig, type JBRulesetMetadataConfig } from '../../services/relayr'
 import { QueueRulesetModal } from '../payment'
-import { ZERO_ADDRESS } from '../../constants'
+import { ZERO_ADDRESS, USDC_ADDRESSES, type SupportedChainId, JB_CONTRACTS } from '../../constants'
 
 interface QueueRulesetFormProps {
   projectId: string
@@ -74,7 +74,8 @@ interface RulesetFormState {
 function formStateToRulesetConfig(
   state: RulesetFormState,
   mustStartAtOrAfter: number,
-  existingConfig?: ProjectRuleset
+  existingConfig?: ProjectRuleset,
+  chainId: number = 1
 ): JBRulesetConfig {
   // Convert duration from days to seconds (0 means ongoing)
   const durationDays = parseFloat(state.duration) || 0
@@ -120,10 +121,16 @@ function formStateToRulesetConfig(
 
     // Use existing project's baseCurrency for fund access limits
     const currency = existingConfig?.baseCurrency || 1
+    // Decimals: 6 for USDC (baseCurrency 2), 18 for ETH (baseCurrency 1)
+    const decimals = currency === 2 ? 6 : 18
+    // Token address: USDC for baseCurrency 2, NATIVE_TOKEN for baseCurrency 1
+    const token = currency === 2
+      ? USDC_ADDRESSES[chainId as SupportedChainId]
+      : NATIVE_TOKEN
 
     if (state.payoutLimitType === 'limited') {
       payoutLimits.push({
-        amount: parseEther(state.payoutLimit || '0').toString(),
+        amount: parseUnits(state.payoutLimit || '0', decimals).toString(),
         currency,
       })
     } else if (state.payoutLimitType === 'unlimited') {
@@ -136,7 +143,7 @@ function formStateToRulesetConfig(
 
     if (state.surplusAllowanceType === 'limited') {
       surplusAllowances.push({
-        amount: parseEther(state.surplusAllowance || '0').toString(),
+        amount: parseUnits(state.surplusAllowance || '0', decimals).toString(),
         currency,
       })
     } else if (state.surplusAllowanceType === 'unlimited') {
@@ -148,8 +155,8 @@ function formStateToRulesetConfig(
 
     if (payoutLimits.length > 0 || surplusAllowances.length > 0) {
       fundAccessLimitGroups.push({
-        terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c', // JBMultiTerminal
-        token: NATIVE_TOKEN,
+        terminal: JB_CONTRACTS.JBMultiTerminal,
+        token,
         payoutLimits,
         surplusAllowances,
       })
@@ -309,12 +316,16 @@ export default function QueueRulesetForm({ projectId, chainId = '1' }: QueueRule
           const payoutLimit = payoutLimitAmount ? BigInt(payoutLimitAmount) : 0n
           const surplusAllowance = surplusAllowanceAmount ? BigInt(surplusAllowanceAmount) : 0n
 
+          // Use correct decimals based on project's baseCurrency (6 for USDC, 18 for ETH)
+          const limitDecimals = firstRuleset?.baseCurrency === 2 ? 6 : 18
+          const unlimitedThreshold = BigInt('1000000000000000000000000000000')
+
           setFormState(prev => ({
             ...prev,
-            payoutLimitType: payoutLimit === 0n ? 'none' : payoutLimit > BigInt('1000000000000000000000000000000') ? 'unlimited' : 'limited',
-            payoutLimit: payoutLimit > 0n && payoutLimit < BigInt('1000000000000000000000000000000') ? formatEther(payoutLimit) : '0',
-            surplusAllowanceType: surplusAllowance === 0n ? 'none' : surplusAllowance > BigInt('1000000000000000000000000000000') ? 'unlimited' : 'limited',
-            surplusAllowance: surplusAllowance > 0n && surplusAllowance < BigInt('1000000000000000000000000000000') ? formatEther(surplusAllowance) : '0',
+            payoutLimitType: payoutLimit === 0n ? 'none' : payoutLimit > unlimitedThreshold ? 'unlimited' : 'limited',
+            payoutLimit: payoutLimit > 0n && payoutLimit < unlimitedThreshold ? formatUnits(payoutLimit, limitDecimals) : '0',
+            surplusAllowanceType: surplusAllowance === 0n ? 'none' : surplusAllowance > unlimitedThreshold ? 'unlimited' : 'limited',
+            surplusAllowance: surplusAllowance > 0n && surplusAllowance < unlimitedThreshold ? formatUnits(surplusAllowance, limitDecimals) : '0',
           }))
         }
 
@@ -356,7 +367,8 @@ export default function QueueRulesetForm({ projectId, chainId = '1' }: QueueRule
   const rulesetConfig = formStateToRulesetConfig(
     formState,
     synchronizedStartTime,
-    chainRulesetData[0]?.ruleset || undefined
+    chainRulesetData[0]?.ruleset || undefined,
+    parseInt(chainId)
   )
 
   if (loading) {

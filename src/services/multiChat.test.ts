@@ -39,7 +39,7 @@ describe('multiChat service', () => {
       await fetchMyChats()
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/multi-chat'),
+        expect.stringContaining('/chat'),
         expect.objectContaining({
           headers: expect.objectContaining({
             Authorization: 'Bearer mock-jwt-token',
@@ -133,7 +133,7 @@ describe('multiChat service', () => {
 
       expect(chat).toEqual(mockChat)
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/multi-chat/chat-123'),
+        expect.stringContaining('/chat/chat-123'),
         expect.any(Object)
       )
     })
@@ -153,7 +153,7 @@ describe('multiChat service', () => {
 
       expect(chat).toEqual(mockChat)
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/multi-chat'),
+        expect.stringContaining('/chat'),
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ name: 'New Chat', isPublic: true }),
@@ -257,7 +257,7 @@ describe('multiChat service', () => {
 
       expect(message).toEqual(mockMessage)
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/multi-chat/chat-123/messages'),
+        expect.stringContaining('/chat/chat-123/messages'),
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ content: 'Hello!' }),
@@ -300,7 +300,7 @@ describe('multiChat service', () => {
 
         expect(invite).toEqual(mockInvite)
         expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/multi-chat/chat-123/invites'),
+          expect.stringContaining('/chat/chat-123/invites'),
           expect.objectContaining({
             method: 'POST',
           })
@@ -346,7 +346,7 @@ describe('multiChat service', () => {
 
         expect(info).toEqual(mockInfo)
         expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/multi-chat/invite/ABC12345'),
+          expect.stringContaining('/chat/invite/ABC12345'),
           expect.any(Object)
         )
       })
@@ -366,7 +366,7 @@ describe('multiChat service', () => {
 
         expect(result).toEqual(mockResult)
         expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/multi-chat/invite/ABC12345/join'),
+          expect.stringContaining('/chat/invite/ABC12345/join'),
           expect.objectContaining({
             method: 'POST',
           })
@@ -385,7 +385,7 @@ describe('multiChat service', () => {
         await revokeInvite('chat-123', 'inv-456')
 
         expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/multi-chat/chat-123/invites/inv-456'),
+          expect.stringContaining('/chat/chat-123/invites/inv-456'),
           expect.objectContaining({
             method: 'DELETE',
           })
@@ -441,7 +441,7 @@ describe('multiChat service', () => {
         await removeMember('chat-123', '0x456')
 
         expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/multi-chat/chat-123/members/0x456'),
+          expect.stringContaining('/chat/chat-123/members/0x456'),
           expect.objectContaining({
             method: 'DELETE',
           })
@@ -486,7 +486,7 @@ describe('multiChat service', () => {
         await submitFeedback('chat-123', 'great')
 
         expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/multi-chat/chat-123/feedback'),
+          expect.stringContaining('/chat/chat-123/feedback'),
           expect.objectContaining({
             method: 'POST',
             body: JSON.stringify({ rating: 'great' }),

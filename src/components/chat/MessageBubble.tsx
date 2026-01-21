@@ -3,7 +3,7 @@ import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { Message } from '../../stores/chatStore'
+import { Message } from '../../stores'
 import { useThemeStore } from '../../stores'
 import { parseMessageContent } from '../../utils/messageParser'
 import ComponentRegistry from '../dynamic/ComponentRegistry'
@@ -148,10 +148,15 @@ export default function MessageBubble({ message, isLastAssistant }: MessageBubbl
                       alt={attachment.name}
                       className="max-w-[200px] max-h-[200px] object-contain rounded border-2 border-juice-cyan cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => {
-                        // Open image in new tab for full view
+                        // Open image in new tab for full view (using DOM methods to avoid XSS)
                         const win = window.open()
                         if (win) {
-                          win.document.write(`<img src="data:${attachment.mimeType};base64,${attachment.data}" alt="${attachment.name}" style="max-width: 100%; height: auto;" />`)
+                          const img = win.document.createElement('img')
+                          img.src = `data:${attachment.mimeType};base64,${attachment.data}`
+                          img.alt = attachment.name
+                          img.style.maxWidth = '100%'
+                          img.style.height = 'auto'
+                          win.document.body.appendChild(img)
                         }
                       }}
                     />

@@ -3,3 +3,4 @@ export { useWalletBalances, formatEthBalance, formatUsdcBalance, type WalletBala
 export { useProjectData, type UseProjectDataOptions, type UseProjectDataReturn } from './useProjectData'
 export { usePaymentForm, type UsePaymentFormOptions, type UsePaymentFormReturn } from './usePaymentForm'
 export { useManagedWallet, useIsManagedMode, executeManagedTransaction, type ManagedWalletData, type ManagedWalletBalance } from './useManagedWallet'
+export { useEnsNameResolved } from './useEnsName'

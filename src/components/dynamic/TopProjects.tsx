@@ -38,7 +38,13 @@ function formatVolumeUsd(volumeUsd: string | undefined): string {
   }
 }
 
-function formatTrendingVolume(trendingVolume: string | undefined): string {
+function formatTrendingVolume(trendingVolume: string | undefined, trendingVolumeUsd: string | undefined): string {
+  // Prefer USD volume when available (already converted, no ETH price assumption needed)
+  if (trendingVolumeUsd && trendingVolumeUsd !== '0') {
+    return formatVolumeUsd(trendingVolumeUsd)
+  }
+
+  // Fallback to ETH volume (legacy projects or API gaps)
   if (!trendingVolume || trendingVolume === '0') return '$0'
 
   try {
@@ -46,19 +52,14 @@ function formatTrendingVolume(trendingVolume: string | undefined): string {
     const raw = BigInt(trendingVolume.split('.')[0])
     const eth = Number(raw) / 1e18
 
-    // Assume ~$3500/ETH for display (rough estimate)
-    const usd = eth * 3500
-
-    if (usd >= 1000000) {
-      return `$${(usd / 1000000).toFixed(1)}M`
+    // Format as ETH if we can't convert to USD
+    if (eth >= 1000) {
+      return `${(eth / 1000).toFixed(1)}k ETH`
     }
-    if (usd >= 1000) {
-      return `$${(usd / 1000).toFixed(1)}k`
+    if (eth >= 1) {
+      return `${eth.toFixed(2)} ETH`
     }
-    if (usd >= 1) {
-      return `$${usd.toFixed(0)}`
-    }
-    return `$${usd.toFixed(2)}`
+    return `${eth.toFixed(4)} ETH`
   } catch {
     return '$0'
   }
@@ -290,7 +291,7 @@ export default function TopProjects({
                   isDark ? 'text-emerald-400' : 'text-emerald-600'
                 }`}>
                   {orderBy === 'trendingScore'
-                    ? formatTrendingVolume(project.trendingVolume)
+                    ? formatTrendingVolume(project.trendingVolume, undefined)
                     : formatVolumeUsd(project.volumeUsd)}
                 </div>
                 <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

@@ -1,17 +1,29 @@
 import { useState, useEffect } from 'react'
 import { HashRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { WagmiProvider, createConfig, http } from 'wagmi'
-import { mainnet, optimism, base, arbitrum } from 'wagmi/chains'
-import { injected, walletConnect } from 'wagmi/connectors'
+import { WagmiProvider } from 'wagmi'
 import { useTranslation } from 'react-i18next'
+import { wagmiConfig } from './config/wagmi'
 import { ChatContainer, ProtocolActivity, MascotPanel } from './components/chat'
 import JoinChatPage from './components/JoinChatPage'
-import SharedLocalChatPage from './components/SharedLocalChatPage'
 import { SettingsPanel } from './components/settings'
+import ErrorBoundary from './components/ui/ErrorBoundary'
 import { useChatStore, useThemeStore } from './stores'
-import { useMultiChatStore } from './stores/multiChatStore'
 import { useTransactionExecutor } from './hooks'
+
+// Hook for detecting mobile viewport
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  return isMobile
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,8 +36,7 @@ const queryClient = new QueryClient({
 
 function Header({ showActions = false }: { showActions?: boolean }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const { conversations, activeConversationId, createConversation, setActiveConversation, deleteConversation } = useChatStore()
-  const { setActiveChat } = useMultiChatStore()
+  const { chats, setActiveChat } = useChatStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isCompact, setIsCompact] = useState(false)
   const { theme } = useThemeStore()
@@ -45,7 +56,8 @@ function Header({ showActions = false }: { showActions?: boolean }) {
   }, [])
 
   const handleNewChat = () => {
-    createConversation()
+    setActiveChat(null)
+    navigate('/')
     setSidebarOpen(false)
   }
 
@@ -69,7 +81,6 @@ function Header({ showActions = false }: { showActions?: boolean }) {
         {/* Logo - fixed position from top-left, navigates home */}
         <button
           onClick={() => {
-            setActiveConversation(null)
             setActiveChat(null)
             navigate('/')
           }}
@@ -155,7 +166,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
               : 'bg-white border-gray-200'
           }`}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Conversations</h2>
+              <h2 className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Chats</h2>
               <button
                 onClick={() => setSidebarOpen(false)}
                 className={`p-2 ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
@@ -177,18 +188,17 @@ function Header({ showActions = false }: { showActions?: boolean }) {
             </button>
 
             <div className="space-y-1 overflow-y-auto max-h-[calc(100vh-150px)]">
-              {conversations.map((conv) => (
+              {chats.map((chat) => (
                 <div
-                  key={conv.id}
+                  key={chat.id}
                   className={`group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${
-                    conv.id === activeConversationId
-                      ? 'bg-juice-orange/20 ' + (theme === 'dark' ? 'text-white' : 'text-gray-900')
-                      : theme === 'dark'
-                        ? 'text-gray-400 hover:bg-white/10 hover:text-white'
-                        : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                    theme === 'dark'
+                      ? 'text-gray-400 hover:bg-white/10 hover:text-white'
+                      : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
                   }`}
                   onClick={() => {
-                    setActiveConversation(conv.id)
+                    setActiveChat(chat.id)
+                    navigate(`/chat/${chat.id}`)
                     setSidebarOpen(false)
                   }}
                 >
@@ -196,19 +206,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                           d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
-                  <span className="truncate flex-1 text-sm">{conv.title}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteConversation(conv.id)
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-300"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  <span className="truncate flex-1 text-sm">{chat.name}</span>
                 </div>
               ))}
             </div>
@@ -231,22 +229,20 @@ function MainContent({ topOnly, bottomOnly, forceActiveChatId }: { topOnly?: boo
 
 // Component to handle home route - clears active chats for fresh start
 function HomeRouteHandler() {
-  const { setActiveChat } = useMultiChatStore()
-  const { setActiveConversation } = useChatStore()
+  const { setActiveChat } = useChatStore()
 
   useEffect(() => {
     // Clear any active chats when landing on home for fresh start
     setActiveChat(null)
-    setActiveConversation(null)
-  }, [setActiveChat, setActiveConversation])
+  }, [setActiveChat])
 
   return <AppContent />
 }
 
-// UUID regex for validating multi-chat IDs
+// UUID regex for validating chat IDs
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// Component to show when a local chat isn't found
+// Component to show when a chat isn't found
 function ChatNotFound() {
   const navigate = useNavigate()
   const { theme } = useThemeStore()
@@ -259,7 +255,7 @@ function ChatNotFound() {
       <div className="text-center max-w-md px-4">
         <h1 className="text-xl font-semibold mb-2">{t('chat.notFound', 'Chat not found')}</h1>
         <p className={`text-sm mb-6 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-          {t('chat.notFoundDesc', 'This chat may be stored locally on another device, or it no longer exists.')}
+          {t('chat.notFoundDesc', 'This chat may have been deleted or the link is invalid.')}
         </p>
         <button
           onClick={() => navigate('/')}
@@ -276,44 +272,33 @@ function ChatNotFound() {
 function ChatRouteHandler() {
   const { chatId } = useParams<{ chatId: string }>()
   const navigate = useNavigate()
-  const { setActiveChat, activeChatId } = useMultiChatStore()
-  const { setActiveConversation, conversations, activeConversationId } = useChatStore()
+  const { setActiveChat, activeChatId } = useChatStore()
   const [notFound, setNotFound] = useState(false)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
     if (chatId) {
-      // Check if it's a local conversation first
-      const isLocalChat = conversations.some(c => c.id === chatId)
-      if (isLocalChat) {
-        setActiveConversation(chatId)
-        setActiveChat(null) // Clear any multi-chat
-        setNotFound(false)
-        setReady(true)
-      } else if (UUID_REGEX.test(chatId)) {
-        // It's a UUID, assume it's a multi-chat
+      if (UUID_REGEX.test(chatId)) {
+        // Valid UUID, set as active chat
         setActiveChat(chatId)
         setNotFound(false)
         setReady(true)
       } else {
-        // Invalid chat ID (not local, not UUID) - show not found
+        // Invalid chat ID - show not found
         setNotFound(true)
         setReady(true)
       }
     } else {
       navigate('/')
     }
-  }, [chatId, setActiveChat, setActiveConversation, conversations, navigate])
+  }, [chatId, setActiveChat, navigate])
 
   if (notFound) {
     return <ChatNotFound />
   }
 
-  // Wait until the active chat/conversation is set before rendering
-  const isReady = ready && (
-    (UUID_REGEX.test(chatId || '') && activeChatId === chatId) ||
-    (conversations.some(c => c.id === chatId) && activeConversationId === chatId)
-  )
+  // Wait until the active chat is set before rendering
+  const isReady = ready && activeChatId === chatId
 
   if (!isReady) {
     return (
@@ -325,31 +310,8 @@ function ChatRouteHandler() {
 
   // Render the main app content - pass chatId directly to ensure it's used
   // Use key to force re-mount when chatId changes
-  return <AppContent key={chatId} forceActiveChatId={UUID_REGEX.test(chatId || '') ? chatId : undefined} />
+  return <AppContent key={chatId} forceActiveChatId={chatId} />
 }
-
-// Wagmi configuration for self-custody wallet connection
-const wagmiConfig = createConfig({
-  chains: [mainnet, optimism, base, arbitrum],
-  connectors: [
-    injected(),
-    walletConnect({
-      projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'juicy-vision',
-      metadata: {
-        name: 'Juicy Vision',
-        description: 'AI-powered Juicebox interface',
-        url: window.location.origin,
-        icons: [`${window.location.origin}/head-dark.png`],
-      },
-    }),
-  ],
-  transports: {
-    [mainnet.id]: http('https://rpc.ankr.com/eth'),
-    [optimism.id]: http('https://rpc.ankr.com/optimism'),
-    [base.id]: http('https://rpc.ankr.com/base'),
-    [arbitrum.id]: http('https://rpc.ankr.com/arbitrum'),
-  },
-})
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   return (
@@ -417,15 +379,16 @@ function TransactionExecutor() {
 
 function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   const { theme } = useThemeStore()
-  const { getActiveConversation } = useChatStore()
-  const { activeChatId: storeActiveChatId } = useMultiChatStore()
-  const conversation = getActiveConversation()
+  const { activeChatId: storeActiveChatId, getActiveChat } = useChatStore()
+  const isMobile = useIsMobile()
+  const [showMobileActivity, setShowMobileActivity] = useState(false)
 
   // Use forced value if provided, otherwise read from store
   const activeChatId = forceActiveChatId || storeActiveChatId
+  const activeChat = getActiveChat()
 
-  // Show chat mode if there are AI messages OR if there's an active multi-chat
-  const hasMessages = (conversation && conversation.messages.length > 0) || !!activeChatId
+  // Show chat mode if there's an active chat with messages
+  const hasMessages = activeChat && activeChat.messages && activeChat.messages.length > 0
 
   useEffect(() => {
     document.documentElement.className = theme
@@ -435,8 +398,57 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   const handleActivityProjectClick = (query: string) => {
     // Dispatch a custom event that ChatContainer can listen to
     window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: query } }))
+    if (isMobile) setShowMobileActivity(false) // Close activity on mobile after click
   }
 
+  // Mobile layout: chat-first, activity toggleable
+  if (isMobile) {
+    return (
+      <div className={`h-screen overflow-hidden flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
+        <TransactionExecutor />
+        {/* Mobile header with activity toggle */}
+        <div className="flex-shrink-0">
+          <Header showActions={!!hasMessages} />
+        </div>
+        {/* Main content */}
+        <div className="flex-1 overflow-hidden relative">
+          {showMobileActivity ? (
+            <div className="h-full">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-juice-orange">
+                <span className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                  Live Activity
+                </span>
+                <button
+                  onClick={() => setShowMobileActivity(false)}
+                  className={`p-2 rounded-lg ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <ActivitySidebar onProjectClick={handleActivityProjectClick} />
+            </div>
+          ) : (
+            <MainContent forceActiveChatId={forceActiveChatId} />
+          )}
+        </div>
+        {/* Mobile activity toggle FAB */}
+        {!showMobileActivity && (
+          <button
+            onClick={() => setShowMobileActivity(true)}
+            className="fixed bottom-24 right-4 z-50 w-12 h-12 rounded-full bg-juice-orange text-juice-dark shadow-lg flex items-center justify-center"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  // Desktop layout: golden ratio with sidebar
   return (
     <div className={`h-screen overflow-hidden border-4 border-juice-orange flex ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
       {/* Transaction executor - listens for pay events */}
@@ -470,16 +482,16 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
 
             {/* Overlay layout */}
             <div className="relative z-10 flex flex-col h-full pointer-events-none">
-              {/* Top section: 62% height */}
+              {/* Top section: 62% height (golden ratio) */}
               <div className="h-[62%] flex">
                 {/* Spacer for recs area - no overlay here, recs show through */}
                 <div className="flex-1" />
-                {/* Mascot: translucent overlay */}
-                <div className="w-[27.53%] border-l-4 border-juice-orange pointer-events-auto">
+                {/* Mascot: translucent overlay - hidden on smaller screens */}
+                <div className="hidden lg:block w-[27.53%] border-l-4 border-juice-orange pointer-events-auto">
                   <MascotPanel onSuggestionClick={(text) => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: text } }))} />
                 </div>
               </div>
-              {/* Prompt dock: 38% height, translucent overlay */}
+              {/* Prompt dock: 38% height (golden ratio), translucent overlay */}
               <div className="h-[38%] border-t-4 border-juice-orange pointer-events-auto">
                 <Routes>
                   <Route path="/" element={<MainContent bottomOnly forceActiveChatId={forceActiveChatId} />} />
@@ -490,8 +502,8 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
           </>
         )}
       </div>
-      {/* Activity sidebar: full height, far right */}
-      <div className="w-[calc(38%*0.38)] border-l-4 border-juice-orange">
+      {/* Activity sidebar: full height, far right - hidden on tablet */}
+      <div className="hidden md:block w-[calc(38%*0.38)] border-l-4 border-juice-orange">
         <ActivitySidebar onProjectClick={handleActivityProjectClick} />
       </div>
     </div>
@@ -500,16 +512,17 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
 
 export default function App() {
   return (
-    <AppProviders>
-      <HashRouter>
-        <Routes>
-          <Route path="/join/:code" element={<JoinChatPage />} />
-          <Route path="/chat/:chatId" element={<ChatRouteHandler />} />
-          <Route path="/shared/:code" element={<SharedLocalChatPage />} />
-          <Route path="/" element={<HomeRouteHandler />} />
-          <Route path="*" element={<HomeRouteHandler />} />
-        </Routes>
-      </HashRouter>
-    </AppProviders>
+    <ErrorBoundary>
+      <AppProviders>
+        <HashRouter>
+          <Routes>
+            <Route path="/join/:code" element={<JoinChatPage />} />
+            <Route path="/chat/:chatId" element={<ChatRouteHandler />} />
+            <Route path="/" element={<HomeRouteHandler />} />
+            <Route path="*" element={<HomeRouteHandler />} />
+          </Routes>
+        </HashRouter>
+      </AppProviders>
+    </ErrorBoundary>
   )
 }

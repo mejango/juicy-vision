@@ -1,7 +1,15 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type TransactionStatus = 'pending' | 'submitted' | 'confirmed' | 'failed'
+// Granular payment stages for user feedback
+export type PaymentStage =
+  | 'checking'      // Checking balances and chain
+  | 'switching'     // Switching chains
+  | 'approving'     // Waiting for USDC→Permit2 approval tx
+  | 'signing'       // Waiting for Permit2 signature
+  | 'submitting'    // Sending the pay transaction
+
+export type TransactionStatus = 'pending' | 'submitted' | 'confirmed' | 'failed' | 'cancelled'
 
 export type TransactionType =
   | 'pay'
@@ -25,6 +33,7 @@ export interface Transaction {
   token?: string
   hash?: string
   status: TransactionStatus
+  stage?: PaymentStage  // Current stage for granular progress display
   error?: string
   createdAt: number
   updatedAt: number

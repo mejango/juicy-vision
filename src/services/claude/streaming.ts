@@ -2,7 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { getClaudeClient } from './client'
 import { SYSTEM_PROMPT, formatConversationHistory } from './prompts'
 import { MCP_TOOLS, isMcpTool, executeMcpTool } from '../mcp'
-import type { Attachment } from '../../stores/chatStore'
+import type { Attachment } from '../../stores'
 
 export async function generateConversationTitle(
   apiKey: string,

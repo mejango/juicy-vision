@@ -1,11 +1,10 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { useChatStore, useSettingsStore, useThemeStore, LANGUAGES, type Message, type Attachment } from '../../stores'
+import { useChatStore, useSettingsStore, useThemeStore, LANGUAGES, type Message, type Attachment, type ChatMessage, type ChatMember } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
-import { useMultiChatStore, type MultiChatMessage, type MultiChatMember } from '../../stores/multiChatStore'
 // Title generation now happens on backend
-import * as multiChatApi from '../../services/multiChat'
+import * as chatApi from '../../services/multiChat'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
@@ -15,7 +14,6 @@ import WalletInfo from './WalletInfo'
 import { SettingsPanel, PrivacySelector } from '../settings'
 import { stripComponents } from '../../utils/messageParser'
 import InviteModal from '../multiChat/InviteModal'
-import LocalShareModal from './LocalShareModal'
 import SaveModal from './SaveModal'
 import AuthOptionsModal from './AuthOptionsModal'
 // Migration no longer needed - all chats are on server
@@ -71,12 +69,8 @@ interface ChatContainerProps {
 }
 
 export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }: ChatContainerProps = {}) {
-  const {
-    activeConversationId,
-    getActiveConversation,
-    isStreaming,
-    setIsStreaming,
-  } = useChatStore()
+  // Local streaming state (no longer in store)
+  const [isStreaming, setIsStreaming] = useState(false)
 
   const { language, setLanguage } = useSettingsStore()
   const { theme, toggleTheme } = useThemeStore()
@@ -85,28 +79,28 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const { t } = useTranslation()
   const navigate = useNavigate()
 
-  // Multi-chat state
+  // Chat state
   const {
     activeChatId: storeActiveChatId,
     addChat,
-    addMessage: addMultiChatMessage,
-    setMessages: setMultiChatMessages,
+    addMessage: addChatMessage,
+    setMessages: setChatMessages,
     setMembers,
     setConnected,
     clearUnread,
-  } = useMultiChatStore()
+  } = useChatStore()
 
   // Use forceActiveChatId (from URL) over store value to prevent race conditions
   // The store is updated in a useEffect which runs AFTER render, so the prop is more reliable
   const activeChatId = forceActiveChatId || storeActiveChatId
 
   // Get chat using the resolved activeChatId, not store's getActiveChat
-  const multiChat = activeChatId
-    ? useMultiChatStore.getState().chats.find(c => c.id === activeChatId)
+  const activeChat = activeChatId
+    ? useChatStore.getState().chats.find(c => c.id === activeChatId)
     : undefined
-  const multiChatMessages = multiChat?.messages || []
-  const members = multiChat?.members || []
-  const isMultiChatMode = !!activeChatId
+  const chatMessages = activeChat?.messages || []
+  const members = activeChat?.members || []
+  const isChatMode = !!activeChatId
 
   // Check if current user can write to this chat
   const sessionId = getSessionId()
@@ -116,7 +110,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     m.address === currentAddress ||
     (m.address && sessionId && m.address.toLowerCase().includes(sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40)))
   )
-  const canWrite = isMultiChatMode ? !!currentUserMember : true // Anyone can write to local chats
+  const canWrite = isChatMode ? !!currentUserMember : true // Anyone can write to local chats
 
   const [error, setError] = useState<string | null>(null)
   const [isPromptStuck, setIsPromptStuck] = useState(false)
@@ -124,9 +118,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [langMenuOpen, setLangMenuOpen] = useState(false)
   const [showActionBar, setShowActionBar] = useState(true)
   const [showInviteModal, setShowInviteModal] = useState(false)
-  const [showLocalShareModal, setShowLocalShareModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [showAuthOptionsModal, setShowAuthOptionsModal] = useState(false)
+  const [authModalContext, setAuthModalContext] = useState<'save' | 'connect'>('save')
   const [showWalletPanel, setShowWalletPanel] = useState(false)
   const [inviteChatId, setInviteChatId] = useState<string | null>(null)
   const [inviteChatName, setInviteChatName] = useState('')
@@ -137,43 +131,37 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const messagesScrollRef = useRef<HTMLDivElement | null>(null)
   const lastScrollTop = useRef(0)
 
-  const conversation = getActiveConversation()
-  const localMessages = conversation?.messages || []
-
-  // Convert multi-chat messages to display format with sender info
+  // Convert chat messages to display format with sender info
   const displayMessages: Message[] = useMemo(() => {
-    if (isMultiChatMode && multiChatMessages.length > 0) {
-      return multiChatMessages.map(msg => {
-        const sender = members.find(m => m.address === msg.senderAddress)
-        const isCurrentUser = msg.senderAddress === currentAddress
+    return chatMessages.map(msg => {
+      const sender = members.find(m => m.address === msg.senderAddress)
+      const isCurrentUser = msg.senderAddress === currentAddress
 
-        // Determine sender display name:
-        // - "You" for the current user (regardless of connection status)
-        // - Display name if member has one
-        // - "Anonymous" for other users without names
-        let senderName: string
-        if (isCurrentUser) {
-          senderName = 'You'
-        } else if (sender?.displayName) {
-          senderName = sender.displayName
-        } else {
-          senderName = 'Anonymous'
-        }
+      // Determine sender display name:
+      // - "You" for the current user (regardless of connection status)
+      // - Display name if member has one
+      // - "Anonymous" for other users without names
+      let senderName: string
+      if (isCurrentUser) {
+        senderName = 'You'
+      } else if (sender?.displayName) {
+        senderName = sender.displayName
+      } else {
+        senderName = 'Anonymous'
+      }
 
-        return {
-          id: msg.id,
-          role: msg.role,
-          content: msg.content,
-          // Add sender info for user messages to distinguish participants
-          senderName: msg.role === 'user' ? senderName : undefined,
-          senderAddress: msg.role === 'user' ? msg.senderAddress : undefined,
-          createdAt: msg.createdAt,
-          isStreaming: msg.isStreaming,
-        } as Message
-      })
-    }
-    return localMessages
-  }, [isMultiChatMode, multiChatMessages, localMessages, members, currentAddress])
+      return {
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        // Add sender info for user messages to distinguish participants
+        senderName: msg.role === 'user' ? senderName : undefined,
+        senderAddress: msg.role === 'user' ? msg.senderAddress : undefined,
+        createdAt: msg.createdAt,
+        isStreaming: msg.isStreaming,
+      } as Message
+    })
+  }, [chatMessages, members, currentAddress])
 
   // Use display messages for everything
   const messages = displayMessages
@@ -208,7 +196,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     // IMPORTANT: Read chatId at execution time, not from closure
     // The forceActiveChatId prop is the most reliable source (comes from URL)
     // Fall back to store only if prop is not available
-    const currentChatId = forceActiveChatId || useMultiChatStore.getState().activeChatId
+    const currentChatId = forceActiveChatId || useChatStore.getState().activeChatId
 
     // Check write permissions for existing multi-chats
     if (currentChatId && !canWrite) {
@@ -225,7 +213,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
       // Create a new multi-chat if we don't have one
       if (!chatId) {
-        const newChat = await multiChatApi.createChat({
+        const newChat = await chatApi.createChat({
           name: 'New Chat',
           isPublic: false,
         })
@@ -233,11 +221,11 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
         // Add to multi-chat store and set as active
         addChat(newChat)
-        useMultiChatStore.getState().setActiveChat(chatId)
+        useChatStore.getState().setActiveChat(chatId)
 
         // Add optimistic user message BEFORE navigation to prevent flickering
         // This ensures the chat view shows the message immediately
-        const optimisticMessage: MultiChatMessage = {
+        const optimisticMessage: ChatMessage = {
           id: `optimistic-${Date.now()}`,
           chatId,
           senderAddress: currentAddress,
@@ -246,7 +234,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           isEncrypted: false,
           createdAt: new Date().toISOString(),
         }
-        addMultiChatMessage(chatId, optimisticMessage)
+        addChatMessage(chatId, optimisticMessage)
 
         // Navigate to the chat URL
         navigate(`/chat/${chatId}`, { replace: true })
@@ -255,11 +243,11 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       // Send the user's message through the multi-chat API
       // This will broadcast via WebSocket to all connected clients
       // For new chats, the real message will replace the optimistic one
-      await multiChatApi.sendMessage(chatId, content)
+      await chatApi.sendMessage(chatId, content)
 
       // Invoke AI to respond - backend handles Claude API call and broadcasts response
       try {
-        await multiChatApi.invokeAi(chatId, content)
+        await chatApi.invokeAi(chatId, content)
       } catch (aiErr) {
         console.error('Failed to invoke AI:', aiErr)
         // Don't set error - the user message was sent successfully
@@ -270,7 +258,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     } finally {
       setIsStreaming(false)
     }
-  }, [forceActiveChatId, canWrite, navigate, addChat, addMultiChatMessage, currentAddress])
+  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress])
 
   const handleSuggestionClick = (text: string) => {
     handleSend(text)
@@ -278,8 +266,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
   const handleExport = () => {
     if (messages.length === 0) return
-    // Use multi-chat name or local conversation title
-    const title = multiChat?.name || conversation?.title || 'Chat'
+    const title = activeChat?.name || 'Chat'
     const md = exportToMarkdown(messages, title)
     const filename = `${title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.md`
     downloadMarkdown(md, filename)
@@ -293,7 +280,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     }
 
     setInviteChatId(activeChatId)
-    setInviteChatName(multiChat?.name || 'Chat')
+    setInviteChatName(activeChat?.name || 'Chat')
     setShowInviteModal(true)
   }
 
@@ -329,20 +316,20 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       try {
         // Fetch chat info if not already in store
         // Use direct store lookup with resolved activeChatId (not getActiveChat which uses store's activeChatId)
-        const existingChat = useMultiChatStore.getState().chats.find(c => c.id === activeChatId)
+        const existingChat = useChatStore.getState().chats.find(c => c.id === activeChatId)
         if (!existingChat) {
-          const chatInfo = await multiChatApi.fetchChat(activeChatId!)
+          const chatInfo = await chatApi.fetchChat(activeChatId!)
           if (!isMounted) return
           addChat(chatInfo)
         }
 
         // Load messages
-        const msgs = await multiChatApi.fetchMessages(activeChatId!)
+        const msgs = await chatApi.fetchMessages(activeChatId!)
         if (!isMounted) return
-        setMultiChatMessages(activeChatId!, msgs)
+        setChatMessages(activeChatId!, msgs)
 
         // Load members
-        const mbrs = await multiChatApi.fetchMembers(activeChatId!)
+        const mbrs = await chatApi.fetchMembers(activeChatId!)
         if (!isMounted) return
         setMembers(activeChatId!, mbrs)
 
@@ -358,7 +345,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       if (!isMounted) return
 
       // Connect WebSocket for real-time updates
-      multiChatApi.connectToChat(activeChatId!)
+      chatApi.connectToChat(activeChatId!)
       setConnected(true)
 
       // Track streaming messages with buffered content
@@ -371,15 +358,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       const flushUpdates = () => {
         if (pendingUpdates.size === 0) return
         pendingUpdates.forEach(({ content, chatId }, messageId) => {
-          const chat = useMultiChatStore.getState().chats.find(c => c.id === chatId)
+          const chat = useChatStore.getState().chats.find(c => c.id === chatId)
           const existingMsg = chat?.messages?.find(m => m.id === messageId)
 
           if (existingMsg) {
-            useMultiChatStore.getState().updateMessage(chatId, messageId, { content, isStreaming: true })
+            useChatStore.getState().updateMessage(chatId, messageId, { content, isStreaming: true })
           } else {
             // Create placeholder message for streaming
             const assistantAddress = '0x0000000000000000000000000000000000000000'
-            addMultiChatMessage(chatId, {
+            addChatMessage(chatId, {
               id: messageId,
               chatId: chatId,
               senderAddress: assistantAddress,
@@ -405,7 +392,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       // Handle WebSocket messages
       // IMPORTANT: Use msg.chatId from the message itself, not the closure-captured activeChatId
       // This prevents race conditions when navigating between chats
-      cleanup = multiChatApi.onWsMessage((msg) => {
+      cleanup = chatApi.onWsMessage((msg) => {
         if (!isMounted) return
         if (msg.chatId !== activeChatId) return
 
@@ -413,7 +400,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
         switch (msg.type) {
           case 'message':
-            addMultiChatMessage(targetChatId, msg.data as MultiChatMessage)
+            addChatMessage(targetChatId, msg.data as ChatMessage)
             break
           case 'ai_response': {
             // Handle streaming AI response tokens with buffering
@@ -426,7 +413,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               }
               streamingMessages.delete(messageId)
               // Mark message as no longer streaming
-              useMultiChatStore.getState().updateMessage(targetChatId, messageId, { isStreaming: false })
+              useChatStore.getState().updateMessage(targetChatId, messageId, { isStreaming: false })
             } else {
               // Accumulate tokens in buffer - store chatId with content to avoid closure issues
               const existing = streamingMessages.get(messageId)
@@ -439,12 +426,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             break
           }
           case 'member_joined':
-            const joinedMember = msg.data as MultiChatMember
-            useMultiChatStore.getState().addMember(targetChatId, joinedMember)
+            const joinedMember = msg.data as ChatMember
+            useChatStore.getState().addMember(targetChatId, joinedMember)
             break
           case 'member_left':
             const leftData = msg.data as { address: string }
-            useMultiChatStore.getState().removeMember(targetChatId, leftData.address)
+            useChatStore.getState().removeMember(targetChatId, leftData.address)
             break
         }
       })
@@ -455,21 +442,28 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => {
       isMounted = false
       cleanup?.()
-      multiChatApi.disconnectFromChat()
+      chatApi.disconnectFromChat()
       setConnected(false)
     }
-  }, [activeChatId, setMultiChatMessages, setMembers, addMultiChatMessage, setConnected, clearUnread, addChat])
+  }, [activeChatId, setChatMessages, setMembers, addChatMessage, setConnected, clearUnread, addChat])
 
-  // Listen for wallet panel open events
+  // Listen for wallet panel open events - show wallet panel if connected, auth options if not
   useEffect(() => {
     const handleOpenWalletPanel = () => {
-      setShowWalletPanel(true)
+      if (isWalletConnected) {
+        // Already connected - show wallet panel directly for top-up/balance
+        setShowWalletPanel(true)
+      } else {
+        // Not connected - show auth options to connect first
+        setAuthModalContext('connect')
+        setShowAuthOptionsModal(true)
+      }
     }
     window.addEventListener('juice:open-wallet-panel', handleOpenWalletPanel)
     return () => {
       window.removeEventListener('juice:open-wallet-panel', handleOpenWalletPanel)
     }
-  }, [])
+  }, [isWalletConnected])
 
   // Listen for messages from dynamic components (e.g., recommendation chips)
   // Only listen if we're the instance with the input (bottomOnly or neither specified)
@@ -738,12 +732,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             {/* Min height: 38% of 38% of screen height = 14.44vh */}
             {(bottomOnly || (!topOnly && !bottomOnly)) && (
               <div
-                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0 min-h-[14.44vh]'} backdrop-blur-sm flex flex-col justify-end ${
+                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0'} pt-2 backdrop-blur-sm flex flex-col justify-end transition-all duration-200 ${
                   theme === 'dark' ? 'bg-juice-dark/80' : 'bg-white/80'
                 }`}
               >
-                {/* Theme & Settings controls - above input with margin, matching homepage style */}
-                <div className="flex justify-end items-center gap-1 px-6 pb-3">
+                {/* Theme & Settings controls - floating above dock, no background */}
+                {/* Hidden when scrolling down (matching header behavior) */}
+                <div className={`absolute right-6 flex items-center gap-1 transition-all duration-200 ${
+                  showActionBar ? 'opacity-100 -top-8' : 'opacity-0 top-0 pointer-events-none'
+                }`}>
                   {/* Theme toggle */}
                   <button
                     onClick={toggleTheme}
@@ -781,22 +778,22 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   </button>
                 </div>
 
-                {isMultiChatMode && !canWrite ? (
+                {isChatMode && !canWrite ? (
                   // Read-only mode for viewers without write permissions
                   <div className={`px-6 py-4 text-center ${
                     theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
                   }`}>
-                    <p className="text-sm">{t('multiChat.readOnly', 'You are viewing this chat in read-only mode')}</p>
+                    <p className="text-sm">{t('activeChat.readOnly', 'You are viewing this chat in read-only mode')}</p>
                   </div>
                 ) : (
                   <ChatInput
                     onSend={handleSend}
-                    disabled={isStreaming || (isMultiChatMode && !canWrite)}
+                    disabled={isStreaming || (isChatMode && !canWrite)}
                     hideBorder={true}
                     hideWalletInfo={false}
                     compact={true}
-                    placeholder={isMultiChatMode ? t('multiChat.typeMessage', 'Type a message...') : placeholder}
-                    showDockButtons={!isMultiChatMode}
+                    placeholder={isChatMode ? t('activeChat.typeMessage', 'Type a message...') : placeholder}
+                    showDockButtons={!isChatMode}
                     onSettingsClick={() => setSettingsOpen(true)}
                   />
                 )}
@@ -822,15 +819,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         />
       )}
 
-      {/* Local Share Modal - for unauthenticated users */}
-      {activeConversationId && (
-        <LocalShareModal
-          isOpen={showLocalShareModal}
-          onClose={() => setShowLocalShareModal(false)}
-          conversationId={activeConversationId}
-          conversationTitle={conversation?.title || 'Chat'}
-        />
-      )}
+      {/* Local Share Modal removed - all chats are now server-synced */}
 
       {/* Save Modal - for wallet-connected users */}
       <SaveModal
@@ -844,6 +833,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         onClose={() => setShowAuthOptionsModal(false)}
         onWalletClick={() => setShowWalletPanel(true)}
         onPasskeySuccess={handlePasskeySuccess}
+        title={authModalContext === 'connect' ? t('auth.connectTitle', 'Connect') : undefined}
+        description={authModalContext === 'connect' ? t('auth.connectDescription', 'Choose how to connect your account.') : undefined}
       />
 
       {/* Wallet Panel - for external wallet connection */}

@@ -1,7 +1,7 @@
 // Re-export system prompt from shared location (single source of truth)
 export { SYSTEM_PROMPT } from '../../../shared/prompts'
 
-import type { Attachment } from '../../stores/chatStore'
+import type { Attachment } from '../../stores'
 
 type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
 

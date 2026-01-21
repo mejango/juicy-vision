@@ -12,6 +12,7 @@ import { useThemeStore } from '../../../stores'
 import {
   fetchProjectSuckerGroupId,
   fetchSuckerGroupMoments,
+  fetchSuckerGroupBalance,
   fetchCashOutTaxSnapshots,
   fetchPayEventsHistory,
   fetchCashOutEventsHistory,
@@ -93,6 +94,8 @@ export default function MultiChainCashOutChart({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [projectStart, setProjectStart] = useState<number>(0)
+  const [projectCurrency, setProjectCurrency] = useState<number>(1) // 1=ETH, 2=USD
+  const [projectDecimals, setProjectDecimals] = useState<number>(18) // 18 for ETH, 6 for USDC
 
   // Parse chain IDs from prop
   const chainIds = useMemo(() => {
@@ -119,14 +122,17 @@ export default function MultiChainCashOutChart({
           return
         }
 
-        // Fetch aggregated moments and tax snapshots
-        const [moments, taxes] = await Promise.all([
+        // Fetch aggregated moments, tax snapshots, and project balance (for currency/decimals)
+        const [moments, taxes, balanceInfo] = await Promise.all([
           fetchSuckerGroupMoments(suckerGroupId),
           fetchCashOutTaxSnapshots(suckerGroupId),
+          fetchSuckerGroupBalance(projectId, parseInt(chainId)),
         ])
 
         setAggregatedMoments(moments)
         setTaxSnapshots(taxes)
+        setProjectCurrency(balanceInfo.currency)
+        setProjectDecimals(balanceInfo.decimals)
 
         if (moments.length > 0) {
           setProjectStart(moments[0].timestamp)
@@ -233,7 +239,7 @@ export default function MultiChainCashOutChart({
       // Calculate COMBINED cash out value from aggregated data
       const totalBalance = BigInt(moment.balance)
       if (totalSupply > 0n && totalBalance > 0n) {
-        const combinedCashOut = calculateCashOutValue(totalBalance, totalSupply, taxRate, 18)
+        const combinedCashOut = calculateCashOutValue(totalBalance, totalSupply, taxRate, projectDecimals)
         if (combinedCashOut > 0) {
           point[`cashOut_${COMBINED_ID}`] = combinedCashOut
         }
@@ -259,7 +265,7 @@ export default function MultiChainCashOutChart({
         // Each chain has its own balance but shares the total supply and tax rate
         // This gives the cash out value per token IF all tokens were on this chain
         if (totalSupply > 0n && chainBalance > 0n) {
-          const cashOutValue = calculateCashOutValue(chainBalance, totalSupply, taxRate, 18)
+          const cashOutValue = calculateCashOutValue(chainBalance, totalSupply, taxRate, projectDecimals)
           if (cashOutValue > 0) {
             point[`cashOut_${cid}`] = cashOutValue
           }
@@ -287,7 +293,10 @@ export default function MultiChainCashOutChart({
     }
 
     return sortedData
-  }, [aggregatedMoments, taxSnapshots, perChainPayEvents, perChainCashOutEvents, chainIds, range, projectStart])
+  }, [aggregatedMoments, taxSnapshots, perChainPayEvents, perChainCashOutEvents, chainIds, range, projectStart, projectDecimals])
+
+  // Currency symbol for display (ETH or USDC)
+  const currencySymbol = projectCurrency === 2 ? 'USDC' : 'ETH'
 
   // Check which chains have data (including combined)
   const chainsWithData = useMemo(() => {
@@ -345,7 +354,7 @@ export default function MultiChainCashOutChart({
             <div className="flex items-center gap-2 mb-1 pb-1 border-b border-zinc-700">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: info?.color || '#888' }} />
               <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>{info?.name}:</span>
-              <span className="font-mono font-semibold">{formatPrice(combinedValue)} ETH</span>
+              <span className="font-mono font-semibold">{formatPrice(combinedValue)} {currencySymbol}</span>
             </div>
           )
         })()}
@@ -357,7 +366,7 @@ export default function MultiChainCashOutChart({
             <div key={cid} className="flex items-center gap-2 mb-1">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: info?.color || '#888' }} />
               <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>{info?.name || `Chain ${cid}`}:</span>
-              <span className="font-mono">{formatPrice(value)} ETH</span>
+              <span className="font-mono">{formatPrice(value)} {currencySymbol}</span>
             </div>
           )
         })}
@@ -571,7 +580,7 @@ export default function MultiChainCashOutChart({
               return (
                 <span className="flex items-center gap-2 font-medium">
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHAIN_INFO[COMBINED_ID].color }} />
-                  Combined: {formatPrice(value)} ETH
+                  Combined: {formatPrice(value)} {currencySymbol}
                 </span>
               )
             })()}
@@ -586,7 +595,7 @@ export default function MultiChainCashOutChart({
               return (
                 <span key={cid} className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: info?.color || '#888' }} />
-                  {info?.name || `Chain ${cid}`}: {formatPrice(value)} ETH
+                  {info?.name || `Chain ${cid}`}: {formatPrice(value)} {currencySymbol}
                 </span>
               )
             })}

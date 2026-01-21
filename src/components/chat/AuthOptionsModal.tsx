@@ -8,6 +8,8 @@ interface AuthOptionsModalProps {
   onClose: () => void
   onWalletClick: () => void
   onPasskeySuccess?: (wallet: PasskeyWallet) => void
+  title?: string
+  description?: string
 }
 
 export default function AuthOptionsModal({
@@ -15,6 +17,8 @@ export default function AuthOptionsModal({
   onClose,
   onWalletClick,
   onPasskeySuccess,
+  title,
+  description,
 }: AuthOptionsModalProps) {
   const { t } = useTranslation()
   const { theme } = useThemeStore()
@@ -86,11 +90,11 @@ export default function AuthOptionsModal({
         </button>
 
         <h2 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          {t('auth.saveTitle', 'Save Your Chat')}
+          {title || t('auth.saveTitle', 'Save Your Chat')}
         </h2>
 
         <p className={`text-sm mb-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-          {t('auth.saveDescription', 'Lets you use your chats from anywhere.')}
+          {description || t('auth.saveDescription', 'Lets you use your chats from anywhere.')}
         </p>
 
         {error && (

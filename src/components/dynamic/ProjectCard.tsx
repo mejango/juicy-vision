@@ -3,7 +3,7 @@ import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroupBalance, fetchOwnersCount, fetchEthPrice, fetchProjectTokenSymbol, fetchProjectWithRuleset, type Project, type ConnectedChain, type IssuanceRate, type SuckerGroupBalance } from '../../services/bendystraw'
 import { resolveIpfsUri, fetchIpfsMetadata, type IpfsProjectMetadata } from '../../utils/ipfs'
-import { useThemeStore, useTransactionStore } from '../../stores'
+import { useThemeStore, useTransactionStore, type PaymentStage, type TransactionStatus } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
 
 // Parse HTML/markdown description to clean text with line breaks
@@ -45,6 +45,87 @@ const TOKENS = [
   { symbol: 'USDC', name: 'USD Coin' },
 ]
 
+// Stage labels for payment progress
+const STAGE_LABELS: Record<PaymentStage, string> = {
+  checking: 'Checking wallet...',
+  switching: 'Switching network...',
+  approving: 'Approve USDC in wallet...',
+  signing: 'Sign permit in wallet...',
+  submitting: 'Confirm transaction...',
+}
+
+// Payment progress indicator component
+function PaymentProgress({
+  stage,
+  status,
+  error,
+  isDark,
+  onRetry,
+}: {
+  stage?: PaymentStage
+  status: TransactionStatus
+  error?: string
+  isDark: boolean
+  onRetry: () => void
+}) {
+  // Success state
+  if (status === 'submitted' || status === 'confirmed') {
+    return (
+      <div className={`mt-2 p-2 text-sm flex items-center gap-2 ${
+        isDark ? 'bg-green-500/10 text-green-400' : 'bg-green-50 text-green-600'
+      }`}>
+        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+        <span>Payment submitted!</span>
+      </div>
+    )
+  }
+
+  // Cancelled/failed state
+  if (status === 'cancelled' || status === 'failed') {
+    return (
+      <div className={`mt-2 p-2 text-sm ${
+        isDark ? 'bg-yellow-500/10' : 'bg-yellow-50'
+      }`}>
+        <div className={`flex items-center gap-2 ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span>{status === 'cancelled' ? 'Payment cancelled' : 'Payment failed'}</span>
+        </div>
+        {error && (
+          <p className={`text-xs mt-1 ml-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            {error}
+          </p>
+        )}
+        <button
+          onClick={onRetry}
+          className={`mt-2 ml-6 text-xs underline ${
+            isDark ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Try again
+        </button>
+      </div>
+    )
+  }
+
+  // In progress state
+  const stageLabel = stage ? STAGE_LABELS[stage] : 'Processing...'
+  return (
+    <div className={`mt-2 p-2 text-sm flex items-center gap-2 ${
+      isDark ? 'bg-juice-cyan/10 text-juice-cyan' : 'bg-cyan-50 text-cyan-600'
+    }`}>
+      <svg className="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+      </svg>
+      <span>{stageLabel}</span>
+    </div>
+  )
+}
+
 export default function ProjectCard({ projectId, chainId: initialChainId = '1' }: ProjectCardProps) {
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -80,9 +161,14 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   const [balanceLoading, setBalanceLoading] = useState(false)
   // Project's issued ERC20 token symbol (e.g., NANA for Bananapus)
   const [projectTokenSymbol, setProjectTokenSymbol] = useState<string | null>(null)
+  // Active payment tracking
+  const [activePaymentId, setActivePaymentId] = useState<string | null>(null)
   const { theme } = useThemeStore()
-  const { addTransaction } = useTransactionStore()
+  const { addTransaction, getTransaction } = useTransactionStore()
   const isDark = theme === 'dark'
+
+  // Get active payment transaction for status display
+  const activePayment = activePaymentId ? getTransaction(activePaymentId) : null
 
   // wagmi hooks
   const { address, isConnected } = useAccount()
@@ -130,7 +216,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   useEffect(() => {
     async function load() {
       try {
-        setLoading(true)
+        // Only show loading skeleton on initial load, not when switching chains
+        if (!project) {
+          setLoading(true)
+        }
         const chainIdNum = parseInt(selectedChainId)
 
         const [data, groupBalance, owners, tokenSymbol] = await Promise.all([
@@ -321,12 +410,80 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
     return { sufficient: true }
   }, [amount, feeAmount, selectedToken, walletEthBalance, walletUsdcBalance, balanceLoading])
 
+  // Handle payment status updates (clear form on success, reset paying on cancel)
+  useEffect(() => {
+    if (activePayment?.status === 'submitted' || activePayment?.status === 'confirmed') {
+      // Payment succeeded - clear form and reset
+      setAmount('')
+      setMemo('')
+      setPaying(false)
+      // Keep activePaymentId for a moment so user can see success
+      setTimeout(() => setActivePaymentId(null), 3000)
+    } else if (activePayment?.status === 'cancelled' || activePayment?.status === 'failed') {
+      // Payment cancelled/failed - keep form values, just reset paying state
+      setPaying(false)
+    }
+  }, [activePayment?.status])
+
   if (loading) {
     return (
-      <div className="glass  p-4 animate-pulse">
-        <div className="h-6 bg-white/10  w-3/4 mb-3" />
-        <div className="h-4 bg-white/10  w-1/2 mb-2" />
-        <div className="h-4 bg-white/10  w-2/3" />
+      <div className="w-full">
+        <div className={`max-w-md border p-4 animate-pulse ${
+          isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
+        }`}>
+          {/* Header skeleton */}
+          <div className="flex items-center gap-3 mb-2">
+            <div className={`w-14 h-14 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <div className="flex-1">
+              <div className={`h-5 w-32 mb-1 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+              <div className={`h-3 w-20 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            </div>
+          </div>
+
+          {/* Tagline skeleton */}
+          <div className={`h-4 w-3/4 mb-3 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+
+          {/* Stats row skeleton */}
+          <div className="flex gap-6 mb-3">
+            <div className={`h-4 w-24 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <div className={`h-4 w-16 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <div className={`h-4 w-20 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          </div>
+
+          {/* Pay form area skeleton */}
+          <div className={`p-3 mb-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+            {/* Chain selector */}
+            <div className={`h-4 w-28 mb-3 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+
+            {/* Amount input row */}
+            <div className="flex gap-2 mb-2">
+              <div className={`flex-1 h-10 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+              <div className={`w-16 h-10 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            </div>
+
+            {/* Quick amount chips */}
+            <div className="flex gap-2 mb-2">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className={`h-6 w-12 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+              ))}
+            </div>
+
+            {/* Token preview */}
+            <div className={`h-4 w-40 mb-4 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+
+            {/* Memo input */}
+            <div className={`h-8 w-full ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          </div>
+
+          {/* Pay Juicy checkbox skeleton */}
+          <div className="flex items-center gap-2 mt-2">
+            <div className={`w-3.5 h-3.5 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <div className={`h-4 w-28 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          </div>
+
+          {/* More link skeleton */}
+          <div className={`h-3 w-12 mt-4 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+        </div>
       </div>
     )
   }
@@ -384,38 +541,36 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
       return
     }
 
-    // Step 3: Proceed with payment
+    // Step 3: Proceed with payment - track the transaction
     setPaying(true)
-    try {
-      const txId = addTransaction({
-        type: 'pay',
+    const txId = addTransaction({
+      type: 'pay',
+      projectId: currentProjectId,
+      chainId: parseInt(selectedChainId),
+      amount,
+      token: selectedToken,
+      status: 'pending',
+    })
+
+    // Track this payment for UI updates
+    setActivePaymentId(txId)
+
+    window.dispatchEvent(new CustomEvent('juice:pay-project', {
+      detail: {
+        txId,
         projectId: currentProjectId,
         chainId: parseInt(selectedChainId),
         amount,
         token: selectedToken,
-        status: 'pending',
-      })
-
-      window.dispatchEvent(new CustomEvent('juice:pay-project', {
-        detail: {
-          txId,
-          projectId: currentProjectId,
-          chainId: parseInt(selectedChainId),
-          amount,
-          token: selectedToken,
-          memo,
-          // Include fee info for batched transaction
-          payUs,
-          feeAmount: feeAmount.toString(),
-          juicyProjectId: JUICY_PROJECT_ID,
-          totalAmount: totalAmount.toString(),
-        }
-      }))
-      setAmount('')
-      setMemo('')
-    } finally {
-      setPaying(false)
-    }
+        memo,
+        // Include fee info for batched transaction
+        payUs,
+        feeAmount: feeAmount.toString(),
+        juicyProjectId: JUICY_PROJECT_ID,
+        totalAmount: totalAmount.toString(),
+      }
+    }))
+    // Don't clear form here - wait for transaction result
   }
 
   const logoUrl = resolveIpfsUri(project.logoUri)
@@ -666,6 +821,17 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
             {paying ? '...' : 'Pay'}
           </button>
         </div>
+
+        {/* Payment progress indicator */}
+        {activePayment && (
+          <PaymentProgress
+            stage={activePayment.stage}
+            status={activePayment.status}
+            error={activePayment.error}
+            isDark={isDark}
+            onRetry={() => setActivePaymentId(null)}
+          />
+        )}
 
         {/* Quick amount options */}
         <div className="flex gap-2 mt-2">

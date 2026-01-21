@@ -223,15 +223,11 @@ export default function TokenPriceChart({
         // Auto-discover Uniswap pool if no pool address was provided
         if (!poolAddress) {
           const tokenAddr = await fetchProjectTokenAddress(projectId, parseInt(chainId))
-          console.log('[TokenPriceChart] Token address:', tokenAddr)
           setTokenAddress(tokenAddr)
 
           if (tokenAddr) {
             const pool = await discoverUniswapPool(tokenAddr, parseInt(chainId))
-            console.log('[TokenPriceChart] Discovered pool:', pool)
             setDiscoveredPool(pool)
-          } else {
-            console.log('[TokenPriceChart] No token address found, skipping pool discovery')
           }
         }
       } catch (err) {

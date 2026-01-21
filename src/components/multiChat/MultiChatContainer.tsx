@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useThemeStore } from '../../stores'
-import { useMultiChatStore } from '../../stores/multiChatStore'
+import { useThemeStore, useChatStore } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
 import * as multiChatApi from '../../services/multiChat'
 import { getSessionId } from '../../services/session'
@@ -40,7 +39,7 @@ export default function MultiChatContainer() {
     setMembers,
     setConnected,
     clearUnread,
-  } = useMultiChatStore()
+  } = useChatStore()
 
   const [inputValue, setInputValue] = useState('')
   const [isSending, setIsSending] = useState(false)
@@ -127,7 +126,7 @@ export default function MultiChatContainer() {
             break
           case 'member_joined':
             const joinedMember = msg.data as { address: string; role: 'founder' | 'admin' | 'member'; joinedAt: string }
-            useMultiChatStore.getState().addMember(activeChatId!, {
+            useChatStore.getState().addMember(activeChatId!, {
               address: joinedMember.address,
               role: joinedMember.role,
               joinedAt: joinedMember.joinedAt,
@@ -135,7 +134,7 @@ export default function MultiChatContainer() {
             break
           case 'member_left':
             const leftData = msg.data as { address: string }
-            useMultiChatStore.getState().removeMember(activeChatId!, leftData.address)
+            useChatStore.getState().removeMember(activeChatId!, leftData.address)
             break
           // system_event type is reserved for future use
           // case 'system_event':

@@ -35,20 +35,22 @@ export default function SuccessVisualization({
   const monthlyGrowth = parseFloat(growthRate) / 100 || 0.15
   const avgAmount = parseFloat(avgContribution.replace(/[$,]/g, '')) || 100
 
-  // Growth multipliers for different scenarios
+  // Growth multipliers for different scenarios - designed to produce distinct outcomes:
+  // Conservative: ~40-60% of goal, Moderate: ~80-100%, Optimistic: ~120-150%
   const scenarios = {
-    conservative: 0.6,
+    conservative: 0.4,
     moderate: 1.0,
-    optimistic: 1.5,
+    optimistic: 1.8,
   }
 
-  // Calculate projections
+  // Calculate projections using deterministic seed based on scenario
   const projections = useMemo(() => {
     const multiplier = scenarios[selectedScenario]
     const effectiveGrowth = monthlyGrowth * multiplier
 
     const data: Milestone[] = []
-    let currentSupporters = Math.ceil(targetSupporters * 0.05) // Start with 5% of target
+    // Start with ~4% of target to reach goal with moderate growth
+    let currentSupporters = Math.ceil(targetSupporters * 0.04)
     let totalRaised = currentSupporters * avgAmount
 
     // Month 0 - starting point
@@ -59,14 +61,20 @@ export default function SuccessVisualization({
       label: 'Launch',
     })
 
-    // Generate monthly data
+    // Seeded random for consistent results per scenario
+    const seed = selectedScenario === 'conservative' ? 0.3 : selectedScenario === 'moderate' ? 0.5 : 0.7
+
+    // Generate monthly data with true compound growth
     for (let i = 1; i <= months; i++) {
-      // Compound growth with some randomization for realism
-      const growthFactor = 1 + effectiveGrowth + (Math.random() - 0.5) * 0.05
-      const newSupporters = Math.ceil(currentSupporters * growthFactor * 0.15)
+      // Compound growth - supporters grow by effectiveGrowth each month
+      const variance = ((seed * i) % 1) * 0.1 - 0.05 // -5% to +5% variance
+      const growthFactor = 1 + effectiveGrowth + variance
+      const newSupporters = Math.ceil(currentSupporters * (growthFactor - 1))
 
       currentSupporters += newSupporters
-      totalRaised += newSupporters * avgAmount * (0.8 + Math.random() * 0.4)
+      // Contributions vary slightly around average
+      const contributionVariance = 0.9 + ((seed * i * 2) % 1) * 0.2
+      totalRaised += newSupporters * avgAmount * contributionVariance
 
       const milestone: Milestone = {
         month: i,
@@ -195,12 +203,13 @@ export default function SuccessVisualization({
           <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
             <div className="h-40 flex items-end gap-1">
               {projections.map((point, idx) => {
-                const height = (point.raised / maxRaised) * 100
+                // Use height in pixels instead of percentages for reliable rendering
+                const heightPx = Math.max((point.raised / maxRaised) * 160, 4)
                 const isGoalMet = point.raised >= target
                 return (
                   <div
                     key={idx}
-                    className="flex-1 flex flex-col items-center justify-end"
+                    className="flex-1 flex flex-col items-center justify-end h-full"
                     title={`Month ${point.month}: $${point.raised.toLocaleString()}`}
                   >
                     <div
@@ -209,7 +218,7 @@ export default function SuccessVisualization({
                           ? 'bg-green-500'
                           : 'bg-juice-orange'
                       } ${point.label ? 'opacity-100' : 'opacity-70'}`}
-                      style={{ height: `${Math.max(height, 2)}%` }}
+                      style={{ height: `${heightPx}px` }}
                     />
                     {point.label && (
                       <div className={`absolute mt-2 text-[10px] whitespace-nowrap ${
@@ -268,8 +277,12 @@ export default function SuccessVisualization({
               <>With {selectedScenario} growth, you could reach your ${(target / 1000).toFixed(0)}k goal by month {
                 projections.findIndex(p => p.raised >= target)
               }!</>
+            ) : selectedScenario === 'conservative' ? (
+              <>Conservative assumes minimal marketing. Active promotion could significantly improve results.</>
+            ) : selectedScenario === 'moderate' ? (
+              <>Moderate growth assumes consistent community engagement and regular updates.</>
             ) : (
-              <>Building momentum takes time. Stay consistent and engage your community!</>
+              <>Optimistic growth requires viral moments or strong existing audience.</>
             )}
           </p>
         </div>

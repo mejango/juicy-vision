@@ -106,7 +106,7 @@ function getClient(): GraphQLClient {
   // If backend API is configured, use the proxy endpoint to keep API keys secure
   const apiUrl = import.meta.env.VITE_API_URL
   if (apiUrl) {
-    return new GraphQLClient(`${apiUrl}/api/proxy/bendystraw`)
+    return new GraphQLClient(`${apiUrl}/proxy/bendystraw`)
   }
   // Fallback to direct endpoint (requires user to configure in settings)
   const endpoint = useSettingsStore.getState().bendystrawEndpoint
@@ -209,6 +209,8 @@ interface BaseActivityEvent {
     name?: string
     handle?: string
     logoUri?: string
+    decimals?: number  // 6 for USDC, 18 for ETH
+    currency?: number  // 1=ETH, 2=USD
   }
 }
 
@@ -335,6 +337,8 @@ interface RawActivityEvent {
     name?: string
     handle?: string
     logoUri?: string
+    decimals?: number
+    currency?: number
   }
   payEvent?: { amount: string; amountUsd?: string; from: string; txHash: string }
   projectCreateEvent?: { from: string; txHash: string }
@@ -1286,8 +1290,9 @@ export async function fetchOwnersCount(
         )
         return uniqueWallets.size
       }
-    } catch (err) {
-      console.error('SuckerGroup query failed in fetchOwnersCount, trying fallback:', err)
+    } catch {
+      // SuckerGroup query can fail for various reasons (not indexed yet, API issues)
+      // Silently fall back to single-chain query
     }
 
     // Fallback to single-chain if suckerGroup query failed or returned empty

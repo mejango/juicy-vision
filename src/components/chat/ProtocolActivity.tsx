@@ -1,7 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { useThemeStore } from '../../stores'
-import { fetchActivityEvents, ActivityEvent } from '../../services/bendystraw/client'
-import { ACTIVITY_PAGE_SIZE, ACTIVITY_POLL_INTERVAL } from '../../constants'
+import { useEffect, useRef } from 'react'
+import { useThemeStore, useActivityStore } from '../../stores'
 import ActivityItem from './ActivityItem'
 
 interface ProtocolActivityProps {
@@ -10,117 +8,115 @@ interface ProtocolActivityProps {
 
 export default function ProtocolActivity({ onProjectClick }: ProtocolActivityProps) {
   const { theme } = useThemeStore()
-  const [events, setEvents] = useState<ActivityEvent[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const loaderRef = useRef<HTMLDivElement>(null)
+  const {
+    events,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    initialize,
+    loadMore,
+    startPolling,
+    stopPolling,
+  } = useActivityStore()
   const containerRef = useRef<HTMLDivElement>(null)
-  // Track server offset separately from events.length (which includes polled new events)
-  const serverOffsetRef = useRef(0)
+  // Store refs for scroll handler to avoid stale closures
+  const hasMoreRef = useRef(hasMore)
+  const loadingMoreRef = useRef(loadingMore)
+  const loadMoreRef = useRef(loadMore)
 
-  // Initial load
+  // Keep refs in sync
   useEffect(() => {
-    let mounted = true
+    hasMoreRef.current = hasMore
+    loadingMoreRef.current = loadingMore
+    loadMoreRef.current = loadMore
+  }, [hasMore, loadingMore, loadMore])
 
-    const loadEvents = async () => {
-      try {
-        const data = await fetchActivityEvents(ACTIVITY_PAGE_SIZE, 0)
-        if (mounted) {
-          setEvents(data)
-          serverOffsetRef.current = ACTIVITY_PAGE_SIZE // Track what we requested, not what came back
-          setHasMore(data.length > 0) // If we got any events, assume there might be more
-          setLoading(false)
-        }
-      } catch (err) {
-        if (mounted) {
-          setError('Failed to load activity')
-          setLoading(false)
-        }
+  // Initial load and polling
+  useEffect(() => {
+    initialize()
+    startPolling()
+    return () => stopPolling()
+  }, [initialize, startPolling, stopPolling])
+
+  // Scroll-based infinite loading
+  // Re-run when loading finishes so we can attach to the scrollable parent
+  useEffect(() => {
+    // Wait until loading is done and we have events
+    if (loading || events.length === 0) return
+
+    const container = containerRef.current
+    if (!container) return
+
+    // Find the scrollable parent (traverse up looking for overflow-y-auto)
+    let scrollParent: HTMLElement | null = container.parentElement
+    while (scrollParent) {
+      const style = window.getComputedStyle(scrollParent)
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+        break
+      }
+      scrollParent = scrollParent.parentElement
+    }
+
+    if (!scrollParent) {
+      console.warn('[Activity] No scrollable parent found')
+      return
+    }
+
+    // Scroll handler - load more when near bottom
+    const handleScroll = () => {
+      if (!hasMoreRef.current || loadingMoreRef.current) return
+
+      const { scrollTop, scrollHeight, clientHeight } = scrollParent!
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+      // Load more when 150px from bottom
+      if (distanceFromBottom < 150) {
+        loadMoreRef.current()
       }
     }
 
-    loadEvents()
+    scrollParent.addEventListener('scroll', handleScroll, { passive: true })
 
-    // Poll for new events
-    const interval = setInterval(async () => {
-      try {
-        const data = await fetchActivityEvents(ACTIVITY_PAGE_SIZE, 0)
-        if (mounted) {
-          // Merge new events at the top
-          setEvents(prev => {
-            const existingIds = new Set(prev.map(e => e.id))
-            const newEvents = data.filter(e => !existingIds.has(e.id))
-            return [...newEvents, ...prev]
-          })
-        }
-      } catch {
-        // Silently fail on poll
-      }
-    }, ACTIVITY_POLL_INTERVAL)
+    // Also check immediately in case content is already scrolled
+    handleScroll()
 
     return () => {
-      mounted = false
-      clearInterval(interval)
+      scrollParent?.removeEventListener('scroll', handleScroll)
     }
-  }, [])
+  }, [loading, events.length]) // Re-run when loading finishes
 
-  // Load more when scrolling
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return
-
-    setLoadingMore(true)
-    try {
-      const offset = serverOffsetRef.current
-      const data = await fetchActivityEvents(ACTIVITY_PAGE_SIZE, offset)
-      serverOffsetRef.current = offset + ACTIVITY_PAGE_SIZE // Track what we requested
-      setEvents(prev => {
-        // Dedupe in case of overlap with polled events
-        const existingIds = new Set(prev.map(e => e.id))
-        const newEvents = data.filter(e => !existingIds.has(e.id))
-        return [...prev, ...newEvents]
-      })
-      // Only stop if we got zero events (truly exhausted)
-      setHasMore(data.length > 0)
-    } catch {
-      // Silently fail
-    } finally {
-      setLoadingMore(false)
-    }
-  }, [loadingMore, hasMore])
-
-  // Intersection observer for infinite scroll
-  useEffect(() => {
-    const loader = loaderRef.current
-    const container = containerRef.current
-    if (!loader || !container) return
-
-    // Find the scrollable parent (the one with overflow-y-auto)
-    const scrollableParent = container.closest('.overflow-y-auto') as HTMLElement | null
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore) {
-          loadMore()
-        }
-      },
-      {
-        root: scrollableParent, // Use scrollable parent instead of viewport
-        threshold: 0.1,
-        rootMargin: '100px' // Load more before reaching the very bottom
-      }
-    )
-
-    observer.observe(loader)
-    return () => observer.disconnect()
-  }, [loadMore, hasMore, loadingMore])
+  // Skeleton loading card
+  const SkeletonCard = () => (
+    <div className={`px-3 py-3 -mx-4 border-b animate-pulse ${
+      theme === 'dark' ? 'border-white/10' : 'border-gray-200'
+    }`}>
+      {/* Top row: Project name + time */}
+      <div className="flex items-center gap-2">
+        <div className={`h-3 w-20 rounded ${theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'}`} />
+        <div className="flex-1" />
+        <div className={`h-2 w-12 rounded ${theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'}`} />
+      </div>
+      {/* Middle row: Action + Amount */}
+      <div className="flex items-center gap-2 mt-1.5">
+        <div className={`h-2 w-10 rounded ${theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'}`} />
+        <div className={`h-3 w-16 rounded ${theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'}`} />
+      </div>
+      {/* Bottom row: address on CHAIN */}
+      <div className="flex items-center gap-1.5 mt-1.5">
+        <div className={`h-2 w-24 rounded ${theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'}`} />
+        <div className={`h-3 w-8 rounded ${theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'}`} />
+      </div>
+    </div>
+  )
 
   return (
     <div ref={containerRef} className="h-full">
       {loading ? (
-        <div className="py-8 text-center">
-          <div className="inline-block w-6 h-6 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
+        <div>
+          {[...Array(100)].map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
       ) : error ? (
         <div className={`py-8 text-center text-sm ${
@@ -139,14 +135,35 @@ export default function ProtocolActivity({ onProjectClick }: ProtocolActivityPro
           {events.map((event) => (
             <ActivityItem key={event.id} event={event} onProjectClick={onProjectClick} />
           ))}
-          {/* Infinite scroll loader */}
-          {hasMore && (
-            <div ref={loaderRef} className="py-4 text-center">
-              {loadingMore && (
-                <div className="inline-block w-5 h-5 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
-              )}
-            </div>
-          )}
+          {/* Infinite scroll loader / load more button */}
+          <div className="min-h-[48px]">
+            {loadingMore ? (
+              <>
+                {[...Array(3)].map((_, i) => (
+                  <SkeletonCard key={`loading-${i}`} />
+                ))}
+              </>
+            ) : hasMore ? (
+              <div className="py-4 text-center">
+                <button
+                  onClick={() => loadMore()}
+                  className={`text-xs transition-colors ${
+                    theme === 'dark'
+                      ? 'text-gray-500 hover:text-gray-300'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  Load more
+                </button>
+              </div>
+            ) : events.length > 15 ? (
+              <div className="py-4 text-center">
+                <span className={`text-xs ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`}>
+                  End of activity
+                </span>
+              </div>
+            ) : null}
+          </div>
         </>
       )}
     </div>

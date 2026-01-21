@@ -198,7 +198,7 @@ export default function InviteModal({
                     )}
                   </div>
                   <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {t('invite.canPassOnRoles', 'Can give out roles')}
+                    {t('invite.canPassOnRoles', 'Can invite others who can invite others')}
                   </span>
                 </button>
               )}
@@ -211,8 +211,8 @@ export default function InviteModal({
                 disabled={isLoading}
                 className={`px-4 py-1.5 text-sm font-medium transition-colors ${
                   isLoading
-                    ? 'bg-gray-400 cursor-not-allowed text-white'
-                    : 'text-green-500 hover:text-green-400 border border-green-500/30 hover:border-green-500/50'
+                    ? 'bg-gray-500 cursor-not-allowed text-white'
+                    : 'bg-green-500 text-black hover:bg-green-600'
                 }`}
               >
                 {isLoading
@@ -244,8 +244,8 @@ export default function InviteModal({
                   onClick={handleCopy}
                   className={`px-4 py-2 text-sm font-medium transition-colors ${
                     copied
-                      ? 'bg-green-500 text-white'
-                      : 'text-green-500 hover:text-green-400 border border-green-500/30 hover:border-green-500/50'
+                      ? 'bg-green-600 text-black'
+                      : 'bg-green-500 text-black hover:bg-green-600'
                   }`}
                 >
                   {copied ? t('invite.copied', 'Copied!') : t('invite.copy', 'Copy')}
@@ -265,7 +265,7 @@ export default function InviteModal({
                     <li>{t('invite.canInviteOthersLabel', 'Can invite others')}</li>
                   )}
                   {invite.canPassOnRoles && (
-                    <li>{t('invite.canPassOnRolesLabel', 'Can give out roles')}</li>
+                    <li>{t('invite.canPassOnRolesLabel', 'Can invite others who can invite others')}</li>
                   )}
                 </ul>
               </div>

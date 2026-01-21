@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useMultiChatStore, type MultiChat, type MultiChatMessage, type MultiChatMember } from './multiChatStore'
+import { useChatStore, type Chat, type ChatMessage, type ChatMember } from './chatStore'
 
 // Helper to create a mock chat
-function createMockChat(overrides: Partial<MultiChat> = {}): MultiChat {
+function createMockChat(overrides: Partial<Chat> = {}): Chat {
   const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`
   return {
     id,
@@ -20,7 +20,7 @@ function createMockChat(overrides: Partial<MultiChat> = {}): MultiChat {
 }
 
 // Helper to create a mock message
-function createMockMessage(chatId: string, overrides: Partial<MultiChatMessage> = {}): MultiChatMessage {
+function createMockMessage(chatId: string, overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
     id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     chatId,
@@ -34,7 +34,7 @@ function createMockMessage(chatId: string, overrides: Partial<MultiChatMessage> 
 }
 
 // Helper to create a mock member
-function createMockMember(overrides: Partial<MultiChatMember> = {}): MultiChatMember {
+function createMockMember(overrides: Partial<ChatMember> = {}): ChatMember {
   return {
     address: `0x${Math.random().toString(16).slice(2, 42)}`,
     role: 'member',
@@ -43,10 +43,10 @@ function createMockMember(overrides: Partial<MultiChatMember> = {}): MultiChatMe
   }
 }
 
-describe('multiChatStore', () => {
+describe('chatStore', () => {
   beforeEach(() => {
     // Reset store state before each test
-    useMultiChatStore.setState({
+    useChatStore.setState({
       chats: [],
       activeChatId: null,
       isLoading: false,
@@ -58,27 +58,27 @@ describe('multiChatStore', () => {
 
   describe('initial state', () => {
     it('starts with empty chats array', () => {
-      const { chats } = useMultiChatStore.getState()
+      const { chats } = useChatStore.getState()
       expect(chats).toEqual([])
     })
 
     it('starts with no active chat', () => {
-      const { activeChatId } = useMultiChatStore.getState()
+      const { activeChatId } = useChatStore.getState()
       expect(activeChatId).toBeNull()
     })
 
     it('starts not loading', () => {
-      const { isLoading } = useMultiChatStore.getState()
+      const { isLoading } = useChatStore.getState()
       expect(isLoading).toBe(false)
     })
 
     it('starts not connected', () => {
-      const { isConnected } = useMultiChatStore.getState()
+      const { isConnected } = useChatStore.getState()
       expect(isConnected).toBe(false)
     })
 
     it('starts with no error', () => {
-      const { error } = useMultiChatStore.getState()
+      const { error } = useChatStore.getState()
       expect(error).toBeNull()
     })
   })
@@ -88,9 +88,9 @@ describe('multiChatStore', () => {
       const chat1 = createMockChat({ name: 'Chat 1' })
       const chat2 = createMockChat({ name: 'Chat 2' })
 
-      useMultiChatStore.getState().setChats([chat1, chat2])
+      useChatStore.getState().setChats([chat1, chat2])
 
-      const { chats } = useMultiChatStore.getState()
+      const { chats } = useChatStore.getState()
       expect(chats).toHaveLength(2)
       expect(chats[0].name).toBe('Chat 1')
       expect(chats[1].name).toBe('Chat 2')
@@ -100,10 +100,10 @@ describe('multiChatStore', () => {
       const oldChat = createMockChat({ name: 'Old Chat' })
       const newChat = createMockChat({ name: 'New Chat' })
 
-      useMultiChatStore.getState().setChats([oldChat])
-      useMultiChatStore.getState().setChats([newChat])
+      useChatStore.getState().setChats([oldChat])
+      useChatStore.getState().setChats([newChat])
 
-      const { chats } = useMultiChatStore.getState()
+      const { chats } = useChatStore.getState()
       expect(chats).toHaveLength(1)
       expect(chats[0].name).toBe('New Chat')
     })
@@ -113,9 +113,9 @@ describe('multiChatStore', () => {
     it('adds a new chat', () => {
       const chat = createMockChat()
 
-      useMultiChatStore.getState().addChat(chat)
+      useChatStore.getState().addChat(chat)
 
-      const { chats } = useMultiChatStore.getState()
+      const { chats } = useChatStore.getState()
       expect(chats).toHaveLength(1)
       expect(chats[0].id).toBe(chat.id)
     })
@@ -124,10 +124,10 @@ describe('multiChatStore', () => {
       const chat1 = createMockChat({ name: 'Chat 1' })
       const chat2 = createMockChat({ name: 'Chat 2' })
 
-      useMultiChatStore.getState().addChat(chat1)
-      useMultiChatStore.getState().addChat(chat2)
+      useChatStore.getState().addChat(chat1)
+      useChatStore.getState().addChat(chat2)
 
-      const { chats } = useMultiChatStore.getState()
+      const { chats } = useChatStore.getState()
       expect(chats[0].name).toBe('Chat 2')
       expect(chats[1].name).toBe('Chat 1')
     })
@@ -136,10 +136,10 @@ describe('multiChatStore', () => {
       const chat = createMockChat({ name: 'Original' })
       const updated = { ...chat, name: 'Updated' }
 
-      useMultiChatStore.getState().addChat(chat)
-      useMultiChatStore.getState().addChat(updated)
+      useChatStore.getState().addChat(chat)
+      useChatStore.getState().addChat(updated)
 
-      const { chats } = useMultiChatStore.getState()
+      const { chats } = useChatStore.getState()
       expect(chats).toHaveLength(1)
       expect(chats[0].name).toBe('Updated')
     })
@@ -148,11 +148,11 @@ describe('multiChatStore', () => {
   describe('updateChat', () => {
     it('updates chat properties', () => {
       const chat = createMockChat({ name: 'Original', isPublic: true })
-      useMultiChatStore.getState().setChats([chat])
+      useChatStore.getState().setChats([chat])
 
-      useMultiChatStore.getState().updateChat(chat.id, { name: 'Updated', isPublic: false })
+      useChatStore.getState().updateChat(chat.id, { name: 'Updated', isPublic: false })
 
-      const { chats } = useMultiChatStore.getState()
+      const { chats } = useChatStore.getState()
       expect(chats[0].name).toBe('Updated')
       expect(chats[0].isPublic).toBe(false)
     })
@@ -160,22 +160,22 @@ describe('multiChatStore', () => {
     it('does not affect other chats', () => {
       const chat1 = createMockChat({ name: 'Chat 1' })
       const chat2 = createMockChat({ name: 'Chat 2' })
-      useMultiChatStore.getState().setChats([chat1, chat2])
+      useChatStore.getState().setChats([chat1, chat2])
 
-      useMultiChatStore.getState().updateChat(chat1.id, { name: 'Updated' })
+      useChatStore.getState().updateChat(chat1.id, { name: 'Updated' })
 
-      const { chats } = useMultiChatStore.getState()
+      const { chats } = useChatStore.getState()
       expect(chats[1].name).toBe('Chat 2')
     })
 
     it('handles non-existent chat gracefully', () => {
       const chat = createMockChat()
-      useMultiChatStore.getState().setChats([chat])
+      useChatStore.getState().setChats([chat])
 
       // Should not throw
-      useMultiChatStore.getState().updateChat('non-existent', { name: 'Updated' })
+      useChatStore.getState().updateChat('non-existent', { name: 'Updated' })
 
-      const { chats } = useMultiChatStore.getState()
+      const { chats } = useChatStore.getState()
       expect(chats[0].name).toBe(chat.name)
     })
   })
@@ -183,34 +183,34 @@ describe('multiChatStore', () => {
   describe('removeChat', () => {
     it('removes chat by id', () => {
       const chat = createMockChat()
-      useMultiChatStore.getState().setChats([chat])
+      useChatStore.getState().setChats([chat])
 
-      useMultiChatStore.getState().removeChat(chat.id)
+      useChatStore.getState().removeChat(chat.id)
 
-      const { chats } = useMultiChatStore.getState()
+      const { chats } = useChatStore.getState()
       expect(chats).toHaveLength(0)
     })
 
     it('clears activeChatId if removing active chat', () => {
       const chat = createMockChat()
-      useMultiChatStore.getState().setChats([chat])
-      useMultiChatStore.getState().setActiveChat(chat.id)
+      useChatStore.getState().setChats([chat])
+      useChatStore.getState().setActiveChat(chat.id)
 
-      useMultiChatStore.getState().removeChat(chat.id)
+      useChatStore.getState().removeChat(chat.id)
 
-      const { activeChatId } = useMultiChatStore.getState()
+      const { activeChatId } = useChatStore.getState()
       expect(activeChatId).toBeNull()
     })
 
     it('does not clear activeChatId when removing different chat', () => {
       const chat1 = createMockChat()
       const chat2 = createMockChat()
-      useMultiChatStore.getState().setChats([chat1, chat2])
-      useMultiChatStore.getState().setActiveChat(chat1.id)
+      useChatStore.getState().setChats([chat1, chat2])
+      useChatStore.getState().setActiveChat(chat1.id)
 
-      useMultiChatStore.getState().removeChat(chat2.id)
+      useChatStore.getState().removeChat(chat2.id)
 
-      const { activeChatId } = useMultiChatStore.getState()
+      const { activeChatId } = useChatStore.getState()
       expect(activeChatId).toBe(chat1.id)
     })
   })
@@ -218,27 +218,27 @@ describe('multiChatStore', () => {
   describe('setActiveChat / getActiveChat', () => {
     it('sets and gets active chat', () => {
       const chat = createMockChat()
-      useMultiChatStore.getState().setChats([chat])
+      useChatStore.getState().setChats([chat])
 
-      useMultiChatStore.getState().setActiveChat(chat.id)
+      useChatStore.getState().setActiveChat(chat.id)
 
-      expect(useMultiChatStore.getState().activeChatId).toBe(chat.id)
-      expect(useMultiChatStore.getState().getActiveChat()).toEqual(chat)
+      expect(useChatStore.getState().activeChatId).toBe(chat.id)
+      expect(useChatStore.getState().getActiveChat()).toEqual(chat)
     })
 
     it('returns undefined if no active chat', () => {
-      const activeChat = useMultiChatStore.getState().getActiveChat()
+      const activeChat = useChatStore.getState().getActiveChat()
       expect(activeChat).toBeUndefined()
     })
 
     it('can clear active chat', () => {
       const chat = createMockChat()
-      useMultiChatStore.getState().setChats([chat])
-      useMultiChatStore.getState().setActiveChat(chat.id)
+      useChatStore.getState().setChats([chat])
+      useChatStore.getState().setActiveChat(chat.id)
 
-      useMultiChatStore.getState().setActiveChat(null)
+      useChatStore.getState().setActiveChat(null)
 
-      expect(useMultiChatStore.getState().activeChatId).toBeNull()
+      expect(useChatStore.getState().activeChatId).toBeNull()
     })
   })
 
@@ -246,39 +246,39 @@ describe('multiChatStore', () => {
     describe('addMessage', () => {
       it('adds message to chat', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
         const message = createMockMessage(chat.id)
-        useMultiChatStore.getState().addMessage(chat.id, message)
+        useChatStore.getState().addMessage(chat.id, message)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.messages).toHaveLength(1)
         expect(updatedChat?.messages?.[0].id).toBe(message.id)
       })
 
       it('avoids duplicate messages', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
         const message = createMockMessage(chat.id)
-        useMultiChatStore.getState().addMessage(chat.id, message)
-        useMultiChatStore.getState().addMessage(chat.id, message)
+        useChatStore.getState().addMessage(chat.id, message)
+        useChatStore.getState().addMessage(chat.id, message)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.messages).toHaveLength(1)
       })
 
       it('preserves message order', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
         const msg1 = createMockMessage(chat.id, { content: 'First' })
         const msg2 = createMockMessage(chat.id, { content: 'Second' })
 
-        useMultiChatStore.getState().addMessage(chat.id, msg1)
-        useMultiChatStore.getState().addMessage(chat.id, msg2)
+        useChatStore.getState().addMessage(chat.id, msg1)
+        useChatStore.getState().addMessage(chat.id, msg2)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.messages?.[0].content).toBe('First')
         expect(updatedChat?.messages?.[1].content).toBe('Second')
       })
@@ -287,13 +287,13 @@ describe('multiChatStore', () => {
     describe('updateMessage', () => {
       it('updates message content', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
         const message = createMockMessage(chat.id, { content: 'Original' })
-        useMultiChatStore.getState().addMessage(chat.id, message)
-        useMultiChatStore.getState().updateMessage(chat.id, message.id, { content: 'Updated' })
+        useChatStore.getState().addMessage(chat.id, message)
+        useChatStore.getState().updateMessage(chat.id, message.id, { content: 'Updated' })
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.messages?.[0].content).toBe('Updated')
       })
     })
@@ -301,18 +301,18 @@ describe('multiChatStore', () => {
     describe('setMessages', () => {
       it('replaces all messages', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
         const oldMsg = createMockMessage(chat.id, { content: 'Old' })
-        useMultiChatStore.getState().addMessage(chat.id, oldMsg)
+        useChatStore.getState().addMessage(chat.id, oldMsg)
 
         const newMessages = [
           createMockMessage(chat.id, { content: 'New 1' }),
           createMockMessage(chat.id, { content: 'New 2' }),
         ]
-        useMultiChatStore.getState().setMessages(chat.id, newMessages)
+        useChatStore.getState().setMessages(chat.id, newMessages)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.messages).toHaveLength(2)
         expect(updatedChat?.messages?.[0].content).toBe('New 1')
       })
@@ -323,15 +323,15 @@ describe('multiChatStore', () => {
     describe('setMembers', () => {
       it('sets members for chat', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
         const members = [
           createMockMember({ role: 'founder' }),
           createMockMember({ role: 'member' }),
         ]
-        useMultiChatStore.getState().setMembers(chat.id, members)
+        useChatStore.getState().setMembers(chat.id, members)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.members).toHaveLength(2)
       })
     })
@@ -339,24 +339,24 @@ describe('multiChatStore', () => {
     describe('addMember', () => {
       it('adds member to chat', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
         const member = createMockMember()
-        useMultiChatStore.getState().addMember(chat.id, member)
+        useChatStore.getState().addMember(chat.id, member)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.members).toHaveLength(1)
       })
 
       it('avoids duplicate members', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
         const member = createMockMember()
-        useMultiChatStore.getState().addMember(chat.id, member)
-        useMultiChatStore.getState().addMember(chat.id, member)
+        useChatStore.getState().addMember(chat.id, member)
+        useChatStore.getState().addMember(chat.id, member)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.members).toHaveLength(1)
       })
     })
@@ -364,13 +364,13 @@ describe('multiChatStore', () => {
     describe('removeMember', () => {
       it('removes member from chat', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
         const member = createMockMember()
-        useMultiChatStore.getState().addMember(chat.id, member)
-        useMultiChatStore.getState().removeMember(chat.id, member.address)
+        useChatStore.getState().addMember(chat.id, member)
+        useChatStore.getState().removeMember(chat.id, member.address)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.members).toHaveLength(0)
       })
     })
@@ -379,28 +379,28 @@ describe('multiChatStore', () => {
   describe('UI state', () => {
     describe('setLoading', () => {
       it('sets loading state', () => {
-        useMultiChatStore.getState().setLoading(true)
-        expect(useMultiChatStore.getState().isLoading).toBe(true)
+        useChatStore.getState().setLoading(true)
+        expect(useChatStore.getState().isLoading).toBe(true)
 
-        useMultiChatStore.getState().setLoading(false)
-        expect(useMultiChatStore.getState().isLoading).toBe(false)
+        useChatStore.getState().setLoading(false)
+        expect(useChatStore.getState().isLoading).toBe(false)
       })
     })
 
     describe('setConnected', () => {
       it('sets connected state', () => {
-        useMultiChatStore.getState().setConnected(true)
-        expect(useMultiChatStore.getState().isConnected).toBe(true)
+        useChatStore.getState().setConnected(true)
+        expect(useChatStore.getState().isConnected).toBe(true)
       })
     })
 
     describe('setError', () => {
       it('sets and clears error', () => {
-        useMultiChatStore.getState().setError('Something went wrong')
-        expect(useMultiChatStore.getState().error).toBe('Something went wrong')
+        useChatStore.getState().setError('Something went wrong')
+        expect(useChatStore.getState().error).toBe('Something went wrong')
 
-        useMultiChatStore.getState().setError(null)
-        expect(useMultiChatStore.getState().error).toBeNull()
+        useChatStore.getState().setError(null)
+        expect(useChatStore.getState().error).toBeNull()
       })
     })
   })
@@ -409,22 +409,22 @@ describe('multiChatStore', () => {
     describe('incrementUnread', () => {
       it('increments unread count', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
-        useMultiChatStore.getState().incrementUnread(chat.id)
-        useMultiChatStore.getState().incrementUnread(chat.id)
+        useChatStore.getState().incrementUnread(chat.id)
+        useChatStore.getState().incrementUnread(chat.id)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.unreadCount).toBe(2)
       })
 
       it('starts from 0 if undefined', () => {
         const chat = createMockChat()
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
-        useMultiChatStore.getState().incrementUnread(chat.id)
+        useChatStore.getState().incrementUnread(chat.id)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.unreadCount).toBe(1)
       })
     })
@@ -432,11 +432,11 @@ describe('multiChatStore', () => {
     describe('clearUnread', () => {
       it('clears unread count', () => {
         const chat = createMockChat({ unreadCount: 5 })
-        useMultiChatStore.getState().setChats([chat])
+        useChatStore.getState().setChats([chat])
 
-        useMultiChatStore.getState().clearUnread(chat.id)
+        useChatStore.getState().clearUnread(chat.id)
 
-        const updatedChat = useMultiChatStore.getState().chats.find(c => c.id === chat.id)
+        const updatedChat = useChatStore.getState().chats.find(c => c.id === chat.id)
         expect(updatedChat?.unreadCount).toBe(0)
       })
     })

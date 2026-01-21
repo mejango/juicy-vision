@@ -1,5 +1,5 @@
 /**
- * Multi-Person Chat API Service
+ * Chat API Service
  *
  * Communicates with the backend chat endpoints
  */
@@ -7,11 +7,11 @@
 import { useAuthStore } from '../stores/authStore'
 import { getSessionId } from './session'
 import type {
-  MultiChat,
-  MultiChatMessage,
-  MultiChatMember,
+  Chat,
+  ChatMessage,
+  ChatMember,
   CreateChatParams,
-} from '../stores/multiChatStore'
+} from '../stores/chatStore'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -61,25 +61,25 @@ async function apiRequest<T>(
 // Chat Management
 // ============================================================================
 
-export async function fetchMyChats(): Promise<MultiChat[]> {
-  return apiRequest<MultiChat[]>('/chat')
+export async function fetchMyChats(): Promise<Chat[]> {
+  return apiRequest<Chat[]>('/chat')
 }
 
 export async function fetchPublicChats(
   limit = 20,
   offset = 0
-): Promise<MultiChat[]> {
-  return apiRequest<MultiChat[]>(
+): Promise<Chat[]> {
+  return apiRequest<Chat[]>(
     `/chat/public?limit=${limit}&offset=${offset}`
   )
 }
 
-export async function fetchChat(chatId: string): Promise<MultiChat> {
-  return apiRequest<MultiChat>(`/chat/${chatId}`)
+export async function fetchChat(chatId: string): Promise<Chat> {
+  return apiRequest<Chat>(`/chat/${chatId}`)
 }
 
-export async function createChat(params: CreateChatParams): Promise<MultiChat> {
-  return apiRequest<MultiChat>('/chat', {
+export async function createChat(params: CreateChatParams): Promise<Chat> {
+  return apiRequest<Chat>('/chat', {
     method: 'POST',
     body: JSON.stringify(params),
   })
@@ -103,9 +103,9 @@ export async function migrateChat(title: string, messages?: MigrateMessage[]): P
 
 export async function updateChat(
   chatId: string,
-  updates: Partial<Pick<MultiChat, 'name' | 'description' | 'isPublic'>>
-): Promise<MultiChat> {
-  return apiRequest<MultiChat>(`/chat/${chatId}`, {
+  updates: Partial<Pick<Chat, 'name' | 'description' | 'isPublic'>>
+): Promise<Chat> {
+  return apiRequest<Chat>(`/chat/${chatId}`, {
     method: 'PATCH',
     body: JSON.stringify(updates),
   })
@@ -125,11 +125,11 @@ export async function fetchMessages(
   chatId: string,
   limit = 50,
   before?: string
-): Promise<MultiChatMessage[]> {
+): Promise<ChatMessage[]> {
   const params = new URLSearchParams({ limit: String(limit) })
   if (before) params.set('before', before)
 
-  return apiRequest<MultiChatMessage[]>(
+  return apiRequest<ChatMessage[]>(
     `/chat/${chatId}/messages?${params}`
   )
 }
@@ -138,8 +138,8 @@ export async function sendMessage(
   chatId: string,
   content: string,
   replyToId?: string
-): Promise<MultiChatMessage> {
-  return apiRequest<MultiChatMessage>(`/chat/${chatId}/messages`, {
+): Promise<ChatMessage> {
+  return apiRequest<ChatMessage>(`/chat/${chatId}/messages`, {
     method: 'POST',
     body: JSON.stringify({ content, replyToId }),
   })
@@ -158,16 +158,16 @@ export async function deleteMessage(
 // Members
 // ============================================================================
 
-export async function fetchMembers(chatId: string): Promise<MultiChatMember[]> {
-  return apiRequest<MultiChatMember[]>(`/chat/${chatId}/members`)
+export async function fetchMembers(chatId: string): Promise<ChatMember[]> {
+  return apiRequest<ChatMember[]>(`/chat/${chatId}/members`)
 }
 
 export async function addMember(
   chatId: string,
   address: string,
   role: 'admin' | 'member' = 'member'
-): Promise<MultiChatMember> {
-  return apiRequest<MultiChatMember>(`/chat/${chatId}/members`, {
+): Promise<ChatMember> {
+  return apiRequest<ChatMember>(`/chat/${chatId}/members`, {
     method: 'POST',
     body: JSON.stringify({ address, role }),
   })
@@ -177,8 +177,8 @@ export async function updateMemberRole(
   chatId: string,
   address: string,
   role: 'admin' | 'member'
-): Promise<MultiChatMember> {
-  return apiRequest<MultiChatMember>(
+): Promise<ChatMember> {
+  return apiRequest<ChatMember>(
     `/chat/${chatId}/members/${address}`,
     {
       method: 'PATCH',
@@ -280,8 +280,8 @@ export async function getAiBalance(chatId: string): Promise<AiBalanceStatus> {
 export async function invokeAi(
   chatId: string,
   prompt: string
-): Promise<MultiChatMessage> {
-  return apiRequest<MultiChatMessage>(`/chat/${chatId}/ai/invoke`, {
+): Promise<ChatMessage> {
+  return apiRequest<ChatMessage>(`/chat/${chatId}/ai/invoke`, {
     method: 'POST',
     body: JSON.stringify({ prompt }),
   })
@@ -305,7 +305,7 @@ export async function submitFeedback(
 }
 
 // ============================================================================
-// WebSocket Connection
+// WebSocket Connection with Resilience
 // ============================================================================
 
 export interface WsMessage {
@@ -317,6 +317,7 @@ export interface WsMessage {
     | 'member_joined'
     | 'member_left'
     | 'error'
+    | 'connection_status' // Internal status messages
   chatId: string
   data: unknown
 }
@@ -325,12 +326,65 @@ export type WsMessageHandler = (message: WsMessage) => void
 
 let wsConnection: WebSocket | null = null
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
+let wsReconnectAttempt = 0
+let wsCurrentChatId: string | null = null
+let wsIsOnline = typeof navigator !== 'undefined' ? navigator.onLine : true
 const wsHandlers = new Set<WsMessageHandler>()
+
+// Exponential backoff config
+const WS_INITIAL_RETRY_DELAY = 1000 // 1 second
+const WS_MAX_RETRY_DELAY = 30000 // 30 seconds max
+const WS_MAX_RETRY_ATTEMPTS = 10
+
+function getRetryDelay(attempt: number): number {
+  // Exponential backoff with jitter: min(initialDelay * 2^attempt + jitter, maxDelay)
+  const exponentialDelay = WS_INITIAL_RETRY_DELAY * Math.pow(2, attempt)
+  const jitter = Math.random() * 1000 // 0-1 second jitter
+  return Math.min(exponentialDelay + jitter, WS_MAX_RETRY_DELAY)
+}
+
+function notifyConnectionStatus(status: 'connected' | 'disconnected' | 'reconnecting' | 'offline' | 'failed') {
+  wsHandlers.forEach((handler) => {
+    handler({
+      type: 'connection_status',
+      chatId: wsCurrentChatId || '',
+      data: { status, attempt: wsReconnectAttempt, maxAttempts: WS_MAX_RETRY_ATTEMPTS },
+    })
+  })
+}
+
+// Listen for online/offline events
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    wsIsOnline = true
+    console.log('[WS] Network online, attempting reconnect')
+    if (wsCurrentChatId && wsHandlers.size > 0) {
+      wsReconnectAttempt = 0 // Reset attempts when coming online
+      connectToChat(wsCurrentChatId)
+    }
+  })
+
+  window.addEventListener('offline', () => {
+    wsIsOnline = false
+    console.log('[WS] Network offline')
+    notifyConnectionStatus('offline')
+  })
+}
 
 export function connectToChat(chatId: string): WebSocket {
   // Close existing connection
   if (wsConnection) {
     wsConnection.close()
+  }
+
+  wsCurrentChatId = chatId
+
+  // Don't attempt connection if offline
+  if (!wsIsOnline) {
+    console.log('[WS] Offline, skipping connection attempt')
+    notifyConnectionStatus('offline')
+    // Return a dummy WebSocket-like object that will reconnect when online
+    return wsConnection as unknown as WebSocket
   }
 
   const token = useAuthStore.getState().token
@@ -348,11 +402,13 @@ export function connectToChat(chatId: string): WebSocket {
 
   wsConnection.onopen = () => {
     console.log(`[WS] Connected to chat ${chatId}`)
+    wsReconnectAttempt = 0 // Reset attempts on successful connection
     // Clear reconnect timer
     if (wsReconnectTimer) {
       clearTimeout(wsReconnectTimer)
       wsReconnectTimer = null
     }
+    notifyConnectionStatus('connected')
   }
 
   wsConnection.onmessage = (event) => {
@@ -370,15 +426,46 @@ export function connectToChat(chatId: string): WebSocket {
 
   wsConnection.onclose = () => {
     console.log('[WS] Disconnected')
-    // Attempt reconnect after 3 seconds
+    notifyConnectionStatus('disconnected')
+
+    // Don't reconnect if offline or no handlers
+    if (!wsIsOnline || wsHandlers.size === 0) {
+      return
+    }
+
+    // Check max retry attempts
+    if (wsReconnectAttempt >= WS_MAX_RETRY_ATTEMPTS) {
+      console.error('[WS] Max reconnection attempts reached')
+      notifyConnectionStatus('failed')
+      return
+    }
+
+    // Exponential backoff reconnect
+    const delay = getRetryDelay(wsReconnectAttempt)
+    wsReconnectAttempt++
+    console.log(`[WS] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${wsReconnectAttempt}/${WS_MAX_RETRY_ATTEMPTS})`)
+    notifyConnectionStatus('reconnecting')
+
     wsReconnectTimer = setTimeout(() => {
-      if (wsHandlers.size > 0) {
+      if (wsHandlers.size > 0 && wsIsOnline) {
         connectToChat(chatId)
       }
-    }, 3000)
+    }, delay)
   }
 
   return wsConnection
+}
+
+export function resetReconnectAttempts(): void {
+  wsReconnectAttempt = 0
+}
+
+export function getConnectionStatus(): { isConnected: boolean; isOnline: boolean; attempt: number } {
+  return {
+    isConnected: wsConnection?.readyState === WebSocket.OPEN,
+    isOnline: wsIsOnline,
+    attempt: wsReconnectAttempt,
+  }
 }
 
 export function disconnectFromChat(): void {

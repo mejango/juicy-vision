@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react'
-import { useAccount, useDisconnect, useEnsName } from 'wagmi'
+import { useAccount, useDisconnect, useSignMessage, useChainId } from 'wagmi'
 import { useThemeStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, formatUsdcBalance } from '../../hooks'
-import { hasValidWalletSession, clearWalletSession } from '../../services/siwe'
+import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
+import { hasValidWalletSession, clearWalletSession, signInWithWallet } from '../../services/siwe'
 import { getPasskeyWallet, clearPasskeyWallet } from '../../services/passkeyWallet'
-import type { Attachment } from '../../stores/chatStore'
+import type { Attachment } from '../../stores'
 
 const INITIAL_PLACEHOLDER = "What's your juicy vision?"
 
@@ -69,8 +69,12 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme, toggleTheme } = useThemeStore()
   const { address, isConnected } = useAccount()
-  const { data: ensName } = useEnsName({ address })
+  const { ensName } = useEnsNameResolved(address)
   const { disconnect } = useDisconnect()
+  const { signMessageAsync } = useSignMessage()
+  const chainId = useChainId()
+  const [signing, setSigning] = useState(false)
+  const [signedIn, setSignedIn] = useState(() => hasValidWalletSession())
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
   // Fetch balances for passkey wallet address
   const { totalEth: passkeyEth, totalUsdc: passkeyUsdc, loading: passkeyBalancesLoading } = useWalletBalances(passkeyWallet?.address)
@@ -215,6 +219,22 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     }
   }
 
+  // Handle SIWE sign-in to enable chat saving
+  const handleSignIn = async () => {
+    if (!address || signing) return
+    setSigning(true)
+    try {
+      await signInWithWallet(address, chainId, async (message) => {
+        return await signMessageAsync({ message })
+      })
+      setSignedIn(true)
+    } catch (err) {
+      console.error('Sign-in failed:', err)
+    } finally {
+      setSigning(false)
+    }
+  }
+
   return (
     <div className={`${compact ? 'pb-4 px-6' : 'pt-8 px-6 pb-12'} ${
       theme === 'dark'
@@ -340,21 +360,36 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
             {isConnected && address ? (
               <>
                 <span className="inline-flex items-center gap-1.5">
-                  {hasValidWalletSession() ? (
+                  {signedIn ? (
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Signed in" />
                   ) : (
                     <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50" title="Not signed in" />
                   )}
                   Connected as {ensName || shortenAddress(address)}
                 </span>
+                {/* Sign to save button - only show if not signed in */}
+                {!signedIn && (
+                  <button
+                    onClick={handleSignIn}
+                    disabled={signing}
+                    className={`ml-2 transition-colors ${
+                      theme === 'dark'
+                        ? 'text-green-400 hover:text-green-300'
+                        : 'text-green-600 hover:text-green-500'
+                    } ${signing ? 'opacity-50' : ''}`}
+                  >
+                    · {signing ? 'Signing...' : 'Sign to save'}
+                  </button>
+                )}
                 {!balancesLoading && (totalEth > 0n || totalUsdc > 0n) && (
                   <span className="ml-2">
-                    · {formatEthBalance(totalEth)} ETH · {formatUsdcBalance(totalUsdc)} USDC
+                    · {formatUsdcBalance(totalUsdc)} USDC · {formatEthBalance(totalEth)} ETH
                   </span>
                 )}
                 <button
                   onClick={() => {
                     clearWalletSession()
+                    setSignedIn(false)
                     disconnect()
                   }}
                   className={`ml-2 transition-colors ${
@@ -374,7 +409,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                 </span>
                 {!passkeyBalancesLoading && (passkeyEth > 0n || passkeyUsdc > 0n) && (
                   <span className="ml-2">
-                    · {formatEthBalance(passkeyEth)} ETH · {formatUsdcBalance(passkeyUsdc)} USDC
+                    · {formatUsdcBalance(passkeyUsdc)} USDC · {formatEthBalance(passkeyEth)} ETH
                   </span>
                 )}
                 <button

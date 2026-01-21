@@ -1,10 +1,11 @@
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useChatStore } from '../../stores'
-import { useThemeStore } from '../../stores'
+import { useChatStore, useThemeStore } from '../../stores'
 
-function formatTimeAgo(timestamp: number): string {
+function formatTimeAgo(timestamp: string): string {
   const now = Date.now()
-  const diff = now - timestamp
+  const time = new Date(timestamp).getTime()
+  const diff = now - time
   const minutes = Math.floor(diff / 60000)
   const hours = Math.floor(diff / 3600000)
   const days = Math.floor(diff / 86400000)
@@ -19,32 +20,27 @@ function formatTimeAgo(timestamp: number): string {
 export default function ConversationHistory() {
   const { theme } = useThemeStore()
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const {
-    conversations,
-    activeConversationId,
-    setActiveConversation,
-    deleteConversation,
-    clearAllConversations,
+    chats,
+    activeChatId,
+    setActiveChat,
+    removeChat,
   } = useChatStore()
 
-  // Only show conversations that have messages
-  const nonEmptyConversations = conversations.filter(c => c.messages.length > 0)
+  // Only show chats that have messages
+  const nonEmptyChats = chats.filter(c => c.messages && c.messages.length > 0)
 
-  if (nonEmptyConversations.length === 0) return null
+  if (nonEmptyChats.length === 0) return null
 
-  const handleSelectConversation = (id: string) => {
-    setActiveConversation(id)
+  const handleSelectChat = (id: string) => {
+    setActiveChat(id)
+    navigate(`/chat/${id}`)
   }
 
-  const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
+  const handleDeleteChat = (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    deleteConversation(id)
-  }
-
-  const handleClearAll = () => {
-    if (confirm('Clear all conversation history?')) {
-      clearAllConversations()
-    }
+    removeChat(id)
   }
 
   return (
@@ -60,28 +56,16 @@ export default function ConversationHistory() {
           }`}>
             {t('ui.recent', 'Recent')}
           </span>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleClearAll}
-              className={`text-xs transition-colors ${
-                theme === 'dark'
-                  ? 'text-gray-600 hover:text-red-400'
-                  : 'text-gray-300 hover:text-red-500'
-              }`}
-            >
-              {t('ui.clearAll', 'Clear all')}
-            </button>
-          </div>
         </div>
 
-        {/* Conversation list */}
+        {/* Chat list */}
         <div className="space-y-1 pb-4">
-          {nonEmptyConversations.map(conv => (
+          {nonEmptyChats.map(chat => (
             <div
-              key={conv.id}
-              onClick={() => handleSelectConversation(conv.id)}
+              key={chat.id}
+              onClick={() => handleSelectChat(chat.id)}
               className={`group flex items-center justify-between py-2 cursor-pointer transition-colors ${
-                conv.id === activeConversationId
+                chat.id === activeChatId
                   ? theme === 'dark'
                     ? 'text-white'
                     : 'text-gray-900'
@@ -92,20 +76,20 @@ export default function ConversationHistory() {
             >
               <div className="flex-1 min-w-0">
                 <div className={`text-sm truncate ${
-                  conv.id === activeConversationId
+                  chat.id === activeChatId
                     ? ''
                     : theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
                 }`}>
-                  {conv.title}
+                  {chat.name}
                 </div>
                 <div className={`text-xs ${
                   theme === 'dark' ? 'text-gray-600' : 'text-gray-400'
                 }`}>
-                  {formatTimeAgo(conv.updatedAt)}
+                  {formatTimeAgo(chat.updatedAt)}
                 </div>
               </div>
               <button
-                onClick={(e) => handleDeleteConversation(e, conv.id)}
+                onClick={(e) => handleDeleteChat(e, chat.id)}
                 className={`ml-2 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${
                   theme === 'dark'
                     ? 'hover:bg-white/10 text-gray-500 hover:text-red-400'

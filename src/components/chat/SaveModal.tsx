@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useAccount, useSignMessage, useEnsName } from 'wagmi'
+import { useAccount, useSignMessage } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 import { signInWithWallet, hasValidWalletSession, getWalletSession } from '../../services/siwe'
+import { useEnsNameResolved } from '../../hooks/useEnsName'
 
 interface SaveModalProps {
   isOpen: boolean
@@ -19,7 +20,7 @@ export default function SaveModal({ isOpen, onClose, onSaved }: SaveModalProps) 
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { address, isConnected, chainId } = useAccount()
-  const { data: ensName } = useEnsName({ address })
+  const { ensName } = useEnsNameResolved(address)
   const { signMessageAsync } = useSignMessage()
 
   const [isSigning, setIsSigning] = useState(false)
@@ -171,36 +172,29 @@ export default function SaveModal({ isOpen, onClose, onSaved }: SaveModalProps) 
               </div>
             )}
 
-            <button
-              onClick={handleSign}
-              disabled={isSigning || !isConnected}
-              className={`w-full py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                isSigning || !isConnected
-                  ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                  : 'bg-juice-orange hover:bg-juice-orange/90 text-juice-dark'
-              }`}
-            >
-              {isSigning ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  {t('save.signing', 'Waiting for signature...')}
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                  {t('save.signButton', 'Sign to Save')}
-                </>
-              )}
-            </button>
-
-            <p className={`text-xs text-center mt-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              {t('save.sessionInfo', 'Session lasts 30 days. No gas fees.')}
-            </p>
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={handleSign}
+                disabled={isSigning || !isConnected}
+                className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
+                  isSigning || !isConnected
+                    ? 'bg-gray-500/20 text-gray-500 cursor-not-allowed'
+                    : 'bg-green-500/20 hover:bg-green-500/30 text-green-400'
+                }`}
+              >
+                {isSigning ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    {t('save.signing', 'Signing...')}
+                  </>
+                ) : (
+                  t('save.signButton', 'Sign to Save')
+                )}
+              </button>
+            </div>
           </>
         )}
       </div>

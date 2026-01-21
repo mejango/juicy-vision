@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useThemeStore } from '../../stores'
-import { useMultiChatStore } from '../../stores/multiChatStore'
+import { useThemeStore, useChatStore } from '../../stores'
 import * as multiChatApi from '../../services/multiChat'
 
 function formatTimeAgo(timestamp: string): string {
@@ -37,7 +36,7 @@ export default function ChatList({ onCreateChat }: ChatListProps) {
     setActiveChat,
     setLoading,
     setError,
-  } = useMultiChatStore()
+  } = useChatStore()
 
   // Fetch chats on mount
   useEffect(() => {

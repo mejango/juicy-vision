@@ -412,6 +412,8 @@ export const ACTIVITY_EVENTS_QUERY = `
           name
           handle
           logoUri
+          decimals
+          currency
         }
         payEvent {
           amount

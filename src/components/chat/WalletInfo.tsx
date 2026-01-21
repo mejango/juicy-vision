@@ -1,6 +1,6 @@
-import { useAccount, useDisconnect, useEnsName } from 'wagmi'
+import { useAccount, useDisconnect } from 'wagmi'
 import { useThemeStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, formatUsdcBalance } from '../../hooks'
+import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
 
 function shortenAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
@@ -14,7 +14,7 @@ function openWalletPanel() {
 export default function WalletInfo() {
   const { theme } = useThemeStore()
   const { address, isConnected } = useAccount()
-  const { data: ensName } = useEnsName({ address })
+  const { ensName } = useEnsNameResolved(address)
   const { disconnect } = useDisconnect()
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
 
@@ -50,7 +50,7 @@ export default function WalletInfo() {
             <span className="opacity-50">Loading balances...</span>
           ) : (
             <>
-              {formatEthBalance(totalEth)} ETH · {formatUsdcBalance(totalUsdc)} USDC
+              {formatUsdcBalance(totalUsdc)} USDC · {formatEthBalance(totalEth)} ETH
               <button
                 onClick={handleTopUp}
                 className={`ml-2 transition-colors ${

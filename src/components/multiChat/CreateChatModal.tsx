@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useThemeStore } from '../../stores'
-import { useMultiChatStore } from '../../stores/multiChatStore'
+import { useThemeStore, useChatStore } from '../../stores'
 import * as multiChatApi from '../../services/multiChat'
 
 interface CreateChatModalProps {
@@ -15,7 +14,7 @@ export default function CreateChatModal({
 }: CreateChatModalProps) {
   const { theme } = useThemeStore()
   const { t } = useTranslation()
-  const { addChat, setActiveChat } = useMultiChatStore()
+  const { addChat, setActiveChat } = useChatStore()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')

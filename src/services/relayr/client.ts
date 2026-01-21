@@ -167,6 +167,149 @@ export async function submitTransaction(signedTx: string, chainId: number): Prom
   })
 }
 
+// ============================================================================
+// Balance-Based Gas Sponsorship
+// ============================================================================
+// Fund a pooled balance to sponsor gas for users across all EVM chains.
+// Organization pays gas from balance instead of users needing native tokens.
+
+export interface BalanceBundleTransaction {
+  chain: number           // Chain ID
+  target: string          // Destination address (0x...)
+  data?: string           // Calldata (0x...)
+  value?: string          // ETH value in wei
+  gas_limit?: number      // Optional gas limit override
+  virtual_nonce?: number  // For ordering within bundle
+}
+
+export interface BalanceBundleRequest {
+  app_id: string                        // UUID identifying the app
+  transactions: BalanceBundleTransaction[]
+  perform_simulation?: boolean          // Default: true
+  virtual_nonce_mode?: 'Disabled' | 'ChainIndependent' | 'MultiChain'
+}
+
+export interface BalanceBundleResponse {
+  bundle_uuid: string
+  tx_uuids: string[]
+}
+
+export interface BalanceInfo {
+  balance: string         // Current balance in wei
+  currency: string        // e.g., "ETH"
+  last_updated: number    // Unix timestamp
+}
+
+export interface BalanceUsageRecord {
+  tx_uuid: string
+  chain_id: number
+  gas_used: string
+  gas_price: string
+  cost: string            // Total cost in wei
+  timestamp: number
+}
+
+/**
+ * Create a gas-sponsored bundle via organization balance.
+ * Users don't need native tokens - organization pays from pooled balance.
+ */
+export async function createBalanceBundle(request: BalanceBundleRequest): Promise<BalanceBundleResponse> {
+  return fetchApi<BalanceBundleResponse>('/v1/bundle/balance', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/**
+ * Get current organization balance for gas sponsorship.
+ */
+export async function getBalance(appId: string): Promise<BalanceInfo> {
+  return fetchApi<BalanceInfo>(`/v1/balance/${appId}`)
+}
+
+/**
+ * Get gas usage history for cost tracking and accounting.
+ */
+export async function getBalanceUsage(
+  appId: string,
+  options?: { limit?: number; offset?: number; from?: number; to?: number }
+): Promise<{ records: BalanceUsageRecord[]; total: number }> {
+  const params = new URLSearchParams()
+  if (options?.limit) params.set('limit', options.limit.toString())
+  if (options?.offset) params.set('offset', options.offset.toString())
+  if (options?.from) params.set('from', options.from.toString())
+  if (options?.to) params.set('to', options.to.toString())
+  const query = params.toString() ? `?${params.toString()}` : ''
+  return fetchApi(`/v1/balance/${appId}/usage${query}`)
+}
+
+/**
+ * Helper to create a sponsored Juicebox pay transaction.
+ * Wraps buildPayTransaction + createBalanceBundle for zero-gas UX.
+ */
+export async function sponsoredPay(
+  appId: string,
+  request: JBPayRequest
+): Promise<{ bundleId: string; txId: string }> {
+  const txResponse = await buildPayTransaction(request)
+  const bundle = await createBalanceBundle({
+    app_id: appId,
+    transactions: [{
+      chain: txResponse.txData.chainId,
+      target: txResponse.txData.to,
+      data: txResponse.txData.data,
+      value: txResponse.txData.value,
+    }],
+  })
+  return { bundleId: bundle.bundle_uuid, txId: bundle.tx_uuids[0] }
+}
+
+/**
+ * Helper to create a sponsored Juicebox cash out transaction.
+ */
+export async function sponsoredCashOut(
+  appId: string,
+  request: JBCashOutRequest
+): Promise<{ bundleId: string; txId: string }> {
+  const txResponse = await buildCashOutTransaction(request)
+  const bundle = await createBalanceBundle({
+    app_id: appId,
+    transactions: [{
+      chain: txResponse.txData.chainId,
+      target: txResponse.txData.to,
+      data: txResponse.txData.data,
+      value: txResponse.txData.value,
+    }],
+  })
+  return { bundleId: bundle.bundle_uuid, txId: bundle.tx_uuids[0] }
+}
+
+/**
+ * Helper to execute omnichain ruleset queue with gas sponsorship.
+ * All chains in the bundle are sponsored from the same balance.
+ */
+export async function sponsoredOmnichainQueue(
+  appId: string,
+  request: JBOmnichainQueueRequest
+): Promise<{ bundleId: string; txIds: string[]; synchronizedStartTime: number }> {
+  const omnichainResponse = await buildOmnichainQueueRulesetTransactions(request)
+  const bundle = await createBalanceBundle({
+    app_id: appId,
+    transactions: omnichainResponse.transactions.map(tx => ({
+      chain: tx.txData.chainId,
+      target: tx.txData.to,
+      data: tx.txData.data,
+      value: tx.txData.value,
+    })),
+    virtual_nonce_mode: 'MultiChain', // Ensure proper ordering across chains
+  })
+  return {
+    bundleId: bundle.bundle_uuid,
+    txIds: bundle.tx_uuids,
+    synchronizedStartTime: omnichainResponse.synchronizedStartTime,
+  }
+}
+
 // Omnichain ruleset queueing
 
 export interface JBRulesetMetadataConfig {

@@ -1,30 +1,52 @@
+import { lazy, Suspense } from 'react'
 import { ParsedComponent } from '../../utils/messageParser'
-import ConnectWalletButton from './ConnectWalletButton'
-import ProjectCard from './ProjectCard'
-import NoteCard from './NoteCard'
-import TransactionStatus from './TransactionStatus'
-import TransactionPreview from './TransactionPreview'
-import CashOutForm from './CashOutForm'
-import SendPayoutsForm from './SendPayoutsForm'
-import SendReservedTokensForm from './SendReservedTokensForm'
-import UseSurplusAllowanceForm from './UseSurplusAllowanceForm'
-import DeployERC20Form from './DeployERC20Form'
-import QueueRulesetForm from './QueueRulesetForm'
-import PriceChart from './PriceChart'
-import ActivityFeed from './ActivityFeed'
-import RulesetSchedule from './RulesetSchedule'
-import { BalanceChart, HoldersChart, VolumeChart, TokenPriceChart, PoolPriceChart, MultiChainCashOutChart } from './charts'
-import OptionsPicker from './OptionsPicker'
-import ProjectChainPicker from './ProjectChainPicker'
-import TopProjects from './TopProjects'
-import NFTGallery from './NFTGallery'
-import NFTCard from './NFTCard'
-import Storefront from './Storefront'
-import LandingPagePreview from './LandingPagePreview'
-import SuccessVisualization from './SuccessVisualization'
+import ErrorBoundary, { ComponentErrorFallback } from '../ui/ErrorBoundary'
+import ComponentShimmer from './ComponentShimmer'
+
+// Lazy load all dynamic components for better initial bundle size
+const ConnectWalletButton = lazy(() => import('./ConnectWalletButton'))
+const ProjectCard = lazy(() => import('./ProjectCard'))
+const NoteCard = lazy(() => import('./NoteCard'))
+const TransactionStatus = lazy(() => import('./TransactionStatus'))
+const TransactionPreview = lazy(() => import('./TransactionPreview'))
+const CashOutForm = lazy(() => import('./CashOutForm'))
+const SendPayoutsForm = lazy(() => import('./SendPayoutsForm'))
+const SendReservedTokensForm = lazy(() => import('./SendReservedTokensForm'))
+const UseSurplusAllowanceForm = lazy(() => import('./UseSurplusAllowanceForm'))
+const DeployERC20Form = lazy(() => import('./DeployERC20Form'))
+const QueueRulesetForm = lazy(() => import('./QueueRulesetForm'))
+const PriceChart = lazy(() => import('./PriceChart'))
+const ActivityFeed = lazy(() => import('./ActivityFeed'))
+const RulesetSchedule = lazy(() => import('./RulesetSchedule'))
+const OptionsPicker = lazy(() => import('./OptionsPicker'))
+const ProjectChainPicker = lazy(() => import('./ProjectChainPicker'))
+const TopProjects = lazy(() => import('./TopProjects'))
+const NFTGallery = lazy(() => import('./NFTGallery'))
+const NFTCard = lazy(() => import('./NFTCard'))
+const Storefront = lazy(() => import('./Storefront'))
+const LandingPagePreview = lazy(() => import('./LandingPagePreview'))
+const SuccessVisualization = lazy(() => import('./SuccessVisualization'))
+
+// Lazy load chart components
+const BalanceChart = lazy(() => import('./charts').then(m => ({ default: m.BalanceChart })))
+const HoldersChart = lazy(() => import('./charts').then(m => ({ default: m.HoldersChart })))
+const VolumeChart = lazy(() => import('./charts').then(m => ({ default: m.VolumeChart })))
+const TokenPriceChart = lazy(() => import('./charts').then(m => ({ default: m.TokenPriceChart })))
+const PoolPriceChart = lazy(() => import('./charts').then(m => ({ default: m.PoolPriceChart })))
+const MultiChainCashOutChart = lazy(() => import('./charts').then(m => ({ default: m.MultiChainCashOutChart })))
 
 interface ComponentRegistryProps {
   component: ParsedComponent
+}
+
+function LazyComponent({ children, type }: { children: React.ReactNode; type: string }) {
+  return (
+    <ErrorBoundary fallback={<ComponentErrorFallback componentType={type} />}>
+      <Suspense fallback={<ComponentShimmer />}>
+        {children}
+      </Suspense>
+    </ErrorBoundary>
+  )
 }
 
 export default function ComponentRegistry({ component }: ComponentRegistryProps) {
@@ -37,182 +59,228 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
 
     case 'connect-wallet':
     case 'connect-account':
-      return <ConnectWalletButton />
+      return (
+        <LazyComponent type={type}>
+          <ConnectWalletButton />
+        </LazyComponent>
+      )
 
     case 'project-card':
       // ProjectCard has built-in chain selector, no need for separate ProjectSelector
       return (
-        <ProjectCard
-          projectId={props.projectId}
-          chainId={props.chainId}
-        />
+        <LazyComponent type={type}>
+          <ProjectCard
+            projectId={props.projectId}
+            chainId={props.chainId}
+          />
+        </LazyComponent>
       )
 
     case 'payment-form':
       // Deprecated: use project-card instead (has built-in payment)
       return (
-        <ProjectCard
-          projectId={props.projectId}
-          chainId={props.chainId}
-        />
+        <LazyComponent type={type}>
+          <ProjectCard
+            projectId={props.projectId}
+            chainId={props.chainId}
+          />
+        </LazyComponent>
       )
 
     case 'note-card':
       // Note-focused card: memo is primary, payment is optional (defaults to 0)
       return (
-        <NoteCard
-          projectId={props.projectId}
-          chainId={props.chainId}
-          defaultNote={props.defaultNote}
-        />
+        <LazyComponent type={type}>
+          <NoteCard
+            projectId={props.projectId}
+            chainId={props.chainId}
+            defaultNote={props.defaultNote}
+          />
+        </LazyComponent>
       )
 
     case 'cash-out-form':
       return (
-        <CashOutForm
-          projectId={props.projectId}
-          chainId={props.chainId}
-        />
+        <LazyComponent type={type}>
+          <CashOutForm
+            projectId={props.projectId}
+            chainId={props.chainId}
+          />
+        </LazyComponent>
       )
 
     case 'send-payouts-form':
       return (
-        <SendPayoutsForm
-          projectId={props.projectId}
-          chainId={props.chainId}
-        />
+        <LazyComponent type={type}>
+          <SendPayoutsForm
+            projectId={props.projectId}
+            chainId={props.chainId}
+          />
+        </LazyComponent>
       )
 
     case 'send-reserved-tokens-form':
       return (
-        <SendReservedTokensForm
-          projectId={props.projectId}
-          chainId={props.chainId}
-        />
+        <LazyComponent type={type}>
+          <SendReservedTokensForm
+            projectId={props.projectId}
+            chainId={props.chainId}
+          />
+        </LazyComponent>
       )
 
     case 'use-surplus-allowance-form':
       return (
-        <UseSurplusAllowanceForm
-          projectId={props.projectId}
-          chainId={props.chainId}
-        />
+        <LazyComponent type={type}>
+          <UseSurplusAllowanceForm
+            projectId={props.projectId}
+            chainId={props.chainId}
+          />
+        </LazyComponent>
       )
 
     case 'deploy-erc20-form':
       return (
-        <DeployERC20Form
-          projectId={props.projectId}
-          chainId={props.chainId}
-        />
+        <LazyComponent type={type}>
+          <DeployERC20Form
+            projectId={props.projectId}
+            chainId={props.chainId}
+          />
+        </LazyComponent>
       )
 
     case 'queue-ruleset-form':
       return (
-        <QueueRulesetForm
-          projectId={props.projectId}
-          chainId={props.chainId}
-        />
+        <LazyComponent type={type}>
+          <QueueRulesetForm
+            projectId={props.projectId}
+            chainId={props.chainId}
+          />
+        </LazyComponent>
       )
 
     case 'transaction-status':
-      return <TransactionStatus txId={props.txId} />
+      return (
+        <LazyComponent type={type}>
+          <TransactionStatus txId={props.txId} />
+        </LazyComponent>
+      )
 
     case 'transaction-preview':
       return (
-        <TransactionPreview
-          action={props.action}
-          contract={props.contract}
-          chainId={props.chainId}
-          projectId={props.projectId}
-          parameters={props.parameters}
-          explanation={props.explanation}
-        />
+        <LazyComponent type={type}>
+          <TransactionPreview
+            action={props.action}
+            contract={props.contract}
+            chainId={props.chainId}
+            projectId={props.projectId}
+            parameters={props.parameters}
+            explanation={props.explanation}
+          />
+        </LazyComponent>
       )
 
     case 'price-chart':
       return (
-        <PriceChart
-          projectId={props.projectId}
-          chainId={props.chainId}
-          range={props.range as '1y' | '5y' | '10y' | 'all' | undefined}
-        />
+        <LazyComponent type={type}>
+          <PriceChart
+            projectId={props.projectId}
+            chainId={props.chainId}
+            range={props.range as '1y' | '5y' | '10y' | 'all' | undefined}
+          />
+        </LazyComponent>
       )
 
     case 'balance-chart':
       return (
-        <BalanceChart
-          projectId={props.projectId}
-          chainId={props.chainId}
-          range={props.range as '7d' | '30d' | '90d' | '1y' | 'all' | undefined}
-        />
+        <LazyComponent type={type}>
+          <BalanceChart
+            projectId={props.projectId}
+            chainId={props.chainId}
+            range={props.range as '7d' | '30d' | '90d' | '1y' | 'all' | undefined}
+          />
+        </LazyComponent>
       )
 
     case 'holders-chart':
       return (
-        <HoldersChart
-          projectId={props.projectId}
-          chainId={props.chainId}
-          limit={props.limit ? parseInt(props.limit, 10) : undefined}
-        />
+        <LazyComponent type={type}>
+          <HoldersChart
+            projectId={props.projectId}
+            chainId={props.chainId}
+            limit={props.limit ? parseInt(props.limit, 10) : undefined}
+          />
+        </LazyComponent>
       )
 
     case 'volume-chart':
       return (
-        <VolumeChart
-          projectId={props.projectId}
-          chainId={props.chainId}
-          range={props.range as '7d' | '30d' | '90d' | '1y' | 'all' | undefined}
-        />
+        <LazyComponent type={type}>
+          <VolumeChart
+            projectId={props.projectId}
+            chainId={props.chainId}
+            range={props.range as '7d' | '30d' | '90d' | '1y' | 'all' | undefined}
+          />
+        </LazyComponent>
       )
 
     case 'token-price-chart':
       return (
-        <TokenPriceChart
-          projectId={props.projectId}
-          chainId={props.chainId}
-          range={props.range as '7d' | '30d' | '3m' | '1y' | 'all' | undefined}
-          poolAddress={props.poolAddress}
-          projectTokenAddress={props.projectTokenAddress}
-        />
+        <LazyComponent type={type}>
+          <TokenPriceChart
+            projectId={props.projectId}
+            chainId={props.chainId}
+            range={props.range as '7d' | '30d' | '3m' | '1y' | 'all' | undefined}
+            poolAddress={props.poolAddress}
+            projectTokenAddress={props.projectTokenAddress}
+          />
+        </LazyComponent>
       )
 
     case 'pool-price-chart':
       return (
-        <PoolPriceChart
-          poolAddress={props.poolAddress}
-          projectTokenAddress={props.projectTokenAddress}
-          chainId={props.chainId}
-          tokenSymbol={props.tokenSymbol}
-          range={props.range as '7d' | '30d' | '3m' | '1y' | 'all' | undefined}
-        />
+        <LazyComponent type={type}>
+          <PoolPriceChart
+            poolAddress={props.poolAddress}
+            projectTokenAddress={props.projectTokenAddress}
+            chainId={props.chainId}
+            tokenSymbol={props.tokenSymbol}
+            range={props.range as '7d' | '30d' | '3m' | '1y' | 'all' | undefined}
+          />
+        </LazyComponent>
       )
 
     case 'multi-chain-cash-out-chart':
       return (
-        <MultiChainCashOutChart
-          projectId={props.projectId}
-          chainId={props.chainId}
-          chains={props.chains}
-          range={props.range as '7d' | '30d' | '3m' | '1y' | 'all' | undefined}
-        />
+        <LazyComponent type={type}>
+          <MultiChainCashOutChart
+            projectId={props.projectId}
+            chainId={props.chainId}
+            chains={props.chains}
+            range={props.range as '7d' | '30d' | '3m' | '1y' | 'all' | undefined}
+          />
+        </LazyComponent>
       )
 
     case 'activity-feed':
       return (
-        <ActivityFeed
-          projectId={props.projectId}
-          chainId={props.chainId}
-          limit={props.limit ? parseInt(props.limit, 10) : undefined}
-        />
+        <LazyComponent type={type}>
+          <ActivityFeed
+            projectId={props.projectId}
+            chainId={props.chainId}
+            limit={props.limit ? parseInt(props.limit, 10) : undefined}
+          />
+        </LazyComponent>
       )
 
     case 'ruleset-schedule':
       return (
-        <RulesetSchedule
-          projectId={props.projectId}
-          chainId={props.chainId}
-        />
+        <LazyComponent type={type}>
+          <RulesetSchedule
+            projectId={props.projectId}
+            chainId={props.chainId}
+          />
+        </LazyComponent>
       )
 
     case 'options-picker':
@@ -239,79 +307,95 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
         )
       }
       return (
-        <OptionsPicker
-          groups={parsedGroups}
-          submitLabel={props.submitLabel}
-          allSelectedLabel={props.allSelectedLabel}
-        />
+        <LazyComponent type={type}>
+          <OptionsPicker
+            groups={parsedGroups}
+            submitLabel={props.submitLabel}
+            allSelectedLabel={props.allSelectedLabel}
+          />
+        </LazyComponent>
       )
 
     case 'project-chain-picker':
       return (
-        <ProjectChainPicker
-          projectId={props.projectId}
-        />
+        <LazyComponent type={type}>
+          <ProjectChainPicker
+            projectId={props.projectId}
+          />
+        </LazyComponent>
       )
 
     case 'top-projects':
       return (
-        <TopProjects
-          limit={props.limit ? parseInt(props.limit, 10) : undefined}
-          orderBy={props.orderBy as 'volume' | 'volumeUsd' | 'balance' | 'contributorsCount' | 'paymentsCount' | undefined}
-        />
+        <LazyComponent type={type}>
+          <TopProjects
+            limit={props.limit ? parseInt(props.limit, 10) : undefined}
+            orderBy={props.orderBy as 'volume' | 'volumeUsd' | 'balance' | 'contributorsCount' | 'paymentsCount' | undefined}
+          />
+        </LazyComponent>
       )
 
     case 'nft-gallery':
       return (
-        <NFTGallery
-          projectId={props.projectId}
-          chainId={props.chainId}
-          columns={props.columns}
-          showMintActions={props.showMintActions}
-        />
+        <LazyComponent type={type}>
+          <NFTGallery
+            projectId={props.projectId}
+            chainId={props.chainId}
+            columns={props.columns}
+            showMintActions={props.showMintActions}
+          />
+        </LazyComponent>
       )
 
     case 'nft-card':
       return (
-        <NFTCard
-          projectId={props.projectId}
-          tierId={props.tierId}
-          chainId={props.chainId}
-        />
+        <LazyComponent type={type}>
+          <NFTCard
+            projectId={props.projectId}
+            tierId={props.tierId}
+            chainId={props.chainId}
+          />
+        </LazyComponent>
       )
 
     case 'storefront':
       return (
-        <Storefront
-          projectId={props.projectId}
-          chainId={props.chainId}
-          sortBy={props.sortBy}
-          filterCategory={props.filterCategory}
-          showSoldOut={props.showSoldOut}
-        />
+        <LazyComponent type={type}>
+          <Storefront
+            projectId={props.projectId}
+            chainId={props.chainId}
+            sortBy={props.sortBy}
+            filterCategory={props.filterCategory}
+            showSoldOut={props.showSoldOut}
+          />
+        </LazyComponent>
       )
 
     case 'landing-page-preview':
       return (
-        <LandingPagePreview
-          projectId={props.projectId}
-          chainId={props.chainId}
-          layout={props.layout}
-          showComponents={props.showComponents}
-          title={props.title}
-          subtitle={props.subtitle}
-        />
+        <LazyComponent type={type}>
+          <LandingPagePreview
+            projectId={props.projectId}
+            chainId={props.chainId}
+            layout={props.layout}
+            showComponents={props.showComponents}
+            title={props.title}
+            subtitle={props.subtitle}
+          />
+        </LazyComponent>
       )
 
     case 'success-visualization':
       return (
-        <SuccessVisualization
-          targetRaise={props.targetRaise}
-          supporterCount={props.supporterCount}
-          timeframe={props.timeframe}
-          growthRate={props.growthRate}
-          avgContribution={props.avgContribution}
-        />
+        <LazyComponent type={type}>
+          <SuccessVisualization
+            targetRaise={props.targetRaise}
+            supporterCount={props.supporterCount}
+            timeframe={props.timeframe}
+            growthRate={props.growthRate}
+            avgContribution={props.avgContribution}
+          />
+        </LazyComponent>
       )
 
     default:

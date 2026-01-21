@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
+import { useRef, useEffect, useState, useMemo, useCallback, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 
@@ -2688,6 +2688,99 @@ function shuffle<T>(array: T[]): T[] {
   return result
 }
 
+// Pre-computed chip data for performance
+interface ChipData {
+  text: string
+  displayText: string
+  isCategory: boolean
+  badgeType: 'id' | 'bold' | 'popular' | 'pro' | 'demo' | 'fun' | null
+}
+
+// Memoized chip component to avoid re-renders during scroll
+const ChipButton = memo(function ChipButton({
+  chip,
+  theme,
+  onClick,
+  t,
+}: {
+  chip: ChipData
+  theme: 'dark' | 'light'
+  onClick: () => void
+  t: (key: string, fallback: string) => string
+}) {
+  const { displayText, isCategory, badgeType } = chip
+  const isDark = theme === 'dark'
+
+  const className = isCategory
+    ? isDark
+      ? 'bg-yellow-500/20 border-yellow-400/50 text-yellow-300 font-medium hover:bg-yellow-500/35 hover:border-yellow-400'
+      : 'bg-yellow-50 border-yellow-500/50 text-yellow-700 font-medium hover:bg-yellow-100 hover:border-yellow-500'
+    : badgeType === 'bold'
+      ? isDark
+        ? 'bg-purple-500/25 border-purple-400/50 text-purple-300 hover:bg-purple-500/40 hover:border-purple-400'
+        : 'bg-purple-50 border-purple-400/50 text-purple-700 hover:bg-purple-100 hover:border-purple-500'
+      : badgeType === 'popular'
+        ? isDark
+          ? 'bg-juice-cyan/20 border-juice-cyan/40 text-juice-cyan hover:bg-juice-cyan/35 hover:border-juice-cyan'
+          : 'bg-juice-cyan/10 border-juice-cyan/50 text-teal-700 hover:bg-juice-cyan/20 hover:border-teal-500'
+        : badgeType === 'pro'
+          ? isDark
+            ? 'bg-juice-orange/20 border-juice-orange/40 text-juice-orange hover:bg-juice-orange/35 hover:border-juice-orange'
+            : 'bg-orange-50 border-juice-orange/50 text-orange-700 hover:bg-orange-100 hover:border-orange-500'
+          : badgeType === 'demo'
+            ? isDark
+              ? 'bg-pink-500/20 border-pink-400/40 text-pink-300 hover:bg-pink-500/35 hover:border-pink-400'
+              : 'bg-pink-50 border-pink-400/50 text-pink-700 hover:bg-pink-100 hover:border-pink-500'
+            : badgeType === 'fun'
+              ? isDark
+                ? 'bg-green-500/20 border-green-400/40 text-green-300 hover:bg-green-500/35 hover:border-green-400'
+                : 'bg-green-50 border-green-400/50 text-green-700 hover:bg-green-100 hover:border-green-500'
+              : isDark
+                ? 'bg-gray-700/40 border-white/10 text-gray-300 hover:bg-gray-600/50 hover:border-white/25 hover:text-white'
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900'
+
+  return (
+    <button
+      onMouseUp={onClick}
+      onTouchEnd={onClick}
+      className={`px-3 py-2 border text-sm whitespace-nowrap select-none flex items-center gap-2 transition-[background-color,border-color,color] duration-100 ${className}`}
+      style={{ height: CHIP_HEIGHT }}
+    >
+      {displayText}
+      {badgeType === 'id' && (
+        <span className="text-[10px] uppercase tracking-wide font-semibold text-yellow-400">
+          {t('badges.id', 'id')}
+        </span>
+      )}
+      {badgeType === 'bold' && (
+        <span className="text-[10px] uppercase tracking-wide font-semibold text-purple-400">
+          {t('badges.bold', 'bold')}
+        </span>
+      )}
+      {badgeType === 'popular' && (
+        <span className="text-[10px] uppercase tracking-wide text-juice-cyan/70">
+          {t('badges.popular', 'popular')}
+        </span>
+      )}
+      {badgeType === 'pro' && (
+        <span className="text-[10px] uppercase tracking-wide font-semibold text-yellow-400">
+          {t('badges.pro', 'pro')}
+        </span>
+      )}
+      {badgeType === 'demo' && (
+        <span className="text-[10px] uppercase tracking-wide font-semibold text-pink-400">
+          {t('badges.demo', 'demo')}
+        </span>
+      )}
+      {badgeType === 'fun' && (
+        <span className="text-[10px] uppercase tracking-wide font-semibold text-green-400">
+          {t('badges.fun', 'fun')}
+        </span>
+      )}
+    </button>
+  )
+})
+
 export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
   const { theme } = useThemeStore()
   const { t } = useTranslation()
@@ -2698,10 +2791,19 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   const offsetRef = useRef({ x: 0, y: 0 })
   const scaleRef = useRef(1)
   const containerRef = useRef<HTMLDivElement>(null)
+  const transformRef = useRef<HTMLDivElement>(null) // Direct DOM manipulation for smooth scrolling
+  const rafIdRef = useRef<number | null>(null) // For requestAnimationFrame cleanup
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const hasDraggedRef = useRef(false)
   const lastPinchDistRef = useRef<number | null>(null)
   const [selectedTraits, setSelectedTraits] = useState<Set<TraitId>>(new Set())
+
+  // Direct DOM update for transform (bypasses React re-render)
+  const updateTransform = useCallback(() => {
+    if (transformRef.current) {
+      transformRef.current.style.transform = `translate(${offsetRef.current.x}px, ${offsetRef.current.y}px) scale(${scaleRef.current})`
+    }
+  }, [])
 
   // Get trait labels for mixing into suggestions
   const traitLabels = traits.map(t => t.label)
@@ -2761,6 +2863,42 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   // Build rows from filtered suggestions
   const rows = useMemo(() => buildRows(filteredSuggestions), [filteredSuggestions])
 
+  // Pre-compute chip data for all suggestions (avoids recalculation during scroll)
+  const chipDataMap = useMemo(() => {
+    const map = new Map<string, ChipData>()
+    const traitLabels = traits.map(tr => tr.label)
+
+    filteredSuggestions.forEach(suggestion => {
+      const isCategory = traitLabels.includes(suggestion)
+      const displayText = suggestionKeyMap[suggestion]
+        ? t(`suggestions.${suggestionKeyMap[suggestion]}`, suggestion)
+        : suggestion
+
+      let badgeType: ChipData['badgeType'] = null
+      if (isCategory) {
+        badgeType = 'id'
+      } else if (boldSuggestions.has(suggestion)) {
+        badgeType = 'bold'
+      } else if (popularSuggestions.has(suggestion)) {
+        badgeType = 'popular'
+      } else if (proSuggestions.has(suggestion)) {
+        badgeType = 'pro'
+      } else if (demoSuggestions.has(suggestion)) {
+        badgeType = 'demo'
+      } else if (funSuggestions.has(suggestion)) {
+        badgeType = 'fun'
+      }
+
+      map.set(suggestion, {
+        text: suggestion,
+        displayText,
+        isCategory,
+        badgeType,
+      })
+    })
+    return map
+  }, [filteredSuggestions, t])
+
   // Track container size
   useEffect(() => {
     const updateSize = () => {
@@ -2776,21 +2914,35 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
     return () => window.removeEventListener('resize', updateSize)
   }, [])
 
+  // Sync state periodically during continuous scrolling (for visibility calculations)
+  const syncStateRef = useRef<number | null>(null)
+  const scheduleSyncState = useCallback(() => {
+    if (syncStateRef.current) return // Already scheduled
+    syncStateRef.current = requestAnimationFrame(() => {
+      syncStateRef.current = null
+      setOffset({ ...offsetRef.current })
+    })
+  }, [])
+
   // Use refs + document-level listeners for reliable dragging
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDraggingRef.current) return
       hasDraggedRef.current = true
-      const newOffset = {
+      offsetRef.current = {
         x: e.clientX - dragStartRef.current.x,
         y: e.clientY - dragStartRef.current.y,
       }
-      offsetRef.current = newOffset
-      setOffset(newOffset)
+      // Direct DOM update for smooth scrolling (no React re-render)
+      updateTransform()
+      // Schedule state sync for visibility calculations
+      scheduleSyncState()
     }
 
     const handleMouseUp = () => {
       isDraggingRef.current = false
+      // Final state sync when drag ends
+      setOffset({ ...offsetRef.current })
     }
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -2806,6 +2958,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
           const zoomSpeed = 0.012
           const newScale = Math.max(0.3, Math.min(3, scaleRef.current + delta * zoomSpeed))
           scaleRef.current = newScale
+          updateTransform()
           setScale(newScale)
         }
         lastPinchDistRef.current = dist
@@ -2816,17 +2969,21 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       if (!isDraggingRef.current) return
       hasDraggedRef.current = true
       const touch = e.touches[0]
-      const newOffset = {
+      offsetRef.current = {
         x: touch.clientX - dragStartRef.current.x,
         y: touch.clientY - dragStartRef.current.y,
       }
-      offsetRef.current = newOffset
-      setOffset(newOffset)
+      // Direct DOM update for smooth scrolling (no React re-render)
+      updateTransform()
+      // Schedule state sync for visibility calculations
+      scheduleSyncState()
     }
 
     const handleTouchEnd = () => {
       isDraggingRef.current = false
       lastPinchDistRef.current = null
+      // Final state sync when touch ends
+      setOffset({ ...offsetRef.current })
     }
 
     // Wheel handler needs to be native to prevent browser zoom (passive: false)
@@ -2838,17 +2995,28 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         const zoomSpeed = 0.008
         const newScale = Math.max(0.3, Math.min(3, scaleRef.current - e.deltaY * zoomSpeed))
         scaleRef.current = newScale
+        updateTransform()
         setScale(newScale)
         return
       }
 
-      // Regular scroll = pan
-      const newOffset = {
+      // Regular scroll = pan - use RAF for batched updates
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current)
+      }
+
+      offsetRef.current = {
         x: offsetRef.current.x - e.deltaX,
         y: offsetRef.current.y - e.deltaY,
       }
-      offsetRef.current = newOffset
-      setOffset(newOffset)
+      // Direct DOM update for smooth scrolling (no React re-render)
+      updateTransform()
+
+      // Debounce state sync to reduce re-renders during fast scrolling
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null
+        setOffset({ ...offsetRef.current })
+      })
     }
 
     const container = containerRef.current
@@ -2864,8 +3032,10 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       document.removeEventListener('touchmove', handleTouchMove)
       document.removeEventListener('touchend', handleTouchEnd)
       container?.removeEventListener('wheel', handleWheel)
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
+      if (syncStateRef.current) cancelAnimationFrame(syncStateRef.current)
     }
-  }, [])
+  }, [updateTransform, scheduleSyncState])
 
   const handleMouseDown = (e: React.MouseEvent) => {
     isDraggingRef.current = true
@@ -2893,11 +3063,13 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       y: Math.random() * 1000 - 500,
     }
     offsetRef.current = newOffset
+    updateTransform()
     setOffset(newOffset)
   }
 
   const handleResetZoom = () => {
     scaleRef.current = 1
+    updateTransform()
     setScale(1)
   }
 
@@ -2914,9 +3086,6 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
 
     onSuggestionClick(suggestion)
   }
-
-  // Check if a string is a category chip
-  const isCategory = (text: string) => traits.some(t => t.label === text)
 
   return (
     <div className="flex-1 relative h-full overflow-hidden">
@@ -2986,10 +3155,12 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         style={{ touchAction: 'none' }}
       >
         <div
+          ref={transformRef}
           className="absolute inset-0"
           style={{
             transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
             transformOrigin: 'center center',
+            willChange: 'transform', // GPU acceleration for smooth scrolling
           }}
         >
           {(() => {
@@ -3038,82 +3209,17 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
                     {[0, 1, 2, 3, 4].map(tileX => (
                       <div key={tileX} className="flex">
                         {row.suggestions.map((suggestion, chipIdx) => {
-                          const isCategoryChip = isCategory(suggestion)
-                          const isPopular = popularSuggestions.has(suggestion)
-                          const isPro = proSuggestions.has(suggestion)
-                          const isDemo = demoSuggestions.has(suggestion)
-                          const isFun = funSuggestions.has(suggestion)
-                          const isBold = boldSuggestions.has(suggestion)
-                          // Compute translated display text - use this for both display and click
-                          const displayText = suggestionKeyMap[suggestion]
-                            ? t(`suggestions.${suggestionKeyMap[suggestion]}`, suggestion)
-                            : suggestion
+                          const chipData = chipDataMap.get(suggestion)
+                          if (!chipData) return null
 
                           return (
-                            <button
+                            <ChipButton
                               key={`${tileX}_${chipIdx}`}
-                              onMouseUp={() => handleChipClick(displayText)}
-                              onTouchEnd={() => handleChipClick(displayText)}
-                              className={`px-3 py-2 border text-sm whitespace-nowrap select-none flex items-center gap-2 transition-[background-color,border-color,color] duration-100 ${
-                                isCategoryChip
-                                  ? theme === 'dark'
-                                    ? 'bg-yellow-500/20 border-yellow-400/50 text-yellow-300 font-medium hover:bg-yellow-500/35 hover:border-yellow-400'
-                                    : 'bg-yellow-50 border-yellow-500/50 text-yellow-700 font-medium hover:bg-yellow-100 hover:border-yellow-500'
-                                  : isBold
-                                    ? theme === 'dark'
-                                      ? 'bg-purple-500/25 border-purple-400/50 text-purple-300 hover:bg-purple-500/40 hover:border-purple-400'
-                                      : 'bg-purple-50 border-purple-400/50 text-purple-700 hover:bg-purple-100 hover:border-purple-500'
-                                    : isPopular
-                                      ? theme === 'dark'
-                                        ? 'bg-juice-cyan/20 border-juice-cyan/40 text-juice-cyan hover:bg-juice-cyan/35 hover:border-juice-cyan'
-                                        : 'bg-juice-cyan/10 border-juice-cyan/50 text-teal-700 hover:bg-juice-cyan/20 hover:border-teal-500'
-                                      : isPro
-                                        ? theme === 'dark'
-                                          ? 'bg-juice-orange/20 border-juice-orange/40 text-juice-orange hover:bg-juice-orange/35 hover:border-juice-orange'
-                                          : 'bg-orange-50 border-juice-orange/50 text-orange-700 hover:bg-orange-100 hover:border-orange-500'
-                                        : isDemo
-                                          ? theme === 'dark'
-                                            ? 'bg-pink-500/20 border-pink-400/40 text-pink-300 hover:bg-pink-500/35 hover:border-pink-400'
-                                            : 'bg-pink-50 border-pink-400/50 text-pink-700 hover:bg-pink-100 hover:border-pink-500'
-                                          : isFun
-                                            ? theme === 'dark'
-                                              ? 'bg-green-500/20 border-green-400/40 text-green-300 hover:bg-green-500/35 hover:border-green-400'
-                                              : 'bg-green-50 border-green-400/50 text-green-700 hover:bg-green-100 hover:border-green-500'
-                                            : theme === 'dark'
-                                              ? 'bg-gray-700/40 border-white/10 text-gray-300 hover:bg-gray-600/50 hover:border-white/25 hover:text-white'
-                                              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900'
-                              }`}
-                              style={{ height: CHIP_HEIGHT }}
-                            >
-                              {/* Display translated text */}
-                              {displayText}
-                              {/* Only show the PRIMARY badge */}
-                              {isCategoryChip ? (
-                                <span className="text-[10px] uppercase tracking-wide font-semibold text-yellow-400">
-                                  {t('badges.id', 'id')}
-                                </span>
-                              ) : isBold ? (
-                                <span className="text-[10px] uppercase tracking-wide font-semibold text-purple-400">
-                                  {t('badges.bold', 'bold')}
-                                </span>
-                              ) : isPopular ? (
-                                <span className="text-[10px] uppercase tracking-wide text-juice-cyan/70">
-                                  {t('badges.popular', 'popular')}
-                                </span>
-                              ) : isPro ? (
-                                <span className="text-[10px] uppercase tracking-wide font-semibold text-yellow-400">
-                                  {t('badges.pro', 'pro')}
-                                </span>
-                              ) : isDemo ? (
-                                <span className="text-[10px] uppercase tracking-wide font-semibold text-pink-400">
-                                  {t('badges.demo', 'demo')}
-                                </span>
-                              ) : isFun ? (
-                                <span className="text-[10px] uppercase tracking-wide font-semibold text-green-400">
-                                  {t('badges.fun', 'fun')}
-                                </span>
-                              ) : null}
-                            </button>
+                              chip={chipData}
+                              theme={theme}
+                              onClick={() => handleChipClick(chipData.displayText)}
+                              t={t}
+                            />
                           )
                         })}
                       </div>

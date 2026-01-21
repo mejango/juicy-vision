@@ -49,14 +49,9 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
       }
       const options = g.options || []
       if (g.multiSelect) {
-        // For multiSelect, check for pre-selected options first
+        // For multiSelect, only use pre-selected options - no default selection
         const preSelected = options.filter(o => o.selected).map(o => o.value)
-        if (preSelected.length > 0) {
-          initial[g.id] = preSelected
-        } else {
-          // Fallback to first option
-          initial[g.id] = options.length > 0 ? [options[0].value] : []
-        }
+        initial[g.id] = preSelected
       } else {
         // For single select, check for pre-selected option first
         const preSelected = options.find(o => o.selected)
@@ -80,11 +75,8 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
       setSelections(prev => {
         const current = prev[groupId] as string[] || []
         if (current.includes(value)) {
-          // Deselect - but keep at least one selected
-          if (current.length > 1) {
-            return { ...prev, [groupId]: current.filter(v => v !== value) }
-          }
-          return prev // Don't allow deselecting the last one
+          // Deselect - allow deselecting all for multiSelect
+          return { ...prev, [groupId]: current.filter(v => v !== value) }
         } else {
           // Select
           return { ...prev, [groupId]: [...current, value] }
@@ -369,15 +361,21 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
             </div>
             <button
               onClick={handleSubmit}
+              disabled={hasSubmitted}
               className={`self-end px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
                 hasSubmitted
                   ? isDark
-                    ? 'bg-transparent text-gray-500 border-gray-600 hover:text-gray-400 hover:border-gray-500'
-                    : 'bg-transparent text-gray-400 border-gray-300 hover:text-gray-500 hover:border-gray-400'
+                    ? 'bg-transparent text-gray-500 border-gray-600 cursor-default'
+                    : 'bg-transparent text-gray-400 border-gray-300 cursor-default'
                   : 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
               }`}
             >
-              {buttonLabel}
+              {hasSubmitted ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  Thinking...
+                </span>
+              ) : buttonLabel}
             </button>
           </div>
         )
