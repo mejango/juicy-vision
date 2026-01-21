@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react'
 import { useAccount, useSwitchChain } from 'wagmi'
 import { getWalletClient } from 'wagmi/actions'
-import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, encodeAbiParameters, keccak256, toBytes, type Hex, type Address, type Chain } from 'viem'
+import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, encodeAbiParameters, keccak256, toBytes, bytesToHex, type Hex, type Address, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useTransactionStore } from '../stores'
 import { wagmiConfig } from '../config/wagmi'
@@ -56,16 +56,21 @@ const CHAINS: Record<number, Chain> = {
   42161: arbitrum,
 }
 
-// Compute the permit2 metadata ID: bytes4(bytes20(terminal) ^ bytes20(keccak256("permit2")))
-function computePermit2MetadataId(terminalAddress: Address): Hex {
-  const terminalBytes = BigInt(terminalAddress)
-  const purposeHash = BigInt(keccak256(toBytes('permit2')))
-  // Get first 20 bytes (160 bits) of purpose hash
-  const purposeBytes20 = purposeHash >> BigInt(96)
-  // XOR and take first 4 bytes
-  const xored = terminalBytes ^ purposeBytes20
-  const result = (xored >> BigInt(128)) & BigInt(0xFFFFFFFF)
-  return `0x${result.toString(16).padStart(8, '0')}` as Hex
+// Compute the permit2 metadata ID: bytes4(bytes20(target) ^ bytes20(keccak256("permit2")))
+// Uses byte arrays for proper alignment (matching Solidity's behavior)
+function computePermit2MetadataId(targetAddress: Address): Hex {
+  // Convert address to byte array (20 bytes)
+  const targetBytes = toBytes(targetAddress)
+  // Get first 20 bytes of keccak256("permit2")
+  const purposeHashFull = toBytes(keccak256(toBytes('permit2')))
+  const purposeBytes20 = purposeHashFull.slice(0, 20)
+  // XOR byte by byte
+  const xorResult = new Uint8Array(20)
+  for (let i = 0; i < 20; i++) {
+    xorResult[i] = targetBytes[i] ^ purposeBytes20[i]
+  }
+  // Take first 4 bytes
+  return bytesToHex(xorResult.slice(0, 4)) as Hex
 }
 
 // Build JB metadata with permit2 data
@@ -274,6 +279,15 @@ export function useTransactionExecutor() {
           transport: viemHttp(),
         })
 
+        // For permit2, use the terminal address from primaryTerminalOf
+        // Projects should have the correct swap terminal registry registered in JBDirectory:
+        // - JBSwapTerminalRegistry (0x60b4...) for TOKEN_OUT = ETH
+        // - JBSwapTerminalUSDCRegistry (0x1ce4...) for TOKEN_OUT = USDC
+        // The terminal uses address(this) for permit2 ID calculation
+        const permit2TargetAddress: Address = terminalAddress
+
+        console.log('[TX] Permit2 target address:', permit2TargetAddress, `(terminalType: ${terminalType})`)
+
         // Check if USDC is approved to Permit2 (required for Permit2 to work)
         const usdcToPermit2Allowance = await publicClient.readContract({
           address: usdcAddress!,
@@ -291,7 +305,7 @@ export function useTransactionExecutor() {
               address: PERMIT2_ADDRESS,
               abi: PERMIT2_ALLOWANCE_ABI,
               functionName: 'allowance',
-              args: [currentAddress, usdcAddress!, terminalAddress],
+              args: [currentAddress, usdcAddress!, permit2TargetAddress],
             })
 
             const currentNonce = Number(allowanceResult[2])
@@ -317,7 +331,7 @@ export function useTransactionExecutor() {
                   expiration: expiration,
                   nonce: currentNonce,
                 },
-                spender: terminalAddress,
+                spender: permit2TargetAddress,
                 sigDeadline: sigDeadline,
               },
             })
@@ -330,7 +344,7 @@ export function useTransactionExecutor() {
               currentNonce,
               signature
             )
-            permit2Metadata = buildPermit2Metadata(allowanceData, terminalAddress)
+            permit2Metadata = buildPermit2Metadata(allowanceData, permit2TargetAddress)
           } catch (err) {
             console.warn('[TX] Permit2 signing failed, falling back to direct approve:', err)
             needsDirectApprove = true
@@ -359,7 +373,7 @@ export function useTransactionExecutor() {
             address: PERMIT2_ADDRESS,
             abi: PERMIT2_ALLOWANCE_ABI,
             functionName: 'allowance',
-            args: [currentAddress, usdcAddress!, terminalAddress],
+            args: [currentAddress, usdcAddress!, permit2TargetAddress],
           })
 
           const currentNonce = Number(allowanceResult[2])
@@ -382,7 +396,7 @@ export function useTransactionExecutor() {
                 expiration: expiration,
                 nonce: currentNonce,
               },
-              spender: terminalAddress,
+              spender: permit2TargetAddress,
               sigDeadline: sigDeadline,
             },
           })
@@ -394,7 +408,7 @@ export function useTransactionExecutor() {
             currentNonce,
             signature
           )
-          permit2Metadata = buildPermit2Metadata(allowanceData, terminalAddress)
+          permit2Metadata = buildPermit2Metadata(allowanceData, permit2TargetAddress)
         }
 
         // Handle Permit2 signing failure - fall back to direct terminal approval

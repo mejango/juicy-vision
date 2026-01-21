@@ -118,3 +118,10 @@ export const JB_SWAP_TERMINAL: Record<SupportedChainId, `0x${string}`> = {
   8453: '0x4fd73d8b285e82471f08a4ef9861d6248b832edd',   // Base
   42161: '0x483c9b12c5bd2da73133aae30642ce0008c752ad',  // Arbitrum
 }
+
+// JBSwapTerminal Registry addresses - same on all chains via CREATE2
+// Choose based on what currency the PROJECT should RECEIVE after swap:
+// - JBSwapTerminalRegistry: TOKEN_OUT = NATIVE_TOKEN (ETH)
+// - JBSwapTerminalUSDCRegistry: TOKEN_OUT = USDC
+export const JB_SWAP_TERMINAL_REGISTRY = '0x60b4f5595ee509c4c22921c7b7999f1616e6a4f6' as const
+export const JB_SWAP_TERMINAL_USDC_REGISTRY = '0x1ce40d201cdec791de05810d17aaf501be167422' as const
