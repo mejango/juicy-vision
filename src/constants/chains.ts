@@ -109,3 +109,12 @@ export const JB721_CONTRACTS = {
 
 // Zero address constant
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`
+
+// JBSwapTerminal addresses - use when paying a project with a different token than its accounting context
+// e.g., paying USDC to an ETH-denominated project (swaps USDC → ETH before paying)
+export const JB_SWAP_TERMINAL: Record<SupportedChainId, `0x${string}`> = {
+  1: '0x259385b97dfbd5576bd717dc7b25967ec8b145dd',      // Ethereum
+  10: '0x73d04584bde126242c36c2c7b219cbdec7aad774',     // Optimism
+  8453: '0x4fd73d8b285e82471f08a4ef9861d6248b832edd',   // Base
+  42161: '0x483c9b12c5bd2da73133aae30642ce0008c752ad',  // Arbitrum
+}

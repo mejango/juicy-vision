@@ -1,14 +1,12 @@
 import { useEffect, useCallback } from 'react'
 import { useAccount, useSwitchChain } from 'wagmi'
 import { getWalletClient } from 'wagmi/actions'
-import { parseEther, parseUnits, encodeFunctionData, encodeAbiParameters, keccak256, toBytes, type Hex, type Address, type Chain } from 'viem'
+import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, encodeAbiParameters, keccak256, toBytes, type Hex, type Address, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useTransactionStore } from '../stores'
 import { wagmiConfig } from '../config/wagmi'
 import { USDC_ADDRESSES, type SupportedChainId } from '../constants'
-
-// JBMultiTerminal5_1 address (same on all chains)
-const JB_MULTI_TERMINAL = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const
+import { getPaymentTerminal, getPaymentTokenAddress } from '../utils'
 
 // Native token address for ETH payments
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
@@ -59,8 +57,8 @@ const CHAINS: Record<number, Chain> = {
 }
 
 // Compute the permit2 metadata ID: bytes4(bytes20(terminal) ^ bytes20(keccak256("permit2")))
-function computePermit2MetadataId(): Hex {
-  const terminalBytes = BigInt(JB_MULTI_TERMINAL)
+function computePermit2MetadataId(terminalAddress: Address): Hex {
+  const terminalBytes = BigInt(terminalAddress)
   const purposeHash = BigInt(keccak256(toBytes('permit2')))
   // Get first 20 bytes (160 bits) of purpose hash
   const purposeBytes20 = purposeHash >> BigInt(96)
@@ -72,8 +70,8 @@ function computePermit2MetadataId(): Hex {
 
 // Build JB metadata with permit2 data
 // Format: 32B reserved | (id, offset) entries padded to 32B | data padded to 32B
-function buildPermit2Metadata(allowanceData: Hex): Hex {
-  const permit2Id = computePermit2MetadataId()
+function buildPermit2Metadata(allowanceData: Hex, terminalAddress: Address): Hex {
+  const permit2Id = computePermit2MetadataId(terminalAddress)
   // Reserved 32 bytes + one entry (4B id + 1B offset) + padding to 32B = 64 bytes before data
   // Offset is 2 (after reserved word and lookup table word)
   const offset = 2
@@ -197,6 +195,33 @@ export function useTransactionExecutor() {
 
     const tokenAddress = isUsdc ? usdcAddress! : NATIVE_TOKEN
 
+    // Create a public client for terminal detection
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(),
+    })
+
+    // Dynamically detect which terminal to use by querying JBDirectory.primaryTerminalOf
+    // Returns JBSwapTerminal if no direct terminal exists for this token (cross-token payment)
+    // Returns JBMultiTerminal if project directly accepts this token
+    let terminalAddress: Address
+    let terminalType: 'multi' | 'swap'
+    try {
+      const terminal = await getPaymentTerminal(
+        publicClient,
+        chainId,
+        BigInt(projectId),
+        tokenAddress
+      )
+      terminalAddress = terminal.address
+      terminalType = terminal.type
+      console.log('[TX] Detected terminal:', terminalAddress, `(${terminalType})`)
+    } catch (err) {
+      console.error('[TX] Failed to detect terminal:', err)
+      updateTransaction(txId, { status: 'failed', error: 'Failed to detect payment terminal' })
+      return
+    }
+
     // Get wallet client without chainId first (to check current state)
     let client
     try {
@@ -266,7 +291,7 @@ export function useTransactionExecutor() {
               address: PERMIT2_ADDRESS,
               abi: PERMIT2_ALLOWANCE_ABI,
               functionName: 'allowance',
-              args: [currentAddress, usdcAddress!, JB_MULTI_TERMINAL],
+              args: [currentAddress, usdcAddress!, terminalAddress],
             })
 
             const currentNonce = Number(allowanceResult[2])
@@ -292,7 +317,7 @@ export function useTransactionExecutor() {
                   expiration: expiration,
                   nonce: currentNonce,
                 },
-                spender: JB_MULTI_TERMINAL,
+                spender: terminalAddress,
                 sigDeadline: sigDeadline,
               },
             })
@@ -305,7 +330,7 @@ export function useTransactionExecutor() {
               currentNonce,
               signature
             )
-            permit2Metadata = buildPermit2Metadata(allowanceData)
+            permit2Metadata = buildPermit2Metadata(allowanceData, terminalAddress)
           } catch (err) {
             console.warn('[TX] Permit2 signing failed, falling back to direct approve:', err)
             needsDirectApprove = true
@@ -334,7 +359,7 @@ export function useTransactionExecutor() {
             address: PERMIT2_ADDRESS,
             abi: PERMIT2_ALLOWANCE_ABI,
             functionName: 'allowance',
-            args: [currentAddress, usdcAddress!, JB_MULTI_TERMINAL],
+            args: [currentAddress, usdcAddress!, terminalAddress],
           })
 
           const currentNonce = Number(allowanceResult[2])
@@ -357,7 +382,7 @@ export function useTransactionExecutor() {
                 expiration: expiration,
                 nonce: currentNonce,
               },
-              spender: JB_MULTI_TERMINAL,
+              spender: terminalAddress,
               sigDeadline: sigDeadline,
             },
           })
@@ -369,7 +394,7 @@ export function useTransactionExecutor() {
             currentNonce,
             signature
           )
-          permit2Metadata = buildPermit2Metadata(allowanceData)
+          permit2Metadata = buildPermit2Metadata(allowanceData, terminalAddress)
         }
 
         // Handle Permit2 signing failure - fall back to direct terminal approval
@@ -379,7 +404,7 @@ export function useTransactionExecutor() {
             data: encodeFunctionData({
               abi: [{ name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }] as const,
               functionName: 'approve',
-              args: [JB_MULTI_TERMINAL, totalAmount],
+              args: [terminalAddress, totalAmount],
             }),
             value: 0n,
             chain,
@@ -396,12 +421,12 @@ export function useTransactionExecutor() {
         // For USDC with Permit2, only the first call needs the permit metadata
         const calls = [
           {
-            to: JB_MULTI_TERMINAL as Address,
+            to: terminalAddress as Address,
             data: buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, permit2Metadata),
             value: isUsdc ? 0n : projectAmount,
           },
           {
-            to: JB_MULTI_TERMINAL as Address,
+            to: terminalAddress as Address,
             data: buildPayCallData(juicyProjectId, tokenAddress, juicyFeeAmount, beneficiary, 'juicy fee'),
             value: isUsdc ? 0n : juicyFeeAmount,
           },
@@ -430,7 +455,7 @@ export function useTransactionExecutor() {
         // Fallback: Sequential transactions
         // First pay the project (with permit metadata for USDC)
         const projectHash = await client.sendTransaction({
-          to: JB_MULTI_TERMINAL,
+          to: terminalAddress,
           data: buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, permit2Metadata),
           value: isUsdc ? 0n : projectAmount,
           chain,
@@ -441,7 +466,7 @@ export function useTransactionExecutor() {
 
         // Then pay $JUICY (no permit needed, allowance already set by first tx)
         await client.sendTransaction({
-          to: JB_MULTI_TERMINAL,
+          to: terminalAddress,
           data: buildPayCallData(juicyProjectId, tokenAddress, juicyFeeAmount, beneficiary, 'juicy fee'),
           value: isUsdc ? 0n : juicyFeeAmount,
           chain,
@@ -450,7 +475,7 @@ export function useTransactionExecutor() {
       } else {
         // Single transaction: just pay the project
         const hash = await client.sendTransaction({
-          to: JB_MULTI_TERMINAL,
+          to: terminalAddress,
           data: buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, permit2Metadata),
           value: isUsdc ? 0n : projectAmount,
           chain,
