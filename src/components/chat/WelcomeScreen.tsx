@@ -3000,7 +3000,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         return
       }
 
-      // Regular scroll = pan - use RAF for batched updates
+      // Pan the canvas in all directions
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current)
       }

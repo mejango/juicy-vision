@@ -921,8 +921,8 @@ export default function ConversationHistory() {
 
   return (
     <div className="px-6 mt-8">
-      {/* Header with create folder button beside title */}
-      <div className="flex items-center gap-3 mb-2">
+      {/* Header with create folder button on right */}
+      <div className="flex items-center justify-between mb-2">
         <span className={`text-xs font-medium ${
           theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
         }`}>

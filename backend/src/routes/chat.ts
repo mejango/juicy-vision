@@ -524,7 +524,7 @@ chatRouter.post(
 );
 
 // GET /chat/:chatId - Get chat details
-chatRouter.get('/:chatId', optionalAuth, async (c) => {
+chatRouter.get('/:chatId', optionalAuth, optionalWalletSession, async (c) => {
   const chatId = c.req.param('chatId');
   const chat = await getChatById(chatId);
 
@@ -532,21 +532,7 @@ chatRouter.get('/:chatId', optionalAuth, async (c) => {
     return c.json({ success: false, error: 'Chat not found' }, 404);
   }
 
-  // Try to get wallet session (including anonymous)
-  let walletSession = c.get('walletSession');
-
-  // If no wallet session from optionalAuth, check for anonymous session
-  if (!walletSession) {
-    const sessionId = c.req.header('X-Session-ID');
-    if (sessionId && sessionId.startsWith('ses_')) {
-      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
-      walletSession = {
-        address: pseudoAddress,
-        sessionId,
-        isAnonymous: true,
-      };
-    }
-  }
+  const walletSession = c.get('walletSession');
 
   // Check read permission for private chats
   if (!chat.isPublic) {
@@ -751,7 +737,7 @@ chatRouter.post(
 );
 
 // GET /chat/:chatId/messages - Get messages
-chatRouter.get('/:chatId/messages', optionalAuth, async (c) => {
+chatRouter.get('/:chatId/messages', optionalAuth, optionalWalletSession, async (c) => {
   const chatId = c.req.param('chatId');
   const limit = parseInt(c.req.query('limit') || '100', 10);
   const beforeId = c.req.query('before');
@@ -762,19 +748,7 @@ chatRouter.get('/:chatId/messages', optionalAuth, async (c) => {
     return c.json({ success: false, error: 'Chat not found' }, 404);
   }
 
-  // Try to get wallet session (including anonymous)
-  let walletSession = c.get('walletSession');
-  if (!walletSession) {
-    const sessionId = c.req.header('X-Session-ID');
-    if (sessionId && sessionId.startsWith('ses_')) {
-      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
-      walletSession = {
-        address: pseudoAddress,
-        sessionId,
-        isAnonymous: true,
-      };
-    }
-  }
+  const walletSession = c.get('walletSession');
 
   if (!chat.isPublic && walletSession) {
     const canRead = await checkPermission(chatId, walletSession.address, 'read');

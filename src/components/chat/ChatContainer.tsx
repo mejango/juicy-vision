@@ -6,6 +6,13 @@ import { useChatStore, useSettingsStore, useThemeStore, LANGUAGES, type Message,
 import { useAuthStore } from '../../stores/authStore'
 // Title generation now happens on backend
 import * as chatApi from '../../services/chat'
+
+// Type for dock scroll tracking
+declare global {
+  interface Window {
+    __dockScrollActive?: boolean
+  }
+}
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
@@ -22,9 +29,17 @@ import { useAccount } from 'wagmi'
 import { type PasskeyWallet, getPasskeyWallet } from '../../services/passkeyWallet'
 import WalletPanel from '../wallet/WalletPanel'
 import { getSessionId } from '../../services/session'
+import { getWalletSession } from '../../services/siwe'
 
-// Helper to get current user's pseudo-address (matches backend logic)
+// Helper to get current user's address
+// Prefers SIWE wallet address if authenticated, otherwise generates pseudo-address from session ID
 function getCurrentUserAddress(): string {
+  // First check if user has SIWE session with real wallet address
+  const walletSession = getWalletSession()
+  if (walletSession?.address) {
+    return walletSession.address.toLowerCase()
+  }
+  // Fallback to pseudo-address from session ID (matches backend logic for anonymous users)
   const sessionId = getSessionId()
   return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
 }
@@ -108,7 +123,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const currentAddress = getCurrentUserAddress()
   const currentUserMember = members.find(m =>
     m.userId === user?.id ||
-    m.address === currentAddress ||
+    m.address?.toLowerCase() === currentAddress?.toLowerCase() ||
     (m.address && sessionId && m.address.toLowerCase().includes(sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40)))
   )
   const canWrite = isChatMode ? !!currentUserMember : true // Anyone can write to local chats
@@ -589,6 +604,92 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => dock.removeEventListener('scroll', handleScroll)
   }, [messages.length])
 
+  // Handle dock scrolling: manually scroll since native scroll doesn't work on inner elements,
+  // and continue scrolling when cursor leaves dock until user moves their mouse
+  useEffect(() => {
+    const dock = dockRef.current
+    if (!dock) return
+
+    let scrollTimeout: number | null = null
+    let lastMousePos = { x: 0, y: 0 }
+    let pendingScroll = 0
+    let rafId: number | null = null
+
+    const clearDockActive = () => {
+      window.__dockScrollActive = false
+    }
+
+    const refreshTimeout = () => {
+      if (scrollTimeout) clearTimeout(scrollTimeout)
+      scrollTimeout = window.setTimeout(clearDockActive, 300)
+    }
+
+    // Apply scroll with RAF for smooth updates
+    const applyScroll = () => {
+      if (pendingScroll !== 0) {
+        dock.scrollTop += pendingScroll
+        pendingScroll = 0
+      }
+      rafId = null
+    }
+
+    const queueScroll = (delta: number) => {
+      pendingScroll += delta
+      if (!rafId) {
+        rafId = requestAnimationFrame(applyScroll)
+      }
+    }
+
+    // Mouse movement clears dock scroll lock only if moved significantly (5px threshold)
+    const handleMouseMove = (e: MouseEvent) => {
+      if (window.__dockScrollActive) {
+        const dx = Math.abs(e.clientX - lastMousePos.x)
+        const dy = Math.abs(e.clientY - lastMousePos.y)
+        if (dx > 5 || dy > 5) {
+          clearDockActive()
+          if (scrollTimeout) {
+            clearTimeout(scrollTimeout)
+            scrollTimeout = null
+          }
+        }
+      }
+      lastMousePos = { x: e.clientX, y: e.clientY }
+    }
+
+    // Global wheel handler - scroll dock manually and track active state
+    const handleGlobalWheel = (e: WheelEvent) => {
+      const isInDock = dock.contains(e.target as Element)
+
+      if (isInDock) {
+        // Cursor on dock - queue scroll and mark active
+        queueScroll(e.deltaY)
+        window.__dockScrollActive = true
+        lastMousePos = { x: e.clientX, y: e.clientY }
+        refreshTimeout()
+        return
+      }
+
+      // Cursor outside dock - forward scroll if dock was recently scrolled
+      if (window.__dockScrollActive) {
+        queueScroll(e.deltaY)
+        e.preventDefault()
+        e.stopPropagation()
+        refreshTimeout()
+      }
+    }
+
+    document.addEventListener('mousemove', handleMouseMove, { passive: true })
+    document.addEventListener('wheel', handleGlobalWheel, { capture: true, passive: false })
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('wheel', handleGlobalWheel, { capture: true })
+      if (scrollTimeout) clearTimeout(scrollTimeout)
+      if (rafId) cancelAnimationFrame(rafId)
+    }
+  }, [])
+
+
   // Show/hide action bar based on scroll direction
   // Also dispatch event for header to shrink/expand
   useEffect(() => {
@@ -701,6 +802,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             {(bottomOnly || (!topOnly && !bottomOnly)) && (
               <div
                 ref={dockRef}
+                data-dock="true"
                 className={`${bottomOnly ? 'max-h-full overflow-y-auto' : 'absolute bottom-0 left-0 right-0 z-30 max-h-[38vh] border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto ' + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
               >
                 {/* Greeting */}

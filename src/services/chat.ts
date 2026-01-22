@@ -544,12 +544,15 @@ export function connectToChat(chatId: string): WebSocket {
   }
 
   const token = useAuthStore.getState().token
+  const siweToken = getWalletSessionToken()
   const sessionId = getSessionId()
   const wsUrl = API_BASE_URL.replace('http', 'ws').replace('/api', '')
-  // Pass auth token if available, AND always include sessionId for anonymous fallback
+  // Pass auth token if available (JWT or SIWE), AND always include sessionId for anonymous fallback
   const params = new URLSearchParams()
   if (token) {
     params.set('session', token)
+  } else if (siweToken) {
+    params.set('session', siweToken)
   }
   params.set('sessionId', sessionId)
   const url = `${wsUrl}/api/chat/${chatId}/ws?${params.toString()}`
