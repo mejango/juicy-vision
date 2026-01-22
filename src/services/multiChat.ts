@@ -11,6 +11,7 @@ import type {
   ChatMessage,
   ChatMember,
   CreateChatParams,
+  ChatFolder,
 } from '../stores/chatStore'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
@@ -61,8 +62,55 @@ async function apiRequest<T>(
 // Chat Management
 // ============================================================================
 
-export async function fetchMyChats(): Promise<Chat[]> {
-  return apiRequest<Chat[]>('/chat')
+export interface FetchChatsResult {
+  chats: Chat[]
+  total: number
+}
+
+export async function fetchMyChats(options?: {
+  folderId?: string | null
+  pinnedOnly?: boolean
+  limit?: number
+  offset?: number
+}): Promise<FetchChatsResult> {
+  const params = new URLSearchParams()
+  if (options?.folderId !== undefined) {
+    params.set('folderId', options.folderId ?? 'root')
+  }
+  if (options?.pinnedOnly) {
+    params.set('pinnedOnly', 'true')
+  }
+  if (options?.limit !== undefined) {
+    params.set('limit', String(options.limit))
+  }
+  if (options?.offset !== undefined) {
+    params.set('offset', String(options.offset))
+  }
+  const queryString = params.toString()
+
+  const token = useAuthStore.getState().token
+  const sessionId = getSessionId()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Session-ID': sessionId,
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  const response = await fetch(`${API_BASE_URL}/chat${queryString ? `?${queryString}` : ''}`, {
+    headers,
+  })
+  const result = await response.json()
+
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || 'Request failed')
+  }
+
+  return {
+    chats: result.data as Chat[],
+    total: result.total ?? result.data?.length ?? 0,
+  }
 }
 
 export async function fetchPublicChats(
@@ -114,6 +162,106 @@ export async function updateChat(
 export async function deleteChat(chatId: string): Promise<void> {
   await apiRequest<void>(`/chat/${chatId}`, {
     method: 'DELETE',
+  })
+}
+
+// ============================================================================
+// Chat Organization (Pinning, Folders, Renaming)
+// ============================================================================
+
+export async function pinChat(
+  chatId: string,
+  isPinned: boolean,
+  pinOrder?: number
+): Promise<Chat> {
+  return apiRequest<Chat>(`/chat/${chatId}/pin`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isPinned, pinOrder }),
+  })
+}
+
+export async function moveChatToFolder(
+  chatId: string,
+  folderId: string | null
+): Promise<Chat> {
+  return apiRequest<Chat>(`/chat/${chatId}/folder`, {
+    method: 'PATCH',
+    body: JSON.stringify({ folderId }),
+  })
+}
+
+export async function renameChat(chatId: string, name: string): Promise<Chat> {
+  return apiRequest<Chat>(`/chat/${chatId}/name`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export async function reorderPinnedChats(chatIds: string[]): Promise<void> {
+  await apiRequest<void>('/chat/reorder-pinned', {
+    method: 'POST',
+    body: JSON.stringify({ chatIds }),
+  })
+}
+
+// ============================================================================
+// Folder Management
+// ============================================================================
+
+export async function fetchFolders(): Promise<ChatFolder[]> {
+  return apiRequest<ChatFolder[]>('/chat/folders')
+}
+
+export async function createFolder(
+  name: string,
+  parentFolderId?: string
+): Promise<ChatFolder> {
+  return apiRequest<ChatFolder>('/chat/folders', {
+    method: 'POST',
+    body: JSON.stringify({ name, parentFolderId }),
+  })
+}
+
+export async function fetchFolder(folderId: string): Promise<ChatFolder> {
+  return apiRequest<ChatFolder>(`/chat/folders/${folderId}`)
+}
+
+export async function updateFolderDetails(
+  folderId: string,
+  updates: {
+    name?: string
+    parentFolderId?: string | null
+    isPinned?: boolean
+    pinOrder?: number
+  }
+): Promise<ChatFolder> {
+  return apiRequest<ChatFolder>(`/chat/folders/${folderId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  })
+}
+
+export async function deleteFolder(folderId: string): Promise<void> {
+  await apiRequest<void>(`/chat/folders/${folderId}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function pinFolder(
+  folderId: string,
+  isPinned: boolean,
+  pinOrder?: number
+): Promise<ChatFolder> {
+  return apiRequest<ChatFolder>(`/chat/folders/${folderId}/pin`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isPinned, pinOrder }),
+  })
+}
+
+export async function reorderPinnedFolders(folderIds: string[]): Promise<void> {
+  await apiRequest<void>('/chat/folders/reorder-pinned', {
+    method: 'POST',
+    body: JSON.stringify({ folderIds }),
   })
 }
 

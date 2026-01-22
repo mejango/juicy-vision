@@ -169,8 +169,8 @@ function encodeJBSingleAllowance(
     [{
       sigDeadline,
       amount,
-      expiration: BigInt(expiration),
-      nonce: BigInt(nonce),
+      expiration,
+      nonce,
       signature,
     }]
   )

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { HashRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
@@ -61,10 +61,25 @@ function Header({ showActions = false }: { showActions?: boolean }) {
     setSidebarOpen(false)
   }
 
-  // Dispatch events for chat actions
-  const handleInvite = () => window.dispatchEvent(new CustomEvent('juice:action-invite'))
-  const handleExport = () => window.dispatchEvent(new CustomEvent('juice:action-export'))
-  const handleSave = () => window.dispatchEvent(new CustomEvent('juice:action-save'))
+  // Dispatch events for chat actions with button position for popover placement
+  const handleInvite = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    window.dispatchEvent(new CustomEvent('juice:action-invite', {
+      detail: { anchorPosition: { top: rect.top, left: rect.left, width: rect.width, height: rect.height } }
+    }))
+  }
+  const handleExport = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    window.dispatchEvent(new CustomEvent('juice:action-export', {
+      detail: { anchorPosition: { top: rect.top, left: rect.left, width: rect.width, height: rect.height } }
+    }))
+  }
+  const handleSave = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    window.dispatchEvent(new CustomEvent('juice:action-save', {
+      detail: { anchorPosition: { top: rect.top, left: rect.left, width: rect.width, height: rect.height } }
+    }))
+  }
 
   // 14.44vh normal, 38% of that (~5.49vh) when compact
   const headerHeight = isCompact ? 'h-[5.49vh]' : 'h-[14.44vh]'
@@ -84,12 +99,14 @@ function Header({ showActions = false }: { showActions?: boolean }) {
             setActiveChat(null)
             navigate('/')
           }}
-          className={`absolute ${logoPosition} hover:opacity-80 transition-all duration-150 ease-out`}
+          onPointerDown={(e) => e.stopPropagation()}
+          className={`absolute ${logoPosition} hover:opacity-80 transition-all duration-150 ease-out touch-manipulation cursor-pointer z-50`}
         >
           <img
             src={theme === 'dark' ? '/head-dark.png' : '/head-light.png'}
             alt="Juicy Vision"
-            className={`${logoSize} transition-all duration-150 ease-out`}
+            className={`${logoSize} transition-all duration-150 ease-out pointer-events-none`}
+            draggable={false}
           />
         </button>
 
@@ -377,6 +394,138 @@ function TransactionExecutor() {
   return null
 }
 
+// Welcome layout with gesture-based dock sliding
+// Drag handle at top of dock allows pulling up to reveal more content
+function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: string; theme: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dockRef = useRef<HTMLDivElement>(null)
+  const offsetRef = useRef(0)
+
+  useEffect(() => {
+    const container = containerRef.current
+    const dock = dockRef.current
+    if (!container || !dock) return
+
+    // Maximum offset is the full height of the recs section (62vh)
+    const maxOffset = window.innerHeight * 0.62
+
+    const updateOffset = (delta: number): boolean => {
+      // Returns true if offset was changed, false if at limit
+      const currentOffset = offsetRef.current
+      const newOffset = Math.max(0, Math.min(maxOffset, currentOffset + delta))
+
+      if (newOffset === currentOffset) {
+        return false // At limit, couldn't change
+      }
+
+      offsetRef.current = newOffset
+      // Set CSS variable on container - both dock and mascot use this
+      container.style.setProperty('--dock-height', `calc(38vh + ${newOffset}px)`)
+      return true
+    }
+
+    const handleWheel = (e: WheelEvent) => {
+      const scrollingDown = e.deltaY > 0
+      const scrollingUp = e.deltaY < 0
+      const atMaxHeight = offsetRef.current >= maxOffset
+      const atMinHeight = offsetRef.current <= 0
+
+      // Find the scrollable content inside the dock - need to find the nested one in ChatContainer
+      // The outer .overflow-auto is a wrapper, the actual scroll happens on .overflow-y-auto inside
+      const outerWrapper = dock.querySelector('.overflow-auto')
+      const scrollableContent = (outerWrapper?.querySelector('.overflow-y-auto') || outerWrapper) as HTMLElement
+      const contentScrollTop = scrollableContent?.scrollTop || 0
+      const contentScrollMax = scrollableContent
+        ? scrollableContent.scrollHeight - scrollableContent.clientHeight
+        : 0
+      const contentAtTop = contentScrollTop <= 1 // Allow 1px tolerance
+      const contentAtBottom = contentScrollTop >= contentScrollMax - 1
+
+      // WINDING UP: If scrolling down to grow dock
+      if (scrollingDown) {
+        // If dock can still grow, grow it
+        if (!atMaxHeight) {
+          const changed = updateOffset(e.deltaY)
+          if (changed) e.preventDefault()
+          return
+        }
+        // Dock at max - let content scroll down
+        return
+      }
+
+      // UNWINDING: If scrolling up to shrink dock
+      if (scrollingUp) {
+        // If content is scrolled down, let it scroll back up first
+        if (!contentAtTop) {
+          return // Let content scroll up
+        }
+        // Content at top - now shrink dock
+        if (!atMinHeight) {
+          const changed = updateOffset(e.deltaY)
+          if (changed) e.preventDefault()
+          return
+        }
+      }
+    }
+
+    dock.addEventListener('wheel', handleWheel, { passive: false })
+
+    return () => {
+      dock.removeEventListener('wheel', handleWheel)
+    }
+  }, [])
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative h-full overflow-hidden"
+      style={{ '--dock-height': '38vh' } as React.CSSProperties}
+    >
+      {/* Recommendations - fills full area, extends behind mascot and dock */}
+      <div className="absolute top-0 left-0 right-0 bottom-0 overflow-hidden border-t-4 border-juice-orange">
+        <Routes>
+          <Route path="/" element={<MainContent topOnly forceActiveChatId={forceActiveChatId} />} />
+          <Route path="*" element={<MainContent topOnly forceActiveChatId={forceActiveChatId} />} />
+        </Routes>
+      </div>
+
+      {/* Mascot panel - overlays recommendations with translucent background */}
+      {/* Height is slightly less than 62vh to ensure top border stays visible within container */}
+      <div
+        className="hidden lg:flex lg:flex-col absolute right-0 w-[27.53%] z-20 border-t-4 border-l-4 border-juice-orange"
+        style={{ height: 'calc(62vh - 4px)', bottom: 'var(--dock-height)' }}
+      >
+        <div className="flex-1 overflow-hidden">
+          <MascotPanel
+            onSuggestionClick={(text) => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: text } }))}
+          />
+        </div>
+      </div>
+
+      {/* Bottom dock: scroll anywhere inside to slide up/down - translucent to show recommendations behind */}
+      {/* Position from top with max(0px) ensures border stays visible when dock reaches full height */}
+      <div
+        ref={dockRef}
+        className={`absolute inset-x-0 bottom-0 z-30 flex flex-col backdrop-blur-md ${
+          theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75'
+        }`}
+        style={{ top: 'max(0px, calc(100% - var(--dock-height)))', bottom: 0 }}
+      >
+        {/* Top border - sticky at top of dock */}
+        <div className="h-[4px] bg-juice-orange shrink-0" />
+        {/* Dock content */}
+        <div className="flex-1 overflow-auto">
+          <Routes>
+            <Route path="/" element={<MainContent bottomOnly forceActiveChatId={forceActiveChatId} />} />
+            <Route path="*" element={<MainContent bottomOnly forceActiveChatId={forceActiveChatId} />} />
+          </Routes>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   const { theme } = useThemeStore()
   const { activeChatId: storeActiveChatId, getActiveChat } = useChatStore()
@@ -393,6 +542,7 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   useEffect(() => {
     document.documentElement.className = theme
   }, [theme])
+
 
   // Handle project clicks from activity feed
   const handleActivityProjectClick = (query: string) => {
@@ -449,16 +599,23 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   }
 
   // Desktop layout: golden ratio with sidebar
+  // Border structure: left + bottom on outer, top borders scroll with content for "hole" effect
   return (
-    <div className={`h-screen overflow-hidden border-4 border-juice-orange flex ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
+    <div className={`h-screen overflow-hidden flex ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
       {/* Transaction executor - listens for pay events */}
       <TransactionExecutor />
+
+      {/* Left border - always visible (4px to match border-4) */}
+      <div className="w-[4px] bg-juice-orange shrink-0" />
+
       {/* Main content area (everything except activity) */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {hasMessages ? (
           <>
+            {/* Top border for chat mode (4px to match border-4) */}
+            <div className="h-[4px] bg-juice-orange shrink-0" />
             {/* Header overlays content with translucency */}
-            <div className="absolute top-0 left-0 right-0 z-40">
+            <div className="absolute top-[4px] left-0 right-0 z-40">
               <Header showActions />
             </div>
             {/* Chat mode: full-width messages + input at bottom, starts from top */}
@@ -470,40 +627,14 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
             </div>
           </>
         ) : (
-          <>
-            {/* Welcome mode: recommendations as full background, overlays on top */}
-            {/* Full-screen recommendations background layer */}
-            <div className="absolute inset-0 z-0">
-              <Routes>
-                <Route path="/" element={<MainContent topOnly forceActiveChatId={forceActiveChatId} />} />
-                <Route path="*" element={<MainContent topOnly forceActiveChatId={forceActiveChatId} />} />
-              </Routes>
-            </div>
-
-            {/* Overlay layout */}
-            <div className="relative z-10 flex flex-col h-full pointer-events-none">
-              {/* Top section: 62% height (golden ratio) */}
-              <div className="h-[62%] flex">
-                {/* Spacer for recs area - no overlay here, recs show through */}
-                <div className="flex-1" />
-                {/* Mascot: translucent overlay - hidden on smaller screens */}
-                <div className="hidden lg:block w-[27.53%] border-l-4 border-juice-orange pointer-events-auto">
-                  <MascotPanel onSuggestionClick={(text) => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: text } }))} />
-                </div>
-              </div>
-              {/* Prompt dock: 38% height (golden ratio), translucent overlay */}
-              <div className="h-[38%] border-t-4 border-juice-orange pointer-events-auto">
-                <Routes>
-                  <Route path="/" element={<MainContent bottomOnly forceActiveChatId={forceActiveChatId} />} />
-                  <Route path="*" element={<MainContent bottomOnly forceActiveChatId={forceActiveChatId} />} />
-                </Routes>
-              </div>
-            </div>
-          </>
+          <WelcomeLayout forceActiveChatId={forceActiveChatId} theme={theme} />
         )}
+        {/* Bottom border (4px to match border-4) */}
+        <div className="h-[4px] bg-juice-orange shrink-0" />
       </div>
       {/* Activity sidebar: full height, far right - hidden on tablet */}
-      <div className="hidden md:block w-[calc(38%*0.38)] border-l-4 border-juice-orange">
+      {/* Uses border-4 so corners connect properly */}
+      <div className="hidden md:block w-[calc(38%*0.38)] h-full border-4 border-juice-orange">
         <ActivitySidebar onProjectClick={handleActivityProjectClick} />
       </div>
     </div>

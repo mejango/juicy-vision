@@ -36,6 +36,7 @@ import {
   PRICE_RANGE_OPTIONS,
   formatXAxis,
   getRangeStartTimestamp,
+  CHART_COLORS,
 } from './utils'
 
 interface TokenPriceChartProps {
@@ -96,11 +97,11 @@ function findApplicableTaxRate(timestamp: number, taxSnapshots: CashOutTaxSnapsh
   return applicableTax
 }
 
-// Chart colors for the price series
+// Use centralized chart colors
 const PRICE_COLORS = {
-  issuance: '#10b981', // emerald green
-  cashOut: '#94a3b8',  // slate gray (visible on dark backgrounds)
-  pool: '#60a5fa',     // light blue
+  issuance: CHART_COLORS.issuance,
+  cashOut: CHART_COLORS.cashOut,
+  pool: CHART_COLORS.pool,
 }
 
 export default function TokenPriceChart({

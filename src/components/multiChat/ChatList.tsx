@@ -43,8 +43,8 @@ export default function ChatList({ onCreateChat }: ChatListProps) {
     async function loadChats() {
       setLoading(true)
       try {
-        const data = await multiChatApi.fetchMyChats()
-        setChats(data)
+        const { chats } = await multiChatApi.fetchMyChats()
+        setChats(chats)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load chats')
       } finally {

@@ -1012,7 +1012,7 @@ For NATIVE_TOKEN (0xEEEE...EEEe), currency = 4008636142
     "metadata": {
       "reservedPercent": 0,
       "cashOutTaxRate": 0,
-      "baseCurrency": 909516616,
+      "baseCurrency": 2,
       "pausePay": false,
       "pauseCreditTransfers": false,
       "allowOwnerMinting": true,

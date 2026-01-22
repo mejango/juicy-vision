@@ -8,6 +8,7 @@ import {
   PROJECTS_QUERY,
   PARTICIPANTS_QUERY,
   SEARCH_PROJECTS_QUERY,
+  SEMANTIC_SEARCH_PROJECTS_QUERY,
   ACTIVITY_EVENTS_QUERY,
   USER_PARTICIPANT_QUERY,
   PROJECT_RULESET_QUERY,
@@ -198,6 +199,27 @@ export async function searchProjects(text: string, first: number = 10): Promise<
     description: project.metadata?.description,
     logoUri: project.metadata?.logoUri,
   }))
+}
+
+// Semantic search that matches keyword across name, description, tags, and tagline
+// Uses OR conditions to find projects where ANY field contains the keyword
+export interface SemanticSearchProject extends Project {
+  tags?: string[]
+}
+
+export async function semanticSearchProjects(keyword: string, limit: number = 20): Promise<SemanticSearchProject[]> {
+  const client = getClient()
+
+  const data = await client.request<{
+    projects: {
+      items: Array<SemanticSearchProject>
+    }
+  }>(
+    SEMANTIC_SEARCH_PROJECTS_QUERY,
+    { keyword, limit }
+  )
+
+  return data.projects?.items || []
 }
 
 // Base properties shared by all activity events

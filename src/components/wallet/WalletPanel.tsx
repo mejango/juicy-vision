@@ -1,11 +1,17 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet, useEnsNameResolved } from '../../hooks'
-import { Modal } from '../ui'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
 import { CHAINS, ALL_CHAIN_IDS } from '../../constants'
+
+export interface AnchorPosition {
+  top: number
+  left: number
+  width: number
+  height: number
+}
 
 interface ChainBalance {
   chainId: number
@@ -29,6 +35,7 @@ interface WalletPanelProps {
   isOpen: boolean
   onClose: () => void
   paymentContext?: PaymentContext
+  anchorPosition?: AnchorPosition | null
 }
 
 function shortenAddress(address: string, chars = 6): string {
@@ -731,25 +738,26 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
 
       {/* Standard Actions (when no payment context) */}
       {!paymentContext && (
-        <div className="flex gap-2">
-          <button
-            onClick={onTopUp}
-            className="flex-1 py-2 text-sm font-medium bg-green-500 text-black hover:bg-green-600 transition-colors"
-          >
-            Top Up
-          </button>
+        <div className="flex justify-end gap-2">
           <button
             onClick={onDisconnect}
-            className={`px-3 py-2 border transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
               isDark
-                ? 'border-white/20 text-gray-400 hover:text-white hover:border-white/40'
-                : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+                : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
             }`}
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
+            Disconnect
+          </button>
+          <button
+            onClick={onTopUp}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+              isDark
+                ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+                : 'border-green-600 text-green-600 hover:bg-green-50'
+            }`}
+          >
+            Top Up
           </button>
         </div>
       )}
@@ -1003,13 +1011,43 @@ function TopUpView({ onBack, address }: { onBack: () => void; address?: string }
   )
 }
 
-export default function WalletPanel({ isOpen, onClose, paymentContext }: WalletPanelProps) {
+export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPosition }: WalletPanelProps) {
   const { mode, logout: authLogout, isAuthenticated } = useAuthStore()
   const { address, isConnected: walletConnected } = useAccount()
   const { disconnect } = useDisconnect()
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
 
   const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'auth_method' | 'email_auth' | 'wallet' | 'topup'>('select')
   const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<InsufficientFundsInfo | null>(null)
+
+  // Calculate popover position based on anchor
+  const popoverStyle = useMemo(() => {
+    if (!anchorPosition) {
+      // Fallback to top-right if no anchor
+      return { top: 16, right: 16 }
+    }
+
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
+    const gap = 8 // Gap between button and popover
+
+    // Check if button is in lower half of viewport
+    const isInLowerHalf = anchorPosition.top > viewportHeight / 2
+
+    if (isInLowerHalf) {
+      // Show above the button
+      return {
+        bottom: viewportHeight - anchorPosition.top + gap,
+        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
+      }
+    } else {
+      // Show below the button
+      return {
+        top: anchorPosition.top + anchorPosition.height + gap,
+        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
+      }
+    }
+  }, [anchorPosition])
 
   // Clear insufficient funds info when view changes away from wallet
   useEffect(() => {
@@ -1075,73 +1113,97 @@ export default function WalletPanel({ isOpen, onClose, paymentContext }: WalletP
     }
   }
 
+  if (!isOpen) return null
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={getTitle()} size="sm">
-      {currentView === 'select' && (
-        <ModeSelector
-          onSelectMode={(selectedMode) => {
-            if (selectedMode === 'managed') {
-              setView('auth_method')
-            } else {
-              setView(selectedMode)
-            }
-          }}
-        />
-      )}
+    <div className="fixed z-50" style={popoverStyle}>
+      {/* Popover */}
+      <div className={`w-80 p-4 border shadow-xl rounded-lg ${
+        isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+      }`}>
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className={`absolute top-3 right-3 p-1 transition-colors ${
+            isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
 
-      {currentView === 'self_custody' && (
-        <SelfCustodyConnect onBack={() => setView('select')} />
-      )}
+        {/* Title */}
+        <h2 className={`text-sm font-semibold mb-3 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          {getTitle()}
+        </h2>
 
-      {currentView === 'auth_method' && (
-        <AuthMethodSelector
-          onSelectMethod={(method) => {
-            if (method === 'email') {
-              setView('email_auth')
-            }
-            // Passkey login is handled in AuthMethodSelector
-          }}
-          onBack={() => setView('select')}
-        />
-      )}
+        {currentView === 'select' && (
+          <ModeSelector
+            onSelectMode={(selectedMode) => {
+              if (selectedMode === 'managed') {
+                setView('auth_method')
+              } else {
+                setView(selectedMode)
+              }
+            }}
+          />
+        )}
 
-      {currentView === 'email_auth' && (
-        <EmailAuth
-          onBack={() => setView('auth_method')}
-          onSuccess={() => setView('select')}
-        />
-      )}
+        {currentView === 'self_custody' && (
+          <SelfCustodyConnect onBack={() => setView('select')} />
+        )}
 
-      {currentView === 'managed' && !isManagedConnected && (
-        <AuthMethodSelector
-          onSelectMethod={(method) => {
-            if (method === 'email') {
-              setView('email_auth')
-            }
-          }}
-          onBack={() => setView('select')}
-        />
-      )}
+        {currentView === 'auth_method' && (
+          <AuthMethodSelector
+            onSelectMethod={(method) => {
+              if (method === 'email') {
+                setView('email_auth')
+              }
+              // Passkey login is handled in AuthMethodSelector
+            }}
+            onBack={() => setView('select')}
+          />
+        )}
 
-      {currentView === 'managed' && isManagedConnected && (
-        <ManagedAccountView onDisconnect={handleDisconnect} />
-      )}
+        {currentView === 'email_auth' && (
+          <EmailAuth
+            onBack={() => setView('auth_method')}
+            onSuccess={() => setView('select')}
+          />
+        )}
 
-      {currentView === 'wallet' && isSelfCustodyConnected && (
-        <SelfCustodyWalletView
-          onTopUp={() => setView('topup')}
-          onDisconnect={handleDisconnect}
-          paymentContext={paymentContext}
-          onInsufficientFundsChange={setInsufficientFundsInfo}
-        />
-      )}
+        {currentView === 'managed' && !isManagedConnected && (
+          <AuthMethodSelector
+            onSelectMethod={(method) => {
+              if (method === 'email') {
+                setView('email_auth')
+              }
+            }}
+            onBack={() => setView('select')}
+          />
+        )}
 
-      {currentView === 'topup' && (
-        <TopUpView
-          onBack={() => setView(isSelfCustodyConnected ? 'wallet' : 'select')}
-          address={address}
-        />
-      )}
-    </Modal>
+        {currentView === 'managed' && isManagedConnected && (
+          <ManagedAccountView onDisconnect={handleDisconnect} />
+        )}
+
+        {currentView === 'wallet' && isSelfCustodyConnected && (
+          <SelfCustodyWalletView
+            onTopUp={() => setView('topup')}
+            onDisconnect={handleDisconnect}
+            paymentContext={paymentContext}
+            onInsufficientFundsChange={setInsufficientFundsInfo}
+          />
+        )}
+
+        {currentView === 'topup' && (
+          <TopUpView
+            onBack={() => setView(isSelfCustodyConnected ? 'wallet' : 'select')}
+            address={address}
+          />
+        )}
+      </div>
+    </div>
   )
 }

@@ -8,7 +8,9 @@ export interface ParsedContent {
   segments: Array<{ type: 'text'; content: string } | { type: 'component'; component: ParsedComponent }>
 }
 
-const COMPONENT_REGEX = /<juice-component\s+([^>]+)\s*\/>/g
+// Regex that properly handles quoted attribute values containing > characters
+// Matches: non-quote/non-> chars, OR double-quoted strings, OR single-quoted strings
+const COMPONENT_REGEX = /<juice-component\s+((?:[^"'>]|"[^"]*"|'[^']*')+)\s*\/>/g
 // Match both double-quoted and single-quoted attributes
 const ATTR_REGEX_DOUBLE = /(\w+)="([^"]+)"/g
 const ATTR_REGEX_SINGLE = /(\w+)='([^']+)'/g

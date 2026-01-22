@@ -3089,8 +3089,8 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
 
   return (
     <div className="flex-1 relative h-full overflow-hidden">
-      {/* Shuffle & Zoom controls - top right of visible area */}
-      <div className="absolute top-4 right-[29%] z-50 flex items-center gap-2">
+      {/* Shuffle & Zoom controls - top right of visible chip area (left of mascot on large screens) */}
+      <div className="absolute top-2 right-4 lg:right-[calc(27.53%+1rem)] z-10 flex items-center gap-2">
         {scale !== 1 && (
           <button
             onClick={handleResetZoom}

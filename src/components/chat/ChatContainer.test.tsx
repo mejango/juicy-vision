@@ -133,6 +133,7 @@ const createMockChat = (overrides?: Partial<Chat>): Chat => ({
   aiTotalSpentWei: '0',
   encrypted: false,
   encryptionVersion: 0,
+  isPinned: false,
   members: [],
   messages: [],
   ...overrides,

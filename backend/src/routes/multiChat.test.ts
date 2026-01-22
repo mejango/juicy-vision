@@ -645,3 +645,956 @@ Deno.test('MultiChat Routes - DELETE /multi-chat/:chatId', async (t) => {
     assertEquals(res.status, 401);
   });
 });
+
+// ============================================================================
+// Chat Organization Tests (Pinning, Folders, Renaming)
+// ============================================================================
+
+Deno.test('MultiChat - Pin Chat Schema', async (t) => {
+  const PinChatSchema = z.object({
+    isPinned: z.boolean(),
+    pinOrder: z.number().optional(),
+  });
+
+  await t.step('accepts pin with order', () => {
+    const result = PinChatSchema.safeParse({ isPinned: true, pinOrder: 0 });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('accepts pin without order', () => {
+    const result = PinChatSchema.safeParse({ isPinned: true });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('accepts unpin', () => {
+    const result = PinChatSchema.safeParse({ isPinned: false });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('rejects missing isPinned', () => {
+    const result = PinChatSchema.safeParse({ pinOrder: 1 });
+    assertEquals(result.success, false);
+  });
+
+  await t.step('rejects non-boolean isPinned', () => {
+    const result = PinChatSchema.safeParse({ isPinned: 'yes' });
+    assertEquals(result.success, false);
+  });
+});
+
+Deno.test('MultiChat - Move Chat Schema', async (t) => {
+  const MoveChatSchema = z.object({
+    folderId: z.string().uuid().nullable(),
+  });
+
+  await t.step('accepts valid folder ID', () => {
+    const result = MoveChatSchema.safeParse({
+      folderId: '123e4567-e89b-12d3-a456-426614174000',
+    });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('accepts null (move to root)', () => {
+    const result = MoveChatSchema.safeParse({ folderId: null });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('rejects invalid UUID', () => {
+    const result = MoveChatSchema.safeParse({ folderId: 'not-a-uuid' });
+    assertEquals(result.success, false);
+  });
+
+  await t.step('rejects missing folderId', () => {
+    const result = MoveChatSchema.safeParse({});
+    assertEquals(result.success, false);
+  });
+});
+
+Deno.test('MultiChat - Rename Chat Schema', async (t) => {
+  const RenameChatSchema = z.object({
+    name: z.string().min(1).max(255),
+  });
+
+  await t.step('accepts valid name', () => {
+    const result = RenameChatSchema.safeParse({ name: 'My Renamed Chat' });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('rejects empty name', () => {
+    const result = RenameChatSchema.safeParse({ name: '' });
+    assertEquals(result.success, false);
+  });
+
+  await t.step('rejects name too long', () => {
+    const result = RenameChatSchema.safeParse({ name: 'x'.repeat(256) });
+    assertEquals(result.success, false);
+  });
+});
+
+Deno.test('MultiChat - Reorder Pinned Schema', async (t) => {
+  const ReorderPinnedSchema = z.object({
+    chatIds: z.array(z.string().uuid()),
+  });
+
+  await t.step('accepts array of UUIDs', () => {
+    const result = ReorderPinnedSchema.safeParse({
+      chatIds: [
+        '123e4567-e89b-12d3-a456-426614174000',
+        '223e4567-e89b-12d3-a456-426614174001',
+      ],
+    });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('accepts empty array', () => {
+    const result = ReorderPinnedSchema.safeParse({ chatIds: [] });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('rejects invalid UUIDs', () => {
+    const result = ReorderPinnedSchema.safeParse({
+      chatIds: ['not-a-uuid'],
+    });
+    assertEquals(result.success, false);
+  });
+});
+
+Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/pin', async (t) => {
+  const app = new Hono();
+
+  const PinChatSchema = z.object({
+    isPinned: z.boolean(),
+    pinOrder: z.number().optional(),
+  });
+
+  let chatState = {
+    'chat-123': { id: 'chat-123', name: 'Test Chat', isPinned: false, pinOrder: null },
+  };
+
+  app.patch('/multi-chat/:chatId/pin', zValidator('json', PinChatSchema), (c) => {
+    const chatId = c.req.param('chatId');
+    const authHeader = c.req.header('Authorization');
+    const sessionId = c.req.header('X-Session-ID');
+
+    if (!authHeader && !sessionId) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    if (!chatState[chatId as keyof typeof chatState]) {
+      return c.json({ success: false, error: 'Chat not found' }, 404);
+    }
+
+    const body = c.req.valid('json');
+    chatState[chatId as keyof typeof chatState] = {
+      ...chatState[chatId as keyof typeof chatState],
+      isPinned: body.isPinned,
+      pinOrder: body.pinOrder ?? null,
+    };
+
+    return c.json({ success: true, data: chatState[chatId as keyof typeof chatState] });
+  });
+
+  await t.step('pins a chat', async () => {
+    const res = await app.request('/multi-chat/chat-123/pin', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ isPinned: true, pinOrder: 0 }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.success, true);
+    assertEquals(json.data.isPinned, true);
+    assertEquals(json.data.pinOrder, 0);
+  });
+
+  await t.step('unpins a chat', async () => {
+    const res = await app.request('/multi-chat/chat-123/pin', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ isPinned: false }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.data.isPinned, false);
+  });
+
+  await t.step('returns 401 without auth', async () => {
+    const res = await app.request('/multi-chat/chat-123/pin', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isPinned: true }),
+    });
+
+    assertEquals(res.status, 401);
+  });
+
+  await t.step('returns 404 for unknown chat', async () => {
+    const res = await app.request('/multi-chat/unknown/pin', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ isPinned: true }),
+    });
+
+    assertEquals(res.status, 404);
+  });
+});
+
+Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/folder', async (t) => {
+  const app = new Hono();
+
+  const MoveChatSchema = z.object({
+    folderId: z.string().uuid().nullable(),
+  });
+
+  let chatState = {
+    'chat-123': { id: 'chat-123', name: 'Test Chat', folderId: null },
+  };
+
+  app.patch('/multi-chat/:chatId/folder', zValidator('json', MoveChatSchema), (c) => {
+    const chatId = c.req.param('chatId');
+    const authHeader = c.req.header('Authorization');
+
+    if (!authHeader) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    if (!chatState[chatId as keyof typeof chatState]) {
+      return c.json({ success: false, error: 'Chat not found' }, 404);
+    }
+
+    const body = c.req.valid('json');
+    chatState[chatId as keyof typeof chatState] = {
+      ...chatState[chatId as keyof typeof chatState],
+      folderId: body.folderId,
+    };
+
+    return c.json({ success: true, data: chatState[chatId as keyof typeof chatState] });
+  });
+
+  await t.step('moves chat to folder', async () => {
+    const res = await app.request('/multi-chat/chat-123/folder', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ folderId: '123e4567-e89b-12d3-a456-426614174000' }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.success, true);
+    assertEquals(json.data.folderId, '123e4567-e89b-12d3-a456-426614174000');
+  });
+
+  await t.step('moves chat to root (null folder)', async () => {
+    const res = await app.request('/multi-chat/chat-123/folder', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ folderId: null }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.data.folderId, null);
+  });
+
+  await t.step('returns 401 without auth', async () => {
+    const res = await app.request('/multi-chat/chat-123/folder', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderId: null }),
+    });
+
+    assertEquals(res.status, 401);
+  });
+});
+
+Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/name', async (t) => {
+  const app = new Hono();
+
+  const RenameChatSchema = z.object({
+    name: z.string().min(1).max(255),
+  });
+
+  let chatState = {
+    'chat-123': { id: 'chat-123', name: 'Original Name' },
+  };
+
+  app.patch('/multi-chat/:chatId/name', zValidator('json', RenameChatSchema), (c) => {
+    const chatId = c.req.param('chatId');
+    const authHeader = c.req.header('Authorization');
+
+    if (!authHeader) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    if (!chatState[chatId as keyof typeof chatState]) {
+      return c.json({ success: false, error: 'Chat not found' }, 404);
+    }
+
+    const body = c.req.valid('json');
+    chatState[chatId as keyof typeof chatState] = {
+      ...chatState[chatId as keyof typeof chatState],
+      name: body.name,
+    };
+
+    return c.json({ success: true, data: chatState[chatId as keyof typeof chatState] });
+  });
+
+  await t.step('renames a chat', async () => {
+    const res = await app.request('/multi-chat/chat-123/name', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ name: 'New Name' }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.success, true);
+    assertEquals(json.data.name, 'New Name');
+  });
+
+  await t.step('returns 400 for empty name', async () => {
+    const res = await app.request('/multi-chat/chat-123/name', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ name: '' }),
+    });
+
+    assertEquals(res.status, 400);
+  });
+});
+
+// ============================================================================
+// Folder Routes Tests
+// ============================================================================
+
+Deno.test('MultiChat - Create Folder Schema', async (t) => {
+  const CreateFolderSchema = z.object({
+    name: z.string().min(1).max(255),
+    parentFolderId: z.string().uuid().optional(),
+  });
+
+  await t.step('accepts folder name only', () => {
+    const result = CreateFolderSchema.safeParse({ name: 'My Folder' });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('accepts folder with parent', () => {
+    const result = CreateFolderSchema.safeParse({
+      name: 'Subfolder',
+      parentFolderId: '123e4567-e89b-12d3-a456-426614174000',
+    });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('rejects empty name', () => {
+    const result = CreateFolderSchema.safeParse({ name: '' });
+    assertEquals(result.success, false);
+  });
+
+  await t.step('rejects name too long', () => {
+    const result = CreateFolderSchema.safeParse({ name: 'x'.repeat(256) });
+    assertEquals(result.success, false);
+  });
+
+  await t.step('rejects invalid parent UUID', () => {
+    const result = CreateFolderSchema.safeParse({
+      name: 'Folder',
+      parentFolderId: 'not-a-uuid',
+    });
+    assertEquals(result.success, false);
+  });
+});
+
+Deno.test('MultiChat - Update Folder Schema', async (t) => {
+  const UpdateFolderSchema = z.object({
+    name: z.string().min(1).max(255).optional(),
+    parentFolderId: z.string().uuid().nullable().optional(),
+    isPinned: z.boolean().optional(),
+    pinOrder: z.number().optional(),
+  });
+
+  await t.step('accepts partial update with name', () => {
+    const result = UpdateFolderSchema.safeParse({ name: 'Renamed Folder' });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('accepts multiple fields', () => {
+    const result = UpdateFolderSchema.safeParse({
+      name: 'New Name',
+      isPinned: true,
+      pinOrder: 0,
+    });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('accepts null parentFolderId (move to root)', () => {
+    const result = UpdateFolderSchema.safeParse({ parentFolderId: null });
+    assertEquals(result.success, true);
+  });
+
+  await t.step('accepts empty update', () => {
+    const result = UpdateFolderSchema.safeParse({});
+    assertEquals(result.success, true);
+  });
+});
+
+Deno.test('MultiChat Routes - GET /multi-chat/folders', async (t) => {
+  const app = new Hono();
+
+  const mockFolders = [
+    {
+      id: 'folder-1',
+      userAddress: '0x123',
+      name: 'Work',
+      isPinned: true,
+      pinOrder: 0,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'folder-2',
+      userAddress: '0x123',
+      name: 'Personal',
+      isPinned: false,
+      createdAt: new Date().toISOString(),
+    },
+  ];
+
+  app.get('/multi-chat/folders', (c) => {
+    const authHeader = c.req.header('Authorization');
+    const sessionId = c.req.header('X-Session-ID');
+
+    if (!authHeader && !sessionId) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    return c.json({ success: true, data: mockFolders });
+  });
+
+  await t.step('returns folders for authenticated user', async () => {
+    const res = await app.request('/multi-chat/folders', {
+      headers: { Authorization: 'Bearer valid-token' },
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.success, true);
+    assertEquals(json.data.length, 2);
+    assertEquals(json.data[0].name, 'Work');
+  });
+
+  await t.step('returns folders for session user', async () => {
+    const res = await app.request('/multi-chat/folders', {
+      headers: { 'X-Session-ID': 'ses_abc123' },
+    });
+
+    assertEquals(res.status, 200);
+  });
+
+  await t.step('returns 401 without auth', async () => {
+    const res = await app.request('/multi-chat/folders');
+
+    assertEquals(res.status, 401);
+  });
+});
+
+Deno.test('MultiChat Routes - POST /multi-chat/folders', async (t) => {
+  const app = new Hono();
+
+  const CreateFolderSchema = z.object({
+    name: z.string().min(1).max(255),
+    parentFolderId: z.string().uuid().optional(),
+  });
+
+  let createdFolders: any[] = [];
+
+  app.post('/multi-chat/folders', zValidator('json', CreateFolderSchema), (c) => {
+    const authHeader = c.req.header('Authorization');
+
+    if (!authHeader) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    const body = c.req.valid('json');
+    const newFolder = {
+      id: `folder-${Date.now()}`,
+      userAddress: '0x123',
+      name: body.name,
+      parentFolderId: body.parentFolderId ?? null,
+      isPinned: false,
+      pinOrder: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    createdFolders.push(newFolder);
+
+    return c.json({ success: true, data: newFolder }, 201);
+  });
+
+  await t.step('creates folder', async () => {
+    const res = await app.request('/multi-chat/folders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ name: 'New Folder' }),
+    });
+
+    assertEquals(res.status, 201);
+    const json = await res.json();
+    assertEquals(json.success, true);
+    assertEquals(json.data.name, 'New Folder');
+    assertExists(json.data.id);
+  });
+
+  await t.step('creates nested folder', async () => {
+    const res = await app.request('/multi-chat/folders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({
+        name: 'Subfolder',
+        parentFolderId: '123e4567-e89b-12d3-a456-426614174000',
+      }),
+    });
+
+    assertEquals(res.status, 201);
+    const json = await res.json();
+    assertEquals(json.data.parentFolderId, '123e4567-e89b-12d3-a456-426614174000');
+  });
+
+  await t.step('returns 401 without auth', async () => {
+    const res = await app.request('/multi-chat/folders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Unauthorized' }),
+    });
+
+    assertEquals(res.status, 401);
+  });
+
+  await t.step('returns 400 for empty name', async () => {
+    const res = await app.request('/multi-chat/folders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ name: '' }),
+    });
+
+    assertEquals(res.status, 400);
+  });
+});
+
+Deno.test('MultiChat Routes - GET /multi-chat/folders/:folderId', async (t) => {
+  const app = new Hono();
+
+  const mockFolder = {
+    id: 'folder-123',
+    userAddress: '0x123',
+    name: 'Work',
+    isPinned: true,
+    pinOrder: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  app.get('/multi-chat/folders/:folderId', (c) => {
+    const folderId = c.req.param('folderId');
+    const authHeader = c.req.header('Authorization');
+
+    if (!authHeader) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    if (folderId !== 'folder-123') {
+      return c.json({ success: false, error: 'Folder not found' }, 404);
+    }
+
+    if (folderId === 'not-owned') {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+
+    return c.json({ success: true, data: mockFolder });
+  });
+
+  await t.step('returns folder details', async () => {
+    const res = await app.request('/multi-chat/folders/folder-123', {
+      headers: { Authorization: 'Bearer valid-token' },
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.success, true);
+    assertEquals(json.data.name, 'Work');
+  });
+
+  await t.step('returns 404 for unknown folder', async () => {
+    const res = await app.request('/multi-chat/folders/unknown', {
+      headers: { Authorization: 'Bearer valid-token' },
+    });
+
+    assertEquals(res.status, 404);
+  });
+
+  await t.step('returns 401 without auth', async () => {
+    const res = await app.request('/multi-chat/folders/folder-123');
+
+    assertEquals(res.status, 401);
+  });
+});
+
+Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId', async (t) => {
+  const app = new Hono();
+
+  const UpdateFolderSchema = z.object({
+    name: z.string().min(1).max(255).optional(),
+    parentFolderId: z.string().uuid().nullable().optional(),
+    isPinned: z.boolean().optional(),
+    pinOrder: z.number().optional(),
+  });
+
+  let folderState = {
+    'folder-123': {
+      id: 'folder-123',
+      userAddress: '0x123',
+      name: 'Work',
+      parentFolderId: null,
+      isPinned: false,
+      pinOrder: null,
+    },
+  };
+
+  app.patch('/multi-chat/folders/:folderId', zValidator('json', UpdateFolderSchema), (c) => {
+    const folderId = c.req.param('folderId');
+    const authHeader = c.req.header('Authorization');
+
+    if (!authHeader) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    if (!folderState[folderId as keyof typeof folderState]) {
+      return c.json({ success: false, error: 'Folder not found' }, 404);
+    }
+
+    const body = c.req.valid('json');
+    const folder = folderState[folderId as keyof typeof folderState];
+
+    folderState[folderId as keyof typeof folderState] = {
+      ...folder,
+      name: body.name ?? folder.name,
+      parentFolderId: body.parentFolderId !== undefined ? body.parentFolderId : folder.parentFolderId,
+      isPinned: body.isPinned ?? folder.isPinned,
+      pinOrder: body.pinOrder ?? folder.pinOrder,
+    };
+
+    return c.json({ success: true, data: folderState[folderId as keyof typeof folderState] });
+  });
+
+  await t.step('updates folder name', async () => {
+    const res = await app.request('/multi-chat/folders/folder-123', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ name: 'Updated Work' }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.data.name, 'Updated Work');
+  });
+
+  await t.step('updates folder pinning', async () => {
+    const res = await app.request('/multi-chat/folders/folder-123', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ isPinned: true, pinOrder: 0 }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.data.isPinned, true);
+    assertEquals(json.data.pinOrder, 0);
+  });
+
+  await t.step('returns 404 for unknown folder', async () => {
+    const res = await app.request('/multi-chat/folders/unknown', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ name: 'New Name' }),
+    });
+
+    assertEquals(res.status, 404);
+  });
+});
+
+Deno.test('MultiChat Routes - DELETE /multi-chat/folders/:folderId', async (t) => {
+  const app = new Hono();
+
+  let folders = new Set(['folder-123']);
+
+  app.delete('/multi-chat/folders/:folderId', (c) => {
+    const folderId = c.req.param('folderId');
+    const authHeader = c.req.header('Authorization');
+
+    if (!authHeader) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    if (!folders.has(folderId)) {
+      return c.json({ success: false, error: 'Folder not found' }, 404);
+    }
+
+    folders.delete(folderId);
+    return c.json({ success: true });
+  });
+
+  await t.step('deletes folder', async () => {
+    const res = await app.request('/multi-chat/folders/folder-123', {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer valid-token' },
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.success, true);
+  });
+
+  await t.step('returns 404 for deleted folder', async () => {
+    const res = await app.request('/multi-chat/folders/folder-123', {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer valid-token' },
+    });
+
+    assertEquals(res.status, 404);
+  });
+
+  await t.step('returns 401 without auth', async () => {
+    const res = await app.request('/multi-chat/folders/any', {
+      method: 'DELETE',
+    });
+
+    assertEquals(res.status, 401);
+  });
+});
+
+Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId/pin', async (t) => {
+  const app = new Hono();
+
+  const PinFolderSchema = z.object({
+    isPinned: z.boolean(),
+    pinOrder: z.number().optional(),
+  });
+
+  let folderState = {
+    'folder-123': { id: 'folder-123', name: 'Work', isPinned: false, pinOrder: null },
+  };
+
+  app.patch('/multi-chat/folders/:folderId/pin', zValidator('json', PinFolderSchema), (c) => {
+    const folderId = c.req.param('folderId');
+    const authHeader = c.req.header('Authorization');
+
+    if (!authHeader) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    if (!folderState[folderId as keyof typeof folderState]) {
+      return c.json({ success: false, error: 'Folder not found' }, 404);
+    }
+
+    const body = c.req.valid('json');
+    folderState[folderId as keyof typeof folderState] = {
+      ...folderState[folderId as keyof typeof folderState],
+      isPinned: body.isPinned,
+      pinOrder: body.isPinned ? (body.pinOrder ?? null) : null,
+    };
+
+    return c.json({ success: true, data: folderState[folderId as keyof typeof folderState] });
+  });
+
+  await t.step('pins a folder', async () => {
+    const res = await app.request('/multi-chat/folders/folder-123/pin', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ isPinned: true, pinOrder: 0 }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.data.isPinned, true);
+    assertEquals(json.data.pinOrder, 0);
+  });
+
+  await t.step('unpins a folder', async () => {
+    const res = await app.request('/multi-chat/folders/folder-123/pin', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ isPinned: false }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.data.isPinned, false);
+    assertEquals(json.data.pinOrder, null);
+  });
+});
+
+Deno.test('MultiChat Routes - POST /multi-chat/folders/reorder-pinned', async (t) => {
+  const app = new Hono();
+
+  const ReorderPinnedFoldersSchema = z.object({
+    folderIds: z.array(z.string().uuid()),
+  });
+
+  let reorderCalls: string[][] = [];
+
+  app.post('/multi-chat/folders/reorder-pinned', zValidator('json', ReorderPinnedFoldersSchema), (c) => {
+    const authHeader = c.req.header('Authorization');
+
+    if (!authHeader) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    const body = c.req.valid('json');
+    reorderCalls.push(body.folderIds);
+
+    return c.json({ success: true });
+  });
+
+  await t.step('reorders pinned folders', async () => {
+    const res = await app.request('/multi-chat/folders/reorder-pinned', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({
+        folderIds: [
+          '123e4567-e89b-12d3-a456-426614174000',
+          '223e4567-e89b-12d3-a456-426614174001',
+        ],
+      }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.success, true);
+  });
+
+  await t.step('accepts empty array', async () => {
+    const res = await app.request('/multi-chat/folders/reorder-pinned', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({ folderIds: [] }),
+    });
+
+    assertEquals(res.status, 200);
+  });
+
+  await t.step('returns 401 without auth', async () => {
+    const res = await app.request('/multi-chat/folders/reorder-pinned', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderIds: [] }),
+    });
+
+    assertEquals(res.status, 401);
+  });
+});
+
+Deno.test('MultiChat Routes - POST /multi-chat/reorder-pinned', async (t) => {
+  const app = new Hono();
+
+  const ReorderPinnedSchema = z.object({
+    chatIds: z.array(z.string().uuid()),
+  });
+
+  let reorderCalls: string[][] = [];
+
+  app.post('/multi-chat/reorder-pinned', zValidator('json', ReorderPinnedSchema), (c) => {
+    const authHeader = c.req.header('Authorization');
+
+    if (!authHeader) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    const body = c.req.valid('json');
+    reorderCalls.push(body.chatIds);
+
+    return c.json({ success: true });
+  });
+
+  await t.step('reorders pinned chats', async () => {
+    const res = await app.request('/multi-chat/reorder-pinned', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid-token',
+      },
+      body: JSON.stringify({
+        chatIds: [
+          '123e4567-e89b-12d3-a456-426614174000',
+          '223e4567-e89b-12d3-a456-426614174001',
+        ],
+      }),
+    });
+
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.success, true);
+  });
+
+  await t.step('returns 401 without auth', async () => {
+    const res = await app.request('/multi-chat/reorder-pinned', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatIds: [] }),
+    });
+
+    assertEquals(res.status, 401);
+  });
+});

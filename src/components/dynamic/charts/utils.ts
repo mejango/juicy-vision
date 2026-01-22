@@ -110,14 +110,39 @@ export function calculateYDomain(
   return [Math.max(0, min - padding), max + padding]
 }
 
-// Chart colors
+// Chart colors - canonical source for all chart styling
 export const CHART_COLORS = {
+  // Data series colors
   primary: '#F5A623',    // juice-orange
   secondary: '#5CEBDF',  // juice-cyan
   tertiary: '#10b981',   // emerald
   quaternary: '#f59e0b', // amber
+  // Axis & grid (dark mode)
+  axis: '#666666',
   grid: 'rgba(255,255,255,0.1)',
+  // Axis & grid (light mode)
+  axisLight: '#999999',
   gridLight: 'rgba(0,0,0,0.1)',
+  // Semantic colors
+  positive: '#22c55e',   // green-500
+  negative: '#ef4444',   // red-500
+  // Token price chart specific
+  issuance: '#10b981',   // emerald - issuance price
+  cashOut: '#94a3b8',    // slate - cash out price
+  pool: '#60a5fa',       // blue - pool/market price
+}
+
+// Chain colors for multi-chain charts
+export const CHAIN_COLORS: Record<number, string> = {
+  1: '#627EEA',      // Ethereum
+  10: '#FF0420',     // Optimism
+  8453: '#0052FF',   // Base
+  42161: '#28A0F0',  // Arbitrum
+}
+
+// Get chain color with fallback
+export function getChainColor(chainId: number): string {
+  return CHAIN_COLORS[chainId] || '#888888'
 }
 
 // Pie chart color palette

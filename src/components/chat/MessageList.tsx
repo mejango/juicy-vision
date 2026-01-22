@@ -1,16 +1,24 @@
 import { useRef, useEffect, useCallback } from 'react'
-import { Message } from '../../stores'
+import { Message, useThemeStore } from '../../stores'
 import MessageBubble from './MessageBubble'
+import ThinkingIndicator from './ThinkingIndicator'
 
 interface MessageListProps {
   messages: Message[]
+  isWaitingForResponse?: boolean
 }
 
-export default function MessageList({ messages }: MessageListProps) {
+export default function MessageList({ messages, isWaitingForResponse }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const isNearBottomRef = useRef(true)
   const prevMessageCountRef = useRef(messages.length)
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
+
+  // Show ghost card when waiting for response and no message is currently streaming
+  const hasStreamingMessage = messages.some(m => m.isStreaming)
+  const showGhostCard = isWaitingForResponse && !hasStreamingMessage
 
   // Check if user is near the bottom (within 150px)
   const checkIfNearBottom = useCallback(() => {
@@ -37,6 +45,13 @@ export default function MessageList({ messages }: MessageListProps) {
     }
   }, [messages.length])
 
+  // Auto-scroll when ghost card appears (user sent a message, waiting for response)
+  useEffect(() => {
+    if (showGhostCard && isNearBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [showGhostCard])
+
   return (
     <div
       ref={containerRef}
@@ -57,6 +72,14 @@ export default function MessageList({ messages }: MessageListProps) {
             />
           )
         })}
+        {/* Ghost card - shows while waiting for first streaming token */}
+        {showGhostCard && (
+          <div className="flex justify-start mb-4">
+            <div className={`w-full bg-transparent px-4 py-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <ThinkingIndicator />
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
     </div>

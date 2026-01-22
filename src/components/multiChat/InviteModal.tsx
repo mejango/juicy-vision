@@ -1,9 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 import { createInvite, type ChatInvite, type CreateInviteParams } from '../../services/multiChat'
 
-interface InviteModalProps {
+export interface AnchorPosition {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
+interface InvitePopoverProps {
   isOpen: boolean
   onClose: () => void
   chatId: string
@@ -11,6 +18,8 @@ interface InviteModalProps {
   // Current user's permissions - affects what they can grant
   canGrantAdmin?: boolean
   canGrantInvitePermission?: boolean
+  // Position of the anchor button (for smart positioning)
+  anchorPosition?: AnchorPosition | null
 }
 
 export default function InviteModal({
@@ -20,7 +29,8 @@ export default function InviteModal({
   chatName,
   canGrantAdmin = false,
   canGrantInvitePermission = true,
-}: InviteModalProps) {
+  anchorPosition,
+}: InvitePopoverProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { t } = useTranslation()
@@ -35,7 +45,7 @@ export default function InviteModal({
   const [canInviteOthers, setCanInviteOthers] = useState(false)
   const [canPassOnRoles, setCanPassOnRoles] = useState(false)
 
-  // Reset state when modal opens
+  // Reset state when popover opens
   useEffect(() => {
     if (isOpen) {
       setInvite(null)
@@ -86,42 +96,65 @@ export default function InviteModal({
     }
   }
 
+  // Calculate popover position based on anchor
+  const popoverStyle = useMemo(() => {
+    if (!anchorPosition) {
+      // Fallback to top-right if no anchor
+      return { top: 16, right: 16 }
+    }
+
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
+    const popoverHeight = 400 // Approximate max height
+    const gap = 8 // Gap between button and popover
+
+    // Check if button is in lower half of viewport
+    const isInLowerHalf = anchorPosition.top > viewportHeight / 2
+
+    if (isInLowerHalf) {
+      // Show above the button
+      return {
+        bottom: viewportHeight - anchorPosition.top + gap,
+        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
+      }
+    } else {
+      // Show below the button
+      return {
+        top: anchorPosition.top + anchorPosition.height + gap,
+        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
+      }
+    }
+  }, [anchorPosition])
+
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div className={`relative w-full max-w-sm p-6 ${
-        isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+    <div className="fixed z-50" style={popoverStyle}>
+      {/* Popover */}
+      <div className={`w-80 p-4 border shadow-xl rounded-lg ${
+        isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
       }`}>
         {/* Close button */}
         <button
           onClick={onClose}
           className={`absolute top-3 right-3 p-1 transition-colors ${
-            isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+            isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
           }`}
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
 
-        <h2 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+        <h3 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
           {t('invite.header', 'Invite someone to this chat')}
-        </h2>
+        </h3>
 
-        <p className={`text-sm mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+        <p className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
           {t('invite.subtitle', 'Choose which permissions they\'ll have')}
         </p>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+          <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded">
             {error}
           </div>
         )}
@@ -129,26 +162,26 @@ export default function InviteModal({
         {!invite ? (
           <>
             {/* Permission Settings */}
-            <div className="space-y-3 mb-6">
+            <div className="space-y-2 mb-4">
               {/* Can send messages */}
               <button
                 onClick={() => setCanSendMessages(!canSendMessages)}
-                className="flex items-center gap-3 w-full text-left group"
+                className="flex items-center gap-2 w-full text-left group"
               >
-                <div className={`w-5 h-5 border-2 flex items-center justify-center transition-colors ${
+                <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
                   canSendMessages
-                    ? 'border-green-500'
+                    ? 'border-green-500 bg-green-500'
                     : isDark
                     ? 'border-white/30 group-hover:border-white/50'
                     : 'border-gray-300 group-hover:border-gray-400'
                 }`}>
                   {canSendMessages && (
-                    <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                     </svg>
                   )}
                 </div>
-                <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   {t('invite.canSendMessages', 'Can send messages')}
                 </span>
               </button>
@@ -157,22 +190,22 @@ export default function InviteModal({
               {canGrantInvitePermission && (
                 <button
                   onClick={() => setCanInviteOthers(!canInviteOthers)}
-                  className="flex items-center gap-3 w-full text-left group"
+                  className="flex items-center gap-2 w-full text-left group"
                 >
-                  <div className={`w-5 h-5 border-2 flex items-center justify-center transition-colors ${
+                  <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
                     canInviteOthers
-                      ? 'border-green-500'
+                      ? 'border-green-500 bg-green-500'
                       : isDark
                       ? 'border-white/30 group-hover:border-white/50'
                       : 'border-gray-300 group-hover:border-gray-400'
                   }`}>
                     {canInviteOthers && (
-                      <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                       </svg>
                     )}
                   </div>
-                  <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                  <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                     {t('invite.canInviteOthers', 'Can invite others')}
                   </span>
                 </button>
@@ -182,50 +215,52 @@ export default function InviteModal({
               {canGrantAdmin && (
                 <button
                   onClick={() => setCanPassOnRoles(!canPassOnRoles)}
-                  className="flex items-center gap-3 w-full text-left group"
+                  className="flex items-center gap-2 w-full text-left group"
                 >
-                  <div className={`w-5 h-5 border-2 flex items-center justify-center transition-colors ${
+                  <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
                     canPassOnRoles
-                      ? 'border-green-500'
+                      ? 'border-green-500 bg-green-500'
                       : isDark
                       ? 'border-white/30 group-hover:border-white/50'
                       : 'border-gray-300 group-hover:border-gray-400'
                   }`}>
                     {canPassOnRoles && (
-                      <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                       </svg>
                     )}
                   </div>
-                  <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {t('invite.canPassOnRoles', 'Can invite others who can invite others')}
+                  <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {t('invite.canPassOnRoles', 'Can invite others who can invite')}
                   </span>
                 </button>
               )}
             </div>
 
-            {/* Create button - right aligned */}
+            {/* Create button */}
             <div className="flex justify-end">
               <button
                 onClick={handleCreateInvite}
                 disabled={isLoading}
-                className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+                className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
                   isLoading
-                    ? 'bg-gray-500 cursor-not-allowed text-white'
-                    : 'bg-green-500 text-black hover:bg-green-600'
+                    ? 'border-gray-500 text-gray-500 cursor-not-allowed'
+                    : isDark
+                    ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+                    : 'border-green-600 text-green-600 hover:bg-green-50'
                 }`}
               >
                 {isLoading
                   ? t('invite.creating', 'Creating...')
-                  : t('invite.getLink', 'Get link')}
+                  : t('invite.getLink', 'Get invite link')}
               </button>
             </div>
           </>
         ) : (
           <>
             {/* Invite Link Display */}
-            <div className="space-y-3 mb-4">
-              <label className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+            <div className="space-y-2 mb-3">
+              <label className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('invite.yourLink', 'Your invite link')}
               </label>
 
@@ -234,7 +269,7 @@ export default function InviteModal({
                   type="text"
                   readOnly
                   value={invite.inviteUrl || ''}
-                  className={`flex-1 px-3 py-2 border text-sm font-mono ${
+                  className={`flex-1 px-2 py-1.5 border text-xs font-mono ${
                     isDark
                       ? 'bg-white/5 border-white/10 text-gray-300'
                       : 'bg-gray-50 border-gray-200 text-gray-700'
@@ -242,22 +277,22 @@ export default function InviteModal({
                 />
                 <button
                   onClick={handleCopy}
-                  className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     copied
                       ? 'bg-green-600 text-black'
                       : 'bg-green-500 text-black hover:bg-green-600'
                   }`}
                 >
-                  {copied ? t('invite.copied', 'Copied!') : t('invite.copy', 'Copy')}
+                  {copied ? '✓' : t('invite.copy', 'Copy')}
                 </button>
               </div>
 
               {/* Permission summary */}
-              <div className={`p-3 text-sm ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-600'}`}>
+              <div className={`p-2 text-xs ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-600'}`}>
                 <p className="font-medium mb-1">
                   {t('invite.grantedPermissions', 'Link grants:')}
                 </p>
-                <ul className="list-disc list-inside space-y-0.5">
+                <ul className="list-disc list-inside space-y-0.5 text-[10px]">
                   {invite.canSendMessages && (
                     <li>{t('invite.canSendMessagesLabel', 'Can send messages')}</li>
                   )}
@@ -265,7 +300,7 @@ export default function InviteModal({
                     <li>{t('invite.canInviteOthersLabel', 'Can invite others')}</li>
                   )}
                   {invite.canPassOnRoles && (
-                    <li>{t('invite.canPassOnRolesLabel', 'Can invite others who can invite others')}</li>
+                    <li>{t('invite.canPassOnRolesLabel', 'Can invite others who can invite')}</li>
                   )}
                 </ul>
               </div>
@@ -274,10 +309,10 @@ export default function InviteModal({
             {/* Create another */}
             <button
               onClick={() => setInvite(null)}
-              className={`w-full py-2 text-sm font-medium transition-colors ${
+              className={`w-full py-1.5 text-xs font-medium transition-colors border ${
                 isDark
-                  ? 'text-gray-400 hover:text-white'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'border-white/20 text-gray-400 hover:text-white hover:border-white/40'
+                  : 'border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300'
               }`}
             >
               {t('invite.createAnother', 'Create another link')}

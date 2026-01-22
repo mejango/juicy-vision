@@ -115,7 +115,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [error, setError] = useState<string | null>(null)
   const [isPromptStuck, setIsPromptStuck] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsAnchorPosition, setSettingsAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [langMenuOpen, setLangMenuOpen] = useState(false)
+  const [langMenuPosition, setLangMenuPosition] = useState<{ top: number; right: number } | null>(null)
   const [showActionBar, setShowActionBar] = useState(true)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -125,9 +127,28 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [inviteChatId, setInviteChatId] = useState<string | null>(null)
   const [inviteChatName, setInviteChatName] = useState('')
   const [isCreatingInvite, setIsCreatingInvite] = useState(false)
+  // Anchor positions for popovers
+  const [inviteAnchorPosition, setInviteAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const [saveAnchorPosition, setSaveAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const [walletPanelAnchorPosition, setWalletPanelAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
+  const [showBetaPopover, setShowBetaPopover] = useState(false)
+  const [betaPopoverPosition, setBetaPopoverPosition] = useState<'above' | 'below'>('above')
+  const [betaAnchorPosition, setBetaAnchorPosition] = useState<{ top: number; bottom: number; right: number } | null>(null)
+
+  // Close all popovers - call before opening a new one
+  const closeAllPopovers = useCallback(() => {
+    setShowInviteModal(false)
+    setShowSaveModal(false)
+    setShowAuthOptionsModal(false)
+    setShowWalletPanel(false)
+    setShowBetaPopover(false)
+    setSettingsOpen(false)
+  }, [])
+
   const abortControllerRef = useRef<AbortController | null>(null)
   const dockRef = useRef<HTMLDivElement | null>(null)
+  const stickyPromptRef = useRef<HTMLDivElement | null>(null)
   const messagesScrollRef = useRef<HTMLDivElement | null>(null)
   const lastScrollTop = useRef(0)
 
@@ -449,7 +470,11 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
   // Listen for wallet panel open events - show wallet panel if connected, auth options if not
   useEffect(() => {
-    const handleOpenWalletPanel = () => {
+    const handleOpenWalletPanel = (event: CustomEvent<{ anchorPosition?: { top: number; left: number; width: number; height: number } }>) => {
+      closeAllPopovers()
+      if (event.detail?.anchorPosition) {
+        setWalletPanelAnchorPosition(event.detail.anchorPosition)
+      }
       if (isWalletConnected) {
         // Already connected - show wallet panel directly for top-up/balance
         setShowWalletPanel(true)
@@ -459,11 +484,11 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         setShowAuthOptionsModal(true)
       }
     }
-    window.addEventListener('juice:open-wallet-panel', handleOpenWalletPanel)
+    window.addEventListener('juice:open-wallet-panel', handleOpenWalletPanel as EventListener)
     return () => {
-      window.removeEventListener('juice:open-wallet-panel', handleOpenWalletPanel)
+      window.removeEventListener('juice:open-wallet-panel', handleOpenWalletPanel as EventListener)
     }
-  }, [isWalletConnected])
+  }, [isWalletConnected, closeAllPopovers])
 
   // Listen for messages from dynamic components (e.g., recommendation chips)
   // Only listen if we're the instance with the input (bottomOnly or neither specified)
@@ -487,17 +512,28 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   // Listen for settings open events (from LocalShareModal sign in button)
   useEffect(() => {
     const handleOpenSettings = () => {
+      closeAllPopovers()
       setSettingsOpen(true)
     }
     window.addEventListener('juice:open-settings', handleOpenSettings)
     return () => window.removeEventListener('juice:open-settings', handleOpenSettings)
-  }, [])
+  }, [closeAllPopovers])
 
   // Listen for action bar events from Header
   useEffect(() => {
-    const onInvite = () => handleInvite()
+    const onInvite = (e: Event) => {
+      closeAllPopovers()
+      const customEvent = e as CustomEvent<{ anchorPosition?: { top: number; left: number; width: number; height: number } }>
+      setInviteAnchorPosition(customEvent.detail?.anchorPosition || null)
+      handleInvite()
+    }
     const onExport = () => handleExport()
-    const onSave = () => setShowSaveModal(true)
+    const onSave = (e: Event) => {
+      closeAllPopovers()
+      const customEvent = e as CustomEvent<{ anchorPosition?: { top: number; left: number; width: number; height: number } }>
+      setSaveAnchorPosition(customEvent.detail?.anchorPosition || null)
+      setShowSaveModal(true)
+    }
 
     window.addEventListener('juice:action-invite', onInvite)
     window.addEventListener('juice:action-export', onExport)
@@ -507,25 +543,30 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       window.removeEventListener('juice:action-export', onExport)
       window.removeEventListener('juice:action-save', onSave)
     }
-  }, [handleInvite, handleExport])
+  }, [handleInvite, handleExport, closeAllPopovers])
 
   // Listen for auth modal open events (from ChatInput connect button)
   useEffect(() => {
     const handleOpenAuthModal = () => {
+      closeAllPopovers()
       setShowAuthOptionsModal(true)
     }
     window.addEventListener('juice:open-auth-modal', handleOpenAuthModal)
     return () => window.removeEventListener('juice:open-auth-modal', handleOpenAuthModal)
-  }, [])
+  }, [closeAllPopovers])
 
-  // Detect when dock is scrolled to show background on sticky prompt
+  // Detect when sticky prompt actually hits top of container
   useEffect(() => {
     const dock = dockRef.current
-    if (!dock) return
+    const stickyPrompt = stickyPromptRef.current
+    if (!dock || !stickyPrompt) return
 
     const handleScroll = () => {
-      // Show background when scrolled more than a few pixels
-      setIsPromptStuck(dock.scrollTop > 10)
+      // Check if the sticky element has actually reached the top of the container
+      const dockRect = dock.getBoundingClientRect()
+      const promptRect = stickyPrompt.getBoundingClientRect()
+      // Element is stuck when its top equals the container's top
+      setIsPromptStuck(promptRect.top <= dockRect.top)
     }
 
     dock.addEventListener('scroll', handleScroll)
@@ -576,9 +617,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
         {messages.length === 0 ? (
           <>
-            {/* Welcome screen (recommendations) - only show if topOnly or neither specified */}
+            {/* Welcome screen (recommendations) - fills full area, extends behind dock */}
             {(topOnly || (!topOnly && !bottomOnly)) && (
-              <div className="flex-1 overflow-hidden">
+              <div className="absolute inset-0 overflow-hidden">
                 <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
               </div>
             )}
@@ -587,113 +628,121 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             {(bottomOnly || (!topOnly && !bottomOnly)) && (
               <div
                 ref={dockRef}
-                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0 z-30 h-[38%] border-t-4 border-juice-orange'} overflow-y-auto backdrop-blur-md relative ${
-                  theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75'
-                }`}
+                className={`${bottomOnly ? 'max-h-full overflow-y-auto' : 'absolute bottom-0 left-0 right-0 z-30 h-[38vh] border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto ' + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
               >
-                {/* Beta tag - top left, aligned with attachment button */}
-                <div className="absolute top-3 left-6 z-50">
-                  <span className="px-2 py-0.5 text-xs font-semibold bg-juice-orange text-juice-dark">
-                    Beta
-                  </span>
-                </div>
-
-                {/* Theme, Settings & Language controls - top right */}
-                <div className="absolute top-3 right-4 flex items-center gap-1 z-50">
-                  {/* Language selector */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setLangMenuOpen(!langMenuOpen)}
-                      className={`px-2 py-1 text-xs transition-colors ${
-                        theme === 'dark'
-                          ? 'text-gray-400 hover:text-white'
-                          : 'text-gray-500 hover:text-gray-900'
-                      }`}
-                    >
-                      {LANGUAGES.find(l => l.code === language)?.native || 'English'}
-                    </button>
-                    {langMenuOpen && (
-                      <div
-                        className={`absolute top-full right-0 mt-1 py-1 border shadow-lg ${
-                          theme === 'dark'
-                            ? 'bg-juice-dark border-white/20'
-                            : 'bg-white border-gray-200'
-                        }`}
-                        onMouseLeave={() => setLangMenuOpen(false)}
-                      >
-                        {LANGUAGES.map(lang => (
-                          <button
-                            key={lang.code}
-                            onClick={() => {
-                              setLanguage(lang.code)
-                              setLangMenuOpen(false)
-                            }}
-                            className={`w-full px-4 py-2 text-sm text-left whitespace-nowrap transition-colors ${
-                              language === lang.code
-                                ? theme === 'dark'
-                                  ? 'bg-green-500/20 text-green-400'
-                                  : 'bg-green-50 text-green-700'
-                                : theme === 'dark'
-                                  ? 'text-white/80 hover:bg-white/10'
-                                  : 'text-gray-700 hover:bg-gray-100'
-                            }`}
-                          >
-                            {lang.native}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {/* Privacy mode */}
-                  <PrivacySelector />
-                  {/* Theme toggle */}
-                  <button
-                    onClick={toggleTheme}
-                    className={`p-1.5 transition-colors ${
-                      theme === 'dark'
-                        ? 'text-gray-400 hover:text-white'
-                        : 'text-gray-500 hover:text-gray-900'
-                    }`}
-                    title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                  >
-                    {theme === 'dark' ? (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                      </svg>
-                    )}
-                  </button>
-                  {/* Settings */}
-                  <button
-                    onClick={() => setSettingsOpen(true)}
-                    className={`p-1.5 transition-colors ${
-                      theme === 'dark'
-                        ? 'text-gray-400 hover:text-white'
-                        : 'text-gray-500 hover:text-gray-900'
-                    }`}
-                    title="Settings"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Spacer to position prompt at 38% from top (golden ratio) - includes greeting */}
-                {/* Subtracts 1rem for ChatInput's py-4 top padding */}
-                <div className="h-[calc(38%-1rem)] flex flex-col justify-end">
+                {/* Greeting - positioned to put prompt at ~38% down the dock (38% of 38vh = 14.44vh total above prompt) */}
+                <div className="h-[10vh] flex flex-col justify-end">
                   <WelcomeGreeting />
                 </div>
-                {/* Prompt bar sticks at top when scrolled - background only when stuck */}
-                <div className={`sticky top-0 z-10 pt-4 transition-colors ${
-                  isPromptStuck
-                    ? theme === 'dark' ? 'bg-juice-dark/95 backdrop-blur-sm' : 'bg-white/95 backdrop-blur-sm'
-                    : ''
-                }`}>
+
+                {/* Controls at top right of prompt area - scrolls away naturally */}
+                <div className="flex justify-end px-6">
+                    <div className="flex items-center gap-1">
+                      {/* Language selector */}
+                      <div className="relative">
+                        <button
+                          onClick={(e) => {
+                            if (!langMenuOpen) {
+                              const rect = e.currentTarget.getBoundingClientRect()
+                              setLangMenuPosition({
+                                top: rect.bottom + 4,
+                                right: window.innerWidth - rect.right
+                              })
+                            }
+                            setLangMenuOpen(!langMenuOpen)
+                          }}
+                          className={`px-2 py-1 transition-colors text-xs ${
+                            theme === 'dark'
+                              ? 'text-gray-400 hover:text-white'
+                              : 'text-gray-500 hover:text-gray-900'
+                          }`}
+                          title="Change language"
+                        >
+                          {LANGUAGES.find(l => l.code === language)?.native || 'English'}
+                        </button>
+                        {langMenuOpen && langMenuPosition && (
+                          <div className={`fixed py-1 rounded shadow-lg border z-[100] ${
+                            theme === 'dark'
+                              ? 'bg-juice-dark border-white/20'
+                              : 'bg-white border-gray-200'
+                          }`}
+                          style={{ top: langMenuPosition.top, right: langMenuPosition.right }}
+                          >
+                            {LANGUAGES.map(lang => (
+                              <button
+                                key={lang.code}
+                                onClick={() => {
+                                  setLanguage(lang.code)
+                                  setLangMenuOpen(false)
+                                }}
+                                className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 whitespace-nowrap ${
+                                  language === lang.code
+                                    ? theme === 'dark' ? 'bg-white/10' : 'bg-gray-100'
+                                    : ''
+                                } ${
+                                  theme === 'dark'
+                                    ? 'hover:bg-white/10 text-gray-300'
+                                    : 'hover:bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                <span>{lang.native}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* Theme toggle */}
+                      <button
+                        onClick={toggleTheme}
+                        className={`p-1.5 transition-colors ${
+                          theme === 'dark'
+                            ? 'text-gray-400 hover:text-white'
+                            : 'text-gray-500 hover:text-gray-900'
+                        }`}
+                        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                      >
+                        {theme === 'dark' ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                          </svg>
+                        )}
+                      </button>
+                      {/* Settings */}
+                      <button
+                        onClick={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect()
+                          closeAllPopovers()
+                          setSettingsAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+                          setSettingsOpen(true)
+                        }}
+                        className={`p-1.5 transition-colors ${
+                          theme === 'dark'
+                            ? 'text-gray-400 hover:text-white'
+                            : 'text-gray-500 hover:text-gray-900'
+                        }`}
+                        title="Settings"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                {/* Sticky prompt area - only ChatInput stays pinned */}
+                <div
+                  ref={stickyPromptRef}
+                  className={`sticky top-0 z-10 ${
+                    isPromptStuck
+                      ? theme === 'dark' ? 'bg-juice-dark/95 backdrop-blur-sm' : 'bg-white/95 backdrop-blur-sm'
+                      : ''
+                  }`}
+                >
                   <ChatInput
                     onSend={handleSend}
                     disabled={isStreaming}
@@ -703,16 +752,118 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                     placeholder={placeholder}
                   />
                 </div>
-                {/* Subtext hint - scrolls with content */}
-                <div className="flex gap-3 px-6 pb-4">
-                  <div className="w-[48px] shrink-0" />
-                  <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {t('dock.askAbout', 'or ask about any juicebox ecosystem project')}
+
+                {/* Subtext and Beta tag row - scrolls away naturally */}
+                <div className="flex items-center justify-between px-6">
+                    {/* Subtext hint */}
+                    <div className="flex gap-3">
+                      <div className="w-[48px] shrink-0" />
+                      <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {t('dock.askAbout', 'or ask about any juicebox ecosystem project')}
+                      </div>
+                    </div>
+                    {/* Beta tag with popover */}
+                    <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        if (!showBetaPopover) {
+                          closeAllPopovers()
+                          const rect = e.currentTarget.getBoundingClientRect()
+                          const isInBottomHalf = rect.top > window.innerHeight / 2
+                          setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
+                          setBetaAnchorPosition({
+                            top: rect.bottom + 8,
+                            bottom: window.innerHeight - rect.top + 8,
+                            right: window.innerWidth - rect.right
+                          })
+                        }
+                        setShowBetaPopover(!showBetaPopover)
+                      }}
+                      className="px-2 py-0.5 text-xs font-semibold bg-yellow-400 hover:bg-yellow-300 text-gray-900 rounded transition-colors"
+                    >
+                      Beta
+                    </button>
+                    {showBetaPopover && betaAnchorPosition && (
+                      <div
+                        className={`fixed w-72 p-4 border shadow-xl rounded-lg z-[100] ${
+                          theme === 'dark'
+                            ? 'bg-juice-dark border-white/20'
+                            : 'bg-white border-gray-200'
+                        }`}
+                        style={betaPopoverPosition === 'above'
+                          ? { bottom: betaAnchorPosition.bottom, right: betaAnchorPosition.right }
+                          : { top: betaAnchorPosition.top, right: betaAnchorPosition.right }
+                        }
+                      >
+                        <button
+                          onClick={() => setShowBetaPopover(false)}
+                          className={`absolute top-2 right-2 p-1 transition-colors ${
+                            theme === 'dark' ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                        <h3 className={`text-sm font-semibold mb-2 pr-6 ${
+                          theme === 'dark' ? 'text-white' : 'text-gray-900'
+                        }`}>
+                          {t('beta.title', 'Juicy Vision')}
+                        </h3>
+                        <p className={`text-xs leading-relaxed mb-2 ${
+                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                          {t('beta.whatWeAreBuildingStart', "We're building a conversational interface to the ")}
+                          <a
+                            href="https://juicebox.money"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={theme === 'dark' ? 'text-juice-cyan hover:underline' : 'text-teal-600 hover:underline'}
+                          >
+                            Juicebox
+                          </a>
+                          {t('beta.whatWeAreBuildingEnd', ' protocol—a way to fund anything and anyone.')}
+                        </p>
+                        <p className={`text-xs leading-relaxed mb-2 ${
+                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                          {t('beta.whyBeta', "It's in beta because we're still working out the kinks. Expect bugs.")}
+                        </p>
+                        <p className={`text-xs leading-relaxed mb-3 ${
+                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                          {t('beta.whenNotBeta', "We'll drop the beta tag when the app is dependable—when it just works.")}
+                        </p>
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => {
+                              setShowBetaPopover(false)
+                              window.dispatchEvent(new CustomEvent('juice:send-message', {
+                                detail: { message: 'I want to pay project ID 1 (NANA)' }
+                              }))
+                            }}
+                            className={`px-3 py-1.5 text-xs font-medium border transition-colors rounded ${
+                              theme === 'dark'
+                                ? 'border-juice-cyan text-juice-cyan hover:bg-juice-cyan/10'
+                                : 'border-teal-600 text-teal-600 hover:bg-teal-50'
+                            }`}
+                          >
+                            {t('beta.payUs', 'Pay us')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    </div>
                   </div>
+                {/* Wallet info - scrolls away naturally */}
+                <div>
+                  <WalletInfo />
                 </div>
-                {/* Wallet info and conversation history scroll */}
-                <WalletInfo />
-                <ConversationHistory />
+
+                {/* Conversation history */}
+                <div className="pt-6 pb-8">
+                  <ConversationHistory />
+                </div>
               </div>
             )}
           </>
@@ -722,7 +873,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             {/* Messages scroll under header (pt-[14.44vh]) and dock with padding at bottom */}
             {(topOnly || (!topOnly && !bottomOnly)) && (
               <div ref={messagesScrollRef} className="overflow-y-auto flex-1 relative pt-[14.44vh]">
-                <MessageList messages={messages} />
+                <MessageList messages={messages} isWaitingForResponse={isStreaming} />
                 {/* Bottom padding so content can scroll under the dock */}
                 <div className="h-[14.44vh]" />
               </div>
@@ -732,15 +883,107 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             {/* Min height: 38% of 38% of screen height = 14.44vh */}
             {(bottomOnly || (!topOnly && !bottomOnly)) && (
               <div
-                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0'} pt-2 backdrop-blur-sm flex flex-col justify-end transition-all duration-200 ${
+                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0'} pt-2 backdrop-blur-sm flex flex-col justify-end transition-all duration-75 ${
                   theme === 'dark' ? 'bg-juice-dark/80' : 'bg-white/80'
                 }`}
               >
                 {/* Theme & Settings controls - floating above dock, no background */}
                 {/* Hidden when scrolling down (matching header behavior) */}
-                <div className={`absolute right-6 flex items-center gap-1 transition-all duration-200 ${
+                <div className={`absolute right-6 flex items-center gap-2 transition-all duration-75 ${
                   showActionBar ? 'opacity-100 -top-8' : 'opacity-0 top-0 pointer-events-none'
                 }`}>
+                  {/* Beta tag with popover */}
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        if (!showBetaPopover) {
+                          closeAllPopovers()
+                          const rect = e.currentTarget.getBoundingClientRect()
+                          const isInBottomHalf = rect.top > window.innerHeight / 2
+                          setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
+                          setBetaAnchorPosition({
+                            top: rect.bottom + 8,
+                            bottom: window.innerHeight - rect.top + 8,
+                            right: window.innerWidth - rect.right
+                          })
+                        }
+                        setShowBetaPopover(!showBetaPopover)
+                      }}
+                      className="px-2 py-0.5 text-xs font-semibold bg-yellow-400 hover:bg-yellow-300 text-gray-900 rounded transition-colors"
+                    >
+                      Beta
+                    </button>
+                    {showBetaPopover && betaAnchorPosition && (
+                      <div
+                        className={`fixed w-72 p-4 border shadow-xl rounded-lg z-[100] ${
+                          theme === 'dark'
+                            ? 'bg-juice-dark border-white/20'
+                            : 'bg-white border-gray-200'
+                        }`}
+                        style={betaPopoverPosition === 'above'
+                          ? { bottom: betaAnchorPosition.bottom, right: betaAnchorPosition.right }
+                          : { top: betaAnchorPosition.top, right: betaAnchorPosition.right }
+                        }
+                      >
+                        <button
+                          onClick={() => setShowBetaPopover(false)}
+                          className={`absolute top-2 right-2 p-1 transition-colors ${
+                            theme === 'dark' ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                        <h3 className={`text-sm font-semibold mb-2 pr-6 ${
+                          theme === 'dark' ? 'text-white' : 'text-gray-900'
+                        }`}>
+                          {t('beta.title', 'Juicy Vision')}
+                        </h3>
+                        <p className={`text-xs leading-relaxed mb-2 ${
+                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                          {t('beta.whatWeAreBuildingStart', "We're building a conversational interface to the ")}
+                          <a
+                            href="https://juicebox.money"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={theme === 'dark' ? 'text-juice-cyan hover:underline' : 'text-teal-600 hover:underline'}
+                          >
+                            Juicebox
+                          </a>
+                          {t('beta.whatWeAreBuildingEnd', ' protocol—a way to fund anything and anyone.')}
+                        </p>
+                        <p className={`text-xs leading-relaxed mb-2 ${
+                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                          {t('beta.whyBeta', "It's in beta because we're still working out the kinks. Expect bugs.")}
+                        </p>
+                        <p className={`text-xs leading-relaxed mb-3 ${
+                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                          {t('beta.whenNotBeta', "We'll drop the beta tag when the app is dependable—when it just works.")}
+                        </p>
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => {
+                              setShowBetaPopover(false)
+                              window.dispatchEvent(new CustomEvent('juice:send-message', {
+                                detail: { message: 'I want to pay project ID 1 (NANA)' }
+                              }))
+                            }}
+                            className={`px-3 py-1.5 text-xs font-medium border transition-colors rounded ${
+                              theme === 'dark'
+                                ? 'border-juice-cyan text-juice-cyan hover:bg-juice-cyan/10'
+                                : 'border-teal-600 text-teal-600 hover:bg-teal-50'
+                            }`}
+                          >
+                            {t('beta.payUs', 'Pay us')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   {/* Theme toggle */}
                   <button
                     onClick={toggleTheme}
@@ -763,7 +1006,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   </button>
                   {/* Settings */}
                   <button
-                    onClick={() => setSettingsOpen(true)}
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      closeAllPopovers()
+                      setSettingsAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+                      setSettingsOpen(true)
+                    }}
                     className={`p-1.5 transition-colors ${
                       theme === 'dark'
                         ? 'text-gray-400 hover:text-white'
@@ -802,7 +1050,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           </>
         )}
       </div>
-      <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} anchorPosition={settingsAnchorPosition} />
 
       {/* Invite Modal - for authenticated users with server-side chats */}
       {inviteChatId && (
@@ -816,6 +1064,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           chatName={inviteChatName}
           canGrantAdmin={true}
           canGrantInvitePermission={true}
+          anchorPosition={inviteAnchorPosition}
         />
       )}
 
@@ -825,6 +1074,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       <SaveModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
+        anchorPosition={saveAnchorPosition}
       />
 
       {/* Auth Options Modal - for users not connected with wallet */}
@@ -841,6 +1091,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       <WalletPanel
         isOpen={showWalletPanel}
         onClose={() => setShowWalletPanel(false)}
+        anchorPosition={walletPanelAnchorPosition}
       />
     </div>
   )

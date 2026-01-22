@@ -90,6 +90,44 @@ export const SEARCH_PROJECTS_QUERY = `
   }
 `
 
+// Semantic search using OR conditions across name, description, tags, and tagline
+// This enables searching for projects by keywords that match any of these fields
+export const SEMANTIC_SEARCH_PROJECTS_QUERY = `
+  query SemanticSearchProjects($keyword: String!, $limit: Int) {
+    projects(
+      where: {
+        OR: [
+          { name_contains: $keyword },
+          { description_contains: $keyword },
+          { tags_has: $keyword },
+          { projectTagline_contains: $keyword }
+        ]
+      }
+      limit: $limit
+      orderBy: "volumeUsd"
+      orderDirection: "desc"
+    ) {
+      items {
+        id
+        projectId
+        chainId
+        version
+        handle
+        name
+        description
+        logoUri
+        tags
+        volume
+        volumeUsd
+        balance
+        contributorsCount
+        paymentsCount
+        createdAt
+      }
+    }
+  }
+`
+
 // Query to check a specific user's token balance for a project
 // Uses Bendystraw schema with projectId/chainId/address filters
 export const USER_PARTICIPANT_QUERY = `

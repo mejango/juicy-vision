@@ -12,16 +12,14 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
   const { t } = useTranslation()
   const [balanceUsd, setBalanceUsd] = useState<number | null>(null)
 
-  // Fetch NANA (project 1) balance on mount
   useEffect(() => {
     async function loadBalance() {
       try {
         const [balance, ethPrice] = await Promise.all([
-          fetchSuckerGroupBalance('1', 1), // NANA project ID 1 on mainnet
+          fetchSuckerGroupBalance('1', 1),
           fetchEthPrice(),
         ])
         if (balance && ethPrice) {
-          // Convert balance from wei to ETH, then to USD
           const balanceEth = parseFloat(balance.totalBalance) / 1e18
           setBalanceUsd(balanceEth * ethPrice)
         }
@@ -38,7 +36,6 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
         ? 'bg-juice-dark/75'
         : 'bg-white/75'
     }`}>
-      {/* Pay us - top right */}
       <div className="absolute top-4 right-4 z-10">
         <button
           onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
@@ -52,7 +49,6 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
         </button>
       </div>
 
-      {/* Subtle scroll hint arrow - bottom right corner */}
       <div className={`absolute right-2 bottom-2 z-10 animate-bounce ${
         theme === 'dark' ? 'text-gray-600' : 'text-gray-300'
       }`}>
@@ -61,9 +57,7 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
         </svg>
       </div>
 
-      {/* Scrollable content - mascot bottom-aligned in visible fold */}
       <div className="flex-1 flex flex-col items-center px-4">
-        {/* First section: visible fold - mascot bottom-aligned within container */}
         <div className="shrink-0 w-full flex flex-col items-center justify-end" style={{ height: 'calc(100vh * 0.62 - 8px)' }}>
           <div className="flex-1 flex items-end justify-center pointer-events-none" style={{ maxHeight: 'calc(100vh * 0.52)' }}>
             <img
@@ -80,7 +74,6 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
           </div>
         </div>
 
-        {/* $JUICY explainer - just below the fold, scrolls into view */}
         <div className="flex items-start pt-16 pb-8">
           <div className={`p-4 max-w-[340px] ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'

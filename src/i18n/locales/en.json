@@ -95,7 +95,13 @@
     "matches": "matches",
     "nanaBalance": "NANA balance",
     "loading": "Loading...",
-    "addNote": "Add a juicy note"
+    "addNote": "Add a juicy note",
+    "worksInProgress": "Works in Progress",
+    "recentResearch": "Recent Research",
+    "trash": "Trash",
+    "noWorksInProgress": "No ongoing projects",
+    "noResearch": "No research chats",
+    "noTrash": "Trash is empty"
   },
   "chat": {
     "conspire": "Conspire",
@@ -151,6 +157,11 @@
     "paragraph2": "As the balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business.",
     "paragraph3": "We run extremely lean, but paying for LLM tokens is expensive for now. Revenue from the app mostly flows back to $JUICY holders, guaranteed. The more value created, the more everyone benefits. We're in this together.",
     "poweredBy": "Uses revnets, powered by Juicebox, secured by Ethereum, Optimism, Base, and Arbitrum."
+  },
+  "beta": {
+    "title": "How Juicy Vision Works",
+    "supportUs": "Support Juicy Vision",
+    "comingSoon": "$JUICY coming soon. Currently using NANA."
   },
   "suggestions": {
     "whatIsJuicy": "What is Juicy?",

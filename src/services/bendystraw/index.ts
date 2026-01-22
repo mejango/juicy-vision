@@ -3,6 +3,7 @@ export {
   fetchProjects,
   fetchParticipants,
   searchProjects,
+  semanticSearchProjects,
   fetchActivityEvents,
   fetchProjectWithRuleset,
   fetchUserTokenBalance,
@@ -56,6 +57,7 @@ export {
   type JBSplitData,
   type FundAccessLimits,
   type ProjectSplitsData,
+  type SemanticSearchProject,
 } from './client'
 
 export {
@@ -63,6 +65,7 @@ export {
   PROJECTS_QUERY,
   PARTICIPANTS_QUERY,
   SEARCH_PROJECTS_QUERY,
+  SEMANTIC_SEARCH_PROJECTS_QUERY,
   ACTIVITY_EVENTS_QUERY,
   USER_PARTICIPANT_QUERY,
   PROJECT_RULESET_QUERY,

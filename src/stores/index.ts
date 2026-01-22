@@ -2,6 +2,7 @@
 export {
   useChatStore,
   type Chat,
+  type ChatFolder,
   type ChatMessage,
   type ChatMember,
   type CreateChatParams,

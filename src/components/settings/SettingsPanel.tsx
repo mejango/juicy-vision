@@ -1,75 +1,32 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
-import { Button, Input, Modal } from '../ui'
 import { useSettingsStore, useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { signInWithPasskey } from '../../services/passkeyWallet'
 
+export interface AnchorPosition {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
 interface SettingsPanelProps {
   isOpen: boolean
   onClose: () => void
+  anchorPosition?: AnchorPosition | null
 }
 
-// Collapsible section component
-function CollapsibleSection({
-  title,
-  defaultOpen = false,
-  children,
-}: {
-  title: string
-  defaultOpen?: boolean
-  children: React.ReactNode
-}) {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
-  const { theme } = useThemeStore()
-
-  return (
-    <div className={`border ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
-          theme === 'dark'
-            ? 'hover:bg-white/5'
-            : 'hover:bg-gray-50'
-        }`}
-      >
-        <span className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-          {title}
-        </span>
-        <svg
-          className={`w-5 h-5 transition-transform ${isOpen ? 'rotate-180' : ''} ${
-            theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
-          }`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {isOpen && (
-        <div className={`px-4 pb-4 ${theme === 'dark' ? 'border-t border-white/10' : 'border-t border-gray-200'}`}>
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
+export default function SettingsPanel({ isOpen, onClose, anchorPosition }: SettingsPanelProps) {
   const {
     claudeApiKey,
     pinataJwt,
     ankrApiKey,
     theGraphApiKey,
-    bendystrawEndpoint,
-    relayrEndpoint,
     setClaudeApiKey,
     setPinataJwt,
     setAnkrApiKey,
     setTheGraphApiKey,
-    setBendystrawEndpoint,
-    setRelayrEndpoint,
     clearSettings,
   } = useSettingsStore()
 
@@ -77,10 +34,9 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [localPinataJwt, setLocalPinataJwt] = useState(pinataJwt)
   const [localAnkrKey, setLocalAnkrKey] = useState(ankrApiKey)
   const [localTheGraphKey, setLocalTheGraphKey] = useState(theGraphApiKey)
-  const [localBendystraw, setLocalBendystraw] = useState(bendystrawEndpoint)
-  const [localRelayr, setLocalRelayr] = useState(relayrEndpoint)
-  const [showKeys, setShowKeys] = useState(false)
+  const [activeTab, setActiveTab] = useState<'account' | 'api'>('account')
   const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
   const {
     user,
     token,
@@ -120,24 +76,29 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     }
   }, [isOpen, isLoggedIn, loadPasskeys])
 
+  // Reset forms when closing
+  useEffect(() => {
+    if (!isOpen) {
+      setShowEmailForm(false)
+      setEmailError(null)
+      setPasskeyError(null)
+    }
+  }, [isOpen])
+
   const handleSave = () => {
     setClaudeApiKey(localClaudeKey)
     setPinataJwt(localPinataJwt)
     setAnkrApiKey(localAnkrKey)
     setTheGraphApiKey(localTheGraphKey)
-    setBendystrawEndpoint(localBendystraw)
-    setRelayrEndpoint(localRelayr)
     onClose()
   }
 
   const handleClear = () => {
-    if (confirm('Clear all settings? This cannot be undone.')) {
-      clearSettings()
-      setLocalClaudeKey('')
-      setLocalPinataJwt('')
-      setLocalAnkrKey('')
-      setLocalTheGraphKey('')
-    }
+    setLocalClaudeKey('')
+    setLocalPinataJwt('')
+    setLocalAnkrKey('')
+    setLocalTheGraphKey('')
+    clearSettings()
   }
 
   // Email OTP handlers
@@ -185,12 +146,9 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
     try {
       if (isLoggedIn && token) {
-        // Add passkey to existing account
         await registerPasskey()
       } else {
-        // Create new account with passkey
-        const wallet = await signInWithPasskey()
-        // The signInWithPasskey handles the auth store update
+        await signInWithPasskey()
       }
     } catch (err) {
       console.error('Passkey error:', err)
@@ -205,78 +163,119 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     }
   }
 
-  // Truncate address helper
   const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`
 
+  // Calculate popover position based on anchor
+  const popoverStyle = useMemo(() => {
+    if (!anchorPosition) {
+      return { top: 16, right: 16 }
+    }
+
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
+    const gap = 8
+
+    const isInLowerHalf = anchorPosition.top > viewportHeight / 2
+
+    if (isInLowerHalf) {
+      return {
+        bottom: viewportHeight - anchorPosition.top + gap,
+        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
+      }
+    } else {
+      return {
+        top: anchorPosition.top + anchorPosition.height + gap,
+        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
+      }
+    }
+  }, [anchorPosition])
+
+  if (!isOpen) return null
+
+  const hasCustomKeys = localClaudeKey || localPinataJwt || localAnkrKey || localTheGraphKey
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Settings" size="md">
-      <div className="space-y-4">
-        {/* User Settings Section */}
-        <CollapsibleSection title="User Settings" defaultOpen={isLoggedIn}>
-          <div className="pt-4 space-y-4">
-            {/* Account Info */}
-            {isLoggedIn && user ? (
-              <div className={`p-3 ${theme === 'dark' ? 'bg-white/5' : 'bg-gray-50'}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className={`text-xs font-medium ${theme === 'dark' ? 'text-green-400' : 'text-green-600'}`}>
-                    Signed In
-                  </span>
+    <div className="fixed z-50" style={popoverStyle}>
+      <div className={`w-80 border shadow-xl rounded-lg ${
+        isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+      }`}>
+        {/* Header with close button */}
+        <div className={`flex items-center justify-between px-4 py-3 border-b ${
+          isDark ? 'border-white/10' : 'border-gray-100'
+        }`}>
+          <h2 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            Settings
+          </h2>
+          <button
+            onClick={onClose}
+            className={`p-1 transition-colors ${
+              isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className={`flex border-b ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
+          <button
+            onClick={() => setActiveTab('account')}
+            className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${
+              activeTab === 'account'
+                ? isDark ? 'text-white border-b-2 border-white' : 'text-gray-900 border-b-2 border-gray-900'
+                : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            Account
+          </button>
+          <button
+            onClick={() => setActiveTab('api')}
+            className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${
+              activeTab === 'api'
+                ? isDark ? 'text-white border-b-2 border-white' : 'text-gray-900 border-b-2 border-gray-900'
+                : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            API Keys
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-4 max-h-80 overflow-y-auto">
+          {activeTab === 'account' ? (
+            <div className="space-y-3">
+              {/* Signed in state */}
+              {isLoggedIn && user ? (
+                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {user.email && <p>Signed in as <span className={isDark ? 'text-white' : 'text-gray-900'}>{user.email}</span></p>}
+                  {managedAddress && <p className="font-mono mt-1">{truncateAddress(managedAddress)}</p>}
                 </div>
-                {user.email && (
-                  <div className="mb-2">
-                    <span className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>Email</span>
-                    <p className={`text-sm ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{user.email}</p>
-                  </div>
-                )}
-                {managedAddress && (
-                  <div>
-                    <span className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>Custodial Wallet</span>
-                    <p className={`text-sm font-mono ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                      {truncateAddress(managedAddress)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                Sign in to sync your chats across devices.
-              </p>
-            )}
+              ) : (
+                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Sign in to sync chats across devices.
+                </p>
+              )}
 
-            {/* Authentication Methods */}
-            <div>
-              <h4 className={`text-xs font-medium mb-3 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                {isLoggedIn ? 'Authentication Methods' : 'Sign In With'}
-              </h4>
-
-              <div className="space-y-2">
+              {/* Auth methods - simplified, no icons */}
+              <div className="space-y-1">
                 {/* Email */}
                 {!showEmailForm ? (
                   <button
                     onClick={() => setShowEmailForm(true)}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
-                      theme === 'dark'
-                        ? 'bg-white/5 hover:bg-white/10 text-white'
-                        : 'bg-gray-50 hover:bg-gray-100 text-gray-900'
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
+                      isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
-                      <span>Email</span>
-                    </div>
-                    {isLoggedIn && user?.email ? (
-                      <span className="text-green-400 text-xs">Connected</span>
-                    ) : (
-                      <span className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>Add</span>
-                    )}
+                    <span>Email</span>
+                    <span className={isLoggedIn && user?.email ? 'text-green-500' : isDark ? 'text-gray-600' : 'text-gray-400'}>
+                      {isLoggedIn && user?.email ? 'Connected' : 'Add'}
+                    </span>
                   </button>
                 ) : (
-                  <div className={`p-3 ${theme === 'dark' ? 'bg-white/5' : 'bg-gray-50'}`}>
+                  <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                     {emailStep === 'email' ? (
-                      <form onSubmit={handleRequestCode} className="space-y-3">
+                      <form onSubmit={handleRequestCode} className="space-y-2">
                         <input
                           type="email"
                           value={emailInput}
@@ -284,46 +283,37 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                           placeholder="you@example.com"
                           required
                           autoFocus
-                          className={`w-full px-3 py-2 text-sm border transition-colors outline-none ${
-                            theme === 'dark'
+                          className={`w-full px-2 py-1.5 text-xs border outline-none ${
+                            isDark
                               ? 'border-white/20 bg-transparent text-white placeholder-gray-500 focus:border-juice-cyan'
                               : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-juice-cyan'
                           }`}
                         />
-                        {emailError && (
-                          <p className="text-xs text-red-400">{emailError}</p>
-                        )}
+                        {emailError && <p className="text-[10px] text-red-400">{emailError}</p>}
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            onClick={() => {
-                              setShowEmailForm(false)
-                              setEmailError(null)
-                            }}
-                            className={`flex-1 py-2 text-xs transition-colors ${
-                              theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-                            }`}
+                            onClick={() => { setShowEmailForm(false); setEmailError(null) }}
+                            className={`flex-1 py-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
                           >
                             Cancel
                           </button>
                           <button
                             type="submit"
                             disabled={emailLoading || !emailInput}
-                            className="flex-1 py-2 text-xs text-juice-cyan hover:text-juice-cyan/80 disabled:opacity-50"
+                            className="flex-1 py-1 text-[10px] text-juice-cyan disabled:opacity-50"
                           >
-                            {emailLoading ? 'Sending...' : 'Send Code'}
+                            {emailLoading ? '...' : 'Send Code'}
                           </button>
                         </div>
                       </form>
                     ) : (
-                      <form onSubmit={handleVerifyCode} className="space-y-3">
-                        <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                          Enter the code sent to <strong>{emailInput}</strong>
+                      <form onSubmit={handleVerifyCode} className="space-y-2">
+                        <p className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                          Code sent to {emailInput}
                         </p>
                         {devCode && (
-                          <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs">
-                            Dev: <strong className="font-mono">{devCode}</strong>
-                          </div>
+                          <p className="text-[10px] text-yellow-500 font-mono">Dev: {devCode}</p>
                         )}
                         <input
                           type="text"
@@ -333,35 +323,27 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                           required
                           autoFocus
                           maxLength={6}
-                          className={`w-full px-3 py-2 text-sm font-mono text-center tracking-widest border transition-colors outline-none ${
-                            theme === 'dark'
-                              ? 'border-white/20 bg-transparent text-white placeholder-gray-500 focus:border-juice-cyan'
-                              : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-juice-cyan'
+                          className={`w-full px-2 py-1.5 text-xs font-mono text-center border outline-none ${
+                            isDark
+                              ? 'border-white/20 bg-transparent text-white focus:border-juice-cyan'
+                              : 'border-gray-200 bg-white text-gray-900 focus:border-juice-cyan'
                           }`}
                         />
-                        {emailError && (
-                          <p className="text-xs text-red-400">{emailError}</p>
-                        )}
+                        {emailError && <p className="text-[10px] text-red-400">{emailError}</p>}
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            onClick={() => {
-                              setEmailStep('email')
-                              setCodeInput('')
-                              setEmailError(null)
-                            }}
-                            className={`flex-1 py-2 text-xs transition-colors ${
-                              theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-                            }`}
+                            onClick={() => { setEmailStep('email'); setCodeInput(''); setEmailError(null) }}
+                            className={`flex-1 py-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
                           >
                             Back
                           </button>
                           <button
                             type="submit"
                             disabled={emailLoading || codeInput.length !== 6}
-                            className="flex-1 py-2 text-xs text-juice-cyan hover:text-juice-cyan/80 disabled:opacity-50"
+                            className="flex-1 py-1 text-[10px] text-juice-cyan disabled:opacity-50"
                           >
-                            {emailLoading ? 'Verifying...' : 'Verify'}
+                            {emailLoading ? '...' : 'Verify'}
                           </button>
                         </div>
                       </form>
@@ -369,46 +351,30 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   </div>
                 )}
 
-                {/* Passkey / Touch ID */}
+                {/* Passkey */}
                 <button
                   onClick={handleAddPasskey}
                   disabled={passkeyLoading}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
-                    theme === 'dark'
-                      ? 'bg-white/5 hover:bg-white/10 text-white'
-                      : 'bg-gray-50 hover:bg-gray-100 text-gray-900'
+                  className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
+                    isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
                   } ${passkeyLoading ? 'opacity-50' : ''}`}
                 >
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
-                    </svg>
-                    <span>{passkeyLoading ? 'Setting up...' : 'Touch ID / Passkey'}</span>
-                  </div>
-                  {isLoggedIn && passkeys.length > 0 ? (
-                    <span className="text-green-400 text-xs">{passkeys.length} registered</span>
-                  ) : (
-                    <span className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>Add</span>
-                  )}
+                  <span>{passkeyLoading ? 'Setting up...' : 'Touch ID'}</span>
+                  <span className={isLoggedIn && passkeys.length > 0 ? 'text-green-500' : isDark ? 'text-gray-600' : 'text-gray-400'}>
+                    {isLoggedIn && passkeys.length > 0 ? `${passkeys.length}` : 'Add'}
+                  </span>
                 </button>
-                {passkeyError && (
-                  <p className="text-xs text-red-400 px-3">{passkeyError}</p>
-                )}
+                {passkeyError && <p className="text-[10px] text-red-400 px-3">{passkeyError}</p>}
 
                 {/* Wallet */}
                 {isWalletConnected && walletAddress ? (
-                  <div className={`flex items-center justify-between px-3 py-2 text-sm ${
-                    theme === 'dark' ? 'bg-white/5 text-white' : 'bg-gray-50 text-gray-900'
+                  <div className={`flex items-center justify-between px-3 py-2 text-xs ${
+                    isDark ? 'text-gray-300' : 'text-gray-700'
                   }`}>
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                      </svg>
-                      <span className="font-mono text-xs">{truncateAddress(walletAddress)}</span>
-                    </div>
+                    <span className="font-mono">{truncateAddress(walletAddress)}</span>
                     <button
                       onClick={() => disconnect()}
-                      className="text-xs text-red-400 hover:text-red-300"
+                      className="text-red-400 hover:text-red-300"
                     >
                       Disconnect
                     </button>
@@ -419,192 +385,133 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       const injected = connectors.find(c => c.id === 'injected')
                       if (injected) connect({ connector: injected })
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
-                      theme === 'dark'
-                        ? 'bg-white/5 hover:bg-white/10 text-white'
-                        : 'bg-gray-50 hover:bg-gray-100 text-gray-900'
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
+                      isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                      </svg>
-                      <span>Wallet</span>
-                    </div>
-                    <span className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>Connect</span>
+                    <span>Wallet</span>
+                    <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Connect</span>
                   </button>
                 )}
               </div>
-            </div>
 
-            {/* Sign Out */}
-            {isLoggedIn && (
-              <button
-                onClick={() => {
-                  logout()
-                  onClose()
-                }}
-                className={`w-full py-2 text-sm font-medium border transition-colors ${
-                  theme === 'dark'
-                    ? 'border-red-500/50 text-red-400 hover:bg-red-500/10'
-                    : 'border-red-200 text-red-600 hover:bg-red-50'
-                }`}
-              >
-                Sign Out
-              </button>
-            )}
-          </div>
-        </CollapsibleSection>
-
-        {/* App Settings Section */}
-        <CollapsibleSection title="App Settings" defaultOpen={false}>
-          <div className="pt-4 space-y-4">
-            {/* Claude API Key */}
-            <div>
-              <Input
-                label="Claude API Key"
-                type={showKeys ? 'text' : 'password'}
-                value={localClaudeKey}
-                onChange={(e) => setLocalClaudeKey(e.target.value)}
-                placeholder="sk-ant-..."
-                rightElement={
+              {/* Sign Out */}
+              {isLoggedIn && (
+                <div className="pt-2">
                   <button
-                    type="button"
-                    onClick={() => setShowKeys(!showKeys)}
-                    className="text-gray-400 hover:text-white"
+                    onClick={() => { logout(); onClose() }}
+                    className="text-xs text-red-400 hover:text-red-300"
                   >
-                    {showKeys ? (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    )}
+                    Sign out
                   </button>
-                }
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Get your API key from{' '}
-                <a
-                  href="https://console.anthropic.com/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-juice-cyan hover:underline"
-                >
-                  console.anthropic.com
-                </a>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Explanation */}
+              <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Juicy Vision works out of the box. Add your own keys to use your own quotas.
               </p>
-            </div>
 
-            {/* Pinata JWT */}
-            <div>
-              <Input
-                label="Pinata JWT (optional)"
-                type={showKeys ? 'text' : 'password'}
-                value={localPinataJwt}
-                onChange={(e) => setLocalPinataJwt(e.target.value)}
-                placeholder="eyJhbGciOiJIUzI1NiIs..."
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                For pinning project metadata to IPFS.{' '}
-                <a
-                  href="https://app.pinata.cloud/developers/api-keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-juice-cyan hover:underline"
+              {/* Claude API Key */}
+              <div>
+                <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Claude API Key
+                </label>
+                <input
+                  type="password"
+                  value={localClaudeKey}
+                  onChange={(e) => setLocalClaudeKey(e.target.value)}
+                  placeholder="sk-ant-..."
+                  className={`w-full mt-1 px-2 py-1.5 text-xs border outline-none ${
+                    isDark
+                      ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'
+                      : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-gray-300'
+                  }`}
+                />
+              </div>
+
+              {/* Pinata JWT */}
+              <div>
+                <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Pinata JWT
+                </label>
+                <input
+                  type="password"
+                  value={localPinataJwt}
+                  onChange={(e) => setLocalPinataJwt(e.target.value)}
+                  placeholder="For IPFS pinning"
+                  className={`w-full mt-1 px-2 py-1.5 text-xs border outline-none ${
+                    isDark
+                      ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'
+                      : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-gray-300'
+                  }`}
+                />
+              </div>
+
+              {/* Ankr API Key */}
+              <div>
+                <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Ankr API Key
+                </label>
+                <input
+                  type="password"
+                  value={localAnkrKey}
+                  onChange={(e) => setLocalAnkrKey(e.target.value)}
+                  placeholder="For RPC requests"
+                  className={`w-full mt-1 px-2 py-1.5 text-xs border outline-none ${
+                    isDark
+                      ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'
+                      : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-gray-300'
+                  }`}
+                />
+              </div>
+
+              {/* The Graph API Key */}
+              <div>
+                <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  The Graph API Key
+                </label>
+                <input
+                  type="password"
+                  value={localTheGraphKey}
+                  onChange={(e) => setLocalTheGraphKey(e.target.value)}
+                  placeholder="For price history"
+                  className={`w-full mt-1 px-2 py-1.5 text-xs border outline-none ${
+                    isDark
+                      ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'
+                      : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-gray-300'
+                  }`}
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-between pt-2">
+                {hasCustomKeys && (
+                  <button
+                    onClick={handleClear}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    Clear all
+                  </button>
+                )}
+                <div className="flex-1" />
+                <button
+                  onClick={handleSave}
+                  className={`px-3 py-1.5 text-xs font-medium border transition-colors ${
+                    isDark
+                      ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+                      : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+                  }`}
                 >
-                  Get JWT from Pinata
-                </a>
-              </p>
+                  Save
+                </button>
+              </div>
             </div>
-
-            {/* Ankr API Key */}
-            <div>
-              <Input
-                label="Ankr API Key (optional)"
-                type={showKeys ? 'text' : 'password'}
-                value={localAnkrKey}
-                onChange={(e) => setLocalAnkrKey(e.target.value)}
-                placeholder="abc123..."
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                For RPC requests.{' '}
-                <a
-                  href="https://www.ankr.com/rpc/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-juice-cyan hover:underline"
-                >
-                  Get API key from Ankr
-                </a>
-              </p>
-            </div>
-
-            {/* The Graph API Key */}
-            <div>
-              <Input
-                label="The Graph API Key"
-                type={showKeys ? 'text' : 'password'}
-                value={localTheGraphKey}
-                onChange={(e) => setLocalTheGraphKey(e.target.value)}
-                placeholder="02c70b717f22ba9a341a29655139ebd9"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                For Uniswap pool price history. Default key provided.{' '}
-                <a
-                  href="https://thegraph.com/studio/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-juice-cyan hover:underline"
-                >
-                  Get your own from The Graph
-                </a>
-              </p>
-            </div>
-
-            {/* Divider */}
-            <div className={`border-t pt-4 ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
-              <h3 className={`text-sm font-medium mb-3 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>Advanced</h3>
-            </div>
-
-            {/* Bendystraw Endpoint */}
-            <Input
-              label="Bendystraw GraphQL Endpoint"
-              value={localBendystraw}
-              onChange={(e) => setLocalBendystraw(e.target.value)}
-              placeholder="https://api.bendystraw.xyz/graphql"
-            />
-
-            {/* Relayr Endpoint */}
-            <Input
-              label="Relayr API Endpoint"
-              value={localRelayr}
-              onChange={(e) => setLocalRelayr(e.target.value)}
-              placeholder="https://api.relayr.ba5ed.com"
-            />
-          </div>
-        </CollapsibleSection>
-
-        {/* Actions */}
-        <div className={`flex gap-3 pt-4 border-t ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
-          <Button onClick={handleClear} variant="ghost" className="text-red-400">
-            Clear All
-          </Button>
-          <div className="flex-1" />
-          <Button onClick={onClose} variant="secondary">
-            Cancel
-          </Button>
-          <Button onClick={handleSave} variant="outline">
-            Save
-          </Button>
+          )}
         </div>
       </div>
-    </Modal>
+    </div>
   )
 }

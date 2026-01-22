@@ -236,7 +236,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   }
 
   return (
-    <div className={`${compact ? 'pb-4 px-6' : 'pt-8 px-6 pb-12'} ${
+    <div className={`${compact ? 'py-4 px-6' : 'pt-8 px-6 pb-12'} ${
       theme === 'dark'
         ? `${hideBorder ? 'bg-transparent' : 'bg-juice-dark/95'}`
         : `${hideBorder ? 'bg-transparent' : 'bg-white/95'}`
