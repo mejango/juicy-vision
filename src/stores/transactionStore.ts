@@ -8,6 +8,7 @@ export type PaymentStage =
   | 'approving'     // Waiting for USDC→Permit2 approval tx
   | 'signing'       // Waiting for Permit2 signature
   | 'submitting'    // Sending the pay transaction
+  | 'confirming'    // Waiting for transaction to be mined
 
 export type TransactionStatus = 'pending' | 'submitted' | 'confirmed' | 'failed' | 'cancelled'
 
@@ -37,9 +38,18 @@ export interface Transaction {
   error?: string
   createdAt: number
   updatedAt: number
+  confirmedAt?: number
   // NFT minting fields
   tierId?: number
   quantity?: number
+  // Receipt data from blockchain
+  receipt?: {
+    blockNumber: number
+    blockHash: string
+    gasUsed: string
+    effectiveGasPrice: string
+    status: 'success' | 'reverted'
+  }
 }
 
 interface TransactionState {

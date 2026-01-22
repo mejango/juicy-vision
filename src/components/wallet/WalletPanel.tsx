@@ -22,6 +22,7 @@ export interface PaymentContext {
   chainName: string
   projectName?: string
   onContinue?: () => void // Called when user is ready to proceed with payment
+  onSwitchChain?: (chainId: number, chainName: string) => void // Called when switching to a different chain
 }
 
 interface WalletPanelProps {
@@ -419,11 +420,20 @@ function EmailAuth({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =>
   )
 }
 
+// Insufficient funds info for the modal title
+export interface InsufficientFundsInfo {
+  amount: string
+  token: 'ETH' | 'USDC'
+  chainName: string
+  hasAlternatives: boolean
+}
+
 // Connected wallet view (self-custody) with multi-chain balances
-function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext }: {
+function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsufficientFundsChange }: {
   onTopUp: () => void
   onDisconnect: () => void
   paymentContext?: PaymentContext
+  onInsufficientFundsChange?: (info: InsufficientFundsInfo | null) => void
 }) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -494,6 +504,40 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext }: {
   useEffect(() => {
     fetchAllBalances()
   }, [fetchAllBalances])
+
+  // Report insufficient funds state to parent for title change
+  useEffect(() => {
+    if (!onInsufficientFundsChange || loading || !paymentContext) {
+      return
+    }
+
+    const requiredAmount = parseFloat(paymentContext.amount)
+    const targetChainBalance = balances.find(b => b.chainId === paymentContext.chainId)
+    const availableOnTarget = paymentContext.token === 'ETH'
+      ? parseFloat(targetChainBalance?.eth || '0')
+      : parseFloat(targetChainBalance?.usdc || '0')
+    const hasSufficientFunds = availableOnTarget >= requiredAmount
+
+    // Find chains with sufficient funds for alternatives (excluding current chain)
+    const chainsWithFunds = balances.filter(b => {
+      if (b.chainId === paymentContext.chainId) return false
+      const available = paymentContext.token === 'ETH'
+        ? parseFloat(b.eth || '0')
+        : parseFloat(b.usdc || '0')
+      return available >= requiredAmount
+    })
+
+    if (!hasSufficientFunds) {
+      onInsufficientFundsChange({
+        amount: paymentContext.amount,
+        token: paymentContext.token,
+        chainName: paymentContext.chainName,
+        hasAlternatives: chainsWithFunds.length > 0,
+      })
+    } else {
+      onInsufficientFundsChange(null)
+    }
+  }, [balances, loading, paymentContext, onInsufficientFundsChange])
 
   if (!address) return null
 
@@ -582,8 +626,9 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext }: {
           : parseFloat(targetChainBalance?.usdc || '0')
         const hasSufficientFunds = availableOnTarget >= requiredAmount
 
-        // Find chains with sufficient funds for alternatives
+        // Find chains with sufficient funds for alternatives (excluding current chain)
         const chainsWithFunds = balances.filter(b => {
+          if (b.chainId === paymentContext.chainId) return false
           const available = paymentContext.token === 'ETH'
             ? parseFloat(b.eth || '0')
             : parseFloat(b.usdc || '0')
@@ -592,54 +637,60 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext }: {
 
         return (
           <div className="space-y-3">
-            {/* Payment summary */}
-            <div className={`p-3 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
-              <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {paymentContext.projectName ? `Pay ${paymentContext.projectName}` : 'Payment'}
-              </div>
-              <div className={`text-lg font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {paymentContext.amount} {paymentContext.token}
-              </div>
-              <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                on {paymentContext.chainName}
-              </div>
-            </div>
-
             {hasSufficientFunds ? (
-              <button
-                onClick={paymentContext.onContinue}
-                className="w-full py-2.5 text-sm font-medium bg-green-500 text-black hover:bg-green-600 transition-colors"
-              >
-                Continue to Payment
-              </button>
+              <>
+                {/* Payment summary - shown when we have funds */}
+                <div className={`p-3 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
+                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {paymentContext.projectName ? `Pay ${paymentContext.projectName}` : 'Payment'}
+                  </div>
+                  <div className={`text-lg font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {paymentContext.amount} {paymentContext.token}
+                  </div>
+                  <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    on {paymentContext.chainName}
+                  </div>
+                </div>
+                <button
+                  onClick={paymentContext.onContinue}
+                  className="w-full py-2.5 text-sm font-medium bg-green-500 text-black hover:bg-green-600 transition-colors"
+                >
+                  Continue to Payment
+                </button>
+              </>
             ) : (
-              <div className="space-y-2">
-                <div className={`p-2 text-xs ${isDark ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400' : 'bg-yellow-50 border border-yellow-200 text-yellow-700'}`}>
-                  Insufficient funds on {paymentContext.chainName}. You have {availableOnTarget.toFixed(4)} {paymentContext.token}.
+              <div className="space-y-3">
+                {/* Insufficient funds message */}
+                <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  You have <span className={isDark ? 'text-white' : 'text-gray-900'}>{availableOnTarget.toFixed(paymentContext.token === 'USDC' ? 2 : 4)} {paymentContext.token}</span> on {paymentContext.chainName}.
                 </div>
 
+                {/* Alternative chains - prominent buttons */}
                 {chainsWithFunds.length > 0 && (
-                  <div className="space-y-1">
-                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Pay from another chain:
+                  <div className="space-y-2">
+                    <div className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                      Try on another chain
                     </div>
                     {chainsWithFunds.map(chain => (
                       <button
                         key={chain.chainId}
                         onClick={() => {
-                          // TODO: Update payment context to use this chain
-                          window.dispatchEvent(new CustomEvent('juice:switch-payment-chain', {
-                            detail: { chainId: chain.chainId, chainName: chain.chainName }
-                          }))
+                          if (paymentContext.onSwitchChain) {
+                            paymentContext.onSwitchChain(chain.chainId, chain.chainName)
+                          } else {
+                            window.dispatchEvent(new CustomEvent('juice:switch-payment-chain', {
+                              detail: { chainId: chain.chainId, chainName: chain.chainName }
+                            }))
+                          }
                         }}
-                        className={`w-full py-2 px-3 text-sm border flex items-center justify-between transition-colors ${
+                        className={`w-full py-2.5 px-3 text-sm font-medium flex items-center justify-between transition-colors ${
                           isDark
-                            ? 'border-white/10 hover:border-green-500/50 hover:bg-green-500/10'
-                            : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
+                            ? 'bg-green-500/20 border border-green-500/50 text-green-400 hover:bg-green-500/30'
+                            : 'bg-green-50 border border-green-200 text-green-700 hover:bg-green-100'
                         }`}
                       >
-                        <span>{chain.chainName}</span>
-                        <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>
+                        <span>Pay on {chain.chainName}</span>
+                        <span className={isDark ? 'text-green-400/70' : 'text-green-600/70'}>
                           {paymentContext.token === 'ETH'
                             ? `${parseFloat(chain.eth).toFixed(4)} ETH`
                             : `${parseFloat(chain.usdc).toFixed(2)} USDC`
@@ -650,16 +701,28 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext }: {
                   </div>
                 )}
 
-                <button
-                  onClick={onTopUp}
-                  className={`w-full py-2 text-sm font-medium transition-colors ${
-                    isDark
-                      ? 'border border-white/20 text-white hover:border-white/40'
-                      : 'border border-gray-200 text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Top Up {paymentContext.chainName}
-                </button>
+                {/* Top up option */}
+                <div className="pt-1">
+                  {chainsWithFunds.length > 0 && (
+                    <div className={`text-xs text-center mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      or
+                    </div>
+                  )}
+                  <button
+                    onClick={onTopUp}
+                    className={`w-full py-2 text-sm font-medium transition-colors ${
+                      chainsWithFunds.length > 0
+                        ? isDark
+                          ? 'border border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+                          : 'border border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        : isDark
+                          ? 'bg-green-500/20 border border-green-500/50 text-green-400 hover:bg-green-500/30'
+                          : 'bg-green-50 border border-green-200 text-green-700 hover:bg-green-100'
+                    }`}
+                  >
+                    Top up your balance
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -946,6 +1009,21 @@ export default function WalletPanel({ isOpen, onClose, paymentContext }: WalletP
   const { disconnect } = useDisconnect()
 
   const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'auth_method' | 'email_auth' | 'wallet' | 'topup'>('select')
+  const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<InsufficientFundsInfo | null>(null)
+
+  // Clear insufficient funds info when view changes away from wallet
+  useEffect(() => {
+    if (view !== 'wallet' && view !== 'topup') {
+      setInsufficientFundsInfo(null)
+    }
+  }, [view])
+
+  // Clear insufficient funds info when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setInsufficientFundsInfo(null)
+    }
+  }, [isOpen])
 
   // Determine current state
   const isSelfCustodyConnected = mode === 'self_custody' && walletConnected
@@ -975,7 +1053,12 @@ export default function WalletPanel({ isOpen, onClose, paymentContext }: WalletP
       switch (currentView) {
         case 'select': return 'Connect to Pay'
         case 'self_custody': return 'Connect Wallet'
-        case 'wallet': return 'Confirm Payment'
+        case 'wallet':
+          // Show insufficient funds title if applicable
+          if (insufficientFundsInfo) {
+            return `You don't have ${insufficientFundsInfo.amount} ${insufficientFundsInfo.token} on ${insufficientFundsInfo.chainName}`
+          }
+          return 'Confirm Payment'
         case 'topup': return 'Add Funds'
         default: break
       }
@@ -1049,6 +1132,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext }: WalletP
           onTopUp={() => setView('topup')}
           onDisconnect={handleDisconnect}
           paymentContext={paymentContext}
+          onInsufficientFundsChange={setInsufficientFundsInfo}
         />
       )}
 

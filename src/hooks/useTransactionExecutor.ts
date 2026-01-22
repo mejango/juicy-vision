@@ -1,12 +1,18 @@
 import { useEffect, useCallback } from 'react'
 import { useAccount, useSwitchChain } from 'wagmi'
 import { getWalletClient } from 'wagmi/actions'
-import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, encodeAbiParameters, keccak256, toBytes, bytesToHex, type Hex, type Address, type Chain } from 'viem'
+import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, encodeAbiParameters, erc20Abi, type Hex, type Address, type Chain } from 'viem'
+import { ethers } from 'ethers'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useTransactionStore } from '../stores'
 import { wagmiConfig } from '../config/wagmi'
 import { USDC_ADDRESSES, type SupportedChainId } from '../constants'
-import { getPaymentTerminal, getPaymentTokenAddress } from '../utils'
+import { getPaymentTerminal } from '../utils'
+import {
+  createTransactionRecord,
+  updateTransactionRecord,
+  type TransactionReceipt,
+} from '../api/transactions'
 
 // Native token address for ETH payments
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
@@ -48,87 +54,6 @@ const PERMIT2_TYPES = {
   ],
 } as const
 
-// Chain configs
-const CHAINS: Record<number, Chain> = {
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
-}
-
-// Compute the permit2 metadata ID: bytes4(bytes20(target) ^ bytes20(keccak256("permit2")))
-// Uses byte arrays for proper alignment (matching Solidity's behavior)
-function computePermit2MetadataId(targetAddress: Address): Hex {
-  // Convert address to byte array (20 bytes)
-  const targetBytes = toBytes(targetAddress)
-  // Get first 20 bytes of keccak256("permit2")
-  const purposeHashFull = toBytes(keccak256(toBytes('permit2')))
-  const purposeBytes20 = purposeHashFull.slice(0, 20)
-  // XOR byte by byte
-  const xorResult = new Uint8Array(20)
-  for (let i = 0; i < 20; i++) {
-    xorResult[i] = targetBytes[i] ^ purposeBytes20[i]
-  }
-  // Take first 4 bytes
-  return bytesToHex(xorResult.slice(0, 4)) as Hex
-}
-
-// Build JB metadata with permit2 data
-// Format: 32B reserved | (id, offset) entries padded to 32B | data padded to 32B
-function buildPermit2Metadata(allowanceData: Hex, terminalAddress: Address): Hex {
-  const permit2Id = computePermit2MetadataId(terminalAddress)
-  // Reserved 32 bytes + one entry (4B id + 1B offset) + padding to 32B = 64 bytes before data
-  // Offset is 2 (after reserved word and lookup table word)
-  const offset = 2
-
-  // Build: 32B zeros | id (4B) | offset (1B) | padding (27B) | data (padded to 32B multiple)
-  const reserved = '00'.repeat(32) // 32 bytes of zeros (64 hex chars)
-  const lookupEntry = permit2Id.slice(2) + offset.toString(16).padStart(2, '0') + '00'.repeat(27)
-
-  // Pad allowance data to 32B multiple
-  const dataLen = (allowanceData.length - 2) / 2
-  const paddedLen = Math.ceil(dataLen / 32) * 32
-  const paddedData = allowanceData.slice(2).padEnd(paddedLen * 2, '0')
-
-  const result = ('0x' + reserved + lookupEntry + paddedData) as Hex
-  console.log('[TX] Permit2 metadata:', result.slice(0, 140) + '...')
-  console.log('[TX] Metadata length:', (result.length - 2) / 2, 'bytes')
-  return result
-}
-
-// Encode JBSingleAllowance struct
-function encodeJBSingleAllowance(
-  sigDeadline: bigint,
-  amount: bigint,
-  expiration: number,
-  nonce: number,
-  signature: Hex
-): Hex {
-  return encodeAbiParameters(
-    [
-      { type: 'uint256' },  // sigDeadline
-      { type: 'uint160' },  // amount
-      { type: 'uint48' },   // expiration
-      { type: 'uint48' },   // nonce
-      { type: 'bytes' },    // signature
-    ],
-    [sigDeadline, amount, expiration, nonce, signature]
-  )
-}
-
-interface PayEventDetail {
-  txId: string
-  projectId: string
-  chainId: number
-  amount: string
-  memo: string
-  token?: string
-  payUs: boolean
-  feeAmount: string
-  juicyProjectId: number
-  totalAmount: string
-}
-
 // ABI to read Permit2 allowance nonce
 const PERMIT2_ALLOWANCE_ABI = [
   {
@@ -147,6 +72,165 @@ const PERMIT2_ALLOWANCE_ABI = [
     ],
   },
 ] as const
+
+// ABI for Permit2.permit function (AllowanceTransfer flow)
+const PERMIT2_PERMIT_ABI = [
+  {
+    name: 'permit',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      {
+        name: 'permitSingle',
+        type: 'tuple',
+        components: [
+          {
+            name: 'details',
+            type: 'tuple',
+            components: [
+              { name: 'token', type: 'address' },
+              { name: 'amount', type: 'uint160' },
+              { name: 'expiration', type: 'uint48' },
+              { name: 'nonce', type: 'uint48' },
+            ],
+          },
+          { name: 'spender', type: 'address' },
+          { name: 'sigDeadline', type: 'uint256' },
+        ],
+      },
+      { name: 'signature', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+] as const
+
+// Chain configs
+const CHAINS: Record<number, Chain> = {
+  1: mainnet,
+  10: optimism,
+  8453: base,
+  42161: arbitrum,
+}
+
+// =============================================================================
+// Permit2 Metadata Encoding
+// =============================================================================
+
+/**
+ * Compute permit2 metadata ID
+ * Matches Solidity: bytes4(bytes20(target) ^ bytes20(keccak256(bytes("permit2"))))
+ *
+ * In Solidity, bytes4(bytes20_value) takes the FIRST 4 bytes of the bytes20.
+ * So we XOR the two 20-byte values and take the first 4 bytes of the result.
+ */
+function computePermit2MetadataId(targetAddress: Address): Hex {
+  const purposeHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('permit2'))
+
+  // bytes20 takes the FIRST 20 bytes of the hash
+  const purposeBytes20 = purposeHash.slice(0, 42)
+  const terminalBytes20 = targetAddress.toLowerCase()
+
+  // Convert to BigNumber for XOR
+  const purposeBN = ethers.BigNumber.from(purposeBytes20)
+  const terminalBN = ethers.BigNumber.from(terminalBytes20)
+  const xorResult = purposeBN.xor(terminalBN)
+
+  // Pad to exactly 40 hex chars (20 bytes) and take FIRST 4 bytes (8 hex chars)
+  const xorHex = xorResult.toHexString().slice(2).padStart(40, '0')
+  const first4Bytes = xorHex.slice(0, 8)
+
+  return ('0x' + first4Bytes) as Hex
+}
+
+/**
+ * Encode JBSingleAllowance struct for permit2 metadata.
+ * Must encode as a TUPLE to match Solidity's abi.encode(struct).
+ */
+function encodeJBSingleAllowance(
+  sigDeadline: bigint,
+  amount: bigint,
+  expiration: number,
+  nonce: number,
+  signature: Hex
+): Hex {
+  // Encode as a tuple (struct) - this matches Solidity's abi.encode(JBSingleAllowance)
+  return encodeAbiParameters(
+    [{
+      type: 'tuple',
+      components: [
+        { name: 'sigDeadline', type: 'uint256' },
+        { name: 'amount', type: 'uint160' },
+        { name: 'expiration', type: 'uint48' },
+        { name: 'nonce', type: 'uint48' },
+        { name: 'signature', type: 'bytes' },
+      ]
+    }],
+    [{
+      sigDeadline,
+      amount,
+      expiration: BigInt(expiration),
+      nonce: BigInt(nonce),
+      signature,
+    }]
+  )
+}
+
+/**
+ * Build JB metadata with permit2 data.
+ * Format matches JBMetadataResolver exactly:
+ * - 32B reserved (zeros)
+ * - Lookup table: (ID: 4B, offset: 1B) entries, padded to 32B
+ * - Data sections, each padded to 32B
+ *
+ * NO length prefix - JBMetadataResolver.getDataFor returns raw bytes by slicing
+ * between offset positions.
+ *
+ * For a single entry:
+ * - Word 0 (bytes 0-31): reserved zeros
+ * - Word 1 (bytes 32-63): lookup table (ID + offset) + padding
+ * - Word 2+ (bytes 64+): data (must be >= 32 bytes and padded to 32B)
+ * So offset = 2 (data starts at word 2 = byte 64)
+ */
+function buildPermit2Metadata(allowanceData: Hex, terminalAddress: Address): Hex {
+  const permit2Id = computePermit2MetadataId(terminalAddress)
+
+  // The raw data bytes (without 0x prefix)
+  const dataHex = allowanceData.slice(2)
+  const dataBytes = dataHex.length / 2
+
+  // Data must be padded to 32-byte boundary (JBMetadataResolver requirement)
+  const paddedDataBytes = Math.ceil(dataBytes / 32) * 32
+  const paddedDataHex = dataHex.padEnd(paddedDataBytes * 2, '0')
+
+  // Build metadata:
+  // 1. Reserved word (32 bytes of zeros)
+  const reserved = '00'.repeat(32)
+
+  // 2. Lookup table: ID (4 bytes) + offset (1 byte) + padding (27 bytes)
+  // Offset = 2 (data starts at word 2 = byte 64)
+  const idHex = permit2Id.slice(2) // Remove 0x prefix
+  const offsetHex = '02' // Offset in words = 2
+  const lookupPadding = '00'.repeat(27) // Pad to 32 bytes total
+
+  // 3. Data section: padded data (NO length prefix)
+  const metadata = '0x' + reserved + idHex + offsetHex + lookupPadding + paddedDataHex
+
+  return metadata as Hex
+}
+
+interface PayEventDetail {
+  txId: string
+  projectId: string
+  chainId: number
+  amount: string
+  memo: string
+  token?: string
+  payUs: boolean
+  feeAmount: string
+  juicyProjectId: number
+  totalAmount: string
+}
 
 export function useTransactionExecutor() {
   const { address, isConnected } = useAccount()
@@ -177,7 +261,7 @@ export function useTransactionExecutor() {
   }, [])
 
   const executePayTransaction = useCallback(async (detail: PayEventDetail) => {
-    const { txId, projectId, chainId, amount, memo, payUs, feeAmount, juicyProjectId, token } = detail
+    const { txId, projectId, chainId, amount, memo, token } = detail
     const isUsdc = token === 'USDC'
 
     // Start with checking stage
@@ -185,7 +269,6 @@ export function useTransactionExecutor() {
 
     const chain = CHAINS[chainId]
     if (!chain) {
-      console.error('[TX] Unsupported chain:', chainId)
       updateTransaction(txId, { status: 'failed', error: 'Unsupported chain' })
       return
     }
@@ -193,7 +276,6 @@ export function useTransactionExecutor() {
     // For USDC, get the address for this chain
     const usdcAddress = isUsdc ? USDC_ADDRESSES[chainId as SupportedChainId] : null
     if (isUsdc && !usdcAddress) {
-      console.error('[TX] USDC not supported on chain:', chainId)
       updateTransaction(txId, { status: 'failed', error: 'USDC not supported on this chain' })
       return
     }
@@ -206,9 +288,7 @@ export function useTransactionExecutor() {
       transport: http(),
     })
 
-    // Dynamically detect which terminal to use by querying JBDirectory.primaryTerminalOf
-    // Returns JBSwapTerminal if no direct terminal exists for this token (cross-token payment)
-    // Returns JBMultiTerminal if project directly accepts this token
+    // Dynamically detect which terminal to use
     let terminalAddress: Address
     let terminalType: 'multi' | 'swap'
     try {
@@ -220,25 +300,21 @@ export function useTransactionExecutor() {
       )
       terminalAddress = terminal.address
       terminalType = terminal.type
-      console.log('[TX] Detected terminal:', terminalAddress, `(${terminalType})`)
     } catch (err) {
-      console.error('[TX] Failed to detect terminal:', err)
       updateTransaction(txId, { status: 'failed', error: 'Failed to detect payment terminal' })
       return
     }
 
-    // Get wallet client without chainId first (to check current state)
+    // Get wallet client
     let client
     try {
       client = await getWalletClient(wagmiConfig)
     } catch (err) {
-      console.error('[TX] Failed to get wallet client:', err)
       updateTransaction(txId, { status: 'failed', error: 'Wallet not connected' })
       return
     }
 
     if (!client || !client.account) {
-      console.error('[TX] Wallet not connected or client not ready')
       updateTransaction(txId, { status: 'failed', error: 'Wallet not ready' })
       return
     }
@@ -246,13 +322,28 @@ export function useTransactionExecutor() {
     const currentAddress = client.account.address
     const beneficiary = currentAddress as Address
 
+    // Create backend transaction record for persistent tracking
+    let backendTxId: string | null = null
+    try {
+      const backendTx = await createTransactionRecord({
+        chainId,
+        fromAddress: currentAddress,
+        toAddress: terminalAddress,
+        tokenAddress: isUsdc ? usdcAddress! : undefined,
+        amount: amount,
+        projectId,
+      })
+      backendTxId = backendTx.id
+    } catch (err) {
+      // Non-fatal: continue even if backend save fails
+    }
+
     try {
       // Switch to the correct chain if needed
       const currentChainId = await client.getChainId()
       if (currentChainId !== chainId) {
         updateTransaction(txId, { stage: 'switching' })
         await switchChainAsync({ chainId })
-        // Re-fetch client after chain switch
         client = await getWalletClient(wagmiConfig)
         if (!client) {
           throw new Error('Lost wallet connection after chain switch')
@@ -263,56 +354,37 @@ export function useTransactionExecutor() {
       const projectAmount = isUsdc
         ? parseUnits(amount, 6)
         : parseEther(amount)
-      const juicyFeeAmount = payUs
-        ? (isUsdc ? parseUnits(feeAmount, 6) : parseEther(feeAmount))
-        : 0n
-      const totalAmount = projectAmount + juicyFeeAmount
 
-      // For USDC payments, try Permit2 for gasless approval, fall back to regular approve
+      // For USDC payments, build permit2 metadata for single-tx flow
       let permit2Metadata: Hex = '0x'
-      let needsDirectApprove = false
 
       if (isUsdc) {
-        const { createPublicClient, http: viemHttp } = await import('viem')
-        const publicClient = createPublicClient({
-          chain,
-          transport: viemHttp(),
-        })
-
-        // For permit2, use the terminal address from primaryTerminalOf
-        // Projects should have the correct swap terminal registry registered in JBDirectory:
-        // - JBSwapTerminalRegistry (0x60b4...) for TOKEN_OUT = ETH
-        // - JBSwapTerminalUSDCRegistry (0x1ce4...) for TOKEN_OUT = USDC
-        // The terminal uses address(this) for permit2 ID calculation
-        const permit2TargetAddress: Address = terminalAddress
-
-        console.log('[TX] Permit2 target address:', permit2TargetAddress, `(terminalType: ${terminalType})`)
-
-        // Check if USDC is approved to Permit2 (required for Permit2 to work)
+        // Check if USDC is approved to Permit2
         const usdcToPermit2Allowance = await publicClient.readContract({
           address: usdcAddress!,
-          abi: [{ name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] }] as const,
+          abi: erc20Abi,
           functionName: 'allowance',
           args: [currentAddress, PERMIT2_ADDRESS],
         })
 
-        if (usdcToPermit2Allowance >= totalAmount) {
-          // Permit2 is enabled, use it
+        if (usdcToPermit2Allowance >= projectAmount) {
+          // Permit2 is enabled - use single-tx flow with metadata
           try {
             updateTransaction(txId, { stage: 'signing' })
 
+            // Get current nonce from Permit2
             const allowanceResult = await publicClient.readContract({
               address: PERMIT2_ADDRESS,
               abi: PERMIT2_ALLOWANCE_ABI,
               functionName: 'allowance',
-              args: [currentAddress, usdcAddress!, permit2TargetAddress],
+              args: [currentAddress, usdcAddress!, terminalAddress],
             })
-
             const currentNonce = Number(allowanceResult[2])
 
-            // Set permit expiration to 30 days from now, signature deadline to 30 minutes
-            const expiration = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
-            const sigDeadline = BigInt(Math.floor(Date.now() / 1000) + 30 * 60)
+            // Set permit expiration to 30 days, signature deadline to 30 minutes
+            const nowSeconds = Math.floor(Date.now() / 1000)
+            const expiration = nowSeconds + 30 * 24 * 60 * 60
+            const sigDeadline = BigInt(nowSeconds + 30 * 60)
 
             // Sign Permit2 message
             const signature = await client.signTypedData({
@@ -327,11 +399,11 @@ export function useTransactionExecutor() {
               message: {
                 details: {
                   token: usdcAddress!,
-                  amount: totalAmount,
+                  amount: projectAmount,
                   expiration: expiration,
                   nonce: currentNonce,
                 },
-                spender: permit2TargetAddress,
+                spender: terminalAddress,
                 sigDeadline: sigDeadline,
               },
             })
@@ -339,169 +411,105 @@ export function useTransactionExecutor() {
             // Encode JBSingleAllowance and build metadata
             const allowanceData = encodeJBSingleAllowance(
               sigDeadline,
-              totalAmount,
+              projectAmount,
               expiration,
               currentNonce,
               signature
             )
-            permit2Metadata = buildPermit2Metadata(allowanceData, permit2TargetAddress)
+
+            permit2Metadata = buildPermit2Metadata(allowanceData, terminalAddress)
+
           } catch (err) {
-            console.warn('[TX] Permit2 signing failed, falling back to direct approve:', err)
-            needsDirectApprove = true
+            // Signature failed, fall back to direct approve
+            permit2Metadata = '0x'
           }
-        } else {
-          // USDC not approved to Permit2, prompt for one-time Permit2 approval
-          console.log('[TX] USDC not approved to Permit2, prompting for approval')
-          updateTransaction(txId, { stage: 'approving' })
-
-          // First approve USDC to Permit2 (max uint256 for one-time unlimited approval)
-          await client.sendTransaction({
-            to: usdcAddress!,
-            data: encodeFunctionData({
-              abi: [{ name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }] as const,
-              functionName: 'approve',
-              args: [PERMIT2_ADDRESS, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
-            }),
-            value: 0n,
-            chain,
-            account: currentAddress,
-          })
-
-          // Now proceed with Permit2 signing
-          updateTransaction(txId, { stage: 'signing' })
-          const allowanceResult = await publicClient.readContract({
-            address: PERMIT2_ADDRESS,
-            abi: PERMIT2_ALLOWANCE_ABI,
-            functionName: 'allowance',
-            args: [currentAddress, usdcAddress!, permit2TargetAddress],
-          })
-
-          const currentNonce = Number(allowanceResult[2])
-          const expiration = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
-          const sigDeadline = BigInt(Math.floor(Date.now() / 1000) + 30 * 60)
-
-          const signature = await client.signTypedData({
-            account: currentAddress,
-            domain: {
-              name: 'Permit2',
-              chainId: chainId,
-              verifyingContract: PERMIT2_ADDRESS,
-            },
-            types: PERMIT2_TYPES,
-            primaryType: 'PermitSingle',
-            message: {
-              details: {
-                token: usdcAddress!,
-                amount: totalAmount,
-                expiration: expiration,
-                nonce: currentNonce,
-              },
-              spender: permit2TargetAddress,
-              sigDeadline: sigDeadline,
-            },
-          })
-
-          const allowanceData = encodeJBSingleAllowance(
-            sigDeadline,
-            totalAmount,
-            expiration,
-            currentNonce,
-            signature
-          )
-          permit2Metadata = buildPermit2Metadata(allowanceData, permit2TargetAddress)
         }
 
-        // Handle Permit2 signing failure - fall back to direct terminal approval
-        if (needsDirectApprove) {
-          await client.sendTransaction({
-            to: usdcAddress!,
-            data: encodeFunctionData({
-              abi: [{ name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }] as const,
-              functionName: 'approve',
-              args: [terminalAddress, totalAmount],
-            }),
-            value: 0n,
-            chain,
-            account: currentAddress,
+        // Fallback: if no permit2 metadata, use direct approve
+        if (permit2Metadata === '0x') {
+          const currentAllowance = await publicClient.readContract({
+            address: usdcAddress!,
+            abi: erc20Abi,
+            functionName: 'allowance',
+            args: [currentAddress, terminalAddress],
           })
+
+          if (currentAllowance < projectAmount) {
+            updateTransaction(txId, { stage: 'approving' })
+
+            const approveHash = await client.sendTransaction({
+              to: usdcAddress!,
+              data: encodeFunctionData({
+                abi: erc20Abi,
+                functionName: 'approve',
+                args: [terminalAddress, projectAmount],
+              }),
+              value: 0n,
+              chain,
+              account: currentAddress,
+            })
+
+            await publicClient.waitForTransactionReceipt({ hash: approveHash })
+          }
         }
       }
 
       // Update to submitting stage
       updateTransaction(txId, { stage: 'submitting' })
 
-      if (payUs && juicyFeeAmount > 0n) {
-        // Batched transaction: pay project + pay $JUICY
-        // For USDC with Permit2, only the first call needs the permit metadata
-        const calls = [
-          {
-            to: terminalAddress as Address,
-            data: buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, permit2Metadata),
-            value: isUsdc ? 0n : projectAmount,
-          },
-          {
-            to: terminalAddress as Address,
-            data: buildPayCallData(juicyProjectId, tokenAddress, juicyFeeAmount, beneficiary, 'juicy fee'),
-            value: isUsdc ? 0n : juicyFeeAmount,
-          },
-        ]
+      // Pay the project with permit2 metadata (terminal will call permit internally)
+      const payCallData = buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, permit2Metadata)
 
-        // Check if wallet supports batch calls (EIP-5792)
-        const clientWithBatch = client as typeof client & { sendCalls?: unknown }
-        if (typeof clientWithBatch.sendCalls === 'function') {
-          try {
-            const batchResult = await (clientWithBatch.sendCalls as (params: unknown) => Promise<{ id?: string }>)({
-              account: beneficiary,
-              chain,
-              calls,
-            })
+      const hash = await client.sendTransaction({
+        to: terminalAddress,
+        data: payCallData,
+        value: isUsdc ? 0n : projectAmount,
+        chain,
+        account: currentAddress,
+      })
 
-            updateTransaction(txId, {
-              hash: batchResult.id || String(batchResult),
-              status: 'submitted'
-            })
-            return
-          } catch {
-            // Batch not supported, falling back to sequential
-          }
+      // Update to submitted and start confirming stage
+      updateTransaction(txId, { hash, status: 'submitted', stage: 'confirming' })
+
+      // Update backend with hash
+      if (backendTxId) {
+        updateTransactionRecord(backendTxId, { status: 'submitted', txHash: hash }).catch(() => {})
+      }
+
+      // Wait for transaction receipt
+      try {
+        const receipt = await publicClient.waitForTransactionReceipt({ hash })
+
+        const receiptData: TransactionReceipt = {
+          blockNumber: Number(receipt.blockNumber),
+          blockHash: receipt.blockHash,
+          gasUsed: receipt.gasUsed.toString(),
+          effectiveGasPrice: receipt.effectiveGasPrice.toString(),
+          status: receipt.status,
         }
 
-        // Fallback: Sequential transactions
-        // First pay the project (with permit metadata for USDC)
-        const projectHash = await client.sendTransaction({
-          to: terminalAddress,
-          data: buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, permit2Metadata),
-          value: isUsdc ? 0n : projectAmount,
-          chain,
-          account: currentAddress,
+        updateTransaction(txId, {
+          status: receipt.status === 'success' ? 'confirmed' : 'failed',
+          stage: undefined,
+          confirmedAt: Date.now(),
+          receipt: receiptData,
+          ...(receipt.status === 'reverted' && { error: 'Transaction reverted' }),
         })
 
-        updateTransaction(txId, { hash: projectHash, status: 'submitted' })
-
-        // Then pay $JUICY (no permit needed, allowance already set by first tx)
-        await client.sendTransaction({
-          to: terminalAddress,
-          data: buildPayCallData(juicyProjectId, tokenAddress, juicyFeeAmount, beneficiary, 'juicy fee'),
-          value: isUsdc ? 0n : juicyFeeAmount,
-          chain,
-          account: currentAddress,
-        })
-      } else {
-        // Single transaction: just pay the project
-        const hash = await client.sendTransaction({
-          to: terminalAddress,
-          data: buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, permit2Metadata),
-          value: isUsdc ? 0n : projectAmount,
-          chain,
-          account: currentAddress,
-        })
-
-        updateTransaction(txId, { hash, status: 'submitted' })
+        // Update backend with receipt
+        if (backendTxId) {
+          updateTransactionRecord(backendTxId, {
+            status: receipt.status === 'success' ? 'confirmed' : 'failed',
+            receipt: receiptData,
+            ...(receipt.status === 'reverted' && { errorMessage: 'Transaction reverted' }),
+          }).catch(() => {})
+        }
+      } catch (receiptError) {
+        // Transaction was submitted but we couldn't confirm it
+        // Keep status as submitted so user can check explorer
       }
     } catch (error) {
-      console.error('Transaction failed:', error)
 
-      // Detect user rejection/cancellation
       const errorMessage = error instanceof Error ? error.message : String(error)
       const isCancelled = errorMessage.includes('rejected') ||
                           errorMessage.includes('denied') ||
@@ -509,10 +517,17 @@ export function useTransactionExecutor() {
                           errorMessage.includes('User rejected') ||
                           errorMessage.includes('user rejected')
 
-      if (isCancelled) {
-        updateTransaction(txId, { status: 'cancelled', error: 'Transaction cancelled' })
-      } else {
-        updateTransaction(txId, { status: 'failed', error: errorMessage.slice(0, 100) })
+      const status = isCancelled ? 'cancelled' : 'failed'
+      const errorMsg = isCancelled ? 'Transaction cancelled' : errorMessage.slice(0, 100)
+
+      updateTransaction(txId, { status, error: errorMsg })
+
+      // Update backend with error status
+      if (backendTxId) {
+        updateTransactionRecord(backendTxId, {
+          status,
+          errorMessage: errorMsg,
+        }).catch(() => {})
       }
     }
   }, [switchChainAsync, updateTransaction, buildPayCallData])

@@ -4,7 +4,7 @@ import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroupBalance, fetchOwnersCount, fetchEthPrice, fetchProjectTokenSymbol, fetchProjectWithRuleset, type Project, type ConnectedChain, type IssuanceRate, type SuckerGroupBalance } from '../../services/bendystraw'
 import { resolveIpfsUri, fetchIpfsMetadata, type IpfsProjectMetadata } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore, type PaymentStage, type TransactionStatus } from '../../stores'
-import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
+import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, CHAINS, type SupportedChainId } from '../../constants'
 
 // Parse HTML/markdown description to clean text with line breaks
 function parseDescription(html: string): string[] {
@@ -52,6 +52,7 @@ const STAGE_LABELS: Record<PaymentStage, string> = {
   approving: 'Approve USDC in wallet...',
   signing: 'Sign permit in wallet...',
   submitting: 'Confirm transaction...',
+  confirming: 'Waiting for confirmation...',
 }
 
 // Payment progress indicator component
@@ -59,25 +60,71 @@ function PaymentProgress({
   stage,
   status,
   error,
+  hash,
+  chainId,
   isDark,
   onRetry,
 }: {
   stage?: PaymentStage
   status: TransactionStatus
   error?: string
+  hash?: string
+  chainId: number
   isDark: boolean
   onRetry: () => void
 }) {
-  // Success state
-  if (status === 'submitted' || status === 'confirmed') {
+  // Get explorer link for transaction
+  const explorerLink = hash ? (CHAINS[chainId]?.explorerTx || 'https://etherscan.io/tx/') + hash : null
+
+  // Confirmed state - show success with checkmark
+  if (status === 'confirmed') {
     return (
-      <div className={`mt-2 p-2 text-sm flex items-center gap-2 ${
-        isDark ? 'bg-green-500/10 text-green-400' : 'bg-green-50 text-green-600'
+      <div className={`mt-2 p-2 text-sm ${
+        isDark ? 'bg-green-500/10' : 'bg-green-50'
       }`}>
-        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-        <span>Payment submitted!</span>
+        <div className={`flex items-center gap-2 ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span>Payment confirmed!</span>
+        </div>
+        {explorerLink && (
+          <a
+            href={explorerLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
+          >
+            View on explorer
+          </a>
+        )}
+      </div>
+    )
+  }
+
+  // Submitted/confirming state - show spinner and explorer link
+  if (status === 'submitted' || stage === 'confirming') {
+    return (
+      <div className={`mt-2 p-2 text-sm ${
+        isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'
+      }`}>
+        <div className={`flex items-center gap-2 ${isDark ? 'text-juice-cyan' : 'text-cyan-600'}`}>
+          <svg className="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span>Waiting for confirmation...</span>
+        </div>
+        {explorerLink && (
+          <a
+            href={explorerLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
+          >
+            View on explorer
+          </a>
+        )}
       </div>
     )
   }
@@ -99,6 +146,16 @@ function PaymentProgress({
             {error}
           </p>
         )}
+        {explorerLink && (
+          <a
+            href={explorerLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
+          >
+            View on explorer
+          </a>
+        )}
         <button
           onClick={onRetry}
           className={`mt-2 ml-6 text-xs underline ${
@@ -111,7 +168,7 @@ function PaymentProgress({
     )
   }
 
-  // In progress state
+  // In progress state (before submission)
   const stageLabel = stage ? STAGE_LABELS[stage] : 'Processing...'
   return (
     <div className={`mt-2 p-2 text-sm flex items-center gap-2 ${
@@ -412,13 +469,17 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
 
   // Handle payment status updates (clear form on success, reset paying on cancel)
   useEffect(() => {
-    if (activePayment?.status === 'submitted' || activePayment?.status === 'confirmed') {
-      // Payment succeeded - clear form and reset
+    if (activePayment?.status === 'confirmed') {
+      // Payment confirmed - clear form and reset
       setAmount('')
       setMemo('')
       setPaying(false)
-      // Keep activePaymentId for a moment so user can see success
-      setTimeout(() => setActivePaymentId(null), 3000)
+      // Keep activePaymentId visible for 5 seconds so user can see confirmation and access explorer link
+      setTimeout(() => setActivePaymentId(null), 5000)
+    } else if (activePayment?.status === 'submitted') {
+      // Payment submitted but not yet confirmed - reset paying state but keep form values
+      // and keep showing progress until confirmation
+      setPaying(false)
     } else if (activePayment?.status === 'cancelled' || activePayment?.status === 'failed') {
       // Payment cancelled/failed - keep form values, just reset paying state
       setPaying(false)
@@ -828,6 +889,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
             stage={activePayment.stage}
             status={activePayment.status}
             error={activePayment.error}
+            hash={activePayment.hash}
+            chainId={activePayment.chainId}
             isDark={isDark}
             onRetry={() => setActivePaymentId(null)}
           />

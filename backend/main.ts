@@ -16,6 +16,7 @@ import { localeRouter } from './src/routes/locale.ts';
 import { inviteRouter } from './src/routes/invite.ts';
 import { passkeyRouter } from './src/routes/passkey.ts';
 import { siweRouter } from './src/routes/siwe.ts';
+import { transactionsRouter } from './src/routes/transactions.ts';
 import { debugRouter, logDebugEvent } from './src/routes/debug.ts';
 import { getConfig } from './src/utils/config.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
@@ -116,6 +117,7 @@ app.route('/api/context', contextRouter);
 app.route('/api/locale', localeRouter);
 app.route('/api/chat', inviteRouter);
 app.route('/api/passkey', passkeyRouter);
+app.route('/api/transactions', transactionsRouter);
 app.route('/api/debug', debugRouter);
 
 // ============================================================================
