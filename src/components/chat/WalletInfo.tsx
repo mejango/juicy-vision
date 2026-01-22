@@ -25,7 +25,29 @@ export default function WalletInfo() {
   // User is "signed in" if they have a valid SIWE session
   const isSignedIn = hasValidWalletSession()
 
-  if (!isConnected || !address) return null
+  // Show connect button when not connected
+  if (!isConnected || !address) {
+    return (
+      <div className="flex gap-3 mt-2 px-6">
+        {/* Spacer to align with textarea */}
+        <div className="w-[48px] shrink-0" />
+        <div className={`flex-1 flex items-center text-xs ${
+          theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+        }`}>
+          <button
+            onClick={openWalletPanel}
+            className={`transition-colors ${
+              theme === 'dark'
+                ? 'text-gray-500 hover:text-gray-300'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            Connect account
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex gap-3 mt-2 px-6">

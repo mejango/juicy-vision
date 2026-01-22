@@ -394,13 +394,13 @@ function TransactionExecutor() {
   return null
 }
 
-// Welcome layout with gesture-based dock sliding
-// Drag handle at top of dock allows pulling up to reveal more content
+// Welcome layout with simplified dock pinning
+// Scroll down (pull up) pins dock to top with animation, scroll up returns to original position
 function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: string; theme: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   const mascotRef = useRef<HTMLDivElement>(null)
-  const offsetRef = useRef(0)
+  const isPinnedRef = useRef(false)
 
   useEffect(() => {
     const container = containerRef.current
@@ -408,121 +408,56 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
     const mascot = mascotRef.current
     if (!container || !dock) return
 
-    // Maximum offset is the full height of the recs section (62vh)
-    const maxOffset = window.innerHeight * 0.62
+    // Pinned height extends 4px beyond container to overlap top border
+    const pinnedHeight = 'calc(100% + 4px)'
+    const unpinnedHeight = '38vh'
 
-    const updateOffset = (delta: number): boolean => {
-      // Returns true if offset was changed, false if at limit
-      const currentOffset = offsetRef.current
-      const newOffset = Math.max(0, Math.min(maxOffset, currentOffset + delta))
-
-      if (newOffset === currentOffset) {
-        return false // At limit, couldn't change
-      }
-
-      offsetRef.current = newOffset
-      // Set CSS variable on container - both dock and mascot use this
-      container.style.setProperty('--dock-height', `calc(38vh + ${newOffset}px)`)
-      return true
+    const setPinned = (pinned: boolean) => {
+      if (isPinnedRef.current === pinned) return
+      isPinnedRef.current = pinned
+      container.style.setProperty('--dock-height', pinned ? pinnedHeight : unpinnedHeight)
     }
 
     const handleDockWheel = (e: WheelEvent) => {
       const scrollingDown = e.deltaY > 0
       const scrollingUp = e.deltaY < 0
-      const atMaxHeight = offsetRef.current >= maxOffset
-      const atMinHeight = offsetRef.current <= 0
 
-      // Find the scrollable content inside the dock - need to find the nested one in ChatContainer
-      // The outer .overflow-auto is a wrapper, the actual scroll happens on .overflow-y-auto inside
+      // Find the scrollable content inside the dock
       const outerWrapper = dock.querySelector('.overflow-auto')
       const scrollableContent = (outerWrapper?.querySelector('.overflow-y-auto') || outerWrapper) as HTMLElement
       const contentScrollTop = scrollableContent?.scrollTop || 0
-      const contentScrollMax = scrollableContent
-        ? scrollableContent.scrollHeight - scrollableContent.clientHeight
-        : 0
-      const contentAtTop = contentScrollTop <= 1 // Allow 1px tolerance
+      const contentAtTop = contentScrollTop <= 1
 
-      // WINDING UP: If scrolling down to grow dock
-      if (scrollingDown) {
-        // If dock can still grow, grow it
-        if (!atMaxHeight) {
-          const changed = updateOffset(e.deltaY)
-          if (changed) e.preventDefault()
-          return
-        }
-        // Dock at max - let content scroll down
+      // Scroll down while unpinned → pin (expand dock upward)
+      if (scrollingDown && !isPinnedRef.current) {
+        setPinned(true)
+        e.preventDefault()
         return
       }
 
-      // UNWINDING: If scrolling up to shrink dock
-      if (scrollingUp) {
-        // If content is scrolled down, let it scroll back up first
-        if (!contentAtTop) {
-          return // Let content scroll up
-        }
-        // Content at top - now shrink dock
-        if (!atMinHeight) {
-          const changed = updateOffset(e.deltaY)
-          if (changed) e.preventDefault()
-          return
-        }
-      }
-    }
-
-    // Handle wheel events on mascot panel - delegate to dock when at scroll limit
-    const handleMascotWheel = (e: WheelEvent) => {
-      if (!mascot) return
-
-      const scrollingDown = e.deltaY > 0
-      const scrollingUp = e.deltaY < 0
-      const atMaxHeight = offsetRef.current >= maxOffset
-      const atMinHeight = offsetRef.current <= 0
-
-      // Find scrollable content inside mascot panel
-      const scrollableContent = mascot.querySelector('.overflow-y-auto') as HTMLElement
-      if (!scrollableContent) return
-
-      const contentScrollTop = scrollableContent.scrollTop
-      const contentScrollMax = scrollableContent.scrollHeight - scrollableContent.clientHeight
-      const contentAtTop = contentScrollTop <= 1
-      const contentAtBottom = contentScrollTop >= contentScrollMax - 1
-
-      // Scrolling down: if mascot content at bottom, delegate to dock growth
-      if (scrollingDown && contentAtBottom) {
-        if (!atMaxHeight) {
-          const changed = updateOffset(e.deltaY)
-          if (changed) e.preventDefault()
-          return
-        }
-      }
-
-      // Scrolling up: if mascot content at top and dock is expanded, shrink dock
-      if (scrollingUp && contentAtTop) {
-        if (!atMinHeight) {
-          const changed = updateOffset(e.deltaY)
-          if (changed) e.preventDefault()
-          return
-        }
+      // Scroll up while at top and pinned → unpin (collapse dock)
+      if (scrollingUp && contentAtTop && isPinnedRef.current) {
+        setPinned(false)
+        e.preventDefault()
+        return
       }
     }
 
     dock.addEventListener('wheel', handleDockWheel, { passive: false })
-    mascot?.addEventListener('wheel', handleMascotWheel, { passive: false })
 
     return () => {
       dock.removeEventListener('wheel', handleDockWheel)
-      mascot?.removeEventListener('wheel', handleMascotWheel)
     }
   }, [])
 
   return (
     <div
       ref={containerRef}
-      className="relative h-full overflow-hidden"
+      className="relative h-full overflow-hidden border-t-4 border-juice-orange"
       style={{ '--dock-height': '38vh' } as React.CSSProperties}
     >
       {/* Recommendations - fills full area, extends behind mascot and dock */}
-      <div className="absolute top-0 left-0 right-0 bottom-0 overflow-hidden border-t-4 border-juice-orange">
+      <div className="absolute top-0 left-0 right-0 bottom-0 overflow-hidden">
         <Routes>
           <Route path="/" element={<MainContent topOnly forceActiveChatId={forceActiveChatId} />} />
           <Route path="*" element={<MainContent topOnly forceActiveChatId={forceActiveChatId} />} />
@@ -530,11 +465,10 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
       </div>
 
       {/* Mascot panel - overlays recommendations with translucent background */}
-      {/* Height is slightly less than 62vh to ensure top border stays visible within container */}
       <div
         ref={mascotRef}
-        className="hidden lg:flex lg:flex-col absolute right-0 w-[27.53%] z-20 border-t-4 border-l-4 border-juice-orange"
-        style={{ height: 'calc(62vh - 4px)', bottom: 'var(--dock-height)' }}
+        className="hidden lg:flex lg:flex-col absolute right-0 w-[27.53%] z-20 border-l-4 border-juice-orange transition-[bottom] duration-150 ease-out"
+        style={{ height: '62vh', bottom: 'var(--dock-height)' }}
       >
         <div className="flex-1 overflow-hidden">
           <MascotPanel
@@ -544,16 +478,13 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
       </div>
 
       {/* Bottom dock: scroll anywhere inside to slide up/down - translucent to show recommendations behind */}
-      {/* Position from top with max(0px) ensures border stays visible when dock reaches full height */}
       <div
         ref={dockRef}
-        className={`absolute inset-x-0 bottom-0 z-30 flex flex-col backdrop-blur-md ${
+        className={`absolute inset-x-0 bottom-0 z-30 flex flex-col backdrop-blur-md transition-[top] duration-150 ease-out border-t-4 border-juice-orange ${
           theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75'
         }`}
-        style={{ top: 'max(0px, calc(100% - var(--dock-height)))', bottom: 0 }}
+        style={{ top: 'calc(100% - var(--dock-height))', bottom: 0 }}
       >
-        {/* Top border - sticky at top of dock */}
-        <div className="h-[4px] bg-juice-orange shrink-0" />
         {/* Dock content */}
         <div className="flex-1 overflow-auto">
           <Routes>
