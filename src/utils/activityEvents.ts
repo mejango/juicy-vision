@@ -47,11 +47,6 @@ export function getEventInfo(event: ActivityEvent): EventInfo {
   // This is because some API responses incorrectly report currency: 1 for USDC projects
   const currency = decimals === 6 ? 2 : (event.project?.currency ?? 1)
 
-  // Debug: log project info for USDC detection issues
-  if (event.type === 'pay' && event.project?.name) {
-    console.log(`[Activity] ${event.project.name}: decimals=${event.project?.decimals}, currency=${event.project?.currency} -> using decimals=${decimals}, currency=${currency}`)
-  }
-
   switch (event.type) {
     case 'pay':
       return {

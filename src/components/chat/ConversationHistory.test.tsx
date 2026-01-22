@@ -3,10 +3,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import ConversationHistory from './ConversationHistory'
 import { useChatStore, useThemeStore, type Chat, type ChatMessage, type ChatFolder } from '../../stores'
-import * as multiChatApi from '../../services/multiChat'
+import * as chatApi from '../../services/chat'
 
 // Mock services
-vi.mock('../../services/multiChat', () => ({
+vi.mock('../../services/chat', () => ({
   pinChat: vi.fn(),
   moveChatToFolder: vi.fn(),
   renameChat: vi.fn(),
@@ -117,7 +117,7 @@ describe('ConversationHistory', () => {
     })
     useThemeStore.setState({ theme: 'dark' })
     vi.clearAllMocks()
-    vi.mocked(multiChatApi.fetchFolders).mockResolvedValue([])
+    vi.mocked(chatApi.fetchFolders).mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -524,7 +524,7 @@ describe('ConversationHistory', () => {
     })
 
     it('calls pinChat API when pinning', async () => {
-      vi.mocked(multiChatApi.pinChat).mockResolvedValue(
+      vi.mocked(chatApi.pinChat).mockResolvedValue(
         createMockChat({ isPinned: true, pinOrder: 1 })
       )
 
@@ -544,12 +544,12 @@ describe('ConversationHistory', () => {
       fireEvent.click(screen.getByText('Pin'))
 
       await waitFor(() => {
-        expect(multiChatApi.pinChat).toHaveBeenCalledWith('pin-test', true)
+        expect(chatApi.pinChat).toHaveBeenCalledWith('pin-test', true)
       })
     })
 
     it('calls moveChatToFolder API when moving', async () => {
-      vi.mocked(multiChatApi.moveChatToFolder).mockResolvedValue(
+      vi.mocked(chatApi.moveChatToFolder).mockResolvedValue(
         createMockChat({ folderId: 'target-folder' })
       )
 
@@ -584,7 +584,7 @@ describe('ConversationHistory', () => {
       fireEvent.click(moveTargetElements[moveTargetElements.length - 1])
 
       await waitFor(() => {
-        expect(multiChatApi.moveChatToFolder).toHaveBeenCalledWith('move-test', 'target-folder')
+        expect(chatApi.moveChatToFolder).toHaveBeenCalledWith('move-test', 'target-folder')
       })
     })
 
@@ -633,7 +633,7 @@ describe('ConversationHistory', () => {
     })
 
     it('calls renameChat API when saving', async () => {
-      vi.mocked(multiChatApi.renameChat).mockResolvedValue(
+      vi.mocked(chatApi.renameChat).mockResolvedValue(
         createMockChat({ name: 'New Name' })
       )
 
@@ -658,7 +658,7 @@ describe('ConversationHistory', () => {
       fireEvent.click(screen.getByText('Save'))
 
       await waitFor(() => {
-        expect(multiChatApi.renameChat).toHaveBeenCalledWith('rename-test', 'New Name')
+        expect(chatApi.renameChat).toHaveBeenCalledWith('rename-test', 'New Name')
       })
     })
 
@@ -740,7 +740,7 @@ describe('ConversationHistory', () => {
     })
 
     it('creates folder on Enter key', async () => {
-      vi.mocked(multiChatApi.createFolder).mockResolvedValue(
+      vi.mocked(chatApi.createFolder).mockResolvedValue(
         createMockFolder({ name: 'New Folder' })
       )
 
@@ -758,12 +758,12 @@ describe('ConversationHistory', () => {
       fireEvent.keyDown(input, { key: 'Enter' })
 
       await waitFor(() => {
-        expect(multiChatApi.createFolder).toHaveBeenCalledWith('New Folder')
+        expect(chatApi.createFolder).toHaveBeenCalledWith('New Folder')
       })
     })
 
     it('creates folder on Create button click', async () => {
-      vi.mocked(multiChatApi.createFolder).mockResolvedValue(
+      vi.mocked(chatApi.createFolder).mockResolvedValue(
         createMockFolder({ name: 'Button Folder' })
       )
 
@@ -781,7 +781,7 @@ describe('ConversationHistory', () => {
       fireEvent.click(screen.getByText('Create'))
 
       await waitFor(() => {
-        expect(multiChatApi.createFolder).toHaveBeenCalledWith('Button Folder')
+        expect(chatApi.createFolder).toHaveBeenCalledWith('Button Folder')
       })
     })
 
@@ -803,12 +803,12 @@ describe('ConversationHistory', () => {
         expect(screen.queryByPlaceholderText('Folder name...')).not.toBeInTheDocument()
       })
 
-      expect(multiChatApi.createFolder).not.toHaveBeenCalled()
+      expect(chatApi.createFolder).not.toHaveBeenCalled()
     })
 
     it('adds created folder to store', async () => {
       const newFolder = createMockFolder({ id: 'new-folder-1', name: 'Brand New' })
-      vi.mocked(multiChatApi.createFolder).mockResolvedValue(newFolder)
+      vi.mocked(chatApi.createFolder).mockResolvedValue(newFolder)
 
       const chat = createMockChat({
         messages: [createMockMessage('chat-1')],
@@ -844,7 +844,7 @@ describe('ConversationHistory', () => {
       fireEvent.change(input, { target: { value: '   ' } }) // whitespace only
       fireEvent.click(screen.getByText('Create'))
 
-      expect(multiChatApi.createFolder).not.toHaveBeenCalled()
+      expect(chatApi.createFolder).not.toHaveBeenCalled()
     })
   })
 
@@ -996,7 +996,7 @@ describe('ConversationHistory', () => {
   describe('API error handling', () => {
     it('handles pin error gracefully', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      vi.mocked(multiChatApi.pinChat).mockRejectedValue(new Error('Network error'))
+      vi.mocked(chatApi.pinChat).mockRejectedValue(new Error('Network error'))
 
       const chat = createMockChat({
         messages: [createMockMessage('chat-1')],
@@ -1019,7 +1019,7 @@ describe('ConversationHistory', () => {
 
     it('handles rename error gracefully', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      vi.mocked(multiChatApi.renameChat).mockRejectedValue(new Error('Network error'))
+      vi.mocked(chatApi.renameChat).mockRejectedValue(new Error('Network error'))
 
       const chat = createMockChat({
         name: 'Original',
@@ -1047,7 +1047,7 @@ describe('ConversationHistory', () => {
 
     it('handles create folder error gracefully', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      vi.mocked(multiChatApi.createFolder).mockRejectedValue(new Error('Network error'))
+      vi.mocked(chatApi.createFolder).mockRejectedValue(new Error('Network error'))
 
       const chat = createMockChat({
         messages: [createMockMessage('chat-1')],

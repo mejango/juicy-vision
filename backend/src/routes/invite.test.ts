@@ -466,7 +466,7 @@ Deno.test('Invite Routes - POST /invite/:code/join', async (t) => {
   });
 });
 
-Deno.test('Invite Routes - POST /multi-chat/:chatId/invites (create)', async (t) => {
+Deno.test('Invite Routes - POST /chat/:chatId/invites (create)', async (t) => {
   const app = new Hono();
 
   const CreateInviteSchema = z.object({
@@ -629,7 +629,7 @@ Deno.test('Invite Routes - POST /multi-chat/:chatId/invites (create)', async (t)
   });
 });
 
-Deno.test('Invite Routes - DELETE /multi-chat/:chatId/invites/:inviteId', async (t) => {
+Deno.test('Invite Routes - DELETE /chat/:chatId/invites/:inviteId', async (t) => {
   const app = new Hono();
 
   const chatMembers = new Map<string, Map<string, { role: string }>>([

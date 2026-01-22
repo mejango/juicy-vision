@@ -73,18 +73,25 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', a
   }
 
   return createPortal(
-    <div className="fixed z-50" style={popoverStyle}>
-      {/* Popover content */}
+    <>
+      {/* Backdrop - catches clicks outside popover */}
       <div
-        className={`
-          ${sizes[size]} max-h-[85vh] flex flex-col
-          border shadow-xl rounded-lg
-          ${isDark
-            ? 'bg-juice-dark border-white/20'
-            : 'bg-white border-gray-200'
-          }
-        `}
-      >
+        className="fixed inset-0 z-[49]"
+        onMouseDown={onClose}
+      />
+      <div className="fixed z-50" style={popoverStyle}>
+        {/* Popover content */}
+        <div
+          className={`
+            relative ${sizes[size]} max-h-[85vh] flex flex-col
+            border shadow-xl
+            ${isDark
+              ? 'bg-juice-dark border-white/20'
+              : 'bg-white border-gray-200'
+            }
+          `}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
         {/* Header */}
         {title && (
           <div className={`flex items-center justify-between px-4 py-3 border-b shrink-0 ${
@@ -110,8 +117,9 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', a
         <div className="p-4 overflow-y-auto">
           {children}
         </div>
+        </div>
       </div>
-    </div>,
+    </>,
     document.body
   )
 }

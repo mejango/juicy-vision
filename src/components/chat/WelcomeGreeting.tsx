@@ -26,7 +26,7 @@ export default function WelcomeGreeting() {
   const [greetingKey] = useState(() => GREETING_KEYS[Math.floor(Math.random() * GREETING_KEYS.length)])
 
   return (
-    <div className="flex gap-3 px-6 pb-3">
+    <div className="flex gap-3 px-6 pb-1">
       {/* Spacer to align with textarea */}
       <div className="w-[48px] shrink-0" />
       <div className={`text-sm font-medium ${

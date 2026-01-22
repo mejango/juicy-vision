@@ -123,8 +123,6 @@ export async function discoverUniswapPool(
 
     const tokenAddress = projectTokenAddress as Address
 
-    console.log(`[AMM] Discovering pool for token ${tokenAddress} on chain ${chainId}, factory: ${factory}`)
-
     // Build list of quote tokens to check
     const quoteTokens: { token: QuoteToken; address: Address }[] = []
     if (weth) quoteTokens.push({ token: 'WETH', address: weth })
@@ -132,8 +130,6 @@ export async function discoverUniswapPool(
 
     // Try each quote token and fee tier to find a pool
     for (const { token: quoteToken, address: quoteAddress } of quoteTokens) {
-      console.log(`[AMM] Checking ${quoteToken} pools (${quoteAddress})...`)
-
       for (const fee of FEE_TIERS) {
         const poolAddress = await client.readContract({
           address: factory,
@@ -142,12 +138,9 @@ export async function discoverUniswapPool(
           args: [tokenAddress, quoteAddress, fee],
         })
 
-        console.log(`[AMM] ${quoteToken} fee tier ${fee}: pool = ${poolAddress}`)
-
         // Check if pool exists (not zero address)
         if (poolAddress && poolAddress !== '0x0000000000000000000000000000000000000000') {
           poolAddressCache.set(cacheKey, { address: poolAddress, timestamp: Date.now() })
-          console.log(`[AMM] Found ${quoteToken} pool at ${poolAddress} with fee ${fee}`)
           return {
             address: poolAddress,
             fee,
@@ -158,8 +151,6 @@ export async function discoverUniswapPool(
         }
       }
     }
-
-    console.log('[AMM] No pool found for token')
 
     // No pool found
     poolAddressCache.set(cacheKey, { address: null, timestamp: Date.now() })

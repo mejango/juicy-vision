@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
-import { createInvite, type ChatInvite, type CreateInviteParams } from '../../services/multiChat'
+import { createInvite, type ChatInvite, type CreateInviteParams } from '../../services/chat'
 
 export interface AnchorPosition {
   top: number
@@ -127,12 +128,18 @@ export default function InviteModal({
 
   if (!isOpen) return null
 
-  return (
-    <div className="fixed z-50" style={popoverStyle}>
-      {/* Popover */}
-      <div className={`w-80 p-4 border shadow-xl rounded-lg ${
-        isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
-      }`}>
+  return createPortal(
+    <>
+      {/* Backdrop - catches clicks outside popover */}
+      <div
+        className="fixed inset-0 z-[49]"
+        onClick={onClose}
+      />
+      <div className="fixed z-50" style={popoverStyle}>
+        {/* Popover */}
+        <div className={`w-80 p-4 border shadow-xl ${
+          isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+        }`}>
         {/* Close button */}
         <button
           onClick={onClose}
@@ -321,5 +328,7 @@ export default function InviteModal({
         )}
       </div>
     </div>
+    </>,
+    document.body
   )
 }

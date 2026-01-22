@@ -105,6 +105,7 @@
   },
   "chat": {
     "conspire": "Conspire",
+    "save": "Save",
     "export": "Export"
   },
   "note": {
@@ -153,15 +154,15 @@
     "tagline": "Fund Your Thing Your Way"
   },
   "juicyExplainer": {
-    "paragraph1": "$JUICY is the revenue token that powers this app. When you pay into Juicy Vision, you receive $JUICY tokens proportional to your contribution.",
-    "paragraph2": "As the balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business.",
-    "paragraph3": "We run extremely lean, but paying for LLM tokens is expensive for now. Revenue from the app mostly flows back to $JUICY holders, guaranteed. The more value created, the more everyone benefits. We're in this together.",
+    "paragraph1": "JUICY is the revenue token that powers this app. When you pay into Juicy Vision, you receive JUICY revnet tokens proportional to your payment.",
+    "paragraph2": "As Juicy's balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business.",
+    "paragraph3": "We run extremely lean, but paying for LLM tokens is expensive for now. Revenue from the app mostly flows back to JUICY holders, guaranteed. The more value created, the more everyone benefits. We're in this together.",
     "poweredBy": "Uses revnets, powered by Juicebox, secured by Ethereum, Optimism, Base, and Arbitrum."
   },
   "beta": {
-    "title": "How Juicy Vision Works",
+    "title": "What's to come",
     "supportUs": "Support Juicy Vision",
-    "comingSoon": "$JUICY coming soon. Currently using NANA."
+    "comingSoon": "JUICY coming soon. Currently using NANA."
   },
   "suggestions": {
     "whatIsJuicy": "What is Juicy?",
@@ -1068,7 +1069,7 @@
     "goingOnchain": "going onchain"
   },
   "dock": {
-    "askAbout": "or ask about any juicebox ecosystem project"
+    "askAbout": "or ask about ecosystem projects and tools"
   },
   "recommendations": {
     "fundMyStartup": "Fund my startup",

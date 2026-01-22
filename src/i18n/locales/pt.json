@@ -98,6 +98,8 @@
     "addNote": "Adicionar nota suculenta"
   },
   "chat": {
+    "conspire": "Conspirar",
+    "save": "Salvar",
     "invite": "Convidar",
     "export": "Exportar"
   },
@@ -1047,7 +1049,7 @@
     "goingOnchain": "ir onchain"
   },
   "dock": {
-    "askAbout": "ou pergunte sobre qualquer projeto do ecossistema juicebox"
+    "askAbout": "ou pergunte sobre projetos e ferramentas do ecossistema"
   },
   "recommendations": {
     "fundMyStartup": "Financiar minha startup",

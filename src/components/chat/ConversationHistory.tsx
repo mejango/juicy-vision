@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useChatStore, useThemeStore } from '../../stores'
@@ -13,7 +14,7 @@ import {
   updateFolderDetails,
   deleteFolder as deleteFolderApi,
   pinFolder,
-} from '../../services/multiChat'
+} from '../../services/chat'
 
 function formatTimeAgo(timestamp: string): string {
   const now = Date.now()
@@ -103,29 +104,22 @@ function ContextMenu({
   currentFolderId,
   isFolder,
 }: ContextMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose()
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [onClose])
-
   const availableFolders = folders.filter(f => f.id !== currentFolderId)
 
   return (
-    <div
-      ref={menuRef}
-      className={`fixed z-50 rounded-lg shadow-lg py-1 min-w-40 ${
-        theme === 'dark' ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
-      }`}
-      style={{ left: x, top: y }}
-      onClick={(e) => e.stopPropagation()}
-    >
+    <>
+      {/* Backdrop - catches clicks outside context menu */}
+      <div
+        className="fixed inset-0 z-[49]"
+        onClick={onClose}
+      />
+      <div
+        className={`fixed z-50 shadow-xl py-1 min-w-40 ${
+          theme === 'dark' ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+        }`}
+        style={{ left: x, top: y }}
+        onClick={(e) => e.stopPropagation()}
+      >
       {/* Pin/Unpin */}
       <button
         onClick={isPinned ? onUnpin : onPin}
@@ -209,6 +203,7 @@ function ContextMenu({
         Delete
       </button>
     </div>
+    </>
   )
 }
 
@@ -243,8 +238,8 @@ function RenameModal({ isOpen, currentName, onClose, onSave, theme }: RenameModa
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className={`rounded-lg p-4 min-w-72 ${
-          theme === 'dark' ? 'bg-gray-800' : 'bg-white'
+        className={`p-4 min-w-72 border shadow-xl ${
+          theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -387,18 +382,10 @@ export default function ConversationHistory() {
     return () => observer.disconnect()
   }, [hasMore, isLoading, chats.length, loadChats])
 
-  // Close folder popover on click outside
-  useEffect(() => {
-    if (!folderPopover) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (folderPopoverRef.current && !folderPopoverRef.current.contains(e.target as Node)) {
-        setFolderPopover(null)
-        setNewFolderName('')
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [folderPopover])
+  const closeFolderPopover = () => {
+    setFolderPopover(null)
+    setNewFolderName('')
+  }
 
   // Get organized data
   const pinnedFolders = getPinnedFolders()
@@ -680,52 +667,57 @@ export default function ConversationHistory() {
         </button>
       </div>
 
-      {/* Folder creation popover */}
-      {folderPopover && (
-        <div
-          ref={folderPopoverRef}
-          className={`fixed z-50 p-3 shadow-xl ${
-            theme === 'dark' ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
-          }`}
-          style={{
-            left: folderPopover.left,
-            ...(folderPopover.above
-              ? { bottom: window.innerHeight - folderPopover.top + 4 }
-              : { top: folderPopover.top + 4 }),
-          }}
-        >
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateFolder()
-                if (e.key === 'Escape') {
-                  setFolderPopover(null)
-                  setNewFolderName('')
-                }
-              }}
-              placeholder="Folder name..."
-              className={`w-40 px-3 py-1.5 text-sm border ${
-                theme === 'dark'
-                  ? 'bg-juice-dark-lighter border-white/10 text-white placeholder-gray-500 focus:border-white/30'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-gray-400'
-              } focus:outline-none`}
-              autoFocus
-            />
-            <button
-              onClick={handleCreateFolder}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors border ${
-                theme === 'dark'
-                  ? 'border-green-500 text-green-500 hover:bg-green-500/10'
-                  : 'border-green-600 text-green-600 hover:bg-green-600/10'
-              }`}
-            >
-              Create
-            </button>
+      {/* Folder creation popover - rendered via portal to escape backdrop-blur containing block */}
+      {folderPopover && createPortal(
+        <>
+          {/* Backdrop - catches clicks outside popover */}
+          <div
+            className="fixed inset-0 z-[49]"
+            onClick={closeFolderPopover}
+          />
+          <div
+            ref={folderPopoverRef}
+            className={`fixed z-50 p-3 shadow-xl ${
+              theme === 'dark' ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+            }`}
+            style={{
+              left: folderPopover.left,
+              ...(folderPopover.above
+                ? { bottom: window.innerHeight - folderPopover.top + 4 }
+                : { top: folderPopover.top + 4 }),
+            }}
+          >
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateFolder()
+                  if (e.key === 'Escape') closeFolderPopover()
+                }}
+                placeholder="Folder name..."
+                className={`w-40 px-3 py-1.5 text-sm border ${
+                  theme === 'dark'
+                    ? 'bg-juice-dark-lighter border-white/10 text-white placeholder-gray-500 focus:border-white/30'
+                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-gray-400'
+                } focus:outline-none`}
+                autoFocus
+              />
+              <button
+                onClick={handleCreateFolder}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors border ${
+                  theme === 'dark'
+                    ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+                    : 'border-green-600 text-green-600 hover:bg-green-600/10'
+                }`}
+              >
+                Create
+              </button>
+            </div>
           </div>
-        </div>
+        </>,
+        document.body
       )}
 
       {/* Chat and folder list */}

@@ -23,7 +23,7 @@ import {
   getMember,
   addMemberViaInvite,
   checkPermission,
-} from '../services/multiChat.ts';
+} from '../services/chat.ts';
 import { broadcastToChat } from '../services/websocket.ts';
 
 export const inviteRouter = new Hono();
@@ -125,7 +125,7 @@ const CreateInviteSchema = z.object({
 });
 
 /**
- * POST /multi-chat/:chatId/invites - Create an invite link
+ * POST /chat/:chatId/invites - Create an invite link
  */
 inviteRouter.post(
   '/:chatId/invites',
@@ -220,7 +220,7 @@ inviteRouter.post(
 );
 
 /**
- * GET /multi-chat/:chatId/invites - List invites for a chat
+ * GET /chat/:chatId/invites - List invites for a chat
  */
 inviteRouter.get(
   '/:chatId/invites',
@@ -242,7 +242,7 @@ inviteRouter.get(
 );
 
 /**
- * DELETE /multi-chat/:chatId/invites/:inviteId - Revoke an invite
+ * DELETE /chat/:chatId/invites/:inviteId - Revoke an invite
  */
 inviteRouter.delete(
   '/:chatId/invites/:inviteId',
@@ -412,7 +412,7 @@ inviteRouter.post(
 );
 
 /**
- * GET /multi-chat/:chatId/events - Get system events for chat
+ * GET /chat/:chatId/events - Get system events for chat
  */
 inviteRouter.get(
   '/:chatId/events',

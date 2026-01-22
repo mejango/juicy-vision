@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 import { signInWithPasskey, type PasskeyWallet } from '../../services/passkeyWallet'
@@ -102,23 +103,35 @@ export default function AuthOptionsModal({
     onWalletClick()
   }
 
-  return (
-    <div className="fixed z-50" style={popoverStyle}>
-      {/* Popover */}
-      <div className={`w-80 p-4 border shadow-xl rounded-lg ${
-        isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
-      }`}>
-        {/* Close button */}
-        <button
-          onClick={handleClose}
-          className={`absolute top-3 right-3 p-1 transition-colors ${
-            isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+  return createPortal(
+    <>
+      {/* Backdrop - catches clicks outside popover */}
+      <div
+        className="fixed inset-0 z-[49]"
+        onMouseDown={handleClose}
+      />
+      <div className="fixed z-50" style={popoverStyle}>
+        {/* Popover */}
+        <div
+          className={`relative w-80 p-4 border shadow-xl ${
+            isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
           }`}
+          onMouseDown={(e) => e.stopPropagation()}
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+          {/* Close button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              handleClose()
+            }}
+            className={`absolute top-3 right-3 p-1 transition-colors ${
+              isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
 
         <h2 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
           {title || t('auth.saveTitle', 'Save Your Chat')}
@@ -162,5 +175,7 @@ export default function AuthOptionsModal({
         </div>
       </div>
     </div>
+    </>,
+    document.body
   )
 }

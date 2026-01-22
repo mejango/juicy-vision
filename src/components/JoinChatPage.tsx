@@ -32,7 +32,7 @@ export default function JoinChatPage() {
           headers['Authorization'] = `Bearer ${token}`
         }
 
-        const response = await fetch(`${API_BASE_URL}/multi-chat/invite/${code}/join`, {
+        const response = await fetch(`${API_BASE_URL}/chat/invite/${code}/join`, {
           method: 'POST',
           headers,
         })

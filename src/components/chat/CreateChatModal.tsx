@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useChatStore } from '../../stores'
-import * as multiChatApi from '../../services/multiChat'
+import * as chatApi from '../../services/chat'
 
 interface CreateChatModalProps {
   isOpen: boolean
@@ -33,7 +33,7 @@ export default function CreateChatModal({
     setError(null)
 
     try {
-      const chat = await multiChatApi.createChat({
+      const chat = await chatApi.createChat({
         name: name.trim(),
         description: description.trim() || undefined,
         isPublic,
@@ -70,8 +70,8 @@ export default function CreateChatModal({
 
       {/* Modal */}
       <div
-        className={`relative w-full max-w-md mx-4 rounded-2xl shadow-xl ${
-          theme === 'dark' ? 'bg-[#1a1a1a]' : 'bg-white'
+        className={`relative w-full max-w-md mx-4 shadow-xl border ${
+          theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
         }`}
       >
         {/* Header */}
@@ -85,11 +85,11 @@ export default function CreateChatModal({
               theme === 'dark' ? 'text-white' : 'text-gray-900'
             }`}
           >
-            {t('multiChat.createChat', 'Create Chat')}
+            {t('chat.createChat', 'Create Chat')}
           </h2>
           <button
             onClick={handleClose}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`p-2 transition-colors ${
               theme === 'dark'
                 ? 'hover:bg-white/10 text-gray-400'
                 : 'hover:bg-gray-100 text-gray-500'
@@ -115,7 +115,7 @@ export default function CreateChatModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Error */}
           {error && (
-            <div className="p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">
+            <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-500 text-sm">
               {error}
             </div>
           )}
@@ -127,18 +127,18 @@ export default function CreateChatModal({
                 theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
               }`}
             >
-              {t('multiChat.chatName', 'Chat Name')}
+              {t('chat.chatName', 'Chat Name')}
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={t('multiChat.chatNamePlaceholder', 'My Project Chat')}
-              className={`w-full px-4 py-2.5 rounded-lg border transition-colors ${
+              placeholder={t('chat.chatNamePlaceholder', 'My Project Chat')}
+              className={`w-full px-4 py-2.5 border transition-colors ${
                 theme === 'dark'
-                  ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-juice-orange'
-                  : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-juice-orange'
-              } focus:outline-none focus:ring-1 focus:ring-juice-orange`}
+                  ? 'bg-juice-dark-lighter border-white/10 text-white placeholder-gray-500 focus:border-white/30'
+                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-gray-400'
+              } focus:outline-none`}
               required
               autoFocus
             />
@@ -151,7 +151,7 @@ export default function CreateChatModal({
                 theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
               }`}
             >
-              {t('multiChat.description', 'Description')}{' '}
+              {t('chat.description', 'Description')}{' '}
               <span className="text-gray-500 font-normal">
                 ({t('ui.optional', 'optional')})
               </span>
@@ -160,15 +160,15 @@ export default function CreateChatModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={t(
-                'multiChat.descriptionPlaceholder',
+                'chat.descriptionPlaceholder',
                 'What is this chat about?'
               )}
               rows={2}
-              className={`w-full px-4 py-2.5 rounded-lg border transition-colors resize-none ${
+              className={`w-full px-4 py-2.5 border transition-colors resize-none ${
                 theme === 'dark'
-                  ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-juice-orange'
-                  : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-juice-orange'
-              } focus:outline-none focus:ring-1 focus:ring-juice-orange`}
+                  ? 'bg-juice-dark-lighter border-white/10 text-white placeholder-gray-500 focus:border-white/30'
+                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-gray-400'
+              } focus:outline-none`}
             />
           </div>
 
@@ -188,7 +188,7 @@ export default function CreateChatModal({
                     theme === 'dark' ? 'text-white' : 'text-gray-900'
                   }`}
                 >
-                  {t('multiChat.publicChat', 'Public chat')}
+                  {t('chat.publicChat', 'Public chat')}
                 </div>
                 <div
                   className={`text-xs ${
@@ -196,7 +196,7 @@ export default function CreateChatModal({
                   }`}
                 >
                   {t(
-                    'multiChat.publicDescription',
+                    'chat.publicDescription',
                     'Anyone can discover and join this chat'
                   )}
                 </div>
@@ -217,7 +217,7 @@ export default function CreateChatModal({
                     theme === 'dark' ? 'text-white' : 'text-gray-900'
                   }`}
                 >
-                  {t('multiChat.encrypted', 'End-to-end encrypted')}
+                  {t('chat.encrypted', 'End-to-end encrypted')}
                 </div>
                 <div
                   className={`text-xs ${
@@ -225,7 +225,7 @@ export default function CreateChatModal({
                   }`}
                 >
                   {t(
-                    'multiChat.encryptedDescription',
+                    'chat.encryptedDescription',
                     'Messages are encrypted and only visible to members'
                   )}
                 </div>
@@ -239,10 +239,10 @@ export default function CreateChatModal({
               type="button"
               onClick={handleClose}
               disabled={isSubmitting}
-              className={`flex-1 py-2.5 px-4 rounded-lg font-medium transition-colors ${
+              className={`flex-1 py-2.5 px-4 font-medium transition-colors border ${
                 theme === 'dark'
-                  ? 'bg-white/10 text-white hover:bg-white/20'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'border-white/20 text-gray-300 hover:text-white hover:border-white/40'
+                  : 'border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400'
               } disabled:opacity-50`}
             >
               {t('ui.cancel', 'Cancel')}
@@ -250,7 +250,11 @@ export default function CreateChatModal({
             <button
               type="submit"
               disabled={isSubmitting || !name.trim()}
-              className="flex-1 py-2.5 px-4 rounded-lg font-medium bg-juice-orange text-white hover:bg-juice-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`flex-1 py-2.5 px-4 font-medium transition-colors border ${
+                theme === 'dark'
+                  ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+                  : 'border-green-600 text-green-600 hover:bg-green-600/10'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {isSubmitting
                 ? t('ui.creating', 'Creating...')

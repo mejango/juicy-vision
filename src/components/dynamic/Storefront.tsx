@@ -89,6 +89,13 @@ export default function Storefront({
   }, [tiers, selectedCategory, includeSoldOut, priceRange, sort])
 
   useEffect(() => {
+    // Skip fetch if no projectId provided
+    if (!projectId) {
+      setLoading(false)
+      setError(null)
+      return
+    }
+
     async function loadStorefront() {
       setLoading(true)
       setError(null)
@@ -127,6 +134,17 @@ export default function Storefront({
   }, [projectId, chainIdNum])
 
   const logoUrl = project ? resolveIpfsUri(project.logoUri) : null
+
+  // Handle missing projectId - must be after all hooks
+  if (!projectId) {
+    return (
+      <div className={`max-w-4xl p-4 border text-center ${
+        isDark ? 'bg-juice-dark-lighter border-gray-600 text-gray-400' : 'bg-white border-gray-300 text-gray-500'
+      }`}>
+        No project specified. Ask me to show a storefront for a specific project.
+      </div>
+    )
+  }
 
   if (loading) {
     return (

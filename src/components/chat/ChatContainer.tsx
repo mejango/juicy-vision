@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useChatStore, useSettingsStore, useThemeStore, LANGUAGES, type Message, type Attachment, type ChatMessage, type ChatMember } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
 // Title generation now happens on backend
-import * as chatApi from '../../services/multiChat'
+import * as chatApi from '../../services/chat'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
@@ -13,7 +14,7 @@ import ConversationHistory from './ConversationHistory'
 import WalletInfo from './WalletInfo'
 import { SettingsPanel, PrivacySelector } from '../settings'
 import { stripComponents } from '../../utils/messageParser'
-import InviteModal from '../multiChat/InviteModal'
+import InviteModal from './InviteModal'
 import SaveModal from './SaveModal'
 import AuthOptionsModal from './AuthOptionsModal'
 // Migration no longer needed - all chats are on server
@@ -116,8 +117,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [isPromptStuck, setIsPromptStuck] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsAnchorPosition, setSettingsAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const settingsButtonRef = useRef<HTMLButtonElement | null>(null)
   const [langMenuOpen, setLangMenuOpen] = useState(false)
   const [langMenuPosition, setLangMenuPosition] = useState<{ top: number; right: number } | null>(null)
+  const langButtonRef = useRef<HTMLButtonElement | null>(null)
   const [showActionBar, setShowActionBar] = useState(true)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -135,6 +138,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [showBetaPopover, setShowBetaPopover] = useState(false)
   const [betaPopoverPosition, setBetaPopoverPosition] = useState<'above' | 'below'>('above')
   const [betaAnchorPosition, setBetaAnchorPosition] = useState<{ top: number; bottom: number; right: number } | null>(null)
+  const betaButtonRef = useRef<HTMLButtonElement | null>(null)
 
   // Close all popovers - call before opening a new one
   const closeAllPopovers = useCallback(() => {
@@ -219,7 +223,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     // Fall back to store only if prop is not available
     const currentChatId = forceActiveChatId || useChatStore.getState().activeChatId
 
-    // Check write permissions for existing multi-chats
+    // Check write permissions for existing shared chats
     if (currentChatId && !canWrite) {
       setError('You do not have permission to send messages in this chat')
       return
@@ -232,7 +236,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       let chatId = currentChatId
       const isNewChat = !chatId
 
-      // Create a new multi-chat if we don't have one
+      // Create a new shared chat if we don't have one
       if (!chatId) {
         const newChat = await chatApi.createChat({
           name: 'New Chat',
@@ -240,7 +244,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         })
         chatId = newChat.id
 
-        // Add to multi-chat store and set as active
+        // Add to shared chat store and set as active
         addChat(newChat)
         useChatStore.getState().setActiveChat(chatId)
 
@@ -261,7 +265,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         navigate(`/chat/${chatId}`, { replace: true })
       }
 
-      // Send the user's message through the multi-chat API
+      // Send the user's message through the shared chat API
       // This will broadcast via WebSocket to all connected clients
       // For new chats, the real message will replace the optimistic one
       await chatApi.sendMessage(chatId, content)
@@ -324,14 +328,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     }
   }, [])
 
-  // Load multi-chat data and connect WebSocket when activeChatId changes
+  // Load shared chat data and connect WebSocket when activeChatId changes
   useEffect(() => {
     if (!activeChatId) return
 
     let isMounted = true
     let cleanup: (() => void) | undefined
 
-    async function loadMultiChat() {
+    async function loadSharedChat() {
       setError(null)
 
       try {
@@ -358,7 +362,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         clearUnread(activeChatId!)
       } catch (err) {
         if (!isMounted) return
-        console.error('Failed to load multi-chat:', err)
+        console.error('Failed to load shared chat:', err)
         setError(err instanceof Error ? err.message : 'Failed to load chat')
         return
       }
@@ -454,11 +458,17 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             const leftData = msg.data as { address: string }
             useChatStore.getState().removeMember(targetChatId, leftData.address)
             break
+          case 'chat_update': {
+            // Handle chat metadata updates (e.g., auto-generated title)
+            const updates = msg.data as { autoGeneratedTitle?: string; name?: string }
+            useChatStore.getState().updateChat(targetChatId, updates)
+            break
+          }
         }
       })
     }
 
-    loadMultiChat()
+    loadSharedChat()
 
     return () => {
       isMounted = false
@@ -471,6 +481,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   // Listen for wallet panel open events - show wallet panel if connected, auth options if not
   useEffect(() => {
     const handleOpenWalletPanel = (event: CustomEvent<{ anchorPosition?: { top: number; left: number; width: number; height: number } }>) => {
+      // Toggle behavior: if wallet panel is already open, close it
+      if (showWalletPanel) {
+        setShowWalletPanel(false)
+        return
+      }
+
       closeAllPopovers()
       if (event.detail?.anchorPosition) {
         setWalletPanelAnchorPosition(event.detail.anchorPosition)
@@ -488,7 +504,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => {
       window.removeEventListener('juice:open-wallet-panel', handleOpenWalletPanel as EventListener)
     }
-  }, [isWalletConnected, closeAllPopovers])
+  }, [isWalletConnected, closeAllPopovers, showWalletPanel])
 
   // Listen for messages from dynamic components (e.g., recommendation chips)
   // Only listen if we're the instance with the input (bottomOnly or neither specified)
@@ -598,6 +614,63 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => container.removeEventListener('scroll', handleScroll)
   }, [messages.length])
 
+  // Update Beta popover position on scroll
+  useEffect(() => {
+    if (!showBetaPopover || !betaButtonRef.current) return
+
+    const updatePosition = () => {
+      const button = betaButtonRef.current
+      if (!button) return
+      const rect = button.getBoundingClientRect()
+      const isInBottomHalf = rect.top > window.innerHeight / 2
+      setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
+      setBetaAnchorPosition({
+        top: rect.bottom + 8,
+        bottom: window.innerHeight - rect.top + 8,
+        right: window.innerWidth - rect.right
+      })
+    }
+
+    // Update on any scroll event (capture phase to catch all scrolls)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => window.removeEventListener('scroll', updatePosition, true)
+  }, [showBetaPopover])
+
+  // Update language menu position on scroll
+  useEffect(() => {
+    if (!langMenuOpen || !langButtonRef.current) return
+
+    const updatePosition = () => {
+      const button = langButtonRef.current
+      if (!button) return
+      const rect = button.getBoundingClientRect()
+      setLangMenuPosition({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right
+      })
+    }
+
+    // Update on any scroll event (capture phase to catch all scrolls)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => window.removeEventListener('scroll', updatePosition, true)
+  }, [langMenuOpen])
+
+  // Update settings panel position on scroll
+  useEffect(() => {
+    if (!settingsOpen || !settingsButtonRef.current) return
+
+    const updatePosition = () => {
+      const button = settingsButtonRef.current
+      if (!button) return
+      const rect = button.getBoundingClientRect()
+      setSettingsAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+    }
+
+    // Update on any scroll event (capture phase to catch all scrolls)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => window.removeEventListener('scroll', updatePosition, true)
+  }, [settingsOpen])
+
   return (
     <div className="flex h-full overflow-hidden relative">
       {/* Main content area - chips, mascot, messages, input */}
@@ -630,8 +703,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 ref={dockRef}
                 className={`${bottomOnly ? 'max-h-full overflow-y-auto' : 'absolute bottom-0 left-0 right-0 z-30 h-[38vh] border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto ' + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
               >
-                {/* Greeting - positioned to put prompt at ~38% down the dock (38% of 38vh = 14.44vh total above prompt) */}
-                <div className="h-[10vh] flex flex-col justify-end">
+                {/* Greeting */}
+                <div className="h-[6vh] flex flex-col justify-end">
                   <WelcomeGreeting />
                 </div>
 
@@ -641,6 +714,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       {/* Language selector */}
                       <div className="relative">
                         <button
+                          ref={langButtonRef}
                           onClick={(e) => {
                             if (!langMenuOpen) {
                               const rect = e.currentTarget.getBoundingClientRect()
@@ -660,35 +734,43 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                         >
                           {LANGUAGES.find(l => l.code === language)?.native || 'English'}
                         </button>
-                        {langMenuOpen && langMenuPosition && (
-                          <div className={`fixed py-1 rounded shadow-lg border z-[100] ${
-                            theme === 'dark'
-                              ? 'bg-juice-dark border-white/20'
-                              : 'bg-white border-gray-200'
-                          }`}
-                          style={{ top: langMenuPosition.top, right: langMenuPosition.right }}
-                          >
-                            {LANGUAGES.map(lang => (
-                              <button
-                                key={lang.code}
-                                onClick={() => {
-                                  setLanguage(lang.code)
-                                  setLangMenuOpen(false)
-                                }}
-                                className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 whitespace-nowrap ${
-                                  language === lang.code
-                                    ? theme === 'dark' ? 'bg-white/10' : 'bg-gray-100'
-                                    : ''
-                                } ${
-                                  theme === 'dark'
-                                    ? 'hover:bg-white/10 text-gray-300'
-                                    : 'hover:bg-gray-100 text-gray-700'
-                                }`}
-                              >
-                                <span>{lang.native}</span>
-                              </button>
-                            ))}
-                          </div>
+                        {langMenuOpen && langMenuPosition && createPortal(
+                          <>
+                            {/* Backdrop - catches clicks outside menu */}
+                            <div
+                              className="fixed inset-0 z-[99]"
+                              onClick={() => setLangMenuOpen(false)}
+                            />
+                            <div className={`fixed py-1 shadow-lg border z-[100] ${
+                              theme === 'dark'
+                                ? 'bg-juice-dark border-white/20'
+                                : 'bg-white border-gray-200'
+                            }`}
+                            style={{ top: langMenuPosition.top, right: langMenuPosition.right }}
+                            >
+                              {LANGUAGES.map(lang => (
+                                <button
+                                  key={lang.code}
+                                  onClick={() => {
+                                    setLanguage(lang.code)
+                                    setLangMenuOpen(false)
+                                  }}
+                                  className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 whitespace-nowrap ${
+                                    language === lang.code
+                                      ? theme === 'dark' ? 'bg-white/10' : 'bg-gray-100'
+                                      : ''
+                                  } ${
+                                    theme === 'dark'
+                                      ? 'hover:bg-white/10 text-gray-300'
+                                      : 'hover:bg-gray-100 text-gray-700'
+                                  }`}
+                                >
+                                  <span>{lang.native}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </>,
+                          document.body
                         )}
                       </div>
                       {/* Theme toggle */}
@@ -713,6 +795,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       </button>
                       {/* Settings */}
                       <button
+                        ref={settingsButtonRef}
                         onClick={(e) => {
                           const rect = e.currentTarget.getBoundingClientRect()
                           closeAllPopovers()
@@ -759,12 +842,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                     <div className="flex gap-3">
                       <div className="w-[48px] shrink-0" />
                       <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {t('dock.askAbout', 'or ask about any juicebox ecosystem project')}
+                        {t('dock.askAbout', 'or ask about ecosystem projects and tools')}
                       </div>
                     </div>
-                    {/* Beta tag with popover */}
-                    <div className="relative">
+                    {/* Beta tag - popover rendered at component root */}
                     <button
+                      ref={betaButtonRef}
                       onClick={(e) => {
                         if (!showBetaPopover) {
                           closeAllPopovers()
@@ -779,81 +862,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                         }
                         setShowBetaPopover(!showBetaPopover)
                       }}
-                      className="px-2 py-0.5 text-xs font-semibold bg-yellow-400 hover:bg-yellow-300 text-gray-900 rounded transition-colors"
+                      className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
                     >
                       Beta
                     </button>
-                    {showBetaPopover && betaAnchorPosition && (
-                      <div
-                        className={`fixed w-72 p-4 border shadow-xl rounded-lg z-[100] ${
-                          theme === 'dark'
-                            ? 'bg-juice-dark border-white/20'
-                            : 'bg-white border-gray-200'
-                        }`}
-                        style={betaPopoverPosition === 'above'
-                          ? { bottom: betaAnchorPosition.bottom, right: betaAnchorPosition.right }
-                          : { top: betaAnchorPosition.top, right: betaAnchorPosition.right }
-                        }
-                      >
-                        <button
-                          onClick={() => setShowBetaPopover(false)}
-                          className={`absolute top-2 right-2 p-1 transition-colors ${
-                            theme === 'dark' ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
-                          }`}
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                        <h3 className={`text-sm font-semibold mb-2 pr-6 ${
-                          theme === 'dark' ? 'text-white' : 'text-gray-900'
-                        }`}>
-                          {t('beta.title', 'Juicy Vision')}
-                        </h3>
-                        <p className={`text-xs leading-relaxed mb-2 ${
-                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
-                        }`}>
-                          {t('beta.whatWeAreBuildingStart', "We're building a conversational interface to the ")}
-                          <a
-                            href="https://juicebox.money"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={theme === 'dark' ? 'text-juice-cyan hover:underline' : 'text-teal-600 hover:underline'}
-                          >
-                            Juicebox
-                          </a>
-                          {t('beta.whatWeAreBuildingEnd', ' protocol—a way to fund anything and anyone.')}
-                        </p>
-                        <p className={`text-xs leading-relaxed mb-2 ${
-                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
-                        }`}>
-                          {t('beta.whyBeta', "It's in beta because we're still working out the kinks. Expect bugs.")}
-                        </p>
-                        <p className={`text-xs leading-relaxed mb-3 ${
-                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
-                        }`}>
-                          {t('beta.whenNotBeta', "We'll drop the beta tag when the app is dependable—when it just works.")}
-                        </p>
-                        <div className="flex justify-end">
-                          <button
-                            onClick={() => {
-                              setShowBetaPopover(false)
-                              window.dispatchEvent(new CustomEvent('juice:send-message', {
-                                detail: { message: 'I want to pay project ID 1 (NANA)' }
-                              }))
-                            }}
-                            className={`px-3 py-1.5 text-xs font-medium border transition-colors rounded ${
-                              theme === 'dark'
-                                ? 'border-juice-cyan text-juice-cyan hover:bg-juice-cyan/10'
-                                : 'border-teal-600 text-teal-600 hover:bg-teal-50'
-                            }`}
-                          >
-                            {t('beta.payUs', 'Pay us')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    </div>
                   </div>
                 {/* Wallet info - scrolls away naturally */}
                 <div>
@@ -883,107 +895,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             {/* Min height: 38% of 38% of screen height = 14.44vh */}
             {(bottomOnly || (!topOnly && !bottomOnly)) && (
               <div
-                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0'} pt-2 backdrop-blur-sm flex flex-col justify-end transition-all duration-75 ${
+                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0'} backdrop-blur-sm flex flex-col justify-end transition-all duration-75 ${
                   theme === 'dark' ? 'bg-juice-dark/80' : 'bg-white/80'
                 }`}
               >
-                {/* Theme & Settings controls - floating above dock, no background */}
-                {/* Hidden when scrolling down (matching header behavior) */}
-                <div className={`absolute right-6 flex items-center gap-2 transition-all duration-75 ${
-                  showActionBar ? 'opacity-100 -top-8' : 'opacity-0 top-0 pointer-events-none'
+                {/* Theme & Settings row - above prompt, matches home page layout */}
+                <div className={`flex justify-end px-6 items-center gap-1 transition-opacity duration-75 ${
+                  showActionBar ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}>
-                  {/* Beta tag with popover */}
-                  <div className="relative">
-                    <button
-                      onClick={(e) => {
-                        if (!showBetaPopover) {
-                          closeAllPopovers()
-                          const rect = e.currentTarget.getBoundingClientRect()
-                          const isInBottomHalf = rect.top > window.innerHeight / 2
-                          setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
-                          setBetaAnchorPosition({
-                            top: rect.bottom + 8,
-                            bottom: window.innerHeight - rect.top + 8,
-                            right: window.innerWidth - rect.right
-                          })
-                        }
-                        setShowBetaPopover(!showBetaPopover)
-                      }}
-                      className="px-2 py-0.5 text-xs font-semibold bg-yellow-400 hover:bg-yellow-300 text-gray-900 rounded transition-colors"
-                    >
-                      Beta
-                    </button>
-                    {showBetaPopover && betaAnchorPosition && (
-                      <div
-                        className={`fixed w-72 p-4 border shadow-xl rounded-lg z-[100] ${
-                          theme === 'dark'
-                            ? 'bg-juice-dark border-white/20'
-                            : 'bg-white border-gray-200'
-                        }`}
-                        style={betaPopoverPosition === 'above'
-                          ? { bottom: betaAnchorPosition.bottom, right: betaAnchorPosition.right }
-                          : { top: betaAnchorPosition.top, right: betaAnchorPosition.right }
-                        }
-                      >
-                        <button
-                          onClick={() => setShowBetaPopover(false)}
-                          className={`absolute top-2 right-2 p-1 transition-colors ${
-                            theme === 'dark' ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
-                          }`}
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                        <h3 className={`text-sm font-semibold mb-2 pr-6 ${
-                          theme === 'dark' ? 'text-white' : 'text-gray-900'
-                        }`}>
-                          {t('beta.title', 'Juicy Vision')}
-                        </h3>
-                        <p className={`text-xs leading-relaxed mb-2 ${
-                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
-                        }`}>
-                          {t('beta.whatWeAreBuildingStart', "We're building a conversational interface to the ")}
-                          <a
-                            href="https://juicebox.money"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={theme === 'dark' ? 'text-juice-cyan hover:underline' : 'text-teal-600 hover:underline'}
-                          >
-                            Juicebox
-                          </a>
-                          {t('beta.whatWeAreBuildingEnd', ' protocol—a way to fund anything and anyone.')}
-                        </p>
-                        <p className={`text-xs leading-relaxed mb-2 ${
-                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
-                        }`}>
-                          {t('beta.whyBeta', "It's in beta because we're still working out the kinks. Expect bugs.")}
-                        </p>
-                        <p className={`text-xs leading-relaxed mb-3 ${
-                          theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
-                        }`}>
-                          {t('beta.whenNotBeta', "We'll drop the beta tag when the app is dependable—when it just works.")}
-                        </p>
-                        <div className="flex justify-end">
-                          <button
-                            onClick={() => {
-                              setShowBetaPopover(false)
-                              window.dispatchEvent(new CustomEvent('juice:send-message', {
-                                detail: { message: 'I want to pay project ID 1 (NANA)' }
-                              }))
-                            }}
-                            className={`px-3 py-1.5 text-xs font-medium border transition-colors rounded ${
-                              theme === 'dark'
-                                ? 'border-juice-cyan text-juice-cyan hover:bg-juice-cyan/10'
-                                : 'border-teal-600 text-teal-600 hover:bg-teal-50'
-                            }`}
-                          >
-                            {t('beta.payUs', 'Pay us')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                   {/* Theme toggle */}
                   <button
                     onClick={toggleTheme}
@@ -1006,6 +925,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   </button>
                   {/* Settings */}
                   <button
+                    ref={settingsButtonRef}
                     onClick={(e) => {
                       const rect = e.currentTarget.getBoundingClientRect()
                       closeAllPopovers()
@@ -1043,6 +963,28 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                     placeholder={isChatMode ? t('activeChat.typeMessage', 'Type a message...') : placeholder}
                     showDockButtons={!isChatMode}
                     onSettingsClick={() => setSettingsOpen(true)}
+                    walletInfoRightContent={
+                      <button
+                        ref={betaButtonRef}
+                        onClick={(e) => {
+                          if (!showBetaPopover) {
+                            closeAllPopovers()
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            const isInBottomHalf = rect.top > window.innerHeight / 2
+                            setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
+                            setBetaAnchorPosition({
+                              top: rect.bottom + 8,
+                              bottom: window.innerHeight - rect.top + 8,
+                              right: window.innerWidth - rect.right
+                            })
+                          }
+                          setShowBetaPopover(!showBetaPopover)
+                        }}
+                        className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
+                      >
+                        Beta
+                      </button>
+                    }
                   />
                 )}
               </div>
@@ -1050,49 +992,135 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           </>
         )}
       </div>
-      <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} anchorPosition={settingsAnchorPosition} />
+      {/* All modals only render in bottomOnly or full mode to avoid duplicates */}
+      {/* when topOnly and bottomOnly are both rendered in WelcomeLayout */}
+      {!topOnly && (
+        <>
+          <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} anchorPosition={settingsAnchorPosition} />
 
-      {/* Invite Modal - for authenticated users with server-side chats */}
-      {inviteChatId && (
-        <InviteModal
-          isOpen={showInviteModal}
-          onClose={() => {
-            setShowInviteModal(false)
-            setInviteChatId(null)
-          }}
-          chatId={inviteChatId}
-          chatName={inviteChatName}
-          canGrantAdmin={true}
-          canGrantInvitePermission={true}
-          anchorPosition={inviteAnchorPosition}
-        />
+          {/* Invite Modal - for authenticated users with server-side chats */}
+          {inviteChatId && (
+            <InviteModal
+              isOpen={showInviteModal}
+              onClose={() => {
+                setShowInviteModal(false)
+                setInviteChatId(null)
+              }}
+              chatId={inviteChatId}
+              chatName={inviteChatName}
+              canGrantAdmin={true}
+              canGrantInvitePermission={true}
+              anchorPosition={inviteAnchorPosition}
+            />
+          )}
+
+          {/* Local Share Modal removed - all chats are now server-synced */}
+
+          {/* Save Modal - for wallet-connected users */}
+          <SaveModal
+            isOpen={showSaveModal}
+            onClose={() => setShowSaveModal(false)}
+            anchorPosition={saveAnchorPosition}
+          />
+
+          {/* Auth Options Modal - for users not connected with wallet */}
+          <AuthOptionsModal
+            isOpen={showAuthOptionsModal}
+            onClose={() => setShowAuthOptionsModal(false)}
+            onWalletClick={() => setShowWalletPanel(true)}
+            onPasskeySuccess={handlePasskeySuccess}
+            title={authModalContext === 'connect' ? t('auth.connectTitle', 'Connect') : undefined}
+            description={authModalContext === 'connect' ? t('auth.connectDescription', 'Choose how to connect your account.') : undefined}
+          />
+
+          {/* Wallet Panel - for external wallet connection */}
+          <WalletPanel
+            isOpen={showWalletPanel}
+            onClose={() => setShowWalletPanel(false)}
+            anchorPosition={walletPanelAnchorPosition}
+          />
+        </>
       )}
 
-      {/* Local Share Modal removed - all chats are now server-synced */}
-
-      {/* Save Modal - for wallet-connected users */}
-      <SaveModal
-        isOpen={showSaveModal}
-        onClose={() => setShowSaveModal(false)}
-        anchorPosition={saveAnchorPosition}
-      />
-
-      {/* Auth Options Modal - for users not connected with wallet */}
-      <AuthOptionsModal
-        isOpen={showAuthOptionsModal}
-        onClose={() => setShowAuthOptionsModal(false)}
-        onWalletClick={() => setShowWalletPanel(true)}
-        onPasskeySuccess={handlePasskeySuccess}
-        title={authModalContext === 'connect' ? t('auth.connectTitle', 'Connect') : undefined}
-        description={authModalContext === 'connect' ? t('auth.connectDescription', 'Choose how to connect your account.') : undefined}
-      />
-
-      {/* Wallet Panel - for external wallet connection */}
-      <WalletPanel
-        isOpen={showWalletPanel}
-        onClose={() => setShowWalletPanel(false)}
-        anchorPosition={walletPanelAnchorPosition}
-      />
+      {/* Beta Popover - portaled to document.body to escape backdrop-filter containing block */}
+      {!topOnly && showBetaPopover && betaAnchorPosition && createPortal(
+        <>
+          {/* Backdrop - catches clicks outside popover */}
+          <div
+            className="fixed inset-0 z-[99]"
+            onClick={() => setShowBetaPopover(false)}
+          />
+          <div
+            className={`fixed w-72 p-4 border shadow-xl z-[100] ${
+              theme === 'dark'
+                ? 'bg-juice-dark border-white/20'
+                : 'bg-white border-gray-200'
+            }`}
+            style={betaPopoverPosition === 'above'
+              ? { bottom: betaAnchorPosition.bottom, right: betaAnchorPosition.right }
+              : { top: betaAnchorPosition.top, right: betaAnchorPosition.right }
+            }
+          >
+          <button
+            onClick={() => setShowBetaPopover(false)}
+            className={`absolute top-2 right-2 p-1 transition-colors ${
+              theme === 'dark' ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <h3 className={`text-sm font-semibold mb-2 pr-6 ${
+            theme === 'dark' ? 'text-white' : 'text-gray-900'
+          }`}>
+            {t('beta.title', "What's to come")}
+          </h3>
+          <p className={`text-xs leading-relaxed mb-2 ${
+            theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+          }`}>
+            {t('beta.whatWeAreBuildingStart', "Fund anything by anyone. A Juicy AI interface for open internet money that anyone can program, powered by ")}
+            <a
+              href="https://juicebox.money"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={theme === 'dark' ? 'text-juice-cyan hover:underline' : 'text-teal-600 hover:underline'}
+            >
+              Juicebox
+            </a>
+            {t('beta.whatWeAreBuildingEnd', '.')}
+          </p>
+          <p className={`text-xs leading-relaxed mb-2 ${
+            theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+          }`}>
+            {t('beta.whyBeta', "We're still working out the kinks. Expect bugs.")}
+          </p>
+          <p className={`text-xs leading-relaxed mb-3 ${
+            theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+          }`}>
+            {t('beta.whenNotBeta', "We'll drop the beta tag when it just works.")}
+          </p>
+          <div className="flex justify-end">
+            <button
+              onClick={() => {
+                setShowBetaPopover(false)
+                window.dispatchEvent(new CustomEvent('juice:send-message', {
+                  detail: { message: 'I want to pay project ID 1 (NANA)' }
+                }))
+              }}
+              className={`px-3 py-1.5 text-xs font-medium border transition-colors ${
+                theme === 'dark'
+                  ? 'border-juice-cyan text-juice-cyan hover:bg-juice-cyan/10'
+                  : 'border-teal-600 text-teal-600 hover:bg-teal-50'
+              }`}
+            >
+              {t('beta.payUs', 'Pay us')}
+            </button>
+          </div>
+        </div>
+        </>,
+        document.body
+      )}
     </div>
   )
 }

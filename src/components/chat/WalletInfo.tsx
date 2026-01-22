@@ -23,11 +23,6 @@ export default function WalletInfo() {
 
   if (!isConnected || !address) return null
 
-  const handleTopUp = (e: React.MouseEvent<HTMLButtonElement>) => {
-    // Open wallet panel to show funding options
-    openWalletPanel(e)
-  }
-
   return (
     <div className="flex gap-3 mt-2 px-6">
       {/* Spacer to align with textarea */}
@@ -35,7 +30,31 @@ export default function WalletInfo() {
       <div className={`flex-1 text-xs ${
         theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
       }`}>
-        <span>Connected as {ensName || shortenAddress(address)}</span>
+        <span>Connected as </span>
+        <button
+          onClick={openWalletPanel}
+          className={`transition-colors ${
+            theme === 'dark'
+              ? 'text-gray-500 hover:text-gray-300'
+              : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          {ensName || shortenAddress(address)}
+        </button>
+        {balancesLoading ? (
+          <span className="ml-2 opacity-50">Loading...</span>
+        ) : (
+          <button
+            onClick={openWalletPanel}
+            className={`ml-2 transition-colors ${
+              theme === 'dark'
+                ? 'text-gray-500 hover:text-gray-300'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            · {formatUsdcBalance(totalUsdc)} USDC · {formatEthBalance(totalEth)} ETH
+          </button>
+        )}
         <button
           onClick={() => disconnect()}
           className={`ml-2 transition-colors ${
@@ -46,23 +65,6 @@ export default function WalletInfo() {
         >
           · Disconnect
         </button>
-        {balancesLoading ? (
-          <span className="ml-2 opacity-50">Loading...</span>
-        ) : (
-          <>
-            <span className="ml-2">· {formatUsdcBalance(totalUsdc)} USDC · {formatEthBalance(totalEth)} ETH</span>
-            <button
-              onClick={handleTopUp}
-              className={`ml-2 transition-colors ${
-                theme === 'dark'
-                  ? 'text-juice-cyan/70 hover:text-juice-cyan'
-                  : 'text-teal-500 hover:text-teal-600'
-              }`}
-            >
-              · Top up
-            </button>
-          </>
-        )}
       </div>
     </div>
   )

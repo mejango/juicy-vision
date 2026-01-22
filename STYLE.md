@@ -242,6 +242,72 @@ Dark:  bg-juice-dark border-white/20
 Light: bg-white border-gray-200
 ```
 
+### Popovers
+
+All popovers must behave identically. No exceptions.
+
+**Positioning**:
+- Appears directly adjacent to trigger button (8px gap)
+- Shows above button if button is in lower half of viewport
+- Shows below button if button is in upper half of viewport
+- Right-aligned to button's right edge (for right-side buttons)
+
+**Scrolling**:
+- Popover position updates on scroll to stay anchored to trigger button
+- Use scroll listener with capture phase: `addEventListener('scroll', handler, true)`
+- Store ref to trigger button, recalculate position on scroll
+
+**Backdrop & Dismissal**:
+- Full-screen transparent backdrop (`fixed inset-0`) behind popover
+- Backdrop z-index one level below popover (e.g., `z-[99]` backdrop, `z-[100]` popover)
+- Click on backdrop closes popover
+- Nothing on page is clickable until popover is dismissed
+- Close button (X) in top-right corner of popover
+
+**Implementation Pattern**:
+```tsx
+// Trigger button stores ref and calculates position
+const buttonRef = useRef<HTMLButtonElement>(null)
+const [anchorPosition, setAnchorPosition] = useState<AnchorPosition | null>(null)
+
+// Scroll listener updates position
+useEffect(() => {
+  if (!isOpen || !buttonRef.current) return
+  const updatePosition = () => {
+    const rect = buttonRef.current!.getBoundingClientRect()
+    const isInBottomHalf = rect.top > window.innerHeight / 2
+    setAnchorPosition({
+      top: rect.bottom + 8,
+      bottom: window.innerHeight - rect.top + 8,
+      right: window.innerWidth - rect.right,
+      position: isInBottomHalf ? 'above' : 'below'
+    })
+  }
+  window.addEventListener('scroll', updatePosition, true)
+  return () => window.removeEventListener('scroll', updatePosition, true)
+}, [isOpen])
+
+// CRITICAL: Always use createPortal to escape containing blocks
+// (backdrop-filter, transform, etc. create new containing blocks that break position: fixed)
+return createPortal(
+  <>
+    <div className="fixed inset-0 z-[49]" onClick={onClose} />
+    <div className="fixed z-50" style={popoverStyle}>
+      {/* content */}
+    </div>
+  </>,
+  document.body
+)
+```
+
+**Styling**:
+```
+Dark:  bg-juice-dark border-white/20 shadow-xl
+Light: bg-white border-gray-200 shadow-xl
+```
+
+**No rounded corners.** Popovers follow the same sharp aesthetic as the rest of the app. Never add `rounded-lg` or any other border radius to popovers.
+
 ---
 
 ## Effects

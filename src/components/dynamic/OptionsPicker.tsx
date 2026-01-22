@@ -38,6 +38,9 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
   // Track if the picker has been submitted (to show idle state)
   const [hasSubmitted, setHasSubmitted] = useState(false)
 
+  // Optional memo/note from user
+  const [memo, setMemo] = useState('')
+
   // Initialize with pre-selected options or first option of each group
   const [selections, setSelections] = useState<Record<string, string | string[]>>(() => {
     const initial: Record<string, string | string[]> = {}
@@ -136,7 +139,12 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
       const selected = options.find(o => o.value === sel)
       return `${g.label}: ${selected?.label || sel}`
     })
-    const message = parts.join(', ')
+    let message = parts.join(', ')
+
+    // Append memo if provided
+    if (memo.trim()) {
+      message += `. Note: ${memo.trim()}`
+    }
 
     if (onSubmit) {
       onSubmit(selections as Record<string, string>)
@@ -359,24 +367,44 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                 return options.find(o => o.value === sel)?.label
               }).filter(Boolean).join(' · ')}
             </div>
-            <button
-              onClick={handleSubmit}
-              disabled={hasSubmitted}
-              className={`self-end px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
-                hasSubmitted
-                  ? isDark
-                    ? 'bg-transparent text-gray-500 border-gray-600 cursor-default'
-                    : 'bg-transparent text-gray-400 border-gray-300 cursor-default'
-                  : 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
-              }`}
-            >
-              {hasSubmitted ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  Thinking...
-                </span>
-              ) : buttonLabel}
-            </button>
+            {/* Optional memo input */}
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                value={memo}
+                onChange={(e) => setMemo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !hasSubmitted) {
+                    handleSubmit()
+                  }
+                }}
+                placeholder="Add something..."
+                disabled={hasSubmitted}
+                className={`flex-1 px-0 py-1 text-xs bg-transparent border-0 transition-colors outline-none ${
+                  isDark
+                    ? 'text-gray-300 placeholder-gray-600'
+                    : 'text-gray-600 placeholder-gray-400'
+                } ${hasSubmitted ? 'opacity-50' : ''}`}
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={hasSubmitted}
+                className={`shrink-0 px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
+                  hasSubmitted
+                    ? isDark
+                      ? 'bg-transparent text-gray-500 border-gray-600 cursor-default'
+                      : 'bg-transparent text-gray-400 border-gray-300 cursor-default'
+                    : 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
+                }`}
+              >
+                {hasSubmitted ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Thinking...
+                  </span>
+                ) : buttonLabel}
+              </button>
+            </div>
           </div>
         )
       })()}

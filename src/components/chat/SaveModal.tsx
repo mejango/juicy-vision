@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useAccount, useSignMessage } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
@@ -119,23 +120,29 @@ export default function SaveModal({ isOpen, onClose, onSaved, anchorPosition }: 
     }
   }
 
-  return (
-    <div className="fixed z-50" style={popoverStyle}>
-      {/* Popover */}
-      <div className={`w-80 p-4 border shadow-xl rounded-lg ${
-        isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
-      }`}>
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className={`absolute top-3 right-3 p-1 transition-colors ${
-            isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
-          }`}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+  return createPortal(
+    <>
+      {/* Backdrop - catches clicks outside popover */}
+      <div
+        className="fixed inset-0 z-[49]"
+        onClick={onClose}
+      />
+      <div className="fixed z-50" style={popoverStyle}>
+        {/* Popover */}
+        <div className={`w-80 p-4 border shadow-xl ${
+          isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+        }`}>
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            className={`absolute top-3 right-3 p-1 transition-colors ${
+              isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
 
         {/* Already saved state */}
         {alreadySaved && existingSession ? (
@@ -229,5 +236,7 @@ export default function SaveModal({ isOpen, onClose, onSaved, anchorPosition }: 
         )}
       </div>
     </div>
+    </>,
+    document.body
   )
 }

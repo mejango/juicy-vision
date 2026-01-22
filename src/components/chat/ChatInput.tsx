@@ -48,6 +48,7 @@ interface ChatInputProps {
   showDockButtons?: boolean
   onThemeClick?: () => void
   onSettingsClick?: () => void
+  walletInfoRightContent?: React.ReactNode
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15)
@@ -57,7 +58,7 @@ function shortenAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
 }
 
-export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick }: ChatInputProps) {
+export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick, walletInfoRightContent }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [isFirstLoad, setIsFirstLoad] = useState(true)
   const [placeholderIndex, setPlaceholderIndex] = useState(() =>
@@ -351,12 +352,14 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
 
       {/* Wallet status display */}
       {!hideWalletInfo && (
-        <div className="flex gap-3 mt-2 items-center">
+        <div className="flex gap-3 mt-3 items-center">
           {/* Spacer to align with textarea */}
           <div className="w-[48px] shrink-0" />
           <div className={`flex-1 text-xs ${
             theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
           }`}>
+            <div className="flex items-center justify-between">
+              <div>
             {isConnected && address ? (
               <>
                 <span className="inline-flex items-center gap-1.5">
@@ -435,6 +438,9 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                 Account not yet connected
               </button>
             )}
+              </div>
+              {walletInfoRightContent}
+            </div>
           </div>
         </div>
       )}

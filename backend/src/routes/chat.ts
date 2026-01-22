@@ -1,5 +1,5 @@
 /**
- * Multi-Person Chat API Routes
+ * Chat API Routes
  *
  * Supports both:
  * - Authenticated users (JWT token) with managed wallets
@@ -42,7 +42,7 @@ import {
   reorderPinnedFolders,
   type CreateChatParams,
   type JuicyRating,
-} from '../services/multiChat.ts';
+} from '../services/chat.ts';
 import {
   getAiBalanceStatus,
   canInvokeAi,
@@ -69,7 +69,7 @@ import {
 import { queryOne, execute } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
 
-const multiChatRouter = new Hono();
+const chatRouter = new Hono();
 
 // ============================================================================
 // Middleware - Wallet Session Auth
@@ -200,8 +200,8 @@ const CreateChatSchema = z.object({
   }).optional(),
 });
 
-// POST /multi-chat - Create a new chat
-multiChatRouter.post(
+// POST /chat - Create a new chat
+chatRouter.post(
   '/',
   optionalAuth,
   requireWalletOrAuth,
@@ -234,8 +234,8 @@ multiChatRouter.post(
   }
 );
 
-// GET /multi-chat - List user's chats (optionally filtered by folder)
-multiChatRouter.get(
+// GET /chat - List user's chats (optionally filtered by folder)
+chatRouter.get(
   '/',
   optionalAuth,
   requireWalletOrAuth,
@@ -267,16 +267,16 @@ multiChatRouter.get(
   }
 );
 
-// GET /multi-chat/public - Discover public chats
-multiChatRouter.get('/public', async (c) => {
+// GET /chat/public - Discover public chats
+chatRouter.get('/public', async (c) => {
   const limit = parseInt(c.req.query('limit') || '50', 10);
   const offset = parseInt(c.req.query('offset') || '0', 10);
   const chats = await getPublicChats(limit, offset);
   return c.json({ success: true, data: chats.map(serializeChat) });
 });
 
-// GET /multi-chat/:chatId - Get chat details
-multiChatRouter.get('/:chatId', optionalAuth, async (c) => {
+// GET /chat/:chatId - Get chat details
+chatRouter.get('/:chatId', optionalAuth, async (c) => {
   const chatId = c.req.param('chatId');
   const chat = await getChatById(chatId);
 
@@ -328,8 +328,8 @@ multiChatRouter.get('/:chatId', optionalAuth, async (c) => {
 // Member Management Routes
 // ============================================================================
 
-// GET /multi-chat/:chatId/members - Get members
-multiChatRouter.get(
+// GET /chat/:chatId/members - Get members
+chatRouter.get(
   '/:chatId/members',
   optionalAuth,
   async (c) => {
@@ -374,8 +374,8 @@ const AddMemberSchema = z.object({
   role: z.enum(['admin', 'member']).default('member'),
 });
 
-// POST /multi-chat/:chatId/members - Add member
-multiChatRouter.post(
+// POST /chat/:chatId/members - Add member
+chatRouter.post(
   '/:chatId/members',
   optionalAuth,
   requireWalletOrAuth,
@@ -401,8 +401,8 @@ multiChatRouter.post(
   }
 );
 
-// DELETE /multi-chat/:chatId/members/:address - Remove member
-multiChatRouter.delete(
+// DELETE /chat/:chatId/members/:address - Remove member
+chatRouter.delete(
   '/:chatId/members/:address',
   optionalAuth,
   requireWalletOrAuth,
@@ -421,7 +421,7 @@ multiChatRouter.delete(
   }
 );
 
-// PATCH /multi-chat/:chatId/members/:address - Update member permissions
+// PATCH /chat/:chatId/members/:address - Update member permissions
 const UpdatePermissionsSchema = z.object({
   role: z.enum(['admin', 'member']).optional(),
   canInvite: z.boolean().optional(),
@@ -429,7 +429,7 @@ const UpdatePermissionsSchema = z.object({
   canManageMembers: z.boolean().optional(),
 });
 
-multiChatRouter.patch(
+chatRouter.patch(
   '/:chatId/members/:address',
   optionalAuth,
   requireWalletOrAuth,
@@ -465,8 +465,8 @@ const SendMessageSchema = z.object({
   replyToId: z.string().uuid().optional(),
 });
 
-// POST /multi-chat/:chatId/messages - Send message
-multiChatRouter.post(
+// POST /chat/:chatId/messages - Send message
+chatRouter.post(
   '/:chatId/messages',
   optionalAuth,
   requireWalletOrAuth,
@@ -493,8 +493,8 @@ multiChatRouter.post(
   }
 );
 
-// GET /multi-chat/:chatId/messages - Get messages
-multiChatRouter.get('/:chatId/messages', optionalAuth, async (c) => {
+// GET /chat/:chatId/messages - Get messages
+chatRouter.get('/:chatId/messages', optionalAuth, async (c) => {
   const chatId = c.req.param('chatId');
   const limit = parseInt(c.req.query('limit') || '100', 10);
   const beforeId = c.req.query('before');
@@ -532,8 +532,8 @@ multiChatRouter.get('/:chatId/messages', optionalAuth, async (c) => {
   return c.json({ success: true, data: messages.map(serializeMessage) });
 });
 
-// DELETE /multi-chat/:chatId/messages/:messageId - Delete message
-multiChatRouter.delete(
+// DELETE /chat/:chatId/messages/:messageId - Delete message
+chatRouter.delete(
   '/:chatId/messages/:messageId',
   optionalAuth,
   requireWalletOrAuth,
@@ -555,8 +555,8 @@ multiChatRouter.delete(
 // AI Billing Routes
 // ============================================================================
 
-// GET /multi-chat/:chatId/ai/balance - Get AI balance
-multiChatRouter.get(
+// GET /chat/:chatId/ai/balance - Get AI balance
+chatRouter.get(
   '/:chatId/ai/balance',
   optionalAuth,
   async (c) => {
@@ -579,8 +579,8 @@ multiChatRouter.get(
   }
 );
 
-// GET /multi-chat/:chatId/ai/can-invoke - Check if AI can be invoked
-multiChatRouter.get(
+// GET /chat/:chatId/ai/can-invoke - Check if AI can be invoked
+chatRouter.get(
   '/:chatId/ai/can-invoke',
   optionalAuth,
   requireWalletOrAuth,
@@ -613,13 +613,13 @@ multiChatRouter.get(
   }
 );
 
-// GET /multi-chat/:chatId/ai/squeeze - Get payment data for "squeezing" the bot
+// GET /chat/:chatId/ai/squeeze - Get payment data for "squeezing" the bot
 const SqueezeSchema = z.object({
   chainId: z.coerce.number(),
   amount: z.string().optional(), // Amount in ETH
 });
 
-multiChatRouter.get(
+chatRouter.get(
   '/:chatId/ai/squeeze',
   optionalAuth,
   requireWalletOrAuth,
@@ -669,14 +669,14 @@ multiChatRouter.get(
   }
 );
 
-// POST /multi-chat/:chatId/ai/confirm-payment - Confirm payment
+// POST /chat/:chatId/ai/confirm-payment - Confirm payment
 const ConfirmPaymentSchema = z.object({
   txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
   chainId: z.number(),
   amountWei: z.string(),
 });
 
-multiChatRouter.post(
+chatRouter.post(
   '/:chatId/ai/confirm-payment',
   optionalAuth,
   requireWalletOrAuth,
@@ -711,8 +711,8 @@ multiChatRouter.post(
   }
 );
 
-// GET /multi-chat/:chatId/ai/history - Get billing history
-multiChatRouter.get(
+// GET /chat/:chatId/ai/history - Get billing history
+chatRouter.get(
   '/:chatId/ai/history',
   optionalAuth,
   requireWalletOrAuth,
@@ -731,12 +731,12 @@ multiChatRouter.get(
   }
 );
 
-// POST /multi-chat/:chatId/ai/invoke - Invoke AI to respond to the chat (streaming)
+// POST /chat/:chatId/ai/invoke - Invoke AI to respond to the chat (streaming)
 const InvokeAiSchema = z.object({
   prompt: z.string().min(1).max(10000),
 });
 
-multiChatRouter.post(
+chatRouter.post(
   '/:chatId/ai/invoke',
   optionalAuth,
   requireWalletOrAuth,
@@ -765,7 +765,7 @@ multiChatRouter.post(
 
       // Import services
       const { streamMessage } = await import('../services/claude.ts');
-      const { importMessage } = await import('../services/multiChat.ts');
+      const { importMessage } = await import('../services/chat.ts');
       const { streamAiToken, broadcastChatMessage } = await import('../services/websocket.ts');
 
       // Generate a message ID upfront for streaming
@@ -828,8 +828,8 @@ multiChatRouter.post(
 // IPFS Archival Routes
 // ============================================================================
 
-// POST /multi-chat/:chatId/archive - Archive chat to IPFS
-multiChatRouter.post(
+// POST /chat/:chatId/archive - Archive chat to IPFS
+chatRouter.post(
   '/:chatId/archive',
   optionalAuth,
   requireWalletOrAuth,
@@ -853,8 +853,8 @@ multiChatRouter.post(
   }
 );
 
-// GET /multi-chat/:chatId/archive - Get archive info
-multiChatRouter.get('/:chatId/archive', async (c) => {
+// GET /chat/:chatId/archive - Get archive info
+chatRouter.get('/:chatId/archive', async (c) => {
   const chatId = c.req.param('chatId');
   const cid = await getLatestArchiveCid(chatId);
 
@@ -871,8 +871,8 @@ multiChatRouter.get('/:chatId/archive', async (c) => {
   });
 });
 
-// GET /multi-chat/archive/:cid - Fetch archived chat
-multiChatRouter.get('/archive/:cid', async (c) => {
+// GET /chat/archive/:cid - Fetch archived chat
+chatRouter.get('/archive/:cid', async (c) => {
   const cid = c.req.param('cid');
 
   try {
@@ -893,8 +893,8 @@ const FeedbackSchema = z.object({
   customFeedback: z.string().max(500).optional(),
 });
 
-// POST /multi-chat/:chatId/feedback - Submit feedback
-multiChatRouter.post(
+// POST /chat/:chatId/feedback - Submit feedback
+chatRouter.post(
   '/:chatId/feedback',
   optionalAuth,
   requireWalletOrAuth,
@@ -924,13 +924,13 @@ multiChatRouter.post(
 // Chat Organization Routes (Pinning, Folders, Renaming)
 // ============================================================================
 
-// PATCH /multi-chat/:chatId/pin - Pin/unpin a chat
+// PATCH /chat/:chatId/pin - Pin/unpin a chat
 const PinChatSchema = z.object({
   isPinned: z.boolean(),
   pinOrder: z.number().optional(),
 });
 
-multiChatRouter.patch(
+chatRouter.patch(
   '/:chatId/pin',
   optionalAuth,
   requireWalletOrAuth,
@@ -961,12 +961,12 @@ multiChatRouter.patch(
   }
 );
 
-// PATCH /multi-chat/:chatId/folder - Move chat to folder
+// PATCH /chat/:chatId/folder - Move chat to folder
 const MoveChatSchema = z.object({
   folderId: z.string().uuid().nullable(),
 });
 
-multiChatRouter.patch(
+chatRouter.patch(
   '/:chatId/folder',
   optionalAuth,
   requireWalletOrAuth,
@@ -993,12 +993,12 @@ multiChatRouter.patch(
   }
 );
 
-// PATCH /multi-chat/:chatId/name - Rename a chat
+// PATCH /chat/:chatId/name - Rename a chat
 const RenameChatSchema = z.object({
   name: z.string().min(1).max(255),
 });
 
-multiChatRouter.patch(
+chatRouter.patch(
   '/:chatId/name',
   optionalAuth,
   requireWalletOrAuth,
@@ -1024,12 +1024,12 @@ multiChatRouter.patch(
   }
 );
 
-// POST /multi-chat/reorder-pinned - Reorder pinned chats
+// POST /chat/reorder-pinned - Reorder pinned chats
 const ReorderPinnedSchema = z.object({
   chatIds: z.array(z.string().uuid()),
 });
 
-multiChatRouter.post(
+chatRouter.post(
   '/reorder-pinned',
   optionalAuth,
   requireWalletOrAuth,
@@ -1052,8 +1052,8 @@ multiChatRouter.post(
 // Folder Routes
 // ============================================================================
 
-// GET /multi-chat/folders - Get user's folders
-multiChatRouter.get(
+// GET /chat/folders - Get user's folders
+chatRouter.get(
   '/folders',
   optionalAuth,
   requireWalletOrAuth,
@@ -1064,13 +1064,13 @@ multiChatRouter.get(
   }
 );
 
-// POST /multi-chat/folders - Create a folder
+// POST /chat/folders - Create a folder
 const CreateFolderSchema = z.object({
   name: z.string().min(1).max(255),
   parentFolderId: z.string().uuid().optional(),
 });
 
-multiChatRouter.post(
+chatRouter.post(
   '/folders',
   optionalAuth,
   requireWalletOrAuth,
@@ -1094,8 +1094,8 @@ multiChatRouter.post(
   }
 );
 
-// GET /multi-chat/folders/:folderId - Get folder details
-multiChatRouter.get(
+// GET /chat/folders/:folderId - Get folder details
+chatRouter.get(
   '/folders/:folderId',
   optionalAuth,
   requireWalletOrAuth,
@@ -1117,7 +1117,7 @@ multiChatRouter.get(
   }
 );
 
-// PATCH /multi-chat/folders/:folderId - Update folder
+// PATCH /chat/folders/:folderId - Update folder
 const UpdateFolderSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   parentFolderId: z.string().uuid().nullable().optional(),
@@ -1125,7 +1125,7 @@ const UpdateFolderSchema = z.object({
   pinOrder: z.number().optional(),
 });
 
-multiChatRouter.patch(
+chatRouter.patch(
   '/folders/:folderId',
   optionalAuth,
   requireWalletOrAuth,
@@ -1160,8 +1160,8 @@ multiChatRouter.patch(
   }
 );
 
-// DELETE /multi-chat/folders/:folderId - Delete folder
-multiChatRouter.delete(
+// DELETE /chat/folders/:folderId - Delete folder
+chatRouter.delete(
   '/folders/:folderId',
   optionalAuth,
   requireWalletOrAuth,
@@ -1189,13 +1189,13 @@ multiChatRouter.delete(
   }
 );
 
-// PATCH /multi-chat/folders/:folderId/pin - Pin/unpin a folder
+// PATCH /chat/folders/:folderId/pin - Pin/unpin a folder
 const PinFolderSchema = z.object({
   isPinned: z.boolean(),
   pinOrder: z.number().optional(),
 });
 
-multiChatRouter.patch(
+chatRouter.patch(
   '/folders/:folderId/pin',
   optionalAuth,
   requireWalletOrAuth,
@@ -1230,12 +1230,12 @@ multiChatRouter.patch(
   }
 );
 
-// POST /multi-chat/folders/reorder-pinned - Reorder pinned folders
+// POST /chat/folders/reorder-pinned - Reorder pinned folders
 const ReorderPinnedFoldersSchema = z.object({
   folderIds: z.array(z.string().uuid()),
 });
 
-multiChatRouter.post(
+chatRouter.post(
   '/folders/reorder-pinned',
   optionalAuth,
   requireWalletOrAuth,
@@ -1259,7 +1259,7 @@ multiChatRouter.post(
 // ============================================================================
 
 // Upgrade to WebSocket for real-time messaging
-multiChatRouter.get(
+chatRouter.get(
   '/:chatId/ws',
   upgradeWebSocket((c) => {
     const chatId = c.req.param('chatId');
@@ -1359,4 +1359,4 @@ function serializeMessage(message: any) {
   };
 }
 
-export { multiChatRouter };
+export { chatRouter };

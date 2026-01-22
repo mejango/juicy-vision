@@ -13,7 +13,7 @@ import { zValidator } from '@hono/zod-validator';
 // Schema Tests
 // ============================================================================
 
-Deno.test('MultiChat - Create Chat Schema', async (t) => {
+Deno.test('Chat - Create Chat Schema', async (t) => {
   const CreateChatSchema = z.object({
     name: z.string().min(1).max(100).optional(),
     description: z.string().max(500).optional(),
@@ -52,7 +52,7 @@ Deno.test('MultiChat - Create Chat Schema', async (t) => {
   });
 });
 
-Deno.test('MultiChat - Update Chat Schema', async (t) => {
+Deno.test('Chat - Update Chat Schema', async (t) => {
   const UpdateChatSchema = z.object({
     name: z.string().min(1).max(100).optional(),
     description: z.string().max(500).optional(),
@@ -73,7 +73,7 @@ Deno.test('MultiChat - Update Chat Schema', async (t) => {
   });
 });
 
-Deno.test('MultiChat - Send Message Schema', async (t) => {
+Deno.test('Chat - Send Message Schema', async (t) => {
   const SendMessageSchema = z.object({
     content: z.string().min(1).max(10000),
     replyToId: z.string().uuid().optional(),
@@ -115,7 +115,7 @@ Deno.test('MultiChat - Send Message Schema', async (t) => {
 // Mock Route Handler Tests
 // ============================================================================
 
-Deno.test('MultiChat Routes - GET /multi-chat (list my chats)', async (t) => {
+Deno.test('Chat Routes - GET /chat (list my chats)', async (t) => {
   const app = new Hono();
 
   // Mock data store
@@ -136,7 +136,7 @@ Deno.test('MultiChat Routes - GET /multi-chat (list my chats)', async (t) => {
     },
   ];
 
-  app.get('/multi-chat', (c) => {
+  app.get('/chat', (c) => {
     const authHeader = c.req.header('Authorization');
     const sessionId = c.req.header('X-Session-ID');
 
@@ -148,7 +148,7 @@ Deno.test('MultiChat Routes - GET /multi-chat (list my chats)', async (t) => {
   });
 
   await t.step('returns chats for authenticated user', async () => {
-    const res = await app.request('/multi-chat', {
+    const res = await app.request('/chat', {
       headers: { Authorization: 'Bearer valid-token' },
     });
 
@@ -159,7 +159,7 @@ Deno.test('MultiChat Routes - GET /multi-chat (list my chats)', async (t) => {
   });
 
   await t.step('returns chats for session user', async () => {
-    const res = await app.request('/multi-chat', {
+    const res = await app.request('/chat', {
       headers: { 'X-Session-ID': 'ses_abc123' },
     });
 
@@ -169,13 +169,13 @@ Deno.test('MultiChat Routes - GET /multi-chat (list my chats)', async (t) => {
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat');
+    const res = await app.request('/chat');
 
     assertEquals(res.status, 401);
   });
 });
 
-Deno.test('MultiChat Routes - POST /multi-chat (create chat)', async (t) => {
+Deno.test('Chat Routes - POST /chat (create chat)', async (t) => {
   const app = new Hono();
 
   const CreateChatSchema = z.object({
@@ -186,7 +186,7 @@ Deno.test('MultiChat Routes - POST /multi-chat (create chat)', async (t) => {
 
   let createdChats: any[] = [];
 
-  app.post('/multi-chat', zValidator('json', CreateChatSchema), (c) => {
+  app.post('/chat', zValidator('json', CreateChatSchema), (c) => {
     const authHeader = c.req.header('Authorization');
     const sessionId = c.req.header('X-Session-ID');
 
@@ -210,7 +210,7 @@ Deno.test('MultiChat Routes - POST /multi-chat (create chat)', async (t) => {
   });
 
   await t.step('creates chat with name', async () => {
-    const res = await app.request('/multi-chat', {
+    const res = await app.request('/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -227,7 +227,7 @@ Deno.test('MultiChat Routes - POST /multi-chat (create chat)', async (t) => {
   });
 
   await t.step('creates chat with all params', async () => {
-    const res = await app.request('/multi-chat', {
+    const res = await app.request('/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -248,7 +248,7 @@ Deno.test('MultiChat Routes - POST /multi-chat (create chat)', async (t) => {
   });
 
   await t.step('creates chat with session auth', async () => {
-    const res = await app.request('/multi-chat', {
+    const res = await app.request('/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -261,7 +261,7 @@ Deno.test('MultiChat Routes - POST /multi-chat (create chat)', async (t) => {
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat', {
+    const res = await app.request('/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Unauthorized Chat' }),
@@ -271,7 +271,7 @@ Deno.test('MultiChat Routes - POST /multi-chat (create chat)', async (t) => {
   });
 });
 
-Deno.test('MultiChat Routes - GET /multi-chat/:chatId (get single chat)', async (t) => {
+Deno.test('Chat Routes - GET /chat/:chatId (get single chat)', async (t) => {
   const app = new Hono();
 
   const mockChat = {
@@ -283,7 +283,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId (get single chat)', async 
     createdAt: new Date().toISOString(),
   };
 
-  app.get('/multi-chat/:chatId', (c) => {
+  app.get('/chat/:chatId', (c) => {
     const chatId = c.req.param('chatId');
 
     if (chatId === 'chat-123') {
@@ -305,7 +305,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId (get single chat)', async 
   });
 
   await t.step('returns public chat without auth', async () => {
-    const res = await app.request('/multi-chat/chat-123');
+    const res = await app.request('/chat/chat-123');
 
     assertEquals(res.status, 200);
     const json = await res.json();
@@ -314,19 +314,19 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId (get single chat)', async 
   });
 
   await t.step('returns 404 for unknown chat', async () => {
-    const res = await app.request('/multi-chat/unknown-chat');
+    const res = await app.request('/chat/unknown-chat');
 
     assertEquals(res.status, 404);
   });
 
   await t.step('returns 403 for private chat without auth', async () => {
-    const res = await app.request('/multi-chat/private-chat');
+    const res = await app.request('/chat/private-chat');
 
     assertEquals(res.status, 403);
   });
 
   await t.step('returns private chat with auth', async () => {
-    const res = await app.request('/multi-chat/private-chat', {
+    const res = await app.request('/chat/private-chat', {
       headers: { Authorization: 'Bearer valid-token' },
     });
 
@@ -336,7 +336,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId (get single chat)', async 
   });
 });
 
-Deno.test('MultiChat Routes - GET /multi-chat/:chatId/messages', async (t) => {
+Deno.test('Chat Routes - GET /chat/:chatId/messages', async (t) => {
   const app = new Hono();
 
   const mockMessages = [
@@ -358,7 +358,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId/messages', async (t) => {
     },
   ];
 
-  app.get('/multi-chat/:chatId/messages', (c) => {
+  app.get('/chat/:chatId/messages', (c) => {
     const chatId = c.req.param('chatId');
     const limit = parseInt(c.req.query('limit') || '50', 10);
     const before = c.req.query('before');
@@ -379,7 +379,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId/messages', async (t) => {
   });
 
   await t.step('returns messages for chat', async () => {
-    const res = await app.request('/multi-chat/chat-123/messages');
+    const res = await app.request('/chat/chat-123/messages');
 
     assertEquals(res.status, 200);
     const json = await res.json();
@@ -388,7 +388,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId/messages', async (t) => {
   });
 
   await t.step('respects limit parameter', async () => {
-    const res = await app.request('/multi-chat/chat-123/messages?limit=1');
+    const res = await app.request('/chat/chat-123/messages?limit=1');
 
     assertEquals(res.status, 200);
     const json = await res.json();
@@ -396,13 +396,13 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId/messages', async (t) => {
   });
 
   await t.step('returns 404 for unknown chat', async () => {
-    const res = await app.request('/multi-chat/unknown/messages');
+    const res = await app.request('/chat/unknown/messages');
 
     assertEquals(res.status, 404);
   });
 });
 
-Deno.test('MultiChat Routes - POST /multi-chat/:chatId/messages', async (t) => {
+Deno.test('Chat Routes - POST /chat/:chatId/messages', async (t) => {
   const app = new Hono();
 
   const SendMessageSchema = z.object({
@@ -413,7 +413,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/:chatId/messages', async (t) => {
   const messages: any[] = [];
 
   app.post(
-    '/multi-chat/:chatId/messages',
+    '/chat/:chatId/messages',
     zValidator('json', SendMessageSchema),
     (c) => {
       const chatId = c.req.param('chatId');
@@ -446,7 +446,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/:chatId/messages', async (t) => {
   );
 
   await t.step('sends message to chat', async () => {
-    const res = await app.request('/multi-chat/chat-123/messages', {
+    const res = await app.request('/chat/chat-123/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -462,7 +462,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/:chatId/messages', async (t) => {
   });
 
   await t.step('sends message with reply', async () => {
-    const res = await app.request('/multi-chat/chat-123/messages', {
+    const res = await app.request('/chat/chat-123/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -480,7 +480,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/:chatId/messages', async (t) => {
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat/chat-123/messages', {
+    const res = await app.request('/chat/chat-123/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: 'Unauthorized message' }),
@@ -490,7 +490,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/:chatId/messages', async (t) => {
   });
 
   await t.step('returns 400 for empty content', async () => {
-    const res = await app.request('/multi-chat/chat-123/messages', {
+    const res = await app.request('/chat/chat-123/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -503,7 +503,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/:chatId/messages', async (t) => {
   });
 });
 
-Deno.test('MultiChat Routes - GET /multi-chat/:chatId/members', async (t) => {
+Deno.test('Chat Routes - GET /chat/:chatId/members', async (t) => {
   const app = new Hono();
 
   const mockMembers = [
@@ -523,7 +523,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId/members', async (t) => {
     },
   ];
 
-  app.get('/multi-chat/:chatId/members', (c) => {
+  app.get('/chat/:chatId/members', (c) => {
     const chatId = c.req.param('chatId');
 
     if (chatId !== 'chat-123') {
@@ -534,7 +534,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId/members', async (t) => {
   });
 
   await t.step('returns members for chat', async () => {
-    const res = await app.request('/multi-chat/chat-123/members');
+    const res = await app.request('/chat/chat-123/members');
 
     assertEquals(res.status, 200);
     const json = await res.json();
@@ -544,7 +544,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId/members', async (t) => {
   });
 
   await t.step('returns 404 for unknown chat', async () => {
-    const res = await app.request('/multi-chat/unknown/members');
+    const res = await app.request('/chat/unknown/members');
 
     assertEquals(res.status, 404);
   });
@@ -554,10 +554,10 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId/members', async (t) => {
 // AI Balance Tests
 // ============================================================================
 
-Deno.test('MultiChat Routes - GET /multi-chat/:chatId/ai/balance', async (t) => {
+Deno.test('Chat Routes - GET /chat/:chatId/ai/balance', async (t) => {
   const app = new Hono();
 
-  app.get('/multi-chat/:chatId/ai/balance', (c) => {
+  app.get('/chat/:chatId/ai/balance', (c) => {
     const chatId = c.req.param('chatId');
 
     if (chatId !== 'chat-123') {
@@ -578,7 +578,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId/ai/balance', async (t) => 
   });
 
   await t.step('returns AI balance for chat', async () => {
-    const res = await app.request('/multi-chat/chat-123/ai/balance');
+    const res = await app.request('/chat/chat-123/ai/balance');
 
     assertEquals(res.status, 200);
     const json = await res.json();
@@ -592,12 +592,12 @@ Deno.test('MultiChat Routes - GET /multi-chat/:chatId/ai/balance', async (t) => 
 // Delete Tests
 // ============================================================================
 
-Deno.test('MultiChat Routes - DELETE /multi-chat/:chatId', async (t) => {
+Deno.test('Chat Routes - DELETE /chat/:chatId', async (t) => {
   const app = new Hono();
 
   let deletedChats: string[] = [];
 
-  app.delete('/multi-chat/:chatId', (c) => {
+  app.delete('/chat/:chatId', (c) => {
     const chatId = c.req.param('chatId');
     const authHeader = c.req.header('Authorization');
 
@@ -618,7 +618,7 @@ Deno.test('MultiChat Routes - DELETE /multi-chat/:chatId', async (t) => {
   });
 
   await t.step('deletes chat as founder', async () => {
-    const res = await app.request('/multi-chat/chat-123', {
+    const res = await app.request('/chat/chat-123', {
       method: 'DELETE',
       headers: { Authorization: 'Bearer founder-token' },
     });
@@ -629,7 +629,7 @@ Deno.test('MultiChat Routes - DELETE /multi-chat/:chatId', async (t) => {
   });
 
   await t.step('returns 403 when not founder', async () => {
-    const res = await app.request('/multi-chat/not-owner-chat', {
+    const res = await app.request('/chat/not-owner-chat', {
       method: 'DELETE',
       headers: { Authorization: 'Bearer member-token' },
     });
@@ -638,7 +638,7 @@ Deno.test('MultiChat Routes - DELETE /multi-chat/:chatId', async (t) => {
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat/chat-123', {
+    const res = await app.request('/chat/chat-123', {
       method: 'DELETE',
     });
 
@@ -650,7 +650,7 @@ Deno.test('MultiChat Routes - DELETE /multi-chat/:chatId', async (t) => {
 // Chat Organization Tests (Pinning, Folders, Renaming)
 // ============================================================================
 
-Deno.test('MultiChat - Pin Chat Schema', async (t) => {
+Deno.test('Chat - Pin Chat Schema', async (t) => {
   const PinChatSchema = z.object({
     isPinned: z.boolean(),
     pinOrder: z.number().optional(),
@@ -682,7 +682,7 @@ Deno.test('MultiChat - Pin Chat Schema', async (t) => {
   });
 });
 
-Deno.test('MultiChat - Move Chat Schema', async (t) => {
+Deno.test('Chat - Move Chat Schema', async (t) => {
   const MoveChatSchema = z.object({
     folderId: z.string().uuid().nullable(),
   });
@@ -710,7 +710,7 @@ Deno.test('MultiChat - Move Chat Schema', async (t) => {
   });
 });
 
-Deno.test('MultiChat - Rename Chat Schema', async (t) => {
+Deno.test('Chat - Rename Chat Schema', async (t) => {
   const RenameChatSchema = z.object({
     name: z.string().min(1).max(255),
   });
@@ -731,7 +731,7 @@ Deno.test('MultiChat - Rename Chat Schema', async (t) => {
   });
 });
 
-Deno.test('MultiChat - Reorder Pinned Schema', async (t) => {
+Deno.test('Chat - Reorder Pinned Schema', async (t) => {
   const ReorderPinnedSchema = z.object({
     chatIds: z.array(z.string().uuid()),
   });
@@ -759,7 +759,7 @@ Deno.test('MultiChat - Reorder Pinned Schema', async (t) => {
   });
 });
 
-Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/pin', async (t) => {
+Deno.test('Chat Routes - PATCH /chat/:chatId/pin', async (t) => {
   const app = new Hono();
 
   const PinChatSchema = z.object({
@@ -771,7 +771,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/pin', async (t) => {
     'chat-123': { id: 'chat-123', name: 'Test Chat', isPinned: false, pinOrder: null },
   };
 
-  app.patch('/multi-chat/:chatId/pin', zValidator('json', PinChatSchema), (c) => {
+  app.patch('/chat/:chatId/pin', zValidator('json', PinChatSchema), (c) => {
     const chatId = c.req.param('chatId');
     const authHeader = c.req.header('Authorization');
     const sessionId = c.req.header('X-Session-ID');
@@ -795,7 +795,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/pin', async (t) => {
   });
 
   await t.step('pins a chat', async () => {
-    const res = await app.request('/multi-chat/chat-123/pin', {
+    const res = await app.request('/chat/chat-123/pin', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -812,7 +812,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/pin', async (t) => {
   });
 
   await t.step('unpins a chat', async () => {
-    const res = await app.request('/multi-chat/chat-123/pin', {
+    const res = await app.request('/chat/chat-123/pin', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -827,7 +827,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/pin', async (t) => {
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat/chat-123/pin', {
+    const res = await app.request('/chat/chat-123/pin', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isPinned: true }),
@@ -837,7 +837,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/pin', async (t) => {
   });
 
   await t.step('returns 404 for unknown chat', async () => {
-    const res = await app.request('/multi-chat/unknown/pin', {
+    const res = await app.request('/chat/unknown/pin', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -850,7 +850,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/pin', async (t) => {
   });
 });
 
-Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/folder', async (t) => {
+Deno.test('Chat Routes - PATCH /chat/:chatId/folder', async (t) => {
   const app = new Hono();
 
   const MoveChatSchema = z.object({
@@ -861,7 +861,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/folder', async (t) => {
     'chat-123': { id: 'chat-123', name: 'Test Chat', folderId: null },
   };
 
-  app.patch('/multi-chat/:chatId/folder', zValidator('json', MoveChatSchema), (c) => {
+  app.patch('/chat/:chatId/folder', zValidator('json', MoveChatSchema), (c) => {
     const chatId = c.req.param('chatId');
     const authHeader = c.req.header('Authorization');
 
@@ -883,7 +883,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/folder', async (t) => {
   });
 
   await t.step('moves chat to folder', async () => {
-    const res = await app.request('/multi-chat/chat-123/folder', {
+    const res = await app.request('/chat/chat-123/folder', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -899,7 +899,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/folder', async (t) => {
   });
 
   await t.step('moves chat to root (null folder)', async () => {
-    const res = await app.request('/multi-chat/chat-123/folder', {
+    const res = await app.request('/chat/chat-123/folder', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -914,7 +914,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/folder', async (t) => {
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat/chat-123/folder', {
+    const res = await app.request('/chat/chat-123/folder', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ folderId: null }),
@@ -924,7 +924,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/folder', async (t) => {
   });
 });
 
-Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/name', async (t) => {
+Deno.test('Chat Routes - PATCH /chat/:chatId/name', async (t) => {
   const app = new Hono();
 
   const RenameChatSchema = z.object({
@@ -935,7 +935,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/name', async (t) => {
     'chat-123': { id: 'chat-123', name: 'Original Name' },
   };
 
-  app.patch('/multi-chat/:chatId/name', zValidator('json', RenameChatSchema), (c) => {
+  app.patch('/chat/:chatId/name', zValidator('json', RenameChatSchema), (c) => {
     const chatId = c.req.param('chatId');
     const authHeader = c.req.header('Authorization');
 
@@ -957,7 +957,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/name', async (t) => {
   });
 
   await t.step('renames a chat', async () => {
-    const res = await app.request('/multi-chat/chat-123/name', {
+    const res = await app.request('/chat/chat-123/name', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -973,7 +973,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/name', async (t) => {
   });
 
   await t.step('returns 400 for empty name', async () => {
-    const res = await app.request('/multi-chat/chat-123/name', {
+    const res = await app.request('/chat/chat-123/name', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -990,7 +990,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/:chatId/name', async (t) => {
 // Folder Routes Tests
 // ============================================================================
 
-Deno.test('MultiChat - Create Folder Schema', async (t) => {
+Deno.test('Chat - Create Folder Schema', async (t) => {
   const CreateFolderSchema = z.object({
     name: z.string().min(1).max(255),
     parentFolderId: z.string().uuid().optional(),
@@ -1028,7 +1028,7 @@ Deno.test('MultiChat - Create Folder Schema', async (t) => {
   });
 });
 
-Deno.test('MultiChat - Update Folder Schema', async (t) => {
+Deno.test('Chat - Update Folder Schema', async (t) => {
   const UpdateFolderSchema = z.object({
     name: z.string().min(1).max(255).optional(),
     parentFolderId: z.string().uuid().nullable().optional(),
@@ -1061,7 +1061,7 @@ Deno.test('MultiChat - Update Folder Schema', async (t) => {
   });
 });
 
-Deno.test('MultiChat Routes - GET /multi-chat/folders', async (t) => {
+Deno.test('Chat Routes - GET /chat/folders', async (t) => {
   const app = new Hono();
 
   const mockFolders = [
@@ -1082,7 +1082,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/folders', async (t) => {
     },
   ];
 
-  app.get('/multi-chat/folders', (c) => {
+  app.get('/chat/folders', (c) => {
     const authHeader = c.req.header('Authorization');
     const sessionId = c.req.header('X-Session-ID');
 
@@ -1094,7 +1094,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/folders', async (t) => {
   });
 
   await t.step('returns folders for authenticated user', async () => {
-    const res = await app.request('/multi-chat/folders', {
+    const res = await app.request('/chat/folders', {
       headers: { Authorization: 'Bearer valid-token' },
     });
 
@@ -1106,7 +1106,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/folders', async (t) => {
   });
 
   await t.step('returns folders for session user', async () => {
-    const res = await app.request('/multi-chat/folders', {
+    const res = await app.request('/chat/folders', {
       headers: { 'X-Session-ID': 'ses_abc123' },
     });
 
@@ -1114,13 +1114,13 @@ Deno.test('MultiChat Routes - GET /multi-chat/folders', async (t) => {
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat/folders');
+    const res = await app.request('/chat/folders');
 
     assertEquals(res.status, 401);
   });
 });
 
-Deno.test('MultiChat Routes - POST /multi-chat/folders', async (t) => {
+Deno.test('Chat Routes - POST /chat/folders', async (t) => {
   const app = new Hono();
 
   const CreateFolderSchema = z.object({
@@ -1130,7 +1130,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders', async (t) => {
 
   let createdFolders: any[] = [];
 
-  app.post('/multi-chat/folders', zValidator('json', CreateFolderSchema), (c) => {
+  app.post('/chat/folders', zValidator('json', CreateFolderSchema), (c) => {
     const authHeader = c.req.header('Authorization');
 
     if (!authHeader) {
@@ -1155,7 +1155,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders', async (t) => {
   });
 
   await t.step('creates folder', async () => {
-    const res = await app.request('/multi-chat/folders', {
+    const res = await app.request('/chat/folders', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1172,7 +1172,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders', async (t) => {
   });
 
   await t.step('creates nested folder', async () => {
-    const res = await app.request('/multi-chat/folders', {
+    const res = await app.request('/chat/folders', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1190,7 +1190,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders', async (t) => {
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat/folders', {
+    const res = await app.request('/chat/folders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Unauthorized' }),
@@ -1200,7 +1200,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders', async (t) => {
   });
 
   await t.step('returns 400 for empty name', async () => {
-    const res = await app.request('/multi-chat/folders', {
+    const res = await app.request('/chat/folders', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1213,7 +1213,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders', async (t) => {
   });
 });
 
-Deno.test('MultiChat Routes - GET /multi-chat/folders/:folderId', async (t) => {
+Deno.test('Chat Routes - GET /chat/folders/:folderId', async (t) => {
   const app = new Hono();
 
   const mockFolder = {
@@ -1226,7 +1226,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/folders/:folderId', async (t) => {
     updatedAt: new Date().toISOString(),
   };
 
-  app.get('/multi-chat/folders/:folderId', (c) => {
+  app.get('/chat/folders/:folderId', (c) => {
     const folderId = c.req.param('folderId');
     const authHeader = c.req.header('Authorization');
 
@@ -1246,7 +1246,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/folders/:folderId', async (t) => {
   });
 
   await t.step('returns folder details', async () => {
-    const res = await app.request('/multi-chat/folders/folder-123', {
+    const res = await app.request('/chat/folders/folder-123', {
       headers: { Authorization: 'Bearer valid-token' },
     });
 
@@ -1257,7 +1257,7 @@ Deno.test('MultiChat Routes - GET /multi-chat/folders/:folderId', async (t) => {
   });
 
   await t.step('returns 404 for unknown folder', async () => {
-    const res = await app.request('/multi-chat/folders/unknown', {
+    const res = await app.request('/chat/folders/unknown', {
       headers: { Authorization: 'Bearer valid-token' },
     });
 
@@ -1265,13 +1265,13 @@ Deno.test('MultiChat Routes - GET /multi-chat/folders/:folderId', async (t) => {
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat/folders/folder-123');
+    const res = await app.request('/chat/folders/folder-123');
 
     assertEquals(res.status, 401);
   });
 });
 
-Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId', async (t) => {
+Deno.test('Chat Routes - PATCH /chat/folders/:folderId', async (t) => {
   const app = new Hono();
 
   const UpdateFolderSchema = z.object({
@@ -1292,7 +1292,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId', async (t) =>
     },
   };
 
-  app.patch('/multi-chat/folders/:folderId', zValidator('json', UpdateFolderSchema), (c) => {
+  app.patch('/chat/folders/:folderId', zValidator('json', UpdateFolderSchema), (c) => {
     const folderId = c.req.param('folderId');
     const authHeader = c.req.header('Authorization');
 
@@ -1319,7 +1319,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId', async (t) =>
   });
 
   await t.step('updates folder name', async () => {
-    const res = await app.request('/multi-chat/folders/folder-123', {
+    const res = await app.request('/chat/folders/folder-123', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1334,7 +1334,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId', async (t) =>
   });
 
   await t.step('updates folder pinning', async () => {
-    const res = await app.request('/multi-chat/folders/folder-123', {
+    const res = await app.request('/chat/folders/folder-123', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1350,7 +1350,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId', async (t) =>
   });
 
   await t.step('returns 404 for unknown folder', async () => {
-    const res = await app.request('/multi-chat/folders/unknown', {
+    const res = await app.request('/chat/folders/unknown', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1363,12 +1363,12 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId', async (t) =>
   });
 });
 
-Deno.test('MultiChat Routes - DELETE /multi-chat/folders/:folderId', async (t) => {
+Deno.test('Chat Routes - DELETE /chat/folders/:folderId', async (t) => {
   const app = new Hono();
 
   let folders = new Set(['folder-123']);
 
-  app.delete('/multi-chat/folders/:folderId', (c) => {
+  app.delete('/chat/folders/:folderId', (c) => {
     const folderId = c.req.param('folderId');
     const authHeader = c.req.header('Authorization');
 
@@ -1385,7 +1385,7 @@ Deno.test('MultiChat Routes - DELETE /multi-chat/folders/:folderId', async (t) =
   });
 
   await t.step('deletes folder', async () => {
-    const res = await app.request('/multi-chat/folders/folder-123', {
+    const res = await app.request('/chat/folders/folder-123', {
       method: 'DELETE',
       headers: { Authorization: 'Bearer valid-token' },
     });
@@ -1396,7 +1396,7 @@ Deno.test('MultiChat Routes - DELETE /multi-chat/folders/:folderId', async (t) =
   });
 
   await t.step('returns 404 for deleted folder', async () => {
-    const res = await app.request('/multi-chat/folders/folder-123', {
+    const res = await app.request('/chat/folders/folder-123', {
       method: 'DELETE',
       headers: { Authorization: 'Bearer valid-token' },
     });
@@ -1405,7 +1405,7 @@ Deno.test('MultiChat Routes - DELETE /multi-chat/folders/:folderId', async (t) =
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat/folders/any', {
+    const res = await app.request('/chat/folders/any', {
       method: 'DELETE',
     });
 
@@ -1413,7 +1413,7 @@ Deno.test('MultiChat Routes - DELETE /multi-chat/folders/:folderId', async (t) =
   });
 });
 
-Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId/pin', async (t) => {
+Deno.test('Chat Routes - PATCH /chat/folders/:folderId/pin', async (t) => {
   const app = new Hono();
 
   const PinFolderSchema = z.object({
@@ -1425,7 +1425,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId/pin', async (t
     'folder-123': { id: 'folder-123', name: 'Work', isPinned: false, pinOrder: null },
   };
 
-  app.patch('/multi-chat/folders/:folderId/pin', zValidator('json', PinFolderSchema), (c) => {
+  app.patch('/chat/folders/:folderId/pin', zValidator('json', PinFolderSchema), (c) => {
     const folderId = c.req.param('folderId');
     const authHeader = c.req.header('Authorization');
 
@@ -1448,7 +1448,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId/pin', async (t
   });
 
   await t.step('pins a folder', async () => {
-    const res = await app.request('/multi-chat/folders/folder-123/pin', {
+    const res = await app.request('/chat/folders/folder-123/pin', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1464,7 +1464,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId/pin', async (t
   });
 
   await t.step('unpins a folder', async () => {
-    const res = await app.request('/multi-chat/folders/folder-123/pin', {
+    const res = await app.request('/chat/folders/folder-123/pin', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1480,7 +1480,7 @@ Deno.test('MultiChat Routes - PATCH /multi-chat/folders/:folderId/pin', async (t
   });
 });
 
-Deno.test('MultiChat Routes - POST /multi-chat/folders/reorder-pinned', async (t) => {
+Deno.test('Chat Routes - POST /chat/folders/reorder-pinned', async (t) => {
   const app = new Hono();
 
   const ReorderPinnedFoldersSchema = z.object({
@@ -1489,7 +1489,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders/reorder-pinned', async (t
 
   let reorderCalls: string[][] = [];
 
-  app.post('/multi-chat/folders/reorder-pinned', zValidator('json', ReorderPinnedFoldersSchema), (c) => {
+  app.post('/chat/folders/reorder-pinned', zValidator('json', ReorderPinnedFoldersSchema), (c) => {
     const authHeader = c.req.header('Authorization');
 
     if (!authHeader) {
@@ -1503,7 +1503,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders/reorder-pinned', async (t
   });
 
   await t.step('reorders pinned folders', async () => {
-    const res = await app.request('/multi-chat/folders/reorder-pinned', {
+    const res = await app.request('/chat/folders/reorder-pinned', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1523,7 +1523,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders/reorder-pinned', async (t
   });
 
   await t.step('accepts empty array', async () => {
-    const res = await app.request('/multi-chat/folders/reorder-pinned', {
+    const res = await app.request('/chat/folders/reorder-pinned', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1536,7 +1536,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders/reorder-pinned', async (t
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat/folders/reorder-pinned', {
+    const res = await app.request('/chat/folders/reorder-pinned', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ folderIds: [] }),
@@ -1546,7 +1546,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/folders/reorder-pinned', async (t
   });
 });
 
-Deno.test('MultiChat Routes - POST /multi-chat/reorder-pinned', async (t) => {
+Deno.test('Chat Routes - POST /chat/reorder-pinned', async (t) => {
   const app = new Hono();
 
   const ReorderPinnedSchema = z.object({
@@ -1555,7 +1555,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/reorder-pinned', async (t) => {
 
   let reorderCalls: string[][] = [];
 
-  app.post('/multi-chat/reorder-pinned', zValidator('json', ReorderPinnedSchema), (c) => {
+  app.post('/chat/reorder-pinned', zValidator('json', ReorderPinnedSchema), (c) => {
     const authHeader = c.req.header('Authorization');
 
     if (!authHeader) {
@@ -1569,7 +1569,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/reorder-pinned', async (t) => {
   });
 
   await t.step('reorders pinned chats', async () => {
-    const res = await app.request('/multi-chat/reorder-pinned', {
+    const res = await app.request('/chat/reorder-pinned', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1589,7 +1589,7 @@ Deno.test('MultiChat Routes - POST /multi-chat/reorder-pinned', async (t) => {
   });
 
   await t.step('returns 401 without auth', async () => {
-    const res = await app.request('/multi-chat/reorder-pinned', {
+    const res = await app.request('/chat/reorder-pinned', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chatIds: [] }),

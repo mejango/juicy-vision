@@ -1,7 +1,8 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, ReactNode } from 'react'
 import { ParsedComponent } from '../../utils/messageParser'
 import ErrorBoundary, { ComponentErrorFallback } from '../ui/ErrorBoundary'
 import ComponentShimmer from './ComponentShimmer'
+import OptionsPickerShimmer from './OptionsPickerShimmer'
 
 // Lazy load all dynamic components for better initial bundle size
 const ConnectWalletButton = lazy(() => import('./ConnectWalletButton'))
@@ -39,10 +40,10 @@ interface ComponentRegistryProps {
   component: ParsedComponent
 }
 
-function LazyComponent({ children, type }: { children: React.ReactNode; type: string }) {
+function LazyComponent({ children, type, fallback }: { children: React.ReactNode; type: string; fallback?: ReactNode }) {
   return (
     <ErrorBoundary fallback={<ComponentErrorFallback componentType={type} />}>
-      <Suspense fallback={<ComponentShimmer />}>
+      <Suspense fallback={fallback || <ComponentShimmer />}>
         {children}
       </Suspense>
     </ErrorBoundary>
@@ -54,8 +55,8 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
 
   switch (type) {
     case '_loading':
-      // ThinkingIndicator already shows loading state, no need for extra shimmer
-      return null
+      // Show shimmer while component is being streamed
+      return <OptionsPickerShimmer />
 
     case 'connect-wallet':
     case 'connect-account':
@@ -295,9 +296,13 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
         optionsParseError = true
         parsedGroups = []
       }
-      // If no groups data at all, don't render anything (e.g., from exported markdown placeholder)
+      // If no groups data at all, show a message (AI didn't provide options)
       if (!props.groups || parsedGroups.length === 0) {
-        return null
+        return (
+          <div className="glass p-3 text-gray-400 text-sm">
+            Options not available. Try asking again.
+          </div>
+        )
       }
       if (optionsParseError) {
         return (
@@ -307,7 +312,7 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
         )
       }
       return (
-        <LazyComponent type={type}>
+        <LazyComponent type={type} fallback={<OptionsPickerShimmer />}>
           <OptionsPicker
             groups={parsedGroups}
             submitLabel={props.submitLabel}

@@ -98,6 +98,8 @@
     "addNote": "Agregar nota jugosa"
   },
   "chat": {
+    "conspire": "Conspirar",
+    "save": "Guardar",
     "invite": "Invitar",
     "export": "Exportar"
   },
@@ -153,7 +155,7 @@
     "poweredBy": "Usa revnets, impulsado por Juicebox, asegurado por Ethereum, Optimism, Base y Arbitrum."
   },
   "dock": {
-    "askAbout": "o pregunta sobre cualquier proyecto del ecosistema juicebox"
+    "askAbout": "o pregunta sobre proyectos y herramientas del ecosistema"
   },
   "suggestions": {
     "whatIsJuicy": "¿Qué es Juicy?",

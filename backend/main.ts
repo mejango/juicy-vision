@@ -5,7 +5,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { timing } from 'hono/timing';
 
 import { authRouter } from './src/routes/auth.ts';
-import { multiChatRouter } from './src/routes/multiChat.ts';
+import { chatRouter } from './src/routes/chat.ts';
 import { walletRouter } from './src/routes/wallet.ts';
 import { eventsRouter } from './src/routes/events.ts';
 import { cronRouter } from './src/routes/cron.ts';
@@ -107,7 +107,7 @@ app.get('/health', (c) => {
 
 app.route('/api/auth', authRouter);
 app.route('/api/auth/siwe', siweRouter);
-app.route('/api/chat', multiChatRouter);
+app.route('/api/chat', chatRouter);
 app.route('/api/wallet', walletRouter);
 app.route('/api/events', eventsRouter);
 app.route('/api/cron', cronRouter);

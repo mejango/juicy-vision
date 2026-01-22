@@ -464,6 +464,7 @@ export interface WsMessage {
     | 'ai_response'
     | 'member_joined'
     | 'member_left'
+    | 'chat_update' // Chat metadata updates (title, etc.)
     | 'error'
     | 'connection_status' // Internal status messages
   chatId: string

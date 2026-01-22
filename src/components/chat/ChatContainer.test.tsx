@@ -6,10 +6,10 @@ import { WagmiProvider } from 'wagmi'
 import ChatContainer from './ChatContainer'
 import { useChatStore, useThemeStore, type Chat, type ChatMessage } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
-import * as multiChatApi from '../../services/multiChat'
+import * as chatApi from '../../services/chat'
 
 // Mock services - include all exports used by ChatContainer
-vi.mock('../../services/multiChat', () => ({
+vi.mock('../../services/chat', () => ({
   createChat: vi.fn(),
   getChat: vi.fn(),
   fetchChat: vi.fn(() => Promise.resolve(null)),
@@ -217,8 +217,8 @@ describe('ChatContainer', () => {
 
     it('submits message on Enter key', async () => {
       const mockChat = createMockChat({ id: 'new-chat-id', name: 'New Chat' })
-      vi.mocked(multiChatApi.createChat).mockResolvedValue(mockChat)
-      vi.mocked(multiChatApi.sendMessage).mockResolvedValue(createMockMessage({
+      vi.mocked(chatApi.createChat).mockResolvedValue(mockChat)
+      vi.mocked(chatApi.sendMessage).mockResolvedValue(createMockMessage({
         id: 'msg-1',
         chatId: 'new-chat-id',
         content: 'Hello',
@@ -230,12 +230,12 @@ describe('ChatContainer', () => {
       fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
 
       await waitFor(() => {
-        expect(multiChatApi.createChat).toHaveBeenCalled()
+        expect(chatApi.createChat).toHaveBeenCalled()
       })
     })
   })
 
-  describe('multi-chat mode', () => {
+  describe('shared chat mode', () => {
     it('uses forceActiveChatId when provided', () => {
       const mockChat = createMockChat({ id: 'forced-chat-id' })
       // Add the chat to the store so it can be found
@@ -253,7 +253,7 @@ describe('ChatContainer', () => {
 
     it('connects to WebSocket when activeChatId is set', async () => {
       const mockChat = createMockChat({ id: 'test-chat-id' })
-      vi.mocked(multiChatApi.fetchMessages).mockResolvedValue([])
+      vi.mocked(chatApi.fetchMessages).mockResolvedValue([])
 
       useChatStore.setState({
         activeChatId: 'test-chat-id',
@@ -264,7 +264,7 @@ describe('ChatContainer', () => {
       renderWithProviders(<ChatContainer />)
 
       await waitFor(() => {
-        expect(multiChatApi.connectToChat).toHaveBeenCalledWith('test-chat-id')
+        expect(chatApi.connectToChat).toHaveBeenCalledWith('test-chat-id')
       })
     })
   })

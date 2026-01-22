@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useChatStore } from '../../stores'
-import * as multiChatApi from '../../services/multiChat'
+import * as chatApi from '../../services/chat'
 
 function formatTimeAgo(timestamp: string): string {
   const now = Date.now()
@@ -43,7 +43,7 @@ export default function ChatList({ onCreateChat }: ChatListProps) {
     async function loadChats() {
       setLoading(true)
       try {
-        const { chats } = await multiChatApi.fetchMyChats()
+        const { chats } = await chatApi.fetchMyChats()
         setChats(chats)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load chats')
@@ -78,7 +78,7 @@ export default function ChatList({ onCreateChat }: ChatListProps) {
               theme === 'dark' ? 'text-white' : 'text-gray-900'
             }`}
           >
-            {t('multiChat.chats', 'Chats')}
+            {t('chat.chats', 'Chats')}
           </h2>
           <button
             onClick={onCreateChat}
@@ -87,7 +87,7 @@ export default function ChatList({ onCreateChat }: ChatListProps) {
                 ? 'hover:bg-white/10 text-gray-400 hover:text-white'
                 : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'
             }`}
-            title={t('multiChat.newChat', 'New Chat')}
+            title={t('chat.newChat', 'New Chat')}
           >
             <svg
               className="w-5 h-5"
@@ -125,13 +125,13 @@ export default function ChatList({ onCreateChat }: ChatListProps) {
                 theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
               }`}
             >
-              {t('multiChat.noChats', 'No chats yet')}
+              {t('chat.noChats', 'No chats yet')}
             </div>
             <button
               onClick={onCreateChat}
               className="mt-2 text-sm text-juice-orange hover:underline"
             >
-              {t('multiChat.createFirst', 'Create your first chat')}
+              {t('chat.createFirst', 'Create your first chat')}
             </button>
           </div>
         ) : (
@@ -232,7 +232,7 @@ export default function ChatList({ onCreateChat }: ChatListProps) {
               : 'text-gray-400 hover:text-gray-600'
           }`}
         >
-          {t('multiChat.browsePublic', 'Browse public chats')}
+          {t('chat.browsePublic', 'Browse public chats')}
         </button>
       </div>
     </div>

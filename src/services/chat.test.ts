@@ -18,7 +18,7 @@ vi.mock('./session', () => ({
   getSessionId: () => 'ses_test123',
 }))
 
-describe('multiChat service', () => {
+describe('chat service', () => {
   beforeEach(() => {
     mockFetch.mockReset()
   })
@@ -35,7 +35,7 @@ describe('multiChat service', () => {
       })
 
       // Import dynamically to avoid hoisting issues
-      const { fetchMyChats } = await import('./multiChat')
+      const { fetchMyChats } = await import('./chat')
       await fetchMyChats()
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -54,7 +54,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: [] }),
       })
 
-      const { fetchMyChats } = await import('./multiChat')
+      const { fetchMyChats } = await import('./chat')
       await fetchMyChats()
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -73,7 +73,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: false, error: 'Not found' }),
       })
 
-      const { fetchMyChats } = await import('./multiChat')
+      const { fetchMyChats } = await import('./chat')
 
       await expect(fetchMyChats()).rejects.toThrow('Not found')
     })
@@ -91,7 +91,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: mockChats }),
       })
 
-      const { fetchMyChats } = await import('./multiChat')
+      const { fetchMyChats } = await import('./chat')
       const chats = await fetchMyChats()
 
       expect(chats).toEqual(mockChats)
@@ -105,7 +105,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: [] }),
       })
 
-      const { fetchPublicChats } = await import('./multiChat')
+      const { fetchPublicChats } = await import('./chat')
       await fetchPublicChats(10, 20)
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -128,7 +128,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: mockChat }),
       })
 
-      const { fetchChat } = await import('./multiChat')
+      const { fetchChat } = await import('./chat')
       const chat = await fetchChat('chat-123')
 
       expect(chat).toEqual(mockChat)
@@ -148,7 +148,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: mockChat }),
       })
 
-      const { createChat } = await import('./multiChat')
+      const { createChat } = await import('./chat')
       const chat = await createChat({ name: 'New Chat', isPublic: true })
 
       expect(chat).toEqual(mockChat)
@@ -171,7 +171,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: mockResult }),
       })
 
-      const { migrateChat } = await import('./multiChat')
+      const { migrateChat } = await import('./chat')
       const result = await migrateChat('Migrated Chat')
 
       expect(result).toEqual(mockResult)
@@ -196,7 +196,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: mockResult }),
       })
 
-      const { migrateChat } = await import('./multiChat')
+      const { migrateChat } = await import('./chat')
       const result = await migrateChat('Chat with History', messages)
 
       expect(result).toEqual(mockResult)
@@ -221,7 +221,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: mockMessages }),
       })
 
-      const { fetchMessages } = await import('./multiChat')
+      const { fetchMessages } = await import('./chat')
       const messages = await fetchMessages('chat-123')
 
       expect(messages).toEqual(mockMessages)
@@ -233,7 +233,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: [] }),
       })
 
-      const { fetchMessages } = await import('./multiChat')
+      const { fetchMessages } = await import('./chat')
       await fetchMessages('chat-123', 25, 'msg-before')
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -252,7 +252,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: mockMessage }),
       })
 
-      const { sendMessage } = await import('./multiChat')
+      const { sendMessage } = await import('./chat')
       const message = await sendMessage('chat-123', 'Hello!')
 
       expect(message).toEqual(mockMessage)
@@ -273,7 +273,7 @@ describe('multiChat service', () => {
         json: () => Promise.resolve({ success: true, data: mockMessage }),
       })
 
-      const { sendMessage } = await import('./multiChat')
+      const { sendMessage } = await import('./chat')
       await sendMessage('chat-123', 'Reply', 'original-msg')
 
       expect(mockFetch).toHaveBeenCalledWith(
@@ -295,7 +295,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true, data: mockInvite }),
         })
 
-        const { createInvite } = await import('./multiChat')
+        const { createInvite } = await import('./chat')
         const invite = await createInvite('chat-123')
 
         expect(invite).toEqual(mockInvite)
@@ -315,7 +315,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true, data: mockInvite }),
         })
 
-        const { createInvite } = await import('./multiChat')
+        const { createInvite } = await import('./chat')
         await createInvite('chat-123', { canInviteOthers: true, canSendMessages: true })
 
         expect(mockFetch).toHaveBeenCalledWith(
@@ -341,7 +341,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true, data: mockInfo }),
         })
 
-        const { getInviteInfo } = await import('./multiChat')
+        const { getInviteInfo } = await import('./chat')
         const info = await getInviteInfo('ABC12345')
 
         expect(info).toEqual(mockInfo)
@@ -361,7 +361,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true, data: mockResult }),
         })
 
-        const { joinViaInvite } = await import('./multiChat')
+        const { joinViaInvite } = await import('./chat')
         const result = await joinViaInvite('ABC12345')
 
         expect(result).toEqual(mockResult)
@@ -381,7 +381,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true }),
         })
 
-        const { revokeInvite } = await import('./multiChat')
+        const { revokeInvite } = await import('./chat')
         await revokeInvite('chat-123', 'inv-456')
 
         expect(mockFetch).toHaveBeenCalledWith(
@@ -407,7 +407,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true, data: mockMembers }),
         })
 
-        const { fetchMembers } = await import('./multiChat')
+        const { fetchMembers } = await import('./chat')
         const members = await fetchMembers('chat-123')
 
         expect(members).toEqual(mockMembers)
@@ -423,7 +423,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true, data: mockMember }),
         })
 
-        const { addMember } = await import('./multiChat')
+        const { addMember } = await import('./chat')
         const member = await addMember('chat-123', '0x789', 'member')
 
         expect(member).toEqual(mockMember)
@@ -437,7 +437,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true }),
         })
 
-        const { removeMember } = await import('./multiChat')
+        const { removeMember } = await import('./chat')
         await removeMember('chat-123', '0x456')
 
         expect(mockFetch).toHaveBeenCalledWith(
@@ -466,7 +466,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true, data: mockBalance }),
         })
 
-        const { getAiBalance } = await import('./multiChat')
+        const { getAiBalance } = await import('./chat')
         const balance = await getAiBalance('chat-123')
 
         expect(balance).toEqual(mockBalance)
@@ -482,7 +482,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true }),
         })
 
-        const { submitFeedback } = await import('./multiChat')
+        const { submitFeedback } = await import('./chat')
         await submitFeedback('chat-123', 'great')
 
         expect(mockFetch).toHaveBeenCalledWith(
@@ -500,7 +500,7 @@ describe('multiChat service', () => {
           json: () => Promise.resolve({ success: true }),
         })
 
-        const { submitFeedback } = await import('./multiChat')
+        const { submitFeedback } = await import('./chat')
         await submitFeedback('chat-123', 'wow', 'This was amazing!')
 
         expect(mockFetch).toHaveBeenCalledWith(

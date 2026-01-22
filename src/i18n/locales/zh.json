@@ -98,6 +98,8 @@
     "addNote": "添加果汁笔记"
   },
   "chat": {
+    "conspire": "共谋",
+    "save": "保存",
     "invite": "邀请",
     "export": "导出"
   },
@@ -153,7 +155,7 @@
     "poweredBy": "使用 revnets，由 Juicebox 提供支持，由 Ethereum、Optimism、Base 和 Arbitrum 保护。"
   },
   "dock": {
-    "askAbout": "或询问任何 juicebox 生态系统项目"
+    "askAbout": "或询问生态系统项目和工具"
   },
   "suggestions": {
     "whatIsJuicy": "什么是 Juicy？",
@@ -1065,7 +1067,7 @@
     "goingOnchain": "上链"
   },
   "dock": {
-    "askAbout": "或询问任何 juicebox 生态系统项目"
+    "askAbout": "或询问生态系统项目和工具"
   },
   "recommendations": {
     "fundMyStartup": "资助我的创业公司",

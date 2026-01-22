@@ -8,25 +8,49 @@ export interface ParsedContent {
   segments: Array<{ type: 'text'; content: string } | { type: 'component'; component: ParsedComponent }>
 }
 
-// Regex that properly handles quoted attribute values containing > characters
-// Matches: non-quote/non-> chars, OR double-quoted strings, OR single-quoted strings
-const COMPONENT_REGEX = /<juice-component\s+((?:[^"'>]|"[^"]*"|'[^']*')+)\s*\/>/g
-// Match both double-quoted and single-quoted attributes
+// Regex to match juice-component tags - uses non-greedy match to find closing />
+// The 's' flag allows . to match newlines
+const COMPONENT_REGEX = /<juice-component\s+([\s\S]+?)\s*\/>/g
+// Match attributes - double quotes are straightforward
 const ATTR_REGEX_DOUBLE = /(\w+)="([^"]+)"/g
-const ATTR_REGEX_SINGLE = /(\w+)='([^']+)'/g
+// Single quotes need non-greedy match with lookahead for next attr or tag end
+// This handles apostrophes inside values like "What's your..."
+const ATTR_REGEX_SINGLE = /(\w+)='([\s\S]*?)'\s*(?=\w+=|\/?>|$)/g
 // Detect partial component tag that's still being streamed
-const PARTIAL_COMPONENT_REGEX = /<juice-component(?:\s+[^>]*)?$/
+// Note: We can't use [^>]* because JSON attribute values may contain > characters
+// Instead, we look for <juice-component that isn't followed by /> in the remaining string
+function hasPartialComponentTag(content: string): { hasPartial: boolean; index: number } {
+  // Find the last occurrence of <juice-component
+  const lastTagStart = content.lastIndexOf('<juice-component')
+  if (lastTagStart === -1) {
+    return { hasPartial: false, index: -1 }
+  }
+
+  // Check if there's a closing /> after this tag start
+  // We need to find /> that actually closes this tag, not one inside a quoted string
+  const afterTag = content.slice(lastTagStart)
+
+  // Simple check: if /> exists after <juice-component, tag is complete
+  // This is a heuristic - technically /> could be in a string, but unlikely
+  const closeIndex = afterTag.indexOf('/>')
+  if (closeIndex === -1) {
+    // No closing found - tag is partial
+    return { hasPartial: true, index: lastTagStart }
+  }
+
+  return { hasPartial: false, index: -1 }
+}
 
 export function parseMessageContent(content: string): ParsedContent {
   const segments: ParsedContent['segments'] = []
   let lastIndex = 0
 
   // Check if there's a partial component tag at the end (still streaming)
-  const partialMatch = content.match(PARTIAL_COMPONENT_REGEX)
-  const contentToProcess = partialMatch
-    ? content.slice(0, partialMatch.index)
+  const partialCheck = hasPartialComponentTag(content)
+  const contentToProcess = partialCheck.hasPartial
+    ? content.slice(0, partialCheck.index)
     : content
-  const hasPartialComponent = !!partialMatch
+  const hasPartialComponent = partialCheck.hasPartial
 
   const matches = contentToProcess.matchAll(COMPONENT_REGEX)
 
@@ -84,7 +108,7 @@ export function parseMessageContent(content: string): ParsedContent {
       component: {
         type: '_loading',
         props: {},
-        raw: partialMatch![0],
+        raw: content.slice(partialCheck.index),
       },
     })
   }

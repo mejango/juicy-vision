@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { useSettingsStore, useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
@@ -193,11 +194,17 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
 
   const hasCustomKeys = localClaudeKey || localPinataJwt || localAnkrKey || localTheGraphKey
 
-  return (
-    <div className="fixed z-50" style={popoverStyle}>
-      <div className={`w-80 border shadow-xl rounded-lg ${
-        isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
-      }`}>
+  return createPortal(
+    <>
+      {/* Backdrop - catches clicks outside popover */}
+      <div
+        className="fixed inset-0 z-[49]"
+        onClick={onClose}
+      />
+      <div className="fixed z-50" style={popoverStyle}>
+        <div className={`w-80 border shadow-xl ${
+          isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+        }`}>
         {/* Header with close button */}
         <div className={`flex items-center justify-between px-4 py-3 border-b ${
           isDark ? 'border-white/10' : 'border-gray-100'
@@ -513,5 +520,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
         </div>
       </div>
     </div>
+    </>,
+    document.body
   )
 }

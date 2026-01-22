@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useThemeStore, useChatStore } from '../stores'
-import ChatPageContainer from './multiChat/MultiChatContainer'
+import SharedChatContainer from './chat/SharedChatContainer'
 
 export default function SharedChatPage() {
   const { chatId } = useParams<{ chatId: string }>()
@@ -16,7 +16,7 @@ export default function SharedChatPage() {
       return
     }
 
-    // Set this as the active chat - ChatPageContainer will handle fetching
+    // Set this as the active chat - SharedChatContainer will handle fetching
     setActiveChat(chatId)
   }, [chatId, setActiveChat, navigate])
 
@@ -39,7 +39,7 @@ export default function SharedChatPage() {
 
       {/* Chat container */}
       <div className="flex-1 overflow-hidden">
-        <ChatPageContainer />
+        <SharedChatContainer />
       </div>
     </div>
   )

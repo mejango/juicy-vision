@@ -57,14 +57,11 @@ export async function getPaymentTerminal(
     args: [projectId, paymentToken],
   })
 
-  console.log('[Terminal] primaryTerminalOf result:', terminal, 'for token:', paymentToken)
-
   // Get swap terminal address for this chain
   const swapTerminal = JB_SWAP_TERMINAL[supportedChainId]
 
   // If no terminal registered for this token (zero address), use swap terminal
   if (terminal === zeroAddress) {
-    console.log('[Terminal] No direct terminal found, using SwapTerminal:', swapTerminal)
     return { address: swapTerminal, type: 'swap' }
   }
 
@@ -72,12 +69,10 @@ export async function getPaymentTerminal(
   const isSwapTerminal = terminal.toLowerCase() === swapTerminal?.toLowerCase()
 
   if (isSwapTerminal) {
-    console.log('[Terminal] Primary terminal is SwapTerminal:', terminal)
     return { address: terminal, type: 'swap' }
   }
 
   // Otherwise it's the multi terminal
-  console.log('[Terminal] Using MultiTerminal:', terminal)
   return { address: terminal, type: 'multi' }
 }
 

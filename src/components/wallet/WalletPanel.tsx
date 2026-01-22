@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { useThemeStore, useAuthStore } from '../../stores'
@@ -1028,23 +1029,39 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       return { top: 16, right: 16 }
     }
 
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200
     const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
     const gap = 8 // Gap between button and popover
+    const margin = 16 // Minimum margin from viewport edges
+    const popoverWidth = 320 // w-80 = 20rem = 320px
 
     // Check if button is in lower half of viewport
     const isInLowerHalf = anchorPosition.top > viewportHeight / 2
+
+    // Calculate right position (align popover right edge with button right edge)
+    let rightPos = viewportWidth - anchorPosition.left - anchorPosition.width
+
+    // Check if popover would go past the left edge
+    const leftEdge = viewportWidth - rightPos - popoverWidth
+    if (leftEdge < margin) {
+      // Clamp so popover stays within viewport with margin
+      rightPos = viewportWidth - popoverWidth - margin
+    }
+
+    // Also ensure we don't go past the right edge
+    rightPos = Math.max(margin, rightPos)
 
     if (isInLowerHalf) {
       // Show above the button
       return {
         bottom: viewportHeight - anchorPosition.top + gap,
-        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
+        right: rightPos,
       }
     } else {
       // Show below the button
       return {
         top: anchorPosition.top + anchorPosition.height + gap,
-        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
+        right: rightPos,
       }
     }
   }, [anchorPosition])
@@ -1107,7 +1124,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       case 'auth_method': return 'Sign In'
       case 'email_auth': return 'Email Sign In'
       case 'managed': return 'Account'
-      case 'wallet': return 'Wallet'
+      case 'wallet': return 'Account'
       case 'topup': return 'Add Funds'
       default: return 'Connect'
     }
@@ -1115,15 +1132,27 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
 
   if (!isOpen) return null
 
-  return (
-    <div className="fixed z-50" style={popoverStyle}>
-      {/* Popover */}
-      <div className={`w-80 p-4 border shadow-xl rounded-lg ${
-        isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
-      }`}>
+  return createPortal(
+    <>
+      {/* Backdrop - catches clicks outside popover */}
+      <div
+        className="fixed inset-0 z-[99] cursor-default"
+        onMouseDown={onClose}
+      />
+      <div className="fixed z-[100]" style={popoverStyle}>
+        {/* Popover */}
+        <div
+          className={`relative w-80 p-4 border shadow-xl ${
+          isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+        }`}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
         {/* Close button */}
         <button
-          onClick={onClose}
+          onClick={(e) => {
+            e.stopPropagation()
+            onClose()
+          }}
           className={`absolute top-3 right-3 p-1 transition-colors ${
             isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
           }`}
@@ -1205,5 +1234,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
         )}
       </div>
     </div>
+    </>,
+    document.body
   )
 }

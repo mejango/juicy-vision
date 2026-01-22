@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useChatStore } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
-import * as multiChatApi from '../../services/multiChat'
+import * as chatApi from '../../services/chat'
 import { getSessionId } from '../../services/session'
 
 // Helper to get the current user's pseudo-address (matches backend logic)
@@ -26,7 +26,7 @@ interface SystemEvent {
   createdAt: string
 }
 
-export default function MultiChatContainer() {
+export default function SharedChatContainer() {
   const { theme } = useThemeStore()
   const { t } = useTranslation()
   const { user } = useAuthStore()
@@ -78,16 +78,16 @@ export default function MultiChatContainer() {
         // Fetch chat info first if not in store
         const existingChat = getActiveChat()
         if (!existingChat) {
-          const chatInfo = await multiChatApi.fetchChat(activeChatId!)
+          const chatInfo = await chatApi.fetchChat(activeChatId!)
           addChat(chatInfo)
         }
 
         // Load messages
-        const msgs = await multiChatApi.fetchMessages(activeChatId!)
+        const msgs = await chatApi.fetchMessages(activeChatId!)
         setMessages(activeChatId!, msgs)
 
         // Load members
-        const mbrs = await multiChatApi.fetchMembers(activeChatId!)
+        const mbrs = await chatApi.fetchMembers(activeChatId!)
         setMembers(activeChatId!, mbrs)
 
         // Clear unread count
@@ -102,16 +102,16 @@ export default function MultiChatContainer() {
       setIsLoadingMessages(false)
 
       // Connect WebSocket
-      multiChatApi.connectToChat(activeChatId!)
+      chatApi.connectToChat(activeChatId!)
       setConnected(true)
 
       // Handle WebSocket messages
-      cleanup = multiChatApi.onWsMessage((msg) => {
+      cleanup = chatApi.onWsMessage((msg) => {
         if (msg.chatId !== activeChatId) return
 
         switch (msg.type) {
           case 'message':
-            addMessage(activeChatId!, msg.data as multiChatApi.WsMessage['data'] & { id: string; chatId: string; senderAddress: string; role: 'user' | 'assistant' | 'system'; content: string; isEncrypted: boolean; createdAt: string })
+            addMessage(activeChatId!, msg.data as chatApi.WsMessage['data'] & { id: string; chatId: string; senderAddress: string; role: 'user' | 'assistant' | 'system'; content: string; isEncrypted: boolean; createdAt: string })
             break
           case 'typing':
             const typingData = msg.data as { address: string; displayName?: string; isTyping: boolean }
@@ -147,7 +147,7 @@ export default function MultiChatContainer() {
 
     return () => {
       cleanup?.()
-      multiChatApi.disconnectFromChat()
+      chatApi.disconnectFromChat()
       setConnected(false)
     }
   }, [activeChatId, setMessages, setMembers, addMessage, setConnected, clearUnread])
@@ -161,14 +161,14 @@ export default function MultiChatContainer() {
   const handleTyping = useCallback(() => {
     if (!activeChatId) return
 
-    multiChatApi.sendTypingIndicator(activeChatId, true)
+    chatApi.sendTypingIndicator(activeChatId, true)
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current)
     }
 
     typingTimeoutRef.current = setTimeout(() => {
-      multiChatApi.sendTypingIndicator(activeChatId, false)
+      chatApi.sendTypingIndicator(activeChatId, false)
     }, 2000)
   }, [activeChatId])
 
@@ -183,15 +183,15 @@ export default function MultiChatContainer() {
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current)
     }
-    multiChatApi.sendTypingIndicator(activeChatId, false)
+    chatApi.sendTypingIndicator(activeChatId, false)
 
     try {
       // Send the user's message
-      await multiChatApi.sendMessage(activeChatId, content)
+      await chatApi.sendMessage(activeChatId, content)
 
       // Invoke AI to respond
       try {
-        await multiChatApi.invokeAi(activeChatId, content)
+        await chatApi.invokeAi(activeChatId, content)
       } catch (aiErr) {
         console.error('Failed to invoke AI:', aiErr)
         // Don't restore input - user message was sent successfully
@@ -234,7 +234,7 @@ export default function MultiChatContainer() {
               d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
             />
           </svg>
-          <p>{t('multiChat.selectChat', 'Select a chat to start messaging')}</p>
+          <p>{t('chat.selectChat', 'Select a chat to start messaging')}</p>
         </div>
       </div>
     )
@@ -250,7 +250,7 @@ export default function MultiChatContainer() {
       >
         <div className="text-center max-w-md px-4">
           <p className={`text-lg mb-4 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-            {t('multiChat.loadError', 'Unable to load chat')}
+            {t('chat.loadError', 'Unable to load chat')}
           </p>
           <p className="text-sm mb-6">{loadError}</p>
           <button
@@ -278,7 +278,7 @@ export default function MultiChatContainer() {
       >
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p>{t('multiChat.loading', 'Loading chat...')}</p>
+          <p>{t('chat.loading', 'Loading chat...')}</p>
         </div>
       </div>
     )
@@ -309,7 +309,7 @@ export default function MultiChatContainer() {
               theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
             }`}
           >
-            {members.length} {t('multiChat.members', 'members')}
+            {members.length} {t('chat.members', 'members')}
             {chat.encrypted && (
               <span className="ml-2 text-juice-orange">
                 <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -390,7 +390,7 @@ export default function MultiChatContainer() {
                 theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
               }`}
             >
-              {t('multiChat.noMessages', 'No messages yet. Start the conversation.')}
+              {t('chat.noMessages', 'No messages yet. Start the conversation.')}
             </div>
           </div>
         ) : (
@@ -490,7 +490,7 @@ export default function MultiChatContainer() {
               handleTyping()
             }}
             onKeyDown={handleKeyDown}
-            placeholder={t('multiChat.typeMessage', 'Type a message...')}
+            placeholder={t('chat.typeMessage', 'Type a message...')}
             rows={1}
             className={`flex-1 px-4 py-2.5 rounded-xl border resize-none transition-colors ${
               theme === 'dark'
