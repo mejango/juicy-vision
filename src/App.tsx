@@ -399,11 +399,13 @@ function TransactionExecutor() {
 function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: string; theme: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
+  const mascotRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef(0)
 
   useEffect(() => {
     const container = containerRef.current
     const dock = dockRef.current
+    const mascot = mascotRef.current
     if (!container || !dock) return
 
     // Maximum offset is the full height of the recs section (62vh)
@@ -424,7 +426,7 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
       return true
     }
 
-    const handleWheel = (e: WheelEvent) => {
+    const handleDockWheel = (e: WheelEvent) => {
       const scrollingDown = e.deltaY > 0
       const scrollingUp = e.deltaY < 0
       const atMaxHeight = offsetRef.current >= maxOffset
@@ -439,7 +441,6 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
         ? scrollableContent.scrollHeight - scrollableContent.clientHeight
         : 0
       const contentAtTop = contentScrollTop <= 1 // Allow 1px tolerance
-      const contentAtBottom = contentScrollTop >= contentScrollMax - 1
 
       // WINDING UP: If scrolling down to grow dock
       if (scrollingDown) {
@@ -468,10 +469,49 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
       }
     }
 
-    dock.addEventListener('wheel', handleWheel, { passive: false })
+    // Handle wheel events on mascot panel - delegate to dock when at scroll limit
+    const handleMascotWheel = (e: WheelEvent) => {
+      if (!mascot) return
+
+      const scrollingDown = e.deltaY > 0
+      const scrollingUp = e.deltaY < 0
+      const atMaxHeight = offsetRef.current >= maxOffset
+      const atMinHeight = offsetRef.current <= 0
+
+      // Find scrollable content inside mascot panel
+      const scrollableContent = mascot.querySelector('.overflow-y-auto') as HTMLElement
+      if (!scrollableContent) return
+
+      const contentScrollTop = scrollableContent.scrollTop
+      const contentScrollMax = scrollableContent.scrollHeight - scrollableContent.clientHeight
+      const contentAtTop = contentScrollTop <= 1
+      const contentAtBottom = contentScrollTop >= contentScrollMax - 1
+
+      // Scrolling down: if mascot content at bottom, delegate to dock growth
+      if (scrollingDown && contentAtBottom) {
+        if (!atMaxHeight) {
+          const changed = updateOffset(e.deltaY)
+          if (changed) e.preventDefault()
+          return
+        }
+      }
+
+      // Scrolling up: if mascot content at top and dock is expanded, shrink dock
+      if (scrollingUp && contentAtTop) {
+        if (!atMinHeight) {
+          const changed = updateOffset(e.deltaY)
+          if (changed) e.preventDefault()
+          return
+        }
+      }
+    }
+
+    dock.addEventListener('wheel', handleDockWheel, { passive: false })
+    mascot?.addEventListener('wheel', handleMascotWheel, { passive: false })
 
     return () => {
-      dock.removeEventListener('wheel', handleWheel)
+      dock.removeEventListener('wheel', handleDockWheel)
+      mascot?.removeEventListener('wheel', handleMascotWheel)
     }
   }, [])
 
@@ -492,6 +532,7 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
       {/* Mascot panel - overlays recommendations with translucent background */}
       {/* Height is slightly less than 62vh to ensure top border stays visible within container */}
       <div
+        ref={mascotRef}
         className="hidden lg:flex lg:flex-col absolute right-0 w-[27.53%] z-20 border-t-4 border-l-4 border-juice-orange"
         style={{ height: 'calc(62vh - 4px)', bottom: 'var(--dock-height)' }}
       >

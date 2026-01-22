@@ -413,6 +413,31 @@ export async function getPublicChats(limit = 50, offset = 0): Promise<Chat[]> {
   return results.map(dbToChat);
 }
 
+/**
+ * Delete a chat (founder only)
+ */
+export async function deleteChat(chatId: string, requestorAddress: string): Promise<void> {
+  const chat = await getChatById(chatId);
+  if (!chat) {
+    throw new Error('Chat not found');
+  }
+
+  // Only founder can delete
+  if (chat.founderAddress.toLowerCase() !== requestorAddress.toLowerCase()) {
+    throw new Error('Only the founder can delete this chat');
+  }
+
+  // Delete in transaction: messages, members, keys, then chat
+  await transaction(async (client) => {
+    await client.queryObject('DELETE FROM chat_messages WHERE chat_id = $1', [chatId]);
+    await client.queryObject('DELETE FROM group_keys WHERE chat_id = $1', [chatId]);
+    await client.queryObject('DELETE FROM multi_chat_members WHERE chat_id = $1', [chatId]);
+    await client.queryObject('DELETE FROM chat_invites WHERE chat_id = $1', [chatId]);
+    await client.queryObject('DELETE FROM chat_ai_billing WHERE chat_id = $1', [chatId]);
+    await client.queryObject('DELETE FROM multi_chats WHERE id = $1', [chatId]);
+  });
+}
+
 // ============================================================================
 // Member Management
 // ============================================================================

@@ -229,7 +229,7 @@ export const useChatStore = create<ChatState>()(
       getSubfolders: (parentFolderId) => {
         const state = get()
         return state.folders
-          .filter((f) => f.parentFolderId === parentFolderId)
+          .filter((f) => parentFolderId === null ? !f.parentFolderId : f.parentFolderId === parentFolderId)
           .sort((a, b) => {
             // Pinned first, then by name
             if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1

@@ -14,6 +14,7 @@ import {
   updateFolderDetails,
   deleteFolder as deleteFolderApi,
   pinFolder,
+  deleteChat as deleteChatApi,
 } from '../../services/chat'
 
 function formatTimeAgo(timestamp: string): string {
@@ -38,6 +39,93 @@ function getChatDisplayTitle(chat: Chat): string {
   return chat.name || 'Untitled'
 }
 
+function getChatSummary(chat: Chat): string {
+  // Use description if available
+  if (chat.description) {
+    return chat.description
+  }
+
+  const messages = chat.messages || []
+  const messageCount = messages.length
+  const userMessages = messages.filter(m => m.role === 'user')
+  const aiMessages = messages.filter(m => m.role === 'assistant')
+
+  // Check for abandoned/throwaway chats
+  if (messageCount === 0) {
+    return 'Empty conversation'
+  }
+
+  if (messageCount === 1 && userMessages.length === 1) {
+    const content = userMessages[0].content.trim()
+    if (content.length < 20) {
+      return 'Just getting started...'
+    }
+    return 'Waiting for a response'
+  }
+
+  if (messageCount <= 2 && aiMessages.length === 1) {
+    const aiContent = aiMessages[0].content.toLowerCase()
+    if (aiContent.includes('help you') && aiContent.includes('gather') || aiContent.includes('let me')) {
+      return 'Project setup in progress'
+    }
+  }
+
+  // Check if it looks abandoned (short exchange, no real substance)
+  if (messageCount <= 3) {
+    const totalLength = messages.reduce((sum, m) => sum + m.content.length, 0)
+    if (totalLength < 200) {
+      return 'Not much in this one'
+    }
+  }
+
+  // Try to extract topic/context from the conversation
+  const allContent = messages.map(m => m.content).join(' ').toLowerCase()
+
+  // Detect common themes
+  if (allContent.includes('project') && (allContent.includes('launch') || allContent.includes('create'))) {
+    if (allContent.includes('fund') || allContent.includes('treasury')) {
+      return 'Setting up project funding'
+    }
+    return 'Planning a new project'
+  }
+
+  if (allContent.includes('swap') || allContent.includes('trade') || allContent.includes('exchange')) {
+    return 'Token swap discussion'
+  }
+
+  if (allContent.includes('pay') || allContent.includes('send') || allContent.includes('transfer')) {
+    return 'Payment or transfer'
+  }
+
+  if (allContent.includes('nft') || allContent.includes('mint')) {
+    return 'NFT-related discussion'
+  }
+
+  if (allContent.includes('help') || allContent.includes('how do') || allContent.includes('what is')) {
+    return 'Getting help with something'
+  }
+
+  // Fallback: summarize based on message count and engagement
+  if (messageCount > 10) {
+    return `Active conversation with ${messageCount} messages`
+  }
+
+  if (messageCount > 5) {
+    return 'Ongoing discussion'
+  }
+
+  // Last resort: brief excerpt from first user message
+  if (userMessages.length > 0) {
+    const firstQ = userMessages[0].content.replace(/\n/g, ' ').trim()
+    if (firstQ.length > 60) {
+      return firstQ.slice(0, 57) + '...'
+    }
+    return firstQ
+  }
+
+  return 'Brief exchange'
+}
+
 function isGenericName(name: string | null | undefined): boolean {
   if (!name) return true
   const genericPatterns = [
@@ -51,11 +139,15 @@ function isGenericName(name: string | null | undefined): boolean {
   return genericPatterns.some((pattern) => pattern.test(name.trim()))
 }
 
-// Pin icon component
+// Bookmark icon component (for pinning)
 function PinIcon({ filled, className }: { filled?: boolean; className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2}>
-      <path d="M12 2v8m0 0l-4-2m4 2l4-2M8 22l4-8 4 8" strokeLinecap="round" strokeLinejoin="round" />
+  return filled ? (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+    </svg>
+  ) : (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -328,6 +420,10 @@ export default function ConversationHistory() {
   const [folderPopover, setFolderPopover] = useState<{ top: number; left: number; above: boolean } | null>(null)
   const [newFolderName, setNewFolderName] = useState('')
   const folderPopoverRef = useRef<HTMLDivElement>(null)
+  const [cardMenu, setCardMenu] = useState<{ chatId: string; x: number; y: number } | null>(null)
+  const [moveSubmenu, setMoveSubmenu] = useState(false)
+  const [folderMenu, setFolderMenu] = useState<{ folderId: string; x: number; y: number } | null>(null)
+  const [folderChatMenu, setFolderChatMenu] = useState<{ chatId: string; folderId: string; x: number; y: number } | null>(null)
 
   // Pagination state
   const [totalChats, setTotalChats] = useState(0)
@@ -343,13 +439,25 @@ export default function ConversationHistory() {
       const { chats: newChats, total } = await fetchMyChats({ limit: PAGE_SIZE, offset })
       setTotalChats(total)
       setHasMore(offset + newChats.length < total)
+
+      // Merge API data with locally cached messages/members
+      const existingChatsMap = new Map(chats.map(c => [c.id, c]))
+      const mergedChats = newChats.map(apiChat => {
+        const existing = existingChatsMap.get(apiChat.id)
+        if (existing) {
+          // Preserve locally cached messages and members
+          return { ...apiChat, messages: existing.messages, members: existing.members }
+        }
+        return apiChat
+      })
+
       if (append) {
         // Append to existing chats, avoiding duplicates
-        const existingIds = new Set(chats.map(c => c.id))
-        const uniqueNewChats = newChats.filter(c => !existingIds.has(c.id))
-        setChats([...chats, ...uniqueNewChats])
+        const newIds = new Set(mergedChats.map(c => c.id))
+        const existingNotInNew = chats.filter(c => !newIds.has(c.id))
+        setChats([...existingNotInNew, ...mergedChats])
       } else {
-        setChats(newChats)
+        setChats(mergedChats)
       }
     } catch (error) {
       console.error('Failed to load chats:', error)
@@ -392,10 +500,7 @@ export default function ConversationHistory() {
   const rootFolders = getSubfolders(null)
   const rootChats = getChatsInFolder(null)
 
-  // Filter to only chats with messages
-  const nonEmptyChats = chats.filter(c => c.messages && c.messages.length > 0)
-
-  if (nonEmptyChats.length === 0 && folders.length === 0 && !isLoading) return null
+  if (chats.length === 0 && folders.length === 0 && !isLoading) return null
 
   const handleSelectChat = (id: string) => {
     setActiveChat(id)
@@ -488,7 +593,12 @@ export default function ConversationHistory() {
   const handleDelete = async () => {
     if (!contextMenu) return
     if (contextMenu.type === 'chat') {
-      removeChat(contextMenu.id)
+      try {
+        await deleteChatApi(contextMenu.id)
+        removeChat(contextMenu.id)
+      } catch (error) {
+        console.error('Failed to delete chat:', error)
+      }
     } else {
       try {
         await deleteFolderApi(contextMenu.id)
@@ -545,7 +655,81 @@ export default function ConversationHistory() {
 
   const contextItem = getContextItem()
 
-  // Render a chat item
+  // Render a chat card for grid layout
+  const renderChatCard = (chat: Chat) => {
+    const summary = getChatSummary(chat)
+    const isMenuOpen = cardMenu?.chatId === chat.id
+
+    return (
+      <div
+        key={chat.id}
+        onClick={() => handleSelectChat(chat.id)}
+        onContextMenu={(e) => handleContextMenu(e, 'chat', chat.id)}
+        className={`group relative p-4 border cursor-pointer transition-all hover:scale-[1.02] flex flex-col ${
+          chat.id === activeChatId
+            ? theme === 'dark'
+              ? 'bg-white/10 border-white/30 text-white'
+              : 'bg-gray-100 border-gray-300 text-gray-900'
+            : theme === 'dark'
+              ? 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
+              : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+        }`}
+      >
+        {/* Time - top right */}
+        <span className={`absolute top-3 right-3 text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+          {formatTimeAgo(chat.updatedAt)}
+        </span>
+
+        {/* Pin indicator - top left */}
+        {chat.isPinned && (
+          <PinIcon filled className={`absolute top-3 left-3 w-3 h-3 ${
+            theme === 'dark' ? 'text-purple-400' : 'text-purple-600'
+          }`} />
+        )}
+
+        {/* Title */}
+        <h3 className={`text-sm font-medium mb-1 pr-16 ${chat.isPinned ? 'pl-5' : ''} line-clamp-2 ${
+          theme === 'dark' ? 'text-gray-100' : 'text-gray-800'
+        }`}>
+          {getChatDisplayTitle(chat)}
+        </h3>
+
+        {/* Summary */}
+        {summary && (
+          <p className={`text-xs leading-relaxed line-clamp-3 ${
+            theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+          }`}>
+            {summary}
+          </p>
+        )}
+
+        {/* Footer with three-dot menu */}
+        <div className="flex items-center justify-end mt-auto pt-3">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              const rect = e.currentTarget.getBoundingClientRect()
+              setCardMenu({ chatId: chat.id, x: rect.right, y: rect.bottom })
+              setMoveSubmenu(false)
+            }}
+            className={`p-1 rounded transition-opacity ${
+              isMenuOpen
+                ? theme === 'dark' ? 'text-white' : 'text-gray-700'
+                : `opacity-0 group-hover:opacity-100 ${theme === 'dark' ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-700'}`
+            }`}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <circle cx="5" cy="12" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="19" cy="12" r="2" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Render a chat item for list layout (used inside folders)
   const renderChat = (chat: Chat, indent = 0) => (
     <div
       key={chat.id}
@@ -581,9 +765,14 @@ export default function ConversationHistory() {
       </div>
       {/* Trash button - visible on hover */}
       <button
-        onClick={(e) => {
+        onClick={async (e) => {
           e.stopPropagation()
-          removeChat(chat.id)
+          try {
+            await deleteChatApi(chat.id)
+            removeChat(chat.id)
+          } catch (error) {
+            console.error('Failed to delete chat:', error)
+          }
         }}
         className={`shrink-0 p-1 opacity-0 group-hover:opacity-100 transition-opacity ${
           theme === 'dark'
@@ -599,47 +788,131 @@ export default function ConversationHistory() {
     </div>
   )
 
-  // Render a folder item
-  const renderFolder = (folder: ChatFolder, indent = 0) => {
+  // Render a folder card for grid layout (dashed border style)
+  const renderFolderCard = (folder: ChatFolder) => {
+    const folderChats = getChatsInFolder(folder.id)
     const isExpanded = expandedFolders.has(folder.id)
-    const folderChats = getChatsInFolder(folder.id).filter(c => c.messages && c.messages.length > 0)
-    const subfolders = getSubfolders(folder.id)
+    const isMenuOpen = folderMenu?.folderId === folder.id
 
     return (
-      <div key={folder.id}>
-        <div
-          onClick={() => toggleFolder(folder.id)}
-          onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
-          style={{ paddingLeft: indent > 0 ? `${indent * 16}px` : undefined }}
-          className={`group flex items-center gap-2 py-1.5 pr-2 rounded cursor-pointer transition-colors ${
-            theme === 'dark'
-              ? 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-          }`}
-        >
-          <svg
-            className={`w-3 h-3 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-          {folder.isPinned && (
-            <PinIcon filled className={`w-3 h-3 shrink-0 ${
-              theme === 'dark' ? 'text-purple-400' : 'text-purple-600'
-            }`} />
-          )}
-          <FolderIcon open={isExpanded} className="w-4 h-4 shrink-0" />
-          <span className="text-sm truncate">{folder.name}</span>
-          <span className={`text-xs ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`}>
-            ({folderChats.length})
-          </span>
+      <div
+        key={folder.id}
+        onClick={() => toggleFolder(folder.id)}
+        onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
+        className={`group relative p-4 border-2 border-dashed cursor-pointer transition-all hover:scale-[1.02] flex flex-col ${
+          theme === 'dark'
+            ? 'border-white/20 hover:border-white/40 hover:bg-white/5'
+            : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+        }`}
+      >
+        {/* Chat count - top right */}
+        <span className={`absolute top-3 right-3 text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+          {folderChats.length} {folderChats.length === 1 ? 'chat' : 'chats'}
+        </span>
+
+        {/* Pin indicator - top left */}
+        {folder.isPinned && (
+          <PinIcon filled className={`absolute top-3 left-3 w-3 h-3 ${
+            theme === 'dark' ? 'text-purple-400' : 'text-purple-600'
+          }`} />
+        )}
+
+        {/* Folder icon and title */}
+        <div className={`flex items-center gap-2 mb-1 ${folder.isPinned ? 'pl-5' : ''}`}>
+          <FolderIcon open={isExpanded} className={`w-5 h-5 shrink-0 ${
+            theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+          }`} />
+          <h3 className={`text-sm font-medium pr-16 line-clamp-2 ${
+            theme === 'dark' ? 'text-gray-100' : 'text-gray-800'
+          }`}>
+            {folder.name}
+          </h3>
         </div>
+
+        {/* Collapsed: show inline preview text */}
+        {!isExpanded && folderChats.length > 0 && (
+          <p className={`text-xs mt-1 line-clamp-1 ${
+            theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+          }`}>
+            {folderChats.slice(0, 3).map(c => getChatDisplayTitle(c)).join(', ')}
+            {folderChats.length > 3 ? '...' : ''}
+          </p>
+        )}
+
+        {/* Expanded: show full list with actions */}
+        {isExpanded && folderChats.length > 0 && (
+          <div className={`mt-2 pt-2 border-t space-y-0.5 ${
+            theme === 'dark' ? 'border-white/10' : 'border-gray-200'
+          }`}>
+            {folderChats.slice(0, 5).map(chat => (
+              <div
+                key={chat.id}
+                className={`group/item flex items-center justify-between py-2 px-1 rounded ${
+                  theme === 'dark'
+                    ? 'hover:bg-white/10'
+                    : 'hover:bg-gray-100'
+                }`}
+              >
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleSelectChat(chat.id)
+                  }}
+                  className={`text-xs truncate cursor-pointer flex-1 ${
+                    theme === 'dark'
+                      ? 'text-gray-400 hover:text-gray-200'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {getChatDisplayTitle(chat)}
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    setFolderChatMenu({ chatId: chat.id, folderId: folder.id, x: rect.right, y: rect.bottom })
+                  }}
+                  className={`shrink-0 p-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity ${
+                    theme === 'dark' ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-700'
+                  }`}
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                    <circle cx="5" cy="12" r="2" />
+                    <circle cx="12" cy="12" r="2" />
+                    <circle cx="19" cy="12" r="2" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+            {folderChats.length > 5 && (
+              <div className={`text-xs px-1 ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`}>
+                +{folderChats.length - 5} more
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer with three-dot menu - only show when expanded */}
         {isExpanded && (
-          <div>
-            {subfolders.map(sub => renderFolder(sub, indent + 1))}
-            {folderChats.map(chat => renderChat(chat, indent + 1))}
+          <div className="flex items-center justify-end mt-auto pt-3">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                const rect = e.currentTarget.getBoundingClientRect()
+                setFolderMenu({ folderId: folder.id, x: rect.right, y: rect.bottom })
+              }}
+              className={`p-1 rounded transition-opacity ${
+                isMenuOpen
+                  ? theme === 'dark' ? 'text-white' : 'text-gray-700'
+                  : `opacity-0 group-hover:opacity-100 ${theme === 'dark' ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-700'}`
+              }`}
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <circle cx="5" cy="12" r="2" />
+                <circle cx="12" cy="12" r="2" />
+                <circle cx="19" cy="12" r="2" />
+              </svg>
+            </button>
           </div>
         )}
       </div>
@@ -647,13 +920,13 @@ export default function ConversationHistory() {
   }
 
   return (
-    <div className="pl-[84px] pr-6 mt-8">
+    <div className="px-6 mt-8">
       {/* Header with create folder button beside title */}
       <div className="flex items-center gap-3 mb-2">
         <span className={`text-xs font-medium ${
           theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
         }`}>
-          {t('ui.recent', 'Recent')} ({totalChats || nonEmptyChats.length})
+          {t('ui.recent', 'Recent')} ({totalChats || chats.length})
         </span>
         <button
           onClick={openFolderPopover}
@@ -720,31 +993,345 @@ export default function ConversationHistory() {
         document.body
       )}
 
-      {/* Chat and folder list */}
-      <div className="space-y-0.5">
+      {/* Grid - folders and chats together */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {/* Pinned folders first */}
-        {pinnedFolders.map(folder => renderFolder(folder))}
-
-        {/* Regular folders */}
-        {rootFolders.filter(f => !f.isPinned).map(folder => renderFolder(folder))}
-
-        {/* Root-level chats (not in any folder) */}
-        {rootChats
-          .filter(c => c.messages && c.messages.length > 0)
-          .map(chat => renderChat(chat))}
-
-        {/* Load more trigger */}
-        {hasMore && (
-          <div
-            ref={loadMoreRef}
-            className={`py-3 text-center text-xs ${
-              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-            }`}
-          >
-            {isLoading ? 'Loading...' : ''}
-          </div>
-        )}
+        {pinnedFolders.map(folder => renderFolderCard(folder))}
+        {/* Unpinned folders */}
+        {rootFolders.filter(f => !f.isPinned).map(folder => renderFolderCard(folder))}
+        {/* Then chats */}
+        {rootChats.map(chat => renderChatCard(chat))}
       </div>
+
+      {/* Load more trigger */}
+      {hasMore && (
+        <div
+          ref={loadMoreRef}
+          className={`py-6 text-center text-xs ${
+            theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+          }`}
+        >
+          {isLoading ? 'Loading...' : ''}
+        </div>
+      )}
+
+      {/* Card dropdown menu */}
+      {cardMenu && createPortal(
+        (() => {
+          const menuWidth = 144 // min-w-36 = 9rem = 144px
+          const menuHeight = 120 // approximate height
+          const submenuWidth = 144
+          const padding = 8
+
+          // Calculate ideal position (right-aligned to button)
+          let menuLeft = cardMenu.x - menuWidth
+          let menuTop = cardMenu.y + 4
+
+          // Clamp horizontal to viewport
+          if (menuLeft < padding) menuLeft = padding
+          if (menuLeft + menuWidth > window.innerWidth - padding) {
+            menuLeft = window.innerWidth - padding - menuWidth
+          }
+
+          // Clamp vertical to viewport
+          if (menuTop + menuHeight > window.innerHeight - padding) {
+            menuTop = cardMenu.y - menuHeight - 4
+          }
+          if (menuTop < padding) menuTop = padding
+
+          // Decide submenu direction: prefer right, but flip if no space
+          const spaceOnRight = window.innerWidth - (menuLeft + menuWidth)
+          const spaceOnLeft = menuLeft
+          const flipSubmenu = spaceOnRight < submenuWidth + padding && spaceOnLeft > submenuWidth
+
+          // Calculate submenu position with clamping
+          let submenuLeft = flipSubmenu ? menuLeft - submenuWidth - 4 : menuLeft + menuWidth + 4
+          if (submenuLeft < padding) submenuLeft = padding
+          if (submenuLeft + submenuWidth > window.innerWidth - padding) {
+            submenuLeft = window.innerWidth - padding - submenuWidth
+          }
+
+          return (
+        <>
+          <div className="fixed inset-0 z-[49]" onClick={() => { setCardMenu(null); setMoveSubmenu(false) }} />
+          <div
+            className={`fixed z-50 shadow-xl py-1 min-w-36 ${
+              theme === 'dark' ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+            }`}
+            style={{ left: menuLeft, top: menuTop }}
+            data-flip-submenu={flipSubmenu}
+          >
+            {/* Pin/Unpin */}
+            <button
+              onClick={async () => {
+                const chat = chats.find(c => c.id === cardMenu.chatId)
+                if (chat) {
+                  try {
+                    const updated = await pinChat(chat.id, !chat.isPinned)
+                    updateChat(chat.id, { isPinned: updated.isPinned, pinOrder: updated.pinOrder })
+                  } catch (error) {
+                    console.error('Failed to toggle pin:', error)
+                  }
+                }
+                setCardMenu(null)
+              }}
+              className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 ${
+                theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <PinIcon filled={chats.find(c => c.id === cardMenu.chatId)?.isPinned} className="w-4 h-4" />
+              {chats.find(c => c.id === cardMenu.chatId)?.isPinned ? 'Unpin' : 'Pin'}
+            </button>
+
+            {/* Move to folder */}
+            <div className="relative">
+              <button
+                onClick={() => setMoveSubmenu(!moveSubmenu)}
+                className={`w-full text-left px-3 py-1.5 text-sm flex items-center justify-between ${
+                  theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <FolderIcon className="w-4 h-4" />
+                  Move
+                </span>
+                <svg className={`w-3 h-3 transition-transform ${flipSubmenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+
+              {/* Move submenu */}
+              {moveSubmenu && (
+                <div
+                  className={`fixed py-1 min-w-36 shadow-xl z-[51] ${
+                    theme === 'dark' ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                  }`}
+                  style={{
+                    top: menuTop + 28, // offset to align with Move button
+                    left: submenuLeft,
+                  }}
+                >
+                  {/* No folder option */}
+                  {chats.find(c => c.id === cardMenu.chatId)?.folderId && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const updated = await moveChatToFolder(cardMenu.chatId, null)
+                          updateChat(cardMenu.chatId, { folderId: updated.folderId })
+                        } catch (error) {
+                          console.error('Failed to move chat:', error)
+                        }
+                        setCardMenu(null)
+                        setMoveSubmenu(false)
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-sm ${
+                        theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      No folder
+                    </button>
+                  )}
+                  {/* Folder options */}
+                  {rootFolders.map(folder => (
+                    <button
+                      key={folder.id}
+                      onClick={async () => {
+                        try {
+                          const updated = await moveChatToFolder(cardMenu.chatId, folder.id)
+                          updateChat(cardMenu.chatId, { folderId: updated.folderId })
+                        } catch (error) {
+                          console.error('Failed to move chat:', error)
+                        }
+                        setCardMenu(null)
+                        setMoveSubmenu(false)
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 ${
+                        theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <FolderIcon className="w-4 h-4" />
+                      {folder.name}
+                    </button>
+                  ))}
+                  {rootFolders.length === 0 && (
+                    <div className={`px-3 py-1.5 text-sm ${
+                      theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                    }`}>
+                      No folders yet
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className={`border-t my-1 ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`} />
+
+            {/* Trash */}
+            <button
+              onClick={async () => {
+                try {
+                  await deleteChatApi(cardMenu.chatId)
+                  removeChat(cardMenu.chatId)
+                } catch (error) {
+                  console.error('Failed to delete chat:', error)
+                }
+                setCardMenu(null)
+              }}
+              className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 ${
+                theme === 'dark' ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Trash
+            </button>
+          </div>
+        </>
+          )
+        })(),
+        document.body
+      )}
+
+      {/* Folder dropdown menu */}
+      {folderMenu && createPortal(
+        (() => {
+          const folder = folders.find(f => f.id === folderMenu.folderId)
+          if (!folder) return null
+
+          const menuWidth = 144
+          const menuHeight = 80
+          const padding = 8
+
+          let menuLeft = folderMenu.x - menuWidth
+          let menuTop = folderMenu.y + 4
+
+          if (menuLeft < padding) menuLeft = padding
+          if (menuLeft + menuWidth > window.innerWidth - padding) {
+            menuLeft = window.innerWidth - padding - menuWidth
+          }
+          if (menuTop + menuHeight > window.innerHeight - padding) {
+            menuTop = folderMenu.y - menuHeight - 4
+          }
+          if (menuTop < padding) menuTop = padding
+
+          return (
+            <>
+              <div className="fixed inset-0 z-[49]" onClick={() => setFolderMenu(null)} />
+              <div
+                className={`fixed z-50 shadow-xl py-1 min-w-36 ${
+                  theme === 'dark' ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                }`}
+                style={{ left: menuLeft, top: menuTop }}
+              >
+                {/* Pin/Unpin */}
+                <button
+                  onClick={async () => {
+                    try {
+                      const updated = await pinFolder(folder.id, !folder.isPinned)
+                      updateFolder(folder.id, { isPinned: updated.isPinned, pinOrder: updated.pinOrder })
+                    } catch (error) {
+                      console.error('Failed to toggle pin:', error)
+                    }
+                    setFolderMenu(null)
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 ${
+                    theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <PinIcon filled={folder.isPinned} className="w-4 h-4" />
+                  {folder.isPinned ? 'Unpin' : 'Pin'}
+                </button>
+
+                <div className={`border-t my-1 ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`} />
+
+                {/* Trash folder */}
+                <button
+                  onClick={async () => {
+                    try {
+                      // Move all chats out of folder first (they stay in history)
+                      const folderChats = getChatsInFolder(folder.id)
+                      for (const chat of folderChats) {
+                        const updated = await moveChatToFolder(chat.id, null)
+                        updateChat(chat.id, { folderId: updated.folderId })
+                      }
+                      // Then delete the folder
+                      await deleteFolderApi(folder.id)
+                      removeFolder(folder.id)
+                    } catch (error) {
+                      console.error('Failed to delete folder:', error)
+                    }
+                    setFolderMenu(null)
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 ${
+                    theme === 'dark' ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Trash
+                </button>
+              </div>
+            </>
+          )
+        })(),
+        document.body
+      )}
+
+      {/* Folder chat menu (remove from folder) */}
+      {folderChatMenu && createPortal(
+        (() => {
+          const menuWidth = 160
+          const menuHeight = 40
+          const padding = 8
+
+          let menuLeft = folderChatMenu.x - menuWidth
+          let menuTop = folderChatMenu.y + 4
+
+          if (menuLeft < padding) menuLeft = padding
+          if (menuLeft + menuWidth > window.innerWidth - padding) {
+            menuLeft = window.innerWidth - padding - menuWidth
+          }
+          if (menuTop + menuHeight > window.innerHeight - padding) {
+            menuTop = folderChatMenu.y - menuHeight - 4
+          }
+          if (menuTop < padding) menuTop = padding
+
+          return (
+            <>
+              <div className="fixed inset-0 z-[49]" onClick={() => setFolderChatMenu(null)} />
+              <div
+                className={`fixed z-50 shadow-xl py-1 ${
+                  theme === 'dark' ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                }`}
+                style={{ left: menuLeft, top: menuTop }}
+              >
+                <button
+                  onClick={async () => {
+                    try {
+                      const updated = await moveChatToFolder(folderChatMenu.chatId, null)
+                      updateChat(folderChatMenu.chatId, { folderId: updated.folderId })
+                    } catch (error) {
+                      console.error('Failed to remove from folder:', error)
+                    }
+                    setFolderChatMenu(null)
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 whitespace-nowrap ${
+                    theme === 'dark' ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Remove from folder
+                </button>
+              </div>
+            </>
+          )
+        })(),
+        document.body
+      )}
 
       {/* Context menu */}
       {contextMenu && contextItem && (

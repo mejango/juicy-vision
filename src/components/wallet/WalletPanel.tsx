@@ -6,6 +6,7 @@ import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet, useEnsNameResolved } from '../../hooks'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
 import { CHAINS, ALL_CHAIN_IDS } from '../../constants'
+import { hasValidWalletSession } from '../../services/siwe'
 
 export interface AnchorPosition {
   top: number
@@ -437,11 +438,12 @@ export interface InsufficientFundsInfo {
 }
 
 // Connected wallet view (self-custody) with multi-chain balances
-function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsufficientFundsChange }: {
+function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsufficientFundsChange, isSignedIn }: {
   onTopUp: () => void
   onDisconnect: () => void
   paymentContext?: PaymentContext
   onInsufficientFundsChange?: (info: InsufficientFundsInfo | null) => void
+  isSignedIn: boolean
 }) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -561,8 +563,15 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
           {ensName || shortenAddress(address)}
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-          <span className={`text-xs ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+          {isSignedIn ? (
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+          ) : (
+            <div className={`w-1.5 h-1.5 rounded-full border ${isDark ? 'border-gray-500' : 'border-gray-400'}`} />
+          )}
+          <span className={`text-xs ${isSignedIn
+            ? (isDark ? 'text-green-400' : 'text-green-600')
+            : (isDark ? 'text-gray-400' : 'text-gray-500')
+          }`}>
             Connected
           </span>
         </div>
@@ -1015,6 +1024,9 @@ function TopUpView({ onBack, address }: { onBack: () => void; address?: string }
 export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPosition }: WalletPanelProps) {
   const { mode, logout: authLogout, isAuthenticated } = useAuthStore()
   const { address, isConnected: walletConnected } = useAccount()
+
+  // Self-custody users are "signed in" if they have a valid SIWE session
+  const isSelfCustodySignedIn = hasValidWalletSession()
   const { disconnect } = useDisconnect()
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -1223,6 +1235,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
             onDisconnect={handleDisconnect}
             paymentContext={paymentContext}
             onInsufficientFundsChange={setInsufficientFundsInfo}
+            isSignedIn={isSelfCustodySignedIn}
           />
         )}
 

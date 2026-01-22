@@ -1,6 +1,7 @@
 import { useAccount, useDisconnect } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
+import { hasValidWalletSession } from '../../services/siwe'
 
 function shortenAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
@@ -21,16 +22,24 @@ export default function WalletInfo() {
   const { disconnect } = useDisconnect()
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
 
+  // User is "signed in" if they have a valid SIWE session
+  const isSignedIn = hasValidWalletSession()
+
   if (!isConnected || !address) return null
 
   return (
     <div className="flex gap-3 mt-2 px-6">
       {/* Spacer to align with textarea */}
       <div className="w-[48px] shrink-0" />
-      <div className={`flex-1 text-xs ${
+      <div className={`flex-1 flex items-center text-xs ${
         theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
       }`}>
-        <span>Connected as </span>
+        {isSignedIn ? (
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 shrink-0" />
+        ) : (
+          <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50 mr-1.5 shrink-0" />
+        )}
+        <span className="mr-1">Connected as</span>
         <button
           onClick={openWalletPanel}
           className={`transition-colors ${

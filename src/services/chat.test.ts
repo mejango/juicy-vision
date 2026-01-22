@@ -88,13 +88,13 @@ describe('chat service', () => {
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ success: true, data: mockChats }),
+        json: () => Promise.resolve({ success: true, data: mockChats, total: 2 }),
       })
 
       const { fetchMyChats } = await import('./chat')
-      const chats = await fetchMyChats()
+      const result = await fetchMyChats()
 
-      expect(chats).toEqual(mockChats)
+      expect(result).toEqual({ chats: mockChats, total: 2 })
     })
   })
 

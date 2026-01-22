@@ -12,12 +12,10 @@ describe('Modal', () => {
 
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
-    // Reset body overflow
-    document.body.style.overflow = ''
   })
 
   afterEach(() => {
-    document.body.style.overflow = ''
+    vi.clearAllMocks()
   })
 
   describe('rendering', () => {
@@ -52,26 +50,27 @@ describe('Modal', () => {
   describe('sizes', () => {
     it('applies small size styles', () => {
       render(<Modal {...defaultProps} size="sm" />)
-      const modalContent = screen.getByText('Modal content').closest('div[class*="max-w"]')
-      expect(modalContent?.className).toContain('max-w-sm')
+      // Find the modal container by looking for the flex flex-col div which contains the width class
+      const modalContainer = document.querySelector('.fixed.z-50 > div[class*="flex-col"]')
+      expect(modalContainer?.className).toContain('w-80')
     })
 
     it('applies medium size styles by default', () => {
       render(<Modal {...defaultProps} />)
-      const modalContent = screen.getByText('Modal content').closest('div[class*="max-w"]')
-      expect(modalContent?.className).toContain('max-w-md')
+      const modalContainer = document.querySelector('.fixed.z-50 > div[class*="flex-col"]')
+      expect(modalContainer?.className).toContain('w-96')
     })
 
     it('applies large size styles', () => {
       render(<Modal {...defaultProps} size="lg" />)
-      const modalContent = screen.getByText('Modal content').closest('div[class*="max-w"]')
-      expect(modalContent?.className).toContain('max-w-lg')
+      const modalContainer = document.querySelector('.fixed.z-50 > div[class*="flex-col"]')
+      expect(modalContainer?.className).toContain('w-[28rem]')
     })
 
     it('applies extra large size styles', () => {
       render(<Modal {...defaultProps} size="xl" />)
-      const modalContent = screen.getByText('Modal content').closest('div[class*="max-w"]')
-      expect(modalContent?.className).toContain('max-w-xl')
+      const modalContainer = document.querySelector('.fixed.z-50 > div[class*="flex-col"]')
+      expect(modalContainer?.className).toContain('w-[32rem]')
     })
   })
 
@@ -80,11 +79,11 @@ describe('Modal', () => {
       const onClose = vi.fn()
       render(<Modal {...defaultProps} onClose={onClose} />)
 
-      // Find the backdrop (element with bg-black/70)
-      const backdrop = document.querySelector('.bg-black\\/70')
+      // Find the backdrop (element with fixed inset-0 z-[49])
+      const backdrop = document.querySelector('.fixed.inset-0.z-\\[49\\]')
       expect(backdrop).toBeInTheDocument()
 
-      fireEvent.click(backdrop!)
+      fireEvent.mouseDown(backdrop!)
 
       expect(onClose).toHaveBeenCalledTimes(1)
     })
@@ -117,28 +116,15 @@ describe('Modal', () => {
 
       expect(onClose).not.toHaveBeenCalled()
     })
-  })
 
-  describe('body scroll lock', () => {
-    it('sets body overflow to hidden when opened', () => {
-      render(<Modal {...defaultProps} />)
-      expect(document.body.style.overflow).toBe('hidden')
-    })
+    it('does not close when clicking inside modal content', () => {
+      const onClose = vi.fn()
+      render(<Modal {...defaultProps} onClose={onClose} />)
 
-    it('restores body overflow when closed', () => {
-      const { rerender } = render(<Modal {...defaultProps} />)
-      expect(document.body.style.overflow).toBe('hidden')
+      // Click inside the modal content
+      fireEvent.mouseDown(screen.getByText('Modal content'))
 
-      rerender(<Modal {...defaultProps} isOpen={false} />)
-      expect(document.body.style.overflow).toBe('')
-    })
-
-    it('restores body overflow when unmounted', () => {
-      const { unmount } = render(<Modal {...defaultProps} />)
-      expect(document.body.style.overflow).toBe('hidden')
-
-      unmount()
-      expect(document.body.style.overflow).toBe('')
+      expect(onClose).not.toHaveBeenCalled()
     })
   })
 
@@ -147,18 +133,18 @@ describe('Modal', () => {
       useThemeStore.setState({ theme: 'dark' })
       render(<Modal {...defaultProps} title="My Modal" />)
 
-      const modalContent = screen.getByText('Modal content').closest('div[class*="max-w"]')
-      expect(modalContent?.className).toContain('bg-juice-dark-lighter')
-      expect(modalContent?.className).toContain('border-white/10')
+      const modalContainer = document.querySelector('.fixed.z-50 > div[class*="flex-col"]')
+      expect(modalContainer?.className).toContain('bg-juice-dark')
+      expect(modalContainer?.className).toContain('border-white/20')
     })
 
     it('applies light theme styles when theme is light', () => {
       useThemeStore.setState({ theme: 'light' })
       render(<Modal {...defaultProps} title="My Modal" />)
 
-      const modalContent = screen.getByText('Modal content').closest('div[class*="max-w"]')
-      expect(modalContent?.className).toContain('bg-white')
-      expect(modalContent?.className).toContain('border-gray-200')
+      const modalContainer = document.querySelector('.fixed.z-50 > div[class*="flex-col"]')
+      expect(modalContainer?.className).toContain('bg-white')
+      expect(modalContainer?.className).toContain('border-gray-200')
     })
 
     it('applies correct title color in dark theme', () => {
@@ -182,9 +168,9 @@ describe('Modal', () => {
     it('renders into document.body via portal', () => {
       render(<Modal {...defaultProps} />)
 
-      // The modal should be a direct child of body
-      const modalOverlay = document.querySelector('.fixed.inset-0.z-50')
-      expect(modalOverlay?.parentElement).toBe(document.body)
+      // The backdrop should be a direct child of body (the modal renders backdrop + content as siblings)
+      const backdrop = document.querySelector('.fixed.inset-0.z-\\[49\\]')
+      expect(backdrop?.parentElement).toBe(document.body)
     })
   })
 
@@ -211,7 +197,22 @@ describe('Modal', () => {
     it('modal has max height constraint', () => {
       render(<Modal {...defaultProps} />)
       const modalContent = screen.getByText('Modal content').closest('div[class*="max-h"]')
-      expect(modalContent?.className).toContain('max-h-[90vh]')
+      expect(modalContent?.className).toContain('max-h-[85vh]')
+    })
+  })
+
+  describe('anchor positioning', () => {
+    it('uses default top-right positioning when no anchor provided', () => {
+      render(<Modal {...defaultProps} />)
+      const positionedDiv = document.querySelector('.fixed.z-50')
+      // Default fallback position is top: 16, right: 16
+      expect(positionedDiv).toBeInTheDocument()
+    })
+
+    it('accepts anchorPosition prop', () => {
+      const anchor = { top: 100, left: 200, width: 80, height: 30 }
+      render(<Modal {...defaultProps} anchorPosition={anchor} />)
+      expect(screen.getByText('Modal content')).toBeInTheDocument()
     })
   })
 

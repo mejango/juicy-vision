@@ -152,6 +152,29 @@ export function stripComponents(content: string): string {
       case 'project-chain-picker':
         return `[Project chain selection]`
       case 'options-picker':
+        // Extract actual options from the groups prop
+        try {
+          const groupsJson = props.groups
+          if (groupsJson) {
+            const groups = JSON.parse(groupsJson) as Array<{
+              id: string
+              label: string
+              options?: Array<{ value: string; label: string; sublabel?: string }>
+              type?: string
+              placeholder?: string
+            }>
+            const formatted = groups.map(g => {
+              if (g.type === 'text' || g.type === 'textarea') {
+                return `**${g.label}:** [${g.placeholder || 'text input'}]`
+              }
+              const opts = (g.options || []).map(o => o.label).join(', ')
+              return `**${g.label}:** ${opts}`
+            }).join('\n')
+            return `\n${formatted}\n`
+          }
+        } catch {
+          // Fall back to generic placeholder
+        }
         return `[Options picker]`
       case 'balance-chart':
         return `[Chart: Balance over time]`

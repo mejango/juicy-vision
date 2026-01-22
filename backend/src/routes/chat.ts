@@ -31,6 +31,7 @@ import {
   moveChatToFolder,
   reorderPinnedChats,
   updateChatName,
+  deleteChat,
   type ChatFolder,
   createFolder,
   getFolder,
@@ -183,6 +184,47 @@ async function requireWalletOrAuth(c: any, next: any) {
   return c.json({ success: false, error: 'Authentication required' }, 401);
 }
 
+/**
+ * Middleware that optionally extracts wallet session without requiring it
+ * Used for endpoints that have different behavior for authenticated vs anonymous users
+ */
+async function optionalWalletSession(c: any, next: any) {
+  // First check if user is already authenticated via JWT
+  const user = c.get('user');
+  const authHeader = c.req.header('Authorization');
+
+  if (user) {
+    // User authenticated - get their custodial address
+    const { getCustodialAddress } = await import('../services/wallet.ts');
+    const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
+    c.set('walletSession', { address, userId: user.id } as WalletSession);
+    return next();
+  }
+
+  // Try wallet session (SIWE)
+  const sessionToken = c.req.query('session') || c.req.header('X-Wallet-Session');
+  const walletSession = await extractWalletSession(authHeader, sessionToken);
+
+  if (walletSession) {
+    c.set('walletSession', walletSession);
+    return next();
+  }
+
+  // Try anonymous session (X-Session-ID header)
+  const sessionId = c.req.header('X-Session-ID');
+  if (sessionId && sessionId.startsWith('ses_')) {
+    const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+    c.set('walletSession', {
+      address: pseudoAddress,
+      sessionId,
+      isAnonymous: true,
+    } as WalletSession);
+  }
+
+  // Continue even if no session found
+  return next();
+}
+
 // ============================================================================
 // Chat CRUD Routes
 // ============================================================================
@@ -275,6 +317,212 @@ chatRouter.get('/public', async (c) => {
   return c.json({ success: true, data: chats.map(serializeChat) });
 });
 
+// ============================================================================
+// Folder Routes (must come before /:chatId to avoid matching "folders" as chatId)
+// ============================================================================
+
+// GET /chat/folders - Get user's folders
+chatRouter.get(
+  '/folders',
+  optionalAuth,
+  requireWalletOrAuth,
+  async (c) => {
+    const walletSession = c.get('walletSession')!;
+    const folders = await getFoldersForUser(walletSession.address);
+    return c.json({ success: true, data: folders });
+  }
+);
+
+// POST /chat/folders - Create a folder
+const CreateFolderSchema = z.object({
+  name: z.string().min(1).max(255),
+  parentFolderId: z.string().uuid().optional(),
+});
+
+chatRouter.post(
+  '/folders',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', CreateFolderSchema),
+  async (c) => {
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      const folder = await createFolder(
+        walletSession.address,
+        body.name,
+        body.parentFolderId,
+        walletSession.userId
+      );
+      return c.json({ success: true, data: folder });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create folder';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// GET /chat/folders/:folderId - Get folder details
+chatRouter.get(
+  '/folders/:folderId',
+  optionalAuth,
+  requireWalletOrAuth,
+  async (c) => {
+    const folderId = c.req.param('folderId');
+    const walletSession = c.get('walletSession')!;
+
+    const folder = await getFolder(folderId);
+    if (!folder) {
+      return c.json({ success: false, error: 'Folder not found' }, 404);
+    }
+
+    // Check ownership
+    if (folder.userAddress !== walletSession.address) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+
+    return c.json({ success: true, data: folder });
+  }
+);
+
+// PATCH /chat/folders/:folderId - Update folder
+const UpdateFolderSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  parentFolderId: z.string().uuid().nullable().optional(),
+  isPinned: z.boolean().optional(),
+  pinOrder: z.number().optional(),
+});
+
+chatRouter.patch(
+  '/folders/:folderId',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', UpdateFolderSchema),
+  async (c) => {
+    const folderId = c.req.param('folderId');
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    const folder = await getFolder(folderId);
+    if (!folder) {
+      return c.json({ success: false, error: 'Folder not found' }, 404);
+    }
+
+    // Check ownership
+    if (folder.userAddress !== walletSession.address) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+
+    try {
+      const updated = await updateFolder(folderId, {
+        name: body.name,
+        parentFolderId: body.parentFolderId === null ? undefined : body.parentFolderId,
+        isPinned: body.isPinned,
+        pinOrder: body.pinOrder,
+      });
+      return c.json({ success: true, data: updated });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update folder';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// DELETE /chat/folders/:folderId - Delete folder
+chatRouter.delete(
+  '/folders/:folderId',
+  optionalAuth,
+  requireWalletOrAuth,
+  async (c) => {
+    const folderId = c.req.param('folderId');
+    const walletSession = c.get('walletSession')!;
+
+    const folder = await getFolder(folderId);
+    if (!folder) {
+      return c.json({ success: false, error: 'Folder not found' }, 404);
+    }
+
+    // Check ownership
+    if (folder.userAddress !== walletSession.address) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+
+    try {
+      await deleteFolder(folderId);
+      return c.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete folder';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// PATCH /chat/folders/:folderId/pin - Pin/unpin a folder
+const PinFolderSchema = z.object({
+  isPinned: z.boolean(),
+  pinOrder: z.number().optional(),
+});
+
+chatRouter.patch(
+  '/folders/:folderId/pin',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', PinFolderSchema),
+  async (c) => {
+    const folderId = c.req.param('folderId');
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    const folder = await getFolder(folderId);
+    if (!folder) {
+      return c.json({ success: false, error: 'Folder not found' }, 404);
+    }
+
+    // Check ownership
+    if (folder.userAddress !== walletSession.address) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+
+    try {
+      if (body.isPinned) {
+        await pinFolder(folderId, body.pinOrder);
+      } else {
+        await unpinFolder(folderId);
+      }
+      const updated = await getFolder(folderId);
+      return c.json({ success: true, data: updated });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update pin status';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// POST /chat/folders/reorder-pinned - Reorder pinned folders
+const ReorderPinnedFoldersSchema = z.object({
+  folderIds: z.array(z.string().uuid()),
+});
+
+chatRouter.post(
+  '/folders/reorder-pinned',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', ReorderPinnedFoldersSchema),
+  async (c) => {
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      await reorderPinnedFolders(walletSession.address, body.folderIds);
+      return c.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to reorder folders';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
 // GET /chat/:chatId - Get chat details
 chatRouter.get('/:chatId', optionalAuth, async (c) => {
   const chatId = c.req.param('chatId');
@@ -324,6 +572,26 @@ chatRouter.get('/:chatId', optionalAuth, async (c) => {
   });
 });
 
+// DELETE /chat/:chatId - Delete a chat (founder only)
+chatRouter.delete(
+  '/:chatId',
+  optionalAuth,
+  requireWalletOrAuth,
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const walletSession = c.get('walletSession')!;
+
+    try {
+      await deleteChat(chatId, walletSession.address);
+      return c.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete chat';
+      const status = message.includes('not found') ? 404 : message.includes('Only the founder') ? 403 : 400;
+      return c.json({ success: false, error: message }, status);
+    }
+  }
+);
+
 // ============================================================================
 // Member Management Routes
 // ============================================================================
@@ -332,6 +600,7 @@ chatRouter.get('/:chatId', optionalAuth, async (c) => {
 chatRouter.get(
   '/:chatId/members',
   optionalAuth,
+  optionalWalletSession,
   async (c) => {
     const chatId = c.req.param('chatId');
     const chat = await getChatById(chatId);
@@ -340,19 +609,7 @@ chatRouter.get(
       return c.json({ success: false, error: 'Chat not found' }, 404);
     }
 
-    // Try to get wallet session (including anonymous)
-    let walletSession = c.get('walletSession');
-    if (!walletSession) {
-      const sessionId = c.req.header('X-Session-ID');
-      if (sessionId && sessionId.startsWith('ses_')) {
-        const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
-        walletSession = {
-          address: pseudoAddress,
-          sessionId,
-          isAnonymous: true,
-        };
-      }
-    }
+    const walletSession = c.get('walletSession');
 
     // Check read permission for private chats
     if (!chat.isPublic && walletSession) {
@@ -1043,212 +1300,6 @@ chatRouter.post(
       return c.json({ success: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to reorder chats';
-      return c.json({ success: false, error: message }, 400);
-    }
-  }
-);
-
-// ============================================================================
-// Folder Routes
-// ============================================================================
-
-// GET /chat/folders - Get user's folders
-chatRouter.get(
-  '/folders',
-  optionalAuth,
-  requireWalletOrAuth,
-  async (c) => {
-    const walletSession = c.get('walletSession')!;
-    const folders = await getFoldersForUser(walletSession.address);
-    return c.json({ success: true, data: folders });
-  }
-);
-
-// POST /chat/folders - Create a folder
-const CreateFolderSchema = z.object({
-  name: z.string().min(1).max(255),
-  parentFolderId: z.string().uuid().optional(),
-});
-
-chatRouter.post(
-  '/folders',
-  optionalAuth,
-  requireWalletOrAuth,
-  zValidator('json', CreateFolderSchema),
-  async (c) => {
-    const walletSession = c.get('walletSession')!;
-    const body = c.req.valid('json');
-
-    try {
-      const folder = await createFolder(
-        walletSession.address,
-        body.name,
-        body.parentFolderId,
-        walletSession.userId
-      );
-      return c.json({ success: true, data: folder });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create folder';
-      return c.json({ success: false, error: message }, 400);
-    }
-  }
-);
-
-// GET /chat/folders/:folderId - Get folder details
-chatRouter.get(
-  '/folders/:folderId',
-  optionalAuth,
-  requireWalletOrAuth,
-  async (c) => {
-    const folderId = c.req.param('folderId');
-    const walletSession = c.get('walletSession')!;
-
-    const folder = await getFolder(folderId);
-    if (!folder) {
-      return c.json({ success: false, error: 'Folder not found' }, 404);
-    }
-
-    // Check ownership
-    if (folder.userAddress !== walletSession.address) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
-
-    return c.json({ success: true, data: folder });
-  }
-);
-
-// PATCH /chat/folders/:folderId - Update folder
-const UpdateFolderSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  parentFolderId: z.string().uuid().nullable().optional(),
-  isPinned: z.boolean().optional(),
-  pinOrder: z.number().optional(),
-});
-
-chatRouter.patch(
-  '/folders/:folderId',
-  optionalAuth,
-  requireWalletOrAuth,
-  zValidator('json', UpdateFolderSchema),
-  async (c) => {
-    const folderId = c.req.param('folderId');
-    const walletSession = c.get('walletSession')!;
-    const body = c.req.valid('json');
-
-    const folder = await getFolder(folderId);
-    if (!folder) {
-      return c.json({ success: false, error: 'Folder not found' }, 404);
-    }
-
-    // Check ownership
-    if (folder.userAddress !== walletSession.address) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
-
-    try {
-      const updated = await updateFolder(folderId, {
-        name: body.name,
-        parentFolderId: body.parentFolderId === null ? undefined : body.parentFolderId,
-        isPinned: body.isPinned,
-        pinOrder: body.pinOrder,
-      });
-      return c.json({ success: true, data: updated });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update folder';
-      return c.json({ success: false, error: message }, 400);
-    }
-  }
-);
-
-// DELETE /chat/folders/:folderId - Delete folder
-chatRouter.delete(
-  '/folders/:folderId',
-  optionalAuth,
-  requireWalletOrAuth,
-  async (c) => {
-    const folderId = c.req.param('folderId');
-    const walletSession = c.get('walletSession')!;
-
-    const folder = await getFolder(folderId);
-    if (!folder) {
-      return c.json({ success: false, error: 'Folder not found' }, 404);
-    }
-
-    // Check ownership
-    if (folder.userAddress !== walletSession.address) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
-
-    try {
-      await deleteFolder(folderId);
-      return c.json({ success: true });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to delete folder';
-      return c.json({ success: false, error: message }, 400);
-    }
-  }
-);
-
-// PATCH /chat/folders/:folderId/pin - Pin/unpin a folder
-const PinFolderSchema = z.object({
-  isPinned: z.boolean(),
-  pinOrder: z.number().optional(),
-});
-
-chatRouter.patch(
-  '/folders/:folderId/pin',
-  optionalAuth,
-  requireWalletOrAuth,
-  zValidator('json', PinFolderSchema),
-  async (c) => {
-    const folderId = c.req.param('folderId');
-    const walletSession = c.get('walletSession')!;
-    const body = c.req.valid('json');
-
-    const folder = await getFolder(folderId);
-    if (!folder) {
-      return c.json({ success: false, error: 'Folder not found' }, 404);
-    }
-
-    // Check ownership
-    if (folder.userAddress !== walletSession.address) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
-
-    try {
-      if (body.isPinned) {
-        await pinFolder(folderId, body.pinOrder);
-      } else {
-        await unpinFolder(folderId);
-      }
-      const updated = await getFolder(folderId);
-      return c.json({ success: true, data: updated });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update pin status';
-      return c.json({ success: false, error: message }, 400);
-    }
-  }
-);
-
-// POST /chat/folders/reorder-pinned - Reorder pinned folders
-const ReorderPinnedFoldersSchema = z.object({
-  folderIds: z.array(z.string().uuid()),
-});
-
-chatRouter.post(
-  '/folders/reorder-pinned',
-  optionalAuth,
-  requireWalletOrAuth,
-  zValidator('json', ReorderPinnedFoldersSchema),
-  async (c) => {
-    const walletSession = c.get('walletSession')!;
-    const body = c.req.valid('json');
-
-    try {
-      await reorderPinnedFolders(walletSession.address, body.folderIds);
-      return c.json({ success: true });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to reorder folders';
       return c.json({ success: false, error: message }, 400);
     }
   }

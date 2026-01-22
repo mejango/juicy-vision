@@ -95,7 +95,10 @@
     "liveActivity": "Atividade recente",
     "matches": "correspondências",
     "loading": "Carregando...",
-    "addNote": "Adicionar nota suculenta"
+    "addNote": "Adicionar nota suculenta",
+    "trash": "Lixo",
+    "pin": "Fixar",
+    "unpin": "Desafixar"
   },
   "chat": {
     "conspire": "Conspirar",

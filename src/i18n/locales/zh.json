@@ -95,7 +95,10 @@
     "matches": "个匹配",
     "nanaBalance": "NANA 余额",
     "loading": "加载中...",
-    "addNote": "添加果汁笔记"
+    "addNote": "添加果汁笔记",
+    "trash": "删除",
+    "pin": "置顶",
+    "unpin": "取消置顶"
   },
   "chat": {
     "conspire": "共谋",

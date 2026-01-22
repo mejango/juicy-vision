@@ -8,6 +8,9 @@ import { useChatStore, useThemeStore, type Chat, type ChatMessage } from '../../
 import { useAuthStore } from '../../stores/authStore'
 import * as chatApi from '../../services/chat'
 
+// Mock scrollIntoView which is not supported in jsdom
+Element.prototype.scrollIntoView = vi.fn()
+
 // Mock services - include all exports used by ChatContainer
 vi.mock('../../services/chat', () => ({
   createChat: vi.fn(),
@@ -15,8 +18,16 @@ vi.mock('../../services/chat', () => ({
   fetchChat: vi.fn(() => Promise.resolve(null)),
   fetchMessages: vi.fn(() => Promise.resolve([])),
   fetchMembers: vi.fn(() => Promise.resolve([])),
-  fetchMyChats: vi.fn(() => Promise.resolve([])),
-  fetchPublicChats: vi.fn(() => Promise.resolve([])),
+  fetchMyChats: vi.fn(() => Promise.resolve({ chats: [], total: 0 })),
+  fetchFolders: vi.fn(() => Promise.resolve([])),
+  fetchPublicChats: vi.fn(() => Promise.resolve({ chats: [], total: 0 })),
+  pinChat: vi.fn(),
+  moveChatToFolder: vi.fn(),
+  renameChat: vi.fn(),
+  createFolder: vi.fn(),
+  updateFolderDetails: vi.fn(),
+  deleteFolder: vi.fn(),
+  pinFolder: vi.fn(),
   sendMessage: vi.fn(),
   deleteMessage: vi.fn(),
   updateChat: vi.fn(),

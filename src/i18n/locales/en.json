@@ -99,6 +99,8 @@
     "worksInProgress": "Works in Progress",
     "recentResearch": "Recent Research",
     "trash": "Trash",
+    "pin": "Pin",
+    "unpin": "Unpin",
     "noWorksInProgress": "No ongoing projects",
     "noResearch": "No research chats",
     "noTrash": "Trash is empty"

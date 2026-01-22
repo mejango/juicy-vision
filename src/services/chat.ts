@@ -6,6 +6,7 @@
 
 import { useAuthStore } from '../stores/authStore'
 import { getSessionId } from './session'
+import { getWalletSessionToken } from './siwe'
 import type {
   Chat,
   ChatMessage,
@@ -31,6 +32,7 @@ async function apiRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = useAuthStore.getState().token
+  const siweToken = getWalletSessionToken()
   const sessionId = getSessionId()
 
   const headers: Record<string, string> = {
@@ -39,9 +41,11 @@ async function apiRequest<T>(
     ...(options.headers as Record<string, string>),
   }
 
-  // Include auth token if available (for authenticated users)
+  // Include auth token if available (managed wallets or SIWE self-custody wallets)
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
+  } else if (siweToken) {
+    headers['Authorization'] = `Bearer ${siweToken}`
   }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -89,6 +93,7 @@ export async function fetchMyChats(options?: {
   const queryString = params.toString()
 
   const token = useAuthStore.getState().token
+  const siweToken = getWalletSessionToken()
   const sessionId = getSessionId()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -96,6 +101,8 @@ export async function fetchMyChats(options?: {
   }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
+  } else if (siweToken) {
+    headers['Authorization'] = `Bearer ${siweToken}`
   }
 
   const response = await fetch(`${API_BASE_URL}/chat${queryString ? `?${queryString}` : ''}`, {

@@ -701,7 +701,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             {(bottomOnly || (!topOnly && !bottomOnly)) && (
               <div
                 ref={dockRef}
-                className={`${bottomOnly ? 'max-h-full overflow-y-auto' : 'absolute bottom-0 left-0 right-0 z-30 h-[38vh] border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto ' + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
+                className={`${bottomOnly ? 'max-h-full overflow-y-auto' : 'absolute bottom-0 left-0 right-0 z-30 max-h-[38vh] border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto ' + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
               >
                 {/* Greeting */}
                 <div className="h-[6vh] flex flex-col justify-end">

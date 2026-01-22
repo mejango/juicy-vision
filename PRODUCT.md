@@ -7,13 +7,25 @@ Rich interactions with the juicebox ecosystem, via chat.
 ## User Features
 - anyone can start a chat
 - chats by default are private. anyone can share a chat by inviting others, optionally also giving write and invite permissions to whoever clicks the link.
-- when multiple people are in the chat, have all users' queries come from the right, and the AI's responsed come from the left. 
-- each users' message should be labeled with account info (address, ENS, Anonymous, or You). 
-- the site should allow users to connect to it via passkeys to instantiate a new local wallet, or SIWE. Connecting a wallet but not signing in shows a connected state but not "on". 
+- when multiple people are in the chat, have all users' queries come from the right, and the AI's responsed come from the left.
+- each users' message should be labeled with account info (address, ENS, Anonymous, or You).
+- the site should allow users to connect to it via passkeys to instantiate a new local wallet, or SIWE. Connecting a wallet but not signing in shows a connected state but not "on".
 - the site needs a user to be 'on' in order to save their chat history in a way that can be access on another device. otherwise the chats only can be accessed by a session id that is cached locally.
 - allow a user to add their email in settings, confirmed after an OTP. this helps a user log in on another device later. allow an account to have many auth methods.
 - users can send transactions from inline the chat, either from an "on" account in the server or from a connected wallet. if there's no connected account, the chat prompts for the user to connect an account in order to proceed.
-- if sending a tx from an 'on' account, the server handles all transaction processing on the users' behalf. using a connected wallet, the user conducts things themselves, and the chat should standby to interpret results emited from the blockchain. 
+- if sending a tx from an 'on' account, the server handles all transaction processing on the users' behalf. using a connected wallet, the user conducts things themselves, and the chat should standby to interpret results emited from the blockchain.
+
+## Chat History & Organization
+- all user chats appear in the Recent list in the sidebar, sorted by most recently updated
+- chats are auto-named by AI as the conversation evolves - after AI responses, the system generates a contextual title (3-6 words) to help users reference the chat later
+- users can manually rename any chat, which overrides the auto-generated title
+- users can delete chats from their history (founder only for multi-person chats)
+- users can create folders to organize chats, with support for nested folders (folders within folders)
+- folders can be manually named, or left to be auto-named based on their contents
+- chats and folders can be pinned for quick access - pinned items appear at the top of their respective sections
+- pinned chats and folders can be reordered by the user for custom organization
+- right-click context menu provides quick access to: pin/unpin, rename, move to folder, and delete
+- chat organization state syncs across devices for authenticated users 
 
 
 ## Quality Priorities

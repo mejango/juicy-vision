@@ -11,9 +11,11 @@ vi.mock('../../services/chat', () => ({
   moveChatToFolder: vi.fn(),
   renameChat: vi.fn(),
   fetchFolders: vi.fn(() => Promise.resolve([])),
+  fetchMyChats: vi.fn(() => Promise.resolve({ chats: [], total: 0 })),
   createFolder: vi.fn(),
   updateFolderDetails: vi.fn(),
   deleteFolder: vi.fn(),
+  deleteChat: vi.fn(() => Promise.resolve()),
   pinFolder: vi.fn(),
 }))
 
@@ -97,6 +99,11 @@ function createMockMessage(chatId: string, content = 'Test message'): ChatMessag
 }
 
 function renderWithProviders(ui: React.ReactElement) {
+  // Mock APIs to return current store state so useEffect doesn't overwrite test data
+  const { chats, folders } = useChatStore.getState()
+  vi.mocked(chatApi.fetchFolders).mockResolvedValue(folders)
+  vi.mocked(chatApi.fetchMyChats).mockResolvedValue({ chats, total: chats.length })
+
   return render(
     <MemoryRouter>
       {ui}
@@ -118,6 +125,8 @@ describe('ConversationHistory', () => {
     useThemeStore.setState({ theme: 'dark' })
     vi.clearAllMocks()
     vi.mocked(chatApi.fetchFolders).mockResolvedValue([])
+    vi.mocked(chatApi.fetchMyChats).mockResolvedValue({ chats: [], total: 0 })
+    vi.mocked(chatApi.deleteChat).mockResolvedValue()
   })
 
   afterEach(() => {
@@ -125,17 +134,23 @@ describe('ConversationHistory', () => {
   })
 
   describe('rendering', () => {
-    it('returns null when no chats with messages and no folders', () => {
+    it('returns null when no chats with messages and no folders', async () => {
       const { container } = renderWithProviders(<ConversationHistory />)
-      expect(container.firstChild).toBeNull()
+      // Wait for loading to complete, then check container is empty
+      await waitFor(() => {
+        expect(container.firstChild).toBeNull()
+      })
     })
 
-    it('returns null when chats exist but none have messages', () => {
+    it('renders chats even when they have no messages', async () => {
       const chat = createMockChat({ messages: [] })
       useChatStore.setState({ chats: [chat] })
 
-      const { container } = renderWithProviders(<ConversationHistory />)
-      expect(container.firstChild).toBeNull()
+      renderWithProviders(<ConversationHistory />)
+      // Component should render and show the chat
+      await waitFor(() => {
+        expect(screen.getByText(chat.name)).toBeInTheDocument()
+      })
     })
 
     it('renders when folders exist even with no chats', async () => {
@@ -169,7 +184,7 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      expect(screen.getByText('+ Folder')).toBeInTheDocument()
+      expect(screen.getByText('New folder')).toBeInTheDocument()
     })
 
     it('renders with dark theme styling', () => {
@@ -238,7 +253,7 @@ describe('ConversationHistory', () => {
       expect(screen.getByText('Important Project')).toBeInTheDocument()
     })
 
-    it('shows pin icon for pinned chats', async () => {
+    it('shows unpin option in context menu for pinned chats', async () => {
       const chat = createMockChat({
         name: 'Pinned Chat',
         isPinned: true,
@@ -252,9 +267,15 @@ describe('ConversationHistory', () => {
         expect(screen.getByText('Pinned Chat')).toBeInTheDocument()
       })
 
-      // Pin icon should be visible (has svg with pin shape)
-      const chatRow = screen.getByText('Pinned Chat').closest('div')
-      expect(chatRow?.querySelector('svg')).toBeInTheDocument()
+      // Right-click to open context menu
+      fireEvent.contextMenu(screen.getByText('Pinned Chat'))
+
+      await waitFor(() => {
+        // Context menu should show Unpin for pinned items
+        const contextMenu = document.querySelector('.fixed.z-50')
+        expect(contextMenu).toBeInTheDocument()
+        expect(contextMenu?.textContent).toContain('Unpin')
+      })
     })
 
     it('highlights active chat', () => {
@@ -328,11 +349,11 @@ describe('ConversationHistory', () => {
       renderWithProviders(<ConversationHistory />)
 
       await waitFor(() => {
-        expect(screen.getByText('(1)')).toBeInTheDocument()
+        expect(screen.getByText('1 chat')).toBeInTheDocument()
       })
     })
 
-    it('expands folder on click', async () => {
+    it('expands folder on click to show full chat list', async () => {
       const folder = createMockFolder({ id: 'expand-folder', name: 'Expandable' })
       const chat = createMockChat({
         name: 'Chat Inside',
@@ -346,15 +367,21 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      // Chat should not be visible initially
-      expect(screen.queryByText('Chat Inside')).not.toBeInTheDocument()
+      // Wait for folder to render
+      await waitFor(() => {
+        expect(screen.getByText('Expandable')).toBeInTheDocument()
+      })
+
+      // Initially: chat name visible in inline preview, but no border-t list container
+      const folderCard = screen.getByText('Expandable').closest('.group')
+      expect(folderCard?.querySelector('.border-t')).not.toBeInTheDocument()
 
       // Click folder to expand
       fireEvent.click(screen.getByText('Expandable'))
 
-      // Chat should now be visible
+      // Now the expanded list with border-t should appear
       await waitFor(() => {
-        expect(screen.getByText('Chat Inside')).toBeInTheDocument()
+        expect(folderCard?.querySelector('.border-t')).toBeInTheDocument()
       })
     })
 
@@ -434,9 +461,12 @@ describe('ConversationHistory', () => {
       fireEvent.contextMenu(screen.getByText(chat.name))
 
       await waitFor(() => {
-        expect(screen.getByText('Pin')).toBeInTheDocument()
-        expect(screen.getByText('Rename')).toBeInTheDocument()
-        expect(screen.getByText('Delete')).toBeInTheDocument()
+        // Context menu should appear with these options
+        const contextMenu = document.querySelector('.fixed.z-50')
+        expect(contextMenu).toBeInTheDocument()
+        expect(contextMenu?.textContent).toContain('Pin')
+        expect(contextMenu?.textContent).toContain('Rename')
+        expect(contextMenu?.textContent).toContain('Delete')
       })
     })
 
@@ -452,7 +482,10 @@ describe('ConversationHistory', () => {
       fireEvent.contextMenu(screen.getByText(chat.name))
 
       await waitFor(() => {
-        expect(screen.getByText('Unpin')).toBeInTheDocument()
+        // Context menu should show Unpin for pinned items
+        const contextMenu = document.querySelector('.fixed.z-50')
+        expect(contextMenu).toBeInTheDocument()
+        expect(contextMenu?.textContent).toContain('Unpin')
       })
     })
 
@@ -512,14 +545,19 @@ describe('ConversationHistory', () => {
 
       fireEvent.contextMenu(screen.getByText(chat.name))
       await waitFor(() => {
-        expect(screen.getByText('Pin')).toBeInTheDocument()
+        const contextMenu = document.querySelector('.fixed.z-50')
+        expect(contextMenu).toBeInTheDocument()
       })
 
-      // Click outside
-      fireEvent.mouseDown(document.body)
+      // Click on the backdrop (has class "fixed inset-0 z-[49]")
+      const backdrop = document.querySelector('.fixed.inset-0.z-\\[49\\]')
+      expect(backdrop).toBeInTheDocument()
+      fireEvent.click(backdrop!)
 
       await waitFor(() => {
-        expect(screen.queryByText('Pin')).not.toBeInTheDocument()
+        // Context menu should be gone
+        const contextMenu = document.querySelector('.fixed.z-50')
+        expect(contextMenu).not.toBeInTheDocument()
       })
     })
 
@@ -536,12 +574,24 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      fireEvent.contextMenu(screen.getByText(chat.name))
+      // Wait for chat to render
       await waitFor(() => {
-        expect(screen.getByText('Pin')).toBeInTheDocument()
+        expect(screen.getByText(chat.name)).toBeInTheDocument()
       })
 
-      fireEvent.click(screen.getByText('Pin'))
+      fireEvent.contextMenu(screen.getByText(chat.name))
+
+      // Wait for context menu to appear
+      let contextMenu: Element | null = null
+      await waitFor(() => {
+        contextMenu = document.querySelector('.fixed.z-50')
+        expect(contextMenu).toBeInTheDocument()
+      })
+
+      // Click the Pin button in context menu
+      const pinButton = contextMenu!.querySelector('button')
+      expect(pinButton).toHaveTextContent('Pin')
+      fireEvent.click(pinButton!)
 
       await waitFor(() => {
         expect(chatApi.pinChat).toHaveBeenCalledWith('pin-test', true)
@@ -597,12 +647,23 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
+      // Wait for chat to render
+      await waitFor(() => {
+        expect(screen.getByText(chat.name)).toBeInTheDocument()
+      })
+
       fireEvent.contextMenu(screen.getByText(chat.name))
       await waitFor(() => {
         expect(screen.getByText('Delete')).toBeInTheDocument()
       })
 
-      fireEvent.click(screen.getByText('Delete'))
+      // Click the Delete button in context menu (last button in the menu)
+      const contextMenu = document.querySelector('.fixed.z-50')
+      expect(contextMenu).toBeInTheDocument()
+      const buttons = contextMenu!.querySelectorAll('button')
+      const deleteButton = buttons[buttons.length - 1]
+      expect(deleteButton).toHaveTextContent('Delete')
+      fireEvent.click(deleteButton)
 
       await waitFor(() => {
         expect(useChatStore.getState().chats).toHaveLength(0)
@@ -734,7 +795,7 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      fireEvent.click(screen.getByText('+ Folder'))
+      fireEvent.click(screen.getByText('New folder'))
 
       expect(screen.getByPlaceholderText('Folder name...')).toBeInTheDocument()
     })
@@ -751,7 +812,7 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      fireEvent.click(screen.getByText('+ Folder'))
+      fireEvent.click(screen.getByText('New folder'))
 
       const input = screen.getByPlaceholderText('Folder name...')
       fireEvent.change(input, { target: { value: 'New Folder' } })
@@ -774,7 +835,7 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      fireEvent.click(screen.getByText('+ Folder'))
+      fireEvent.click(screen.getByText('New folder'))
 
       const input = screen.getByPlaceholderText('Folder name...')
       fireEvent.change(input, { target: { value: 'Button Folder' } })
@@ -793,7 +854,7 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      fireEvent.click(screen.getByText('+ Folder'))
+      fireEvent.click(screen.getByText('New folder'))
 
       const input = screen.getByPlaceholderText('Folder name...')
       fireEvent.change(input, { target: { value: 'Cancelled' } })
@@ -817,7 +878,7 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      fireEvent.click(screen.getByText('+ Folder'))
+      fireEvent.click(screen.getByText('New folder'))
 
       const input = screen.getByPlaceholderText('Folder name...')
       fireEvent.change(input, { target: { value: 'Brand New' } })
@@ -838,7 +899,7 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      fireEvent.click(screen.getByText('+ Folder'))
+      fireEvent.click(screen.getByText('New folder'))
 
       const input = screen.getByPlaceholderText('Folder name...')
       fireEvent.change(input, { target: { value: '   ' } }) // whitespace only
@@ -1006,9 +1067,15 @@ describe('ConversationHistory', () => {
       renderWithProviders(<ConversationHistory />)
 
       fireEvent.contextMenu(screen.getByText(chat.name))
+
+      // Wait for context menu and click Pin button
+      let contextMenu: Element | null = null
       await waitFor(() => {
-        fireEvent.click(screen.getByText('Pin'))
+        contextMenu = document.querySelector('.fixed.z-50')
+        expect(contextMenu).toBeInTheDocument()
       })
+      const pinButton = contextMenu!.querySelector('button')
+      fireEvent.click(pinButton!)
 
       await waitFor(() => {
         expect(consoleSpy).toHaveBeenCalledWith('Failed to pin:', expect.any(Error))
@@ -1056,7 +1123,7 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      fireEvent.click(screen.getByText('+ Folder'))
+      fireEvent.click(screen.getByText('New folder'))
 
       const input = screen.getByPlaceholderText('Folder name...')
       fireEvent.change(input, { target: { value: 'New Folder' } })
