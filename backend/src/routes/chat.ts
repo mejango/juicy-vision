@@ -703,11 +703,22 @@ chatRouter.patch(
 // Message Routes
 // ============================================================================
 
+const AttachmentSchema = z.object({
+  type: z.enum(['image', 'document']),
+  name: z.string().max(255),
+  mimeType: z.string().max(100),
+  data: z.string(), // base64 encoded
+});
+
 const SendMessageSchema = z.object({
-  content: z.string().min(1).max(10000),
+  content: z.string().max(10000),
   signature: z.string().optional(), // Required for external wallets
   replyToId: z.string().uuid().optional(),
-});
+  attachments: z.array(AttachmentSchema).max(5).optional(),
+}).refine(
+  (data) => data.content.length > 0 || (data.attachments && data.attachments.length > 0),
+  { message: 'Message must have content or attachments' }
+);
 
 // POST /chat/:chatId/messages - Send message
 chatRouter.post(
@@ -965,8 +976,12 @@ chatRouter.get(
 
 // POST /chat/:chatId/ai/invoke - Invoke AI to respond to the chat (streaming)
 const InvokeAiSchema = z.object({
-  prompt: z.string().min(1).max(10000),
-});
+  prompt: z.string().max(10000),
+  attachments: z.array(AttachmentSchema).max(5).optional(),
+}).refine(
+  (data) => data.prompt.length > 0 || (data.attachments && data.attachments.length > 0),
+  { message: 'Message must have prompt or attachments' }
+);
 
 chatRouter.post(
   '/:chatId/ai/invoke',
@@ -987,13 +1002,51 @@ chatRouter.post(
 
       // Get previous messages for context
       const previousMessages = await getChatMessages(chatId, 50);
-      const chatHistory = previousMessages.map(m => ({
+      const chatHistory: Array<{ role: 'user' | 'assistant'; content: string | Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> }> = previousMessages.map(m => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       }));
 
-      // Add the new prompt to history
-      chatHistory.push({ role: 'user', content: body.prompt });
+      // Build multimodal content blocks for the new prompt
+      const contentBlocks: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
+
+      // Add text content if present
+      if (body.prompt && body.prompt.length > 0) {
+        contentBlocks.push({ type: 'text', text: body.prompt });
+      }
+
+      // Add attachments as content blocks
+      if (body.attachments && body.attachments.length > 0) {
+        for (const attachment of body.attachments) {
+          if (attachment.type === 'image') {
+            contentBlocks.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: attachment.mimeType,
+                data: attachment.data,
+              },
+            });
+          } else if (attachment.type === 'document') {
+            contentBlocks.push({
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: attachment.mimeType,
+                data: attachment.data,
+              },
+            });
+          }
+        }
+      }
+
+      // Add the new prompt to history (use string if no attachments, blocks otherwise)
+      const hasAttachments = body.attachments && body.attachments.length > 0;
+      if (hasAttachments) {
+        chatHistory.push({ role: 'user', content: contentBlocks });
+      } else {
+        chatHistory.push({ role: 'user', content: body.prompt });
+      }
 
       // Import services
       const { streamMessage } = await import('../services/claude.ts');

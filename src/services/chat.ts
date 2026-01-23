@@ -300,11 +300,12 @@ export async function fetchMessages(
 export async function sendMessage(
   chatId: string,
   content: string,
-  replyToId?: string
+  replyToId?: string,
+  attachments?: Array<{ type: string; name: string; mimeType: string; data: string }>
 ): Promise<ChatMessage> {
   return apiRequest<ChatMessage>(`/chat/${chatId}/messages`, {
     method: 'POST',
-    body: JSON.stringify({ content, replyToId }),
+    body: JSON.stringify({ content, replyToId, attachments }),
   })
 }
 
@@ -442,11 +443,12 @@ export async function getAiBalance(chatId: string): Promise<AiBalanceStatus> {
 
 export async function invokeAi(
   chatId: string,
-  prompt: string
+  prompt: string,
+  attachments?: Array<{ type: string; name: string; mimeType: string; data: string }>
 ): Promise<ChatMessage> {
   return apiRequest<ChatMessage>(`/chat/${chatId}/ai/invoke`, {
     method: 'POST',
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, attachments }),
   })
 }
 

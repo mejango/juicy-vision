@@ -92,9 +92,35 @@ function getAnthropicClient(): Anthropic {
 // Message Types
 // ============================================================================
 
+// Content block types for multimodal messages
+export interface TextBlock {
+  type: 'text';
+  text: string;
+}
+
+export interface ImageBlock {
+  type: 'image';
+  source: {
+    type: 'base64';
+    media_type: string;
+    data: string;
+  };
+}
+
+export interface DocumentBlock {
+  type: 'document';
+  source: {
+    type: 'base64';
+    media_type: string;
+    data: string;
+  };
+}
+
+export type ContentBlock = TextBlock | ImageBlock | DocumentBlock;
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
-  content: string;
+  content: string | ContentBlock[];
 }
 
 export interface ToolDefinition {
@@ -191,13 +217,38 @@ export async function sendMessage(
     ? getAllTools(request.tools)
     : request.tools ?? [];
 
-  // Build message request
+  // Build message request with multimodal support
   const messageRequest: Anthropic.MessageCreateParams = {
     model: 'claude-sonnet-4-20250514',
     max_tokens: request.maxTokens ?? 4096,
     messages: request.messages.map((m) => ({
       role: m.role,
-      content: m.content,
+      content: typeof m.content === 'string'
+        ? m.content
+        : m.content.map(block => {
+            if (block.type === 'text') {
+              return { type: 'text' as const, text: block.text };
+            } else if (block.type === 'image') {
+              return {
+                type: 'image' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: block.source.media_type,
+                  data: block.source.data,
+                },
+              };
+            } else {
+              // Document block
+              return {
+                type: 'document' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: block.source.media_type,
+                  data: block.source.data,
+                },
+              };
+            }
+          }),
     })),
     system: systemPrompt,
   };
@@ -272,13 +323,38 @@ export async function* streamMessage(
     ? getAllTools(request.tools)
     : request.tools ?? [];
 
-  // Build message request
+  // Build message request with multimodal support
   const messageRequest: Anthropic.MessageCreateParams = {
     model: 'claude-sonnet-4-20250514',
     max_tokens: request.maxTokens ?? 4096,
     messages: request.messages.map((m) => ({
       role: m.role,
-      content: m.content,
+      content: typeof m.content === 'string'
+        ? m.content
+        : m.content.map(block => {
+            if (block.type === 'text') {
+              return { type: 'text' as const, text: block.text };
+            } else if (block.type === 'image') {
+              return {
+                type: 'image' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: block.source.media_type,
+                  data: block.source.data,
+                },
+              };
+            } else {
+              // Document block
+              return {
+                type: 'document' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: block.source.media_type,
+                  data: block.source.data,
+                },
+              };
+            }
+          }),
     })),
     system: systemPrompt,
     stream: true,

@@ -109,19 +109,25 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     const files = e.target.files
     if (!files || files.length === 0) return
 
+    // Supported file types
+    const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    const documentTypes = ['application/pdf', 'text/plain', 'text/markdown', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+
     Array.from(files).forEach(file => {
-      // Only accept images
-      if (!file.type.startsWith('image/')) return
+      const isImage = file.type.startsWith('image/') || imageTypes.includes(file.type)
+      const isDocument = documentTypes.includes(file.type)
+
+      if (!isImage && !isDocument) return
 
       const reader = new FileReader()
       reader.onload = (event) => {
         const base64 = event.target?.result as string
-        // Remove the data:image/xxx;base64, prefix
+        // Remove the data:xxx;base64, prefix
         const data = base64.split(',')[1]
 
         const attachment: Attachment = {
           id: generateId(),
-          type: 'image',
+          type: isImage ? 'image' : 'document',
           name: file.name,
           mimeType: file.type,
           data,
@@ -198,6 +204,17 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     }
   }, [])
 
+  // Listen for file upload trigger from drop zone buttons
+  useEffect(() => {
+    const handleTriggerUpload = () => {
+      fileInputRef.current?.click()
+    }
+    window.addEventListener('juice:trigger-file-upload', handleTriggerUpload)
+    return () => {
+      window.removeEventListener('juice:trigger-file-upload', handleTriggerUpload)
+    }
+  }, [])
+
   const handleSend = () => {
     const trimmed = input.trim()
     const hasContent = trimmed || attachments.length > 0
@@ -242,30 +259,33 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
         ? `${hideBorder ? 'bg-transparent' : 'bg-juice-dark/95'}`
         : `${hideBorder ? 'bg-transparent' : 'bg-white/95'}`
     }`}>
-      {/* Attachment previews */}
+      {/* Attachment previews - subtle inline tags */}
       {attachments.length > 0 && (
-        <div className="flex gap-2 mb-3 flex-wrap">
+        <div className="flex gap-3 mb-2 flex-wrap">
+          {/* Spacer to align with textarea (matches attachment button width + gap) */}
+          <div className="w-[48px] shrink-0" />
           {attachments.map(attachment => (
-            <div key={attachment.id} className="relative group">
-              <img
-                src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                alt={attachment.name}
-                className="w-16 h-16 object-cover rounded border-2 border-juice-cyan"
-              />
-              <button
-                onClick={() => handleRemoveAttachment(attachment.id)}
-                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full
-                           flex items-center justify-center text-xs font-bold
-                           opacity-0 group-hover:opacity-100 transition-opacity"
+              <div
+                key={attachment.id}
+                className={`inline-flex items-center gap-1.5 text-xs ${
+                  theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                }`}
               >
-                ×
+                <span className="truncate max-w-[200px]">{attachment.name}</span>
+                <button
+                  onClick={() => handleRemoveAttachment(attachment.id)}
+                  className={`shrink-0 transition-colors ${
+                    theme === 'dark'
+                      ? 'text-gray-500 hover:text-gray-300'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
-              <span className={`absolute bottom-0 left-0 right-0 text-[10px] truncate px-1
-                ${theme === 'dark' ? 'bg-black/70 text-white' : 'bg-white/70 text-gray-900'}`}>
-                {attachment.name}
-              </span>
-            </div>
-          ))}
+              </div>
+            ))}
         </div>
       )}
 
@@ -273,8 +293,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
-        capture="environment"
+        accept="image/*,.pdf,.txt,.md,.doc,.docx"
         onChange={handleFileSelect}
         className="hidden"
         multiple

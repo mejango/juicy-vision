@@ -8,9 +8,37 @@ export interface ChatMember {
   role: 'founder' | 'admin' | 'member'
   displayName?: string
   joinedAt: string
+  canSendMessages?: boolean
   canInvite?: boolean
   canInvokeAi?: boolean
   canManageMembers?: boolean
+}
+
+/**
+ * Chat Permission Levels:
+ * 1. view-only: Can only read messages (canSendMessages=false)
+ * 2. view-and-write: Can read and send messages (canSendMessages=true, canInvite=false)
+ * 3. view-and-write-and-invite: Can read, send, and create invites (canInvite=true)
+ * 4. view-and-write-and-invite-and-caninvite: Full permissions, can create invites that grant invite permission
+ */
+export type ChatPermissionLevel =
+  | 'view-only'
+  | 'view-and-write'
+  | 'view-and-write-and-invite'
+  | 'view-and-write-and-invite-and-caninvite'
+
+export function getMemberPermissionLevel(member: ChatMember): ChatPermissionLevel {
+  if (member.canSendMessages === false) {
+    return 'view-only'
+  }
+  if (!member.canInvite) {
+    return 'view-and-write'
+  }
+  // Founders and admins always have full permissions
+  if (member.role === 'founder' || member.role === 'admin') {
+    return 'view-and-write-and-invite-and-caninvite'
+  }
+  return 'view-and-write-and-invite'
 }
 
 export interface ChatMessage {
@@ -24,6 +52,7 @@ export interface ChatMessage {
   replyToId?: string
   createdAt: string
   isStreaming?: boolean
+  attachments?: Attachment[]
 }
 
 export interface ChatFolder {
@@ -65,6 +94,7 @@ export interface Chat {
   members?: ChatMember[]
   messages?: ChatMessage[]
   unreadCount?: number
+  onlineMembers?: string[] // Addresses of currently connected members
 }
 
 export interface CreateChatParams {
@@ -118,6 +148,10 @@ interface ChatState {
   setMembers: (chatId: string, members: ChatMember[]) => void
   addMember: (chatId: string, member: ChatMember) => void
   removeMember: (chatId: string, address: string) => void
+
+  // Online presence
+  setOnlineMembers: (chatId: string, addresses: string[]) => void
+  updatePresence: (chatId: string, address: string, isOnline: boolean) => void
 
   // UI state
   setLoading: (loading: boolean) => void
@@ -245,9 +279,43 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           chats: state.chats.map((c) => {
             if (c.id !== chatId) return c
-            const messages = c.messages || []
-            // Avoid duplicates
+            let messages = c.messages || []
+            // Avoid duplicates by ID
             if (messages.some((m) => m.id === message.id)) return c
+            // For user messages, check for content duplicates to avoid showing the same message twice
+            // This handles: optimistic + WebSocket, double-submit, etc.
+            if (message.role === 'user') {
+              const existingOptimistic = messages.find((m) =>
+                m.id.startsWith('optimistic-') &&
+                m.role === 'user' &&
+                m.content === message.content &&
+                // Only consider recent messages (within 30 seconds) as potential duplicates
+                Math.abs(new Date(m.createdAt).getTime() - new Date(message.createdAt).getTime()) < 30000
+              )
+              if (existingOptimistic) {
+                // If this is the real message replacing an optimistic one, update the ID but keep attachments
+                if (!message.id.startsWith('optimistic-')) {
+                  return {
+                    ...c,
+                    messages: messages.map((m) =>
+                      m.id === existingOptimistic.id
+                        ? { ...message, attachments: existingOptimistic.attachments || message.attachments }
+                        : m
+                    )
+                  }
+                }
+                // Otherwise skip adding this duplicate optimistic message
+                return c
+              }
+              // Also check for non-optimistic duplicates (double WebSocket, etc.)
+              const hasExactDuplicate = messages.some((m) =>
+                m.role === 'user' &&
+                m.content === message.content &&
+                !m.id.startsWith('optimistic-') &&
+                Math.abs(new Date(m.createdAt).getTime() - new Date(message.createdAt).getTime()) < 30000
+              )
+              if (hasExactDuplicate) return c
+            }
             return { ...c, messages: [...messages, message] }
           }),
         })),
@@ -301,6 +369,26 @@ export const useChatStore = create<ChatState>()(
           }),
         })),
 
+      // Online presence
+      setOnlineMembers: (chatId, addresses) =>
+        set((state) => ({
+          chats: state.chats.map((c) =>
+            c.id === chatId ? { ...c, onlineMembers: addresses } : c
+          ),
+        })),
+
+      updatePresence: (chatId, address, isOnline) =>
+        set((state) => ({
+          chats: state.chats.map((c) => {
+            if (c.id !== chatId) return c
+            const current = c.onlineMembers || []
+            const updated = isOnline
+              ? current.includes(address) ? current : [...current, address]
+              : current.filter((a) => a !== address)
+            return { ...c, onlineMembers: updated }
+          }),
+        })),
+
       // UI state
       setLoading: (isLoading) => set({ isLoading }),
       setConnected: (isConnected) => set({ isConnected }),
@@ -326,7 +414,15 @@ export const useChatStore = create<ChatState>()(
       name: 'juice-chat',
       partialize: (state) => ({
         // Only persist chats, folders, and activeChatId, not loading/error states
-        chats: state.chats,
+        // Strip attachments from messages to avoid localStorage quota issues (base64 files are large)
+        chats: state.chats.map(chat => ({
+          ...chat,
+          messages: chat.messages?.map(msg => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { attachments, ...msgWithoutAttachments } = msg
+            return msgWithoutAttachments
+          }),
+        })),
         folders: state.folders,
         activeChatId: state.activeChatId,
       }),
@@ -337,7 +433,7 @@ export const useChatStore = create<ChatState>()(
 // Display types for UI components
 export interface Attachment {
   id: string
-  type: 'image'
+  type: 'image' | 'document'
   name: string
   mimeType: string
   data: string  // base64

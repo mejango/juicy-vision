@@ -141,26 +141,43 @@ export default function MessageBubble({ message, isLastAssistant }: MessageBubbl
               {/* Display attachments */}
               {message.attachments && message.attachments.length > 0 && (
                 <div className="flex gap-2 mb-2 justify-end flex-wrap">
-                  {message.attachments.map(attachment => (
-                    <img
-                      key={attachment.id}
-                      src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                      alt={attachment.name}
-                      className="max-w-[200px] max-h-[200px] object-contain rounded border-2 border-juice-cyan cursor-pointer hover:opacity-90 transition-opacity"
-                      onClick={() => {
-                        // Open image in new tab for full view (using DOM methods to avoid XSS)
-                        const win = window.open()
-                        if (win) {
-                          const img = win.document.createElement('img')
-                          img.src = `data:${attachment.mimeType};base64,${attachment.data}`
-                          img.alt = attachment.name
-                          img.style.maxWidth = '100%'
-                          img.style.height = 'auto'
-                          win.document.body.appendChild(img)
-                        }
-                      }}
-                    />
-                  ))}
+                  {message.attachments.map(attachment => {
+                    const isImage = attachment.type === 'image' || attachment.mimeType?.startsWith('image/')
+                    return isImage ? (
+                      <img
+                        key={attachment.id}
+                        src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                        alt={attachment.name}
+                        className="max-w-[200px] max-h-[200px] object-contain rounded border-2 border-juice-cyan cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => {
+                          // Open image in new tab for full view (using DOM methods to avoid XSS)
+                          const win = window.open()
+                          if (win) {
+                            const img = win.document.createElement('img')
+                            img.src = `data:${attachment.mimeType};base64,${attachment.data}`
+                            img.alt = attachment.name
+                            img.style.maxWidth = '100%'
+                            img.style.height = 'auto'
+                            win.document.body.appendChild(img)
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div
+                        key={attachment.id}
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm ${
+                          isDark
+                            ? 'bg-gray-800 text-gray-300 border border-gray-700'
+                            : 'bg-gray-100 text-gray-600 border border-gray-200'
+                        }`}
+                      >
+                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        <span className="truncate max-w-[180px]">{attachment.name}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
               {parsed.segments.map((segment, index) => {
