@@ -15,7 +15,11 @@ function openWalletPanel(e: React.MouseEvent<HTMLButtonElement>) {
   }))
 }
 
-export default function WalletInfo() {
+interface WalletInfoProps {
+  inline?: boolean
+}
+
+export default function WalletInfo({ inline }: WalletInfoProps = {}) {
   const { theme } = useThemeStore()
   const { address, isConnected } = useAccount()
   const { ensName } = useEnsNameResolved(address)
@@ -25,43 +29,11 @@ export default function WalletInfo() {
   // User is "signed in" if they have a valid SIWE session
   const isSignedIn = hasValidWalletSession()
 
-  // Show connect button when not connected
-  if (!isConnected || !address) {
-    return (
-      <div className="flex gap-3 mt-2 px-6">
-        {/* Spacer to align with textarea */}
-        <div className="w-[48px] shrink-0" />
-        <div className={`flex-1 flex items-center text-xs ${
-          theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-        }`}>
-          <button
-            onClick={openWalletPanel}
-            className={`transition-colors ${
-              theme === 'dark'
-                ? 'text-gray-500 hover:text-gray-300'
-                : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            Connect account
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex gap-3 mt-2 px-6">
-      {/* Spacer to align with textarea */}
-      <div className="w-[48px] shrink-0" />
-      <div className={`flex-1 flex items-center text-xs ${
-        theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-      }`}>
-        {isSignedIn ? (
-          <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 shrink-0" />
-        ) : (
-          <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50 mr-1.5 shrink-0" />
-        )}
-        <span className="mr-1">Connected as</span>
+  const content = (
+    <div className={`flex items-center text-xs ${
+      theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+    }`}>
+      {!isConnected || !address ? (
         <button
           onClick={openWalletPanel}
           className={`transition-colors ${
@@ -70,32 +42,65 @@ export default function WalletInfo() {
               : 'text-gray-400 hover:text-gray-600'
           }`}
         >
-          {ensName || shortenAddress(address)}
+          Connect account
         </button>
-        {balancesLoading ? (
-          <span className="ml-2 opacity-50">Loading...</span>
-        ) : (
+      ) : (
+        <>
+          {isSignedIn ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 shrink-0" />
+          ) : (
+            <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50 mr-1.5 shrink-0" />
+          )}
+          <span className="mr-1">Connected as</span>
           <button
             onClick={openWalletPanel}
-            className={`ml-2 transition-colors ${
+            className={`transition-colors ${
               theme === 'dark'
                 ? 'text-gray-500 hover:text-gray-300'
                 : 'text-gray-400 hover:text-gray-600'
             }`}
           >
-            · {formatUsdcBalance(totalUsdc)} USDC · {formatEthBalance(totalEth)} ETH
+            {ensName || shortenAddress(address)}
           </button>
-        )}
-        <button
-          onClick={() => disconnect()}
-          className={`ml-2 transition-colors ${
-            theme === 'dark'
-              ? 'text-gray-600 hover:text-gray-400'
-              : 'text-gray-300 hover:text-gray-500'
-          }`}
-        >
-          · Disconnect
-        </button>
+          {balancesLoading ? (
+            <span className="ml-2 opacity-50">Loading...</span>
+          ) : (
+            <button
+              onClick={openWalletPanel}
+              className={`ml-2 transition-colors ${
+                theme === 'dark'
+                  ? 'text-gray-500 hover:text-gray-300'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              · {formatUsdcBalance(totalUsdc)} USDC · {formatEthBalance(totalEth)} ETH
+            </button>
+          )}
+          <button
+            onClick={() => disconnect()}
+            className={`ml-2 transition-colors ${
+              theme === 'dark'
+                ? 'text-gray-600 hover:text-gray-400'
+                : 'text-gray-300 hover:text-gray-500'
+            }`}
+          >
+            · Disconnect
+          </button>
+        </>
+      )}
+    </div>
+  )
+
+  if (inline) {
+    return content
+  }
+
+  return (
+    <div className="flex gap-3 mt-2 px-6">
+      {/* Spacer to align with textarea */}
+      <div className="w-[48px] shrink-0" />
+      <div className="flex-1">
+        {content}
       </div>
     </div>
   )

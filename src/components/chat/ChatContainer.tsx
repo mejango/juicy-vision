@@ -649,13 +649,13 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 data-dock="true"
                 className={`${bottomOnly ? 'max-h-full dock-overflow' : 'absolute bottom-0 left-0 right-0 z-30 max-h-[38vh] border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto ' + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
               >
-                {/* Greeting */}
-                <div className="h-[6vh] flex flex-col justify-end">
+                {/* Greeting - hidden when stuck */}
+                <div className={`h-[6vh] flex flex-col justify-end transition-opacity duration-150 ${isPromptStuck ? 'opacity-0 h-0 overflow-hidden' : ''}`}>
                   <WelcomeGreeting />
                 </div>
 
-                {/* Controls at top right of prompt area - scrolls away naturally */}
-                <div className="flex justify-end px-6">
+                {/* Controls at top right of prompt area - scrolls away naturally, hidden when stuck */}
+                <div className={`flex justify-end px-6 transition-opacity duration-150 ${isPromptStuck ? 'opacity-0 h-0 overflow-hidden' : ''}`}>
                     <div className="flex items-center gap-1">
                       {/* Language selector */}
                       <div className="relative">
@@ -780,10 +780,40 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                     compact={true}
                     placeholder={placeholder}
                   />
+                  {/* Collapsed view: minimal subtext when stuck */}
+                  {isPromptStuck && (
+                    <div className="flex items-center justify-between px-6 pb-2">
+                      <div className="flex gap-3">
+                        <div className="w-[48px] shrink-0" />
+                        <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {t('dock.askAbout', 'See and take action across the ecosystem.')}
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          if (!showBetaPopover) {
+                            closeAllPopovers()
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            const isInBottomHalf = rect.top > window.innerHeight / 2
+                            setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
+                            setBetaAnchorPosition({
+                              top: rect.bottom + 8,
+                              bottom: window.innerHeight - rect.top + 8,
+                              right: window.innerWidth - rect.right
+                            })
+                          }
+                          setShowBetaPopover(!showBetaPopover)
+                        }}
+                        className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
+                      >
+                        Beta
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* Subtext and Beta tag row - scrolls away naturally */}
-                <div className="flex items-center justify-between px-6">
+                {/* Subtext and Beta tag row - scrolls away naturally, hidden when stuck */}
+                <div className={`flex items-center justify-between px-6 ${isPromptStuck ? 'hidden' : ''}`}>
                     {/* Subtext hint */}
                     <div className="flex gap-3">
                       <div className="w-[48px] shrink-0" />
@@ -791,8 +821,28 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                         {t('dock.askAbout', 'See and take action across the ecosystem.')}
                       </div>
                     </div>
-                    {/* Beta tag and Report button */}
+                    {/* Material drop zones and Beta tag */}
                     <div className="flex items-center gap-2">
+                      {/* Drop zones */}
+                      {[
+                        { key: 'pitchDeck', label: t('materials.pitchDeck', 'Drop your pitch deck') },
+                        { key: 'businessPlan', label: t('materials.businessPlan', 'Add your business plan') },
+                        { key: 'screenshot', label: t('materials.screenshot', 'Paste a screenshot') },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          onClick={() => handleSuggestionClick(item.label)}
+                          className={`py-2 px-3 text-xs font-medium border-2 border-dashed transition-colors ${
+                            theme === 'dark'
+                              ? 'border-white/20 text-gray-400 hover:border-juice-cyan hover:text-juice-cyan'
+                              : 'border-gray-300 text-gray-500 hover:border-teal-600 hover:text-teal-600'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                      {/* Spacer before Beta */}
+                      <div className="w-4" />
                       {activeChatId && (
                         <button
                           onClick={handleReport}
@@ -830,8 +880,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       </button>
                     </div>
                   </div>
-                {/* Wallet info - scrolls away naturally */}
-                <div>
+                {/* Wallet info - scrolls away naturally, hidden when stuck */}
+                <div className={isPromptStuck ? 'hidden' : ''}>
                   <WalletInfo />
                 </div>
 
