@@ -98,10 +98,11 @@ function fromBase64(base64: string): Uint8Array {
 
 /**
  * Derive an encryption key from the server's master key using HKDF
+ * SECURITY: Uses dedicated ENCRYPTION_MASTER_KEY, separate from JWT_SECRET
  */
 async function deriveServerKey(salt: Uint8Array): Promise<CryptoKey> {
   const config = getConfig();
-  const masterKey = new TextEncoder().encode(config.jwtSecret); // Reuse JWT secret as master key
+  const masterKey = new TextEncoder().encode(config.encryptionMasterKey);
 
   const keyMaterial = await crypto.subtle.importKey(
     'raw',

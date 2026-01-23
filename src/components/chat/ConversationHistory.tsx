@@ -665,13 +665,13 @@ export default function ConversationHistory() {
         key={chat.id}
         onClick={() => handleSelectChat(chat.id)}
         onContextMenu={(e) => handleContextMenu(e, 'chat', chat.id)}
-        className={`group relative p-4 border cursor-pointer transition-all hover:scale-[1.02] flex flex-col ${
+        className={`group relative p-4 border cursor-pointer transition-colors flex flex-col ${
           chat.id === activeChatId
             ? theme === 'dark'
               ? 'bg-white/10 border-white/30 text-white'
               : 'bg-gray-100 border-gray-300 text-gray-900'
             : theme === 'dark'
-              ? 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
+              ? 'bg-white/5 border-white/10 hover:bg-white/[0.08] hover:border-white/20'
               : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
         }`}
       >
@@ -799,7 +799,7 @@ export default function ConversationHistory() {
         key={folder.id}
         onClick={() => toggleFolder(folder.id)}
         onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
-        className={`group relative p-4 border-2 border-dashed cursor-pointer transition-all hover:scale-[1.02] flex flex-col ${
+        className={`group relative p-4 border-2 border-dashed cursor-pointer transition-colors flex flex-col ${
           theme === 'dark'
             ? 'border-white/20 hover:border-white/40 hover:bg-white/5'
             : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'

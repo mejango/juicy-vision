@@ -2,6 +2,7 @@ export interface ParsedComponent {
   type: string
   props: Record<string, string>
   raw: string
+  isStreaming?: boolean // True if this component is still being streamed
 }
 
 export interface ParsedContent {
@@ -16,6 +17,17 @@ const ATTR_REGEX_DOUBLE = /(\w+)="([^"]+)"/g
 // Single quotes need non-greedy match with lookahead for next attr or tag end
 // This handles apostrophes inside values like "What's your..."
 const ATTR_REGEX_SINGLE = /(\w+)='([\s\S]*?)'\s*(?=\w+=|\/?>|$)/g
+
+// Unescape common escape sequences in attribute values
+function unescapeAttrValue(value: string): string {
+  return value
+    .replace(/\\'/g, "'")
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
+}
+// Types that support progressive streaming (render partial content as it arrives)
+const STREAMABLE_COMPONENT_TYPES = ['options-picker']
+
 // Detect partial component tag that's still being streamed
 // Note: We can't use [^>]* because JSON attribute values may contain > characters
 // Instead, we look for <juice-component that isn't followed by /> in the remaining string
@@ -39,6 +51,57 @@ function hasPartialComponentTag(content: string): { hasPartial: boolean; index: 
   }
 
   return { hasPartial: false, index: -1 }
+}
+
+/**
+ * Try to extract partial props from an incomplete component tag.
+ * For streamable components, we extract what we can to enable progressive rendering.
+ */
+function parsePartialComponent(partialTag: string): ParsedComponent | null {
+  // Extract type attribute first
+  const typeMatch = partialTag.match(/type=["']([^"']+)["']/)
+  if (!typeMatch) return null
+
+  const type = typeMatch[1]
+
+  // Only progressively render streamable component types
+  if (!STREAMABLE_COMPONENT_TYPES.includes(type)) return null
+
+  const props: Record<string, string> = {}
+
+  // Extract complete double-quoted attributes
+  const doubleMatches = partialTag.matchAll(/(\w+)="([^"]+)"/g)
+  for (const match of doubleMatches) {
+    if (match[1] !== 'type') {
+      props[match[1]] = unescapeAttrValue(match[2])
+    }
+  }
+
+  // For single-quoted attributes (like groups JSON), try to extract partial content
+  // Look for groups=' and capture as much valid content as possible
+  const groupsMatch = partialTag.match(/groups='(\[[\s\S]*)$/)
+  if (groupsMatch) {
+    // We have a partial groups array - include it for progressive parsing
+    props.groups = groupsMatch[1]
+  } else {
+    // Try complete single-quoted attributes
+    const singleMatches = partialTag.matchAll(/(\w+)='([\s\S]*?)'\s*(?=\w+=|\/?>|$)/g)
+    for (const match of singleMatches) {
+      if (match[1] !== 'type') {
+        props[match[1]] = unescapeAttrValue(match[2])
+      }
+    }
+  }
+
+  // Only return if we have meaningful props (at least started groups for options-picker)
+  if (type === 'options-picker' && !props.groups) return null
+
+  return {
+    type,
+    props,
+    raw: partialTag,
+    isStreaming: true,
+  }
 }
 
 export function parseMessageContent(content: string): ParsedContent {
@@ -70,12 +133,12 @@ export function parseMessageContent(content: string): ParsedContent {
     // Match double-quoted attributes
     const doubleMatches = attrsString.matchAll(ATTR_REGEX_DOUBLE)
     for (const attrMatch of doubleMatches) {
-      props[attrMatch[1]] = attrMatch[2]
+      props[attrMatch[1]] = unescapeAttrValue(attrMatch[2])
     }
     // Match single-quoted attributes (used for JSON)
     const singleMatches = attrsString.matchAll(ATTR_REGEX_SINGLE)
     for (const attrMatch of singleMatches) {
-      props[attrMatch[1]] = attrMatch[2]
+      props[attrMatch[1]] = unescapeAttrValue(attrMatch[2])
     }
 
     const componentType = props.type || 'unknown'
@@ -101,16 +164,28 @@ export function parseMessageContent(content: string): ParsedContent {
     }
   }
 
-  // If there's a partial component being streamed, show loading placeholder
+  // If there's a partial component being streamed, try progressive rendering
   if (hasPartialComponent) {
-    segments.push({
-      type: 'component',
-      component: {
-        type: '_loading',
-        props: {},
-        raw: content.slice(partialCheck.index),
-      },
-    })
+    const partialTag = content.slice(partialCheck.index)
+    const partialComponent = parsePartialComponent(partialTag)
+
+    if (partialComponent) {
+      // Render streamable component progressively
+      segments.push({
+        type: 'component',
+        component: partialComponent,
+      })
+    } else {
+      // Fall back to loading placeholder for non-streamable components
+      segments.push({
+        type: 'component',
+        component: {
+          type: '_loading',
+          props: {},
+          raw: partialTag,
+        },
+      })
+    }
   }
 
   // If no components found, return single text segment
@@ -129,12 +204,12 @@ export function stripComponents(content: string): string {
     // Match double-quoted attributes
     const doubleMatches = attrsString.matchAll(ATTR_REGEX_DOUBLE)
     for (const attrMatch of doubleMatches) {
-      props[attrMatch[1]] = attrMatch[2]
+      props[attrMatch[1]] = unescapeAttrValue(attrMatch[2])
     }
     // Match single-quoted attributes
     const singleMatches = attrsString.matchAll(ATTR_REGEX_SINGLE)
     for (const attrMatch of singleMatches) {
-      props[attrMatch[1]] = attrMatch[2]
+      props[attrMatch[1]] = unescapeAttrValue(attrMatch[2])
     }
 
     const componentType = props.type || 'unknown'
@@ -219,12 +294,12 @@ export function extractComponents(content: string): ParsedComponent[] {
     // Match double-quoted attributes
     const doubleMatches = attrsString.matchAll(ATTR_REGEX_DOUBLE)
     for (const attrMatch of doubleMatches) {
-      props[attrMatch[1]] = attrMatch[2]
+      props[attrMatch[1]] = unescapeAttrValue(attrMatch[2])
     }
     // Match single-quoted attributes (used for JSON)
     const singleMatches = attrsString.matchAll(ATTR_REGEX_SINGLE)
     for (const attrMatch of singleMatches) {
-      props[attrMatch[1]] = attrMatch[2]
+      props[attrMatch[1]] = unescapeAttrValue(attrMatch[2])
     }
 
     const componentType = props.type || 'unknown'

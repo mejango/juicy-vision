@@ -399,54 +399,82 @@ function TransactionExecutor() {
 function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: string; theme: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
+  const dockContentRef = useRef<HTMLDivElement>(null)
   const mascotRef = useRef<HTMLDivElement>(null)
   const isPinnedRef = useRef(false)
+  const waitingForNewGestureRef = useRef(false)
+  const gestureEndTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     const container = containerRef.current
-    const dock = dockRef.current
-    const mascot = mascotRef.current
-    if (!container || !dock) return
+    const dockContent = dockContentRef.current
+    if (!container || !dockContent) return
 
-    // Pinned height extends 4px beyond container to overlap top border
-    const pinnedHeight = 'calc(100% + 4px)'
+    const pinnedHeight = '62vh'
     const unpinnedHeight = '38vh'
+    const gestureEndDelay = 200 // ms after last wheel event to consider gesture ended
 
-    const setPinned = (pinned: boolean) => {
-      if (isPinnedRef.current === pinned) return
-      isPinnedRef.current = pinned
-      container.style.setProperty('--dock-height', pinned ? pinnedHeight : unpinnedHeight)
+    // Find the actual scrollable element inside (ChatContainer's dock div)
+    const getScrollable = () => dockContent.querySelector('[data-dock="true"]') as HTMLElement | null
+
+    // Called when gesture ends (timer) or user starts new interaction (click/touch)
+    const enableScroll = () => {
+      // Only unlock if we were waiting for a new gesture after pinning
+      if (waitingForNewGestureRef.current) {
+        waitingForNewGestureRef.current = false
+        window.__dockScrollLocked = false
+      }
     }
 
-    const handleDockWheel = (e: WheelEvent) => {
+    const handleWheel = (e: WheelEvent) => {
+      const scrollable = getScrollable()
       const scrollingDown = e.deltaY > 0
       const scrollingUp = e.deltaY < 0
+      const contentAtTop = !scrollable || scrollable.scrollTop <= 1
 
-      // Find the scrollable content inside the dock
-      const outerWrapper = dock.querySelector('.overflow-auto')
-      const scrollableContent = (outerWrapper?.querySelector('.overflow-y-auto') || outerWrapper) as HTMLElement
-      const contentScrollTop = scrollableContent?.scrollTop || 0
-      const contentAtTop = contentScrollTop <= 1
+      // Reset gesture end timer on each wheel event
+      if (waitingForNewGestureRef.current) {
+        if (gestureEndTimerRef.current) clearTimeout(gestureEndTimerRef.current)
+        gestureEndTimerRef.current = window.setTimeout(enableScroll, gestureEndDelay)
+      }
 
-      // Scroll down while unpinned → pin (expand dock upward)
+      // Scroll down while unpinned → pin, lock scroll until gesture ends
       if (scrollingDown && !isPinnedRef.current) {
-        setPinned(true)
-        e.preventDefault()
+        isPinnedRef.current = true
+        waitingForNewGestureRef.current = true
+        window.__dockScrollLocked = true
+        container.style.setProperty('--dock-height', pinnedHeight)
+        container.dataset.dockPinned = 'true'
+        // Start gesture end timer
+        gestureEndTimerRef.current = window.setTimeout(enableScroll, gestureEndDelay)
         return
       }
 
-      // Scroll up while at top and pinned → unpin (collapse dock)
+      // Scroll up while at top and pinned → unpin and lock scroll briefly
       if (scrollingUp && contentAtTop && isPinnedRef.current) {
-        setPinned(false)
-        e.preventDefault()
+        isPinnedRef.current = false
+        waitingForNewGestureRef.current = false
+        if (gestureEndTimerRef.current) clearTimeout(gestureEndTimerRef.current)
+        window.__dockScrollLocked = true
+        container.style.setProperty('--dock-height', unpinnedHeight)
+        delete container.dataset.dockPinned
+        // Unlock after animation completes
+        gestureEndTimerRef.current = window.setTimeout(() => {
+          window.__dockScrollLocked = false
+        }, 200)
         return
       }
     }
 
-    dock.addEventListener('wheel', handleDockWheel, { passive: false })
-
+    dockContent.addEventListener('wheel', handleWheel, { passive: true })
+    dockContent.addEventListener('mousedown', enableScroll)
+    dockContent.addEventListener('touchstart', enableScroll)
     return () => {
-      dock.removeEventListener('wheel', handleDockWheel)
+      dockContent.removeEventListener('wheel', handleWheel)
+      dockContent.removeEventListener('mousedown', enableScroll)
+      dockContent.removeEventListener('touchstart', enableScroll)
+      if (gestureEndTimerRef.current) clearTimeout(gestureEndTimerRef.current)
+      window.__dockScrollLocked = false
     }
   }, [])
 
@@ -486,7 +514,7 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
         style={{ top: 'calc(100% - var(--dock-height))', bottom: 0 }}
       >
         {/* Dock content */}
-        <div className="flex-1 overflow-auto">
+        <div ref={dockContentRef} className="flex-1 overflow-hidden">
           <Routes>
             <Route path="/" element={<MainContent bottomOnly forceActiveChatId={forceActiveChatId} />} />
             <Route path="*" element={<MainContent bottomOnly forceActiveChatId={forceActiveChatId} />} />

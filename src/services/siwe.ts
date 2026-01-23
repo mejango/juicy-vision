@@ -8,9 +8,9 @@
  */
 
 import { getSessionId } from './session'
+import { storage, STORAGE_KEYS } from './storage'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
-const WALLET_SESSION_KEY = 'juice-wallet-session'
 
 export interface WalletSession {
   address: string
@@ -22,35 +22,31 @@ export interface WalletSession {
  * Get stored wallet session if valid
  */
 export function getWalletSession(): WalletSession | null {
-  const stored = localStorage.getItem(WALLET_SESSION_KEY)
-  if (!stored) return null
+  const session = storage.getJSON<WalletSession>(STORAGE_KEYS.WALLET_SESSION)
+  if (!session) return null
 
-  try {
-    const session: WalletSession = JSON.parse(stored)
-    // Check if session is still valid (with 1 hour buffer)
-    if (session.expiresAt > Date.now() + 3600000) {
-      return session
-    }
-    // Session expired, clear it
-    localStorage.removeItem(WALLET_SESSION_KEY)
-    return null
-  } catch {
-    return null
+  // Check if session is still valid (with 1 hour buffer)
+  if (session.expiresAt > Date.now() + 3600000) {
+    return session
   }
+
+  // Session expired, clear it
+  storage.remove(STORAGE_KEYS.WALLET_SESSION)
+  return null
 }
 
 /**
  * Store wallet session
  */
 function storeWalletSession(session: WalletSession): void {
-  localStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(session))
+  storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session)
 }
 
 /**
  * Clear wallet session
  */
 export function clearWalletSession(): void {
-  localStorage.removeItem(WALLET_SESSION_KEY)
+  storage.remove(STORAGE_KEYS.WALLET_SESSION)
 }
 
 /**

@@ -1,8 +1,8 @@
-import { GraphQLClient } from 'graphql-request'
+import { GraphQLClient, RequestDocument, Variables } from 'graphql-request'
 import { createPublicClient, http } from 'viem'
 import { useSettingsStore } from '../../stores'
 import { VIEM_CHAINS, ZERO_ADDRESS, REV_DEPLOYER, JB_CONTRACTS, JB_CONTRACTS_V5, RPC_ENDPOINTS, USDC_ADDRESSES, type SupportedChainId } from '../../constants'
-import { createCache, CACHE_DURATIONS } from '../../utils'
+import { createCache, CACHE_DURATIONS, bendystrawCircuit, rpcCircuit } from '../../utils'
 import {
   PROJECT_QUERY,
   PROJECTS_QUERY,
@@ -114,6 +114,50 @@ function getClient(): GraphQLClient {
   return new GraphQLClient(endpoint)
 }
 
+/**
+ * Execute a GraphQL request through the Bendystraw circuit breaker
+ * If the circuit is open, throws an error that callers can handle gracefully
+ */
+async function safeRequest<T>(
+  document: RequestDocument,
+  variables?: Variables
+): Promise<T> {
+  const client = getClient()
+  const result = await bendystrawCircuit.call(async () => {
+    return client.request<T>(document, variables)
+  })
+
+  if (result.status === 'circuit_open') {
+    const retrySeconds = Math.ceil((result.retryAfter || 0) / 1000)
+    throw new Error(`Bendystraw API temporarily unavailable. Retry in ${retrySeconds}s`)
+  }
+
+  if (result.status === 'failure') {
+    throw result.error || new Error('Bendystraw request failed')
+  }
+
+  return result.data as T
+}
+
+/**
+ * Execute an RPC call through the RPC circuit breaker
+ * Falls back gracefully when RPC providers are failing
+ */
+async function safeRpcCall<T>(fn: () => Promise<T>): Promise<T> {
+  const result = await rpcCircuit.call(fn)
+
+  if (result.status === 'circuit_open') {
+    const retrySeconds = Math.ceil((result.retryAfter || 0) / 1000)
+    throw new Error(`RPC temporarily unavailable. Retry in ${retrySeconds}s`)
+  }
+
+  if (result.status === 'failure') {
+    throw result.error || new Error('RPC call failed')
+  }
+
+  return result.data as T
+}
+
 // Create a viem public client for on-chain reads with reliable RPC
 function getPublicClient(chainId: number) {
   const chain = VIEM_CHAINS[chainId as SupportedChainId]
@@ -129,8 +173,7 @@ function getPublicClient(chainId: number) {
 }
 
 export async function fetchProject(projectId: string, chainId: number = 1, version: number = 5): Promise<Project> {
-  const client = getClient()
-  const data = await client.request<{ project: Project & { metadata: ProjectMetadata | string } }>(
+  const data = await safeRequest<{ project: Project & { metadata: ProjectMetadata | string } }>(
     PROJECT_QUERY,
     { projectId: parseFloat(projectId), chainId: parseFloat(String(chainId)), version: parseFloat(String(version)) }
   )
@@ -154,10 +197,9 @@ export async function fetchProjects(options: {
   orderBy?: string
   orderDirection?: 'asc' | 'desc'
 } = {}): Promise<Project[]> {
-  const client = getClient()
   const { first = 20, skip = 0, orderBy = 'volume', orderDirection = 'desc' } = options
 
-  const data = await client.request<{ projects: { items: Array<Project> } }>(
+  const data = await safeRequest<{ projects: { items: Array<Project> } }>(
     PROJECTS_QUERY,
     { limit: first, offset: skip, orderBy, orderDirection }
   )
@@ -173,9 +215,7 @@ export async function fetchParticipants(
   chainId: number = 1,
   limit: number = 50
 ): Promise<Participant[]> {
-  const client = getClient()
-
-  const data = await client.request<{
+  const data = await safeRequest<{
     participants: {
       totalCount: number
       items: Participant[]
@@ -186,9 +226,7 @@ export async function fetchParticipants(
 }
 
 export async function searchProjects(text: string, first: number = 10): Promise<Project[]> {
-  const client = getClient()
-
-  const data = await client.request<{ projectSearch: Array<Project & { metadata: ProjectMetadata }> }>(
+  const data = await safeRequest<{ projectSearch: Array<Project & { metadata: ProjectMetadata }> }>(
     SEARCH_PROJECTS_QUERY,
     { text, first }
   )
@@ -208,9 +246,7 @@ export interface SemanticSearchProject extends Project {
 }
 
 export async function semanticSearchProjects(keyword: string, limit: number = 20): Promise<SemanticSearchProject[]> {
-  const client = getClient()
-
-  const data = await client.request<{
+  const data = await safeRequest<{
     projects: {
       items: Array<SemanticSearchProject>
     }
@@ -416,9 +452,7 @@ function transformEvent(raw: RawActivityEvent): ActivityEvent {
 }
 
 export async function fetchActivityEvents(limit: number = 20, offset: number = 0): Promise<ActivityEvent[]> {
-  const client = getClient()
-
-  const data = await client.request<{ activityEvents: { items: RawActivityEvent[] } }>(
+  const data = await safeRequest<{ activityEvents: { items: RawActivityEvent[] } }>(
     ACTIVITY_EVENTS_QUERY,
     { limit, offset, orderBy: 'timestamp', orderDirection: 'desc' }
   )
@@ -435,9 +469,7 @@ export async function fetchUserTokenBalance(
   chainId: number,
   wallet: string
 ): Promise<{ balance: string; volume: string } | null> {
-  const client = getClient()
-
-  const data = await client.request<{
+  const data = await safeRequest<{
     participants: {
       totalCount: number
       items: Participant[]
@@ -667,11 +699,9 @@ export async function fetchProjectWithRuleset(
   chainId: number = 1,
   version: number = 5
 ): Promise<ProjectWithRuleset | null> {
-  const client = getClient()
-
   try {
     // Fetch basic project info from API
-    const data = await client.request<{
+    const data = await safeRequest<{
       project: {
         id: string
         projectId: number
@@ -978,10 +1008,8 @@ export async function fetchConnectedChains(
   chainId: number,
   version: number = 5
 ): Promise<ConnectedChain[]> {
-  const client = getClient()
-
   try {
-    const data = await client.request<{
+    const data = await safeRequest<{
       project: {
         suckerGroup?: {
           projects: {
@@ -1022,10 +1050,8 @@ export async function fetchIssuanceRate(
   chainId: number,
   version: number = 5
 ): Promise<IssuanceRate | null> {
-  const client = getClient()
-
   try {
-    const data = await client.request<{
+    const data = await safeRequest<{
       payEvents: {
         items: Array<{
           amount: string

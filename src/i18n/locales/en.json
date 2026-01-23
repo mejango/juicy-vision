@@ -46,7 +46,9 @@
     "showMeWhatYouGot": "Show me what you got.",
     "letsMakeItHappen": "Let's make it happen.",
     "readyToSqueeze": "Ready to squeeze?",
-    "yourMove": "Your move."
+    "yourMove": "Your move.",
+    "helloDarling": "Hello, darling.",
+    "helloChampion": "Hello, champion."
   },
   "placeholders": {
     "juicyVision": "What's your juicy vision?",
@@ -1071,7 +1073,7 @@
     "goingOnchain": "going onchain"
   },
   "dock": {
-    "askAbout": "or ask about ecosystem projects and tools"
+    "askAbout": "See and take action across the ecosystem."
   },
   "recommendations": {
     "fundMyStartup": "Fund my startup",

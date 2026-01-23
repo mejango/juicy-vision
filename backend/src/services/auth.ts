@@ -274,15 +274,21 @@ export async function cleanupExpiredSessions(): Promise<number> {
 // ============================================================================
 
 // Step 1: Request OTP - sends code to email
-export async function requestOtp(email: string): Promise<{ code: string; expiresIn: number }> {
+export async function requestOtp(email: string): Promise<{ code?: string; expiresIn: number }> {
   const code = await createOtpCode(email);
+  const config = getConfig();
 
-  // TODO: Send email with code
-  // For now, return the code directly (in production, this would only be sent via email)
-  console.log(`[DEV] OTP code for ${email}: ${code}`);
+  // Send email with code
+  await emailService.sendOtpEmail(email, code);
+
+  // Only return code in development mode for testing
+  const isDev = config.nodeEnv === 'development';
+  if (isDev) {
+    console.log(`[DEV] OTP code for ${email}: ${code}`);
+  }
 
   return {
-    code, // Remove this in production!
+    ...(isDev ? { code } : {}), // Only include code in development
     expiresIn: OTP_EXPIRY_MINUTES * 60,
   };
 }

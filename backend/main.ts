@@ -18,7 +18,7 @@ import { passkeyRouter } from './src/routes/passkey.ts';
 import { siweRouter } from './src/routes/siwe.ts';
 import { transactionsRouter } from './src/routes/transactions.ts';
 import { debugRouter, logDebugEvent } from './src/routes/debug.ts';
-import { getConfig } from './src/utils/config.ts';
+import { getConfig, validateConfigForAuth, validateConfigForEncryption } from './src/utils/config.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
 import { executeReadyTransfers } from './src/services/wallet.ts';
@@ -27,6 +27,13 @@ import { runMigrations } from './src/db/migrate.ts';
 
 // Run migrations before starting the server
 await runMigrations();
+
+// Validate critical config in production
+const bootConfig = getConfig();
+if (bootConfig.env === 'production') {
+  validateConfigForAuth(bootConfig);
+  validateConfigForEncryption(bootConfig);
+}
 
 const app = new Hono();
 

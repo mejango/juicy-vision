@@ -279,6 +279,9 @@ export interface EnvConfig {
   jwtSecret: string;
   sessionDurationMs: number;
 
+  // Encryption (for E2E keypair storage)
+  encryptionMasterKey: string;
+
   // GCP KMS
   gcpProjectId: string;
   gcpKeyRingId: string;

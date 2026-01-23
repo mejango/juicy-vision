@@ -11,19 +11,19 @@
  * - All chats/invites created under a session belong to that session
  */
 
-const SESSION_KEY = 'juice-session-id'
+import { storage, STORAGE_KEYS } from './storage'
 
 /**
  * Get or create a session ID
  * This ID persists across page reloads but is unique per browser/device
  */
 export function getSessionId(): string {
-  let sessionId = localStorage.getItem(SESSION_KEY)
+  let sessionId = storage.getString(STORAGE_KEYS.SESSION_ID)
 
   if (!sessionId) {
     // Generate a new session ID
     sessionId = generateSessionId()
-    localStorage.setItem(SESSION_KEY, sessionId)
+    storage.setString(STORAGE_KEYS.SESSION_ID, sessionId)
   }
 
   return sessionId
@@ -43,14 +43,14 @@ function generateSessionId(): string {
  * Clear the session (used on logout if needed)
  */
 export function clearSession(): void {
-  localStorage.removeItem(SESSION_KEY)
+  storage.remove(STORAGE_KEYS.SESSION_ID)
 }
 
 /**
  * Check if a session exists
  */
 export function hasSession(): boolean {
-  return !!localStorage.getItem(SESSION_KEY)
+  return storage.has(STORAGE_KEYS.SESSION_ID)
 }
 
 /**

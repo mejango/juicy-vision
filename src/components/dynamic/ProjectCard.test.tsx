@@ -75,7 +75,7 @@ describe('ProjectCard', () => {
 
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
-    useTransactionStore.setState({ transactions: {} })
+    useTransactionStore.setState({ transactions: [] })
     localStorage.clear()
     vi.clearAllMocks()
 

@@ -28,11 +28,23 @@ Rich interactions with the juicebox ecosystem, via chat.
 - chat organization state syncs across devices for authenticated users 
 
 
+## Privacy Modes
+
+Juicy Vision supports four distinct privacy modes for different user needs:
+
+| Mode | Description | Data Handling |
+|------|-------------|---------------|
+| **open_book** | Full collaboration mode | Conversations shared, messages visible to all participants |
+| **anonymous** | Participate without identity | Session-based tracking only, no persistent identity |
+| **private** | End-to-end encrypted | Group keys for multi-person chats, server cannot read messages |
+| **ghost** | Maximum privacy | Minimal data retention, ephemeral sessions |
+
 ## Quality Priorities
 - **speed**: fast initial load, minimal bundle size, aggressive code splitting, optimized caching
 - **stability**: graceful error handling, resilient WebSocket reconnection, offline-first PWA patterns
 - **testability**: comprehensive unit tests, E2E coverage, isolated components, mockable services
 - **mobile-first**: responsive design prioritizing chat views, golden ratio spacing, touch-friendly interactions
+- **error handling**: centralized error handler, user-friendly messages, structured logging in prod
 
 ## Client Features
 - built with React 18, TypeScript, Vite, and Tailwind CSS
@@ -94,3 +106,26 @@ Rich interactions with the juicebox ecosystem, via chat.
 - secrets managed via GCP Secret Manager + KMS
 - Vitest for frontend unit tests, Playwright for E2E, Deno test runner for backend
 - workbox caching with 5MB limit, network-only for Anthropic API
+
+## Deployment
+
+Production deployment uses a multi-platform approach:
+
+| Component | Platform | Notes |
+|-----------|----------|-------|
+| Frontend | Railway / IPFS | Static site with CDN |
+| Backend | Railway / GCP Cloud Run | Serverless containers |
+| Database | Railway / GCP Cloud SQL | Managed PostgreSQL 16 |
+| Secrets | GCP Secret Manager + KMS | Secure key management |
+
+See [Deployment Guide](./docs/DEPLOYMENT.md) for detailed architecture and [Railway Deployment](./DEPLOY_RAILWAY.md) for step-by-step setup.
+
+## Architecture
+
+For code standards, design principles, and contribution guidelines, see [PRINCIPLES.md](./PRINCIPLES.md).
+
+Key architectural decisions:
+- **Chat-first**: All interactions flow through the chat interface
+- **Security-first**: API keys never in browser, all sensitive calls proxied through backend
+- **Privacy by design**: Four privacy modes with appropriate data handling
+- **Type safety**: Full TypeScript with strict mode, no unsafe type assertions

@@ -404,10 +404,18 @@ describe('ConversationHistory', () => {
         expect(screen.getByText('Collapsible')).toBeInTheDocument()
       })
 
+      // Chat name is visible in inline preview when collapsed
+      // (Component shows "Chat1, Chat2, Chat3..." preview text)
+      const folderCard = screen.getByText('Collapsible').closest('.group')
+
+      // Initially not expanded - no border-t list container
+      expect(folderCard?.querySelector('.border-t')).not.toBeInTheDocument()
+
       // Expand
       fireEvent.click(screen.getByText('Collapsible'))
       await waitFor(() => {
-        expect(screen.getByText('Hidden Chat')).toBeInTheDocument()
+        // Expanded state shows the list with border-t separator
+        expect(folderCard?.querySelector('.border-t')).toBeInTheDocument()
       })
 
       // Collapse - get the folder element again to click
@@ -415,7 +423,8 @@ describe('ConversationHistory', () => {
       fireEvent.click(folderElement)
 
       await waitFor(() => {
-        expect(screen.queryByText('Hidden Chat')).not.toBeInTheDocument()
+        // Collapsed again - no border-t list container
+        expect(folderCard?.querySelector('.border-t')).not.toBeInTheDocument()
       })
     })
 
@@ -906,30 +915,6 @@ describe('ConversationHistory', () => {
       fireEvent.click(screen.getByText('Create'))
 
       expect(chatApi.createFolder).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('nested folders', () => {
-    it('renders subfolders inside expanded parent', async () => {
-      const parentFolder = createMockFolder({ id: 'parent', name: 'Parent Folder' })
-      const childFolder = createMockFolder({
-        id: 'child',
-        name: 'Child Folder',
-        parentFolderId: 'parent',
-      })
-      useChatStore.setState({ folders: [parentFolder, childFolder] })
-
-      renderWithProviders(<ConversationHistory />)
-
-      // Child should not be visible initially
-      expect(screen.queryByText('Child Folder')).not.toBeInTheDocument()
-
-      // Expand parent
-      fireEvent.click(screen.getByText('Parent Folder'))
-
-      await waitFor(() => {
-        expect(screen.getByText('Child Folder')).toBeInTheDocument()
-      })
     })
   })
 

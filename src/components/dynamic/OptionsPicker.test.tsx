@@ -317,12 +317,15 @@ describe('OptionsPicker', () => {
       )
     })
 
-    it('shows thinking state after submit', () => {
+    it('shows done state after submit', () => {
       render(<OptionsPicker groups={basicGroups} />)
 
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
-      expect(screen.getByText('Thinking...')).toBeInTheDocument()
+      // Component shows one of: Great, Super, Got it, Ok, Nice
+      const doneWords = ['Great', 'Super', 'Got it', 'Ok', 'Nice']
+      const foundDoneWord = doneWords.some(word => screen.queryByText(word))
+      expect(foundDoneWord).toBe(true)
     })
 
     it('disables button after submit', () => {

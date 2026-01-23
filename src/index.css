@@ -56,6 +56,15 @@
 }
 
 @layer components {
+  /* Dock overflow control - hidden when unpinned, scrollable when pinned */
+  .dock-overflow {
+    overflow: hidden;
+  }
+
+  [data-dock-pinned="true"] .dock-overflow {
+    overflow-y: auto;
+  }
+
   .glass {
     @apply bg-white/5 backdrop-blur-md border border-white/10;
   }

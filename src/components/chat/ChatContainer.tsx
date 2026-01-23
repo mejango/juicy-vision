@@ -4,15 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useChatStore, useSettingsStore, useThemeStore, LANGUAGES, type Message, type Attachment, type ChatMessage, type ChatMember } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
-// Title generation now happens on backend
 import * as chatApi from '../../services/chat'
-
-// Type for dock scroll tracking
-declare global {
-  interface Window {
-    __dockScrollActive?: boolean
-  }
-}
+import { useChatScroll, usePopoverPositioning, useChatActions } from './hooks'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
@@ -20,7 +13,6 @@ import WelcomeGreeting from './WelcomeGreeting'
 import ConversationHistory from './ConversationHistory'
 import WalletInfo from './WalletInfo'
 import { SettingsPanel, PrivacySelector } from '../settings'
-import { stripComponents } from '../../utils/messageParser'
 import InviteModal from './InviteModal'
 import SaveModal from './SaveModal'
 import AuthOptionsModal from './AuthOptionsModal'
@@ -44,39 +36,6 @@ function getCurrentUserAddress(): string {
   return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
 }
 
-// Convert messages to markdown format
-function exportToMarkdown(messages: Message[], title: string): string {
-  const date = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-
-  let md = `# ${title}\n\n`
-  md += `*Exported on ${date}*\n\n---\n\n`
-
-  for (const msg of messages) {
-    const role = msg.role === 'user' ? '**You**' : '**Juicy**'
-    // Strip juice-component tags for cleaner output
-    const content = stripComponents(msg.content)
-    md += `${role}:\n\n${content}\n\n---\n\n`
-  }
-
-  return md
-}
-
-// Trigger download of markdown file
-function downloadMarkdown(content: string, filename: string) {
-  const blob = new Blob([content], { type: 'text/markdown' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
 
 interface ChatContainerProps {
   topOnly?: boolean
@@ -129,14 +88,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const canWrite = isChatMode ? !!currentUserMember : true // Anyone can write to local chats
 
   const [error, setError] = useState<string | null>(null)
-  const [isPromptStuck, setIsPromptStuck] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsAnchorPosition, setSettingsAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null)
   const [langMenuOpen, setLangMenuOpen] = useState(false)
   const [langMenuPosition, setLangMenuPosition] = useState<{ top: number; right: number } | null>(null)
   const langButtonRef = useRef<HTMLButtonElement | null>(null)
-  const [showActionBar, setShowActionBar] = useState(true)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [showAuthOptionsModal, setShowAuthOptionsModal] = useState(false)
@@ -151,9 +108,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [walletPanelAnchorPosition, setWalletPanelAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
   const [showBetaPopover, setShowBetaPopover] = useState(false)
+  const [dockScrollEnabled, setDockScrollEnabled] = useState(false)
   const [betaPopoverPosition, setBetaPopoverPosition] = useState<'above' | 'below'>('above')
   const [betaAnchorPosition, setBetaAnchorPosition] = useState<{ top: number; bottom: number; right: number } | null>(null)
   const betaButtonRef = useRef<HTMLButtonElement | null>(null)
+  const [isReporting, setIsReporting] = useState(false)
+  const [reportSuccess, setReportSuccess] = useState(false)
 
   // Close all popovers - call before opening a new one
   const closeAllPopovers = useCallback(() => {
@@ -165,11 +125,50 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     setSettingsOpen(false)
   }, [])
 
+  // Handle reporting a chat
+  const handleReport = useCallback(async () => {
+    const chatId = forceActiveChatId || useChatStore.getState().activeChatId
+    if (!chatId || isReporting) return
+
+    setIsReporting(true)
+    try {
+      await chatApi.reportChat(chatId)
+      setReportSuccess(true)
+      // Reset success state after 3 seconds
+      setTimeout(() => setReportSuccess(false), 3000)
+    } catch (error) {
+      console.error('Failed to report chat:', error)
+    } finally {
+      setIsReporting(false)
+    }
+  }, [forceActiveChatId, isReporting])
+
   const abortControllerRef = useRef<AbortController | null>(null)
   const dockRef = useRef<HTMLDivElement | null>(null)
   const stickyPromptRef = useRef<HTMLDivElement | null>(null)
   const messagesScrollRef = useRef<HTMLDivElement | null>(null)
-  const lastScrollTop = useRef(0)
+
+  // Scroll behavior hooks
+  const { isPromptStuck, showActionBar } = useChatScroll({
+    dockRef,
+    stickyPromptRef,
+    messagesScrollRef,
+    hasMessages: chatMessages.length > 0,
+  })
+
+  // Popover positioning on scroll
+  usePopoverPositioning({
+    settingsOpen,
+    settingsButtonRef,
+    setSettingsAnchorPosition,
+    langMenuOpen,
+    langButtonRef,
+    setLangMenuPosition,
+    showBetaPopover,
+    betaButtonRef,
+    setBetaPopoverPosition,
+    setBetaAnchorPosition,
+  })
 
   // Convert chat messages to display format with sender info
   const displayMessages: Message[] = useMemo(() => {
@@ -307,9 +306,31 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const handleExport = () => {
     if (messages.length === 0) return
     const title = activeChat?.name || 'Chat'
-    const md = exportToMarkdown(messages, title)
+
+    // Convert messages to markdown
+    const date = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+    let md = `# ${title}\n\n`
+    md += `*Exported on ${date}*\n\n---\n\n`
+    for (const msg of messages) {
+      const role = msg.role === 'user' ? '**You**' : '**Juicy**'
+      md += `${role}:\n\n${msg.content}\n\n---\n\n`
+    }
+
+    // Trigger download
     const filename = `${title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.md`
-    downloadMarkdown(md, filename)
+    const blob = new Blob([md], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   // Share chat - all chats are now on server, just open invite modal
@@ -341,6 +362,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       window.removeEventListener('juice:passkey-connected', handlePasskeyChange)
       window.removeEventListener('juice:passkey-disconnected', handlePasskeyChange)
     }
+  }, [])
+
+  // Listen for dock scroll enable/disable events
+  useEffect(() => {
+    const handleDockScrollChange = (e: CustomEvent<{ enabled: boolean }>) => {
+      setDockScrollEnabled(e.detail.enabled)
+    }
+    window.addEventListener('juice:dock-scroll', handleDockScrollChange as EventListener)
+    return () => window.removeEventListener('juice:dock-scroll', handleDockScrollChange as EventListener)
   }, [])
 
   // Load shared chat data and connect WebSocket when activeChatId changes
@@ -586,192 +616,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => window.removeEventListener('juice:open-auth-modal', handleOpenAuthModal)
   }, [closeAllPopovers])
 
-  // Detect when sticky prompt actually hits top of container
-  useEffect(() => {
-    const dock = dockRef.current
-    const stickyPrompt = stickyPromptRef.current
-    if (!dock || !stickyPrompt) return
-
-    const handleScroll = () => {
-      // Check if the sticky element has actually reached the top of the container
-      const dockRect = dock.getBoundingClientRect()
-      const promptRect = stickyPrompt.getBoundingClientRect()
-      // Element is stuck when its top equals the container's top
-      setIsPromptStuck(promptRect.top <= dockRect.top)
-    }
-
-    dock.addEventListener('scroll', handleScroll)
-    return () => dock.removeEventListener('scroll', handleScroll)
-  }, [messages.length])
-
-  // Handle dock scrolling: manually scroll since native scroll doesn't work on inner elements,
-  // and continue scrolling when cursor leaves dock until user moves their mouse
-  useEffect(() => {
-    const dock = dockRef.current
-    if (!dock) return
-
-    let scrollTimeout: number | null = null
-    let lastMousePos = { x: 0, y: 0 }
-    let pendingScroll = 0
-    let rafId: number | null = null
-
-    const clearDockActive = () => {
-      window.__dockScrollActive = false
-    }
-
-    const refreshTimeout = () => {
-      if (scrollTimeout) clearTimeout(scrollTimeout)
-      scrollTimeout = window.setTimeout(clearDockActive, 300)
-    }
-
-    // Apply scroll with RAF for smooth updates
-    const applyScroll = () => {
-      if (pendingScroll !== 0) {
-        dock.scrollTop += pendingScroll
-        pendingScroll = 0
-      }
-      rafId = null
-    }
-
-    const queueScroll = (delta: number) => {
-      pendingScroll += delta
-      if (!rafId) {
-        rafId = requestAnimationFrame(applyScroll)
-      }
-    }
-
-    // Mouse movement clears dock scroll lock only if moved significantly (5px threshold)
-    const handleMouseMove = (e: MouseEvent) => {
-      if (window.__dockScrollActive) {
-        const dx = Math.abs(e.clientX - lastMousePos.x)
-        const dy = Math.abs(e.clientY - lastMousePos.y)
-        if (dx > 5 || dy > 5) {
-          clearDockActive()
-          if (scrollTimeout) {
-            clearTimeout(scrollTimeout)
-            scrollTimeout = null
-          }
-        }
-      }
-      lastMousePos = { x: e.clientX, y: e.clientY }
-    }
-
-    // Global wheel handler - scroll dock manually and track active state
-    const handleGlobalWheel = (e: WheelEvent) => {
-      const isInDock = dock.contains(e.target as Element)
-
-      if (isInDock) {
-        // Cursor on dock - queue scroll and mark active
-        queueScroll(e.deltaY)
-        window.__dockScrollActive = true
-        lastMousePos = { x: e.clientX, y: e.clientY }
-        refreshTimeout()
-        return
-      }
-
-      // Cursor outside dock - forward scroll if dock was recently scrolled
-      if (window.__dockScrollActive) {
-        queueScroll(e.deltaY)
-        e.preventDefault()
-        e.stopPropagation()
-        refreshTimeout()
-      }
-    }
-
-    document.addEventListener('mousemove', handleMouseMove, { passive: true })
-    document.addEventListener('wheel', handleGlobalWheel, { capture: true, passive: false })
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('wheel', handleGlobalWheel, { capture: true })
-      if (scrollTimeout) clearTimeout(scrollTimeout)
-      if (rafId) cancelAnimationFrame(rafId)
-    }
-  }, [])
-
-
-  // Show/hide action bar based on scroll direction
-  // Also dispatch event for header to shrink/expand
-  useEffect(() => {
-    const container = messagesScrollRef.current
-    if (!container) return
-
-    const handleScroll = () => {
-      const currentScrollTop = container.scrollTop
-      const isScrollingDown = currentScrollTop > lastScrollTop.current
-
-      // Use same threshold as header (50px) - both compact/hide together
-      const shouldCompact = isScrollingDown && currentScrollTop > 50
-      setShowActionBar(!shouldCompact)
-      lastScrollTop.current = currentScrollTop
-
-      // Dispatch event for header to shrink when scrolling down, expand when scrolling up
-      window.dispatchEvent(new CustomEvent('juice:scroll-direction', {
-        detail: { isScrollingDown, scrollTop: currentScrollTop }
-      }))
-    }
-
-    container.addEventListener('scroll', handleScroll)
-    return () => container.removeEventListener('scroll', handleScroll)
-  }, [messages.length])
-
-  // Update Beta popover position on scroll
-  useEffect(() => {
-    if (!showBetaPopover || !betaButtonRef.current) return
-
-    const updatePosition = () => {
-      const button = betaButtonRef.current
-      if (!button) return
-      const rect = button.getBoundingClientRect()
-      const isInBottomHalf = rect.top > window.innerHeight / 2
-      setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
-      setBetaAnchorPosition({
-        top: rect.bottom + 8,
-        bottom: window.innerHeight - rect.top + 8,
-        right: window.innerWidth - rect.right
-      })
-    }
-
-    // Update on any scroll event (capture phase to catch all scrolls)
-    window.addEventListener('scroll', updatePosition, true)
-    return () => window.removeEventListener('scroll', updatePosition, true)
-  }, [showBetaPopover])
-
-  // Update language menu position on scroll
-  useEffect(() => {
-    if (!langMenuOpen || !langButtonRef.current) return
-
-    const updatePosition = () => {
-      const button = langButtonRef.current
-      if (!button) return
-      const rect = button.getBoundingClientRect()
-      setLangMenuPosition({
-        top: rect.bottom + 4,
-        right: window.innerWidth - rect.right
-      })
-    }
-
-    // Update on any scroll event (capture phase to catch all scrolls)
-    window.addEventListener('scroll', updatePosition, true)
-    return () => window.removeEventListener('scroll', updatePosition, true)
-  }, [langMenuOpen])
-
-  // Update settings panel position on scroll
-  useEffect(() => {
-    if (!settingsOpen || !settingsButtonRef.current) return
-
-    const updatePosition = () => {
-      const button = settingsButtonRef.current
-      if (!button) return
-      const rect = button.getBoundingClientRect()
-      setSettingsAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
-    }
-
-    // Update on any scroll event (capture phase to catch all scrolls)
-    window.addEventListener('scroll', updatePosition, true)
-    return () => window.removeEventListener('scroll', updatePosition, true)
-  }, [settingsOpen])
-
   return (
     <div className="flex h-full overflow-hidden relative">
       {/* Main content area - chips, mascot, messages, input */}
@@ -803,7 +647,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               <div
                 ref={dockRef}
                 data-dock="true"
-                className={`${bottomOnly ? 'max-h-full overflow-y-auto' : 'absolute bottom-0 left-0 right-0 z-30 max-h-[38vh] border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto ' + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
+                className={`${bottomOnly ? 'max-h-full dock-overflow' : 'absolute bottom-0 left-0 right-0 z-30 max-h-[38vh] border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto ' + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
               >
                 {/* Greeting */}
                 <div className="h-[6vh] flex flex-col justify-end">
@@ -944,30 +788,47 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                     <div className="flex gap-3">
                       <div className="w-[48px] shrink-0" />
                       <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {t('dock.askAbout', 'or ask about ecosystem projects and tools')}
+                        {t('dock.askAbout', 'See and take action across the ecosystem.')}
                       </div>
                     </div>
-                    {/* Beta tag - popover rendered at component root */}
-                    <button
-                      ref={betaButtonRef}
-                      onClick={(e) => {
-                        if (!showBetaPopover) {
-                          closeAllPopovers()
-                          const rect = e.currentTarget.getBoundingClientRect()
-                          const isInBottomHalf = rect.top > window.innerHeight / 2
-                          setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
-                          setBetaAnchorPosition({
-                            top: rect.bottom + 8,
-                            bottom: window.innerHeight - rect.top + 8,
-                            right: window.innerWidth - rect.right
-                          })
-                        }
-                        setShowBetaPopover(!showBetaPopover)
-                      }}
-                      className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
-                    >
-                      Beta
-                    </button>
+                    {/* Beta tag and Report button */}
+                    <div className="flex items-center gap-2">
+                      {activeChatId && (
+                        <button
+                          onClick={handleReport}
+                          disabled={isReporting}
+                          className={`px-2 py-0.5 text-xs font-medium bg-transparent border transition-colors ${
+                            reportSuccess
+                              ? 'border-green-500 text-green-500'
+                              : isReporting
+                                ? 'border-gray-500 text-gray-500 cursor-wait'
+                                : 'border-gray-500 text-gray-500 hover:border-red-400 hover:text-red-400'
+                          }`}
+                        >
+                          {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
+                        </button>
+                      )}
+                      <button
+                        ref={betaButtonRef}
+                        onClick={(e) => {
+                          if (!showBetaPopover) {
+                            closeAllPopovers()
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            const isInBottomHalf = rect.top > window.innerHeight / 2
+                            setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
+                            setBetaAnchorPosition({
+                              top: rect.bottom + 8,
+                              bottom: window.innerHeight - rect.top + 8,
+                              right: window.innerWidth - rect.right
+                            })
+                          }
+                          setShowBetaPopover(!showBetaPopover)
+                        }}
+                        className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
+                      >
+                        Beta
+                      </button>
+                    </div>
                   </div>
                 {/* Wallet info - scrolls away naturally */}
                 <div>
@@ -1066,26 +927,43 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                     showDockButtons={!isChatMode}
                     onSettingsClick={() => setSettingsOpen(true)}
                     walletInfoRightContent={
-                      <button
-                        ref={betaButtonRef}
-                        onClick={(e) => {
-                          if (!showBetaPopover) {
-                            closeAllPopovers()
-                            const rect = e.currentTarget.getBoundingClientRect()
-                            const isInBottomHalf = rect.top > window.innerHeight / 2
-                            setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
-                            setBetaAnchorPosition({
-                              top: rect.bottom + 8,
-                              bottom: window.innerHeight - rect.top + 8,
-                              right: window.innerWidth - rect.right
-                            })
-                          }
-                          setShowBetaPopover(!showBetaPopover)
-                        }}
-                        className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
-                      >
-                        Beta
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {activeChatId && (
+                          <button
+                            onClick={handleReport}
+                            disabled={isReporting}
+                            className={`px-2 py-0.5 text-xs font-medium bg-transparent border transition-colors ${
+                              reportSuccess
+                                ? 'border-green-500 text-green-500'
+                                : isReporting
+                                  ? 'border-gray-500 text-gray-500 cursor-wait'
+                                  : 'border-gray-500 text-gray-500 hover:border-red-400 hover:text-red-400'
+                            }`}
+                          >
+                            {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
+                          </button>
+                        )}
+                        <button
+                          ref={betaButtonRef}
+                          onClick={(e) => {
+                            if (!showBetaPopover) {
+                              closeAllPopovers()
+                              const rect = e.currentTarget.getBoundingClientRect()
+                              const isInBottomHalf = rect.top > window.innerHeight / 2
+                              setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
+                              setBetaAnchorPosition({
+                                top: rect.bottom + 8,
+                                bottom: window.innerHeight - rect.top + 8,
+                                right: window.innerWidth - rect.right
+                              })
+                            }
+                            setShowBetaPopover(!showBetaPopover)
+                          }}
+                          className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
+                        >
+                          Beta
+                        </button>
+                      </div>
                     }
                   />
                 )}

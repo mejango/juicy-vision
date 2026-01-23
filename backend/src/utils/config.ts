@@ -39,6 +39,9 @@ export function loadConfig(): EnvConfig {
     jwtSecret: getEnv('JWT_SECRET', 'dev-secret-change-in-production'),
     sessionDurationMs: getEnvNumber('SESSION_DURATION_MS', 7 * 24 * 60 * 60 * 1000), // 7 days
 
+    // Encryption (for E2E keypair storage - MUST be different from JWT secret)
+    encryptionMasterKey: getEnv('ENCRYPTION_MASTER_KEY', 'dev-encryption-key-change-in-production'),
+
     // GCP KMS
     gcpProjectId: getEnv('GCP_PROJECT_ID', ''),
     gcpKeyRingId: getEnv('GCP_KEY_RING_ID', ''),
@@ -85,6 +88,18 @@ export function getConfig(): EnvConfig {
 export function validateConfigForAuth(config: EnvConfig): void {
   if (config.env === 'production' && config.jwtSecret === 'dev-secret-change-in-production') {
     throw new Error('JWT_SECRET must be set in production');
+  }
+}
+
+export function validateConfigForEncryption(config: EnvConfig): void {
+  if (config.env === 'production') {
+    if (config.encryptionMasterKey === 'dev-encryption-key-change-in-production') {
+      throw new Error('ENCRYPTION_MASTER_KEY must be set in production');
+    }
+    // Ensure encryption key is different from JWT secret
+    if (config.encryptionMasterKey === config.jwtSecret) {
+      throw new Error('ENCRYPTION_MASTER_KEY must be different from JWT_SECRET');
+    }
   }
 }
 

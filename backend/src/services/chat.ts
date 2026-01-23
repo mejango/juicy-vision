@@ -1146,6 +1146,76 @@ export async function updateChatName(chatId: string, name: string): Promise<Chat
   return getChatById(chatId);
 }
 
+// ============================================================================
+// Chat Reports
+// ============================================================================
+
+export interface ChatReport {
+  id: string;
+  chatId: string;
+  reporterAddress: string;
+  reason?: string;
+  metadata: Record<string, unknown>;
+  status: 'pending' | 'reviewed' | 'dismissed' | 'actioned';
+  reviewedBy?: string;
+  reviewedAt?: Date;
+  createdAt: Date;
+}
+
+/**
+ * Report a chat for review
+ * Includes chat metadata snapshot for context
+ */
+export async function reportChat(
+  chatId: string,
+  reporterAddress: string,
+  reason?: string
+): Promise<ChatReport> {
+  // Get chat details for metadata snapshot
+  const chat = await getChatById(chatId);
+  if (!chat) {
+    throw new Error('Chat not found');
+  }
+
+  // Get message count and member count for context
+  const messageCount = await queryOne<{ count: string }>(
+    'SELECT COUNT(*)::text as count FROM multi_messages WHERE chat_id = $1',
+    [chatId]
+  );
+  const memberCount = await queryOne<{ count: string }>(
+    'SELECT COUNT(*)::text as count FROM multi_chat_members WHERE chat_id = $1',
+    [chatId]
+  );
+
+  // Create metadata snapshot
+  const metadata = {
+    chatName: chat.name,
+    chatDescription: chat.description,
+    founderAddress: chat.founderAddress,
+    isPublic: chat.isPublic,
+    encrypted: chat.encrypted,
+    messageCount: parseInt(messageCount?.count || '0', 10),
+    memberCount: parseInt(memberCount?.count || '0', 10),
+    createdAt: chat.createdAt,
+    reportedAt: new Date().toISOString(),
+  };
+
+  const result = await queryOne<ChatReport>(
+    `INSERT INTO chat_reports (chat_id, reporter_address, reason, metadata)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT ON CONSTRAINT chat_reports_unique_per_user
+     DO UPDATE SET reason = EXCLUDED.reason, metadata = EXCLUDED.metadata, created_at = NOW()
+     RETURNING *`,
+    [chatId, reporterAddress.toLowerCase(), reason || null, JSON.stringify(metadata)]
+  );
+
+  if (!result) {
+    throw new Error('Failed to create report');
+  }
+
+  return result;
+}
+
 // Re-export folder types and functions
 export {
   type ChatFolder,

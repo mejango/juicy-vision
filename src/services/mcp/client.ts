@@ -8,27 +8,53 @@ export interface SearchDocsParams {
   category?: 'developer' | 'user' | 'dao' | 'ecosystem' | 'all'
   version?: 'v3' | 'v4' | 'v5' | 'all'
   limit?: number
+  [key: string]: unknown
 }
 
 export interface GetDocParams {
   path?: string
   title?: string
+  [key: string]: unknown
 }
 
 export interface SearchCodeParams {
   query: string
   language?: 'solidity' | 'typescript' | 'javascript' | 'all'
   limit?: number
+  [key: string]: unknown
 }
 
 export interface GetContractsParams {
   contract?: string
   chainId?: 1 | 10 | 8453 | 42161 | 'testnets' | 'all'
   category?: 'core' | 'revnet' | 'hooks' | 'suckers' | 'omnichain' | 'all'
+  [key: string]: unknown
 }
 
 export interface GetPatternsParams {
   projectType?: string
+  [key: string]: unknown
+}
+
+// Type guards for MCP params
+function isSearchDocsParams(p: Record<string, unknown>): p is SearchDocsParams {
+  return typeof p.query === 'string'
+}
+
+function isGetDocParams(p: Record<string, unknown>): p is GetDocParams {
+  return p.path === undefined || typeof p.path === 'string'
+}
+
+function isSearchCodeParams(p: Record<string, unknown>): p is SearchCodeParams {
+  return typeof p.query === 'string'
+}
+
+function isGetContractsParams(p: Record<string, unknown>): p is GetContractsParams {
+  return true // All fields are optional
+}
+
+function isGetPatternsParams(p: Record<string, unknown>): p is GetPatternsParams {
+  return p.projectType === undefined || typeof p.projectType === 'string'
 }
 
 // Search documentation
@@ -122,21 +148,26 @@ export async function executeMcpTool(
 ): Promise<unknown> {
   switch (toolName) {
     case 'search_docs':
-      return searchDocs(params as unknown as SearchDocsParams)
+      if (!isSearchDocsParams(params)) throw new Error('Invalid search_docs params: query required')
+      return searchDocs(params)
     case 'get_doc':
-      return getDoc(params as unknown as GetDocParams)
+      if (!isGetDocParams(params)) throw new Error('Invalid get_doc params')
+      return getDoc(params)
     case 'list_docs':
       return listDocs(params.category as string | undefined)
     case 'get_structure':
       return getStructure()
     case 'search_code':
-      return searchCode(params as unknown as SearchCodeParams)
+      if (!isSearchCodeParams(params)) throw new Error('Invalid search_code params: query required')
+      return searchCode(params)
     case 'get_contracts':
-      return getContracts(params as unknown as GetContractsParams)
+      if (!isGetContractsParams(params)) throw new Error('Invalid get_contracts params')
+      return getContracts(params)
     case 'get_sdk':
       return getSdk()
     case 'get_patterns':
-      return getPatterns(params as unknown as GetPatternsParams)
+      if (!isGetPatternsParams(params)) throw new Error('Invalid get_patterns params')
+      return getPatterns(params)
     default:
       throw new Error(`Unknown MCP tool: ${toolName}`)
   }

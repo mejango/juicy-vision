@@ -32,6 +32,7 @@ import {
   reorderPinnedChats,
   updateChatName,
   deleteChat,
+  reportChat,
   type ChatFolder,
   createFolder,
   getFolder,
@@ -1350,6 +1351,55 @@ chatRouter.get(
       },
     };
   })
+);
+
+// ============================================================================
+// Report Chat
+// ============================================================================
+
+// Report a chat for review
+chatRouter.post(
+  '/:chatId/report',
+  optionalAuth,
+  optionalWalletSession,
+  zValidator('json', z.object({
+    reason: z.string().optional(),
+  }).optional()),
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const body = c.req.valid('json') || {};
+    const wallet = c.get('walletSession');
+    const user = c.get('user');
+
+    // Get reporter address from wallet session or user
+    const reporterAddress = wallet?.address || user?.walletAddress;
+    if (!reporterAddress) {
+      return c.json({ success: false, error: 'Authentication required' }, 401);
+    }
+
+    try {
+      const report = await reportChat(chatId, reporterAddress, body.reason);
+      return c.json({
+        success: true,
+        report: {
+          id: report.id,
+          chatId: report.chatId,
+          status: report.status,
+          createdAt: report.createdAt,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to report chat';
+      // Return 200 with error for duplicate reports (user already reported)
+      if (message.includes('unique') || message.includes('duplicate')) {
+        return c.json({
+          success: true,
+          message: 'Report already submitted',
+        });
+      }
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
 );
 
 // ============================================================================

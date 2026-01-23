@@ -16,6 +16,7 @@ interface OptionGroup {
   multiSelect?: boolean // Allow multiple selections for chips
   placeholder?: string // Placeholder for text/textarea inputs
   optional?: boolean // Mark field as optional (shows "(optional)" label)
+  expectedOptionCount?: number // Show ghost cards for remaining options during streaming
 }
 
 interface OptionsPickerProps {
@@ -23,20 +24,27 @@ interface OptionsPickerProps {
   submitLabel?: string
   allSelectedLabel?: string // Label to use when all options in multiSelect groups are selected
   onSubmit?: (selections: Record<string, string>) => void
+  // Streaming mode: show shimmer placeholders for remaining expected groups
+  expectedGroupCount?: number
+  isStreaming?: boolean
 }
 
 // Values that indicate "other" / custom input
 const OTHER_VALUES = ['other', 'something-else', 'something_else', 'something else', 'custom', 'else', 'exploring']
 
+// Conversational confirmation words
+const DONE_WORDS = ['Great', 'Super', 'Got it', 'Ok', 'Nice']
+
 // Normalize value for comparison (lowercase, trim, collapse spaces)
 const normalizeValue = (value: string) => value.toLowerCase().trim().replace(/[\s_-]+/g, ' ')
 
-export default function OptionsPicker({ groups, submitLabel = 'Continue', allSelectedLabel, onSubmit }: OptionsPickerProps) {
+export default function OptionsPicker({ groups, submitLabel = 'Continue', allSelectedLabel, onSubmit, expectedGroupCount, isStreaming }: OptionsPickerProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
   // Track if the picker has been submitted (to show idle state)
   const [hasSubmitted, setHasSubmitted] = useState(false)
+  const [doneWord, setDoneWord] = useState('')
 
   // Optional memo/note from user
   const [memo, setMemo] = useState('')
@@ -101,6 +109,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
   const handleSubmit = () => {
     // Mark as submitted to show idle state on button
     setHasSubmitted(true)
+    setDoneWord(DONE_WORDS[Math.floor(Math.random() * DONE_WORDS.length)])
 
     // Check if any "other" option is selected - if so, prefill prompt and focus
     for (const g of groups) {
@@ -153,6 +162,11 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     }
   }
 
+  // Calculate remaining shimmer placeholders for streaming mode
+  const remainingShimmers = expectedGroupCount && expectedGroupCount > groups.length
+    ? expectedGroupCount - groups.length
+    : 0
+
   return (
     <div className={`border overflow-hidden inline-block max-w-lg ${
       isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
@@ -174,39 +188,57 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
             </div>
 
             {/* Chips layout - horizontal wrap */}
-            {(group.type === 'chips' || !group.type) && (
-              <div className="flex flex-wrap gap-2">
-                {(group.options || []).map(option => {
-                  const selected = isSelected(group.id, option.value, group.multiSelect)
-                  return (
-                    <button
-                      key={option.value}
-                      onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
-                      className={`px-3 py-1.5 text-sm border transition-all ${
-                        selected
-                          ? isDark
-                            ? 'border-green-500 text-green-400'
-                            : 'border-green-500 text-green-700'
-                          : isDark
-                            ? 'bg-white/5 border-white/10 text-gray-300 hover:border-white/30'
-                            : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-400'
-                      }`}
-                    >
-                      <span className="font-medium">{option.label}</span>
-                      {option.sublabel && (
-                        <span className={`ml-3 text-xs ${
+            {(group.type === 'chips' || !group.type) && (() => {
+              const options = group.options || []
+              const ghostCount = group.expectedOptionCount && group.expectedOptionCount > options.length
+                ? group.expectedOptionCount - options.length
+                : 0
+
+              return (
+                <div className="flex flex-wrap gap-2">
+                  {options.map((option, idx) => {
+                    const selected = isSelected(group.id, option.value, group.multiSelect)
+                    return (
+                      <button
+                        key={option.value}
+                        onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
+                        className={`px-3 py-1.5 text-sm border transition-all animate-fade-in ${
                           selected
-                            ? isDark ? 'text-green-400/70' : 'text-green-600'
-                            : isDark ? 'text-gray-400' : 'text-gray-500'
-                        }`}>
-                          {option.sublabel}
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+                            ? isDark
+                              ? 'border-green-500 text-green-400'
+                              : 'border-green-500 text-green-700'
+                            : isDark
+                              ? 'bg-white/5 border-white/10 text-gray-300 hover:border-white/30'
+                              : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-400'
+                        }`}
+                        style={{ animationDelay: `${idx * 50}ms` }}
+                      >
+                        <span className="font-medium">{option.label}</span>
+                        {option.sublabel && (
+                          <span className={`ml-3 text-xs ${
+                            selected
+                              ? isDark ? 'text-green-400/70' : 'text-green-600'
+                              : isDark ? 'text-gray-400' : 'text-gray-500'
+                          }`}>
+                            {option.sublabel}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                  {/* Ghost chips for remaining expected options */}
+                  {ghostCount > 0 && Array.from({ length: ghostCount }).map((_, idx) => (
+                    <div
+                      key={`ghost-${idx}`}
+                      className={`h-9 rounded animate-pulse ${
+                        isDark ? 'bg-white/5 border border-white/10' : 'bg-gray-100 border border-gray-200'
+                      }`}
+                      style={{ width: `${70 + (idx * 20) % 40}px` }}
+                    />
+                  ))}
+                </div>
+              )
+            })()}
 
             {/* Toggle layout - 2 options side by side */}
             {group.type === 'toggle' && (group.options || []).length === 2 && (
@@ -237,68 +269,100 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
             )}
 
             {/* Radio layout - vertical stack (supports multiSelect) */}
-            {group.type === 'radio' && (
-              <div className="space-y-2">
-                {(group.options || []).map(option => {
-                  const selected = isSelected(group.id, option.value, group.multiSelect)
-                  return (
-                    <button
-                      key={option.value}
-                      onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
-                      className={`w-full flex items-start gap-3 px-3 py-2 text-sm border transition-all text-left ${
-                        selected
-                          ? isDark
-                            ? 'border-green-500'
-                            : 'border-green-500'
-                          : isDark
-                            ? 'bg-white/5 border-white/10 hover:border-white/30'
-                            : 'bg-gray-50 border-gray-200 hover:border-gray-400'
-                      }`}
-                    >
-                      {/* Checkbox for multiSelect, radio for single select */}
-                      {group.multiSelect ? (
-                        <div className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+            {group.type === 'radio' && (() => {
+              const options = group.options || []
+              const ghostCount = group.expectedOptionCount && group.expectedOptionCount > options.length
+                ? group.expectedOptionCount - options.length
+                : 0
+
+              return (
+                <div className="space-y-2">
+                  {options.map((option, idx) => {
+                    const selected = isSelected(group.id, option.value, group.multiSelect)
+                    return (
+                      <button
+                        key={option.value}
+                        onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
+                        className={`w-full flex items-start gap-3 px-3 py-2 text-sm border transition-all text-left animate-fade-in ${
                           selected
-                            ? 'border-green-500 bg-green-500'
-                            : isDark ? 'border-gray-500' : 'border-gray-300'
-                        }`}>
-                          {selected && (
-                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </div>
-                      ) : (
-                        <div className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                          selected
-                            ? 'border-green-500'
-                            : isDark ? 'border-gray-500' : 'border-gray-300'
-                        }`}>
-                          {selected && (
-                            <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                          )}
-                        </div>
-                      )}
-                      <div className="flex flex-col min-w-0 text-left">
-                        <span className={`${selected
-                          ? isDark ? 'text-green-400' : 'text-green-700'
-                          : isDark ? 'text-gray-300' : 'text-gray-600'
-                        }`}>
-                          {option.label}
-                        </span>
-                        {option.sublabel && (
-                          <span className={`mt-0.5 text-xs text-left ${
-                            isDark ? 'text-gray-400' : 'text-gray-500'
+                            ? isDark
+                              ? 'border-green-500'
+                              : 'border-green-500'
+                            : isDark
+                              ? 'bg-white/5 border-white/10 hover:border-white/30'
+                              : 'bg-gray-50 border-gray-200 hover:border-gray-400'
+                        }`}
+                        style={{ animationDelay: `${idx * 50}ms` }}
+                      >
+                        {/* Checkbox for multiSelect, radio for single select */}
+                        {group.multiSelect ? (
+                          <div className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                            selected
+                              ? 'border-green-500 bg-green-500'
+                              : isDark ? 'border-gray-500' : 'border-gray-300'
                           }`}>
-                            {option.sublabel}
-                          </span>
+                            {selected && (
+                              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                        ) : (
+                          <div className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                            selected
+                              ? 'border-green-500'
+                              : isDark ? 'border-gray-500' : 'border-gray-300'
+                          }`}>
+                            {selected && (
+                              <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                            )}
+                          </div>
                         )}
+                        <div className="flex flex-col min-w-0 text-left">
+                          <span className={`${selected
+                            ? isDark ? 'text-green-400' : 'text-green-700'
+                            : isDark ? 'text-gray-300' : 'text-gray-600'
+                          }`}>
+                            {option.label}
+                          </span>
+                          {option.sublabel && (
+                            <span className={`mt-0.5 text-xs text-left ${
+                              isDark ? 'text-gray-400' : 'text-gray-500'
+                            }`}>
+                              {option.sublabel}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                  {/* Ghost cards for remaining expected options */}
+                  {ghostCount > 0 && Array.from({ length: ghostCount }).map((_, idx) => (
+                    <div
+                      key={`ghost-${idx}`}
+                      className={`w-full flex items-start gap-3 px-3 py-2 border animate-pulse ${
+                        isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
+                      }`}
+                      style={{ animationDelay: `${(options.length + idx) * 50}ms` }}
+                    >
+                      <div className={`w-5 h-5 mt-0.5 rounded border-2 shrink-0 ${
+                        group.multiSelect ? '' : 'rounded-full'
+                      } ${isDark ? 'border-gray-600' : 'border-gray-300'}`} />
+                      <div className="flex flex-col gap-1.5 flex-1">
+                        <div
+                          className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}
+                          style={{ width: `${45 + (idx * 10) % 30}%` }}
+                        />
+                        <div
+                          className={`h-3 rounded opacity-60 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}
+                          style={{ width: `${55 + (idx * 15) % 25}%` }}
+                        />
                       </div>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
 
             {/* Text input */}
             {group.type === 'text' && (
@@ -331,9 +395,51 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
             )}
           </div>
         ))}
+
+        {/* Shimmer placeholders for remaining expected groups during streaming */}
+        {remainingShimmers > 0 && Array.from({ length: remainingShimmers }).map((_, idx) => (
+          <div key={`shimmer-${idx}`} className="space-y-1.5 animate-pulse">
+            {/* Label shimmer */}
+            <div className={`h-3 w-24 rounded ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            {/* Options shimmer - varies by index for visual variety */}
+            {idx % 2 === 0 ? (
+              // Chips-style shimmer
+              <div className="flex flex-wrap gap-2">
+                {[80, 100, 90, 70].slice(0, 3 + (idx % 2)).map((w, i) => (
+                  <div
+                    key={i}
+                    className={`h-9 rounded ${isDark ? 'bg-white/5 border border-white/10' : 'bg-gray-100 border border-gray-200'}`}
+                    style={{ width: w, animationDelay: `${(idx * 100) + (i * 50)}ms` }}
+                  />
+                ))}
+              </div>
+            ) : (
+              // Radio-style shimmer
+              <div className="space-y-2">
+                {[{ tw: '55%', sw: '70%' }, { tw: '45%', sw: '60%' }].map((widths, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-start gap-3 px-3 py-2 border ${
+                      isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
+                    }`}
+                    style={{ animationDelay: `${(idx * 100) + (i * 50)}ms` }}
+                  >
+                    <div className={`w-5 h-5 mt-0.5 rounded-full border-2 shrink-0 ${
+                      isDark ? 'border-gray-600' : 'border-gray-300'
+                    }`} />
+                    <div className="flex flex-col gap-1.5 flex-1">
+                      <div className={`h-4 rounded ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} style={{ width: widths.tw }} />
+                      <div className={`h-3 rounded opacity-60 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} style={{ width: widths.sw }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
 
-      {/* Submit row - only show if there are options to submit */}
+      {/* Submit row - only show if there are options to submit and not streaming */}
       {(() => {
         // Check if we have any groups with actual options
         const hasAnyOptions = groups.some(g => {
@@ -341,8 +447,11 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
           return (g.options || []).length > 0
         })
 
-        // Don't show submit button if no options available
+        // Don't show submit button if no options available or still streaming
         if (!hasAnyOptions) return null
+
+        // Show disabled state while streaming
+        const stillStreaming = isStreaming || remainingShimmers > 0
 
         // Check if all options are selected in multiSelect groups
         const allSelected = allSelectedLabel && groups.every(g => {
@@ -374,33 +483,47 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                 value={memo}
                 onChange={(e) => setMemo(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !hasSubmitted) {
+                  if (e.key === 'Enter' && !hasSubmitted && !stillStreaming) {
                     handleSubmit()
                   }
                 }}
                 placeholder="Add something..."
-                disabled={hasSubmitted}
+                disabled={hasSubmitted || stillStreaming}
                 className={`flex-1 px-0 py-1 text-xs bg-transparent border-0 transition-colors outline-none ${
                   isDark
                     ? 'text-gray-300 placeholder-gray-600'
                     : 'text-gray-600 placeholder-gray-400'
-                } ${hasSubmitted ? 'opacity-50' : ''}`}
+                } ${hasSubmitted || stillStreaming ? 'opacity-50' : ''}`}
               />
               <button
                 onClick={handleSubmit}
-                disabled={hasSubmitted}
+                disabled={hasSubmitted || stillStreaming}
                 className={`shrink-0 px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
                   hasSubmitted
                     ? isDark
                       ? 'bg-transparent text-gray-500 border-gray-600 cursor-default'
                       : 'bg-transparent text-gray-400 border-gray-300 cursor-default'
-                    : 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
+                    : stillStreaming
+                      ? isDark
+                        ? 'bg-transparent text-gray-500 border-gray-600 cursor-wait'
+                        : 'bg-transparent text-gray-400 border-gray-300 cursor-wait'
+                      : 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
                 }`}
               >
                 {hasSubmitted ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    Thinking...
+                  <span className="flex items-center gap-1.5">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    {doneWord}
+                  </span>
+                ) : stillStreaming ? (
+                  <span className="flex items-center gap-1.5">
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Loading...
                   </span>
                 ) : buttonLabel}
               </button>

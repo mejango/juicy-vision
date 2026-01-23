@@ -7,6 +7,7 @@
 import { useAuthStore } from '../stores/authStore'
 import { getSessionId } from './session'
 import { getWalletSessionToken } from './siwe'
+import { WS_CONFIG } from '../constants'
 import type {
   Chat,
   ChatMessage,
@@ -208,6 +209,13 @@ export async function reorderPinnedChats(chatIds: string[]): Promise<void> {
   await apiRequest<void>('/chat/reorder-pinned', {
     method: 'POST',
     body: JSON.stringify({ chatIds }),
+  })
+}
+
+export async function reportChat(chatId: string, reason?: string): Promise<{ success: boolean; message?: string }> {
+  return apiRequest<{ success: boolean; message?: string }>(`/chat/${chatId}/report`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
   })
 }
 
@@ -480,179 +488,316 @@ export interface WsMessage {
 
 export type WsMessageHandler = (message: WsMessage) => void
 
-let wsConnection: WebSocket | null = null
-let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
-let wsReconnectAttempt = 0
-let wsCurrentChatId: string | null = null
-let wsIsOnline = typeof navigator !== 'undefined' ? navigator.onLine : true
-const wsHandlers = new Set<WsMessageHandler>()
+/**
+ * WebSocket connection manager
+ * Encapsulates connection state, reconnection logic, and message handling
+ * Falls back to HTTP polling when WebSocket is unavailable
+ */
+class WebSocketManager {
+  private connection: WebSocket | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempt = 0
+  private currentChatId: string | null = null
+  private isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true
+  private handlers = new Set<WsMessageHandler>()
 
-// Exponential backoff config
-const WS_INITIAL_RETRY_DELAY = 1000 // 1 second
-const WS_MAX_RETRY_DELAY = 30000 // 30 seconds max
-const WS_MAX_RETRY_ATTEMPTS = 10
+  // Polling fallback state
+  private pollingTimer: ReturnType<typeof setInterval> | null = null
+  private isPolling = false
+  private lastMessageId: string | null = null
+  private consecutiveSuccessfulPolls = 0
+  private lastPollTime: number | null = null
 
-function getRetryDelay(attempt: number): number {
-  // Exponential backoff with jitter: min(initialDelay * 2^attempt + jitter, maxDelay)
-  const exponentialDelay = WS_INITIAL_RETRY_DELAY * Math.pow(2, attempt)
-  const jitter = Math.random() * 1000 // 0-1 second jitter
-  return Math.min(exponentialDelay + jitter, WS_MAX_RETRY_DELAY)
-}
+  constructor() {
+    // Listen for online/offline events
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.handleOnline)
+      window.addEventListener('offline', this.handleOffline)
+    }
+  }
 
-function notifyConnectionStatus(status: 'connected' | 'disconnected' | 'reconnecting' | 'offline' | 'failed') {
-  wsHandlers.forEach((handler) => {
-    handler({
-      type: 'connection_status',
-      chatId: wsCurrentChatId || '',
-      data: { status, attempt: wsReconnectAttempt, maxAttempts: WS_MAX_RETRY_ATTEMPTS },
-    })
-  })
-}
-
-// Listen for online/offline events
-if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    wsIsOnline = true
+  private handleOnline = () => {
+    this.isOnline = true
     console.log('[WS] Network online, attempting reconnect')
-    if (wsCurrentChatId && wsHandlers.size > 0) {
-      wsReconnectAttempt = 0 // Reset attempts when coming online
-      connectToChat(wsCurrentChatId)
+    if (this.currentChatId && this.handlers.size > 0) {
+      // Stop polling and try WebSocket again
+      this.stopPolling()
+      this.reconnectAttempt = 0
+      this.connect(this.currentChatId)
     }
-  })
+  }
 
-  window.addEventListener('offline', () => {
-    wsIsOnline = false
+  private handleOffline = () => {
+    this.isOnline = false
     console.log('[WS] Network offline')
-    notifyConnectionStatus('offline')
-  })
+    this.notifyStatus('offline')
+  }
+
+  private getRetryDelay(attempt: number): number {
+    const exponentialDelay = WS_CONFIG.INITIAL_RETRY_DELAY * Math.pow(2, attempt)
+    const jitter = Math.random() * WS_CONFIG.RETRY_JITTER
+    return Math.min(exponentialDelay + jitter, WS_CONFIG.MAX_RETRY_DELAY)
+  }
+
+  private notifyStatus(status: 'connected' | 'disconnected' | 'reconnecting' | 'offline' | 'failed' | 'polling') {
+    this.handlers.forEach((handler) => {
+      handler({
+        type: 'connection_status',
+        chatId: this.currentChatId || '',
+        data: {
+          status,
+          attempt: this.reconnectAttempt,
+          maxAttempts: WS_CONFIG.MAX_RETRY_ATTEMPTS,
+          isPolling: this.isPolling,
+          lastPollTime: this.lastPollTime,
+        },
+      })
+    })
+  }
+
+  private async pollMessages(): Promise<void> {
+    if (!this.currentChatId || !this.isOnline) return
+
+    try {
+      // Fetch messages newer than our last known message
+      const params = new URLSearchParams({ limit: '20' })
+      if (this.lastMessageId) {
+        params.set('after', this.lastMessageId)
+      }
+
+      const messages = await fetchMessages(this.currentChatId, 20)
+
+      this.lastPollTime = Date.now()
+      this.consecutiveSuccessfulPolls++
+
+      // Deliver any new messages to handlers
+      if (messages.length > 0) {
+        // Update last message ID for next poll
+        this.lastMessageId = messages[messages.length - 1].id
+
+        messages.forEach((message) => {
+          this.handlers.forEach((handler) => {
+            handler({
+              type: 'message',
+              chatId: this.currentChatId || '',
+              data: message,
+            })
+          })
+        })
+      }
+
+      // After enough successful polls, try to reconnect WebSocket
+      if (this.consecutiveSuccessfulPolls >= WS_CONFIG.POLLING_RECONNECT_THRESHOLD) {
+        console.log('[WS] Network seems stable, attempting WebSocket reconnect')
+        this.stopPolling()
+        this.reconnectAttempt = 0
+        this.connect(this.currentChatId)
+      }
+    } catch (error) {
+      console.error('[WS] Polling failed:', error)
+      this.consecutiveSuccessfulPolls = 0
+      // Continue polling even on failure - it's our fallback
+    }
+  }
+
+  private startPolling(): void {
+    if (this.isPolling || !this.currentChatId) return
+
+    this.isPolling = true
+    this.consecutiveSuccessfulPolls = 0
+    console.log(`[WS] Starting HTTP polling fallback (every ${WS_CONFIG.POLLING_INTERVAL / 1000}s)`)
+    this.notifyStatus('polling')
+
+    // Initial poll immediately
+    this.pollMessages()
+
+    // Set up interval
+    this.pollingTimer = setInterval(() => {
+      this.pollMessages()
+    }, WS_CONFIG.POLLING_INTERVAL)
+  }
+
+  private stopPolling(): void {
+    if (!this.isPolling) return
+
+    this.isPolling = false
+    this.consecutiveSuccessfulPolls = 0
+    console.log('[WS] Stopping HTTP polling')
+
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer)
+      this.pollingTimer = null
+    }
+  }
+
+  connect(chatId: string): WebSocket | null {
+    // Close existing connection
+    if (this.connection) {
+      this.connection.close()
+    }
+
+    this.currentChatId = chatId
+
+    // Don't attempt connection if offline
+    if (!this.isOnline) {
+      console.log('[WS] Offline, skipping connection attempt')
+      this.notifyStatus('offline')
+      return null
+    }
+
+    const token = useAuthStore.getState().token
+    const siweToken = getWalletSessionToken()
+    const sessionId = getSessionId()
+    const wsUrl = API_BASE_URL.replace('http', 'ws').replace('/api', '')
+
+    const params = new URLSearchParams()
+    if (token) {
+      params.set('session', token)
+    } else if (siweToken) {
+      params.set('session', siweToken)
+    }
+    params.set('sessionId', sessionId)
+    const url = `${wsUrl}/api/chat/${chatId}/ws?${params.toString()}`
+
+    this.connection = new WebSocket(url)
+
+    this.connection.onopen = () => {
+      console.log(`[WS] Connected to chat ${chatId}`)
+      this.reconnectAttempt = 0
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer)
+        this.reconnectTimer = null
+      }
+      // Stop polling - WebSocket is now the primary connection
+      this.stopPolling()
+      this.notifyStatus('connected')
+    }
+
+    this.connection.onmessage = (event) => {
+      try {
+        const message: WsMessage = JSON.parse(event.data)
+        this.handlers.forEach((handler) => handler(message))
+      } catch (err) {
+        console.error('[WS] Failed to parse message:', err)
+      }
+    }
+
+    this.connection.onerror = (error) => {
+      console.error('[WS] Error:', error)
+    }
+
+    this.connection.onclose = () => {
+      console.log('[WS] Disconnected')
+      this.notifyStatus('disconnected')
+
+      if (!this.isOnline || this.handlers.size === 0) {
+        return
+      }
+
+      if (this.reconnectAttempt >= WS_CONFIG.MAX_RETRY_ATTEMPTS) {
+        console.error('[WS] Max reconnection attempts reached, falling back to HTTP polling')
+        // Start HTTP polling as fallback instead of giving up
+        this.startPolling()
+        return
+      }
+
+      const delay = this.getRetryDelay(this.reconnectAttempt)
+      this.reconnectAttempt++
+      console.log(`[WS] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${this.reconnectAttempt}/${WS_CONFIG.MAX_RETRY_ATTEMPTS})`)
+      this.notifyStatus('reconnecting')
+
+      this.reconnectTimer = setTimeout(() => {
+        if (this.handlers.size > 0 && this.isOnline) {
+          this.connect(chatId)
+        }
+      }, delay)
+    }
+
+    return this.connection
+  }
+
+  disconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+    this.stopPolling()
+    if (this.connection) {
+      this.connection.close()
+      this.connection = null
+    }
+  }
+
+  resetReconnectAttempts(): void {
+    this.reconnectAttempt = 0
+  }
+
+  getStatus(): {
+    isConnected: boolean
+    isOnline: boolean
+    attempt: number
+    isPolling: boolean
+    lastPollTime: number | null
+  } {
+    return {
+      isConnected: this.connection?.readyState === WebSocket.OPEN,
+      isOnline: this.isOnline,
+      attempt: this.reconnectAttempt,
+      isPolling: this.isPolling,
+      lastPollTime: this.lastPollTime,
+    }
+  }
+
+  addHandler(handler: WsMessageHandler): () => void {
+    this.handlers.add(handler)
+    return () => {
+      this.handlers.delete(handler)
+    }
+  }
+
+  send(message: Omit<WsMessage, 'chatId'>): void {
+    if (this.connection && this.connection.readyState === WebSocket.OPEN) {
+      this.connection.send(JSON.stringify(message))
+    }
+  }
 }
 
-export function connectToChat(chatId: string): WebSocket {
-  // Close existing connection
-  if (wsConnection) {
-    wsConnection.close()
-  }
+// Singleton instance
+const wsManager = new WebSocketManager()
 
-  wsCurrentChatId = chatId
-
-  // Don't attempt connection if offline
-  if (!wsIsOnline) {
-    console.log('[WS] Offline, skipping connection attempt')
-    notifyConnectionStatus('offline')
-    // Return a dummy WebSocket-like object that will reconnect when online
-    return wsConnection as unknown as WebSocket
-  }
-
-  const token = useAuthStore.getState().token
-  const siweToken = getWalletSessionToken()
-  const sessionId = getSessionId()
-  const wsUrl = API_BASE_URL.replace('http', 'ws').replace('/api', '')
-  // Pass auth token if available (JWT or SIWE), AND always include sessionId for anonymous fallback
-  const params = new URLSearchParams()
-  if (token) {
-    params.set('session', token)
-  } else if (siweToken) {
-    params.set('session', siweToken)
-  }
-  params.set('sessionId', sessionId)
-  const url = `${wsUrl}/api/chat/${chatId}/ws?${params.toString()}`
-
-  wsConnection = new WebSocket(url)
-
-  wsConnection.onopen = () => {
-    console.log(`[WS] Connected to chat ${chatId}`)
-    wsReconnectAttempt = 0 // Reset attempts on successful connection
-    // Clear reconnect timer
-    if (wsReconnectTimer) {
-      clearTimeout(wsReconnectTimer)
-      wsReconnectTimer = null
-    }
-    notifyConnectionStatus('connected')
-  }
-
-  wsConnection.onmessage = (event) => {
-    try {
-      const message: WsMessage = JSON.parse(event.data)
-      wsHandlers.forEach((handler) => handler(message))
-    } catch (err) {
-      console.error('[WS] Failed to parse message:', err)
-    }
-  }
-
-  wsConnection.onerror = (error) => {
-    console.error('[WS] Error:', error)
-  }
-
-  wsConnection.onclose = () => {
-    console.log('[WS] Disconnected')
-    notifyConnectionStatus('disconnected')
-
-    // Don't reconnect if offline or no handlers
-    if (!wsIsOnline || wsHandlers.size === 0) {
-      return
-    }
-
-    // Check max retry attempts
-    if (wsReconnectAttempt >= WS_MAX_RETRY_ATTEMPTS) {
-      console.error('[WS] Max reconnection attempts reached')
-      notifyConnectionStatus('failed')
-      return
-    }
-
-    // Exponential backoff reconnect
-    const delay = getRetryDelay(wsReconnectAttempt)
-    wsReconnectAttempt++
-    console.log(`[WS] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${wsReconnectAttempt}/${WS_MAX_RETRY_ATTEMPTS})`)
-    notifyConnectionStatus('reconnecting')
-
-    wsReconnectTimer = setTimeout(() => {
-      if (wsHandlers.size > 0 && wsIsOnline) {
-        connectToChat(chatId)
-      }
-    }, delay)
-  }
-
-  return wsConnection
+// Export functions that delegate to the manager for backwards compatibility
+export function connectToChat(chatId: string): WebSocket | null {
+  return wsManager.connect(chatId)
 }
 
 export function resetReconnectAttempts(): void {
-  wsReconnectAttempt = 0
+  wsManager.resetReconnectAttempts()
 }
 
-export function getConnectionStatus(): { isConnected: boolean; isOnline: boolean; attempt: number } {
-  return {
-    isConnected: wsConnection?.readyState === WebSocket.OPEN,
-    isOnline: wsIsOnline,
-    attempt: wsReconnectAttempt,
-  }
+export function getConnectionStatus(): {
+  isConnected: boolean
+  isOnline: boolean
+  attempt: number
+  isPolling: boolean
+  lastPollTime: number | null
+} {
+  return wsManager.getStatus()
 }
 
 export function disconnectFromChat(): void {
-  if (wsReconnectTimer) {
-    clearTimeout(wsReconnectTimer)
-    wsReconnectTimer = null
-  }
-  if (wsConnection) {
-    wsConnection.close()
-    wsConnection = null
-  }
+  wsManager.disconnect()
 }
 
 export function onWsMessage(handler: WsMessageHandler): () => void {
-  wsHandlers.add(handler)
-  return () => {
-    wsHandlers.delete(handler)
-  }
+  return wsManager.addHandler(handler)
 }
 
 export function sendWsMessage(message: Omit<WsMessage, 'chatId'>): void {
-  if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
-    wsConnection.send(JSON.stringify(message))
-  }
+  wsManager.send(message)
 }
 
-export function sendTypingIndicator(chatId: string, isTyping: boolean): void {
-  sendWsMessage({
+export function sendTypingIndicator(_chatId: string, isTyping: boolean): void {
+  wsManager.send({
     type: 'typing',
     data: { isTyping },
   })
