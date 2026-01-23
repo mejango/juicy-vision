@@ -168,5 +168,10 @@ export async function signInWithWallet(
   // 4. Verify signature with server
   const session = await verifySiweSignature(address, message, signature)
 
+  // Dispatch event for other components to react (e.g., merge sessions)
+  window.dispatchEvent(new CustomEvent('juice:siwe-signed-in', {
+    detail: { address: session.address }
+  }))
+
   return session
 }

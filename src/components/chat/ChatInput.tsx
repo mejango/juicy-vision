@@ -2,8 +2,11 @@ import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react'
 import { useAccount, useDisconnect, useSignMessage, useChainId } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
-import { hasValidWalletSession, clearWalletSession, signInWithWallet } from '../../services/siwe'
+import { hasValidWalletSession, clearWalletSession, signInWithWallet, getWalletSession } from '../../services/siwe'
 import { getPasskeyWallet, clearPasskeyWallet } from '../../services/passkeyWallet'
+import { getSessionId } from '../../services/session'
+import { getEmojiFromAddress } from './ParticipantAvatars'
+import { JuicyIdPopover, type JuicyIdentity, type AnchorPosition } from './WalletInfo'
 import type { Attachment } from '../../stores'
 
 const INITIAL_PLACEHOLDER = "What's your juicy vision?"
@@ -53,11 +56,6 @@ interface ChatInputProps {
 
 const generateId = () => Math.random().toString(36).substring(2, 15)
 
-// Shorten address for display
-function shortenAddress(address: string, chars = 4): string {
-  return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
-}
-
 export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick, walletInfoRightContent }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [isFirstLoad, setIsFirstLoad] = useState(true)
@@ -79,6 +77,54 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
   // Fetch balances for passkey wallet address
   const { totalEth: passkeyEth, totalUsdc: passkeyUsdc, loading: passkeyBalancesLoading } = useWalletBalances(passkeyWallet?.address)
+
+  // Juicy ID state
+  const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
+  const [juicyIdPopoverOpen, setJuicyIdPopoverOpen] = useState(false)
+  const [juicyIdAnchorPosition, setJuicyIdAnchorPosition] = useState<AnchorPosition | null>(null)
+
+  // Fetch Juicy ID
+  useEffect(() => {
+    const fetchIdentity = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || ''
+        const sessionId = getSessionId()
+        const walletSession = getWalletSession()
+        const headers: Record<string, string> = {
+          'X-Session-ID': sessionId,
+        }
+        if (walletSession?.token) {
+          headers['X-Wallet-Session'] = walletSession.token
+        }
+        const res = await fetch(`${apiUrl}/identity/me`, { headers })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && data.data) {
+            setIdentity(data.data)
+          }
+        }
+      } catch (err) {
+        // Ignore errors
+      }
+    }
+    fetchIdentity()
+  }, [address, passkeyWallet?.address])
+
+  // Listen for identity changes from other components
+  useEffect(() => {
+    const handleIdentityChange = (e: CustomEvent<JuicyIdentity>) => {
+      setIdentity(e.detail)
+    }
+    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+  }, [])
+
+  // Get display identity: Juicy ID > ENS > null (no emoji fallback)
+  const getDisplayIdentity = (addr: string | undefined) => {
+    if (identity) return identity.formatted
+    if (ensName) return ensName
+    return null // Don't show emoji - will show "Set your Juicy ID" prompt instead
+  }
 
   const currentPlaceholder = placeholder || (isFirstLoad ? INITIAL_PLACEHOLDER : PLACEHOLDER_PHRASES[placeholderIndex])
 
@@ -262,8 +308,6 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       {/* Attachment previews - subtle inline tags */}
       {attachments.length > 0 && (
         <div className="flex gap-3 mb-2 flex-wrap">
-          {/* Spacer to align with textarea (matches attachment button width + gap) */}
-          <div className="w-[48px] shrink-0" />
           {attachments.map(attachment => (
               <div
                 key={attachment.id}
@@ -333,23 +377,6 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       )}
 
       <div className="flex gap-3 items-start">
-        {/* Attachment button */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
-          className={`p-3 h-[48px] w-[48px] transition-colors shrink-0 flex items-center justify-center
-                     disabled:opacity-50 disabled:cursor-not-allowed border
-                     ${theme === 'dark'
-                       ? 'text-gray-400 hover:text-juice-cyan border-white/20'
-                       : 'text-gray-500 hover:text-teal-600 border-gray-300'
-                     }`}
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-          </svg>
-        </button>
-
         <textarea
           ref={textareaRef}
           value={input}
@@ -371,10 +398,8 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
 
       {/* Wallet status display */}
       {!hideWalletInfo && (
-        <div className="flex gap-3 mt-3 items-center">
-          {/* Spacer to align with textarea */}
-          <div className="w-[48px] shrink-0" />
-          <div className={`flex-1 text-xs ${
+        <div className="mt-3">
+          <div className={`text-xs ${
             theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
           }`}>
             <div className="flex items-center justify-between">
@@ -387,8 +412,28 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                   ) : (
                     <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50" title="Not signed in" />
                   )}
-                  Connected as {ensName || shortenAddress(address)}
+                  {getDisplayIdentity(address) ? (
+                    <>Connected as {getDisplayIdentity(address)}</>
+                  ) : (
+                    <>Connected</>
+                  )}
                 </span>
+                {!identity && (
+                  <button
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      setJuicyIdAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+                      setJuicyIdPopoverOpen(true)
+                    }}
+                    className={`ml-1 transition-colors ${
+                      theme === 'dark'
+                        ? 'text-juice-orange/70 hover:text-juice-orange'
+                        : 'text-juice-orange/80 hover:text-juice-orange'
+                    }`}
+                  >
+                    · Set your Juicy ID
+                  </button>
+                )}
                 {/* Sign to save button - only show if not signed in */}
                 {!signedIn && (
                   <button
@@ -427,8 +472,28 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
               <>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Passkey wallet" />
-                  Connected as {shortenAddress(passkeyWallet.address)}
+                  {getDisplayIdentity(passkeyWallet.address) ? (
+                    <>Connected as {getDisplayIdentity(passkeyWallet.address)}</>
+                  ) : (
+                    <>Connected</>
+                  )}
                 </span>
+                {!identity && (
+                  <button
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      setJuicyIdAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+                      setJuicyIdPopoverOpen(true)
+                    }}
+                    className={`ml-1 transition-colors ${
+                      theme === 'dark'
+                        ? 'text-juice-orange/70 hover:text-juice-orange'
+                        : 'text-juice-orange/80 hover:text-juice-orange'
+                    }`}
+                  >
+                    · Set your Juicy ID
+                  </button>
+                )}
                 {!passkeyBalancesLoading && (passkeyEth > 0n || passkeyUsdc > 0n) && (
                   <span className="ml-2">
                     · {formatUsdcBalance(passkeyUsdc)} USDC · {formatEthBalance(passkeyEth)} ETH
@@ -450,7 +515,19 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
               </>
             ) : (
               <button
-                onClick={() => window.dispatchEvent(new CustomEvent('juice:open-auth-modal'))}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  window.dispatchEvent(new CustomEvent('juice:open-auth-modal', {
+                    detail: {
+                      anchorPosition: {
+                        top: rect.top,
+                        left: rect.left,
+                        width: rect.width,
+                        height: rect.height,
+                      }
+                    }
+                  }))
+                }}
                 className="inline-flex items-center gap-1.5 transition-colors hover:text-gray-300"
               >
                 <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50" />
@@ -463,6 +540,19 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           </div>
         </div>
       )}
+
+      {/* Juicy ID Popover */}
+      <JuicyIdPopover
+        isOpen={juicyIdPopoverOpen}
+        onClose={() => setJuicyIdPopoverOpen(false)}
+        anchorPosition={juicyIdAnchorPosition}
+        onWalletClick={() => {
+          window.dispatchEvent(new CustomEvent('juice:open-wallet-panel', {
+            detail: { anchorPosition: juicyIdAnchorPosition }
+          }))
+        }}
+        onIdentitySet={(newIdentity) => setIdentity(newIdentity)}
+      />
     </div>
   )
 }

@@ -302,17 +302,23 @@ export async function sendMessage(
 // Streaming version (for real-time responses)
 export async function* streamMessage(
   userId: string,
-  request: ClaudeRequest
+  request: ClaudeRequest,
+  userApiKey?: string // Optional user-provided API key (BYOK)
 ): AsyncGenerator<{ type: 'text' | 'tool_use' | 'usage'; data: unknown }> {
-  // Check rate limit
-  const rateLimit = checkRateLimit(userId);
-  if (!rateLimit.allowed) {
-    throw new Error(
-      `Rate limit exceeded. Remaining: ${rateLimit.remaining.requests} requests, ${rateLimit.remaining.tokens} tokens`
-    );
+  // Skip server rate limiting if user provides their own key
+  if (!userApiKey) {
+    const rateLimit = checkRateLimit(userId);
+    if (!rateLimit.allowed) {
+      throw new Error(
+        `Rate limit exceeded. Remaining: ${rateLimit.remaining.requests} requests, ${rateLimit.remaining.tokens} tokens`
+      );
+    }
   }
 
-  const client = getAnthropicClient();
+  // Create client: per-request with user key, or singleton with server key
+  const client = userApiKey
+    ? new Anthropic({ apiKey: userApiKey })
+    : getAnthropicClient();
   const includeOmnichain = request.includeOmnichainContext !== false;
 
   // Build system prompt with omnichain knowledge
@@ -397,9 +403,11 @@ export async function* streamMessage(
     }
   }
 
-  // Record final usage
+  // Only record usage for server key (not user's own key)
   const totalTokens = inputTokens + outputTokens;
-  recordUsage(userId, totalTokens);
+  if (!userApiKey) {
+    recordUsage(userId, totalTokens);
+  }
 
   yield {
     type: 'usage',

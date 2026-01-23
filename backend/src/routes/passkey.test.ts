@@ -396,7 +396,7 @@ Deno.test('Passkey Route - Delete Passkey', async (t) => {
   app.delete('/:id', (c) => {
     const credentialId = c.req.param('id');
     // @ts-ignore
-    const userId = c.get('userId');
+    const userId = c.get('userId') as string;
 
     const passkeys = userPasskeys.get(userId) || [];
     if (!passkeys.includes(credentialId)) {

@@ -79,16 +79,10 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
           }`}>
             <p className="text-xs leading-relaxed">
-              A Juicy AI interface to open internet money that anyone can program, powered by{' '}
-              <a
-                href="https://juicebox.money"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={theme === 'dark' ? 'text-juice-cyan hover:underline' : 'text-teal-600 hover:underline'}
-              >
-                Juicebox
-              </a>
-              .
+              {t('juicyExplainer.intro', "Juicy is the people's funding platform.")}
+            </p>
+            <p className="text-xs leading-relaxed mt-3">
+              {t('juicyExplainer.useIt', 'Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. All from chats, private or with teams.')}
             </p>
             <p className="text-xs leading-relaxed mt-3">
               {t('juicyExplainer.paragraph1')}

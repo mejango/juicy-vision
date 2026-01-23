@@ -10,14 +10,16 @@ const GREETING_KEYS = [
   'soTellMe',
   'thereYouAre',
   'finally',
-  'ohGoodYouMadeIt',
+  'whatHaveYouGot',
   'letsGetToWork',
-  'rightOnTime',
+  'goOn',
   'lookWhoShowedUp',
   'showMeWhatYouGot',
-  'letsMakeItHappen',
-  'readyToSqueeze',
+  'makeItCount',
+  'begin',
   'yourMove',
+  'helloDarling',
+  'helloChampion',
 ]
 
 export default function WelcomeGreeting() {
@@ -26,9 +28,7 @@ export default function WelcomeGreeting() {
   const [greetingKey] = useState(() => GREETING_KEYS[Math.floor(Math.random() * GREETING_KEYS.length)])
 
   return (
-    <div className="flex gap-3 px-6 pb-1">
-      {/* Spacer to align with textarea */}
-      <div className="w-[48px] shrink-0" />
+    <div className="px-6 pb-1">
       <div className={`text-sm font-medium ${
         theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
       }`}>

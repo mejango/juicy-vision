@@ -1,14 +1,28 @@
 import { useRef, useEffect, useCallback } from 'react'
 import { Message, useThemeStore } from '../../stores'
+import type { ChatMember } from '../../stores/chatStore'
 import MessageBubble from './MessageBubble'
 import ThinkingIndicator from './ThinkingIndicator'
 
 interface MessageListProps {
   messages: Message[]
+  members?: ChatMember[]
   isWaitingForResponse?: boolean
+  chatId?: string
+  currentUserMember?: ChatMember
+  onlineMembers?: string[]
+  onMemberUpdated?: (member: ChatMember) => void
 }
 
-export default function MessageList({ messages, isWaitingForResponse }: MessageListProps) {
+export default function MessageList({
+  messages,
+  members,
+  isWaitingForResponse,
+  chatId,
+  currentUserMember,
+  onlineMembers,
+  onMemberUpdated,
+}: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const isNearBottomRef = useRef(true)
@@ -68,7 +82,12 @@ export default function MessageList({ messages, isWaitingForResponse }: MessageL
             <MessageBubble
               key={message.id}
               message={message}
+              members={members}
               isLastAssistant={message.role === 'assistant' && index === lastAssistantIndex}
+              chatId={chatId}
+              currentUserMember={currentUserMember}
+              onlineMembers={onlineMembers}
+              onMemberUpdated={onMemberUpdated}
             />
           )
         })}

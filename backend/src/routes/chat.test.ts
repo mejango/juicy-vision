@@ -767,7 +767,7 @@ Deno.test('Chat Routes - PATCH /chat/:chatId/pin', async (t) => {
     pinOrder: z.number().optional(),
   });
 
-  let chatState = {
+  let chatState: Record<string, { id: string; name: string; isPinned: boolean; pinOrder: number | null }> = {
     'chat-123': { id: 'chat-123', name: 'Test Chat', isPinned: false, pinOrder: null },
   };
 
@@ -780,13 +780,13 @@ Deno.test('Chat Routes - PATCH /chat/:chatId/pin', async (t) => {
       return c.json({ success: false, error: 'Authentication required' }, 401);
     }
 
-    if (!chatState[chatId as keyof typeof chatState]) {
+    if (!chatState[chatId]) {
       return c.json({ success: false, error: 'Chat not found' }, 404);
     }
 
     const body = c.req.valid('json');
-    chatState[chatId as keyof typeof chatState] = {
-      ...chatState[chatId as keyof typeof chatState],
+    chatState[chatId] = {
+      ...chatState[chatId],
       isPinned: body.isPinned,
       pinOrder: body.pinOrder ?? null,
     };
@@ -857,7 +857,7 @@ Deno.test('Chat Routes - PATCH /chat/:chatId/folder', async (t) => {
     folderId: z.string().uuid().nullable(),
   });
 
-  let chatState = {
+  let chatState: Record<string, { id: string; name: string; folderId: string | null }> = {
     'chat-123': { id: 'chat-123', name: 'Test Chat', folderId: null },
   };
 
@@ -869,13 +869,13 @@ Deno.test('Chat Routes - PATCH /chat/:chatId/folder', async (t) => {
       return c.json({ success: false, error: 'Authentication required' }, 401);
     }
 
-    if (!chatState[chatId as keyof typeof chatState]) {
+    if (!chatState[chatId]) {
       return c.json({ success: false, error: 'Chat not found' }, 404);
     }
 
     const body = c.req.valid('json');
-    chatState[chatId as keyof typeof chatState] = {
-      ...chatState[chatId as keyof typeof chatState],
+    chatState[chatId] = {
+      ...chatState[chatId],
       folderId: body.folderId,
     };
 
@@ -1238,10 +1238,6 @@ Deno.test('Chat Routes - GET /chat/folders/:folderId', async (t) => {
       return c.json({ success: false, error: 'Folder not found' }, 404);
     }
 
-    if (folderId === 'not-owned') {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
-
     return c.json({ success: true, data: mockFolder });
   });
 
@@ -1281,7 +1277,7 @@ Deno.test('Chat Routes - PATCH /chat/folders/:folderId', async (t) => {
     pinOrder: z.number().optional(),
   });
 
-  let folderState = {
+  let folderState: Record<string, { id: string; userAddress: string; name: string; parentFolderId: string | null; isPinned: boolean; pinOrder: number | null }> = {
     'folder-123': {
       id: 'folder-123',
       userAddress: '0x123',
@@ -1300,14 +1296,14 @@ Deno.test('Chat Routes - PATCH /chat/folders/:folderId', async (t) => {
       return c.json({ success: false, error: 'Authentication required' }, 401);
     }
 
-    if (!folderState[folderId as keyof typeof folderState]) {
+    if (!folderState[folderId]) {
       return c.json({ success: false, error: 'Folder not found' }, 404);
     }
 
     const body = c.req.valid('json');
-    const folder = folderState[folderId as keyof typeof folderState];
+    const folder = folderState[folderId];
 
-    folderState[folderId as keyof typeof folderState] = {
+    folderState[folderId] = {
       ...folder,
       name: body.name ?? folder.name,
       parentFolderId: body.parentFolderId !== undefined ? body.parentFolderId : folder.parentFolderId,
@@ -1421,7 +1417,7 @@ Deno.test('Chat Routes - PATCH /chat/folders/:folderId/pin', async (t) => {
     pinOrder: z.number().optional(),
   });
 
-  let folderState = {
+  let folderState: Record<string, { id: string; name: string; isPinned: boolean; pinOrder: number | null }> = {
     'folder-123': { id: 'folder-123', name: 'Work', isPinned: false, pinOrder: null },
   };
 
@@ -1433,13 +1429,13 @@ Deno.test('Chat Routes - PATCH /chat/folders/:folderId/pin', async (t) => {
       return c.json({ success: false, error: 'Authentication required' }, 401);
     }
 
-    if (!folderState[folderId as keyof typeof folderState]) {
+    if (!folderState[folderId]) {
       return c.json({ success: false, error: 'Folder not found' }, 404);
     }
 
     const body = c.req.valid('json');
-    folderState[folderId as keyof typeof folderState] = {
-      ...folderState[folderId as keyof typeof folderState],
+    folderState[folderId] = {
+      ...folderState[folderId],
       isPinned: body.isPinned,
       pinOrder: body.isPinned ? (body.pinOrder ?? null) : null,
     };

@@ -45,6 +45,7 @@ import {
 } from './chatCategorization.ts';
 import { createPublicClient, http, type Address, parseUnits } from 'viem';
 import { mainnet, optimism, base, arbitrum } from 'viem/chains';
+import { getIdentityByAddress } from './identity.ts';
 
 // ============================================================================
 // Types
@@ -66,6 +67,8 @@ export interface Chat {
   aiTotalSpentWei: bigint;
   encrypted: boolean;
   encryptionVersion: number;
+  // AI toggle - global chat-level setting
+  aiEnabled: boolean;
   // Organization fields
   isPinned: boolean;
   pinOrder?: number;
@@ -89,13 +92,48 @@ export interface ChatMember {
   memberAddress: string;
   memberUserId?: string;
   role: ChatRole;
+  canSendMessages: boolean;
   canInvite: boolean;
   canInvokeAi: boolean;
   canManageMembers: boolean;
+  canPauseAi: boolean;
   publicKey?: string;
+  displayName?: string;
+  customEmoji?: string;
   isActive: boolean;
   joinedAt: Date;
   leftAt?: Date;
+}
+
+/**
+ * Chat Permission Levels (in order of increasing access):
+ * 1. view-only: Can only read messages
+ * 2. view-and-write: Can read and send messages
+ * 3. view-and-write-and-invite: Can read, send, and create invites
+ * 4. view-and-write-and-invite-and-caninvite: Can read, send, create invites that grant invite permission
+ */
+export type ChatPermissionLevel =
+  | 'view-only'
+  | 'view-and-write'
+  | 'view-and-write-and-invite'
+  | 'view-and-write-and-invite-and-caninvite';
+
+/**
+ * Get the permission level for a member
+ */
+export function getMemberPermissionLevel(member: ChatMember): ChatPermissionLevel {
+  if (!member.canSendMessages) {
+    return 'view-only';
+  }
+  if (!member.canInvite) {
+    return 'view-and-write';
+  }
+  // If they have canInvite, check if they can pass on roles (determined by role or explicit flag)
+  // Founders and admins can always create invites that grant invite permission
+  if (member.role === 'founder' || member.role === 'admin') {
+    return 'view-and-write-and-invite-and-caninvite';
+  }
+  return 'view-and-write-and-invite';
 }
 
 export interface ChatMessage {
@@ -165,6 +203,8 @@ interface DbChat {
   ai_total_spent_wei: string;
   encrypted: boolean;
   encryption_version: number;
+  // AI toggle
+  ai_enabled: boolean;
   // Organization fields
   is_pinned: boolean;
   pin_order: number | null;
@@ -180,10 +220,14 @@ interface DbChatMember {
   member_address: string;
   member_user_id: string | null;
   role: ChatRole;
+  can_send_messages: boolean;
   can_invite: boolean;
   can_invoke_ai: boolean;
   can_manage_members: boolean;
+  can_pause_ai: boolean;
   public_key: string | null;
+  display_name: string | null;
+  custom_emoji: string | null;
   is_active: boolean;
   joined_at: Date;
   left_at: Date | null;
@@ -234,6 +278,8 @@ function dbToChat(db: DbChat): Chat {
     aiTotalSpentWei: BigInt(db.ai_total_spent_wei),
     encrypted: db.encrypted,
     encryptionVersion: db.encryption_version,
+    // AI toggle
+    aiEnabled: db.ai_enabled ?? true,
     // Organization fields
     isPinned: db.is_pinned,
     pinOrder: db.pin_order ?? undefined,
@@ -251,10 +297,14 @@ function dbToMember(db: DbChatMember): ChatMember {
     memberAddress: db.member_address,
     memberUserId: db.member_user_id ?? undefined,
     role: db.role,
+    canSendMessages: db.can_send_messages,
     canInvite: db.can_invite,
     canInvokeAi: db.can_invoke_ai,
     canManageMembers: db.can_manage_members,
+    canPauseAi: db.can_pause_ai ?? false,
     publicKey: db.public_key ?? undefined,
+    displayName: db.display_name ?? undefined,
+    customEmoji: db.custom_emoji ?? undefined,
     isActive: db.is_active,
     joinedAt: db.joined_at,
     leftAt: db.left_at ?? undefined,
@@ -294,10 +344,14 @@ export async function createChat(params: CreateChatParams): Promise<Chat> {
     founderUserId,
     name,
     description,
-    isPublic = true,
+    isPublic = false, // Chats are private by default
     encrypted = false,
     tokenGate,
   } = params;
+
+  // Look up founder's identity for custom emoji
+  const founderIdentity = await getIdentityByAddress(founderAddress);
+  const founderEmoji = founderIdentity?.emoji ?? null;
 
   // Create chat in transaction
   const chatId = await transaction(async (client) => {
@@ -317,14 +371,14 @@ export async function createChat(params: CreateChatParams): Promise<Chat> {
 
     const chatId = result.rows[0].id;
 
-    // Add founder as member with full permissions
+    // Add founder as member with full permissions (including can_pause_ai)
     await client.queryObject`
       INSERT INTO multi_chat_members (
         chat_id, member_address, member_user_id, role,
-        can_invite, can_invoke_ai, can_manage_members
+        can_invite, can_invoke_ai, can_manage_members, can_pause_ai, custom_emoji
       ) VALUES (
         ${chatId}, ${founderAddress}, ${founderUserId ?? null}, 'founder',
-        TRUE, TRUE, TRUE
+        TRUE, TRUE, TRUE, TRUE, ${founderEmoji}
       )
     `;
 
@@ -442,29 +496,54 @@ export async function deleteChat(chatId: string, requestorAddress: string): Prom
 // Member Management
 // ============================================================================
 
+// Debug log to file
+async function debugLog(msg: string) {
+  const line = `${new Date().toISOString()} ${msg}\n`;
+  console.log(msg);
+  try {
+    await Deno.writeTextFile('/tmp/invite-debug.log', line, { append: true });
+  } catch {}
+}
+
 /**
  * Get a member record
+ * Joins with juicy_identities to use identity username/emoji when available
  */
 export async function getMember(
   chatId: string,
   address: string
 ): Promise<ChatMember | null> {
+  await debugLog(`[getMember] Looking up chatId: ${chatId} address: ${address}`);
   const db = await queryOne<DbChatMember>(
-    `SELECT * FROM multi_chat_members
-     WHERE chat_id = $1 AND member_address = $2`,
+    `SELECT m.id, m.chat_id, m.member_address, m.member_user_id, m.role,
+            m.can_send_messages, m.can_invite, m.can_invoke_ai, m.can_manage_members,
+            m.can_pause_ai, m.public_key, m.is_active, m.joined_at, m.left_at,
+            COALESCE(i.username, m.display_name) as display_name,
+            COALESCE(i.emoji, m.custom_emoji) as custom_emoji
+     FROM multi_chat_members m
+     LEFT JOIN juicy_identities i ON LOWER(i.address) = LOWER(m.member_address)
+     WHERE m.chat_id = $1 AND m.member_address = $2`,
     [chatId, address]
   );
+  await debugLog(`[getMember] Found: ${db ? 'yes' : 'no'} ${db ? `isActive: ${db.is_active}` : ''}`);
   return db ? dbToMember(db) : null;
 }
 
 /**
  * Get all active members of a chat
+ * Joins with juicy_identities to use identity username/emoji when available
  */
 export async function getChatMembers(chatId: string): Promise<ChatMember[]> {
   const results = await query<DbChatMember>(
-    `SELECT * FROM multi_chat_members
-     WHERE chat_id = $1 AND is_active = TRUE
-     ORDER BY joined_at ASC`,
+    `SELECT m.id, m.chat_id, m.member_address, m.member_user_id, m.role,
+            m.can_send_messages, m.can_invite, m.can_invoke_ai, m.can_manage_members,
+            m.can_pause_ai, m.public_key, m.is_active, m.joined_at, m.left_at,
+            COALESCE(i.username, m.display_name) as display_name,
+            COALESCE(i.emoji, m.custom_emoji) as custom_emoji
+     FROM multi_chat_members m
+     LEFT JOIN juicy_identities i ON LOWER(i.address) = LOWER(m.member_address)
+     WHERE m.chat_id = $1 AND m.is_active = TRUE
+     ORDER BY m.joined_at ASC`,
     [chatId]
   );
   return results.map(dbToMember);
@@ -472,6 +551,12 @@ export async function getChatMembers(chatId: string): Promise<ChatMember[]> {
 
 /**
  * Check if address can perform an action
+ *
+ * Permission hierarchy:
+ * - view-only: can read only
+ * - view-and-write: can read and write
+ * - view-and-write-and-invite: can read, write, and invite
+ * - view-and-write-and-invite-and-caninvite: full permissions (founder/admin)
  */
 export async function checkPermission(
   chatId: string,
@@ -490,8 +575,9 @@ export async function checkPermission(
 
   switch (action) {
     case 'read':
+      return true; // All active members can read
     case 'write':
-      return true; // All members can read/write
+      return member.canSendMessages; // Must have write permission
     case 'invite':
       return member.canInvite;
     case 'invoke_ai':
@@ -548,24 +634,31 @@ export async function addMember(
 
   // Determine permissions based on role
   const permissions = {
-    founder: { canInvite: true, canInvokeAi: true, canManageMembers: true },
-    admin: { canInvite: true, canInvokeAi: true, canManageMembers: true },
-    member: { canInvite: false, canInvokeAi: true, canManageMembers: false },
+    founder: { canSendMessages: true, canInvite: true, canInvokeAi: true, canManageMembers: true, canPauseAi: true },
+    admin: { canSendMessages: true, canInvite: true, canInvokeAi: true, canManageMembers: true, canPauseAi: true },
+    member: { canSendMessages: true, canInvite: false, canInvokeAi: true, canManageMembers: false, canPauseAi: false },
   }[role];
+
+  // Look up identity for custom emoji
+  const identity = await getIdentityByAddress(newMemberAddress);
+  const customEmoji = identity?.emoji ?? null;
 
   if (existing) {
     // Reactivate existing member
     await execute(
       `UPDATE multi_chat_members
-       SET is_active = TRUE, role = $1, can_invite = $2, can_invoke_ai = $3,
-           can_manage_members = $4, public_key = $5, left_at = NULL
-       WHERE chat_id = $6 AND member_address = $7`,
+       SET is_active = TRUE, role = $1, can_send_messages = $2, can_invite = $3, can_invoke_ai = $4,
+           can_manage_members = $5, can_pause_ai = $6, public_key = $7, custom_emoji = $8, left_at = NULL
+       WHERE chat_id = $9 AND member_address = $10`,
       [
         role,
+        permissions.canSendMessages,
         permissions.canInvite,
         permissions.canInvokeAi,
         permissions.canManageMembers,
+        permissions.canPauseAi ?? false,
         publicKey ?? null,
+        customEmoji,
         chatId,
         newMemberAddress,
       ]
@@ -575,17 +668,20 @@ export async function addMember(
     await execute(
       `INSERT INTO multi_chat_members (
          chat_id, member_address, member_user_id, role,
-         can_invite, can_invoke_ai, can_manage_members, public_key
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         can_send_messages, can_invite, can_invoke_ai, can_manage_members, can_pause_ai, public_key, custom_emoji
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         chatId,
         newMemberAddress,
         newMemberUserId ?? null,
         role,
+        permissions.canSendMessages,
         permissions.canInvite,
         permissions.canInvokeAi,
         permissions.canManageMembers,
+        permissions.canPauseAi ?? false,
         publicKey ?? null,
+        customEmoji,
       ]
     );
   }
@@ -605,6 +701,12 @@ export async function addMember(
 
 /**
  * Add a member via invite link (no inviter permission check)
+ *
+ * Permission levels applied:
+ * - canSendMessages=false → view-only
+ * - canSendMessages=true, canInviteOthers=false → view-and-write
+ * - canSendMessages=true, canInviteOthers=true → view-and-write-and-invite
+ * - (canPassOnRoles is handled at invite creation time, not member level)
  */
 export async function addMemberViaInvite(
   chatId: string,
@@ -614,9 +716,11 @@ export async function addMemberViaInvite(
     role: ChatRole;
     canSendMessages?: boolean;
     canInviteOthers?: boolean;
+    canInvokeAi?: boolean;
+    canPauseAi?: boolean;
   }
 ): Promise<ChatMember> {
-  const { address, userId, role, canSendMessages = true, canInviteOthers = false } = params;
+  const { address, userId, role, canSendMessages = true, canInviteOthers = false, canInvokeAi = true, canPauseAi = false } = params;
 
   // Check if already a member
   const existing = await getMember(chatId, address);
@@ -644,52 +748,68 @@ export async function addMemberViaInvite(
 
   // Base permissions from role, but override with invite-specific permissions
   const basePermissions = {
-    founder: { canInvite: true, canInvokeAi: true, canManageMembers: true },
-    admin: { canInvite: true, canInvokeAi: true, canManageMembers: true },
-    member: { canInvite: false, canInvokeAi: true, canManageMembers: false },
+    founder: { canSendMessages: true, canInvite: true, canInvokeAi: true, canManageMembers: true, canPauseAi: true },
+    admin: { canSendMessages: true, canInvite: true, canInvokeAi: true, canManageMembers: true, canPauseAi: true },
+    member: { canSendMessages: true, canInvite: false, canInvokeAi: true, canManageMembers: false, canPauseAi: false },
   }[role];
 
+  // Apply invite-specific permission overrides
   const permissions = {
+    canSendMessages: canSendMessages, // Respect the invite's canSendMessages setting
     canInvite: canInviteOthers ?? basePermissions.canInvite,
-    canInvokeAi: basePermissions.canInvokeAi,
+    canInvokeAi: canInvokeAi ?? basePermissions.canInvokeAi,
     canManageMembers: role === 'admin' || role === 'founder' ? basePermissions.canManageMembers : false,
+    canPauseAi: canPauseAi ?? (role === 'admin' || role === 'founder' ? basePermissions.canPauseAi : false),
   };
+
+  // Look up identity for custom emoji
+  const identity = await getIdentityByAddress(address);
+  const customEmoji = identity?.emoji ?? null;
 
   if (existing) {
     // Reactivate existing member
+    await debugLog(`[addMemberViaInvite] Reactivating existing member: ${address}`);
     await execute(
       `UPDATE multi_chat_members
-       SET is_active = TRUE, role = $1, can_invite = $2, can_invoke_ai = $3,
-           can_manage_members = $4, public_key = $5, left_at = NULL
-       WHERE chat_id = $6 AND member_address = $7`,
+       SET is_active = TRUE, role = $1, can_send_messages = $2, can_invite = $3, can_invoke_ai = $4,
+           can_manage_members = $5, can_pause_ai = $6, public_key = $7, custom_emoji = $8, left_at = NULL
+       WHERE chat_id = $9 AND member_address = $10`,
       [
         role,
+        permissions.canSendMessages,
         permissions.canInvite,
         permissions.canInvokeAi,
         permissions.canManageMembers,
+        permissions.canPauseAi ?? false,
         publicKey ?? null,
+        customEmoji,
         chatId,
         address,
       ]
     );
   } else {
     // Insert new member
+    await debugLog(`[addMemberViaInvite] Inserting new member: ${address}`);
     await execute(
       `INSERT INTO multi_chat_members (
          chat_id, member_address, member_user_id, role,
-         can_invite, can_invoke_ai, can_manage_members, public_key
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         can_send_messages, can_invite, can_invoke_ai, can_manage_members, can_pause_ai, public_key, custom_emoji
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         chatId,
         address,
         userId ?? null,
         role,
+        permissions.canSendMessages,
         permissions.canInvite,
         permissions.canInvokeAi,
         permissions.canManageMembers,
+        permissions.canPauseAi ?? false,
         publicKey ?? null,
+        customEmoji,
       ]
     );
+    await debugLog(`[addMemberViaInvite] Insert completed for: ${address}`);
   }
 
   // If chat is encrypted, distribute group key to new member
@@ -752,9 +872,11 @@ export async function updateMemberPermissions(
   targetAddress: string,
   permissions: Partial<{
     role: ChatRole;
+    canSendMessages: boolean;
     canInvite: boolean;
     canInvokeAi: boolean;
     canManageMembers: boolean;
+    canPauseAi: boolean;
   }>
 ): Promise<ChatMember> {
   // Only founder can change roles, admins can change other permissions
@@ -778,6 +900,10 @@ export async function updateMemberPermissions(
     updates.push(`role = $${paramIndex++}`);
     values.push(permissions.role);
   }
+  if (permissions.canSendMessages !== undefined) {
+    updates.push(`can_send_messages = $${paramIndex++}`);
+    values.push(permissions.canSendMessages);
+  }
   if (permissions.canInvite !== undefined) {
     updates.push(`can_invite = $${paramIndex++}`);
     values.push(permissions.canInvite);
@@ -789,6 +915,10 @@ export async function updateMemberPermissions(
   if (permissions.canManageMembers !== undefined) {
     updates.push(`can_manage_members = $${paramIndex++}`);
     values.push(permissions.canManageMembers);
+  }
+  if (permissions.canPauseAi !== undefined) {
+    updates.push(`can_pause_ai = $${paramIndex++}`);
+    values.push(permissions.canPauseAi);
   }
 
   if (updates.length === 0) {
@@ -803,6 +933,61 @@ export async function updateMemberPermissions(
   );
 
   return (await getMember(chatId, targetAddress))!;
+}
+
+/**
+ * Update a member's profile (emoji, display name)
+ * Members can only update their own profile
+ */
+export async function updateMemberProfile(
+  chatId: string,
+  memberAddress: string,
+  profile: Partial<{
+    customEmoji: string | null;
+    displayName: string | null;
+  }>
+): Promise<ChatMember> {
+  // Build update query
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  let paramIndex = 1;
+
+  if (profile.customEmoji !== undefined) {
+    updates.push(`custom_emoji = $${paramIndex++}`);
+    values.push(profile.customEmoji);
+  }
+  if (profile.displayName !== undefined) {
+    updates.push(`display_name = $${paramIndex++}`);
+    values.push(profile.displayName);
+  }
+
+  if (updates.length === 0) {
+    return (await getMember(chatId, memberAddress))!;
+  }
+
+  values.push(chatId, memberAddress);
+  await execute(
+    `UPDATE multi_chat_members SET ${updates.join(', ')}
+     WHERE chat_id = $${paramIndex++} AND member_address = $${paramIndex} AND is_active = TRUE`,
+    values
+  );
+
+  return (await getMember(chatId, memberAddress))!;
+}
+
+/**
+ * Update emoji for a user across ALL their chat memberships
+ * This ensures the emoji is consistent everywhere
+ */
+export async function updateUserEmoji(
+  memberAddress: string,
+  customEmoji: string | null
+): Promise<void> {
+  await execute(
+    `UPDATE multi_chat_members SET custom_emoji = $1
+     WHERE member_address = $2 AND is_active = TRUE`,
+    [customEmoji, memberAddress]
+  );
 }
 
 // ============================================================================
@@ -1143,6 +1328,29 @@ export async function reorderPinnedChats(userAddress: string, chatIds: string[])
  */
 export async function updateChatName(chatId: string, name: string): Promise<Chat | null> {
   await execute('UPDATE multi_chats SET name = $1, updated_at = NOW() WHERE id = $2', [name, chatId]);
+  return getChatById(chatId);
+}
+
+/**
+ * Toggle chat AI enabled state
+ * Only members with canPauseAi permission can toggle this
+ */
+export async function toggleChatAiEnabled(
+  chatId: string,
+  memberAddress: string,
+  enabled: boolean
+): Promise<Chat | null> {
+  // Check if member has permission to pause AI
+  const member = await getMember(chatId, memberAddress);
+  if (!member || !member.canPauseAi) {
+    throw new Error('You do not have permission to toggle AI for this chat');
+  }
+
+  await execute(
+    'UPDATE multi_chats SET ai_enabled = $1, updated_at = NOW() WHERE id = $2',
+    [enabled, chatId]
+  );
+
   return getChatById(chatId);
 }
 

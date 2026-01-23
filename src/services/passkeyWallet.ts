@@ -17,6 +17,7 @@
  */
 
 import { privateKeyToAccount } from 'viem/accounts'
+import { signInWithWallet } from './siwe'
 
 const PASSKEY_WALLET_KEY = 'juice-passkey-wallet'
 
@@ -70,6 +71,27 @@ function base64UrlToBuffer(base64url: string): ArrayBuffer {
     bytes[i] = binary.charCodeAt(i)
   }
   return bytes.buffer
+}
+
+/**
+ * Create SIWE session with the backend using the derived private key
+ */
+async function createSiweSession(privateKey: `0x${string}`): Promise<void> {
+  const account = privateKeyToAccount(privateKey)
+
+  try {
+    // Sign message using the derived private key
+    await signInWithWallet(
+      account.address,
+      1, // mainnet chainId
+      async (message: string) => {
+        return account.signMessage({ message })
+      }
+    )
+  } catch (error) {
+    // Log but don't fail - wallet is still usable locally
+    console.warn('Failed to create SIWE session for passkey wallet:', error)
+  }
 }
 
 /**
@@ -170,6 +192,9 @@ export async function createPasskeyWallet(): Promise<PasskeyWallet> {
   storePasskeyCredential(credential.id)
   storePasskeyWallet(wallet)
 
+  // Create SIWE session with backend
+  await createSiweSession(privateKey)
+
   return wallet
 }
 
@@ -223,6 +248,9 @@ export async function authenticatePasskeyWallet(credentialId?: string): Promise<
   // Store for future use
   storePasskeyCredential(credential.id)
   storePasskeyWallet(wallet)
+
+  // Create SIWE session with backend
+  await createSiweSession(privateKey)
 
   return wallet
 }

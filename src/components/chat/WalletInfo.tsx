@@ -1,10 +1,359 @@
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useAccount, useDisconnect } from 'wagmi'
-import { useThemeStore } from '../../stores'
+import { useThemeStore, useSettingsStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
-import { hasValidWalletSession } from '../../services/siwe'
+import { hasValidWalletSession, getWalletSession } from '../../services/siwe'
+import { getSessionId } from '../../services/session'
+import { getEmojiFromAddress, FRUIT_EMOJIS } from './ParticipantAvatars'
+import { signInWithPasskey, getPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
 
-function shortenAddress(address: string, chars = 4): string {
-  return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
+export interface JuicyIdentity {
+  emoji: string
+  username: string
+  formatted: string
+}
+
+export interface AnchorPosition {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
+interface JuicyIdPopoverProps {
+  isOpen: boolean
+  onClose: () => void
+  anchorPosition: AnchorPosition | null
+  onWalletClick: () => void
+  onPasskeySuccess?: (wallet: PasskeyWallet) => void
+  onIdentitySet?: (identity: JuicyIdentity) => void
+}
+
+export function JuicyIdPopover({
+  isOpen,
+  onClose,
+  anchorPosition,
+  onWalletClick,
+  onPasskeySuccess,
+  onIdentitySet,
+}: JuicyIdPopoverProps) {
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
+  const { selectedFruit, setSelectedFruit } = useSettingsStore()
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  const isSignedIn = hasValidWalletSession()
+
+  // Auth state (for not signed in)
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+
+  // Identity state (for signed in)
+  const [username, setUsername] = useState('')
+  const [isAvailable, setIsAvailable] = useState<boolean | null>(null)
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Get current user's address and default emoji
+  const currentAddress = useMemo(() => {
+    const walletSession = getWalletSession()
+    const sessionId = getSessionId()
+    return walletSession?.address ||
+      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+  }, [])
+  const defaultEmoji = getEmojiFromAddress(currentAddress)
+  const currentEmoji = selectedFruit || defaultEmoji
+
+  // Get API headers
+  const getApiHeaders = useCallback(() => {
+    const sessionId = getSessionId()
+    const walletSession = getWalletSession()
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Session-ID': sessionId,
+    }
+    if (walletSession?.token) {
+      headers['X-Wallet-Session'] = walletSession.token
+    }
+    return headers
+  }, [])
+
+  // Check availability
+  useEffect(() => {
+    if (!isSignedIn || !username || username.length < 3) {
+      setIsAvailable(null)
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      setCheckingAvailability(true)
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || ''
+        const params = new URLSearchParams({ emoji: currentEmoji, username })
+        const res = await fetch(`${apiUrl}/identity/check?${params}`, {
+          headers: getApiHeaders(),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setIsAvailable(data.available)
+        }
+      } catch (err) {
+        console.error('Failed to check availability:', err)
+      } finally {
+        setCheckingAvailability(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [isSignedIn, username, currentEmoji, getApiHeaders])
+
+  // Save identity
+  const handleSave = async () => {
+    if (!username || username.length < 3 || isAvailable === false) return
+
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+
+      // Save identity (emoji + username)
+      const res = await fetch(`${apiUrl}/identity/me`, {
+        method: 'PUT',
+        headers: getApiHeaders(),
+        body: JSON.stringify({ emoji: currentEmoji, username }),
+      })
+      const data = await res.json()
+      if (data.success && data.data) {
+        // Also sync emoji to chat members so avatars update
+        await fetch(`${apiUrl}/chat/me/emoji`, {
+          method: 'PUT',
+          headers: getApiHeaders(),
+          body: JSON.stringify({ emoji: currentEmoji }),
+        }).catch(() => {}) // Ignore errors, identity is the main thing
+
+        // Update local selectedFruit to match
+        setSelectedFruit(currentEmoji === defaultEmoji ? null : currentEmoji)
+
+        onIdentitySet?.(data.data)
+        // Dispatch event so other components can refresh their identity
+        window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
+        onClose()
+      } else {
+        setSaveError(data.error || 'Failed to set identity')
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to set identity')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Passkey auth
+  const handlePasskeyAuth = async () => {
+    setIsAuthenticating(true)
+    setAuthError(null)
+    try {
+      const wallet = await signInWithPasskey()
+      onPasskeySuccess?.(wallet)
+      onClose() // Close and user can click Set Juicy ID again now that they're signed in
+    } catch (err) {
+      console.error('Passkey auth failed:', err)
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (msg.includes('cancelled') || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('abort')) {
+          // User cancelled
+        } else if (msg.includes('prf') || msg.includes('not supported')) {
+          setAuthError('Touch ID not supported on this device.')
+        } else {
+          setAuthError('Failed. Try another method.')
+        }
+      }
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
+
+  // Position popover
+  const popoverStyle = useMemo(() => {
+    if (!anchorPosition) return { top: 16, right: 16 }
+
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200
+    const gap = 8
+    const popoverWidth = 280
+
+    const isInLowerHalf = anchorPosition.top > viewportHeight / 2
+    let left = anchorPosition.left
+    if (left + popoverWidth > viewportWidth - 16) {
+      left = viewportWidth - popoverWidth - 16
+    }
+    left = Math.max(16, left)
+
+    if (isInLowerHalf) {
+      return { bottom: viewportHeight - anchorPosition.top + gap, left }
+    } else {
+      return { top: anchorPosition.top + anchorPosition.height + gap, left }
+    }
+  }, [anchorPosition])
+
+  // Reset state on close
+  useEffect(() => {
+    if (!isOpen) {
+      setUsername('')
+      setIsAvailable(null)
+      setAuthError(null)
+      setSaveError(null)
+    }
+  }, [isOpen])
+
+  if (!isOpen) return null
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[49]" onMouseDown={onClose} />
+      <div className="fixed z-50" style={popoverStyle}>
+        <div
+          ref={popoverRef}
+          className={`relative w-70 p-4 border shadow-xl ${
+            isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+          }`}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            className={`absolute top-3 right-3 p-1 transition-colors ${
+              isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          {isSignedIn ? (
+            // Signed in: Set Juicy ID form
+            <>
+              <h2 className={`text-sm font-semibold mb-3 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                Set Juicy ID
+              </h2>
+
+              {/* Emoji picker - 6 per row */}
+              <div className="grid grid-cols-6 gap-1 mb-3">
+                {FRUIT_EMOJIS.map((fruit) => {
+                  const isSelected = selectedFruit === fruit || (!selectedFruit && fruit === defaultEmoji)
+                  return (
+                    <button
+                      key={fruit}
+                      onClick={() => setSelectedFruit(fruit === defaultEmoji ? null : fruit)}
+                      className={`w-7 h-7 text-base flex items-center justify-center transition-all ${
+                        isSelected
+                          ? `border ${isDark ? 'border-juice-cyan bg-juice-cyan/10' : 'border-juice-cyan bg-juice-cyan/10'}`
+                          : `border border-transparent ${isDark ? 'hover:bg-white/5' : 'hover:bg-gray-100'}`
+                      }`}
+                    >
+                      {fruit}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Username input */}
+              <div className="flex gap-2 mb-2">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20))}
+                    placeholder="username"
+                    className={`w-full px-2 py-1.5 text-xs border ${
+                      isDark
+                        ? 'bg-white/5 border-white/20 text-white placeholder-gray-500'
+                        : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                    }`}
+                  />
+                  {username.length >= 3 && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">
+                      {checkingAvailability ? (
+                        <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>...</span>
+                      ) : isAvailable === true ? (
+                        <span className="text-green-500">✓</span>
+                      ) : isAvailable === false ? (
+                        <span className="text-red-400">✗</span>
+                      ) : null}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving || !username || username.length < 3 || isAvailable === false}
+                  className={`px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${
+                    isDark
+                      ? 'text-juice-cyan border border-juice-cyan/30 hover:border-juice-cyan/50'
+                      : 'text-juice-cyan border border-juice-cyan/40 hover:border-juice-cyan/60'
+                  }`}
+                >
+                  {isSaving ? '...' : 'Set'}
+                </button>
+              </div>
+
+              {saveError && (
+                <p className="text-[10px] text-red-400 mb-1">{saveError}</p>
+              )}
+              <p className={`text-[10px] ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                3-20 chars, letters/numbers/underscore
+              </p>
+            </>
+          ) : (
+            // Not signed in: Show sign in options
+            <>
+              <h2 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                First, sign in
+              </h2>
+              <p className={`text-xs mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Sign in to set your Juicy ID.
+              </p>
+
+              {authError && (
+                <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+                  {authError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={handlePasskeyAuth}
+                  disabled={isAuthenticating}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+                    isAuthenticating
+                      ? 'border-gray-500 text-gray-500 cursor-wait'
+                      : isDark
+                      ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+                      : 'border-green-600 text-green-600 hover:bg-green-50'
+                  }`}
+                >
+                  {isAuthenticating ? '...' : 'Touch ID'}
+                </button>
+                <button
+                  onClick={() => { onClose(); onWalletClick() }}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+                    isDark
+                      ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+                      : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+                  }`}
+                >
+                  Wallet
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </>,
+    document.body
+  )
 }
 
 // Dispatch event to open wallet panel with anchor position
@@ -25,15 +374,80 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
   const { ensName } = useEnsNameResolved(address)
   const { disconnect } = useDisconnect()
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
+  const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
+  const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
+
+  // Juicy ID popover state
+  const [juicyIdPopoverOpen, setJuicyIdPopoverOpen] = useState(false)
+  const [juicyIdAnchorPosition, setJuicyIdAnchorPosition] = useState<AnchorPosition | null>(null)
 
   // User is "signed in" if they have a valid SIWE session
   const isSignedIn = hasValidWalletSession()
+
+  // Listen for passkey wallet changes
+  useEffect(() => {
+    const handlePasskeyConnected = (e: CustomEvent<PasskeyWallet>) => {
+      setPasskeyWallet(e.detail)
+    }
+    const handlePasskeyDisconnected = () => {
+      setPasskeyWallet(null)
+    }
+    window.addEventListener('juice:passkey-connected', handlePasskeyConnected as EventListener)
+    window.addEventListener('juice:passkey-disconnected', handlePasskeyDisconnected as EventListener)
+    return () => {
+      window.removeEventListener('juice:passkey-connected', handlePasskeyConnected as EventListener)
+      window.removeEventListener('juice:passkey-disconnected', handlePasskeyDisconnected as EventListener)
+    }
+  }, [])
+
+  // Fetch Juicy ID
+  useEffect(() => {
+    const fetchIdentity = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || ''
+        const sessionId = getSessionId()
+        const walletSession = getWalletSession()
+        const headers: Record<string, string> = {
+          'X-Session-ID': sessionId,
+        }
+        if (walletSession?.token) {
+          headers['X-Wallet-Session'] = walletSession.token
+        }
+        const res = await fetch(`${apiUrl}/identity/me`, { headers })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && data.data) {
+            setIdentity(data.data)
+          }
+        }
+      } catch (err) {
+        // Ignore errors, just don't show identity
+      }
+    }
+    fetchIdentity()
+  }, [address, passkeyWallet])
+
+  // Listen for identity changes from other components
+  useEffect(() => {
+    const handleIdentityChange = (e: CustomEvent<JuicyIdentity>) => {
+      setIdentity(e.detail)
+    }
+    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+  }, [])
+
+  // Get display name: Juicy ID > ENS > null (no emoji fallback)
+  const getDisplayIdentity = () => {
+    if (identity) return identity.formatted
+    if (ensName) return ensName
+    return null // Don't show emoji - will show "Set Juicy ID" prompt instead
+  }
 
   const content = (
     <div className={`flex items-center text-xs ${
       theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
     }`}>
-      {!isConnected || !address ? (
+      {(!isConnected && !address && !passkeyWallet) ? (
         <button
           onClick={openWalletPanel}
           className={`transition-colors ${
@@ -46,12 +460,47 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
         </button>
       ) : (
         <>
-          {isSignedIn ? (
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 shrink-0" />
-          ) : (
-            <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50 mr-1.5 shrink-0" />
+          {/* Status dot and "Connected" */}
+          <button
+            onClick={openWalletPanel}
+            className={`flex items-center transition-colors ${
+              theme === 'dark'
+                ? 'text-gray-500 hover:text-gray-300'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            {isSignedIn || passkeyWallet ? (
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 shrink-0" />
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50 mr-1.5 shrink-0" />
+            )}
+            {getDisplayIdentity() ? (
+              <>
+                <span className="mr-1">Connected as</span>
+                <span>{getDisplayIdentity()}</span>
+              </>
+            ) : (
+              <span>Connected</span>
+            )}
+          </button>
+          {/* Set Juicy ID prompt - only when no identity */}
+          {!identity && (
+            <button
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                setJuicyIdAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+                setJuicyIdPopoverOpen(true)
+              }}
+              className={`ml-1 transition-colors ${
+                theme === 'dark'
+                  ? 'text-juice-orange/70 hover:text-juice-orange'
+                  : 'text-juice-orange/80 hover:text-juice-orange'
+              }`}
+            >
+              · Set your Juicy ID
+            </button>
           )}
-          <span className="mr-1">Connected as</span>
+          {/* Balances */}
           <button
             onClick={openWalletPanel}
             className={`transition-colors ${
@@ -60,31 +509,16 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
                 : 'text-gray-400 hover:text-gray-600'
             }`}
           >
-            {ensName || shortenAddress(address)}
-          </button>
-          {balancesLoading ? (
-            <span className="ml-2 opacity-50">Loading...</span>
-          ) : (
-            <button
-              onClick={openWalletPanel}
-              className={`ml-2 transition-colors ${
-                theme === 'dark'
-                  ? 'text-gray-500 hover:text-gray-300'
-                  : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              · {formatUsdcBalance(totalUsdc)} USDC · {formatEthBalance(totalEth)} ETH
-            </button>
-          )}
-          <button
-            onClick={() => disconnect()}
-            className={`ml-2 transition-colors ${
-              theme === 'dark'
-                ? 'text-gray-600 hover:text-gray-400'
-                : 'text-gray-300 hover:text-gray-500'
-            }`}
-          >
-            · Disconnect
+            {balancesLoading ? (
+              <span className="ml-2 opacity-50 hidden sm:inline">Loading...</span>
+            ) : (
+              <span className="hidden sm:inline">
+                <span className="mx-1">·</span>
+                {formatUsdcBalance(totalUsdc)} USDC
+                <span className="mx-1">·</span>
+                {formatEthBalance(totalEth)} ETH
+              </span>
+            )}
           </button>
         </>
       )}
@@ -92,16 +526,38 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
   )
 
   if (inline) {
-    return content
+    return (
+      <>
+        {content}
+        <JuicyIdPopover
+          isOpen={juicyIdPopoverOpen}
+          onClose={() => setJuicyIdPopoverOpen(false)}
+          anchorPosition={juicyIdAnchorPosition}
+          onWalletClick={() => {
+            window.dispatchEvent(new CustomEvent('juice:open-wallet-panel', {
+              detail: { anchorPosition: juicyIdAnchorPosition }
+            }))
+          }}
+          onIdentitySet={(newIdentity) => setIdentity(newIdentity)}
+        />
+      </>
+    )
   }
 
   return (
-    <div className="flex gap-3 mt-2 px-6">
-      {/* Spacer to align with textarea */}
-      <div className="w-[48px] shrink-0" />
-      <div className="flex-1">
-        {content}
-      </div>
+    <div className="mt-2 px-6">
+      {content}
+      <JuicyIdPopover
+        isOpen={juicyIdPopoverOpen}
+        onClose={() => setJuicyIdPopoverOpen(false)}
+        anchorPosition={juicyIdAnchorPosition}
+        onWalletClick={() => {
+          window.dispatchEvent(new CustomEvent('juice:open-wallet-panel', {
+            detail: { anchorPosition: juicyIdAnchorPosition }
+          }))
+        }}
+        onIdentitySet={(newIdentity) => setIdentity(newIdentity)}
+      />
     </div>
   )
 }

@@ -16,9 +16,13 @@ interface InvitePopoverProps {
   onClose: () => void
   chatId: string
   chatName: string
+  // Whether the current user has permission to invite at all
+  canInvite?: boolean
   // Current user's permissions - affects what they can grant
   canGrantAdmin?: boolean
   canGrantInvitePermission?: boolean
+  canGrantAiPermission?: boolean
+  canGrantPauseAiPermission?: boolean
   // Position of the anchor button (for smart positioning)
   anchorPosition?: AnchorPosition | null
 }
@@ -28,8 +32,11 @@ export default function InviteModal({
   onClose,
   chatId,
   chatName,
+  canInvite = true,
   canGrantAdmin = false,
   canGrantInvitePermission = true,
+  canGrantAiPermission = true,
+  canGrantPauseAiPermission = false,
   anchorPosition,
 }: InvitePopoverProps) {
   const { theme } = useThemeStore()
@@ -45,6 +52,9 @@ export default function InviteModal({
   const [canSendMessages, setCanSendMessages] = useState(true)
   const [canInviteOthers, setCanInviteOthers] = useState(false)
   const [canPassOnRoles, setCanPassOnRoles] = useState(false)
+  const [canInvokeAi, setCanInvokeAi] = useState(true)
+  const [canPauseAi, setCanPauseAi] = useState(false)
+  const [canGrantPauseAi, setCanGrantPauseAi] = useState(false)
 
   // Reset state when popover opens
   useEffect(() => {
@@ -55,27 +65,41 @@ export default function InviteModal({
       setCanSendMessages(true)
       setCanInviteOthers(false)
       setCanPassOnRoles(false)
+      setCanInvokeAi(true)
+      setCanPauseAi(false)
+      setCanGrantPauseAi(false)
     }
   }, [isOpen])
 
-  const handleCreateInvite = async () => {
-    setIsLoading(true)
-    setError(null)
+  // Auto-generate invite link when popover opens or settings change
+  // Only generate if user has permission to invite
+  useEffect(() => {
+    if (!isOpen || !chatId || !canInvite) return
 
-    try {
-      const params: CreateInviteParams = {
-        canSendMessages,
-        canInviteOthers,
-        canPassOnRoles,
+    const generateInvite = async () => {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const params: CreateInviteParams = {
+          canSendMessages,
+          canInviteOthers,
+          canPassOnRoles,
+          canInvokeAi,
+          canPauseAi,
+          canGrantPauseAi,
+        }
+        const newInvite = await createInvite(chatId, params)
+        setInvite(newInvite)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create invite')
+      } finally {
+        setIsLoading(false)
       }
-      const newInvite = await createInvite(chatId, params)
-      setInvite(newInvite)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create invite')
-    } finally {
-      setIsLoading(false)
     }
-  }
+
+    generateInvite()
+  }, [isOpen, chatId, canInvite, canSendMessages, canInviteOthers, canPassOnRoles, canInvokeAi, canPauseAi, canGrantPauseAi])
 
   const handleCopy = async () => {
     if (!invite?.inviteUrl) return
@@ -152,6 +176,18 @@ export default function InviteModal({
           </svg>
         </button>
 
+        {/* No permission view */}
+        {!canInvite ? (
+          <>
+            <h3 className={`text-sm font-semibold mb-2 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {t('invite.noPermission', 'Can\'t Invite')}
+            </h3>
+            <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              {t('invite.noPermissionDescription', 'You don\'t have permission to invite people to this chat. Ask an admin to grant you invite permissions.')}
+            </p>
+          </>
+        ) : (
+          <>
         <h3 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
           {t('invite.header', 'Invite someone to this chat')}
         </h3>
@@ -166,164 +202,184 @@ export default function InviteModal({
           </div>
         )}
 
-        {!invite ? (
-          <>
-            {/* Permission Settings */}
-            <div className="space-y-2 mb-4">
-              {/* Can send messages */}
-              <button
-                onClick={() => setCanSendMessages(!canSendMessages)}
-                className="flex items-center gap-2 w-full text-left group"
-              >
-                <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
-                  canSendMessages
-                    ? 'border-green-500 bg-green-500'
-                    : isDark
-                    ? 'border-white/30 group-hover:border-white/50'
-                    : 'border-gray-300 group-hover:border-gray-400'
-                }`}>
-                  {canSendMessages && (
-                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-                <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                  {t('invite.canSendMessages', 'Can send messages')}
-                </span>
-              </button>
-
-              {/* Can invite others */}
-              {canGrantInvitePermission && (
-                <button
-                  onClick={() => setCanInviteOthers(!canInviteOthers)}
-                  className="flex items-center gap-2 w-full text-left group"
-                >
-                  <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
-                    canInviteOthers
-                      ? 'border-green-500 bg-green-500'
-                      : isDark
-                      ? 'border-white/30 group-hover:border-white/50'
-                      : 'border-gray-300 group-hover:border-gray-400'
-                  }`}>
-                    {canInviteOthers && (
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
-                  <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {t('invite.canInviteOthers', 'Can invite others')}
-                  </span>
-                </button>
-              )}
-
-              {/* Can give out roles */}
-              {canGrantAdmin && (
-                <button
-                  onClick={() => setCanPassOnRoles(!canPassOnRoles)}
-                  className="flex items-center gap-2 w-full text-left group"
-                >
-                  <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
-                    canPassOnRoles
-                      ? 'border-green-500 bg-green-500'
-                      : isDark
-                      ? 'border-white/30 group-hover:border-white/50'
-                      : 'border-gray-300 group-hover:border-gray-400'
-                  }`}>
-                    {canPassOnRoles && (
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
-                  <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {t('invite.canPassOnRoles', 'Can invite others who can invite')}
-                  </span>
-                </button>
+        {/* Permission Settings */}
+        <div className="space-y-2 mb-3">
+          {/* Can send messages */}
+          <button
+            onClick={() => setCanSendMessages(!canSendMessages)}
+            className="flex items-center gap-2 w-full text-left group"
+          >
+            <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
+              canSendMessages
+                ? 'border-green-500 bg-green-500'
+                : isDark
+                ? 'border-white/30 group-hover:border-white/50'
+                : 'border-gray-300 group-hover:border-gray-400'
+            }`}>
+              {canSendMessages && (
+                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
               )}
             </div>
+            <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+              {t('invite.canSendMessages', 'Can send messages')}
+            </span>
+          </button>
 
-            {/* Create button */}
-            <div className="flex justify-end">
-              <button
-                onClick={handleCreateInvite}
-                disabled={isLoading}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
-                  isLoading
-                    ? 'border-gray-500 text-gray-500 cursor-not-allowed'
-                    : isDark
-                    ? 'border-green-500 text-green-500 hover:bg-green-500/10'
-                    : 'border-green-600 text-green-600 hover:bg-green-50'
-                }`}
-              >
-                {isLoading
-                  ? t('invite.creating', 'Creating...')
-                  : t('invite.getLink', 'Get invite link')}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Invite Link Display */}
-            <div className="space-y-2 mb-3">
-              <label className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                {t('invite.yourLink', 'Your invite link')}
-              </label>
-
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={invite.inviteUrl || ''}
-                  className={`flex-1 px-2 py-1.5 border text-xs font-mono ${
-                    isDark
-                      ? 'bg-white/5 border-white/10 text-gray-300'
-                      : 'bg-gray-50 border-gray-200 text-gray-700'
-                  }`}
-                />
-                <button
-                  onClick={handleCopy}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    copied
-                      ? 'bg-green-600 text-black'
-                      : 'bg-green-500 text-black hover:bg-green-600'
-                  }`}
-                >
-                  {copied ? '✓' : t('invite.copy', 'Copy')}
-                </button>
-              </div>
-
-              {/* Permission summary */}
-              <div className={`p-2 text-xs ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-600'}`}>
-                <p className="font-medium mb-1">
-                  {t('invite.grantedPermissions', 'Link grants:')}
-                </p>
-                <ul className="list-disc list-inside space-y-0.5 text-[10px]">
-                  {invite.canSendMessages && (
-                    <li>{t('invite.canSendMessagesLabel', 'Can send messages')}</li>
-                  )}
-                  {invite.canInviteOthers && (
-                    <li>{t('invite.canInviteOthersLabel', 'Can invite others')}</li>
-                  )}
-                  {invite.canPassOnRoles && (
-                    <li>{t('invite.canPassOnRolesLabel', 'Can invite others who can invite')}</li>
-                  )}
-                </ul>
-              </div>
-            </div>
-
-            {/* Create another */}
+          {/* Can use AI */}
+          {canGrantAiPermission && (
             <button
-              onClick={() => setInvite(null)}
-              className={`w-full py-1.5 text-xs font-medium transition-colors border ${
-                isDark
-                  ? 'border-white/20 text-gray-400 hover:text-white hover:border-white/40'
-                  : 'border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300'
-              }`}
+              onClick={() => setCanInvokeAi(!canInvokeAi)}
+              className="flex items-center gap-2 w-full text-left group"
             >
-              {t('invite.createAnother', 'Create another link')}
+              <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
+                canInvokeAi
+                  ? 'border-green-500 bg-green-500'
+                  : isDark
+                  ? 'border-white/30 group-hover:border-white/50'
+                  : 'border-gray-300 group-hover:border-gray-400'
+              }`}>
+                {canInvokeAi && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                {t('invite.canUseAi', 'Can use AI')}
+              </span>
             </button>
+          )}
+
+          {/* Can invite others */}
+          {canGrantInvitePermission && (
+            <button
+              onClick={() => setCanInviteOthers(!canInviteOthers)}
+              className="flex items-center gap-2 w-full text-left group"
+            >
+              <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
+                canInviteOthers
+                  ? 'border-green-500 bg-green-500'
+                  : isDark
+                  ? 'border-white/30 group-hover:border-white/50'
+                  : 'border-gray-300 group-hover:border-gray-400'
+              }`}>
+                {canInviteOthers && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                {t('invite.canInviteOthers', 'Can invite others')}
+              </span>
+            </button>
+          )}
+
+          {/* Can give out roles */}
+          {canGrantAdmin && (
+            <button
+              onClick={() => setCanPassOnRoles(!canPassOnRoles)}
+              className="flex items-center gap-2 w-full text-left group"
+            >
+              <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
+                canPassOnRoles
+                  ? 'border-green-500 bg-green-500'
+                  : isDark
+                  ? 'border-white/30 group-hover:border-white/50'
+                  : 'border-gray-300 group-hover:border-gray-400'
+              }`}>
+                {canPassOnRoles && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                {t('invite.canPassOnRoles', 'Can invite others who can invite')}
+              </span>
+            </button>
+          )}
+
+          {/* Can pause AI */}
+          {canGrantPauseAiPermission && (
+            <button
+              onClick={() => setCanPauseAi(!canPauseAi)}
+              className="flex items-center gap-2 w-full text-left group"
+            >
+              <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
+                canPauseAi
+                  ? 'border-green-500 bg-green-500'
+                  : isDark
+                  ? 'border-white/30 group-hover:border-white/50'
+                  : 'border-gray-300 group-hover:border-gray-400'
+              }`}>
+                {canPauseAi && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                {t('invite.canPauseAi', 'Can pause AI')}
+              </span>
+            </button>
+          )}
+
+          {/* Can invite others who can pause AI */}
+          {canGrantPauseAiPermission && (
+            <button
+              onClick={() => setCanGrantPauseAi(!canGrantPauseAi)}
+              className="flex items-center gap-2 w-full text-left group"
+            >
+              <div className={`w-4 h-4 border-2 flex items-center justify-center transition-colors rounded-sm ${
+                canGrantPauseAi
+                  ? 'border-green-500 bg-green-500'
+                  : isDark
+                  ? 'border-white/30 group-hover:border-white/50'
+                  : 'border-gray-300 group-hover:border-gray-400'
+              }`}>
+                {canGrantPauseAi && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                {t('invite.canGrantPauseAi', 'Can invite others who can pause AI')}
+              </span>
+            </button>
+          )}
+        </div>
+
+        {/* Invite Link Display */}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            readOnly
+            value={isLoading ? '' : (invite?.inviteUrl || '')}
+            placeholder={isLoading ? t('invite.generating', 'Generating...') : ''}
+            className={`flex-1 px-2 py-1.5 border text-xs font-mono ${
+              isDark
+                ? 'bg-white/5 border-white/10 text-gray-300 placeholder:text-gray-500'
+                : 'bg-gray-50 border-gray-200 text-gray-700 placeholder:text-gray-400'
+            } ${isLoading ? 'animate-pulse' : ''}`}
+          />
+          <button
+            onClick={handleCopy}
+            disabled={isLoading || !invite?.inviteUrl}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              isLoading || !invite?.inviteUrl
+                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                : copied
+                ? 'bg-green-600 text-black'
+                : 'bg-green-500 text-black hover:bg-green-600'
+            }`}
+          >
+            {copied ? '✓' : t('invite.copy', 'Copy')}
+          </button>
+        </div>
           </>
         )}
       </div>

@@ -39,14 +39,16 @@
     "soTellMe": "那么，告诉我。",
     "thereYouAre": "你来了。",
     "finally": "终于。",
-    "ohGoodYouMadeIt": "太好了，你来了。",
+    "whatHaveYouGot": "你有什么？",
     "letsGetToWork": "开始工作吧。",
-    "rightOnTime": "正好。",
+    "goOn": "继续。",
     "lookWhoShowedUp": "看看谁来了。",
     "showMeWhatYouGot": "让我看看你有什么。",
-    "letsMakeItHappen": "让我们实现它。",
-    "readyToSqueeze": "准备好了吗？",
-    "yourMove": "该你了。"
+    "makeItCount": "好好把握。",
+    "begin": "开始。",
+    "yourMove": "该你了。",
+    "helloDarling": "你好，亲爱的。",
+    "helloChampion": "你好，冠军。"
   },
   "placeholders": {
     "juicyVision": "你的愿景是什么？",
@@ -101,10 +103,25 @@
     "unpin": "取消置顶"
   },
   "chat": {
+    "you": "你",
+    "anonymous": "匿名",
     "conspire": "共谋",
     "save": "保存",
     "invite": "邀请",
-    "export": "导出"
+    "export": "导出",
+    "ai": "AI",
+    "skipAi": "跳过 AI",
+    "skipping": "跳过中",
+    "aiPaused": "AI 已暂停",
+    "aiPausedExplanation": "此聊天的 AI 已被管理员暂停。在管理员重新开启之前，你的消息将不会收到 AI 回复。",
+    "pauseAi": "暂停 AI",
+    "pauseAiTooltip": "点击查看 AI 跳过选项",
+    "skipForAll": "为所有人跳过",
+    "skipForYou": "为你跳过",
+    "skipAllOnTooltip": "AI 已为所有人暂停",
+    "skipAllOffTooltip": "点击为所有人暂停 AI",
+    "skipYouOnTooltip": "你的消息不会触发 AI",
+    "skipYouOffTooltip": "点击跳过你的消息的 AI"
   },
   "note": {
     "placeholder": "写下你的留言...",
@@ -138,7 +155,15 @@
     "maxUsesDisplay": "限制 {{count}} 次使用",
     "noExpiry": "无过期时间，无限使用",
     "createAnother": "创建另一个链接",
-    "close": "关闭"
+    "close": "关闭",
+    "generating": "生成中...",
+    "noPermission": "无法邀请",
+    "noPermissionDescription": "您没有邀请他人加入此聊天的权限。请联系管理员授予邀请权限。",
+    "canPassOnRoles": "可以邀请其他可以邀请的人",
+    "canUseAi": "可以使用 AI",
+    "canPauseAi": "可以暂停 AI",
+    "canGrantPauseAi": "可以邀请其他可以暂停 AI 的人",
+    "header": "邀请他人加入此聊天"
   },
   "badges": {
     "id": "身份",
@@ -149,9 +174,26 @@
     "fun": "有趣"
   },
   "mascot": {
-    "tagline": "用你的方式为你的事业筹资"
+    "tagline": "用你的方式为你的事业筹资",
+    "description": "Juicy 是人民的融资平台。用它来运营你的众筹、经营你的业务、管理你的活动、向客户销售、与社区合作，实现你的梦想。"
+  },
+  "beta": {
+    "title": "即将推出",
+    "whatWeAreBuilding": "Juicy 是人民的融资平台。用它来运营你的众筹、经营你的业务、管理你的活动、向客户销售、与社区合作，实现你的梦想。",
+    "whyBeta": "我们仍在调试中。可能会有 bug。",
+    "whenNotBeta": "等一切正常运行后，我们会去掉 beta 标签。",
+    "payUs": "支付",
+    "supportUs": "支持 Juicy Vision",
+    "comingSoon": "JUICY 即将推出。目前使用 NANA。"
+  },
+  "materials": {
+    "visionDoc": "上传你的愿景文档",
+    "masterPlan": "展示你的总体规划",
+    "screenshot": "粘贴截图"
   },
   "juicyExplainer": {
+    "intro": "Juicy 是人民的融资平台。",
+    "useIt": "用它来运营你的众筹、经营你的业务、管理你的活动、向客户销售、与社区合作，实现你的梦想。",
     "paragraph1": "$JUICY 是支持此应用的收益代币。当你向 Juicy Vision 付款时，你会收到与你的贡献成比例的 $JUICY 代币。",
     "paragraph2": "随着余额的增长，支持每个代币的价值也会增长。你可以随时兑现你的份额，或者持有以支持社区业务。",
     "paragraph3": "我们运营非常精简，但目前支付 LLM 代币费用很昂贵。应用的收入大部分流回给 $JUICY 持有者，这是有保证的。创造的价值越多，每个人受益越多。我们同舟共济。",

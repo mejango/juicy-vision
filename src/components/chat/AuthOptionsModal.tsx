@@ -51,22 +51,33 @@ export default function AuthOptionsModal({
     }
 
     const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200
     const gap = 8 // Gap between button and popover
+    const popoverWidth = 320 // w-80 = 20rem = 320px
 
     // Check if button is in lower half of viewport
     const isInLowerHalf = anchorPosition.top > viewportHeight / 2
+
+    // Horizontal position: align left edge of popover with left edge of button
+    // but ensure it doesn't overflow the viewport
+    let left = anchorPosition.left
+    if (left + popoverWidth > viewportWidth - 16) {
+      // Would overflow right edge, align to right edge instead
+      left = viewportWidth - popoverWidth - 16
+    }
+    left = Math.max(16, left)
 
     if (isInLowerHalf) {
       // Show above the button
       return {
         bottom: viewportHeight - anchorPosition.top + gap,
-        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
+        left,
       }
     } else {
       // Show below the button
       return {
         top: anchorPosition.top + anchorPosition.height + gap,
-        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
+        left,
       }
     }
   }, [anchorPosition])
@@ -155,8 +166,8 @@ export default function AuthOptionsModal({
               isAuthenticating
                 ? 'border-gray-500 text-gray-500 cursor-wait'
                 : isDark
-                ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
-                : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+                ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+                : 'border-green-600 text-green-600 hover:bg-green-50'
             }`}
           >
             {isAuthenticating ? '...' : t('auth.touchId', 'Touch ID')}
@@ -166,8 +177,8 @@ export default function AuthOptionsModal({
             onClick={handleWalletClick}
             className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
               isDark
-                ? 'border-green-500 text-green-500 hover:bg-green-500/10'
-                : 'border-green-600 text-green-600 hover:bg-green-50'
+                ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+                : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
             }`}
           >
             {t('auth.wallet', 'Wallet')}

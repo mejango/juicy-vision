@@ -163,9 +163,10 @@ const createMockMessage = (overrides?: Partial<ChatMessage>): ChatMessage => ({
 
 describe('ChatContainer', () => {
   beforeEach(() => {
-    // Reset stores
+    // Reset only data properties, preserving store methods
     useChatStore.setState({
       chats: [],
+      folders: [],
       activeChatId: null,
       isConnected: false,
       isLoading: false,
@@ -175,11 +176,22 @@ describe('ChatContainer', () => {
     useAuthStore.setState({
       user: null,
       token: null,
+      error: null,
+      isLoading: false,
     })
     vi.clearAllMocks()
   })
 
   afterEach(() => {
+    // Clean up store data to prevent state bleeding between tests
+    useChatStore.setState({
+      chats: [],
+      folders: [],
+      activeChatId: null,
+      isConnected: false,
+      isLoading: false,
+      error: null,
+    })
     vi.clearAllMocks()
   })
 
@@ -264,7 +276,10 @@ describe('ChatContainer', () => {
 
     it('connects to WebSocket when activeChatId is set', async () => {
       const mockChat = createMockChat({ id: 'test-chat-id' })
+      // Mock all API calls needed for the connection flow
+      vi.mocked(chatApi.fetchChat).mockResolvedValue(mockChat)
       vi.mocked(chatApi.fetchMessages).mockResolvedValue([])
+      vi.mocked(chatApi.fetchMembers).mockResolvedValue([])
 
       useChatStore.setState({
         activeChatId: 'test-chat-id',
@@ -298,7 +313,8 @@ describe('ChatContainer', () => {
 
   describe('authentication states', () => {
     it('renders for unauthenticated users', () => {
-      useAuthStore.setState({ isAuthenticated: () => false, user: null })
+      // isAuthenticated is a computed method, not state - just set user to null
+      useAuthStore.setState({ user: null, token: null })
       renderWithProviders(<ChatContainer />)
       expect(screen.getByRole('textbox')).toBeInTheDocument()
     })

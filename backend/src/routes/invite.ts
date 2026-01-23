@@ -122,6 +122,9 @@ const CreateInviteSchema = z.object({
   canSendMessages: z.boolean().default(true),
   canInviteOthers: z.boolean().default(false),
   canPassOnRoles: z.boolean().default(false),
+  canInvokeAi: z.boolean().default(true),
+  canPauseAi: z.boolean().default(false),
+  canGrantPauseAi: z.boolean().default(false),
 });
 
 /**
@@ -164,6 +167,16 @@ inviteRouter.post(
       return c.json({ success: false, error: 'Cannot grant role assignment permission' }, 403);
     }
 
+    // Can't grant canPauseAi if you don't have that permission (unless founder/admin)
+    if (body.canPauseAi && member.role !== 'founder' && member.role !== 'admin' && !member.canPauseAi) {
+      return c.json({ success: false, error: 'Cannot grant AI pause permission' }, 403);
+    }
+
+    // Can't grant canGrantPauseAi if you don't have that permission (unless founder/admin)
+    if (body.canGrantPauseAi && member.role !== 'founder' && member.role !== 'admin' && !member.canPauseAi) {
+      return c.json({ success: false, error: 'Cannot grant AI pause grant permission' }, 403);
+    }
+
     try {
       const invite = await createInvite({
         chatId,
@@ -171,6 +184,9 @@ inviteRouter.post(
         canSendMessages: body.canSendMessages,
         canInviteOthers: body.canInviteOthers,
         canPassOnRoles: body.canPassOnRoles,
+        canInvokeAi: body.canInvokeAi,
+        canPauseAi: body.canPauseAi,
+        canGrantPauseAi: body.canGrantPauseAi,
         maxUses: body.maxUses ?? null,
       });
 
@@ -185,6 +201,9 @@ inviteRouter.post(
           canSendMessages: invite.canSendMessages,
           canInviteOthers: invite.canInviteOthers,
           canPassOnRoles: invite.canPassOnRoles,
+          canInvokeAi: invite.canInvokeAi,
+          canPauseAi: invite.canPauseAi,
+          canGrantPauseAi: invite.canGrantPauseAi,
         }
       );
 
@@ -294,9 +313,21 @@ inviteRouter.get('/invite/:code', async (c) => {
       canSendMessages: invite.canSendMessages,
       canInviteOthers: invite.canInviteOthers,
       canPassOnRoles: invite.canPassOnRoles,
+      canInvokeAi: invite.canInvokeAi,
+      canPauseAi: invite.canPauseAi,
+      canGrantPauseAi: invite.canGrantPauseAi,
     },
   });
 });
+
+// Debug log to file
+async function debugLog(msg: string) {
+  const line = `${new Date().toISOString()} ${msg}\n`;
+  console.log(msg);
+  try {
+    await Deno.writeTextFile('/tmp/invite-debug.log', line, { append: true });
+  } catch {}
+}
 
 /**
  * POST /invite/:code/join - Join a chat via invite
@@ -308,6 +339,11 @@ inviteRouter.post(
   async (c) => {
     const code = c.req.param('code');
     const walletSession = c.get('walletSession')!;
+    const sessionId = c.req.header('X-Session-ID');
+
+    await debugLog(`[Invite Join] Session ID: ${sessionId}`);
+    await debugLog(`[Invite Join] Pseudo-address: ${walletSession.address}`);
+    await debugLog(`[Invite Join] Is anonymous: ${walletSession.isAnonymous}`);
 
     const invite = await getInviteByCode(code);
     if (!invite) {
@@ -320,6 +356,7 @@ inviteRouter.post(
 
     // Check if already a member - if so, just take them to the chat
     const existingMember = await getMember(invite.chatId, walletSession.address);
+    await debugLog(`[Invite Join] Existing member: ${existingMember ? 'yes' : 'no'}`);
     if (existingMember) {
       const chat = await getChatById(invite.chatId);
       return c.json({
@@ -334,13 +371,17 @@ inviteRouter.post(
 
     try {
       // Add member with invite permissions
+      await debugLog(`[Invite Join] Adding new member with address: ${walletSession.address}`);
       await addMemberViaInvite(invite.chatId, {
         address: walletSession.address,
         userId: walletSession.userId,
         role: 'member',
         canSendMessages: invite.canSendMessages,
         canInviteOthers: invite.canInviteOthers,
+        canInvokeAi: invite.canInvokeAi,
+        canPauseAi: invite.canPauseAi,
       });
+      await debugLog('[Invite Join] Member added successfully');
 
       // Increment invite uses
       await useInvite(invite.id);
@@ -377,7 +418,12 @@ inviteRouter.post(
         chatId: invite.chatId,
         data: {
           address: walletSession.address,
+          role: 'member',
+          canSendMessages: invite.canSendMessages,
+          canInviteOthers: invite.canInviteOthers,
           canPassOnRoles: invite.canPassOnRoles,
+          canInvokeAi: invite.canInvokeAi,
+          canPauseAi: invite.canPauseAi,
           joinedAt: new Date().toISOString(),
         },
       });

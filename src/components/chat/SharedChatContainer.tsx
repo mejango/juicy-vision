@@ -4,6 +4,7 @@ import { useThemeStore, useChatStore } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
 import * as chatApi from '../../services/chat'
 import { getSessionId } from '../../services/session'
+import { getEmojiFromAddress } from './ParticipantAvatars'
 
 // Helper to get the current user's pseudo-address (matches backend logic)
 function getCurrentUserAddress(): string {
@@ -422,7 +423,7 @@ export default function SharedChatContainer() {
                       {isAssistant
                         ? 'Juicy AI'
                         : sender?.displayName ||
-                          `${message.senderAddress.slice(0, 6)}...${message.senderAddress.slice(-4)}`}
+                          (sender?.customEmoji || getEmojiFromAddress(message.senderAddress))}
                     </p>
                   )}
 

@@ -47,7 +47,15 @@ export function useChatScroll({
   const [showActionBar, setShowActionBar] = useState(true)
   const lastScrollTop = useRef(0)
 
+  // Track dock scroll position for direction detection
+  const lastDockScrollTop = useRef(0)
+
+  // Track hasMessages in ref so wheel handler closure sees updates
+  const hasMessagesRef = useRef(hasMessages)
+  hasMessagesRef.current = hasMessages
+
   // Detect when sticky prompt hits top of container
+  // Also dispatch scroll direction for header shrinking
   useEffect(() => {
     const dock = dockRef.current
     const stickyPrompt = stickyPromptRef.current
@@ -58,6 +66,16 @@ export function useChatScroll({
       const promptRect = stickyPrompt.getBoundingClientRect()
       // Element is stuck when its top equals the container's top
       setIsPromptStuck(promptRect.top <= dockRect.top)
+
+      // Dispatch scroll direction event for header to shrink/expand
+      const currentScrollTop = dock.scrollTop
+      const isScrollingDown = currentScrollTop > lastDockScrollTop.current
+      lastDockScrollTop.current = currentScrollTop
+
+      // Shrink header when scrolling up in dock (which increases scrollTop)
+      window.dispatchEvent(new CustomEvent('juice:scroll-direction', {
+        detail: { isScrollingDown, scrollTop: currentScrollTop }
+      }))
     }
 
     dock.addEventListener('scroll', handleScroll)
@@ -121,6 +139,9 @@ export function useChatScroll({
       // Skip if scroll is locked (during dock animation)
       if (window.__dockScrollLocked) return
 
+      // Don't allow scrolling the dock when there are no messages
+      if (!hasMessagesRef.current) return
+
       const isInDock = dock.contains(e.target as Element)
 
       if (isInDock) {
@@ -160,16 +181,35 @@ export function useChatScroll({
 
     const handleScroll = () => {
       const currentScrollTop = container.scrollTop
-      const isScrollingDown = currentScrollTop > lastScrollTop.current
+      const scrollDelta = currentScrollTop - lastScrollTop.current
+      const isScrollingDown = scrollDelta > 0
+
+      // Detect if we're at/near the bottom of the scroll container
+      // This helps ignore iOS elastic bounce which falsely registers as "scroll up"
+      const distanceFromBottom = container.scrollHeight - container.clientHeight - currentScrollTop
+      const isAtBottom = distanceFromBottom < SCROLL_THRESHOLDS.SNAP_THRESHOLD
+
+      // Require meaningful scroll delta to show action bar - small deltas from bounce are ignored
+      // Bounce typically produces small fluctuations, genuine scroll up has larger delta
+      const isGenuineScrollUp = !isScrollingDown && Math.abs(scrollDelta) > SCROLL_THRESHOLDS.SNAP_THRESHOLD && !isAtBottom
 
       // Use same threshold as header - both compact/hide together
       const shouldCompact = isScrollingDown && currentScrollTop > SCROLL_THRESHOLDS.SHOW_SCROLL_BUTTON
-      setShowActionBar(!shouldCompact)
+
+      // Show action bar only on genuine scroll up, hide on scroll down
+      if (isGenuineScrollUp) {
+        setShowActionBar(true)
+      } else if (shouldCompact) {
+        setShowActionBar(false)
+      }
+      // Otherwise maintain current state (ignore bounce noise)
+
       lastScrollTop.current = currentScrollTop
 
       // Dispatch event for header to shrink when scrolling down, expand when scrolling up
+      // Use same genuine scroll up detection to avoid bounce triggering header expand
       window.dispatchEvent(new CustomEvent('juice:scroll-direction', {
-        detail: { isScrollingDown, scrollTop: currentScrollTop }
+        detail: { isScrollingDown: isScrollingDown || !isGenuineScrollUp, scrollTop: currentScrollTop }
       }))
     }
 

@@ -873,6 +873,426 @@ Deno.test('Chat Migration - POST /chat/migrate', async (t) => {
 // Full Invite Flow Integration Test
 // ============================================================================
 
+// ============================================================================
+// Permission Level Tests - The 4 Chat Permission Levels
+// ============================================================================
+
+Deno.test('Chat Permissions - 4 Permission Levels', async (t) => {
+  /**
+   * The 4 chat permission levels:
+   * 1. view-only: canSendMessages=false
+   * 2. view-and-write: canSendMessages=true, canInviteOthers=false
+   * 3. view-and-write-and-invite: canSendMessages=true, canInviteOthers=true, canPassOnRoles=false
+   * 4. view-and-write-and-invite-and-caninvite: canSendMessages=true, canInviteOthers=true, canPassOnRoles=true
+   */
+
+  // Simulated member with permissions
+  interface ChatMember {
+    address: string;
+    role: 'founder' | 'admin' | 'member';
+    canSendMessages: boolean;
+    canInvite: boolean;
+    canPassOnRoles: boolean;
+  }
+
+  type PermissionLevel =
+    | 'view-only'
+    | 'view-and-write'
+    | 'view-and-write-and-invite'
+    | 'view-and-write-and-invite-and-caninvite';
+
+  function getPermissionLevel(member: ChatMember): PermissionLevel {
+    if (!member.canSendMessages) {
+      return 'view-only';
+    }
+    if (!member.canInvite) {
+      return 'view-and-write';
+    }
+    if (!member.canPassOnRoles && member.role !== 'founder' && member.role !== 'admin') {
+      return 'view-and-write-and-invite';
+    }
+    return 'view-and-write-and-invite-and-caninvite';
+  }
+
+  function checkPermission(
+    member: ChatMember,
+    action: 'read' | 'write' | 'invite' | 'create-invite-with-invite-permission'
+  ): boolean {
+    switch (action) {
+      case 'read':
+        return true; // All members can read
+      case 'write':
+        return member.canSendMessages;
+      case 'invite':
+        return member.canInvite;
+      case 'create-invite-with-invite-permission':
+        // Can only create invites that grant invite permission if canPassOnRoles or founder/admin
+        return member.canInvite && (member.canPassOnRoles || member.role === 'founder' || member.role === 'admin');
+      default:
+        return false;
+    }
+  }
+
+  await t.step('view-only member: can read, cannot write', () => {
+    const member: ChatMember = {
+      address: '0xviewonly',
+      role: 'member',
+      canSendMessages: false,
+      canInvite: false,
+      canPassOnRoles: false,
+    };
+
+    assertEquals(getPermissionLevel(member), 'view-only');
+    assertEquals(checkPermission(member, 'read'), true);
+    assertEquals(checkPermission(member, 'write'), false);
+    assertEquals(checkPermission(member, 'invite'), false);
+    assertEquals(checkPermission(member, 'create-invite-with-invite-permission'), false);
+  });
+
+  await t.step('view-and-write member: can read and write, cannot invite', () => {
+    const member: ChatMember = {
+      address: '0xwriter',
+      role: 'member',
+      canSendMessages: true,
+      canInvite: false,
+      canPassOnRoles: false,
+    };
+
+    assertEquals(getPermissionLevel(member), 'view-and-write');
+    assertEquals(checkPermission(member, 'read'), true);
+    assertEquals(checkPermission(member, 'write'), true);
+    assertEquals(checkPermission(member, 'invite'), false);
+    assertEquals(checkPermission(member, 'create-invite-with-invite-permission'), false);
+  });
+
+  await t.step('view-and-write-and-invite member: can invite but not grant invite permission', () => {
+    const member: ChatMember = {
+      address: '0xinviter',
+      role: 'member',
+      canSendMessages: true,
+      canInvite: true,
+      canPassOnRoles: false,
+    };
+
+    assertEquals(getPermissionLevel(member), 'view-and-write-and-invite');
+    assertEquals(checkPermission(member, 'read'), true);
+    assertEquals(checkPermission(member, 'write'), true);
+    assertEquals(checkPermission(member, 'invite'), true);
+    assertEquals(checkPermission(member, 'create-invite-with-invite-permission'), false);
+  });
+
+  await t.step('view-and-write-and-invite-and-caninvite member: full permissions', () => {
+    const member: ChatMember = {
+      address: '0xsuperinviter',
+      role: 'member',
+      canSendMessages: true,
+      canInvite: true,
+      canPassOnRoles: true,
+    };
+
+    assertEquals(getPermissionLevel(member), 'view-and-write-and-invite-and-caninvite');
+    assertEquals(checkPermission(member, 'read'), true);
+    assertEquals(checkPermission(member, 'write'), true);
+    assertEquals(checkPermission(member, 'invite'), true);
+    assertEquals(checkPermission(member, 'create-invite-with-invite-permission'), true);
+  });
+
+  await t.step('founder always has view-and-write-and-invite-and-caninvite level', () => {
+    const member: ChatMember = {
+      address: '0xfounder',
+      role: 'founder',
+      canSendMessages: true,
+      canInvite: true,
+      canPassOnRoles: false, // Even without explicit flag, founders can pass on roles
+    };
+
+    assertEquals(getPermissionLevel(member), 'view-and-write-and-invite-and-caninvite');
+    assertEquals(checkPermission(member, 'create-invite-with-invite-permission'), true);
+  });
+
+  await t.step('admin always has view-and-write-and-invite-and-caninvite level', () => {
+    const member: ChatMember = {
+      address: '0xadmin',
+      role: 'admin',
+      canSendMessages: true,
+      canInvite: true,
+      canPassOnRoles: false, // Even without explicit flag, admins can pass on roles
+    };
+
+    assertEquals(getPermissionLevel(member), 'view-and-write-and-invite-and-caninvite');
+    assertEquals(checkPermission(member, 'create-invite-with-invite-permission'), true);
+  });
+});
+
+Deno.test('Chat Privacy - Chats Private by Default', async (t) => {
+  interface Chat {
+    id: string;
+    isPublic: boolean;
+  }
+
+  // Simulated chat creation (matching the service behavior)
+  function createChat(params: { isPublic?: boolean }): Chat {
+    return {
+      id: 'chat-' + Date.now(),
+      isPublic: params.isPublic ?? false, // Default to private
+    };
+  }
+
+  await t.step('new chat is private by default', () => {
+    const chat = createChat({});
+    assertEquals(chat.isPublic, false);
+  });
+
+  await t.step('can explicitly create public chat', () => {
+    const chat = createChat({ isPublic: true });
+    assertEquals(chat.isPublic, true);
+  });
+
+  await t.step('can explicitly create private chat', () => {
+    const chat = createChat({ isPublic: false });
+    assertEquals(chat.isPublic, false);
+  });
+});
+
+Deno.test('Invite Permission Flow - End to End', async (t) => {
+  /**
+   * Test the full permission flow:
+   * 1. Founder creates invite with view-only permissions
+   * 2. User joins via invite and can only view
+   * 3. Founder creates invite with write permissions
+   * 4. User joins and can write but not invite
+   * 5. Founder creates invite with invite permissions (no pass-on)
+   * 6. User can invite but cannot grant invite permissions
+   * 7. Founder creates invite with full permissions
+   * 8. User can create invites that grant invite permissions
+   */
+
+  interface Member {
+    address: string;
+    canSendMessages: boolean;
+    canInvite: boolean;
+    canPassOnRoles: boolean;
+  }
+
+  interface Invite {
+    code: string;
+    canSendMessages: boolean;
+    canInviteOthers: boolean;
+    canPassOnRoles: boolean;
+  }
+
+  // Simulated chat state
+  const members = new Map<string, Member>();
+  const invites = new Map<string, Invite>();
+
+  // Add founder
+  members.set('0xfounder', {
+    address: '0xfounder',
+    canSendMessages: true,
+    canInvite: true,
+    canPassOnRoles: true,
+  });
+
+  function createInvite(
+    creatorAddress: string,
+    permissions: { canSendMessages: boolean; canInviteOthers: boolean; canPassOnRoles: boolean }
+  ): Invite | { error: string } {
+    const creator = members.get(creatorAddress);
+    if (!creator) return { error: 'Not a member' };
+    if (!creator.canInvite) return { error: 'Cannot create invites' };
+    if (permissions.canPassOnRoles && !creator.canPassOnRoles) {
+      return { error: 'Cannot grant pass-on-roles permission' };
+    }
+
+    const code = 'INV' + Math.random().toString(36).slice(2, 6);
+    const invite: Invite = { code, ...permissions };
+    invites.set(code, invite);
+    return invite;
+  }
+
+  function joinViaInvite(code: string, address: string): Member | { error: string } {
+    const invite = invites.get(code);
+    if (!invite) return { error: 'Invalid invite' };
+    if (members.has(address)) return { error: 'Already a member' };
+
+    const member: Member = {
+      address,
+      canSendMessages: invite.canSendMessages,
+      canInvite: invite.canInviteOthers,
+      canPassOnRoles: invite.canPassOnRoles,
+    };
+    members.set(address, member);
+    return member;
+  }
+
+  await t.step('1. Create view-only invite', () => {
+    const result = createInvite('0xfounder', {
+      canSendMessages: false,
+      canInviteOthers: false,
+      canPassOnRoles: false,
+    });
+    assertEquals('error' in result, false);
+    if (!('error' in result)) {
+      assertEquals(result.canSendMessages, false);
+    }
+  });
+
+  await t.step('2. Join via view-only invite', () => {
+    const viewOnlyInvite = Array.from(invites.values()).find((i) => !i.canSendMessages);
+    const result = joinViaInvite(viewOnlyInvite!.code, '0xviewonly');
+    assertEquals('error' in result, false);
+    if (!('error' in result)) {
+      assertEquals(result.canSendMessages, false);
+      assertEquals(result.canInvite, false);
+    }
+  });
+
+  await t.step('3. Create view-and-write invite', () => {
+    const result = createInvite('0xfounder', {
+      canSendMessages: true,
+      canInviteOthers: false,
+      canPassOnRoles: false,
+    });
+    assertEquals('error' in result, false);
+  });
+
+  await t.step('4. Join via view-and-write invite', () => {
+    const writeInvite = Array.from(invites.values()).find((i) => i.canSendMessages && !i.canInviteOthers);
+    const result = joinViaInvite(writeInvite!.code, '0xwriter');
+    assertEquals('error' in result, false);
+    if (!('error' in result)) {
+      assertEquals(result.canSendMessages, true);
+      assertEquals(result.canInvite, false);
+    }
+  });
+
+  await t.step('5. Create view-and-write-and-invite invite (no pass-on)', () => {
+    const result = createInvite('0xfounder', {
+      canSendMessages: true,
+      canInviteOthers: true,
+      canPassOnRoles: false,
+    });
+    assertEquals('error' in result, false);
+  });
+
+  await t.step('6. Join via invite and try to create invite with pass-on', () => {
+    const inviteInvite = Array.from(invites.values()).find((i) => i.canInviteOthers && !i.canPassOnRoles);
+    const joinResult = joinViaInvite(inviteInvite!.code, '0xinviter');
+    assertEquals('error' in joinResult, false);
+
+    // This user can create invites but NOT grant pass-on permission
+    const createResult = createInvite('0xinviter', {
+      canSendMessages: true,
+      canInviteOthers: true,
+      canPassOnRoles: true, // Should fail
+    });
+    assertEquals('error' in createResult, true);
+    if ('error' in createResult) {
+      assertEquals(createResult.error, 'Cannot grant pass-on-roles permission');
+    }
+  });
+
+  await t.step('7. Create full permissions invite', () => {
+    const result = createInvite('0xfounder', {
+      canSendMessages: true,
+      canInviteOthers: true,
+      canPassOnRoles: true,
+    });
+    assertEquals('error' in result, false);
+  });
+
+  await t.step('8. Join via full invite and create invite with pass-on', () => {
+    const fullInvite = Array.from(invites.values()).find((i) => i.canPassOnRoles);
+    const joinResult = joinViaInvite(fullInvite!.code, '0xsuperinviter');
+    assertEquals('error' in joinResult, false);
+
+    // This user CAN create invites with pass-on permission
+    const createResult = createInvite('0xsuperinviter', {
+      canSendMessages: true,
+      canInviteOthers: true,
+      canPassOnRoles: true,
+    });
+    assertEquals('error' in createResult, false);
+  });
+});
+
+Deno.test('Permission Enforcement - Write Permission Check', async (t) => {
+  interface Member {
+    address: string;
+    canSendMessages: boolean;
+    isActive: boolean;
+  }
+
+  interface Chat {
+    id: string;
+    isPublic: boolean;
+  }
+
+  // Simulated state
+  const chat: Chat = { id: 'chat-1', isPublic: false };
+  const members = new Map<string, Member>();
+
+  members.set('0xwriter', { address: '0xwriter', canSendMessages: true, isActive: true });
+  members.set('0xviewonly', { address: '0xviewonly', canSendMessages: false, isActive: true });
+  members.set('0xinactive', { address: '0xinactive', canSendMessages: true, isActive: false });
+
+  function checkPermission(
+    address: string,
+    action: 'read' | 'write'
+  ): boolean {
+    const member = members.get(address);
+    if (!member || !member.isActive) {
+      if (action === 'read') return chat.isPublic;
+      return false;
+    }
+
+    switch (action) {
+      case 'read':
+        return true;
+      case 'write':
+        return member.canSendMessages; // THE FIX: Actually check canSendMessages
+      default:
+        return false;
+    }
+  }
+
+  function sendMessage(senderAddress: string, content: string): { success: boolean; error?: string } {
+    if (!checkPermission(senderAddress, 'write')) {
+      return { success: false, error: 'Not authorized to send messages' };
+    }
+    return { success: true };
+  }
+
+  await t.step('member with write permission can send messages', () => {
+    const result = sendMessage('0xwriter', 'Hello');
+    assertEquals(result.success, true);
+  });
+
+  await t.step('view-only member cannot send messages', () => {
+    const result = sendMessage('0xviewonly', 'Hello');
+    assertEquals(result.success, false);
+    assertEquals(result.error, 'Not authorized to send messages');
+  });
+
+  await t.step('inactive member cannot send messages', () => {
+    const result = sendMessage('0xinactive', 'Hello');
+    assertEquals(result.success, false);
+  });
+
+  await t.step('non-member cannot send messages', () => {
+    const result = sendMessage('0xstranger', 'Hello');
+    assertEquals(result.success, false);
+  });
+
+  await t.step('non-member cannot read private chat', () => {
+    assertEquals(checkPermission('0xstranger', 'read'), false);
+  });
+
+  await t.step('view-only member can read', () => {
+    assertEquals(checkPermission('0xviewonly', 'read'), true);
+  });
+});
+
 Deno.test('Full Invite Flow - End to End', async (t) => {
   // Simulated state
   const chats = new Map<string, any>();

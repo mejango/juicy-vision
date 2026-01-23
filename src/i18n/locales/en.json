@@ -39,13 +39,13 @@
     "soTellMe": "So tell me.",
     "thereYouAre": "There you are.",
     "finally": "Finally.",
-    "ohGoodYouMadeIt": "Oh good, you made it.",
+    "whatHaveYouGot": "What have you got?",
     "letsGetToWork": "Let's get to work.",
-    "rightOnTime": "Right on time.",
+    "goOn": "Go on.",
     "lookWhoShowedUp": "Look who showed up.",
     "showMeWhatYouGot": "Show me what you got.",
-    "letsMakeItHappen": "Let's make it happen.",
-    "readyToSqueeze": "Ready to squeeze?",
+    "makeItCount": "Make it count.",
+    "begin": "Begin.",
     "yourMove": "Your move.",
     "helloDarling": "Hello, darling.",
     "helloChampion": "Hello, champion."
@@ -108,9 +108,24 @@
     "noTrash": "Trash is empty"
   },
   "chat": {
+    "you": "You",
+    "anonymous": "Anonymous",
     "conspire": "Conspire",
     "save": "Save",
-    "export": "Export"
+    "export": "Export",
+    "ai": "AI",
+    "skipAi": "Skip AI",
+    "skipping": "Skipping",
+    "aiPaused": "AI paused",
+    "aiPausedExplanation": "AI has been paused by an admin for this chat. Your messages will not receive AI responses until an admin turns it back on.",
+    "pauseAi": "Pause AI",
+    "pauseAiTooltip": "Click to see AI skip options",
+    "skipForAll": "Skip for all",
+    "skipForYou": "Skip for you",
+    "skipAllOnTooltip": "AI is paused for everyone",
+    "skipAllOffTooltip": "Click to pause AI for everyone",
+    "skipYouOnTooltip": "Your messages won't invoke AI",
+    "skipYouOffTooltip": "Click to skip AI for your messages"
   },
   "note": {
     "placeholder": "Write your note...",
@@ -133,6 +148,7 @@
     "maxUses": "Max uses",
     "unlimited": "Unlimited",
     "creating": "Creating...",
+    "generating": "Generating...",
     "createLink": "Create invite link",
     "yourLink": "Your invite link",
     "copy": "Copy",
@@ -144,7 +160,14 @@
     "maxUsesDisplay": "Limited to {{count}} uses",
     "noExpiry": "No expiry, unlimited uses",
     "createAnother": "Create another link",
-    "close": "Close"
+    "close": "Close",
+    "noPermission": "Can't Invite",
+    "noPermissionDescription": "You don't have permission to invite people to this chat. Ask an admin to grant you invite permissions.",
+    "canPassOnRoles": "Can invite others who can invite",
+    "canUseAi": "Can use AI",
+    "canPauseAi": "Can pause AI",
+    "canGrantPauseAi": "Can invite others who can pause AI",
+    "header": "Invite someone to this chat"
   },
   "badges": {
     "id": "id",
@@ -155,16 +178,23 @@
     "fun": "fun"
   },
   "mascot": {
-    "tagline": "Fund Your Thing Your Way"
+    "tagline": "Fund Your Thing Your Way",
+    "description": "Juicy is the people's funding platform. Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams."
   },
   "juicyExplainer": {
-    "paragraph1": "JUICY is the revenue token that powers this app. When you pay into Juicy Vision, you receive JUICY revnet tokens proportional to your payment.",
+    "intro": "Juicy is the people's funding platform.",
+    "useIt": "Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams.",
+    "paragraph1": "JUICY runs like a co-op, and is the revenue token that powers this app. When you pay into Juicy, you receive JUICY revnet tokens proportional to your payment.",
     "paragraph2": "As Juicy's balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business.",
-    "paragraph3": "We run extremely lean, but paying for LLM tokens is expensive for now. Revenue from the app mostly flows back to JUICY holders, guaranteed. The more value created, the more everyone benefits. We're in this together.",
+    "paragraph3": "We run extremely lean, but paying for LLM tokens is expensive for now. Revenue from the app mostly flows to JUICY holders, guaranteed. The more value created, the more everyone benefits. We're in this together.",
     "poweredBy": "Uses revnets, powered by Juicebox, secured by Ethereum, Optimism, Base, and Arbitrum."
   },
   "beta": {
     "title": "What's to come",
+    "whatWeAreBuilding": "Juicy is the people's funding platform. Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams.",
+    "whyBeta": "We're still working out the kinks. Expect bugs.",
+    "whenNotBeta": "We'll drop the beta tag when it just works.",
+    "payUs": "Pay us",
     "supportUs": "Support Juicy Vision",
     "comingSoon": "JUICY coming soon. Currently using NANA."
   },
@@ -1073,7 +1103,12 @@
     "goingOnchain": "going onchain"
   },
   "dock": {
-    "askAbout": "See and take action across the ecosystem."
+    "askAbout": "See and take actions across the ecosystem."
+  },
+  "materials": {
+    "visionDoc": "Drop your vision doc",
+    "masterPlan": "Show your master plan",
+    "screenshot": "Paste a screenshot"
   },
   "recommendations": {
     "fundMyStartup": "Fund my startup",

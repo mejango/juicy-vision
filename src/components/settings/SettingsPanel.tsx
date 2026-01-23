@@ -1,9 +1,22 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { useSettingsStore, useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { signInWithPasskey } from '../../services/passkeyWallet'
+import { FRUIT_EMOJIS, getEmojiFromAddress } from '../chat/ParticipantAvatars'
+import { getSessionId } from '../../services/session'
+import { getWalletSession } from '../../services/siwe'
+
+interface JuicyIdentity {
+  id: string
+  address: string
+  emoji: string
+  username: string
+  formatted: string
+  createdAt: string
+  updatedAt: string
+}
 
 export interface AnchorPosition {
   top: number
@@ -24,10 +37,12 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     pinataJwt,
     ankrApiKey,
     theGraphApiKey,
+    selectedFruit,
     setClaudeApiKey,
     setPinataJwt,
     setAnkrApiKey,
     setTheGraphApiKey,
+    setSelectedFruit,
     clearSettings,
   } = useSettingsStore()
 
@@ -70,6 +85,110 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
   const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
 
+  // Juicy ID state
+  const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
+  const [identityUsername, setIdentityUsername] = useState('')
+  const [identityLoading, setIdentityLoading] = useState(false)
+  const [identityError, setIdentityError] = useState<string | null>(null)
+  const [identityAvailable, setIdentityAvailable] = useState<boolean | null>(null)
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
+
+  // Get API headers for identity requests
+  const getApiHeaders = useCallback(() => {
+    const sessionId = getSessionId()
+    const walletSession = getWalletSession()
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Session-ID': sessionId,
+    }
+    if (walletSession?.token) {
+      headers['X-Wallet-Session'] = walletSession.token
+    }
+    return headers
+  }, [])
+
+  // Load current identity
+  const loadIdentity = useCallback(async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${apiUrl}/identity/me`, {
+        headers: getApiHeaders(),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && data.data) {
+          setIdentity(data.data)
+          setIdentityUsername(data.data.username)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load identity:', err)
+    }
+  }, [getApiHeaders])
+
+  // Check identity availability
+  const checkAvailability = useCallback(async (emoji: string, username: string) => {
+    if (!username || username.length < 3) {
+      setIdentityAvailable(null)
+      return
+    }
+    setCheckingAvailability(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+      const params = new URLSearchParams({ emoji, username })
+      const res = await fetch(`${apiUrl}/identity/check?${params}`, {
+        headers: getApiHeaders(),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setIdentityAvailable(data.data?.available ?? null)
+      }
+    } catch (err) {
+      console.error('Failed to check availability:', err)
+    } finally {
+      setCheckingAvailability(false)
+    }
+  }, [getApiHeaders])
+
+  // Save identity
+  const saveIdentity = useCallback(async () => {
+    const emoji = selectedFruit || (() => {
+      const walletSession = getWalletSession()
+      const sessionId = getSessionId()
+      const addr = walletSession?.address ||
+        `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+      return getEmojiFromAddress(addr)
+    })()
+
+    if (!identityUsername || identityUsername.length < 3) {
+      setIdentityError('Username must be at least 3 characters')
+      return
+    }
+
+    setIdentityLoading(true)
+    setIdentityError(null)
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${apiUrl}/identity/me`, {
+        method: 'PUT',
+        headers: getApiHeaders(),
+        body: JSON.stringify({ emoji, username: identityUsername }),
+      })
+      const data = await res.json()
+      if (data.success && data.data) {
+        setIdentity(data.data)
+        setIdentityError(null)
+      } else {
+        setIdentityError(data.error || 'Failed to set identity')
+      }
+    } catch (err) {
+      setIdentityError(err instanceof Error ? err.message : 'Failed to set identity')
+    } finally {
+      setIdentityLoading(false)
+    }
+  }, [selectedFruit, identityUsername, getApiHeaders])
+
   // Load passkeys when panel opens
   useEffect(() => {
     if (isOpen && isLoggedIn) {
@@ -77,12 +196,48 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     }
   }, [isOpen, isLoggedIn, loadPasskeys])
 
+  // Load identity when panel opens
+  useEffect(() => {
+    if (isOpen) {
+      loadIdentity()
+    }
+  }, [isOpen, loadIdentity])
+
+  // Check availability when username or selected fruit changes
+  useEffect(() => {
+    if (!identityUsername || identityUsername.length < 3) {
+      setIdentityAvailable(null)
+      return
+    }
+
+    // Don't check if it's the current identity
+    const currentEmoji = selectedFruit || (() => {
+      const walletSession = getWalletSession()
+      const sessionId = getSessionId()
+      const addr = walletSession?.address ||
+        `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+      return getEmojiFromAddress(addr)
+    })()
+
+    if (identity && identity.emoji === currentEmoji && identity.username.toLowerCase() === identityUsername.toLowerCase()) {
+      setIdentityAvailable(true)
+      return
+    }
+
+    const timer = setTimeout(() => {
+      checkAvailability(currentEmoji, identityUsername)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [identityUsername, selectedFruit, identity, checkAvailability])
+
   // Reset forms when closing
   useEffect(() => {
     if (!isOpen) {
       setShowEmailForm(false)
       setEmailError(null)
       setPasskeyError(null)
+      setIdentityError(null)
     }
   }, [isOpen])
 
@@ -400,6 +555,137 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                     <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Connect</span>
                   </button>
                 )}
+              </div>
+
+              {/* Juicy ID */}
+              <div className={`pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
+                <p className={`text-[10px] mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Juicy ID
+                </p>
+
+                {/* Current identity display */}
+                {identity && (
+                  <p className={`text-sm mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {identity.formatted}
+                  </p>
+                )}
+
+                {/* Emoji picker row */}
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {FRUIT_EMOJIS.map((fruit) => {
+                    // Get default emoji based on current user's address
+                    const walletSession = getWalletSession()
+                    const sessionId = getSessionId()
+                    const currentAddress = walletSession?.address ||
+                      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+                    const defaultEmoji = getEmojiFromAddress(currentAddress)
+                    const isSelected = selectedFruit === fruit || (!selectedFruit && fruit === defaultEmoji)
+
+                    const handleEmojiClick = async () => {
+                      const newEmoji = fruit === defaultEmoji ? null : fruit
+                      setSelectedFruit(newEmoji)
+
+                      // Sync to server so others see the change
+                      try {
+                        const apiUrl = import.meta.env.VITE_API_URL || ''
+                        const walletSessionToken = walletSession?.token
+                        const headers: Record<string, string> = {
+                          'Content-Type': 'application/json',
+                          'X-Session-ID': sessionId,
+                        }
+                        if (walletSessionToken) {
+                          headers['X-Wallet-Session'] = walletSessionToken
+                        }
+                        await fetch(`${apiUrl}/chat/me/emoji`, {
+                          method: 'PATCH',
+                          headers,
+                          body: JSON.stringify({ customEmoji: newEmoji }),
+                        })
+                      } catch (err) {
+                        console.error('Failed to sync emoji:', err)
+                      }
+                    }
+
+                    return (
+                      <button
+                        key={fruit}
+                        onClick={handleEmojiClick}
+                        className={`w-7 h-7 text-base flex items-center justify-center transition-all ${
+                          isSelected
+                            ? isDark
+                              ? 'bg-white/20 ring-2 ring-juice-cyan'
+                              : 'bg-gray-200 ring-2 ring-juice-cyan'
+                            : isDark
+                              ? 'hover:bg-white/10'
+                              : 'hover:bg-gray-100'
+                        }`}
+                        title={fruit === defaultEmoji ? 'Default (based on your address)' : undefined}
+                      >
+                        {fruit}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Username input */}
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      value={identityUsername}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20)
+                        setIdentityUsername(val)
+                        setIdentityError(null)
+                      }}
+                      placeholder="username"
+                      className={`w-full px-2 py-1.5 text-xs border outline-none pr-6 ${
+                        isDark
+                          ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'
+                          : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-gray-300'
+                      }`}
+                    />
+                    {/* Availability indicator */}
+                    {identityUsername.length >= 3 && (
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">
+                        {checkingAvailability ? (
+                          <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>...</span>
+                        ) : identityAvailable === true ? (
+                          <span className="text-green-500">&#10003;</span>
+                        ) : identityAvailable === false ? (
+                          <span className="text-red-400">&#10007;</span>
+                        ) : null}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={saveIdentity}
+                    disabled={identityLoading || !identityUsername || identityUsername.length < 3 || identityAvailable === false}
+                    className={`px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${
+                      isDark
+                        ? 'text-juice-cyan border border-juice-cyan/30 hover:border-juice-cyan/50'
+                        : 'text-juice-cyan border border-juice-cyan/40 hover:border-juice-cyan/60'
+                    }`}
+                  >
+                    {identityLoading ? '...' : identity ? 'Update' : 'Set'}
+                  </button>
+                </div>
+                {identityError && (
+                  <p className="text-[10px] text-red-400 mt-1">{identityError}</p>
+                )}
+                <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                  3-20 chars, letters/numbers/underscore
+                </p>
+
+                {/* Address - subtle, small, full */}
+                <p className={`text-[10px] font-mono mt-3 pt-2 border-t break-all ${isDark ? 'text-gray-600 border-white/5' : 'text-gray-400 border-gray-100'}`}>
+                  {(() => {
+                    const walletSession = getWalletSession()
+                    const sessionId = getSessionId()
+                    return walletSession?.address ||
+                      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+                  })()}
+                </p>
               </div>
 
               {/* Sign Out */}

@@ -19,8 +19,11 @@ import {
   getChatMembers,
   getMember,
   addMember,
+  addMemberViaInvite,
   removeMember,
   updateMemberPermissions,
+  updateMemberProfile,
+  updateUserEmoji,
   sendMessage,
   getChatMessages,
   deleteMessage,
@@ -33,6 +36,7 @@ import {
   updateChatName,
   deleteChat,
   reportChat,
+  toggleChatAiEnabled,
   type ChatFolder,
   createFolder,
   getFolder,
@@ -68,7 +72,7 @@ import {
   getOnlineMembers,
   type WsClient,
 } from '../services/websocket.ts';
-import { queryOne, execute } from '../db/index.ts';
+import { query, queryOne, execute } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
 
 const chatRouter = new Hono();
@@ -524,24 +528,57 @@ chatRouter.post(
   }
 );
 
+// Debug log to file
+async function debugLog(msg: string) {
+  const line = `${new Date().toISOString()} ${msg}\n`;
+  console.log(msg);
+  try {
+    await Deno.writeTextFile('/tmp/invite-debug.log', line, { append: true });
+  } catch {}
+}
+
 // GET /chat/:chatId - Get chat details
 chatRouter.get('/:chatId', optionalAuth, optionalWalletSession, async (c) => {
   const chatId = c.req.param('chatId');
+  const sessionId = c.req.header('X-Session-ID');
   const chat = await getChatById(chatId);
+
+  await debugLog(`[Fetch Chat] Chat ID: ${chatId}`);
+  await debugLog(`[Fetch Chat] Session ID: ${sessionId}`);
 
   if (!chat) {
     return c.json({ success: false, error: 'Chat not found' }, 404);
   }
 
   const walletSession = c.get('walletSession');
+  await debugLog(`[Fetch Chat] Has wallet session: ${!!walletSession}`);
+  await debugLog(`[Fetch Chat] Wallet address: ${walletSession?.address}`);
+  await debugLog(`[Fetch Chat] Is anonymous: ${walletSession?.isAnonymous}`);
+  await debugLog(`[Fetch Chat] Chat is public: ${chat?.isPublic}`);
 
   // Check read permission for private chats
   if (!chat.isPublic) {
     if (!walletSession) {
+      await debugLog('[Fetch Chat] DENIED: No wallet session for private chat');
       return c.json({ success: false, error: 'Authentication required' }, 401);
     }
-    const canRead = await checkPermission(chatId, walletSession.address, 'read');
+
+    let canRead = await checkPermission(chatId, walletSession.address, 'read');
+    await debugLog(`[Fetch Chat] Can read with primary address: ${canRead}`);
+
+    // If primary auth failed, try anonymous session ID as fallback
+    // This handles cases where user joined via invite with session ID but has a different wallet connected
+    if (!canRead && sessionId && sessionId.startsWith('ses_')) {
+      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+      if (pseudoAddress !== walletSession.address) {
+        await debugLog(`[Fetch Chat] Trying fallback pseudo-address: ${pseudoAddress}`);
+        canRead = await checkPermission(chatId, pseudoAddress, 'read');
+        await debugLog(`[Fetch Chat] Can read with pseudo-address: ${canRead}`);
+      }
+    }
+
     if (!canRead) {
+      await debugLog(`[Fetch Chat] DENIED: No read permission for address ${walletSession.address}`);
       return c.json({ success: false, error: 'Access denied' }, 403);
     }
   }
@@ -597,10 +634,20 @@ chatRouter.get(
     }
 
     const walletSession = c.get('walletSession');
+    const sessionId = c.req.header('X-Session-ID');
 
     // Check read permission for private chats
     if (!chat.isPublic && walletSession) {
-      const canRead = await checkPermission(chatId, walletSession.address, 'read');
+      let canRead = await checkPermission(chatId, walletSession.address, 'read');
+
+      // If primary auth failed, try anonymous session ID as fallback
+      if (!canRead && sessionId && sessionId.startsWith('ses_')) {
+        const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+        if (pseudoAddress !== walletSession.address) {
+          canRead = await checkPermission(chatId, pseudoAddress, 'read');
+        }
+      }
+
       if (!canRead) {
         return c.json({ success: false, error: 'Access denied' }, 403);
       }
@@ -671,6 +718,7 @@ const UpdatePermissionsSchema = z.object({
   canInvite: z.boolean().optional(),
   canInvokeAi: z.boolean().optional(),
   canManageMembers: z.boolean().optional(),
+  canPauseAi: z.boolean().optional(),
 });
 
 chatRouter.patch(
@@ -694,6 +742,35 @@ chatRouter.patch(
       return c.json({ success: true, data: serializeMember(member) });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update permissions';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// PATCH /chat/me/emoji - Update current user's emoji across all chats
+const UpdateEmojiSchema = z.object({
+  customEmoji: z.string().max(10).nullable(),
+});
+
+chatRouter.patch(
+  '/me/emoji',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', UpdateEmojiSchema),
+  async (c) => {
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      await updateUserEmoji(walletSession.address, body.customEmoji);
+
+      // Broadcast the emoji change to all chats the user is in
+      const { broadcastMemberUpdate } = await import('../services/websocket.ts');
+      broadcastMemberUpdate(walletSession.address, { customEmoji: body.customEmoji });
+
+      return c.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update emoji';
       return c.json({ success: false, error: message }, 400);
     }
   }
@@ -729,12 +806,61 @@ chatRouter.post(
   async (c) => {
     const chatId = c.req.param('chatId');
     const walletSession = c.get('walletSession')!;
+    const sessionId = c.req.header('X-Session-ID');
     const body = c.req.valid('json');
+
+    // Determine which address to use for sending
+    // First try the wallet session address, then fall back to pseudo-address from session ID
+    let senderAddress = walletSession.address;
+    let canWrite = await checkPermission(chatId, senderAddress, 'write');
+
+    if (!canWrite && sessionId && sessionId.startsWith('ses_')) {
+      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+      if (pseudoAddress !== walletSession.address) {
+        const pseudoCanWrite = await checkPermission(chatId, pseudoAddress, 'write');
+        if (pseudoCanWrite) {
+          // User joined via session but now has a wallet connected
+          // Upgrade: add their wallet as a member so they can use their real identity
+          const pseudoMember = await getMember(chatId, pseudoAddress);
+          if (pseudoMember && !walletSession.isAnonymous) {
+            try {
+              // Add wallet address as member with same role/permissions
+              await addMemberViaInvite(chatId, {
+                address: walletSession.address,
+                userId: walletSession.userId,
+                role: pseudoMember.role,
+                canSendMessages: pseudoMember.canSendMessages,
+                canInviteOthers: pseudoMember.canInviteOthers,
+              });
+              // Deactivate the pseudo-address member to avoid duplicates
+              await execute(
+                `UPDATE multi_chat_members SET is_active = FALSE, left_at = NOW() WHERE chat_id = $1 AND member_address = $2`,
+                [chatId, pseudoAddress]
+              );
+              // Now use wallet address for sending
+              senderAddress = walletSession.address;
+              canWrite = true;
+            } catch {
+              // If adding fails (e.g., already exists), fall back to pseudo-address
+              senderAddress = pseudoAddress;
+              canWrite = true;
+            }
+          } else {
+            senderAddress = pseudoAddress;
+            canWrite = true;
+          }
+        }
+      }
+    }
+
+    if (!canWrite) {
+      return c.json({ success: false, error: 'Not authorized to send messages' }, 403);
+    }
 
     try {
       const message = await sendMessage({
         chatId,
-        senderAddress: walletSession.address,
+        senderAddress,
         senderUserId: walletSession.userId,
         content: body.content,
         signature: body.signature,
@@ -761,9 +887,19 @@ chatRouter.get('/:chatId/messages', optionalAuth, optionalWalletSession, async (
   }
 
   const walletSession = c.get('walletSession');
+  const sessionId = c.req.header('X-Session-ID');
 
   if (!chat.isPublic && walletSession) {
-    const canRead = await checkPermission(chatId, walletSession.address, 'read');
+    let canRead = await checkPermission(chatId, walletSession.address, 'read');
+
+    // If primary auth failed, try anonymous session ID as fallback
+    if (!canRead && sessionId && sessionId.startsWith('ses_')) {
+      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+      if (pseudoAddress !== walletSession.address) {
+        canRead = await checkPermission(chatId, pseudoAddress, 'read');
+      }
+    }
+
     if (!canRead) {
       return c.json({ success: false, error: 'Access denied' }, 403);
     }
@@ -974,10 +1110,45 @@ chatRouter.get(
   }
 );
 
+// PATCH /chat/:chatId/ai/toggle - Toggle AI enabled state for the chat
+const ToggleAiSchema = z.object({
+  enabled: z.boolean(),
+});
+
+chatRouter.patch(
+  '/:chatId/ai/toggle',
+  optionalAuth,
+  requireWalletOrAuth,
+  zValidator('json', ToggleAiSchema),
+  async (c) => {
+    const chatId = c.req.param('chatId');
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
+
+    try {
+      const updatedChat = await toggleChatAiEnabled(chatId, walletSession.address, body.enabled);
+      if (!updatedChat) {
+        return c.json({ success: false, error: 'Chat not found' }, 404);
+      }
+
+      // Broadcast the change to all connected clients
+      const { broadcastChatUpdate } = await import('../services/websocket.ts');
+      broadcastChatUpdate(chatId, { aiEnabled: body.enabled });
+
+      return c.json({ success: true, data: serializeChat(updatedChat) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to toggle AI';
+      const status = message.includes('permission') ? 403 : 400;
+      return c.json({ success: false, error: message }, status);
+    }
+  }
+);
+
 // POST /chat/:chatId/ai/invoke - Invoke AI to respond to the chat (streaming)
 const InvokeAiSchema = z.object({
   prompt: z.string().max(10000),
   attachments: z.array(AttachmentSchema).max(5).optional(),
+  apiKey: z.string().optional(), // User-provided Claude API key (BYOK)
 }).refine(
   (data) => data.prompt.length > 0 || (data.attachments && data.attachments.length > 0),
   { message: 'Message must have prompt or attachments' }
@@ -994,6 +1165,15 @@ chatRouter.post(
     const body = c.req.valid('json');
 
     try {
+      // Check if AI is enabled for this chat (global toggle)
+      const chat = await getChatById(chatId);
+      if (!chat) {
+        return c.json({ success: false, error: 'Chat not found' }, 404);
+      }
+      if (!chat.aiEnabled) {
+        return c.json({ success: false, error: 'AI is currently disabled for this chat' }, 403);
+      }
+
       // Check if user can invoke AI
       const canInvokePermission = await checkPermission(chatId, walletSession.address, 'invoke_ai');
       if (!canInvokePermission) {
@@ -1057,10 +1237,13 @@ chatRouter.post(
       const messageId = crypto.randomUUID();
       const assistantAddress = '0x0000000000000000000000000000000000000000';
 
+      // Extract user's API key if provided (BYOK)
+      const userApiKey = body.apiKey;
+
       // Stream Claude response and broadcast tokens via WebSocket
       let fullContent = '';
 
-      for await (const event of streamMessage(chatId, { messages: chatHistory })) {
+      for await (const event of streamMessage(chatId, { messages: chatHistory }, userApiKey)) {
         if (event.type === 'text') {
           const token = event.data as string;
           fullContent += token;
@@ -1368,7 +1551,16 @@ chatRouter.get(
         }
 
         // Check permission
-        const canRead = await checkPermission(chatId, walletSession.address, 'read');
+        let canRead = await checkPermission(chatId, walletSession.address, 'read');
+
+        // If primary auth failed, try anonymous session ID as fallback
+        if (!canRead && sessionId && sessionId.startsWith('ses_')) {
+          const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+          if (pseudoAddress !== walletSession.address) {
+            canRead = await checkPermission(chatId, pseudoAddress, 'read');
+          }
+        }
+
         if (!canRead) {
           ws.close(4003, 'Access denied');
           return;
@@ -1456,6 +1648,91 @@ chatRouter.post(
 );
 
 // ============================================================================
+// Session Merge - Associate anonymous session chats with authenticated account
+// ============================================================================
+
+/**
+ * POST /chat/merge-session - Merge anonymous session memberships to authenticated address
+ *
+ * When a user connects their wallet or passkey, this endpoint:
+ * 1. Finds all chats where the session's pseudo-address is a member
+ * 2. For each chat, updates the member record to use the authenticated address
+ * 3. Returns the list of merged chat IDs
+ */
+const MergeSessionSchema = z.object({
+  newAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+});
+
+chatRouter.post(
+  '/merge-session',
+  zValidator('json', MergeSessionSchema),
+  async (c) => {
+    const sessionId = c.req.header('X-Session-ID');
+    const body = c.req.valid('json');
+
+    if (!sessionId || !sessionId.startsWith('ses_')) {
+      return c.json({ success: false, error: 'Session ID required' }, 400);
+    }
+
+    // Generate pseudo-address from session ID (same logic as middleware)
+    const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+    const newAddress = body.newAddress.toLowerCase();
+
+    if (pseudoAddress.toLowerCase() === newAddress) {
+      // Same address, nothing to merge
+      return c.json({ success: true, data: { mergedChatIds: [], message: 'Addresses match, no merge needed' } });
+    }
+
+    try {
+      // Find all chats where pseudo-address is a member
+      const memberRecords = await query<{ chat_id: string; role: string; can_send_messages: boolean; can_invite: boolean; can_invoke_ai: boolean }>(
+        `SELECT chat_id, role, can_send_messages, can_invite, can_invoke_ai
+         FROM multi_chat_members
+         WHERE member_address = $1 AND is_active = TRUE`,
+        [pseudoAddress]
+      );
+
+      const mergedChatIds: string[] = [];
+
+      for (const record of memberRecords) {
+        // Check if new address is already a member of this chat
+        const existingMember = await queryOne<{ id: string }>(
+          `SELECT id FROM multi_chat_members WHERE chat_id = $1 AND member_address = $2`,
+          [record.chat_id, newAddress]
+        );
+
+        if (existingMember) {
+          // New address already has membership, just deactivate the pseudo-address member
+          await execute(
+            `UPDATE multi_chat_members SET is_active = FALSE, left_at = NOW() WHERE chat_id = $1 AND member_address = $2`,
+            [record.chat_id, pseudoAddress]
+          );
+        } else {
+          // Transfer membership: update the pseudo-address record to use new address
+          await execute(
+            `UPDATE multi_chat_members SET member_address = $1 WHERE chat_id = $2 AND member_address = $3`,
+            [newAddress, record.chat_id, pseudoAddress]
+          );
+        }
+
+        mergedChatIds.push(record.chat_id);
+      }
+
+      return c.json({
+        success: true,
+        data: {
+          mergedChatIds,
+          message: `Merged ${mergedChatIds.length} chat(s) to new address`
+        }
+      });
+    } catch (error) {
+      console.error('[Merge Session] Error:', error);
+      return c.json({ success: false, error: 'Failed to merge session' }, 500);
+    }
+  }
+);
+
+// ============================================================================
 // Serializers (convert BigInt to strings for JSON)
 // ============================================================================
 
@@ -1468,6 +1745,8 @@ function serializeChat(chat: any) {
       ...chat.tokenGate,
       minBalance: chat.tokenGate.minBalance?.toString(),
     } : undefined,
+    // AI toggle
+    aiEnabled: chat.aiEnabled ?? true,
     // Organization fields (already serializable)
     isPinned: chat.isPinned,
     pinOrder: chat.pinOrder,
@@ -1477,7 +1756,19 @@ function serializeChat(chat: any) {
 }
 
 function serializeMember(member: any) {
-  return member;
+  return {
+    address: member.memberAddress,
+    userId: member.memberUserId,
+    role: member.role,
+    displayName: member.displayName,
+    customEmoji: member.customEmoji,
+    joinedAt: member.joinedAt,
+    canSendMessages: member.canSendMessages,
+    canInvite: member.canInvite,
+    canInvokeAi: member.canInvokeAi,
+    canManageMembers: member.canManageMembers,
+    canPauseAi: member.canPauseAi ?? false,
+  };
 }
 
 function serializeMessage(message: any) {

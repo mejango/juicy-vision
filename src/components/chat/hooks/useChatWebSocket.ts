@@ -171,6 +171,15 @@ export function useChatWebSocket({ chatId, onError }: UseChatWebSocketOptions) {
             useChatStore.getState().updateChat(targetChatId, updates)
             break
           }
+          case 'member_update': {
+            const { address, customEmoji, displayName } = msg.data as { address: string; customEmoji?: string | null; displayName?: string | null }
+            // Convert null to undefined for TypeScript compatibility
+            useChatStore.getState().updateMember(targetChatId, address, {
+              customEmoji: customEmoji ?? undefined,
+              displayName: displayName ?? undefined,
+            })
+            break
+          }
         }
       })
     }

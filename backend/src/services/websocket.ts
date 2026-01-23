@@ -30,14 +30,23 @@ export interface WsMessage {
     | 'presence' // Online/offline
     | 'member_joined' // New member
     | 'member_left' // Member left
+    | 'member_update' // Member profile update (emoji, etc.)
     | 'key_rotation' // Group key rotated
     | 'ai_response' // AI streaming response
     | 'chat_update' // Chat metadata update (title, etc.)
+    | 'component_interaction' // Real-time component collaboration
     | 'error'; // Error message
   chatId: string;
   data: unknown;
   sender?: string; // Sender address
   timestamp: number;
+}
+
+export interface ComponentInteractionData {
+  messageId: string; // Message containing the component
+  groupId: string; // Option group ID
+  action: 'select' | 'typing' | 'hover' | 'hover_end';
+  value?: string; // Selected option value or partial typed text
 }
 
 export interface PresenceUpdate {
@@ -355,6 +364,56 @@ export function broadcastChatUpdate(
 }
 
 /**
+ * Broadcast component interaction to chat members (excluding sender)
+ * Used for real-time collaboration on OptionsPicker and similar components
+ */
+export function broadcastComponentInteraction(
+  chatId: string,
+  senderAddress: string,
+  data: ComponentInteractionData
+): void {
+  broadcastToChat(
+    chatId,
+    {
+      type: 'component_interaction',
+      chatId,
+      data,
+      sender: senderAddress,
+      timestamp: Date.now(),
+    },
+    senderAddress // Exclude sender
+  );
+}
+
+/**
+ * Broadcast member profile update (e.g., custom emoji) to all chats they're in
+ */
+export function broadcastMemberUpdate(
+  address: string,
+  updates: { customEmoji?: string | null; displayName?: string | null }
+): void {
+  // Get all connections for this user
+  const connections = addressConnections.get(address);
+  if (!connections) return;
+
+  // Get unique chat IDs where this user has connections
+  const chatIds = new Set<string>();
+  for (const client of connections) {
+    chatIds.add(client.chatId);
+  }
+
+  // Broadcast to each chat
+  for (const chatId of chatIds) {
+    broadcastToChat(chatId, {
+      type: 'member_update',
+      chatId,
+      data: { address, ...updates },
+      timestamp: Date.now(),
+    });
+  }
+}
+
+/**
  * Send error to a specific client
  */
 export function sendError(client: WsClient, error: string): void {
@@ -397,6 +456,15 @@ export function handleWsMessage(
           client.chatId,
           client.address,
           (message.data as { isTyping: boolean })?.isTyping ?? true
+        );
+        break;
+
+      case 'component_interaction':
+        // Broadcast component interaction to other chat members (ephemeral, no persistence)
+        broadcastComponentInteraction(
+          client.chatId,
+          client.address,
+          message.data as ComponentInteractionData
         );
         break;
 

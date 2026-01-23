@@ -22,6 +22,7 @@ import { type PasskeyWallet, getPasskeyWallet } from '../../services/passkeyWall
 import WalletPanel from '../wallet/WalletPanel'
 import { getSessionId } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
+import { getEmojiFromAddress } from './ParticipantAvatars'
 
 // Helper to get current user's address
 // Prefers SIWE wallet address if authenticated, otherwise generates pseudo-address from session ID
@@ -46,6 +47,8 @@ interface ChatContainerProps {
 export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }: ChatContainerProps = {}) {
   // Local streaming state (no longer in store)
   const [isStreaming, setIsStreaming] = useState(false)
+  // Track if we're waiting for AI response (between invokeAi call and first streaming token)
+  const [isWaitingForAi, setIsWaitingForAi] = useState(false)
 
   const { language, setLanguage } = useSettingsStore()
   const { theme, toggleTheme } = useThemeStore()
@@ -65,6 +68,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     updatePresence,
     setConnected,
     clearUnread,
+    updateMember,
+    updateChat,
   } = useChatStore()
 
   // Use forceActiveChatId (from URL) over store value to prevent race conditions
@@ -72,11 +77,13 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const activeChatId = forceActiveChatId || storeActiveChatId
 
   // Get chat using the resolved activeChatId, not store's getActiveChat
+  // Filter out null entries that can occur during state cleanup
   const activeChat = activeChatId
-    ? useChatStore.getState().chats.find(c => c.id === activeChatId)
+    ? useChatStore.getState().chats.find(c => c && c.id === activeChatId)
     : undefined
   const chatMessages = activeChat?.messages || []
   const members = activeChat?.members || []
+  const onlineMembers = activeChat?.onlineMembers || []
   const isChatMode = !!activeChatId
 
   // Check if current user can write to this chat
@@ -88,6 +95,54 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     (m.address && sessionId && m.address.toLowerCase().includes(sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40)))
   )
   const canWrite = isChatMode ? !!currentUserMember : true // Anyone can write to local chats
+  const canInvite = !isChatMode || // Anyone can invite in local mode
+    currentUserMember?.role === 'founder' ||
+    currentUserMember?.role === 'admin' ||
+    currentUserMember?.canInvite === true
+
+  // AI toggle state
+  const [isTogglingAi, setIsTogglingAi] = useState(false)
+  // Personal override: don't invoke AI on my messages (can't override admin OFF)
+  const [personalAiSkip, setPersonalAiSkip] = useState(false)
+
+  // AI toggle - global chat-level setting from server
+  const chatAiEnabled = activeChat?.aiEnabled ?? true
+  // User can toggle AI if they have canPauseAi permission
+  const canPauseAi = !isChatMode || // Always enabled in local mode
+    currentUserMember?.role === 'founder' ||
+    currentUserMember?.canPauseAi === true
+
+  // Effective AI state: global toggle AND personal preference
+  // If global is OFF, AI is OFF regardless of personal preference
+  // If global is ON, user can choose to skip AI on their messages
+  const effectiveAiEnabled = chatAiEnabled && !personalAiSkip
+
+  // Handle toggling the global AI state
+  const handleToggleAi = useCallback(async () => {
+    if (!activeChatId || !canPauseAi || isTogglingAi) return
+
+    setIsTogglingAi(true)
+    try {
+      const newEnabled = !chatAiEnabled
+      const updatedChat = await chatApi.toggleAiEnabled(activeChatId, newEnabled)
+      updateChat(activeChatId, { aiEnabled: updatedChat.aiEnabled })
+      // Auto-collapse if AI is enabled again and personal skip is off
+      if (newEnabled && !personalAiSkip) {
+        setAiControlsExpanded(false)
+      }
+    } catch (error) {
+      console.error('Failed to toggle AI:', error)
+    } finally {
+      setIsTogglingAi(false)
+    }
+  }, [activeChatId, canPauseAi, isTogglingAi, chatAiEnabled, personalAiSkip, updateChat])
+
+  // Handle member permission updates from popover
+  const handleMemberUpdated = useCallback((updatedMember: ChatMember) => {
+    if (activeChatId) {
+      updateMember(activeChatId, updatedMember.address, updatedMember)
+    }
+  }, [activeChatId, updateMember])
 
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -108,6 +163,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [inviteAnchorPosition, setInviteAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [saveAnchorPosition, setSaveAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [walletPanelAnchorPosition, setWalletPanelAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const [authModalAnchorPosition, setAuthModalAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
   const [showBetaPopover, setShowBetaPopover] = useState(false)
   const [dockScrollEnabled, setDockScrollEnabled] = useState(false)
@@ -116,12 +172,18 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const betaButtonRef = useRef<HTMLButtonElement | null>(null)
   const [isReporting, setIsReporting] = useState(false)
   const [reportSuccess, setReportSuccess] = useState(false)
+  const [showAiPausedPopover, setShowAiPausedPopover] = useState(false)
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false)
+  // AI controls expanded state - shows "Skip for all" and "Skip for you" toggles
+  const [aiControlsExpanded, setAiControlsExpanded] = useState(false)
 
   // Close all popovers - call before opening a new one
   const closeAllPopovers = useCallback(() => {
     setShowInviteModal(false)
     setShowSaveModal(false)
     setShowAuthOptionsModal(false)
+    setShowAiPausedPopover(false)
+    setShowOverflowMenu(false)
     setShowWalletPanel(false)
     setShowBetaPopover(false)
     setSettingsOpen(false)
@@ -179,16 +241,19 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       const isCurrentUser = msg.senderAddress === currentAddress
 
       // Determine sender display name:
-      // - "You" for the current user (regardless of connection status)
-      // - Display name if member has one
-      // - "Anonymous" for other users without names
+      // - "You" for the current user
+      // - ENS/display name if member has one
+      // - Custom emoji or default fruit emoji for anonymous users
       let senderName: string
       if (isCurrentUser) {
-        senderName = 'You'
+        senderName = t('chat.you', 'You')
       } else if (sender?.displayName) {
         senderName = sender.displayName
+      } else if (msg.senderAddress) {
+        // Show custom emoji or default fruit emoji for anonymous users
+        senderName = sender?.customEmoji || getEmojiFromAddress(msg.senderAddress)
       } else {
-        senderName = 'Anonymous'
+        senderName = t('chat.anonymous', 'Anonymous')
       }
 
       return {
@@ -248,6 +313,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
     setError(null)
     setIsStreaming(true)
+    if (effectiveAiEnabled) {
+      setIsWaitingForAi(true) // Show thinking indicator immediately when user sends (only if AI is on)
+    }
 
     try {
       let chatId = currentChatId
@@ -295,22 +363,33 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         mimeType: a.mimeType,
         data: a.data,
       }))
-      await chatApi.sendMessage(chatId, content, undefined, attachmentData)
+      const savedMessage = await chatApi.sendMessage(chatId, content, undefined, attachmentData)
+
+      // Always add the saved message to ensure sender sees it
+      // This handles cases where WebSocket is reconnecting or temporarily disconnected
+      // The store will dedupe if WebSocket also delivers it
+      addChatMessage(chatId, savedMessage)
 
       // Invoke AI to respond - backend handles Claude API call and broadcasts response
-      try {
-        await chatApi.invokeAi(chatId, content, attachmentData)
-      } catch (aiErr) {
-        console.error('Failed to invoke AI:', aiErr)
-        // Don't set error - the user message was sent successfully
+      // Only invoke if AI is enabled for this chat (global toggle AND personal preference)
+      if (effectiveAiEnabled) {
+        // isWaitingForAi is already true, will be cleared when first streaming token arrives via WebSocket
+        try {
+          await chatApi.invokeAi(chatId, content, attachmentData)
+        } catch (aiErr) {
+          console.error('Failed to invoke AI:', aiErr)
+          setIsWaitingForAi(false)
+          // Don't set error - the user message was sent successfully
+        }
       }
     } catch (err) {
       console.error('Failed to send message:', err)
       setError(err instanceof Error ? err.message : 'Failed to send message')
+      setIsWaitingForAi(false)
     } finally {
       setIsStreaming(false)
     }
-  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress])
+  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress, effectiveAiEnabled])
 
   const handleSuggestionClick = (text: string) => {
     handleSend(text)
@@ -359,9 +438,42 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   }
 
   // Handle successful passkey wallet creation/authentication
-  const handlePasskeySuccess = (wallet: PasskeyWallet) => {
+  const handlePasskeySuccess = async (wallet: PasskeyWallet) => {
     setPasskeyWallet(wallet)
-    // Could trigger additional actions here like saving the current chat
+
+    // Get the current chat ID at the time of sign-in
+    const currentChatId = forceActiveChatId || useChatStore.getState().activeChatId
+
+    // Merge anonymous session chats to the connected account
+    try {
+      const result = await chatApi.mergeSession(wallet.address)
+      console.log('[ChatContainer] Session merge result:', result)
+
+      // Refresh chat list to show merged chats
+      if (result.mergedChatIds.length > 0) {
+        const { chats } = await chatApi.fetchMyChats()
+        // Update store with fresh chats from server
+        chats.forEach(chat => {
+          const existing = useChatStore.getState().chats.find(c => c.id === chat.id)
+          if (!existing) {
+            addChat(chat)
+          }
+        })
+      }
+
+      // Reconnect WebSocket with new credentials if we're in a chat
+      if (currentChatId) {
+        console.log('[ChatContainer] Reconnecting WebSocket after passkey auth')
+        chatApi.disconnectFromChat()
+        setTimeout(() => {
+          chatApi.connectToChat(currentChatId)
+        }, 100)
+      }
+    } catch (err) {
+      console.error('[ChatContainer] Failed to merge session:', err)
+      // Don't show error to user - passkey wallet was created successfully
+      // The merge failing isn't critical
+    }
   }
 
   // Listen for passkey wallet connect/disconnect events
@@ -376,6 +488,50 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       window.removeEventListener('juice:passkey-disconnected', handlePasskeyChange)
     }
   }, [])
+
+  // Listen for SIWE wallet sign-in events and merge sessions
+  useEffect(() => {
+    const handleSiweSignIn = async (event: CustomEvent<{ address: string }>) => {
+      const { address } = event.detail
+      if (!address) return
+
+      // Get the current chat ID at the time of sign-in
+      const currentChatId = forceActiveChatId || useChatStore.getState().activeChatId
+
+      try {
+        const result = await chatApi.mergeSession(address)
+        console.log('[ChatContainer] SIWE session merge result:', result)
+
+        // Refresh chat list to show merged chats
+        if (result.mergedChatIds.length > 0) {
+          const { chats } = await chatApi.fetchMyChats()
+          chats.forEach(chat => {
+            const existing = useChatStore.getState().chats.find(c => c.id === chat.id)
+            if (!existing) {
+              addChat(chat)
+            }
+          })
+        }
+
+        // Reconnect WebSocket with new SIWE credentials if we're in a chat
+        if (currentChatId) {
+          console.log('[ChatContainer] Reconnecting WebSocket with SIWE credentials')
+          chatApi.disconnectFromChat()
+          // Small delay to ensure disconnect completes
+          setTimeout(() => {
+            chatApi.connectToChat(currentChatId)
+          }, 100)
+        }
+      } catch (err) {
+        console.error('[ChatContainer] Failed to merge SIWE session:', err)
+      }
+    }
+
+    window.addEventListener('juice:siwe-signed-in', handleSiweSignIn as unknown as EventListener)
+    return () => {
+      window.removeEventListener('juice:siwe-signed-in', handleSiweSignIn as unknown as EventListener)
+    }
+  }, [addChat, forceActiveChatId])
 
   // Listen for dock scroll enable/disable events
   useEffect(() => {
@@ -410,12 +566,18 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           setOnlineMembers(activeChatId!, chatInfo.onlineMembers)
         }
 
+        // If fetchChat returned members, set them immediately
+        // This ensures fresh member data even if chat was in localStorage
+        if (chatInfo.members && chatInfo.members.length > 0) {
+          setMembers(activeChatId!, chatInfo.members)
+        }
+
         // Load messages
         const msgs = await chatApi.fetchMessages(activeChatId!)
         if (!isMounted) return
         setChatMessages(activeChatId!, msgs)
 
-        // Load members
+        // Load members from dedicated endpoint as backup
         const mbrs = await chatApi.fetchMembers(activeChatId!)
         if (!isMounted) return
         setMembers(activeChatId!, mbrs)
@@ -493,6 +655,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             // Handle streaming AI response tokens with buffering
             const { messageId, token, isDone } = msg.data as { messageId: string; token: string; isDone: boolean }
 
+            // Clear the "waiting for AI" state as soon as we get the first token
+            setIsWaitingForAi(false)
+
             if (isDone) {
               // Streaming complete - flush final content and remove from tracking
               if (pendingUpdates.has(messageId)) {
@@ -557,6 +722,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       closeAllPopovers()
       if (event.detail?.anchorPosition) {
         setWalletPanelAnchorPosition(event.detail.anchorPosition)
+        setAuthModalAnchorPosition(event.detail.anchorPosition)
       }
       if (isWalletConnected) {
         // Already connected - show wallet panel directly for top-up/balance
@@ -572,6 +738,21 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       window.removeEventListener('juice:open-wallet-panel', handleOpenWalletPanel as EventListener)
     }
   }, [isWalletConnected, closeAllPopovers, showWalletPanel])
+
+  // Listen for identity changes to refresh member data
+  useEffect(() => {
+    const handleIdentityChange = async () => {
+      if (!activeChatId) return
+      try {
+        const mbrs = await chatApi.fetchMembers(activeChatId)
+        setMembers(activeChatId, mbrs)
+      } catch (err) {
+        console.error('Failed to refresh members after identity change:', err)
+      }
+    }
+    window.addEventListener('juice:identity-changed', handleIdentityChange)
+    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange)
+  }, [activeChatId, setMembers])
 
   // Listen for messages from dynamic components (e.g., recommendation chips)
   // Only listen if we're the instance with the input (bottomOnly or neither specified)
@@ -630,12 +811,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
   // Listen for auth modal open events (from ChatInput connect button)
   useEffect(() => {
-    const handleOpenAuthModal = () => {
+    const handleOpenAuthModal = (event: CustomEvent<{ anchorPosition?: { top: number; left: number; width: number; height: number } }>) => {
       closeAllPopovers()
+      if (event.detail?.anchorPosition) {
+        setAuthModalAnchorPosition(event.detail.anchorPosition)
+      }
       setShowAuthOptionsModal(true)
     }
-    window.addEventListener('juice:open-auth-modal', handleOpenAuthModal)
-    return () => window.removeEventListener('juice:open-auth-modal', handleOpenAuthModal)
+    window.addEventListener('juice:open-auth-modal', handleOpenAuthModal as EventListener)
+    return () => window.removeEventListener('juice:open-auth-modal', handleOpenAuthModal as EventListener)
   }, [closeAllPopovers])
 
   return (
@@ -669,36 +853,16 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               <div
                 ref={dockRef}
                 data-dock="true"
-                className={`${bottomOnly ? 'max-h-full dock-overflow' : 'absolute bottom-0 left-0 right-0 z-30 max-h-[38vh] border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto ' + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
+                className={`${bottomOnly ? 'max-h-full dock-overflow hide-scrollbar' : 'absolute bottom-0 left-0 right-0 z-30 max-h-[38vh] border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto hide-scrollbar ' + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
               >
                 {/* Greeting - hidden when dock is pinned (compact mode) */}
-                <div className={`flex flex-col justify-end transition-all duration-150 ease-out overflow-hidden ${dockScrollEnabled ? 'h-0 opacity-0' : 'h-[6vh] opacity-100'}`}>
+                <div className={`flex flex-col justify-end overflow-hidden ${dockScrollEnabled ? 'h-0 opacity-0' : 'h-[6vh] opacity-100'}`}>
                   <WelcomeGreeting />
                 </div>
 
                 {/* Controls at top right of prompt area - hidden when dock is pinned (compact mode) */}
-                <div className={`flex justify-end px-6 transition-all duration-150 ease-out overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0 py-0' : 'max-h-20 opacity-100'}`}>
+                <div className={`flex justify-end px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0 py-0' : 'max-h-20 opacity-100'}`}>
                     <div className="flex items-center gap-2">
-                      {/* Material drop zone hints - click to open file picker */}
-                      {[
-                        { key: 'pitchDeck', label: t('materials.pitchDeck', 'Drop your pitch deck') },
-                        { key: 'businessPlan', label: t('materials.businessPlan', 'Add your business plan') },
-                        { key: 'screenshot', label: t('materials.screenshot', 'Paste a screenshot') },
-                      ].map((item) => (
-                        <button
-                          key={item.key}
-                          onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
-                          className={`py-2 px-3 text-xs font-medium border-2 border-dashed transition-colors cursor-pointer ${
-                            theme === 'dark'
-                              ? 'border-white/20 text-gray-500 hover:border-white/30 hover:text-gray-400'
-                              : 'border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500'
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                      {/* Spacer */}
-                      <div className="w-2" />
                       {/* Language selector */}
                       <div className="relative">
                         <button
@@ -808,7 +972,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 {/* Sticky prompt area - only ChatInput stays pinned */}
                 <div
                   ref={stickyPromptRef}
-                  className={`sticky top-0 z-10 transition-colors duration-150 ${
+                  className={`sticky top-0 left-0 right-0 z-10 w-full transition-colors duration-150 ${
                     dockScrollEnabled
                       ? theme === 'dark' ? 'bg-juice-dark/50 backdrop-blur-sm' : 'bg-white/50 backdrop-blur-sm'
                       : ''
@@ -822,15 +986,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                     compact={true}
                     placeholder={placeholder}
                   />
-                  {/* Collapsed view: minimal subtext when dock is pinned (compact mode) */}
-                  <div className={`flex items-center justify-between px-6 transition-all duration-150 ease-out overflow-hidden ${dockScrollEnabled ? 'max-h-12 opacity-100 pb-2' : 'max-h-0 opacity-0'}`}>
-                    <div className="flex gap-3">
-                      <div className="w-[48px] shrink-0" />
-                      <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {t('dock.askAbout', 'See and take action across the ecosystem.')}
-                      </div>
+
+                  {/* Subtext - tight below prompt, hidden when dock is pinned */}
+                  <div className={`flex items-center justify-between px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100 -mt-2 mb-3'}`}>
+                    <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {t('dock.askAbout', 'See and take actions across the ecosystem.')}
                     </div>
                     <button
+                      ref={betaButtonRef}
                       onClick={(e) => {
                         if (!showBetaPopover) {
                           closeAllPopovers()
@@ -850,19 +1013,184 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       Beta
                     </button>
                   </div>
+
+                  {/* Material upload hints - below subtext, hidden when dock is pinned */}
+                  <div className={`flex gap-2 px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100 mb-2'}`}>
+                    {[
+                      { key: 'visionDoc', label: t('materials.visionDoc', 'Drop your vision doc') },
+                      { key: 'masterPlan', label: t('materials.masterPlan', 'Show your master plan') },
+                      { key: 'screenshot', label: t('materials.screenshot', 'Paste a screenshot') },
+                    ].map((item) => (
+                      <button
+                        key={item.key}
+                        onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
+                        className={`py-1.5 px-2.5 text-xs border border-dashed transition-colors cursor-pointer ${
+                          theme === 'dark'
+                            ? 'border-white/15 text-gray-500 hover:border-white/25 hover:text-gray-400'
+                            : 'border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+
                 </div>
 
-                {/* Subtext and Beta tag row - hidden when dock is pinned (compact mode) */}
-                <div className={`flex items-center justify-between px-6 transition-all duration-150 ease-out overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100'}`}>
-                    {/* Subtext hint */}
-                    <div className="flex gap-3">
-                      <div className="w-[48px] shrink-0" />
-                      <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {t('dock.askAbout', 'See and take action across the ecosystem.')}
-                      </div>
+                {/* AI controls row - hidden when dock is pinned (compact mode) or no active chat */}
+                {activeChatId && <div className={`flex items-center justify-end px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100'}`}>
+                    {/* Three-dot overflow menu for small screens */}
+                    <div className="relative sm:hidden">
+                      <button
+                        onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+                        className={`p-1.5 transition-colors ${
+                          theme === 'dark' ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                        title="More options"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <circle cx="12" cy="5" r="2" />
+                          <circle cx="12" cy="12" r="2" />
+                          <circle cx="12" cy="19" r="2" />
+                        </svg>
+                      </button>
+                      {showOverflowMenu && (
+                        <>
+                          <div className="fixed inset-0 z-[98]" onClick={() => setShowOverflowMenu(false)} />
+                          <div className={`absolute right-0 bottom-full mb-2 py-1 min-w-[140px] border shadow-lg z-[99] ${
+                            theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+                          }`}>
+                            {canPauseAi && (
+                              <button
+                                onClick={() => {
+                                  setAiControlsExpanded(true)
+                                  setPersonalAiSkip(true)
+                                  setShowOverflowMenu(false)
+                                }}
+                                className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                                  theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
+                                }`}
+                              >
+                                {t('chat.pauseAi', 'Pause AI')}
+                              </button>
+                            )}
+                            {!canPauseAi && chatAiEnabled && (
+                              <button
+                                onClick={() => {
+                                  setPersonalAiSkip(!personalAiSkip)
+                                  setShowOverflowMenu(false)
+                                }}
+                                className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                                  personalAiSkip ? 'text-orange-400' : theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
+                                }`}
+                              >
+                                {personalAiSkip ? t('chat.skipping', 'Skipping AI') : t('chat.skipAi', 'Skip AI')}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                handleReport()
+                                setShowOverflowMenu(false)
+                              }}
+                              disabled={isReporting}
+                              className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                                reportSuccess
+                                  ? 'text-green-500'
+                                  : isReporting
+                                    ? 'text-gray-500 cursor-wait'
+                                    : theme === 'dark' ? 'text-gray-300 hover:bg-white/5 hover:text-red-400' : 'text-gray-600 hover:bg-gray-50 hover:text-red-400'
+                              }`}
+                            >
+                              {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
-                    {/* Beta tag and Report button */}
-                    <div className="flex items-center gap-2">
+                    {/* AI toggles and Report button - hidden on small screens */}
+                    <div className="hidden sm:flex items-center gap-3">
+                      {/* Collapsible AI controls - only for users with canPauseAi permission */}
+                      {activeChatId && canPauseAi && (
+                        (!chatAiEnabled || personalAiSkip || aiControlsExpanded) ? (
+                          /* Expanded: Show both toggles */
+                          <div className="flex items-center gap-2">
+                            {/* Skip for all toggle */}
+                            <button
+                              onClick={handleToggleAi}
+                              disabled={isTogglingAi}
+                              className={`px-2 py-0.5 text-xs transition-colors border flex items-center gap-1.5 ${
+                                isTogglingAi ? 'opacity-50 cursor-wait' : ''
+                              } ${!chatAiEnabled
+                                ? 'border-orange-400/50 text-orange-400'
+                                : 'border-gray-600 text-gray-500'
+                              }`}
+                              title={!chatAiEnabled ? t('chat.skipAllOnTooltip', 'AI is paused for everyone') : t('chat.skipAllOffTooltip', 'Click to pause AI for everyone')}
+                            >
+                              <span className={`w-3 h-3 rounded-sm border ${!chatAiEnabled ? 'bg-orange-400 border-orange-400' : 'border-current'}`}>
+                                {!chatAiEnabled && <span className="block w-full h-full text-[8px] text-white flex items-center justify-center">✓</span>}
+                              </span>
+                              {t('chat.skipForAll', 'Skip for all')}
+                            </button>
+                            {/* Skip for you toggle */}
+                            <button
+                              onClick={() => {
+                                const newSkip = !personalAiSkip
+                                setPersonalAiSkip(newSkip)
+                                // Auto-collapse if both are now off
+                                if (!newSkip && chatAiEnabled) {
+                                  setAiControlsExpanded(false)
+                                }
+                              }}
+                              className={`px-2 py-0.5 text-xs transition-colors border flex items-center gap-1.5 ${
+                                personalAiSkip
+                                  ? 'border-orange-400/50 text-orange-400'
+                                  : 'border-gray-600 text-gray-500'
+                              }`}
+                              title={personalAiSkip ? t('chat.skipYouOnTooltip', 'Your messages won\'t invoke AI') : t('chat.skipYouOffTooltip', 'Click to skip AI for your messages')}
+                            >
+                              <span className={`w-3 h-3 rounded-sm border ${personalAiSkip ? 'bg-orange-400 border-orange-400' : 'border-current'}`}>
+                                {personalAiSkip && <span className="block w-full h-full text-[8px] text-white flex items-center justify-center">✓</span>}
+                              </span>
+                              {t('chat.skipForYou', 'Skip for you')}
+                            </button>
+                          </div>
+                        ) : (
+                          /* Collapsed: Show just Pause AI button */
+                          <button
+                            onClick={() => {
+                              setAiControlsExpanded(true)
+                              setPersonalAiSkip(true) // Default "Skip for you" to ON when expanding
+                            }}
+                            className="px-2 py-0.5 text-xs transition-colors border border-gray-600 text-gray-500 hover:border-orange-400/50 hover:text-orange-400"
+                            title={t('chat.pauseAiTooltip', 'Click to see AI skip options')}
+                          >
+                            {t('chat.pauseAi', 'Pause AI')}
+                          </button>
+                        )
+                      )}
+                      {/* For non-admins: just show Skip AI button when AI is on, or AI paused indicator */}
+                      {activeChatId && !canPauseAi && (
+                        chatAiEnabled ? (
+                          <button
+                            onClick={() => setPersonalAiSkip(!personalAiSkip)}
+                            className={`px-2 py-0.5 text-xs transition-colors border ${
+                              personalAiSkip
+                                ? 'border-orange-400/50 text-orange-400'
+                                : 'border-gray-600 text-gray-500'
+                            }`}
+                            title={personalAiSkip ? t('chat.personalSkipOnTooltip', 'Your messages won\'t invoke AI') : t('chat.personalSkipOffTooltip', 'Your messages will invoke AI')}
+                          >
+                            {personalAiSkip ? t('chat.skipping', 'Skipping') : t('chat.skipAi', 'Skip AI')}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setShowAiPausedPopover(!showAiPausedPopover)}
+                            className="px-2 py-0.5 text-xs transition-colors border border-gray-600 text-gray-500"
+                          >
+                            {t('chat.aiPaused', 'AI paused')}
+                          </button>
+                        )
+                      )}
                       {activeChatId && (
                         <button
                           onClick={handleReport}
@@ -878,30 +1206,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                           {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
                         </button>
                       )}
-                      <button
-                        ref={betaButtonRef}
-                        onClick={(e) => {
-                          if (!showBetaPopover) {
-                            closeAllPopovers()
-                            const rect = e.currentTarget.getBoundingClientRect()
-                            const isInBottomHalf = rect.top > window.innerHeight / 2
-                            setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
-                            setBetaAnchorPosition({
-                              top: rect.bottom + 8,
-                              bottom: window.innerHeight - rect.top + 8,
-                              right: window.innerWidth - rect.right
-                            })
-                          }
-                          setShowBetaPopover(!showBetaPopover)
-                        }}
-                        className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
-                      >
-                        Beta
-                      </button>
                     </div>
-                  </div>
+                  </div>}
                 {/* Wallet info - hidden when dock is pinned (compact mode) */}
-                <div className={`transition-all duration-150 ease-out overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-16 opacity-100'}`}>
+                <div className={`overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-16 opacity-100'}`}>
                   <WalletInfo />
                 </div>
 
@@ -918,7 +1226,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             {/* Messages scroll under header (pt-[14.44vh]) and dock with padding at bottom */}
             {(topOnly || (!topOnly && !bottomOnly)) && (
               <div ref={messagesScrollRef} className="overflow-y-auto flex-1 relative pt-[14.44vh]">
-                <MessageList messages={messages} isWaitingForResponse={isStreaming} />
+                <MessageList
+                  messages={messages}
+                  members={members}
+                  isWaitingForResponse={isWaitingForAi}
+                  chatId={activeChatId || undefined}
+                  currentUserMember={currentUserMember}
+                  onlineMembers={onlineMembers}
+                  onMemberUpdated={handleMemberUpdated}
+                />
                 {/* Bottom padding so content can scroll under the dock */}
                 <div className="h-[14.44vh]" />
               </div>
@@ -928,14 +1244,28 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             {/* Min height: 38% of 38% of screen height = 14.44vh */}
             {(bottomOnly || (!topOnly && !bottomOnly)) && (
               <div
-                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0'} backdrop-blur-sm flex flex-col justify-end transition-all duration-75 ${
-                  theme === 'dark' ? 'bg-juice-dark/80' : 'bg-white/80'
-                }`}
+                className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0'} flex flex-col justify-end transition-all duration-75`}
               >
-                {/* Theme & Settings row - above prompt, matches home page layout */}
-                <div className={`flex justify-end px-6 items-center gap-1 transition-opacity duration-75 ${
+                {/* Attachments & Theme/Settings row - above prompt */}
+                <div className={`flex justify-between px-6 items-center transition-opacity duration-75 ${
                   showActionBar ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}>
+                  {/* Attachments button - left aligned */}
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
+                    className={`p-1.5 transition-colors ${
+                      theme === 'dark'
+                        ? 'text-gray-400 hover:text-white'
+                        : 'text-gray-500 hover:text-gray-900'
+                    }`}
+                    title="Attach file"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                  </button>
+                  {/* Right side buttons */}
+                  <div className="flex items-center gap-1">
                   {/* Theme toggle */}
                   <button
                     onClick={toggleTheme}
@@ -977,66 +1307,222 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </button>
+                  </div>
                 </div>
 
-                {isChatMode && !canWrite ? (
-                  // Read-only mode for viewers without write permissions
-                  <div className={`px-6 py-4 text-center ${
-                    theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-                  }`}>
-                    <p className="text-sm">{t('activeChat.readOnly', 'You are viewing this chat in read-only mode')}</p>
-                  </div>
-                ) : (
-                  <ChatInput
-                    onSend={handleSend}
-                    disabled={isStreaming || (isChatMode && !canWrite)}
-                    hideBorder={true}
-                    hideWalletInfo={false}
-                    compact={true}
-                    placeholder={isChatMode ? t('activeChat.typeMessage', 'Type a message...') : placeholder}
-                    showDockButtons={!isChatMode}
-                    onSettingsClick={() => setSettingsOpen(true)}
-                    walletInfoRightContent={
-                      <div className="flex items-center gap-2">
-                        {activeChatId && (
+                {/* Input area with background */}
+                <div className={`backdrop-blur-sm ${
+                  theme === 'dark' ? 'bg-juice-dark/80' : 'bg-white/80'
+                }`}>
+                  {isChatMode && !canWrite ? (
+                    // Read-only mode for viewers without write permissions
+                    <div className={`px-6 py-4 text-center ${
+                      theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                    }`}>
+                      <p className="text-sm">{t('activeChat.readOnly', 'You are viewing this chat in read-only mode')}</p>
+                    </div>
+                  ) : (
+                    <ChatInput
+                      onSend={handleSend}
+                      disabled={isStreaming || (isChatMode && !canWrite)}
+                      hideBorder={true}
+                      hideWalletInfo={false}
+                      compact={true}
+                      placeholder={isChatMode ? t('activeChat.typeMessage', 'Type a message...') : placeholder}
+                      showDockButtons={!isChatMode}
+                      onSettingsClick={() => setSettingsOpen(true)}
+                      walletInfoRightContent={
+                        <div className="flex items-center gap-3">
+                          {/* Three-dot overflow menu for small screens */}
+                          <div className="relative sm:hidden">
+                            <button
+                              onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+                              className={`p-1.5 transition-colors ${
+                                theme === 'dark' ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                              }`}
+                              title="More options"
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <circle cx="12" cy="5" r="2" />
+                                <circle cx="12" cy="12" r="2" />
+                                <circle cx="12" cy="19" r="2" />
+                              </svg>
+                            </button>
+                            {showOverflowMenu && (
+                              <>
+                                <div className="fixed inset-0 z-[98]" onClick={() => setShowOverflowMenu(false)} />
+                                <div className={`absolute right-0 bottom-full mb-2 py-1 min-w-[140px] border shadow-lg z-[99] ${
+                                  theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+                                }`}>
+                                  {canPauseAi && (
+                                    <button
+                                      onClick={() => {
+                                        setAiControlsExpanded(true)
+                                        setPersonalAiSkip(true)
+                                        setShowOverflowMenu(false)
+                                      }}
+                                      className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                                        theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      {t('chat.pauseAi', 'Pause AI')}
+                                    </button>
+                                  )}
+                                  {!canPauseAi && chatAiEnabled && (
+                                    <button
+                                      onClick={() => {
+                                        setPersonalAiSkip(!personalAiSkip)
+                                        setShowOverflowMenu(false)
+                                      }}
+                                      className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                                        personalAiSkip ? 'text-orange-400' : theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      {personalAiSkip ? t('chat.skipping', 'Skipping AI') : t('chat.skipAi', 'Skip AI')}
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      handleReport()
+                                      setShowOverflowMenu(false)
+                                    }}
+                                    disabled={isReporting}
+                                    className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                                      reportSuccess
+                                        ? 'text-green-500'
+                                        : isReporting
+                                          ? 'text-gray-500 cursor-wait'
+                                          : theme === 'dark' ? 'text-gray-300 hover:bg-white/5 hover:text-red-400' : 'text-gray-600 hover:bg-gray-50 hover:text-red-400'
+                                    }`}
+                                  >
+                                    {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                          {/* Collapsible AI controls - only for users with canPauseAi permission - hidden on small screens */}
+                          {activeChatId && canPauseAi && (
+                            (!chatAiEnabled || personalAiSkip || aiControlsExpanded) ? (
+                              /* Expanded: Show both toggles */
+                              <div className="hidden sm:flex items-center gap-2">
+                                {/* Skip for all toggle */}
+                                <button
+                                  onClick={handleToggleAi}
+                                  disabled={isTogglingAi}
+                                  className={`px-2 py-0.5 text-xs transition-colors border flex items-center gap-1.5 ${
+                                    isTogglingAi ? 'opacity-50 cursor-wait' : ''
+                                  } ${!chatAiEnabled
+                                    ? 'border-orange-400/50 text-orange-400'
+                                    : 'border-gray-600 text-gray-500'
+                                  }`}
+                                  title={!chatAiEnabled ? t('chat.skipAllOnTooltip', 'AI is paused for everyone') : t('chat.skipAllOffTooltip', 'Click to pause AI for everyone')}
+                                >
+                                  <span className={`w-3 h-3 rounded-sm border ${!chatAiEnabled ? 'bg-orange-400 border-orange-400' : 'border-current'}`}>
+                                    {!chatAiEnabled && <span className="block w-full h-full text-[8px] text-white flex items-center justify-center">✓</span>}
+                                  </span>
+                                  {t('chat.skipForAll', 'Skip for all')}
+                                </button>
+                                {/* Skip for you toggle */}
+                                <button
+                                  onClick={() => {
+                                    const newSkip = !personalAiSkip
+                                    setPersonalAiSkip(newSkip)
+                                    // Auto-collapse if both are now off
+                                    if (!newSkip && chatAiEnabled) {
+                                      setAiControlsExpanded(false)
+                                    }
+                                  }}
+                                  className={`px-2 py-0.5 text-xs transition-colors border flex items-center gap-1.5 ${
+                                    personalAiSkip
+                                      ? 'border-orange-400/50 text-orange-400'
+                                      : 'border-gray-600 text-gray-500'
+                                  }`}
+                                  title={personalAiSkip ? t('chat.skipYouOnTooltip', 'Your messages won\'t invoke AI') : t('chat.skipYouOffTooltip', 'Click to skip AI for your messages')}
+                                >
+                                  <span className={`w-3 h-3 rounded-sm border ${personalAiSkip ? 'bg-orange-400 border-orange-400' : 'border-current'}`}>
+                                    {personalAiSkip && <span className="block w-full h-full text-[8px] text-white flex items-center justify-center">✓</span>}
+                                  </span>
+                                  {t('chat.skipForYou', 'Skip for you')}
+                                </button>
+                              </div>
+                            ) : (
+                              /* Collapsed: Show just Pause AI button */
+                              <button
+                                onClick={() => {
+                                  setAiControlsExpanded(true)
+                                  setPersonalAiSkip(true) // Default "Skip for you" to ON when expanding
+                                }}
+                                className="hidden sm:block px-2 py-0.5 text-xs transition-colors border border-gray-600 text-gray-500 hover:border-orange-400/50 hover:text-orange-400"
+                                title={t('chat.pauseAiTooltip', 'Click to see AI skip options')}
+                              >
+                                {t('chat.pauseAi', 'Pause AI')}
+                              </button>
+                            )
+                          )}
+                          {/* For non-admins: just show Skip AI button when AI is on, or AI paused indicator */}
+                          {activeChatId && !canPauseAi && (
+                            chatAiEnabled ? (
+                              <button
+                                onClick={() => setPersonalAiSkip(!personalAiSkip)}
+                                className={`hidden sm:block px-2 py-0.5 text-xs transition-colors border ${
+                                  personalAiSkip
+                                    ? 'border-orange-400/50 text-orange-400'
+                                    : 'border-gray-600 text-gray-500'
+                                }`}
+                                title={personalAiSkip ? t('chat.personalSkipOnTooltip', 'Your messages won\'t invoke AI') : t('chat.personalSkipOffTooltip', 'Your messages will invoke AI')}
+                              >
+                                {personalAiSkip ? t('chat.skipping', 'Skipping') : t('chat.skipAi', 'Skip AI')}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setShowAiPausedPopover(!showAiPausedPopover)}
+                                className="hidden sm:block px-2 py-0.5 text-xs transition-colors border border-gray-600 text-gray-500"
+                              >
+                                {t('chat.aiPaused', 'AI paused')}
+                              </button>
+                            )
+                          )}
+                          {activeChatId && (
+                            <button
+                              onClick={handleReport}
+                              disabled={isReporting}
+                              className={`hidden sm:block px-2 py-0.5 text-xs font-medium bg-transparent border transition-colors ${
+                                reportSuccess
+                                  ? 'border-green-500 text-green-500'
+                                  : isReporting
+                                    ? 'border-gray-500 text-gray-500 cursor-wait'
+                                    : 'border-gray-500 text-gray-500 hover:border-red-400 hover:text-red-400'
+                              }`}
+                            >
+                              {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
+                            </button>
+                          )}
                           <button
-                            onClick={handleReport}
-                            disabled={isReporting}
-                            className={`px-2 py-0.5 text-xs font-medium bg-transparent border transition-colors ${
-                              reportSuccess
-                                ? 'border-green-500 text-green-500'
-                                : isReporting
-                                  ? 'border-gray-500 text-gray-500 cursor-wait'
-                                  : 'border-gray-500 text-gray-500 hover:border-red-400 hover:text-red-400'
-                            }`}
+                            ref={betaButtonRef}
+                            onClick={(e) => {
+                              if (!showBetaPopover) {
+                                closeAllPopovers()
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                const isInBottomHalf = rect.top > window.innerHeight / 2
+                                setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
+                                setBetaAnchorPosition({
+                                  top: rect.bottom + 8,
+                                  bottom: window.innerHeight - rect.top + 8,
+                                  right: window.innerWidth - rect.right
+                                })
+                              }
+                              setShowBetaPopover(!showBetaPopover)
+                            }}
+                            className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
                           >
-                            {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
+                            Beta
                           </button>
-                        )}
-                        <button
-                          ref={betaButtonRef}
-                          onClick={(e) => {
-                            if (!showBetaPopover) {
-                              closeAllPopovers()
-                              const rect = e.currentTarget.getBoundingClientRect()
-                              const isInBottomHalf = rect.top > window.innerHeight / 2
-                              setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
-                              setBetaAnchorPosition({
-                                top: rect.bottom + 8,
-                                bottom: window.innerHeight - rect.top + 8,
-                                right: window.innerWidth - rect.right
-                              })
-                            }
-                            setShowBetaPopover(!showBetaPopover)
-                          }}
-                          className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
-                        >
-                          Beta
-                        </button>
-                      </div>
-                    }
-                  />
-                )}
+                        </div>
+                      }
+                    />
+                  )}
+                </div>
               </div>
             )}
           </>
@@ -1058,8 +1544,11 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               }}
               chatId={inviteChatId}
               chatName={inviteChatName}
-              canGrantAdmin={true}
-              canGrantInvitePermission={true}
+              canInvite={canInvite}
+              canGrantAdmin={currentUserMember?.role === 'founder' || currentUserMember?.role === 'admin'}
+              canGrantInvitePermission={canInvite}
+              canGrantAiPermission={currentUserMember?.role === 'founder' || currentUserMember?.role === 'admin' || currentUserMember?.canInvokeAi !== false}
+              canGrantPauseAiPermission={currentUserMember?.role === 'founder' || currentUserMember?.role === 'admin' || currentUserMember?.canPauseAi === true}
               anchorPosition={inviteAnchorPosition}
             />
           )}
@@ -1070,6 +1559,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           <SaveModal
             isOpen={showSaveModal}
             onClose={() => setShowSaveModal(false)}
+            onWalletClick={() => setShowWalletPanel(true)}
+            onPasskeySuccess={handlePasskeySuccess}
             anchorPosition={saveAnchorPosition}
           />
 
@@ -1081,6 +1572,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             onPasskeySuccess={handlePasskeySuccess}
             title={authModalContext === 'connect' ? t('auth.connectTitle', 'Connect') : undefined}
             description={authModalContext === 'connect' ? t('auth.connectDescription', 'Choose how to connect your account.') : undefined}
+            anchorPosition={authModalAnchorPosition}
           />
 
           {/* Wallet Panel - for external wallet connection */}
@@ -1129,16 +1621,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
           }`}>
-            {t('beta.whatWeAreBuildingStart', "Fund anything by anyone. A Juicy AI interface for open internet money that anyone can program, powered by ")}
-            <a
-              href="https://juicebox.money"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={theme === 'dark' ? 'text-juice-cyan hover:underline' : 'text-teal-600 hover:underline'}
-            >
-              Juicebox
-            </a>
-            {t('beta.whatWeAreBuildingEnd', '.')}
+            {t('beta.whatWeAreBuilding', "Juicy is the people's funding platform. Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams.")}
           </p>
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
@@ -1168,6 +1651,28 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             </button>
           </div>
         </div>
+        </>,
+        document.body
+      )}
+
+      {/* AI Paused Popover - shown when user clicks "AI paused" button */}
+      {showAiPausedPopover && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[99]"
+            onClick={() => setShowAiPausedPopover(false)}
+          />
+          <div
+            className={`fixed right-4 bottom-16 w-64 p-3 border shadow-xl z-[100] ${
+              theme === 'dark'
+                ? 'bg-juice-dark border-white/20'
+                : 'bg-white border-gray-200'
+            }`}
+          >
+            <p className={`text-xs ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
+              {t('chat.aiPausedExplanation', 'AI has been paused by an admin for this chat. Your messages will not receive AI responses until an admin turns it back on.')}
+            </p>
+          </div>
         </>,
         document.body
       )}

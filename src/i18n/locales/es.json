@@ -39,14 +39,16 @@
     "soTellMe": "Dime.",
     "thereYouAre": "Ahí estás.",
     "finally": "Por fin.",
-    "ohGoodYouMadeIt": "Qué bien, llegaste.",
+    "whatHaveYouGot": "¿Qué traes?",
     "letsGetToWork": "Manos a la obra.",
-    "rightOnTime": "Justo a tiempo.",
+    "goOn": "Adelante.",
     "lookWhoShowedUp": "Mira quién apareció.",
     "showMeWhatYouGot": "Muéstrame lo que tienes.",
-    "letsMakeItHappen": "Hagámoslo realidad.",
-    "readyToSqueeze": "¿Listo para exprimir?",
-    "yourMove": "Tu turno."
+    "makeItCount": "Que valga la pena.",
+    "begin": "Comienza.",
+    "yourMove": "Tu turno.",
+    "helloDarling": "Hola, cariño.",
+    "helloChampion": "Hola, campeón."
   },
   "placeholders": {
     "juicyVision": "¿Cuál es tu visión?",
@@ -101,10 +103,25 @@
     "unpin": "Desfijar"
   },
   "chat": {
+    "you": "Tú",
+    "anonymous": "Anónimo",
     "conspire": "Conspirar",
     "save": "Guardar",
     "invite": "Invitar",
-    "export": "Exportar"
+    "export": "Exportar",
+    "ai": "IA",
+    "skipAi": "Omitir IA",
+    "skipping": "Omitiendo",
+    "aiPaused": "IA pausada",
+    "aiPausedExplanation": "La IA ha sido pausada por un administrador para este chat. Tus mensajes no recibirán respuestas de IA hasta que un administrador la reactive.",
+    "pauseAi": "Pausar IA",
+    "pauseAiTooltip": "Haz clic para ver opciones de omisión de IA",
+    "skipForAll": "Omitir para todos",
+    "skipForYou": "Omitir para ti",
+    "skipAllOnTooltip": "La IA está pausada para todos",
+    "skipAllOffTooltip": "Haz clic para pausar la IA para todos",
+    "skipYouOnTooltip": "Tus mensajes no invocarán la IA",
+    "skipYouOffTooltip": "Haz clic para omitir la IA en tus mensajes"
   },
   "note": {
     "placeholder": "Escribe tu nota...",
@@ -138,7 +155,15 @@
     "maxUsesDisplay": "Limitado a {{count}} usos",
     "noExpiry": "Sin expiración, usos ilimitados",
     "createAnother": "Crear otro enlace",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "generating": "Generando...",
+    "noPermission": "No puedes invitar",
+    "noPermissionDescription": "No tienes permiso para invitar personas a este chat. Pide a un administrador que te otorgue permisos de invitación.",
+    "canPassOnRoles": "Puede invitar a otros que pueden invitar",
+    "canUseAi": "Puede usar IA",
+    "canPauseAi": "Puede pausar IA",
+    "canGrantPauseAi": "Puede invitar a otros que pueden pausar IA",
+    "header": "Invitar a alguien a este chat"
   },
   "badges": {
     "id": "identidad",
@@ -149,9 +174,26 @@
     "fun": "divertido"
   },
   "mascot": {
-    "tagline": "Financia Tu Proyecto\na Tu Manera"
+    "tagline": "Financia Tu Proyecto\na Tu Manera",
+    "description": "Juicy es la plataforma de financiamiento del pueblo. Úsala para ejecutar tu recaudación, operar tu negocio, gestionar tu campaña, vender a clientes, trabajar con tu comunidad y construir tus sueños."
+  },
+  "beta": {
+    "title": "Próximamente",
+    "whatWeAreBuilding": "Juicy es la plataforma de financiamiento del pueblo. Úsala para ejecutar tu recaudación, operar tu negocio, gestionar tu campaña, vender a clientes, trabajar con tu comunidad y construir tus sueños.",
+    "whyBeta": "Todavía estamos puliendo detalles. Espera algunos bugs.",
+    "whenNotBeta": "Quitaremos la etiqueta beta cuando todo funcione perfectamente.",
+    "payUs": "Pagar",
+    "supportUs": "Apoyar Juicy Vision",
+    "comingSoon": "JUICY próximamente. Actualmente usando NANA."
+  },
+  "materials": {
+    "visionDoc": "Sube tu documento de visión",
+    "masterPlan": "Muestra tu plan maestro",
+    "screenshot": "Pega una captura de pantalla"
   },
   "juicyExplainer": {
+    "intro": "Juicy es la plataforma de financiamiento del pueblo.",
+    "useIt": "Úsala para ejecutar tu recaudación, operar tu negocio, gestionar tu campaña, vender a clientes, trabajar con tu comunidad y construir tus sueños.",
     "paragraph1": "$JUICY es el token de ingresos que impulsa esta aplicación. Cuando pagas en Juicy Vision, recibes tokens $JUICY proporcionales a tu contribución.",
     "paragraph2": "A medida que crece el saldo, también crece el valor que respalda cada token. Puedes cobrar tu parte en cualquier momento, o mantenerla para apoyar el negocio comunitario.",
     "paragraph3": "Operamos de manera muy eficiente, pero pagar por tokens LLM es costoso por ahora. Los ingresos de la aplicación fluyen principalmente de vuelta a los titulares de $JUICY, garantizado. Cuanto más valor se crea, más se benefician todos. Estamos juntos en esto.",

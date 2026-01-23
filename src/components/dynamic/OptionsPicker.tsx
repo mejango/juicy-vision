@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useThemeStore } from '../../stores'
+import { useComponentCollaboration } from '../../hooks/useComponentCollaboration'
 
 interface Option {
   value: string
@@ -27,6 +28,9 @@ interface OptionsPickerProps {
   // Streaming mode: show shimmer placeholders for remaining expected groups
   expectedGroupCount?: number
   isStreaming?: boolean
+  // Real-time collaboration props
+  chatId?: string
+  messageId?: string
 }
 
 // Values that indicate "other" / custom input
@@ -38,7 +42,7 @@ const DONE_WORDS = ['Great', 'Super', 'Got it', 'Ok', 'Nice']
 // Normalize value for comparison (lowercase, trim, collapse spaces)
 const normalizeValue = (value: string) => value.toLowerCase().trim().replace(/[\s_-]+/g, ' ')
 
-export default function OptionsPicker({ groups, submitLabel = 'Continue', allSelectedLabel, onSubmit, expectedGroupCount, isStreaming }: OptionsPickerProps) {
+export default function OptionsPicker({ groups, submitLabel = 'Continue', allSelectedLabel, onSubmit, expectedGroupCount, isStreaming, chatId, messageId }: OptionsPickerProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -48,6 +52,21 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
   // Optional memo/note from user
   const [memo, setMemo] = useState('')
+
+  // Real-time collaboration
+  const collaborationEnabled = !!(chatId && messageId)
+  const {
+    remoteSelections,
+    remoteTyping,
+    remoteHovers,
+    sendSelection,
+    sendTyping,
+    sendHover,
+  } = useComponentCollaboration({
+    chatId,
+    messageId,
+    enabled: collaborationEnabled,
+  })
 
   // Initialize with pre-selected options or first option of each group
   const [selections, setSelections] = useState<Record<string, string | string[]>>(() => {
@@ -87,16 +106,42 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
         const current = prev[groupId] as string[] || []
         if (current.includes(value)) {
           // Deselect - allow deselecting all for multiSelect
+          sendSelection(groupId, null) // Notify others of deselection
           return { ...prev, [groupId]: current.filter(v => v !== value) }
         } else {
           // Select
+          sendSelection(groupId, value) // Notify others of selection
           return { ...prev, [groupId]: [...current, value] }
         }
       })
     } else {
       setSelections(prev => ({ ...prev, [groupId]: value }))
+      sendSelection(groupId, value) // Notify others of selection
     }
   }
+
+  // Handle memo field changes with collaboration typing indicator
+  const handleMemoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setMemo(value)
+    sendTyping(value)
+  }, [sendTyping])
+
+  // Handle hover events for collaboration
+  const handleOptionHover = useCallback((groupId: string, isHovering: boolean) => {
+    sendHover(groupId, isHovering)
+  }, [sendHover])
+
+  // Get remote selections for a specific option
+  const getRemoteSelectionsForOption = useCallback((groupId: string, value: string) => {
+    const groupSelections = remoteSelections.get(groupId) || []
+    return groupSelections.filter(s => s.value === value)
+  }, [remoteSelections])
+
+  // Get remote hovers for a specific group
+  const getRemoteHoversForGroup = useCallback((groupId: string) => {
+    return remoteHovers.get(groupId) || []
+  }, [remoteHovers])
 
   const isSelected = (groupId: string, value: string, isMulti?: boolean): boolean => {
     const sel = selections[groupId]
@@ -198,11 +243,14 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                 <div className="flex flex-wrap gap-2">
                   {options.map((option, idx) => {
                     const selected = isSelected(group.id, option.value, group.multiSelect)
+                    const remoteSelectionsForOption = getRemoteSelectionsForOption(group.id, option.value)
                     return (
                       <button
                         key={option.value}
                         onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
-                        className={`px-3 py-1.5 text-sm border transition-all animate-fade-in ${
+                        onMouseEnter={() => handleOptionHover(group.id, true)}
+                        onMouseLeave={() => handleOptionHover(group.id, false)}
+                        className={`relative px-3 py-1.5 text-sm border transition-all animate-fade-in text-left ${
                           selected
                             ? isDark
                               ? 'border-green-500 text-green-400'
@@ -221,6 +269,29 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                               : isDark ? 'text-gray-400' : 'text-gray-500'
                           }`}>
                             {option.sublabel}
+                          </span>
+                        )}
+                        {/* Remote selection indicators */}
+                        {remoteSelectionsForOption.length > 0 && (
+                          <span className="absolute -top-1 -right-1 flex">
+                            {remoteSelectionsForOption.slice(0, 3).map((rs, i) => (
+                              <span
+                                key={rs.address}
+                                className="text-[10px] leading-none animate-fade-in"
+                                style={{
+                                  marginLeft: i > 0 ? '-2px' : 0,
+                                  zIndex: 3 - i,
+                                }}
+                                title={`Selected by ${rs.address.slice(0, 6)}...`}
+                              >
+                                {rs.emoji}
+                              </span>
+                            ))}
+                            {remoteSelectionsForOption.length > 3 && (
+                              <span className="text-[8px] text-gray-400 ml-0.5">
+                                +{remoteSelectionsForOption.length - 3}
+                              </span>
+                            )}
                           </span>
                         )}
                       </button>
@@ -279,11 +350,14 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                 <div className="space-y-2">
                   {options.map((option, idx) => {
                     const selected = isSelected(group.id, option.value, group.multiSelect)
+                    const remoteSelectionsForOption = getRemoteSelectionsForOption(group.id, option.value)
                     return (
                       <button
                         key={option.value}
                         onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
-                        className={`w-full flex items-start gap-3 px-3 py-2 text-sm border transition-all text-left animate-fade-in ${
+                        onMouseEnter={() => handleOptionHover(group.id, true)}
+                        onMouseLeave={() => handleOptionHover(group.id, false)}
+                        className={`relative w-full flex items-start gap-3 px-3 py-2 text-sm border transition-all text-left animate-fade-in ${
                           selected
                             ? isDark
                               ? 'border-green-500'
@@ -318,7 +392,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                             )}
                           </div>
                         )}
-                        <div className="flex flex-col min-w-0 text-left">
+                        <div className="flex flex-col min-w-0 text-left flex-1">
                           <span className={`${selected
                             ? isDark ? 'text-green-400' : 'text-green-700'
                             : isDark ? 'text-gray-300' : 'text-gray-600'
@@ -333,6 +407,29 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                             </span>
                           )}
                         </div>
+                        {/* Remote selection indicators */}
+                        {remoteSelectionsForOption.length > 0 && (
+                          <span className="flex items-center shrink-0">
+                            {remoteSelectionsForOption.slice(0, 3).map((rs, i) => (
+                              <span
+                                key={rs.address}
+                                className="text-xs leading-none animate-fade-in"
+                                style={{
+                                  marginLeft: i > 0 ? '-2px' : 0,
+                                  zIndex: 3 - i,
+                                }}
+                                title={`Selected by ${rs.address.slice(0, 6)}...`}
+                              >
+                                {rs.emoji}
+                              </span>
+                            ))}
+                            {remoteSelectionsForOption.length > 3 && (
+                              <span className="text-[10px] text-gray-400 ml-0.5">
+                                +{remoteSelectionsForOption.length - 3}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </button>
                     )
                   })}
@@ -476,57 +573,71 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                 return options.find(o => o.value === sel)?.label
               }).filter(Boolean).join(' · ')}
             </div>
-            {/* Optional memo input */}
-            <div className="flex items-center gap-3">
-              <input
-                type="text"
-                value={memo}
-                onChange={(e) => setMemo(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !hasSubmitted && !stillStreaming) {
-                    handleSubmit()
-                  }
-                }}
-                placeholder="Add something..."
-                disabled={hasSubmitted || stillStreaming}
-                className={`flex-1 px-0 py-1 text-xs bg-transparent border-0 transition-colors outline-none ${
-                  isDark
-                    ? 'text-gray-300 placeholder-gray-600'
-                    : 'text-gray-600 placeholder-gray-400'
-                } ${hasSubmitted || stillStreaming ? 'opacity-50' : ''}`}
-              />
-              <button
-                onClick={handleSubmit}
-                disabled={hasSubmitted || stillStreaming}
-                className={`shrink-0 px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
-                  hasSubmitted
-                    ? isDark
-                      ? 'bg-transparent text-gray-500 border-gray-600 cursor-default'
-                      : 'bg-transparent text-gray-400 border-gray-300 cursor-default'
-                    : stillStreaming
+            {/* Optional memo input with collaboration typing indicator */}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={memo}
+                  onChange={handleMemoChange}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !hasSubmitted && !stillStreaming) {
+                      handleSubmit()
+                    }
+                  }}
+                  placeholder="Add something..."
+                  disabled={hasSubmitted || stillStreaming}
+                  className={`flex-1 px-0 py-1 text-xs bg-transparent border-0 transition-colors outline-none ${
+                    isDark
+                      ? 'text-gray-300 placeholder-gray-600'
+                      : 'text-gray-600 placeholder-gray-400'
+                  } ${hasSubmitted || stillStreaming ? 'opacity-50' : ''}`}
+                />
+                <button
+                  onClick={handleSubmit}
+                  disabled={hasSubmitted || stillStreaming}
+                  className={`shrink-0 px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
+                    hasSubmitted
                       ? isDark
-                        ? 'bg-transparent text-gray-500 border-gray-600 cursor-wait'
-                        : 'bg-transparent text-gray-400 border-gray-300 cursor-wait'
-                      : 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
-                }`}
-              >
-                {hasSubmitted ? (
-                  <span className="flex items-center gap-1.5">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    {doneWord}
-                  </span>
-                ) : stillStreaming ? (
-                  <span className="flex items-center gap-1.5">
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Loading...
-                  </span>
-                ) : buttonLabel}
-              </button>
+                        ? 'bg-transparent text-gray-500 border-gray-600 cursor-default'
+                        : 'bg-transparent text-gray-400 border-gray-300 cursor-default'
+                      : stillStreaming
+                        ? isDark
+                          ? 'bg-transparent text-gray-500 border-gray-600 cursor-wait'
+                          : 'bg-transparent text-gray-400 border-gray-300 cursor-wait'
+                        : 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
+                  }`}
+                >
+                  {hasSubmitted ? (
+                    <span className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      {doneWord}
+                    </span>
+                  ) : stillStreaming ? (
+                    <span className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Loading...
+                    </span>
+                  ) : buttonLabel}
+                </button>
+              </div>
+              {/* Remote typing indicators */}
+              {remoteTyping.length > 0 && (
+                <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  {remoteTyping.map((rt, i) => (
+                    <span key={rt.address} className="animate-fade-in">
+                      {i > 0 && ', '}
+                      <span className="text-xs">{rt.emoji}</span>
+                      <span className="italic"> is typing...</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )

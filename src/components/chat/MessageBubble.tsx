@@ -1,17 +1,85 @@
+import { useState, useRef, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { Message } from '../../stores'
-import { useThemeStore } from '../../stores'
+import { Message, Attachment } from '../../stores'
+import type { ChatMember } from '../../stores/chatStore'
+import { useThemeStore, useSettingsStore } from '../../stores'
 import { parseMessageContent } from '../../utils/messageParser'
 import ComponentRegistry from '../dynamic/ComponentRegistry'
 import ThinkingIndicator from './ThinkingIndicator'
+import { getEmojiForUser, MemberPopover } from './ParticipantAvatars'
+import { getWalletSession } from '../../services/siwe'
+import { getSessionId } from '../../services/session'
 
 interface MessageBubbleProps {
   message: Message
+  members?: ChatMember[]
   isLastAssistant?: boolean
+  chatId?: string
+  currentUserMember?: ChatMember
+  onlineMembers?: string[]
+  onMemberUpdated?: (member: ChatMember) => void
+}
+
+// Download popover component
+function DownloadPopover({
+  attachment,
+  onClose,
+  isDark,
+  anchorRef
+}: {
+  attachment: Attachment
+  onClose: () => void
+  isDark: boolean
+  anchorRef: React.RefObject<HTMLDivElement>
+}) {
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  // Close on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
+          anchorRef.current && !anchorRef.current.contains(e.target as Node)) {
+        onClose()
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [onClose, anchorRef])
+
+  const handleDownload = () => {
+    const link = document.createElement('a')
+    link.href = `data:${attachment.mimeType};base64,${attachment.data}`
+    link.download = attachment.name
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    onClose()
+  }
+
+  return (
+    <div
+      ref={popoverRef}
+      className={`absolute bottom-full right-0 mb-2 p-3 border shadow-lg z-50 min-w-[200px] ${
+        isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+      }`}
+    >
+      <p className={`text-xs mb-3 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+        Download "{attachment.name}"?
+      </p>
+      <div className="flex justify-end">
+        <button
+          onClick={handleDownload}
+          className="px-3 py-1 text-xs bg-green-500 text-white hover:bg-green-600 transition-colors"
+        >
+          Download
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // Check if response appears to be cut off or incomplete
@@ -107,11 +175,37 @@ function looksIncomplete(content: string): boolean {
   return false
 }
 
-export default function MessageBubble({ message, isLastAssistant }: MessageBubbleProps) {
+export default function MessageBubble({
+  message,
+  members,
+  isLastAssistant,
+  chatId,
+  currentUserMember,
+  onlineMembers,
+  onMemberUpdated,
+}: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const parsed = parseMessageContent(message.content)
   const { theme } = useThemeStore()
+  const { selectedFruit } = useSettingsStore()
   const isDark = theme === 'dark'
+  const [downloadPopoverAttachment, setDownloadPopoverAttachment] = useState<Attachment | null>(null)
+  const attachmentRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const [memberPopover, setMemberPopover] = useState<{ rect: DOMRect } | null>(null)
+
+  // Get current user address to check if sender is the current user
+  const currentUserAddress = useMemo(() => {
+    const walletSession = getWalletSession()
+    const sessionId = getSessionId()
+    return walletSession?.address ||
+      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+  }, [])
+
+  // Find sender's custom emoji from members list
+  const senderMember = useMemo(() => {
+    if (!members || !message.senderAddress) return undefined
+    return members.find(m => m.address?.toLowerCase() === message.senderAddress?.toLowerCase())
+  }, [members, message.senderAddress])
 
   // Continue button disabled - AI responses with components are complete
   // The looksIncomplete heuristic was too aggressive and caused sporadic button appearances
@@ -163,18 +257,27 @@ export default function MessageBubble({ message, isLastAssistant }: MessageBubbl
                         }}
                       />
                     ) : (
-                      <div
-                        key={attachment.id}
-                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm ${
-                          isDark
-                            ? 'bg-gray-800 text-gray-300 border border-gray-700'
-                            : 'bg-gray-100 text-gray-600 border border-gray-200'
-                        }`}
-                      >
-                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
-                        <span className="truncate max-w-[180px]">{attachment.name}</span>
+                      <div key={attachment.id} className="relative">
+                        <div
+                          ref={(el) => { if (el) attachmentRefs.current.set(attachment.id, el) }}
+                          onClick={() => setDownloadPopoverAttachment(attachment)}
+                          className={`inline-flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
+                            isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          <span className="truncate max-w-[200px]">{attachment.name}</span>
+                        </div>
+                        {downloadPopoverAttachment?.id === attachment.id && (
+                          <DownloadPopover
+                            attachment={attachment}
+                            onClose={() => setDownloadPopoverAttachment(null)}
+                            isDark={isDark}
+                            anchorRef={{ current: attachmentRefs.current.get(attachment.id) || null }}
+                          />
+                        )}
                       </div>
                     )
                   })}
@@ -188,27 +291,56 @@ export default function MessageBubble({ message, isLastAssistant }: MessageBubbl
                 } else {
                   return (
                     <div key={index} className="my-3">
-                      <ComponentRegistry component={segment.component} />
+                      <ComponentRegistry component={segment.component} chatId={chatId} messageId={message.id} />
                     </div>
                   )
                 }
               })}
             </div>
-            {/* Lightning bolt - aligned with message text top */}
-            <div className="shrink-0 pt-0.5">
-              <svg
-                className="w-5 h-5 text-juice-orange"
-                fill="currentColor"
-                viewBox="0 0 24 24"
+            {/* Sender fruit emoji - clickable to show member info */}
+            {senderMember ? (
+              <div
+                className="shrink-0 pt-0.5 text-lg leading-none cursor-pointer hover:scale-110 transition-transform"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  setMemberPopover({ rect })
+                }}
               >
-                <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
+                {getEmojiForUser(message.senderAddress, currentUserAddress, selectedFruit, senderMember.customEmoji)}
+              </div>
+            ) : (
+              <div className="shrink-0 pt-0.5 text-lg leading-none">
+                {getEmojiForUser(message.senderAddress, currentUserAddress, selectedFruit, undefined)}
+              </div>
+            )}
+
+            {/* Member info popover */}
+            {memberPopover && senderMember && (
+              <MemberPopover
+                member={senderMember}
+                emoji={getEmojiForUser(message.senderAddress, currentUserAddress, selectedFruit, senderMember.customEmoji)}
+                isOnline={!!onlineMembers?.some(a => a?.toLowerCase() === senderMember.address?.toLowerCase())}
+                onClose={() => setMemberPopover(null)}
+                anchorRect={memberPopover.rect}
+                isDark={isDark}
+                chatId={chatId}
+                currentUserMember={currentUserMember}
+                onMemberUpdated={onMemberUpdated}
+              />
+            )}
           </div>
         </div>
       ) : (
         /* Assistant message */
         <div className={`w-full bg-transparent px-4 py-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          <div className="flex items-start gap-3">
+            {/* Lightning bolt for AI */}
+            <div className="shrink-0 pt-0.5 text-lg leading-none text-juice-yellow">
+              ⚡
+            </div>
+            {/* Message content */}
+            <div className="flex-1 min-w-0">
           {parsed.segments.map((segment, index) => {
             if (segment.type === 'text') {
               return (
@@ -248,7 +380,7 @@ export default function MessageBubble({ message, isLastAssistant }: MessageBubbl
             } else {
               return (
                 <div key={index} className="my-3">
-                  <ComponentRegistry component={segment.component} />
+                  <ComponentRegistry component={segment.component} chatId={chatId} messageId={message.id} />
                 </div>
               )
             }
@@ -272,6 +404,8 @@ export default function MessageBubble({ message, isLastAssistant }: MessageBubbl
               Continue
             </button>
           )}
+            </div>
+          </div>
         </div>
       )}
     </div>

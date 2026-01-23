@@ -4,6 +4,7 @@ import { useAccount, useSignMessage } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 import { signInWithWallet, hasValidWalletSession, getWalletSession } from '../../services/siwe'
+import { signInWithPasskey, type PasskeyWallet } from '../../services/passkeyWallet'
 import { useEnsNameResolved } from '../../hooks/useEnsName'
 
 export interface AnchorPosition {
@@ -17,6 +18,8 @@ interface SaveModalProps {
   isOpen: boolean
   onClose: () => void
   onSaved?: () => void
+  onPasskeySuccess?: (wallet: PasskeyWallet) => void
+  onWalletClick?: () => void
   anchorPosition?: AnchorPosition | null
 }
 
@@ -24,7 +27,7 @@ function truncateAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
-export default function SaveModal({ isOpen, onClose, onSaved, anchorPosition }: SaveModalProps) {
+export default function SaveModal({ isOpen, onClose, onSaved, onPasskeySuccess, onWalletClick, anchorPosition }: SaveModalProps) {
   const { t } = useTranslation()
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -33,6 +36,7 @@ export default function SaveModal({ isOpen, onClose, onSaved, anchorPosition }: 
   const { signMessageAsync } = useSignMessage()
 
   const [isSigning, setIsSigning] = useState(false)
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
@@ -46,8 +50,43 @@ export default function SaveModal({ isOpen, onClose, onSaved, anchorPosition }: 
       setError(null)
       setSuccess(false)
       setIsSigning(false)
+      setIsAuthenticating(false)
     }
   }, [isOpen])
+
+  const handlePasskeyAuth = async () => {
+    setIsAuthenticating(true)
+    setError(null)
+
+    try {
+      const wallet = await signInWithPasskey()
+      onPasskeySuccess?.(wallet)
+      setSuccess(true)
+      onSaved?.()
+      setTimeout(() => {
+        onClose()
+      }, 1500)
+    } catch (err) {
+      console.error('Passkey auth failed:', err)
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (msg.includes('cancelled') || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('abort')) {
+          // User cancelled, no error needed
+        } else if (msg.includes('prf') || msg.includes('not supported')) {
+          setError('Touch ID wallets not supported on this device. Try Wallet instead.')
+        } else {
+          setError('Failed to create wallet. Try another method.')
+        }
+      }
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
+
+  const handleWalletClick = () => {
+    onClose()
+    onWalletClick?.()
+  }
 
   // Calculate popover position based on anchor
   const popoverStyle = useMemo(() => {
@@ -190,8 +229,52 @@ export default function SaveModal({ isOpen, onClose, onSaved, anchorPosition }: 
               {t('save.successMessage', 'Your chats are now linked to your wallet.')}
             </p>
           </>
+        ) : !isConnected ? (
+          /* Auth options for fresh users */
+          <>
+            <h2 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {t('auth.saveTitle', 'Save Your Chat')}
+            </h2>
+
+            <p className={`text-xs mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              {t('auth.saveDescription', 'Lets you use your chats from anywhere.')}
+            </p>
+
+            {error && (
+              <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded">
+                {error}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={handlePasskeyAuth}
+                disabled={isAuthenticating}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+                  isAuthenticating
+                    ? 'border-gray-500 text-gray-500 cursor-wait'
+                    : isDark
+                    ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+                    : 'border-green-600 text-green-600 hover:bg-green-50'
+                }`}
+              >
+                {isAuthenticating ? '...' : t('auth.touchId', 'Touch ID')}
+              </button>
+
+              <button
+                onClick={handleWalletClick}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+                  isDark
+                    ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+                    : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+                }`}
+              >
+                {t('auth.wallet', 'Wallet')}
+              </button>
+            </div>
+          </>
         ) : (
-          /* Sign prompt */
+          /* Sign prompt for connected wallet */
           <>
             <h2 className={`text-sm font-semibold mb-2 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {t('save.title', 'Save Chat')}
@@ -214,9 +297,9 @@ export default function SaveModal({ isOpen, onClose, onSaved, anchorPosition }: 
             <div className="flex justify-end">
               <button
                 onClick={handleSign}
-                disabled={isSigning || !isConnected}
+                disabled={isSigning}
                 className={`px-3 py-1.5 text-xs font-medium transition-colors border flex items-center gap-2 ${
-                  isSigning || !isConnected
+                  isSigning
                     ? 'border-gray-500 text-gray-500 cursor-not-allowed'
                     : isDark
                     ? 'border-green-500 text-green-500 hover:bg-green-500/10'

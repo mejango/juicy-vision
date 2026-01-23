@@ -23,7 +23,10 @@ export function getSessionId(): string {
   if (!sessionId) {
     // Generate a new session ID
     sessionId = generateSessionId()
+    console.log('[session] Generated NEW session ID:', sessionId)
     storage.setString(STORAGE_KEYS.SESSION_ID, sessionId)
+  } else {
+    console.log('[session] Using EXISTING session ID:', sessionId)
   }
 
   return sessionId

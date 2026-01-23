@@ -7,11 +7,13 @@ export interface ChatMember {
   userId?: string
   role: 'founder' | 'admin' | 'member'
   displayName?: string
+  customEmoji?: string
   joinedAt: string
   canSendMessages?: boolean
   canInvite?: boolean
   canInvokeAi?: boolean
   canManageMembers?: boolean
+  canPauseAi?: boolean
 }
 
 /**
@@ -83,6 +85,8 @@ export interface Chat {
   tokenGateTokenAddress?: string
   tokenGateMinBalance?: string
   archivedCid?: string
+  // AI toggle - global chat-level setting
+  aiEnabled?: boolean
   // Organization fields
   isPinned: boolean
   pinOrder?: number
@@ -147,6 +151,7 @@ interface ChatState {
   // Member actions
   setMembers: (chatId: string, members: ChatMember[]) => void
   addMember: (chatId: string, member: ChatMember) => void
+  updateMember: (chatId: string, address: string, updates: Partial<ChatMember>) => void
   removeMember: (chatId: string, address: string) => void
 
   // Online presence
@@ -203,14 +208,14 @@ export const useChatStore = create<ChatState>()(
       getPinnedChats: () => {
         const state = get()
         return state.chats
-          .filter((c) => c.isPinned)
+          .filter((c) => c && c.isPinned)
           .sort((a, b) => (a.pinOrder ?? Infinity) - (b.pinOrder ?? Infinity))
       },
 
       getChatsInFolder: (folderId) => {
         const state = get()
         return state.chats
-          .filter((c) => folderId === null ? !c.folderId : c.folderId === folderId)
+          .filter((c) => c && (folderId === null ? !c.folderId : c.folderId === folderId))
           .sort((a, b) => {
             // Pinned first, then by updated_at
             if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
@@ -223,7 +228,7 @@ export const useChatStore = create<ChatState>()(
 
       getRecentChats: () => {
         const state = get()
-        return [...state.chats].sort((a, b) => {
+        return state.chats.filter(Boolean).sort((a, b) => {
           // Pinned first, then by updated_at
           if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
           if (a.isPinned && b.isPinned) {
@@ -314,9 +319,26 @@ export const useChatStore = create<ChatState>()(
 
       setMessages: (chatId, messages) =>
         set((state) => ({
-          chats: state.chats.map((c) =>
-            c.id === chatId ? { ...c, messages } : c
-          ),
+          chats: state.chats.map((c) => {
+            if (c.id !== chatId) return c
+            // Preserve attachments from local messages when merging with server data
+            // Server doesn't store attachments, so we need to keep them from local optimistic messages
+            const existingMessages = c.messages || []
+            const mergedMessages = messages.map(msg => {
+              const existingMsg = existingMessages.find(em =>
+                (em.id === msg.id) ||
+                (em.role === 'user' &&
+                 em.content === msg.content &&
+                 Math.abs(new Date(em.createdAt).getTime() - new Date(msg.createdAt).getTime()) < 30000)
+              )
+              // Preserve attachments from existing local message
+              if (existingMsg?.attachments && existingMsg.attachments.length > 0) {
+                return { ...msg, attachments: existingMsg.attachments }
+              }
+              return msg
+            })
+            return { ...c, messages: mergedMessages }
+          }),
         })),
 
       // Members
@@ -334,6 +356,21 @@ export const useChatStore = create<ChatState>()(
             const members = c.members || []
             if (members.some((m) => m.address === member.address)) return c
             return { ...c, members: [...members, member] }
+          }),
+        })),
+
+      updateMember: (chatId, address, updates) =>
+        set((state) => ({
+          chats: state.chats.map((c) => {
+            if (c.id !== chatId) return c
+            return {
+              ...c,
+              members: (c.members || []).map((m) =>
+                m.address?.toLowerCase() === address?.toLowerCase()
+                  ? { ...m, ...updates }
+                  : m
+              ),
+            }
           }),
         })),
 
@@ -394,7 +431,8 @@ export const useChatStore = create<ChatState>()(
       partialize: (state) => ({
         // Only persist chats, folders, and activeChatId, not loading/error states
         // Strip attachments from messages to avoid localStorage quota issues (base64 files are large)
-        chats: state.chats.map(chat => ({
+        // Filter out null chats that can occur during test cleanup
+        chats: state.chats.filter(Boolean).map(chat => ({
           ...chat,
           messages: chat.messages?.map(msg => {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars

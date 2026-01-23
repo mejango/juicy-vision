@@ -25,6 +25,7 @@ interface SettingsState {
   bendystrawEndpoint: string
   relayrEndpoint: string
   language: Language
+  selectedFruit: string | null // null = use address-based default
 
   setClaudeApiKey: (key: string) => void
   setParaApiKey: (key: string) => void
@@ -34,6 +35,7 @@ interface SettingsState {
   setBendystrawEndpoint: (endpoint: string) => void
   setRelayrEndpoint: (endpoint: string) => void
   setLanguage: (lang: Language) => void
+  setSelectedFruit: (fruit: string | null) => void
   clearSettings: () => void
   isConfigured: () => boolean
   isPinataConfigured: () => boolean
@@ -50,6 +52,7 @@ export const useSettingsStore = create<SettingsState>()(
       bendystrawEndpoint: DEFAULT_BENDYSTRAW_ENDPOINT,
       relayrEndpoint: 'https://api.relayr.ba5ed.com',
       language: 'en',
+      selectedFruit: null,
 
       setClaudeApiKey: (key) => set({ claudeApiKey: key }),
       setParaApiKey: (key) => set({ paraApiKey: key }),
@@ -62,6 +65,7 @@ export const useSettingsStore = create<SettingsState>()(
         changeLanguage(lang)
         set({ language: lang })
       },
+      setSelectedFruit: (fruit) => set({ selectedFruit: fruit }),
 
       clearSettings: () => set({
         claudeApiKey: '',
@@ -83,7 +87,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'juice-settings',
-      version: 7,
+      version: 8,
       onRehydrateStorage: () => (state) => {
         // Sync i18n with persisted language on app start
         if (state?.language) {
@@ -120,6 +124,13 @@ export const useSettingsStore = create<SettingsState>()(
           state = {
             ...state,
             language: 'en',
+          }
+        }
+        if (version < 8) {
+          // Migration: add selectedFruit preference
+          state = {
+            ...state,
+            selectedFruit: null,
           }
         }
         return state

@@ -240,6 +240,8 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
 
 interface ComponentRegistryProps {
   component: ParsedComponent
+  chatId?: string
+  messageId?: string
 }
 
 function LazyWrapper({
@@ -432,7 +434,12 @@ function parsePartialOptionsGroups(jsonStr: string): {
   return { groups, isComplete: groupsComplete, isInvalid: false }
 }
 
-function renderOptionsPicker(props: Record<string, unknown>, componentIsStreaming?: boolean) {
+function renderOptionsPicker(
+  props: Record<string, unknown>,
+  componentIsStreaming?: boolean,
+  chatId?: string,
+  messageId?: string
+) {
   const groupsStr = props.groups as string | undefined
   const streamTotal = props.streamTotal
     ? parseInt(String(props.streamTotal), 10)
@@ -448,6 +455,8 @@ function renderOptionsPicker(props: Record<string, unknown>, componentIsStreamin
           allSelectedLabel={props.allSelectedLabel as string | undefined}
           expectedGroupCount={streamTotal}
           isStreaming={componentIsStreaming || false}
+          chatId={chatId}
+          messageId={messageId}
         />
       </LazyWrapper>
     )
@@ -500,12 +509,14 @@ function renderOptionsPicker(props: Record<string, unknown>, componentIsStreamin
         allSelectedLabel={props.allSelectedLabel as string | undefined}
         expectedGroupCount={streamTotal}
         isStreaming={isStreaming}
+        chatId={chatId}
+        messageId={messageId}
       />
     </LazyWrapper>
   )
 }
 
-export default function ComponentRegistry({ component }: ComponentRegistryProps) {
+export default function ComponentRegistry({ component, chatId, messageId }: ComponentRegistryProps) {
   const { type, props, isStreaming } = component
 
   // Handle loading state
@@ -515,7 +526,7 @@ export default function ComponentRegistry({ component }: ComponentRegistryProps)
 
   // Handle special case: options-picker needs custom parsing logic
   if (type === 'options-picker') {
-    return renderOptionsPicker(props, isStreaming)
+    return renderOptionsPicker(props, isStreaming, chatId, messageId)
   }
 
   // Look up component in registry

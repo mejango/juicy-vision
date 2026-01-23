@@ -1,9 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useChatStore, useThemeStore } from '../../stores'
-import type { Chat, ChatFolder } from '../../stores/chatStore'
+import type { Chat, ChatFolder, ChatMember } from '../../stores/chatStore'
+import ParticipantAvatars, { getEmojiFromAddress } from './ParticipantAvatars'
+import { getWalletSession } from '../../services/siwe'
+import { getSessionId } from '../../services/session'
 import {
   pinChat,
   moveChatToFolder,
@@ -395,6 +398,7 @@ export default function ConversationHistory() {
     setActiveChat,
     removeChat,
     updateChat,
+    updateMember,
     setChats,
     setFolders,
     addFolder,
@@ -404,6 +408,26 @@ export default function ConversationHistory() {
     getChatsInFolder,
     getSubfolders,
   } = useChatStore()
+
+  // Get current user address for permission checks
+  const currentUserAddress = useMemo(() => {
+    const walletSession = getWalletSession()
+    const sessionId = getSessionId()
+    return walletSession?.address ||
+      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+  }, [])
+
+  // Find current user's member in a chat
+  const getCurrentUserMember = useCallback((chat: Chat): ChatMember | undefined => {
+    return chat.members?.find(m =>
+      m.address?.toLowerCase() === currentUserAddress.toLowerCase()
+    )
+  }, [currentUserAddress])
+
+  // Handle member permission updates
+  const handleMemberUpdated = useCallback((chatId: string, updatedMember: ChatMember) => {
+    updateMember(chatId, updatedMember.address, updatedMember)
+  }, [updateMember])
 
   const [contextMenu, setContextMenu] = useState<{
     type: 'chat' | 'folder'
@@ -703,8 +727,43 @@ export default function ConversationHistory() {
           </p>
         )}
 
-        {/* Footer with three-dot menu */}
-        <div className="flex items-center justify-end mt-auto pt-3">
+        {/* Footer with participants and three-dot menu */}
+        <div className="flex items-center justify-between mt-auto pt-3">
+          {/* Participant avatars with username */}
+          {chat.members && chat.members.length > 0 ? (
+            <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+              {/* Skip first member in avatars since they're shown separately */}
+              {chat.members.length > 1 && (
+                <ParticipantAvatars
+                  members={chat.members.slice(1)}
+                  onlineMembers={chat.onlineMembers}
+                  maxVisible={4}
+                  size="sm"
+                  chatId={chat.id}
+                  currentUserMember={getCurrentUserMember(chat)}
+                  onMemberUpdated={(member) => handleMemberUpdated(chat.id, member)}
+                />
+              )}
+              {/* Show first member's name and emoji */}
+              {chat.members.length > 0 && (
+                <div className="flex flex-col min-w-0">
+                  {chat.members[0].displayName && (
+                    <span className={`text-xs truncate max-w-[120px] ${
+                      theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+                    }`}>
+                      {chat.members[0].displayName}
+                    </span>
+                  )}
+                  <span className="text-sm">
+                    {chat.members[0].customEmoji || getEmojiFromAddress(chat.members[0].address)}
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div />
+          )}
+          {/* Menu button */}
           <button
             onClick={(e) => {
               e.stopPropagation()

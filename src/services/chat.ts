@@ -5,6 +5,7 @@
  */
 
 import { useAuthStore } from '../stores/authStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { getSessionId } from './session'
 import { getWalletSessionToken } from './siwe'
 import { WS_CONFIG } from '../constants'
@@ -35,6 +36,10 @@ async function apiRequest<T>(
   const token = useAuthStore.getState().token
   const siweToken = getWalletSessionToken()
   const sessionId = getSessionId()
+
+  // Debug logging
+  console.log('[apiRequest] endpoint:', endpoint)
+  console.log('[apiRequest] sessionId:', sessionId)
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -351,6 +356,28 @@ export async function updateMemberRole(
   )
 }
 
+export interface UpdateMemberPermissionsParams {
+  role?: 'admin' | 'member'
+  canInvite?: boolean
+  canInvokeAi?: boolean
+  canManageMembers?: boolean
+  canPauseAi?: boolean
+}
+
+export async function updateMemberPermissions(
+  chatId: string,
+  address: string,
+  permissions: UpdateMemberPermissionsParams
+): Promise<ChatMember> {
+  return apiRequest<ChatMember>(
+    `/chat/${chatId}/members/${address}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(permissions),
+    }
+  )
+}
+
 export async function removeMember(
   chatId: string,
   address: string
@@ -383,6 +410,9 @@ export interface CreateInviteParams {
   canSendMessages?: boolean
   canInviteOthers?: boolean
   canPassOnRoles?: boolean
+  canInvokeAi?: boolean
+  canPauseAi?: boolean
+  canGrantPauseAi?: boolean
 }
 
 export async function createInvite(
@@ -446,9 +476,27 @@ export async function invokeAi(
   prompt: string,
   attachments?: Array<{ type: string; name: string; mimeType: string; data: string }>
 ): Promise<ChatMessage> {
+  // Get user's API key if configured (BYOK - Bring Your Own Key)
+  const { claudeApiKey } = useSettingsStore.getState()
+
   return apiRequest<ChatMessage>(`/chat/${chatId}/ai/invoke`, {
     method: 'POST',
-    body: JSON.stringify({ prompt, attachments }),
+    body: JSON.stringify({
+      prompt,
+      attachments,
+      apiKey: claudeApiKey || undefined, // Only include if set
+    }),
+  })
+}
+
+/**
+ * Toggle AI enabled state for a chat
+ * Only members with canPauseAi permission can toggle this
+ */
+export async function toggleAiEnabled(chatId: string, enabled: boolean): Promise<Chat> {
+  return apiRequest<Chat>(`/chat/${chatId}/ai/toggle`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
   })
 }
 
@@ -481,11 +529,21 @@ export interface WsMessage {
     | 'ai_response'
     | 'member_joined'
     | 'member_left'
+    | 'member_update' // Member profile updates (emoji, etc.)
     | 'chat_update' // Chat metadata updates (title, etc.)
+    | 'component_interaction' // Real-time component collaboration
     | 'error'
     | 'connection_status' // Internal status messages
   chatId: string
   data: unknown
+  sender?: string // Sender address for component interactions
+}
+
+export interface ComponentInteractionData {
+  messageId: string
+  groupId: string
+  action: 'select' | 'typing' | 'hover' | 'hover_end'
+  value?: string
 }
 
 export type WsMessageHandler = (message: WsMessage) => void
@@ -802,5 +860,28 @@ export function sendTypingIndicator(_chatId: string, isTyping: boolean): void {
   wsManager.send({
     type: 'typing',
     data: { isTyping },
+  })
+}
+
+export function sendComponentInteraction(data: ComponentInteractionData): void {
+  wsManager.send({
+    type: 'component_interaction',
+    data,
+  })
+}
+
+// ============================================================================
+// Session Merging
+// ============================================================================
+
+/**
+ * Merge anonymous session chats into a connected account
+ * When a user connects their wallet/passkey, this moves all chats
+ * from their anonymous session to the connected address
+ */
+export async function mergeSession(newAddress: string): Promise<{ mergedChatIds: string[]; message: string }> {
+  return apiRequest<{ mergedChatIds: string[]; message: string }>('/chat/merge-session', {
+    method: 'POST',
+    body: JSON.stringify({ newAddress }),
   })
 }

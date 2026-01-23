@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../stores'
 import { useAuthStore } from '../stores/authStore'
 import { getSessionId } from '../services/session'
+import { getWalletSession } from '../services/siwe'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -23,21 +24,33 @@ export default function JoinChatPage() {
       if (!code) return
 
       try {
+        const sessionId = getSessionId()
+        console.log('[JoinChatPage] Joining with sessionId:', sessionId)
+
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
-          'X-Session-ID': getSessionId(),
+          'X-Session-ID': sessionId,
         }
 
         if (token) {
           headers['Authorization'] = `Bearer ${token}`
         }
 
+        // Include wallet session if user has signed in with wallet (SIWE)
+        const walletSession = getWalletSession()
+        if (walletSession?.token) {
+          headers['X-Wallet-Session'] = walletSession.token
+        }
+
+        console.log('[JoinChatPage] POST to:', `${API_BASE_URL}/chat/invite/${code}/join`)
         const response = await fetch(`${API_BASE_URL}/chat/invite/${code}/join`, {
           method: 'POST',
           headers,
         })
+        console.log('[JoinChatPage] Response status:', response.status)
 
         const data = await response.json()
+        console.log('[JoinChatPage] Response data:', data)
 
         if (!data.success) {
           setError(data.error || 'Invalid invite link')
@@ -46,6 +59,8 @@ export default function JoinChatPage() {
         }
 
         // Navigate directly to the chat URL
+        console.log('[JoinChatPage] Navigating to:', `/chat/${data.data.chatId}`)
+        console.log('[JoinChatPage] Session ID after join:', getSessionId())
         navigate(`/chat/${data.data.chatId}`)
       } catch (err) {
         setError('Failed to join chat')

@@ -39,14 +39,16 @@
     "soTellMe": "Então me conta.",
     "thereYouAre": "Aí está você.",
     "finally": "Finalmente.",
-    "ohGoodYouMadeIt": "Que bom, você chegou.",
+    "whatHaveYouGot": "O que você tem?",
     "letsGetToWork": "Vamos trabalhar.",
-    "rightOnTime": "Na hora certa.",
+    "goOn": "Pode falar.",
     "lookWhoShowedUp": "Olha só quem apareceu.",
     "showMeWhatYouGot": "Mostra o que você tem.",
-    "letsMakeItHappen": "Vamos fazer acontecer.",
-    "readyToSqueeze": "Pronto pra espremer?",
-    "yourMove": "Sua vez."
+    "makeItCount": "Faça valer.",
+    "begin": "Comece.",
+    "yourMove": "Sua vez.",
+    "helloDarling": "Olá, querido.",
+    "helloChampion": "Olá, campeão."
   },
   "placeholders": {
     "juicyVision": "Qual é sua visão suculenta?",
@@ -101,10 +103,25 @@
     "unpin": "Desafixar"
   },
   "chat": {
+    "you": "Você",
+    "anonymous": "Anônimo",
     "conspire": "Conspirar",
     "save": "Salvar",
     "invite": "Convidar",
-    "export": "Exportar"
+    "export": "Exportar",
+    "ai": "IA",
+    "skipAi": "Pular IA",
+    "skipping": "Pulando",
+    "aiPaused": "IA pausada",
+    "aiPausedExplanation": "A IA foi pausada por um administrador para este chat. Suas mensagens não receberão respostas da IA até que um administrador a reative.",
+    "pauseAi": "Pausar IA",
+    "pauseAiTooltip": "Clique para ver opções de pular IA",
+    "skipForAll": "Pular para todos",
+    "skipForYou": "Pular para você",
+    "skipAllOnTooltip": "A IA está pausada para todos",
+    "skipAllOffTooltip": "Clique para pausar a IA para todos",
+    "skipYouOnTooltip": "Suas mensagens não invocarão a IA",
+    "skipYouOffTooltip": "Clique para pular a IA nas suas mensagens"
   },
   "note": {
     "placeholder": "Escreva sua nota...",
@@ -138,7 +155,15 @@
     "maxUsesDisplay": "Limitado a {{count}} usos",
     "noExpiry": "Sem expiração, usos ilimitados",
     "createAnother": "Criar outro link",
-    "close": "Fechar"
+    "close": "Fechar",
+    "generating": "Gerando...",
+    "noPermission": "Não é possível convidar",
+    "noPermissionDescription": "Você não tem permissão para convidar pessoas para este chat. Peça a um administrador para conceder permissões de convite.",
+    "canPassOnRoles": "Pode convidar outros que podem convidar",
+    "canUseAi": "Pode usar IA",
+    "canPauseAi": "Pode pausar IA",
+    "canGrantPauseAi": "Pode convidar outros que podem pausar IA",
+    "header": "Convidar alguém para este chat"
   },
   "badges": {
     "id": "identidade",
@@ -149,9 +174,26 @@
     "fun": "divertido"
   },
   "mascot": {
-    "tagline": "Financie Seu Projeto\nDo Seu Jeito"
+    "tagline": "Financie Seu Projeto\nDo Seu Jeito",
+    "description": "Juicy é a plataforma de financiamento do povo. Use para rodar sua captação, operar seu negócio, gerenciar sua campanha, vender para clientes, trabalhar com sua comunidade e realizar seus sonhos."
+  },
+  "beta": {
+    "title": "Em breve",
+    "whatWeAreBuilding": "Juicy é a plataforma de financiamento do povo. Use para rodar sua captação, operar seu negócio, gerenciar sua campanha, vender para clientes, trabalhar com sua comunidade e realizar seus sonhos.",
+    "whyBeta": "Ainda estamos ajustando as coisas. Espere alguns bugs.",
+    "whenNotBeta": "Vamos tirar a tag beta quando tudo funcionar perfeitamente.",
+    "payUs": "Pagar",
+    "supportUs": "Apoiar Juicy Vision",
+    "comingSoon": "JUICY em breve. Atualmente usando NANA."
+  },
+  "materials": {
+    "visionDoc": "Solte seu documento de visão",
+    "masterPlan": "Mostre seu plano mestre",
+    "screenshot": "Cole uma captura de tela"
   },
   "juicyExplainer": {
+    "intro": "Juicy é a plataforma de financiamento do povo.",
+    "useIt": "Use para rodar sua captação, operar seu negócio, gerenciar sua campanha, vender para clientes, trabalhar com sua comunidade e realizar seus sonhos.",
     "paragraph1": "$JUICY é o token de receita que alimenta este app. Quando você paga pro Juicy Vision, você recebe tokens $JUICY proporcionais à sua contribuição.",
     "paragraph2": "Conforme o saldo cresce, o valor de cada token também cresce. Você pode sacar a qualquer momento pela sua parte, ou segurar para apoiar o negócio comunitário.",
     "paragraph3": "Operamos de forma extremamente enxuta. A receita do app flui principalmente de volta para os detentores de $JUICY, garantido. Quanto mais valor criado, mais todos se beneficiam. Estamos juntos nessa.",

@@ -1,15 +1,19 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { HashRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { wagmiConfig } from './config/wagmi'
 import { ChatContainer, ProtocolActivity, MascotPanel } from './components/chat'
+import ParticipantAvatars from './components/chat/ParticipantAvatars'
 import JoinChatPage from './components/JoinChatPage'
 import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
-import { useChatStore, useThemeStore } from './stores'
+import { useChatStore, useThemeStore, type ChatMember } from './stores'
 import { useTransactionExecutor } from './hooks'
+import { getSessionId } from './services/session'
+import { getWalletSession } from './services/siwe'
+import { useEnsNameResolved } from './hooks'
 
 // Hook for detecting mobile viewport
 function useIsMobile() {
@@ -36,12 +40,97 @@ const queryClient = new QueryClient({
 
 function Header({ showActions = false }: { showActions?: boolean }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const { chats, setActiveChat } = useChatStore()
+  const { chats, setActiveChat, activeChatId, updateMember } = useChatStore()
+  const activeChat = chats.find(c => c.id === activeChatId)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isCompact, setIsCompact] = useState(false)
   const { theme } = useThemeStore()
   const { t } = useTranslation()
   const navigate = useNavigate()
+
+  // Get current user info for participant display
+  // Must match backend logic: SIWE session address OR session pseudo-address
+  // (wagmiAddress alone isn't verified by backend, so don't use it here)
+  const walletSession = getWalletSession()
+  const sessionId = getSessionId()
+  const sessionPseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+  const currentAddress = walletSession?.address || sessionPseudoAddress
+  const { ensName } = useEnsNameResolved(walletSession?.address)
+
+  // Build participants list: always ensure current user is shown
+  const participants: ChatMember[] = useMemo(() => {
+    const serverMembers = activeChat?.members || []
+
+    // Check if current user is already in the list
+    // Need to check BOTH wallet address AND session pseudo-address since user might
+    // have created/joined chat before connecting wallet
+    const currentUserInList = serverMembers.some(m => {
+      const memberAddr = m.address?.toLowerCase()
+      return memberAddr === currentAddress.toLowerCase() ||
+             (walletSession && memberAddr === sessionPseudoAddress.toLowerCase())
+    })
+
+    // If current user is not in server members, add them
+    if (!currentUserInList && currentAddress) {
+      return [...serverMembers, {
+        address: currentAddress,
+        role: 'member' as const,
+        displayName: ensName || undefined,
+        joinedAt: new Date().toISOString(),
+      }]
+    }
+
+    // Current user is in the list, use server members (or fallback if empty)
+    return serverMembers.length > 0 ? serverMembers : [{
+      address: currentAddress,
+      role: 'member' as const,
+      displayName: ensName || undefined,
+      joinedAt: new Date().toISOString(),
+    }]
+  }, [activeChat?.members, currentAddress, sessionPseudoAddress, walletSession, ensName])
+
+  // Find current user's member record for permission checking
+  const currentUserMember = useMemo(() => {
+    return participants.find(m => {
+      const memberAddr = m.address?.toLowerCase()
+      return memberAddr === currentAddress.toLowerCase() ||
+             (walletSession && memberAddr === sessionPseudoAddress.toLowerCase())
+    })
+  }, [participants, currentAddress, sessionPseudoAddress, walletSession])
+
+  // Handle member permission updates
+  const handleMemberUpdated = useCallback((updatedMember: ChatMember) => {
+    if (activeChatId) {
+      updateMember(activeChatId, updatedMember.address, updatedMember)
+    }
+  }, [activeChatId, updateMember])
+
+  // Check if current user can invite others
+  const canInvite = !activeChatId || // New chat, anyone can invite
+    currentUserMember?.role === 'founder' ||
+    currentUserMember?.role === 'admin' ||
+    currentUserMember?.canInvite === true
+
+  // Online members: always include current user (they're viewing the chat!)
+  // Also include session pseudo-address if user is signed in, since their participant
+  // entry might use pseudo-address (from before they signed in)
+  const onlineMembers = useMemo(() => {
+    const serverOnline = activeChat?.onlineMembers || []
+    const result = [...serverOnline]
+
+    // Add current address if not present
+    if (currentAddress && !result.some(a => a?.toLowerCase() === currentAddress.toLowerCase())) {
+      result.push(currentAddress)
+    }
+
+    // If signed in, also add pseudo-address so participant shows as online
+    // (their member entry might still use the pseudo-address)
+    if (walletSession && !result.some(a => a?.toLowerCase() === sessionPseudoAddress.toLowerCase())) {
+      result.push(sessionPseudoAddress)
+    }
+
+    return result
+  }, [activeChat?.onlineMembers, currentAddress, walletSession, sessionPseudoAddress])
 
   // Shrink header on scroll down, restore on scroll up
   useEffect(() => {
@@ -115,14 +204,37 @@ function Header({ showActions = false }: { showActions?: boolean }) {
           <div className={`absolute bottom-2 left-0 right-0 p-4 transition-opacity duration-150 ${
             isCompact ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}>
-            <div className="max-w-5xl mx-auto flex justify-end gap-2">
+            <div className="max-w-5xl mx-auto flex justify-end items-center gap-2">
+              {/* Participants - show "Currently private" if alone */}
+              {participants.length <= 1 ? (
+                <span className={`text-xs mr-1 ${
+                  theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                }`}>
+                  {t('chat.private', 'Currently private')}
+                </span>
+              ) : (
+                <ParticipantAvatars
+                  members={participants}
+                  onlineMembers={onlineMembers}
+                  maxVisible={6}
+                  size="sm"
+                  className="mr-1"
+                  chatId={activeChatId || undefined}
+                  currentUserMember={currentUserMember}
+                  onMemberUpdated={handleMemberUpdated}
+                />
+              )}
               {/* Invite to chat */}
               <button
                 onClick={handleInvite}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${
-                  theme === 'dark'
-                    ? 'text-gray-400 hover:text-white'
-                    : 'text-gray-500 hover:text-gray-900'
+                  canInvite
+                    ? theme === 'dark'
+                      ? 'text-gray-400 hover:text-white'
+                      : 'text-gray-500 hover:text-gray-900'
+                    : theme === 'dark'
+                      ? 'text-gray-600 cursor-default'
+                      : 'text-gray-400 cursor-default'
                 }`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -445,6 +557,8 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
         window.__dockScrollLocked = true
         container.style.setProperty('--dock-height', pinnedHeight)
         container.dataset.dockPinned = 'true'
+        // Notify ChatContainer that dock is pinned (for compact mode)
+        window.dispatchEvent(new CustomEvent('juice:dock-scroll', { detail: { enabled: true } }))
         // Start gesture end timer
         gestureEndTimerRef.current = window.setTimeout(enableScroll, gestureEndDelay)
         return
@@ -458,6 +572,8 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
         window.__dockScrollLocked = true
         container.style.setProperty('--dock-height', unpinnedHeight)
         delete container.dataset.dockPinned
+        // Notify ChatContainer that dock is unpinned (for full mode)
+        window.dispatchEvent(new CustomEvent('juice:dock-scroll', { detail: { enabled: false } }))
         // Unlock after animation completes
         gestureEndTimerRef.current = window.setTimeout(() => {
           window.__dockScrollLocked = false
@@ -583,17 +699,7 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
             <MainContent forceActiveChatId={forceActiveChatId} />
           )}
         </div>
-        {/* Mobile activity toggle FAB */}
-        {!showMobileActivity && (
-          <button
-            onClick={() => setShowMobileActivity(true)}
-            className="fixed bottom-24 right-4 z-50 w-12 h-12 rounded-full bg-juice-orange text-juice-dark shadow-lg flex items-center justify-center"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </button>
-        )}
+        {/* Mobile activity toggle removed - no activity panel on mobile */}
       </div>
     )
   }
@@ -633,8 +739,8 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
         <div className="h-[4px] bg-juice-orange shrink-0" />
       </div>
       {/* Activity sidebar: full height, far right - hidden on tablet */}
-      {/* Uses border-4 so corners connect properly */}
-      <div className="hidden md:block w-[calc(38%*0.38)] h-full border-4 border-juice-orange">
+      {/* Uses border-4 so corners connect properly, min-width ensures readability */}
+      <div className="hidden md:block w-[calc(38%*0.38)] min-w-[200px] h-full border-4 border-juice-orange">
         <ActivitySidebar onProjectClick={handleActivityProjectClick} />
       </div>
     </div>

@@ -6,6 +6,15 @@
 
 import { query, execute } from '../db/index.ts';
 
+/**
+ * Chat Invite with permission settings
+ *
+ * Permission levels:
+ * - canSendMessages=false → view-only member
+ * - canSendMessages=true, canInviteOthers=false → view-and-write member
+ * - canSendMessages=true, canInviteOthers=true, canPassOnRoles=false → view-and-write-and-invite member
+ * - canSendMessages=true, canInviteOthers=true, canPassOnRoles=true → view-and-write-and-invite-and-caninvite member
+ */
 export interface ChatInvite {
   id: string;
   chatId: string;
@@ -13,6 +22,10 @@ export interface ChatInvite {
   createdBy: string;
   canSendMessages: boolean;
   canInviteOthers: boolean;
+  canPassOnRoles: boolean;
+  canInvokeAi: boolean;
+  canPauseAi: boolean;
+  canGrantPauseAi: boolean;
   role: 'member' | 'admin';
   uses: number;
   maxUses: number | null;
@@ -35,6 +48,10 @@ export interface CreateInviteParams {
   createdBy: string;
   canSendMessages?: boolean;
   canInviteOthers?: boolean;
+  canPassOnRoles?: boolean;
+  canInvokeAi?: boolean;
+  canPauseAi?: boolean;
+  canGrantPauseAi?: boolean;
   role?: 'member' | 'admin';
   maxUses?: number | null;
   expiresAt?: string | null;
@@ -54,6 +71,12 @@ function generateInviteCode(): string {
 
 /**
  * Create a new invite link for a chat
+ *
+ * Permission levels:
+ * - view-only: canSendMessages=false
+ * - view-and-write: canSendMessages=true, canInviteOthers=false
+ * - view-and-write-and-invite: canSendMessages=true, canInviteOthers=true, canPassOnRoles=false
+ * - view-and-write-and-invite-and-caninvite: canSendMessages=true, canInviteOthers=true, canPassOnRoles=true
  */
 export async function createInvite(params: CreateInviteParams): Promise<ChatInvite> {
   const {
@@ -61,6 +84,10 @@ export async function createInvite(params: CreateInviteParams): Promise<ChatInvi
     createdBy,
     canSendMessages = true,
     canInviteOthers = false,
+    canPassOnRoles = false,
+    canInvokeAi = true,
+    canPauseAi = false,
+    canGrantPauseAi = false,
     role = 'member',
     maxUses = null,
     expiresAt = null,
@@ -75,6 +102,10 @@ export async function createInvite(params: CreateInviteParams): Promise<ChatInvi
     created_by: string;
     can_send_messages: boolean;
     can_invite_others: boolean;
+    can_pass_on_roles: boolean;
+    can_invoke_ai: boolean;
+    can_pause_ai: boolean;
+    can_grant_pause_ai: boolean;
     role: string;
     uses: number;
     max_uses: number | null;
@@ -82,10 +113,11 @@ export async function createInvite(params: CreateInviteParams): Promise<ChatInvi
     created_at: string;
   }>(
     `INSERT INTO chat_invites (
-      chat_id, code, created_by, can_send_messages, can_invite_others, role, max_uses, expires_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      chat_id, code, created_by, can_send_messages, can_invite_others, can_pass_on_roles,
+      can_invoke_ai, can_pause_ai, can_grant_pause_ai, role, max_uses, expires_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *`,
-    [chatId, code, createdBy, canSendMessages, canInviteOthers, role, maxUses, expiresAt]
+    [chatId, code, createdBy, canSendMessages, canInviteOthers, canPassOnRoles, canInvokeAi, canPauseAi, canGrantPauseAi, role, maxUses, expiresAt]
   );
 
   const row = result[0];
@@ -96,6 +128,10 @@ export async function createInvite(params: CreateInviteParams): Promise<ChatInvi
     createdBy: row.created_by,
     canSendMessages: row.can_send_messages,
     canInviteOthers: row.can_invite_others,
+    canPassOnRoles: row.can_pass_on_roles,
+    canInvokeAi: row.can_invoke_ai ?? true,
+    canPauseAi: row.can_pause_ai ?? false,
+    canGrantPauseAi: row.can_grant_pause_ai ?? false,
     role: row.role as 'member' | 'admin',
     uses: row.uses,
     maxUses: row.max_uses,
@@ -115,6 +151,10 @@ export async function getInviteByCode(code: string): Promise<ChatInvite | null> 
     created_by: string;
     can_send_messages: boolean;
     can_invite_others: boolean;
+    can_pass_on_roles: boolean;
+    can_invoke_ai: boolean;
+    can_pause_ai: boolean;
+    can_grant_pause_ai: boolean;
     role: string;
     uses: number;
     max_uses: number | null;
@@ -135,6 +175,10 @@ export async function getInviteByCode(code: string): Promise<ChatInvite | null> 
     createdBy: row.created_by,
     canSendMessages: row.can_send_messages,
     canInviteOthers: row.can_invite_others,
+    canPassOnRoles: row.can_pass_on_roles ?? false,
+    canInvokeAi: row.can_invoke_ai ?? true,
+    canPauseAi: row.can_pause_ai ?? false,
+    canGrantPauseAi: row.can_grant_pause_ai ?? false,
     role: row.role as 'member' | 'admin',
     uses: row.uses,
     maxUses: row.max_uses,
@@ -154,6 +198,10 @@ export async function getInvitesForChat(chatId: string): Promise<ChatInvite[]> {
     created_by: string;
     can_send_messages: boolean;
     can_invite_others: boolean;
+    can_pass_on_roles: boolean;
+    can_invoke_ai: boolean;
+    can_pause_ai: boolean;
+    can_grant_pause_ai: boolean;
     role: string;
     uses: number;
     max_uses: number | null;
@@ -171,6 +219,10 @@ export async function getInvitesForChat(chatId: string): Promise<ChatInvite[]> {
     createdBy: row.created_by,
     canSendMessages: row.can_send_messages,
     canInviteOthers: row.can_invite_others,
+    canPassOnRoles: row.can_pass_on_roles ?? false,
+    canInvokeAi: row.can_invoke_ai ?? true,
+    canPauseAi: row.can_pause_ai ?? false,
+    canGrantPauseAi: row.can_grant_pause_ai ?? false,
     role: row.role as 'member' | 'admin',
     uses: row.uses,
     maxUses: row.max_uses,
