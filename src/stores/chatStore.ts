@@ -279,42 +279,21 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           chats: state.chats.map((c) => {
             if (c.id !== chatId) return c
-            let messages = c.messages || []
+            const messages = c.messages || []
             // Avoid duplicates by ID
             if (messages.some((m) => m.id === message.id)) return c
-            // For user messages, check for content duplicates to avoid showing the same message twice
-            // This handles: optimistic + WebSocket, double-submit, etc.
+            // For user messages, skip if there's already a matching message (optimistic or real)
+            // This prevents duplicates from WebSocket echoing back our own messages
             if (message.role === 'user') {
-              const existingOptimistic = messages.find((m) =>
-                m.id.startsWith('optimistic-') &&
+              const hasMatchingMessage = messages.some((m) =>
                 m.role === 'user' &&
                 m.content === message.content &&
                 // Only consider recent messages (within 30 seconds) as potential duplicates
                 Math.abs(new Date(m.createdAt).getTime() - new Date(message.createdAt).getTime()) < 30000
               )
-              if (existingOptimistic) {
-                // If this is the real message replacing an optimistic one, update the ID but keep attachments
-                if (!message.id.startsWith('optimistic-')) {
-                  return {
-                    ...c,
-                    messages: messages.map((m) =>
-                      m.id === existingOptimistic.id
-                        ? { ...message, attachments: existingOptimistic.attachments || message.attachments }
-                        : m
-                    )
-                  }
-                }
-                // Otherwise skip adding this duplicate optimistic message
-                return c
-              }
-              // Also check for non-optimistic duplicates (double WebSocket, etc.)
-              const hasExactDuplicate = messages.some((m) =>
-                m.role === 'user' &&
-                m.content === message.content &&
-                !m.id.startsWith('optimistic-') &&
-                Math.abs(new Date(m.createdAt).getTime() - new Date(message.createdAt).getTime()) < 30000
-              )
-              if (hasExactDuplicate) return c
+              // If there's already a matching message, skip adding this one
+              // This keeps the optimistic message (which has attachments) instead of replacing with WebSocket message
+              if (hasMatchingMessage) return c
             }
             return { ...c, messages: [...messages, message] }
           }),
