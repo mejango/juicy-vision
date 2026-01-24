@@ -52,11 +52,12 @@ interface ChatInputProps {
   onThemeClick?: () => void
   onSettingsClick?: () => void
   walletInfoRightContent?: React.ReactNode
+  onConnectedAsClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15)
 
-export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick, walletInfoRightContent }: ChatInputProps) {
+export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick, walletInfoRightContent, onConnectedAsClick }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [isFirstLoad, setIsFirstLoad] = useState(true)
   const [placeholderIndex, setPlaceholderIndex] = useState(() =>
@@ -194,6 +195,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
 
   // Max 5 lines then scroll (line-height ~24px, so ~120px max)
   const maxHeight = 120
+  const minHeight = 48
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -201,9 +203,13 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       if (input.trim()) {
         textareaRef.current.style.height = 'auto'
         const scrollHeight = textareaRef.current.scrollHeight
-        textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`
+        const newHeight = Math.min(scrollHeight, maxHeight)
+        textareaRef.current.style.height = `${newHeight}px`
+        // Only enable scrolling when content exceeds max height
+        textareaRef.current.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden'
       } else {
-        textareaRef.current.style.height = '48px'
+        textareaRef.current.style.height = `${minHeight}px`
+        textareaRef.current.style.overflowY = 'hidden'
       }
     }
   }, [input])
@@ -386,7 +392,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           disabled={disabled}
           rows={1}
           autoFocus
-          className={`flex-1 border-2 border-juice-cyan px-4 pt-[11px] pb-[15px] focus:outline-none focus:border-[3px] focus:px-[15px] focus:pt-[10px] focus:pb-[14px] resize-none font-semibold leading-tight overflow-y-auto hide-scrollbar ${
+          className={`flex-1 border-2 border-juice-cyan px-4 pt-[11px] pb-[15px] focus:outline-none focus:border-[3px] focus:px-[15px] focus:pt-[10px] focus:pb-[14px] resize-none font-semibold leading-tight overflow-y-hidden hide-scrollbar ${
             theme === 'dark'
               ? 'bg-white/5 text-white placeholder-white/70'
               : 'bg-black/5 text-gray-900 placeholder-gray-900/50'
@@ -406,7 +412,16 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
               <div>
             {isConnected && address ? (
               <>
-                <span className="inline-flex items-center gap-1.5">
+                <button
+                  onClick={onConnectedAsClick}
+                  className={`inline-flex items-center gap-1.5 transition-colors ${
+                    onConnectedAsClick
+                      ? theme === 'dark'
+                        ? 'hover:text-white'
+                        : 'hover:text-gray-600'
+                      : ''
+                  }`}
+                >
                   {signedIn ? (
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Signed in" />
                   ) : (
@@ -417,7 +432,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                   ) : (
                     <>Connected</>
                   )}
-                </span>
+                </button>
                 {!identity && (
                   <button
                     onClick={(e) => {
@@ -470,14 +485,23 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
               </>
             ) : passkeyWallet ? (
               <>
-                <span className="inline-flex items-center gap-1.5">
+                <button
+                  onClick={onConnectedAsClick}
+                  className={`inline-flex items-center gap-1.5 transition-colors ${
+                    onConnectedAsClick
+                      ? theme === 'dark'
+                        ? 'hover:text-white'
+                        : 'hover:text-gray-600'
+                      : ''
+                  }`}
+                >
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Passkey wallet" />
                   {getDisplayIdentity(passkeyWallet.address) ? (
                     <>Connected as {getDisplayIdentity(passkeyWallet.address)}</>
                   ) : (
                     <>Connected</>
                   )}
-                </span>
+                </button>
                 {!identity && (
                   <button
                     onClick={(e) => {

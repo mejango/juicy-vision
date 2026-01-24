@@ -93,9 +93,8 @@ function parsePartialComponent(partialTag: string): ParsedComponent | null {
     }
   }
 
-  // Only return if we have meaningful props (at least started groups for options-picker)
-  if (type === 'options-picker' && !props.groups) return null
-
+  // For options-picker, show shell immediately even without groups
+  // This makes the component appear sooner while streaming
   return {
     type,
     props,

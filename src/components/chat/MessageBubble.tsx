@@ -13,6 +13,7 @@ import ThinkingIndicator from './ThinkingIndicator'
 import { getEmojiForUser, MemberPopover } from './ParticipantAvatars'
 import { getWalletSession } from '../../services/siwe'
 import { getSessionId } from '../../services/session'
+import { JuicyIdPopover, type AnchorPosition } from './WalletInfo'
 
 interface MessageBubbleProps {
   message: Message
@@ -192,6 +193,8 @@ export default function MessageBubble({
   const [downloadPopoverAttachment, setDownloadPopoverAttachment] = useState<Attachment | null>(null)
   const attachmentRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const [memberPopover, setMemberPopover] = useState<{ rect: DOMRect } | null>(null)
+  const [juicyIdPopoverOpen, setJuicyIdPopoverOpen] = useState(false)
+  const [juicyIdAnchorPosition, setJuicyIdAnchorPosition] = useState<AnchorPosition | null>(null)
 
   // Get current user address to check if sender is the current user
   const currentUserAddress = useMemo(() => {
@@ -227,6 +230,42 @@ export default function MessageBubble({
             <p className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
               {message.senderName}
             </p>
+          )}
+          {/* Add Juicy ID prompt when user doesn't have one */}
+          {message.needsJuicyId && !message.senderName && (
+            <>
+              <button
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  setJuicyIdAnchorPosition({
+                    top: rect.top,
+                    left: rect.left,
+                    width: rect.width,
+                    height: rect.height,
+                  })
+                  setJuicyIdPopoverOpen(true)
+                }}
+                className={`text-xs mb-1 transition-colors ${
+                  isDark
+                    ? 'text-green-400 hover:text-green-300'
+                    : 'text-green-600 hover:text-green-500'
+                }`}
+              >
+                Add your Juicy ID
+              </button>
+              <JuicyIdPopover
+                isOpen={juicyIdPopoverOpen}
+                onClose={() => setJuicyIdPopoverOpen(false)}
+                anchorPosition={juicyIdAnchorPosition}
+                onWalletClick={() => {
+                  setJuicyIdPopoverOpen(false)
+                  window.dispatchEvent(new CustomEvent('juice:open-wallet-panel', {
+                    detail: { anchorPosition: juicyIdAnchorPosition }
+                  }))
+                }}
+                onIdentitySet={() => setJuicyIdPopoverOpen(false)}
+              />
+            </>
           )}
           {/* Message content + lightning bolt row */}
           <div className="flex items-start gap-3">
@@ -336,8 +375,8 @@ export default function MessageBubble({
         <div className={`w-full bg-transparent px-4 py-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
           <div className="flex items-start gap-3">
             {/* Lightning bolt for AI */}
-            <div className="shrink-0 pt-0.5 text-lg leading-none text-juice-yellow">
-              ⚡
+            <div className="shrink-0 pt-0.5 text-lg leading-none">
+              ⚡️
             </div>
             {/* Message content */}
             <div className="flex-1 min-w-0">

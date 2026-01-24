@@ -22,7 +22,8 @@ const QueueRulesetForm = lazy(() => import('./QueueRulesetForm'))
 const PriceChart = lazy(() => import('./PriceChart'))
 const ActivityFeed = lazy(() => import('./ActivityFeed'))
 const RulesetSchedule = lazy(() => import('./RulesetSchedule'))
-const OptionsPicker = lazy(() => import('./OptionsPicker'))
+// OptionsPicker is eagerly loaded to avoid shimmer flash - it's commonly used and should appear instantly
+import OptionsPicker from './OptionsPicker'
 const ProjectChainPicker = lazy(() => import('./ProjectChainPicker'))
 const TopProjects = lazy(() => import('./TopProjects'))
 const NFTGallery = lazy(() => import('./NFTGallery'))
@@ -448,22 +449,31 @@ function renderOptionsPicker(
   // Handle pre-parsed groups (already an array)
   if (Array.isArray(props.groups)) {
     return (
-      <LazyWrapper type="options-picker" fallback={<OptionsPickerShimmer />}>
-        <OptionsPicker
-          groups={props.groups}
-          submitLabel={props.submitLabel as string | undefined}
-          allSelectedLabel={props.allSelectedLabel as string | undefined}
-          expectedGroupCount={streamTotal}
-          isStreaming={componentIsStreaming || false}
-          chatId={chatId}
-          messageId={messageId}
-        />
-      </LazyWrapper>
+      <OptionsPicker
+        groups={props.groups}
+        submitLabel={props.submitLabel as string | undefined}
+        allSelectedLabel={props.allSelectedLabel as string | undefined}
+        expectedGroupCount={streamTotal}
+        isStreaming={componentIsStreaming || false}
+        chatId={chatId}
+        messageId={messageId}
+      />
     )
   }
 
-  // No groups provided
+  // No groups provided yet - if streaming, show empty picker with loading state
   if (!groupsStr) {
+    if (componentIsStreaming) {
+      return (
+        <OptionsPicker
+          groups={[]}
+          isStreaming={true}
+          expectedGroupCount={streamTotal || 2}
+          chatId={chatId}
+          messageId={messageId}
+        />
+      )
+    }
     return (
       <div className="glass p-3 text-gray-400 text-sm">
         Options not available. Try asking again.
@@ -486,9 +496,17 @@ function renderOptionsPicker(
     )
   }
 
-  // No valid groups found but still streaming - show shimmer
+  // No valid groups found but still streaming - show empty picker with shimmer placeholders
   if (parsedGroups.length === 0 && isStreaming) {
-    return <OptionsPickerShimmer />
+    return (
+      <OptionsPicker
+        groups={[]}
+        isStreaming={true}
+        expectedGroupCount={streamTotal || 2}
+        chatId={chatId}
+        messageId={messageId}
+      />
+    )
   }
 
   // No valid groups found and not streaming - nothing to show
@@ -501,18 +519,16 @@ function renderOptionsPicker(
   }
 
   return (
-    <LazyWrapper type="options-picker" fallback={<OptionsPickerShimmer />}>
-      <OptionsPicker
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        groups={parsedGroups as any}
-        submitLabel={props.submitLabel as string | undefined}
-        allSelectedLabel={props.allSelectedLabel as string | undefined}
-        expectedGroupCount={streamTotal}
-        isStreaming={isStreaming}
-        chatId={chatId}
-        messageId={messageId}
-      />
-    </LazyWrapper>
+    <OptionsPicker
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      groups={parsedGroups as any}
+      submitLabel={props.submitLabel as string | undefined}
+      allSelectedLabel={props.allSelectedLabel as string | undefined}
+      expectedGroupCount={streamTotal}
+      isStreaming={isStreaming}
+      chatId={chatId}
+      messageId={messageId}
+    />
   )
 }
 

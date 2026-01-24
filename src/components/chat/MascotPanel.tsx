@@ -82,7 +82,7 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
               {t('juicyExplainer.intro', "Juicy is the people's funding platform.")}
             </p>
             <p className="text-xs leading-relaxed mt-3">
-              {t('juicyExplainer.useIt', 'Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. All from chats, private or with teams.')}
+              {t('juicyExplainer.useIt', 'Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.')}
             </p>
             <p className="text-xs leading-relaxed mt-3">
               {t('juicyExplainer.paragraph1')}

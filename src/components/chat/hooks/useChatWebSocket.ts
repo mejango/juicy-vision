@@ -78,7 +78,7 @@ export function useChatWebSocket({ chatId, onError }: UseChatWebSocketOptions) {
       const pendingUpdates = new Map<string, { content: string; chatId: string }>()
       let updateScheduled = false
 
-      // Batch DOM updates for smooth streaming - flush every 50ms
+      // Batch DOM updates for smooth streaming - flush every frame (16ms)
       const flushUpdates = () => {
         if (pendingUpdates.size === 0) return
         pendingUpdates.forEach(({ content, chatId: msgChatId }, messageId) => {
@@ -108,7 +108,7 @@ export function useChatWebSocket({ chatId, onError }: UseChatWebSocketOptions) {
       const scheduleUpdate = () => {
         if (!updateScheduled) {
           updateScheduled = true
-          setTimeout(flushUpdates, 50)
+          requestAnimationFrame(flushUpdates)
         }
       }
 
@@ -144,8 +144,16 @@ export function useChatWebSocket({ chatId, onError }: UseChatWebSocketOptions) {
               if (pendingUpdates.has(messageId)) {
                 flushUpdates()
               }
+              const streamedContent = streamingMessages.get(messageId)?.content || ''
               streamingMessages.delete(messageId)
               useChatStore.getState().updateMessage(targetChatId, messageId, { isStreaming: false })
+
+              // Detect empty AI response - dispatch event so UI can show "Continue" button
+              if (!streamedContent.trim()) {
+                window.dispatchEvent(new CustomEvent('chat:ai-empty-response', {
+                  detail: { chatId: targetChatId, messageId }
+                }))
+              }
             } else {
               const existing = streamingMessages.get(messageId)
               const currentContent = existing?.content || ''
@@ -153,6 +161,13 @@ export function useChatWebSocket({ chatId, onError }: UseChatWebSocketOptions) {
               streamingMessages.set(messageId, { content: newContent, chatId: targetChatId })
               pendingUpdates.set(messageId, { content: newContent, chatId: targetChatId })
               scheduleUpdate()
+
+              // First token arrived - dispatch event to clear any nudge button
+              if (!currentContent && token) {
+                window.dispatchEvent(new CustomEvent('chat:ai-streaming-started', {
+                  detail: { chatId: targetChatId, messageId }
+                }))
+              }
             }
             break
           }

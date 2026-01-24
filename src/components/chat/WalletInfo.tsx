@@ -3,10 +3,11 @@ import { createPortal } from 'react-dom'
 import { useAccount, useDisconnect } from 'wagmi'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
-import { hasValidWalletSession, getWalletSession } from '../../services/siwe'
+import { hasValidWalletSession, getWalletSession, clearWalletSession } from '../../services/siwe'
 import { getSessionId } from '../../services/session'
 import { getEmojiFromAddress, FRUIT_EMOJIS } from './ParticipantAvatars'
-import { signInWithPasskey, getPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
+import { signInWithPasskey, getPasskeyWallet, forgetPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
+import { storage } from '../../services/storage'
 
 export interface JuicyIdentity {
   emoji: string
@@ -376,6 +377,19 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
   const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
+  const [isSessionStale, setIsSessionStale] = useState(false)
+
+  // Reset stale connection - clears all auth state
+  const resetConnection = useCallback(() => {
+    clearWalletSession()
+    forgetPasskeyWallet()
+    storage.clearAll()
+    setPasskeyWallet(null)
+    setIdentity(null)
+    setIsSessionStale(false)
+    // Reload to get fresh state
+    window.location.reload()
+  }, [])
 
   // Juicy ID popover state
   const [juicyIdPopoverOpen, setJuicyIdPopoverOpen] = useState(false)
@@ -400,13 +414,62 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
     }
   }, [])
 
-  // Fetch Juicy ID
+  // Validate session and fetch Juicy ID
   useEffect(() => {
-    const fetchIdentity = async () => {
+    const validateAndFetchIdentity = async () => {
+      const walletSession = getWalletSession()
+      const hasLocalAuth = !!(passkeyWallet || walletSession)
+
+      console.log('[WalletInfo] Validating session:', {
+        hasPasskeyWallet: !!passkeyWallet,
+        hasWalletSession: !!walletSession,
+        walletSessionToken: walletSession?.token?.slice(0, 10) + '...',
+      })
+
+      // If no local auth data, nothing to validate
+      if (!hasLocalAuth) {
+        console.log('[WalletInfo] No local auth, not stale')
+        setIsSessionStale(false)
+        return
+      }
+
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+      const sessionId = getSessionId()
+
+      // If we have local auth data (passkey or wallet session), validate with backend
+      // Passkey wallets also create SIWE sessions, so we need to validate the token
+      if (walletSession?.token) {
+        try {
+          console.log('[WalletInfo] Validating token with backend...')
+          const validateRes = await fetch(`${apiUrl}/auth/siwe/session`, {
+            headers: { 'X-Wallet-Session': walletSession.token }
+          })
+
+          console.log('[WalletInfo] Validation response:', validateRes.status)
+          if (!validateRes.ok) {
+            // Session is invalid/expired - stale
+            console.log('[WalletInfo] Session invalid, marking stale')
+            setIsSessionStale(true)
+            return
+          }
+        } catch (err) {
+          // Network error during validation - assume stale
+          console.log('[WalletInfo] Validation error:', err)
+          setIsSessionStale(true)
+          return
+        }
+      } else if (passkeyWallet) {
+        // Have passkey wallet in localStorage but no SIWE session - stale
+        // (passkey wallets should always have an accompanying SIWE session)
+        console.log('[WalletInfo] Passkey wallet but no SIWE session, marking stale')
+        setIsSessionStale(true)
+        return
+      }
+
+      // Session is valid, now fetch identity
+      console.log('[WalletInfo] Session valid, not stale')
+      setIsSessionStale(false)
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || ''
-        const sessionId = getSessionId()
-        const walletSession = getWalletSession()
         const headers: Record<string, string> = {
           'X-Session-ID': sessionId,
         }
@@ -414,17 +477,18 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
           headers['X-Wallet-Session'] = walletSession.token
         }
         const res = await fetch(`${apiUrl}/identity/me`, { headers })
+
         if (res.ok) {
           const data = await res.json()
           if (data.success && data.data) {
             setIdentity(data.data)
           }
         }
-      } catch (err) {
-        // Ignore errors, just don't show identity
+      } catch {
+        // Ignore identity fetch errors
       }
     }
-    fetchIdentity()
+    validateAndFetchIdentity()
   }, [address, passkeyWallet])
 
   // Listen for identity changes from other components
@@ -458,6 +522,19 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
         >
           Connect account
         </button>
+      ) : isSessionStale ? (
+        // Stale session - show reset option
+        <button
+          onClick={resetConnection}
+          className={`flex items-center transition-colors ${
+            theme === 'dark'
+              ? 'text-red-400/70 hover:text-red-400'
+              : 'text-red-500/70 hover:text-red-500'
+          }`}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 shrink-0" />
+          <span>Reset connection</span>
+        </button>
       ) : (
         <>
           {/* Status dot and "Connected" */}
@@ -483,7 +560,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
               <span>Connected</span>
             )}
           </button>
-          {/* Set Juicy ID prompt - only when no identity */}
+          {/* Set Juicy ID prompt - only when no identity and session is valid */}
           {!identity && (
             <button
               onClick={(e) => {

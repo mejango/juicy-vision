@@ -1,12 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { useAccount, useConnect, useDisconnect } from 'wagmi'
+import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
-import { useThemeStore, useAuthStore } from '../../stores'
+import { useThemeStore, useAuthStore, useSettingsStore } from '../../stores'
 import { useManagedWallet, useEnsNameResolved } from '../../hooks'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
 import { CHAINS, ALL_CHAIN_IDS } from '../../constants'
-import { hasValidWalletSession } from '../../services/siwe'
+import { hasValidWalletSession, signInWithWallet, clearWalletSession } from '../../services/siwe'
+import { getPasskeyWallet, clearPasskeyWallet, forgetPasskeyWallet, signInWithPasskey, type PasskeyWallet } from '../../services/passkeyWallet'
+import { FRUIT_EMOJIS, getEmojiFromAddress } from '../chat/ParticipantAvatars'
+import { getSessionId } from '../../services/session'
+import { getWalletSession } from '../../services/siwe'
 
 export interface AnchorPosition {
   top: number
@@ -44,66 +48,150 @@ function shortenAddress(address: string, chars = 6): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
 }
 
-// Mode selector - self-custody vs managed
-function ModeSelector({ onSelectMode }: {
-  onSelectMode: (mode: 'self_custody' | 'managed') => void
+// Connect options - Touch ID or Wallet (matches AuthOptionsModal)
+function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
+  onWalletClick: () => void
+  onPasskeySuccess: (wallet: PasskeyWallet) => void
 }) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handlePasskeyAuth = async () => {
+    setIsAuthenticating(true)
+    setError(null)
+
+    try {
+      const wallet = await signInWithPasskey()
+      onPasskeySuccess(wallet)
+    } catch (err) {
+      console.error('Passkey auth failed:', err)
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (msg.includes('cancelled') || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('abort')) {
+          // User cancelled, no error needed
+        } else if (msg.includes('prf') || msg.includes('not supported')) {
+          setError('Touch ID wallets not supported on this device. Try Wallet instead.')
+        } else {
+          setError('Failed to create wallet. Try another method.')
+        }
+      }
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
 
   return (
-    <div className="space-y-2">
-      {/* Self-custody - Browser wallet */}
-      <button
-        onClick={() => onSelectMode('self_custody')}
-        className={`w-full p-3 border text-left transition-all ${
-          isDark
-            ? 'border-green-500/50 bg-green-500/10 hover:bg-green-500/20'
-            : 'border-green-500 bg-green-50 hover:bg-green-100'
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          <svg className={`w-5 h-5 ${isDark ? 'text-green-400' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-          <div>
-            <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Connect Wallet
-            </div>
-            <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              MetaMask, Rainbow, etc.
-            </div>
-          </div>
-        </div>
-      </button>
+    <div className="space-y-3">
+      <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+        Lets you use your chats from anywhere.
+      </p>
 
-      {/* Managed - Email */}
-      <button
-        onClick={() => onSelectMode('managed')}
-        className={`w-full p-3 border text-left transition-all ${
-          isDark
-            ? 'border-white/10 hover:border-white/20'
-            : 'border-gray-200 hover:border-gray-300'
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          <svg className={`w-5 h-5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-          <div>
-            <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Email
-            </div>
-            <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Managed wallet
-            </div>
-          </div>
+      {error && (
+        <div className="p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+          {error}
         </div>
-      </button>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={handlePasskeyAuth}
+          disabled={isAuthenticating}
+          className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+            isAuthenticating
+              ? 'border-gray-500 text-gray-500 cursor-wait'
+              : isDark
+              ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+              : 'border-green-600 text-green-600 hover:bg-green-50'
+          }`}
+        >
+          {isAuthenticating ? '...' : 'Touch ID'}
+        </button>
+
+        <button
+          onClick={onWalletClick}
+          className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+            isDark
+              ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+              : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+          }`}
+        >
+          Wallet
+        </button>
+      </div>
     </div>
   )
+}
+
+// Wallet icons as inline SVGs
+const WalletIcons: Record<string, React.ReactNode> = {
+  metaMask: (
+    <svg className="w-5 h-5" viewBox="0 0 35 33" fill="none">
+      <path d="M32.96 1L19.52 11.14L22.04 5.21L32.96 1Z" fill="#E2761B" stroke="#E2761B" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M2.04 1L15.36 11.24L12.96 5.21L2.04 1Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M28.16 23.53L24.64 29.01L32.24 31.11L34.44 23.65L28.16 23.53Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M0.58 23.65L2.76 31.11L10.36 29.01L6.84 23.53L0.58 23.65Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M9.94 14.49L7.82 17.65L15.32 18L15.04 9.94L9.94 14.49Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M25.06 14.49L19.88 9.84L19.68 18L27.18 17.65L25.06 14.49Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M10.36 29.01L14.86 26.83L10.96 23.71L10.36 29.01Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M20.14 26.83L24.64 29.01L24.04 23.71L20.14 26.83Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
+  coinbaseWallet: (
+    <svg className="w-5 h-5" viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="8" fill="#0052FF"/>
+      <path fillRule="evenodd" clipRule="evenodd" d="M16 6C10.48 6 6 10.48 6 16C6 21.52 10.48 26 16 26C21.52 26 26 21.52 26 16C26 10.48 21.52 6 16 6ZM14.12 13.12C13.56 13.12 13.12 13.56 13.12 14.12V17.88C13.12 18.44 13.56 18.88 14.12 18.88H17.88C18.44 18.88 18.88 18.44 18.88 17.88V14.12C18.88 13.56 18.44 13.12 17.88 13.12H14.12Z" fill="white"/>
+    </svg>
+  ),
+  rainbow: (
+    <svg className="w-5 h-5" viewBox="0 0 120 120" fill="none">
+      <rect width="120" height="120" rx="24" fill="url(#rainbow-gradient)"/>
+      <path d="M20 38H26C56.9279 38 82 63.0721 82 94V100H94V94C94 56.5492 63.4508 26 26 26H20V38Z" fill="white"/>
+      <path d="M20 60H26C34.8366 60 42 67.1634 42 76V100H54V76C54 60.536 41.464 48 26 48H20V60Z" fill="white"/>
+      <path d="M20 82H26V100H20V82Z" fill="white"/>
+      <defs><linearGradient id="rainbow-gradient" x1="0" y1="0" x2="120" y2="120"><stop stopColor="#7B3FE4"/><stop offset="0.5" stopColor="#4F87FF"/><stop offset="1" stopColor="#3FC6FF"/></linearGradient></defs>
+    </svg>
+  ),
+  safe: (
+    <svg className="w-5 h-5" viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="8" fill="#12FF80"/>
+      <path d="M16 6L7 10V16C7 21.52 10.84 26.74 16 28C21.16 26.74 25 21.52 25 16V10L16 6ZM16 15.99H23C22.47 20.11 19.72 23.78 16 24.93V16H9V11.3L16 8.19V15.99Z" fill="#121312"/>
+    </svg>
+  ),
+  walletConnect: (
+    <svg className="w-5 h-5" viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="8" fill="#3B99FC"/>
+      <path d="M10.46 12.12C14.07 8.63 19.93 8.63 23.54 12.12L23.98 12.55C24.16 12.72 24.16 13.01 23.98 13.18L22.54 14.57C22.45 14.66 22.3 14.66 22.21 14.57L21.61 13.99C19.05 11.51 14.95 11.51 12.39 13.99L11.74 14.62C11.65 14.71 11.5 14.71 11.41 14.62L9.97 13.23C9.79 13.06 9.79 12.77 9.97 12.6L10.46 12.12ZM26.58 15.07L27.84 16.29C28.02 16.46 28.02 16.75 27.84 16.92L21.87 22.71C21.69 22.88 21.4 22.88 21.22 22.71L17 18.61C16.96 18.57 16.88 18.57 16.84 18.61L12.62 22.71C12.44 22.88 12.15 22.88 11.97 22.71L6 16.92C5.82 16.75 5.82 16.46 6 16.29L7.26 15.07C7.44 14.9 7.73 14.9 7.91 15.07L12.13 19.17C12.17 19.21 12.25 19.21 12.29 19.17L16.51 15.07C16.69 14.9 16.98 14.9 17.16 15.07L21.38 19.17C21.42 19.21 21.5 19.21 21.54 19.17L25.76 15.07C25.94 14.9 26.23 14.9 26.41 15.07L26.58 15.07Z" fill="white"/>
+    </svg>
+  ),
+  default: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+    </svg>
+  ),
+}
+
+// Get icon for a connector
+function getWalletIcon(connectorId: string): React.ReactNode {
+  const id = connectorId.toLowerCase()
+  if (id.includes('metamask')) return WalletIcons.metaMask
+  if (id.includes('coinbase')) return WalletIcons.coinbaseWallet
+  if (id.includes('rainbow')) return WalletIcons.rainbow
+  if (id.includes('safe')) return WalletIcons.safe
+  if (id.includes('walletconnect')) return WalletIcons.walletConnect
+  return WalletIcons.default
+}
+
+// Get display name for a connector
+function getWalletName(connector: { id: string; name: string }): string {
+  const id = connector.id.toLowerCase()
+  if (id.includes('metamask')) return 'MetaMask'
+  if (id.includes('coinbase')) return 'Coinbase'
+  if (id.includes('rainbow')) return 'Rainbow'
+  if (id.includes('safe')) return 'Safe'
+  if (id.includes('walletconnect')) return 'WalletConnect'
+  return connector.name
 }
 
 // Self-custody wallet connection
@@ -148,14 +236,15 @@ function SelfCustodyConnect({ onBack }: { onBack: () => void }) {
             key={connector.id}
             onClick={() => handleConnect(connector)}
             disabled={isPending}
-            className={`w-full py-2 px-3 border text-sm font-medium transition-all
+            className={`w-full py-2.5 px-3 border text-sm font-medium transition-all flex items-center gap-3
               disabled:opacity-50 disabled:cursor-not-allowed ${
               isDark
                 ? 'border-white/10 text-white hover:border-green-500/50 hover:bg-green-500/10'
                 : 'border-gray-200 text-gray-900 hover:border-green-500 hover:bg-green-50'
             }`}
           >
-            {connector.name}
+            {getWalletIcon(connector.id)}
+            <span>{getWalletName(connector)}</span>
           </button>
         ))}
       </div>
@@ -447,10 +536,41 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
 }) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { address } = useAccount()
+  const { address, chainId } = useAccount()
+  const { signMessageAsync } = useSignMessage()
   const { ensName } = useEnsNameResolved(address)
   const [balances, setBalances] = useState<ChainBalance[]>([])
   const [loading, setLoading] = useState(true)
+  const [signingIn, setSigningIn] = useState(false)
+  const [signInError, setSignInError] = useState<string | null>(null)
+  const [justSignedIn, setJustSignedIn] = useState(false)
+
+  // Handle SIWE sign-in
+  const handleSignIn = async () => {
+    if (!address || !chainId) return
+
+    setSigningIn(true)
+    setSignInError(null)
+
+    try {
+      await signInWithWallet(
+        address,
+        chainId,
+        async (message: string) => {
+          const signature = await signMessageAsync({ message })
+          return signature
+        }
+      )
+      setJustSignedIn(true)
+    } catch (err) {
+      setSignInError(err instanceof Error ? err.message : 'Sign in failed')
+    } finally {
+      setSigningIn(false)
+    }
+  }
+
+  // Derived signed-in state (includes just-signed-in)
+  const effectivelySignedIn = isSignedIn || justSignedIn
 
   // Fetch balances across all chains
   const fetchAllBalances = useCallback(async () => {
@@ -563,19 +683,44 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
           {ensName || shortenAddress(address)}
         </div>
         <div className="flex items-center gap-1">
-          {isSignedIn ? (
+          {effectivelySignedIn ? (
             <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
           ) : (
             <div className={`w-1.5 h-1.5 rounded-full border ${isDark ? 'border-gray-500' : 'border-gray-400'}`} />
           )}
-          <span className={`text-xs ${isSignedIn
+          <span className={`text-xs ${effectivelySignedIn
             ? (isDark ? 'text-green-400' : 'text-green-600')
             : (isDark ? 'text-gray-400' : 'text-gray-500')
           }`}>
-            Connected
+            {effectivelySignedIn ? 'Signed In' : 'Connected'}
           </span>
         </div>
       </div>
+
+      {/* Sign In Prompt - shown when connected but not signed in */}
+      {!effectivelySignedIn && (
+        <div className={`p-3 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
+          {signInError && (
+            <div className={`mb-2 p-2 text-xs border ${
+              isDark ? 'border-red-500/50 bg-red-500/10 text-red-400' : 'border-red-300 bg-red-50 text-red-600'
+            }`}>
+              {signInError}
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Sign in to save your chats and access them from any device.
+            </p>
+            <button
+              onClick={handleSignIn}
+              disabled={signingIn}
+              className="px-2 py-1 text-xs font-medium bg-green-500 text-black hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+            >
+              {signingIn ? 'Signing...' : 'Sign In'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Balances */}
       <div className={`border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
@@ -771,6 +916,181 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// Passkey wallet view - similar to self-custody but uses passkey wallet address
+function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
+  wallet: PasskeyWallet
+  onTopUp: () => void
+  onDisconnect: () => void
+}) {
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
+  const { ensName } = useEnsNameResolved(wallet.address as `0x${string}`)
+  const [balances, setBalances] = useState<ChainBalance[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Fetch balances across all chains
+  const fetchAllBalances = useCallback(async () => {
+    setLoading(true)
+    const results: ChainBalance[] = []
+
+    await Promise.all(
+      ALL_CHAIN_IDS.map(async (chainId) => {
+        const chain = VIEM_CHAINS[chainId as SupportedChainId]
+        const chainInfo = CHAINS[chainId]
+        if (!chain || !chainInfo) return
+
+        try {
+          const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+          const publicClient = createPublicClient({
+            chain,
+            transport: http(rpcUrl),
+          })
+
+          // Fetch ETH balance
+          const ethBalance = await publicClient.getBalance({
+            address: wallet.address as `0x${string}`,
+          })
+
+          // Fetch USDC balance
+          const usdcAddress = USDC_ADDRESSES[chainId as SupportedChainId]
+          let usdcBalance = BigInt(0)
+          if (usdcAddress) {
+            try {
+              usdcBalance = await publicClient.readContract({
+                address: usdcAddress,
+                abi: erc20Abi,
+                functionName: 'balanceOf',
+                args: [wallet.address as `0x${string}`],
+              })
+            } catch {
+              // USDC might not exist on this chain
+            }
+          }
+
+          results.push({
+            chainId,
+            chainName: chainInfo.shortName,
+            eth: formatEther(ethBalance),
+            usdc: (Number(usdcBalance) / 1e6).toString(),
+          })
+        } catch (err) {
+          console.error(`Failed to fetch balance for chain ${chainId}:`, err)
+        }
+      })
+    )
+
+    results.sort((a, b) => a.chainId - b.chainId)
+    setBalances(results)
+    setLoading(false)
+  }, [wallet.address])
+
+  useEffect(() => {
+    fetchAllBalances()
+  }, [fetchAllBalances])
+
+  // Calculate totals
+  const totalEth = balances.reduce((sum, b) => sum + parseFloat(b.eth || '0'), 0)
+  const totalUsdc = balances.reduce((sum, b) => sum + parseFloat(b.usdc || '0'), 0)
+
+  return (
+    <div className="space-y-3">
+      {/* Address row */}
+      <div className="flex items-center justify-between">
+        <div className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          {ensName || shortenAddress(wallet.address)}
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+          <span className={`text-xs ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+            Touch ID
+          </span>
+        </div>
+      </div>
+
+      {/* Balances */}
+      <div className={`border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+        {/* Header row with totals */}
+        <div className={`px-3 py-2 border-b ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
+          <div className="flex justify-between text-xs">
+            <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
+            <div className="flex gap-4">
+              {totalUsdc > 0 && (
+                <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                  {loading ? '...' : `${totalUsdc.toFixed(2)} USDC`}
+                </span>
+              )}
+              <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                {loading ? '...' : `${totalEth.toFixed(4)} ETH`}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Per-chain breakdown */}
+        {loading ? (
+          <div className={`px-3 py-3 text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            Loading balances...
+          </div>
+        ) : (
+          <div className="divide-y divide-white/5">
+            {balances.map((b) => {
+              const eth = parseFloat(b.eth)
+              const usdc = parseFloat(b.usdc)
+              if (eth === 0 && usdc === 0) return null
+              return (
+                <div key={b.chainId} className="px-3 py-2 flex justify-between text-xs">
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{b.chainName}</span>
+                  <div className="flex gap-4">
+                    {usdc > 0 && (
+                      <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>
+                        {usdc.toFixed(2)} USDC
+                      </span>
+                    )}
+                    {eth > 0 && (
+                      <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>
+                        {eth.toFixed(4)} ETH
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+            {balances.every(b => parseFloat(b.eth) === 0 && parseFloat(b.usdc) === 0) && (
+              <div className={`px-3 py-3 text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                No balances found
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={onDisconnect}
+          className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+            isDark
+              ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+              : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+          }`}
+        >
+          Disconnect
+        </button>
+        <button
+          onClick={onTopUp}
+          className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+            isDark
+              ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+              : 'border-green-600 text-green-600 hover:bg-green-50'
+          }`}
+        >
+          Top Up
+        </button>
+      </div>
     </div>
   )
 }
@@ -1021,6 +1341,549 @@ function TopUpView({ onBack, address }: { onBack: () => void; address?: string }
   )
 }
 
+// Settings view - inline with back button (account settings: auth methods + Juicy ID)
+function SettingsView({ onBack }: { onBack: () => void }) {
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
+  const { selectedFruit, setSelectedFruit } = useSettingsStore()
+  const {
+    user,
+    passkeys,
+    isAuthenticated,
+    logout,
+    requestOtp,
+    login,
+    registerPasskey,
+    loadPasskeys,
+    token,
+  } = useAuthStore()
+  const isLoggedIn = isAuthenticated()
+
+  // Wallet connection
+  const { address: walletAddress, isConnected: isWalletConnected } = useAccount()
+  const { connect, connectors } = useConnect()
+  const { disconnect } = useDisconnect()
+
+  // Check for passkey wallet connection
+  const passkeyWalletConnected = !!getPasskeyWallet()
+
+  // Email add flow state
+  const [showEmailForm, setShowEmailForm] = useState(false)
+  const [emailInput, setEmailInput] = useState('')
+  const [codeInput, setCodeInput] = useState('')
+  const [emailStep, setEmailStep] = useState<'email' | 'code'>('email')
+  const [emailLoading, setEmailLoading] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [devCode, setDevCode] = useState<string | null>(null)
+
+  // Passkey state
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
+  const [passkeyError, setPasskeyError] = useState<string | null>(null)
+
+  // Juicy ID state
+  const [identityUsername, setIdentityUsername] = useState('')
+  const [identityLoading, setIdentityLoading] = useState(false)
+  const [identityError, setIdentityError] = useState<string | null>(null)
+  const [identityAvailable, setIdentityAvailable] = useState<boolean | null>(null)
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
+  const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(null)
+
+  // Get API headers for identity requests
+  const getApiHeaders = useCallback(() => {
+    const sessionId = getSessionId()
+    const walletSession = getWalletSession()
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Session-ID': sessionId,
+    }
+    if (walletSession?.token) {
+      headers['X-Wallet-Session'] = walletSession.token
+    }
+    return headers
+  }, [])
+
+  // Load current identity
+  const loadIdentity = useCallback(async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${apiUrl}/identity/me`, {
+        headers: getApiHeaders(),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && data.data) {
+          setIdentity(data.data)
+          setIdentityUsername(data.data.username)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load identity:', err)
+    }
+  }, [getApiHeaders])
+
+  // Check identity availability
+  const checkAvailability = useCallback(async (emoji: string, username: string) => {
+    if (!username || username.length < 3) {
+      setIdentityAvailable(null)
+      return
+    }
+    setCheckingAvailability(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+      const params = new URLSearchParams({ emoji, username })
+      const res = await fetch(`${apiUrl}/identity/check?${params}`, {
+        headers: getApiHeaders(),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setIdentityAvailable(data.data?.available ?? null)
+      }
+    } catch (err) {
+      console.error('Failed to check availability:', err)
+    } finally {
+      setCheckingAvailability(false)
+    }
+  }, [getApiHeaders])
+
+  // Save identity
+  const saveIdentity = useCallback(async () => {
+    const walletSession = getWalletSession()
+    const sessionId = getSessionId()
+    const addr = walletSession?.address ||
+      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+    const emoji = selectedFruit || getEmojiFromAddress(addr)
+
+    if (!identityUsername || identityUsername.length < 3) {
+      setIdentityError('Username must be at least 3 characters')
+      return
+    }
+
+    setIdentityLoading(true)
+    setIdentityError(null)
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${apiUrl}/identity/me`, {
+        method: 'PUT',
+        headers: getApiHeaders(),
+        body: JSON.stringify({ emoji, username: identityUsername }),
+      })
+      const data = await res.json()
+      if (data.success && data.data) {
+        setIdentity(data.data)
+        setIdentityError(null)
+      } else {
+        setIdentityError(data.error || 'Failed to set identity')
+      }
+    } catch (err) {
+      setIdentityError(err instanceof Error ? err.message : 'Failed to set identity')
+    } finally {
+      setIdentityLoading(false)
+    }
+  }, [selectedFruit, identityUsername, getApiHeaders])
+
+  // Load passkeys and identity on mount
+  useEffect(() => {
+    if (isLoggedIn) {
+      loadPasskeys()
+    }
+    loadIdentity()
+  }, [isLoggedIn, loadPasskeys, loadIdentity])
+
+  // Check availability when username or selected fruit changes
+  useEffect(() => {
+    if (!identityUsername || identityUsername.length < 3) {
+      setIdentityAvailable(null)
+      return
+    }
+
+    const walletSession = getWalletSession()
+    const sessionId = getSessionId()
+    const addr = walletSession?.address ||
+      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+    const currentEmoji = selectedFruit || getEmojiFromAddress(addr)
+
+    // Don't check if it's the current identity
+    if (identity && identity.emoji === currentEmoji && identity.username.toLowerCase() === identityUsername.toLowerCase()) {
+      setIdentityAvailable(true)
+      return
+    }
+
+    const timer = setTimeout(() => {
+      checkAvailability(currentEmoji, identityUsername)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [identityUsername, selectedFruit, identity, checkAvailability])
+
+  // Email OTP handlers
+  const handleRequestCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setEmailLoading(true)
+    setEmailError(null)
+
+    try {
+      const result = await requestOtp(emailInput)
+      if (result.code) {
+        setDevCode(result.code)
+      }
+      setEmailStep('code')
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Failed to send code')
+    } finally {
+      setEmailLoading(false)
+    }
+  }
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setEmailLoading(true)
+    setEmailError(null)
+
+    try {
+      await login(emailInput, codeInput)
+      setShowEmailForm(false)
+      setEmailInput('')
+      setCodeInput('')
+      setEmailStep('email')
+      setDevCode(null)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Verification failed')
+    } finally {
+      setEmailLoading(false)
+    }
+  }
+
+  // Passkey handler
+  const handleAddPasskey = async () => {
+    setPasskeyLoading(true)
+    setPasskeyError(null)
+
+    try {
+      if (isLoggedIn && token) {
+        await registerPasskey()
+      } else {
+        await signInWithPasskey()
+      }
+    } catch (err) {
+      console.error('Passkey error:', err)
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (!msg.includes('cancelled') && !msg.includes('abort')) {
+          setPasskeyError(err.message)
+        }
+      }
+    } finally {
+      setPasskeyLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={onBack}
+        className={`flex items-center gap-1 text-xs ${
+          isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+        }`}
+      >
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back
+      </button>
+
+      {/* Auth methods */}
+      <div className="space-y-1">
+        {/* Email */}
+        {!showEmailForm ? (
+          <button
+            onClick={() => setShowEmailForm(true)}
+            className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
+              isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
+            }`}
+          >
+            <span>Email</span>
+            <span className={isLoggedIn && user?.email ? 'text-green-500' : isDark ? 'text-gray-600' : 'text-gray-400'}>
+              {isLoggedIn && user?.email ? 'Connected' : 'Add'}
+            </span>
+          </button>
+        ) : (
+          <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+            {emailStep === 'email' ? (
+              <form onSubmit={handleRequestCode} className="space-y-2">
+                <input
+                  type="email"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  autoFocus
+                  className={`w-full px-2 py-1.5 text-xs border outline-none ${
+                    isDark
+                      ? 'border-white/20 bg-transparent text-white placeholder-gray-500 focus:border-green-500'
+                      : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-green-500'
+                  }`}
+                />
+                {emailError && <p className="text-[10px] text-red-400">{emailError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowEmailForm(false); setEmailError(null) }}
+                    className={`flex-1 py-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={emailLoading || !emailInput}
+                    className="flex-1 py-1 text-[10px] text-green-500 disabled:opacity-50"
+                  >
+                    {emailLoading ? '...' : 'Send Code'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyCode} className="space-y-2">
+                <p className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Code sent to {emailInput}
+                </p>
+                {devCode && (
+                  <p className="text-[10px] text-yellow-500 font-mono">Dev: {devCode}</p>
+                )}
+                <input
+                  type="text"
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  required
+                  autoFocus
+                  maxLength={6}
+                  className={`w-full px-2 py-1.5 text-xs font-mono text-center border outline-none ${
+                    isDark
+                      ? 'border-white/20 bg-transparent text-white focus:border-green-500'
+                      : 'border-gray-200 bg-white text-gray-900 focus:border-green-500'
+                  }`}
+                />
+                {emailError && <p className="text-[10px] text-red-400">{emailError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setEmailStep('email'); setCodeInput(''); setEmailError(null) }}
+                    className={`flex-1 py-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={emailLoading || codeInput.length !== 6}
+                    className="flex-1 py-1 text-[10px] text-green-500 disabled:opacity-50"
+                  >
+                    {emailLoading ? '...' : 'Verify'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+
+        {/* Passkey / Touch ID */}
+        {passkeyWalletConnected ? (
+          <div className={`flex items-center justify-between px-3 py-2 text-xs ${
+            isDark ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            <span>Touch ID</span>
+            <span className="text-green-500">Connected</span>
+          </div>
+        ) : (
+          <button
+            onClick={handleAddPasskey}
+            disabled={passkeyLoading}
+            className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
+              isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
+            } ${passkeyLoading ? 'opacity-50' : ''}`}
+          >
+            <span>{passkeyLoading ? 'Setting up...' : 'Touch ID'}</span>
+            <span className={isLoggedIn && passkeys.length > 0 ? 'text-green-500' : isDark ? 'text-gray-600' : 'text-gray-400'}>
+              {isLoggedIn && passkeys.length > 0 ? `${passkeys.length}` : 'Add'}
+            </span>
+          </button>
+        )}
+        {passkeyError && <p className="text-[10px] text-red-400 px-3">{passkeyError}</p>}
+
+        {/* Wallet */}
+        {isWalletConnected && walletAddress ? (
+          <div className={`flex items-center justify-between px-3 py-2 text-xs ${
+            isDark ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            <span className="font-mono">{shortenAddress(walletAddress)}</span>
+            <button
+              onClick={() => disconnect()}
+              className="text-red-400 hover:text-red-300"
+            >
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => {
+              const injected = connectors.find(c => c.id === 'injected' || c.id.includes('metamask'))
+              if (injected) connect({ connector: injected })
+            }}
+            className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
+              isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
+            }`}
+          >
+            <span>Wallet</span>
+            <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Connect</span>
+          </button>
+        )}
+      </div>
+
+      {/* Juicy ID */}
+      <div className={`pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
+        <p className={`text-[10px] mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          Juicy ID
+        </p>
+
+        {/* Current identity display */}
+        {identity && (
+          <p className={`text-sm mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {identity.formatted}
+          </p>
+        )}
+
+        {/* Emoji picker row */}
+        <div className="flex flex-wrap gap-1 mb-2">
+          {FRUIT_EMOJIS.map((fruit) => {
+            const walletSession = getWalletSession()
+            const sessionId = getSessionId()
+            const currentAddress = walletSession?.address ||
+              `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+            const defaultEmoji = getEmojiFromAddress(currentAddress)
+            const isSelected = selectedFruit === fruit || (!selectedFruit && fruit === defaultEmoji)
+
+            const handleEmojiClick = async () => {
+              const newEmoji = fruit === defaultEmoji ? null : fruit
+              setSelectedFruit(newEmoji)
+
+              // Sync to server so others see the change
+              try {
+                const apiUrl = import.meta.env.VITE_API_URL || ''
+                const walletSessionToken = walletSession?.token
+                const headers: Record<string, string> = {
+                  'Content-Type': 'application/json',
+                  'X-Session-ID': sessionId,
+                }
+                if (walletSessionToken) {
+                  headers['X-Wallet-Session'] = walletSessionToken
+                }
+                await fetch(`${apiUrl}/chat/me/emoji`, {
+                  method: 'PATCH',
+                  headers,
+                  body: JSON.stringify({ customEmoji: newEmoji }),
+                })
+              } catch (err) {
+                console.error('Failed to sync emoji:', err)
+              }
+            }
+
+            return (
+              <button
+                key={fruit}
+                onClick={handleEmojiClick}
+                className={`w-7 h-7 text-base flex items-center justify-center transition-all ${
+                  isSelected
+                    ? isDark
+                      ? 'bg-white/20 ring-2 ring-green-500'
+                      : 'bg-gray-200 ring-2 ring-green-500'
+                    : isDark
+                      ? 'hover:bg-white/10'
+                      : 'hover:bg-gray-100'
+                }`}
+                title={fruit === defaultEmoji ? 'Default (based on your address)' : undefined}
+              >
+                {fruit}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Username input */}
+        <div className="flex gap-2">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={identityUsername}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20)
+                setIdentityUsername(val)
+                setIdentityError(null)
+              }}
+              placeholder="username"
+              className={`w-full px-2 py-1.5 text-xs border outline-none pr-6 ${
+                isDark
+                  ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'
+                  : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-gray-300'
+              }`}
+            />
+            {/* Availability indicator */}
+            {identityUsername.length >= 3 && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">
+                {checkingAvailability ? (
+                  <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>...</span>
+                ) : identityAvailable === true ? (
+                  <span className="text-green-500">&#10003;</span>
+                ) : identityAvailable === false ? (
+                  <span className="text-red-400">&#10007;</span>
+                ) : null}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={saveIdentity}
+            disabled={identityLoading || !identityUsername || identityUsername.length < 3 || identityAvailable === false}
+            className={`px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${
+              isDark
+                ? 'text-green-500 border border-green-500/30 hover:border-green-500/50'
+                : 'text-green-600 border border-green-500/40 hover:border-green-500/60'
+            }`}
+          >
+            {identityLoading ? '...' : identity ? 'Update' : 'Set'}
+          </button>
+        </div>
+        {identityError && (
+          <p className="text-[10px] text-red-400 mt-1">{identityError}</p>
+        )}
+        <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+          3-20 chars, letters/numbers/underscore
+        </p>
+
+        {/* Address - subtle, small, full */}
+        <p className={`text-[10px] font-mono mt-3 pt-2 border-t break-all ${isDark ? 'text-gray-600 border-white/5' : 'text-gray-400 border-gray-100'}`}>
+          {(() => {
+            const walletSession = getWalletSession()
+            const sessionId = getSessionId()
+            return walletSession?.address ||
+              `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+          })()}
+        </p>
+      </div>
+
+      {/* Sign Out */}
+      {isLoggedIn && (
+        <div className="pt-2">
+          <button
+            onClick={() => { logout(); onBack() }}
+            className="text-xs text-red-400 hover:text-red-300"
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPosition }: WalletPanelProps) {
   const { mode, logout: authLogout, isAuthenticated } = useAuthStore()
   const { address, isConnected: walletConnected } = useAccount()
@@ -1031,8 +1894,26 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'auth_method' | 'email_auth' | 'wallet' | 'topup'>('select')
+  const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'auth_method' | 'email_auth' | 'wallet' | 'passkey' | 'topup' | 'settings'>('select')
   const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<InsufficientFundsInfo | null>(null)
+  const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
+  const [previousView, setPreviousView] = useState<typeof view>('select')
+
+  // Listen for passkey wallet changes
+  useEffect(() => {
+    const handlePasskeyConnected = (e: CustomEvent<PasskeyWallet>) => {
+      setPasskeyWallet(e.detail)
+    }
+    const handlePasskeyDisconnected = () => {
+      setPasskeyWallet(null)
+    }
+    window.addEventListener('juice:passkey-connected', handlePasskeyConnected as EventListener)
+    window.addEventListener('juice:passkey-disconnected', handlePasskeyDisconnected as EventListener)
+    return () => {
+      window.removeEventListener('juice:passkey-connected', handlePasskeyConnected as EventListener)
+      window.removeEventListener('juice:passkey-disconnected', handlePasskeyDisconnected as EventListener)
+    }
+  }, [])
 
   // Calculate popover position based on anchor
   const popoverStyle = useMemo(() => {
@@ -1092,21 +1973,36 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
     }
   }, [isOpen])
 
+  // Handle opening settings (store previous view to go back)
+  const handleOpenSettings = () => {
+    setPreviousView(view)
+    setView('settings')
+  }
+
   // Determine current state
   const isSelfCustodyConnected = mode === 'self_custody' && walletConnected
   const isManagedConnected = mode === 'managed' && isAuthenticated()
+  const isPasskeyConnected = !!passkeyWallet
 
   const currentView = (() => {
+    if (view === 'settings') return 'settings'
     if (view === 'topup') return 'topup'
     if (view === 'auth_method') return 'auth_method'
     if (view === 'email_auth') return 'email_auth'
     if (isSelfCustodyConnected) return 'wallet'
     if (isManagedConnected) return 'managed'
+    if (isPasskeyConnected) return 'passkey'
     return view
   })()
 
   const handleDisconnect = async () => {
-    if (mode === 'self_custody') {
+    if (passkeyWallet) {
+      // Disconnect passkey wallet - clear wallet and SIWE session but keep credential ID
+      // so user can sign back into the same wallet
+      clearPasskeyWallet()
+      clearWalletSession()
+      setPasskeyWallet(null)
+    } else if (mode === 'self_custody') {
       disconnect()
     } else {
       await authLogout()
@@ -1121,6 +2017,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
         case 'select': return 'Connect to Pay'
         case 'self_custody': return 'Connect Wallet'
         case 'wallet':
+        case 'passkey':
           // Show insufficient funds title if applicable
           if (insufficientFundsInfo) {
             return `You don't have ${insufficientFundsInfo.amount} ${insufficientFundsInfo.token} on ${insufficientFundsInfo.chainName}`
@@ -1137,7 +2034,9 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       case 'email_auth': return 'Email Sign In'
       case 'managed': return 'Account'
       case 'wallet': return 'Account'
+      case 'passkey': return 'Account'
       case 'topup': return 'Add Funds'
+      case 'settings': return 'Settings'
       default: return 'Connect'
     }
   }
@@ -1180,13 +2079,10 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
         </h2>
 
         {currentView === 'select' && (
-          <ModeSelector
-            onSelectMode={(selectedMode) => {
-              if (selectedMode === 'managed') {
-                setView('auth_method')
-              } else {
-                setView(selectedMode)
-              }
+          <ConnectOptions
+            onWalletClick={() => setView('self_custody')}
+            onPasskeySuccess={(wallet) => {
+              setPasskeyWallet(wallet)
             }}
           />
         )}
@@ -1239,11 +2135,39 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
           />
         )}
 
+        {currentView === 'passkey' && passkeyWallet && (
+          <PasskeyWalletView
+            wallet={passkeyWallet}
+            onTopUp={() => setView('topup')}
+            onDisconnect={handleDisconnect}
+          />
+        )}
+
         {currentView === 'topup' && (
           <TopUpView
-            onBack={() => setView(isSelfCustodyConnected ? 'wallet' : 'select')}
-            address={address}
+            onBack={() => setView(isSelfCustodyConnected ? 'wallet' : isPasskeyConnected ? 'passkey' : 'select')}
+            address={passkeyWallet?.address || address}
           />
+        )}
+
+        {currentView === 'settings' && (
+          <SettingsView onBack={() => setView(previousView)} />
+        )}
+
+        {/* Settings gear icon - bottom left (hidden when in settings view) */}
+        {currentView !== 'settings' && (
+          <button
+            onClick={handleOpenSettings}
+            className={`absolute bottom-3 left-3 p-1.5 transition-colors ${
+              isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+            }`}
+            title="Settings"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
         )}
       </div>
     </div>

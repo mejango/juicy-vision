@@ -12,6 +12,8 @@ interface MessageListProps {
   currentUserMember?: ChatMember
   onlineMembers?: string[]
   onMemberUpdated?: (member: ChatMember) => void
+  showNudgeButton?: boolean
+  onNudge?: () => void
 }
 
 export default function MessageList({
@@ -22,6 +24,8 @@ export default function MessageList({
   currentUserMember,
   onlineMembers,
   onMemberUpdated,
+  showNudgeButton,
+  onNudge,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -96,6 +100,24 @@ export default function MessageList({
           <div className="flex justify-start mb-4">
             <div className={`w-full bg-transparent px-4 py-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
               <ThinkingIndicator />
+            </div>
+          </div>
+        )}
+        {/* Nudge button - shows when AI gave an empty response */}
+        {showNudgeButton && !showGhostCard && (
+          <div className="flex justify-start mb-4">
+            <div className={`px-4 py-3 flex items-center gap-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className="text-sm">Something stopped.</span>
+              <button
+                onClick={onNudge}
+                className={`px-3 py-1.5 text-sm border transition-colors ${
+                  isDark
+                    ? 'border-juice-orange/50 text-juice-orange hover:border-juice-orange hover:bg-juice-orange/10'
+                    : 'border-juice-orange/60 text-juice-orange hover:border-juice-orange hover:bg-orange-50'
+                }`}
+              >
+                Nudge the AI
+              </button>
             </div>
           </div>
         )}

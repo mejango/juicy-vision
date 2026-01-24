@@ -10,16 +10,22 @@
  * 3. We use that secret as the seed for a secp256k1 private key
  * 4. The resulting wallet address is the user's identity
  *
+ * Cross-device support:
+ * - Credentials are registered with the server along with their derived wallet address
+ * - When a user adds a new device, they can link it to their existing primary wallet
+ * - Server maps credential_id -> wallet_address for consistent identity
+ *
  * References:
  * - https://ithaca.xyz/updates/porto (Porto passkey wallets)
  * - https://developers.yubico.com/WebAuthn/Concepts/PRF_Extension/
  * - https://www.corbado.com/blog/passkeys-prf-webauthn
  */
 
-import { privateKeyToAccount } from 'viem/accounts'
+import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
 import { signInWithWallet } from './siwe'
 
 const PASSKEY_WALLET_KEY = 'juice-passkey-wallet'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 // Salt for PRF - should be consistent to derive the same key
 const PRF_SALT = new TextEncoder().encode('juicy-vision-wallet-v1')
@@ -74,15 +80,77 @@ function base64UrlToBuffer(base64url: string): ArrayBuffer {
 }
 
 /**
- * Create SIWE session with the backend using the derived private key
+ * Register credential with server and get effective wallet address
+ * Returns the wallet address to use (could be different if linked to primary)
  */
-async function createSiweSession(privateKey: `0x${string}`): Promise<void> {
-  const account = privateKeyToAccount(privateKey)
+async function registerCredentialWithServer(
+  credentialId: string,
+  derivedWalletAddress: string,
+  deviceType?: string
+): Promise<{ walletAddress: string; isLinked: boolean }> {
+  try {
+    const response = await fetch(`${API_URL}/passkey/wallet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        credentialId,
+        walletAddress: derivedWalletAddress,
+        deviceType: deviceType || 'platform',
+      }),
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      if (data.success && data.data) {
+        return {
+          walletAddress: data.data.walletAddress,
+          isLinked: data.data.isPrimaryLinked,
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to register credential with server:', error)
+  }
+
+  // Fallback to derived address if server fails
+  return { walletAddress: derivedWalletAddress, isLinked: false }
+}
+
+/**
+ * Look up existing wallet for a credential from the server
+ */
+async function lookupCredentialWallet(credentialId: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${API_URL}/passkey/wallet/${encodeURIComponent(credentialId)}`)
+
+    if (response.ok) {
+      const data = await response.json()
+      if (data.success && data.data) {
+        return data.data.walletAddress
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to look up credential wallet:', error)
+  }
+
+  return null
+}
+
+/**
+ * Create SIWE session with the backend using the derived private key
+ * If a different wallet address is specified (linked account), sign for that address
+ */
+async function createSiweSession(
+  account: PrivateKeyAccount,
+  effectiveWalletAddress?: string
+): Promise<void> {
+  // Use the effective wallet address if provided (for linked accounts)
+  const addressToSign = effectiveWalletAddress || account.address
 
   try {
     // Sign message using the derived private key
     await signInWithWallet(
-      account.address,
+      addressToSign,
       1, // mainnet chainId
       async (message: string) => {
         return account.signMessage({ message })
@@ -183,17 +251,29 @@ export async function createPasskeyWallet(): Promise<PasskeyWallet> {
   const privateKey = await derivePrivateKey(prfResult)
   const account = privateKeyToAccount(privateKey)
 
+  // Register credential with server to get effective wallet address
+  // (may be linked to a primary wallet for cross-device support)
+  const { walletAddress: effectiveAddress } = await registerCredentialWithServer(
+    credential.id,
+    account.address,
+    'platform'
+  )
+
   const wallet: PasskeyWallet = {
-    address: account.address,
+    address: effectiveAddress,
     createdAt: Date.now(),
   }
 
   // Store credential ID for future authentications
   storePasskeyCredential(credential.id)
-  storePasskeyWallet(wallet)
 
-  // Create SIWE session with backend
-  await createSiweSession(privateKey)
+  // Create SIWE session with backend BEFORE dispatching the event
+  // This ensures WalletInfo's validation sees the session when it checks
+  // Sign for the effective address (which may be a linked primary wallet)
+  await createSiweSession(account, effectiveAddress !== account.address ? effectiveAddress : undefined)
+
+  // Now store wallet and dispatch event (after SIWE session exists)
+  storePasskeyWallet(wallet)
 
   return wallet
 }
@@ -240,17 +320,29 @@ export async function authenticatePasskeyWallet(credentialId?: string): Promise<
   const privateKey = await derivePrivateKey(prfResult)
   const account = privateKeyToAccount(privateKey)
 
+  // Look up if this credential is registered with server (may have linked primary wallet)
+  // Also register if not yet registered
+  const { walletAddress: effectiveAddress } = await registerCredentialWithServer(
+    credential.id,
+    account.address,
+    'platform'
+  )
+
   const wallet: PasskeyWallet = {
-    address: account.address,
+    address: effectiveAddress,
     createdAt: Date.now(),
   }
 
-  // Store for future use
+  // Store credential ID for future authentications
   storePasskeyCredential(credential.id)
-  storePasskeyWallet(wallet)
 
-  // Create SIWE session with backend
-  await createSiweSession(privateKey)
+  // Create SIWE session with backend BEFORE dispatching the event
+  // This ensures WalletInfo's validation sees the session when it checks
+  // Sign for the effective address (which may be a linked primary wallet)
+  await createSiweSession(account, effectiveAddress !== account.address ? effectiveAddress : undefined)
+
+  // Now store wallet and dispatch event (after SIWE session exists)
+  storePasskeyWallet(wallet)
 
   return wallet
 }

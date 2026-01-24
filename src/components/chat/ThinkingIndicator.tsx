@@ -44,17 +44,15 @@ export default function ThinkingIndicator() {
 
   return (
     <span className="inline-flex items-center gap-1.5 text-juice-orange font-semibold">
-      {/* Glitchy lightning bolt */}
-      <svg
-        className="w-4 h-4"
-        viewBox="0 0 24 24"
-        fill="currentColor"
+      {/* Lightning emoji with glitchy animation */}
+      <span
+        className="text-base leading-none"
         style={{
           animation: 'lightning 2.5s ease-in-out infinite',
         }}
       >
-        <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
-      </svg>
+        ⚡️
+      </span>
       <span>{verb}...</span>
       <style>{`
         @keyframes lightning {

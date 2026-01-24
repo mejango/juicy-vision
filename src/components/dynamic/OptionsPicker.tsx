@@ -250,7 +250,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                         onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
                         onMouseEnter={() => handleOptionHover(group.id, true)}
                         onMouseLeave={() => handleOptionHover(group.id, false)}
-                        className={`relative px-3 py-1.5 text-sm border transition-all animate-fade-in text-left ${
+                        className={`relative px-3 py-1.5 text-sm border text-left ${
                           selected
                             ? isDark
                               ? 'border-green-500 text-green-400'
@@ -259,7 +259,6 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                               ? 'bg-white/5 border-white/10 text-gray-300 hover:border-white/30'
                               : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-400'
                         }`}
-                        style={{ animationDelay: `${idx * 50}ms` }}
                       >
                         <span className="font-medium">{option.label}</span>
                         {option.sublabel && (
@@ -322,7 +321,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                     <button
                       key={option.value}
                       onClick={() => handleSelect(group.id, option.value)}
-                      className={`px-4 py-2 text-sm font-medium transition-all ${
+                      className={`px-4 py-2 text-sm font-medium ${
                         idx === 1 ? 'border-l' : ''
                       } ${isDark ? 'border-white/10' : 'border-gray-200'} ${
                         isSelected
@@ -357,7 +356,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                         onClick={() => handleSelect(group.id, option.value, group.multiSelect)}
                         onMouseEnter={() => handleOptionHover(group.id, true)}
                         onMouseLeave={() => handleOptionHover(group.id, false)}
-                        className={`relative w-full flex items-start gap-3 px-3 py-2 text-sm border transition-all text-left animate-fade-in ${
+                        className={`relative w-full flex items-start gap-3 px-3 py-2 text-sm border text-left ${
                           selected
                             ? isDark
                               ? 'border-green-500'
@@ -366,11 +365,10 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                               ? 'bg-white/5 border-white/10 hover:border-white/30'
                               : 'bg-gray-50 border-gray-200 hover:border-gray-400'
                         }`}
-                        style={{ animationDelay: `${idx * 50}ms` }}
                       >
                         {/* Checkbox for multiSelect, radio for single select */}
                         {group.multiSelect ? (
-                          <div className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          <div className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center shrink-0 ${
                             selected
                               ? 'border-green-500 bg-green-500'
                               : isDark ? 'border-gray-500' : 'border-gray-300'
@@ -382,7 +380,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                             )}
                           </div>
                         ) : (
-                          <div className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          <div className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                             selected
                               ? 'border-green-500'
                               : isDark ? 'border-gray-500' : 'border-gray-300'

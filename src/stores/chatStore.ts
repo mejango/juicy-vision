@@ -466,6 +466,7 @@ export interface Message {
   senderName?: string
   senderAddress?: string
   createdAt?: string
+  needsJuicyId?: boolean // Show "Add your Juicy ID" prompt instead of sender name
 }
 
 export interface Conversation {

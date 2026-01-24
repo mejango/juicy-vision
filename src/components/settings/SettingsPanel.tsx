@@ -353,10 +353,10 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     <>
       {/* Backdrop - catches clicks outside popover */}
       <div
-        className="fixed inset-0 z-[49]"
+        className="fixed inset-0 z-[109]"
         onClick={onClose}
       />
-      <div className="fixed z-50" style={popoverStyle}>
+      <div className="fixed z-[110]" style={popoverStyle}>
         <div className={`w-80 border shadow-xl ${
           isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
         }`}>

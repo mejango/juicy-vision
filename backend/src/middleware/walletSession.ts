@@ -74,6 +74,23 @@ export async function extractWalletSession(
 }
 
 /**
+ * Middleware that strictly requires wallet authentication (SIWE session)
+ * Does NOT accept anonymous sessions - for wallet-specific operations
+ */
+export async function requireWalletAuth(c: Context, next: Next) {
+  const authHeader = c.req.header('Authorization');
+  const sessionToken = c.req.query('session') || c.req.header('X-Wallet-Session');
+  const walletSession = await extractWalletSession(authHeader, sessionToken);
+
+  if (walletSession && !walletSession.isAnonymous) {
+    c.set('walletSession', walletSession);
+    return next();
+  }
+
+  return c.json({ success: false, error: 'Wallet authentication required' }, 401);
+}
+
+/**
  * Middleware that requires wallet session OR user auth OR anonymous session
  * Anonymous sessions use X-Session-ID header and get a pseudo-address
  */

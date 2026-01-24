@@ -219,20 +219,14 @@ export function MemberPopover({
         isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
       }`}
     >
-      {/* Header with emoji and status */}
+      {/* Header with emoji, Juicy ID, and status */}
       <div className="flex items-center gap-3 mb-2">
         <span className="text-2xl">{emoji}</span>
         <div className="flex-1 min-w-0">
-          {/* Juicy Identity username */}
+          {/* Juicy Identity username (without emoji prefix) */}
           {identity && (
             <p className={`text-sm font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {identity.formatted}
-            </p>
-          )}
-          {/* ENS or display name (if no identity) */}
-          {!identity && localMember.displayName && (
-            <p className={`text-sm font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {localMember.displayName}
+              {identity.username}
             </p>
           )}
         </div>
@@ -356,19 +350,14 @@ export default function ParticipantAvatars({
   const overflowCount = sortedMembers.length - maxVisible
 
   const sizeClasses = size === 'sm'
-    ? 'w-5 h-5'
-    : 'w-6 h-6'
-
-  const textSizeClasses = size === 'sm'
-    ? 'text-[8px]'
-    : 'text-[10px]'
+    ? 'w-7 h-7'
+    : 'w-8 h-8'
 
   const emojiSizeClasses = size === 'sm'
     ? 'text-sm'
     : 'text-base'
 
-  const ringSize = size === 'sm' ? 'ring-[1.5px]' : 'ring-2'
-  const spacing = size === 'sm' ? '-ml-1.5' : '-ml-2'
+  const spacing = size === 'sm' ? 'ml-1' : 'ml-1.5'
 
   if (!members || members.length === 0 || sortedMembers.length === 0) return null
 
@@ -377,16 +366,21 @@ export default function ParticipantAvatars({
       {visibleMembers.map((member, index) => {
         const addr = member.address || ''
         const isOnline = Boolean(addr && onlineSet.has(addr.toLowerCase()))
-        const initials = getInitials(member)
         const emoji = getEmojiForUser(addr, currentUserAddress, selectedFruit, member.customEmoji)
-        const bgColor = getColorFromAddress(addr)
-        const displayContent = initials || emoji
-        const isEmoji = !initials
 
         // Build hover title: show display name if available, then address
         const hoverTitle = member.displayName
           ? `${member.displayName} (${addr})`
           : addr
+
+        // Border style: subtle normally, slightly more visible if online
+        const borderClass = isOnline
+          ? isDark
+            ? 'border border-green-500/50'
+            : 'border border-green-500/40'
+          : isDark
+            ? 'border border-white/15'
+            : 'border border-gray-200'
 
         return (
           <div
@@ -396,26 +390,24 @@ export default function ParticipantAvatars({
               const rect = e.currentTarget.getBoundingClientRect()
               setSelectedMember({ member, emoji, isOnline, rect })
             }}
-            className={`${sizeClasses} rounded flex items-center justify-center font-medium relative cursor-pointer hover:scale-110 transition-transform ${
+            className={`${sizeClasses} rounded-md flex items-center justify-center cursor-pointer hover:scale-110 transition-transform ${
               index > 0 ? spacing : ''
-            } ${isOnline ? `${ringSize} ring-green-500` : ''} ${
-              isEmoji ? emojiSizeClasses : `${textSizeClasses} text-white`
+            } ${borderClass} ${emojiSizeClasses} ${
+              isDark ? 'bg-juice-dark' : 'bg-white'
             }`}
-            style={{ backgroundColor: bgColor, zIndex: maxVisible - index }}
             title={hoverTitle}
           >
-            {displayContent}
+            {emoji}
           </div>
         )
       })}
       {overflowCount > 0 && (
         <div
-          className={`${sizeClasses} rounded flex items-center justify-center font-medium ${spacing} ${
+          className={`${sizeClasses} rounded-md flex items-center justify-center font-medium text-xs ${spacing} ${
             isDark
-              ? 'bg-gray-700 text-gray-300'
-              : 'bg-gray-200 text-gray-600'
+              ? 'bg-juice-dark border border-white/20 text-gray-400'
+              : 'bg-white border border-gray-300 text-gray-500'
           }`}
-          style={{ zIndex: 0 }}
           title={`${overflowCount} more participant${overflowCount > 1 ? 's' : ''}`}
         >
           +{overflowCount > 99 ? '99' : overflowCount}

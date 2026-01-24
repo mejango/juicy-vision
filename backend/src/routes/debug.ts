@@ -419,3 +419,55 @@ debugRouter.get('/connections', async (c) => {
 
   return c.json({ success: true, data: { message: 'Provide chatId to list connections' } });
 });
+
+// POST /debug/reset-db - Reset database (DEVELOPMENT ONLY)
+// This endpoint is protected by the middleware that blocks non-development access
+debugRouter.post('/reset-db', async (c) => {
+  const config = getConfig();
+
+  // Double-check we're in development (middleware already checks, but be extra safe)
+  if (config.env !== 'development') {
+    return c.json({
+      success: false,
+      error: 'Database reset is ONLY available in development mode'
+    }, 403);
+  }
+
+  try {
+    const { getPool } = await import('../db/index.ts');
+    const pool = getPool();
+    const conn = await pool.connect();
+
+    try {
+      // Get all table names except migrations tracking
+      const { rows } = await conn.queryObject<{ tablename: string }>(`
+        SELECT tablename FROM pg_tables
+        WHERE schemaname = 'public' AND tablename != '_migrations'
+      `);
+
+      // Truncate all tables
+      for (const { tablename } of rows) {
+        await conn.queryObject(`TRUNCATE TABLE "${tablename}" CASCADE`);
+      }
+
+      logDebugEvent('system', 'database', {
+        action: 'reset_db',
+        tables_cleared: rows.map(r => r.tablename)
+      });
+
+      return c.json({
+        success: true,
+        message: 'Database reset complete',
+        tables_cleared: rows.map(r => r.tablename)
+      });
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error('Database reset failed:', error);
+    return c.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});

@@ -517,6 +517,15 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
   const waitingForNewGestureRef = useRef(false)
   const gestureEndTimerRef = useRef<number | null>(null)
 
+  // Check if there's conversation history to scroll through
+  const { chats } = useChatStore()
+  const hasContentRef = useRef(false)
+
+  // Keep ref in sync - dock should only expand if there are chats to show
+  useEffect(() => {
+    hasContentRef.current = chats.length > 0
+  }, [chats.length])
+
   useEffect(() => {
     const container = containerRef.current
     const dockContent = dockContentRef.current
@@ -551,7 +560,8 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
       }
 
       // Scroll down while unpinned → pin, lock scroll until gesture ends
-      if (scrollingDown && !isPinnedRef.current) {
+      // Only allow pinning if there's content (conversation history) to show
+      if (scrollingDown && !isPinnedRef.current && hasContentRef.current) {
         isPinnedRef.current = true
         waitingForNewGestureRef.current = true
         window.__dockScrollLocked = true
@@ -616,7 +626,7 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
       >
         <div className="flex-1 overflow-hidden">
           <MascotPanel
-            onSuggestionClick={(text) => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: text } }))}
+            onSuggestionClick={(text) => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: text, newChat: true } }))}
           />
         </div>
       </div>

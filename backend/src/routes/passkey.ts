@@ -227,4 +227,216 @@ passkeyRouter.patch(
   }
 );
 
+// ============================================================================
+// PRF Wallet Mapping (for client-side derived wallets)
+// ============================================================================
+
+import { query, queryOne, execute } from '../db/index.ts';
+
+// POST /passkey/wallet - Register a credential with its derived wallet address
+const RegisterWalletSchema = z.object({
+  credentialId: z.string().min(1).max(512),
+  walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  deviceName: z.string().max(100).optional(),
+  deviceType: z.string().max(50).optional(),
+});
+
+passkeyRouter.post(
+  '/wallet',
+  zValidator('json', RegisterWalletSchema),
+  async (c) => {
+    const { credentialId, walletAddress, deviceName, deviceType } = c.req.valid('json');
+
+    try {
+      // Check if this credential already exists
+      const existing = await queryOne<{ wallet_address: string; primary_wallet_address: string | null }>(
+        'SELECT wallet_address, primary_wallet_address FROM passkey_wallets WHERE credential_id = $1',
+        [credentialId]
+      );
+
+      if (existing) {
+        // Credential already registered - return existing wallet
+        const effectiveWallet = existing.primary_wallet_address || existing.wallet_address;
+
+        // Update last_used_at
+        await execute(
+          'UPDATE passkey_wallets SET last_used_at = NOW() WHERE credential_id = $1',
+          [credentialId]
+        );
+
+        return c.json({
+          success: true,
+          data: {
+            walletAddress: effectiveWallet,
+            isExisting: true,
+            isPrimaryLinked: !!existing.primary_wallet_address,
+          },
+        });
+      }
+
+      // New credential - register it
+      await execute(
+        'INSERT INTO passkey_wallets (credential_id, wallet_address, device_name, device_type) VALUES ($1, $2, $3, $4)',
+        [credentialId, walletAddress.toLowerCase(), deviceName || null, deviceType || null]
+      );
+
+      return c.json({
+        success: true,
+        data: {
+          walletAddress: walletAddress.toLowerCase(),
+          isExisting: false,
+          isPrimaryLinked: false,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to register passkey wallet:', error);
+      const message = error instanceof Error ? error.message : 'Failed to register wallet';
+      return c.json({ success: false, error: message }, 500);
+    }
+  }
+);
+
+// GET /passkey/wallet/:credentialId - Look up wallet for a credential
+passkeyRouter.get('/wallet/:credentialId', async (c) => {
+  const credentialId = c.req.param('credentialId');
+
+  try {
+    const result = await queryOne<{
+      wallet_address: string;
+      primary_wallet_address: string | null;
+      device_name: string | null;
+      created_at: Date;
+    }>(
+      'SELECT wallet_address, primary_wallet_address, device_name, created_at FROM passkey_wallets WHERE credential_id = $1',
+      [credentialId]
+    );
+
+    if (!result) {
+      return c.json({
+        success: true,
+        data: null, // Not found - client should use derived wallet
+      });
+    }
+
+    // Update last_used_at
+    await execute(
+      'UPDATE passkey_wallets SET last_used_at = NOW() WHERE credential_id = $1',
+      [credentialId]
+    );
+
+    return c.json({
+      success: true,
+      data: {
+        walletAddress: result.primary_wallet_address || result.wallet_address,
+        derivedWalletAddress: result.wallet_address,
+        isPrimaryLinked: !!result.primary_wallet_address,
+        deviceName: result.device_name,
+        createdAt: result.created_at,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to look up passkey wallet:', error);
+    const message = error instanceof Error ? error.message : 'Failed to look up wallet';
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
+// POST /passkey/wallet/link - Link a new credential to an existing wallet (multi-device)
+// Requires SIWE auth to prove ownership of the primary wallet
+const LinkWalletSchema = z.object({
+  credentialId: z.string().min(1).max(512),
+  derivedWalletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  deviceName: z.string().max(100).optional(),
+  deviceType: z.string().max(50).optional(),
+});
+
+import { requireWalletAuth } from '../middleware/walletSession.ts';
+
+passkeyRouter.post(
+  '/wallet/link',
+  requireWalletAuth,
+  zValidator('json', LinkWalletSchema),
+  async (c) => {
+    const walletSession = c.get('walletSession');
+    const { credentialId, derivedWalletAddress, deviceName, deviceType } = c.req.valid('json');
+
+    // The authenticated wallet address becomes the primary
+    const primaryWalletAddress = walletSession!.address.toLowerCase();
+
+    try {
+      // Check if credential already exists
+      const existing = await queryOne<{ id: string }>(
+        'SELECT id FROM passkey_wallets WHERE credential_id = $1',
+        [credentialId]
+      );
+
+      if (existing) {
+        // Update existing to link to primary
+        await execute(
+          'UPDATE passkey_wallets SET primary_wallet_address = $1, last_used_at = NOW() WHERE credential_id = $2',
+          [primaryWalletAddress, credentialId]
+        );
+      } else {
+        // Insert new linked credential
+        await execute(
+          'INSERT INTO passkey_wallets (credential_id, wallet_address, primary_wallet_address, device_name, device_type) VALUES ($1, $2, $3, $4, $5)',
+          [credentialId, derivedWalletAddress.toLowerCase(), primaryWalletAddress, deviceName || null, deviceType || null]
+        );
+      }
+
+      return c.json({
+        success: true,
+        data: {
+          primaryWalletAddress,
+          derivedWalletAddress: derivedWalletAddress.toLowerCase(),
+          linked: true,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to link passkey wallet:', error);
+      const message = error instanceof Error ? error.message : 'Failed to link wallet';
+      return c.json({ success: false, error: message }, 500);
+    }
+  }
+);
+
+// GET /passkey/wallet/devices - List all devices linked to the authenticated wallet
+passkeyRouter.get('/wallet/devices', requireWalletAuth, async (c) => {
+  const walletSession = c.get('walletSession');
+  const walletAddress = walletSession!.address.toLowerCase();
+
+  try {
+    const devices = await query<{
+      credential_id: string;
+      wallet_address: string;
+      device_name: string | null;
+      device_type: string | null;
+      created_at: Date;
+      last_used_at: Date | null;
+    }>(
+      'SELECT credential_id, wallet_address, device_name, device_type, created_at, last_used_at FROM passkey_wallets WHERE wallet_address = $1 OR primary_wallet_address = $1 ORDER BY created_at ASC',
+      [walletAddress]
+    );
+
+    return c.json({
+      success: true,
+      data: {
+        primaryWalletAddress: walletAddress,
+        devices: devices.map(row => ({
+          credentialId: row.credential_id,
+          derivedWalletAddress: row.wallet_address,
+          deviceName: row.device_name,
+          deviceType: row.device_type,
+          createdAt: row.created_at,
+          lastUsedAt: row.last_used_at,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Failed to list passkey devices:', error);
+    const message = error instanceof Error ? error.message : 'Failed to list devices';
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
 export { passkeyRouter };

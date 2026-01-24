@@ -11,7 +11,7 @@ import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
 import WelcomeGreeting from './WelcomeGreeting'
 import ConversationHistory from './ConversationHistory'
-import WalletInfo from './WalletInfo'
+import WalletInfo, { type JuicyIdentity } from './WalletInfo'
 import { SettingsPanel, PrivacySelector } from '../settings'
 import InviteModal from './InviteModal'
 import SaveModal from './SaveModal'
@@ -165,6 +165,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [walletPanelAnchorPosition, setWalletPanelAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [authModalAnchorPosition, setAuthModalAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
+  // Current user's Juicy ID (for displaying their name instead of "You")
+  const [currentUserIdentity, setCurrentUserIdentity] = useState<JuicyIdentity | null>(null)
   const [showBetaPopover, setShowBetaPopover] = useState(false)
   const [dockScrollEnabled, setDockScrollEnabled] = useState(false)
   const [betaPopoverPosition, setBetaPopoverPosition] = useState<'above' | 'below'>('above')
@@ -176,6 +178,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
   // AI controls expanded state - shows "Skip for all" and "Skip for you" toggles
   const [aiControlsExpanded, setAiControlsExpanded] = useState(false)
+  // Track when AI gives empty response - show "Continue" button
+  const [showContinueButton, setShowContinueButton] = useState(false)
 
   // Close all popovers - call before opening a new one
   const closeAllPopovers = useCallback(() => {
@@ -241,19 +245,25 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       const isCurrentUser = msg.senderAddress === currentAddress
 
       // Determine sender display name:
-      // - "You" for the current user
+      // - Juicy ID username for current user if they have one
+      // - Show "Add your Juicy ID" prompt if current user has no Juicy ID
       // - ENS/display name if member has one
       // - Custom emoji or default fruit emoji for anonymous users
-      let senderName: string
+      let senderName: string | undefined
+      let needsJuicyId = false
       if (isCurrentUser) {
-        senderName = t('chat.you', 'You')
+        if (currentUserIdentity?.username) {
+          senderName = currentUserIdentity.username
+        } else {
+          // No Juicy ID - show prompt to add one
+          needsJuicyId = true
+          senderName = undefined
+        }
       } else if (sender?.displayName) {
         senderName = sender.displayName
-      } else if (msg.senderAddress) {
-        // Show custom emoji or default fruit emoji for anonymous users
-        senderName = sender?.customEmoji || getEmojiFromAddress(msg.senderAddress)
       } else {
-        senderName = t('chat.anonymous', 'Anonymous')
+        // No display name - just show emoji indicator alone, no name text
+        senderName = undefined
       }
 
       return {
@@ -266,9 +276,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         createdAt: msg.createdAt,
         isStreaming: msg.isStreaming,
         attachments: msg.attachments,
+        needsJuicyId: msg.role === 'user' && isCurrentUser ? needsJuicyId : undefined,
       } as Message
     })
-  }, [chatMessages, members, currentAddress])
+  }, [chatMessages, members, currentAddress, currentUserIdentity])
 
   // Use display messages for everything
   const messages = displayMessages
@@ -313,6 +324,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
     setError(null)
     setIsStreaming(true)
+    setShowContinueButton(false) // Clear nudge button when user sends a new message
     if (effectiveAiEnabled) {
       setIsWaitingForAi(true) // Show thinking indicator immediately when user sends (only if AI is on)
     }
@@ -394,6 +406,25 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const handleSuggestionClick = (text: string) => {
     handleSend(text)
   }
+
+  // Handle "Continue" button when AI gives empty response
+  const handleContinue = useCallback(async () => {
+    const chatId = forceActiveChatId || useChatStore.getState().activeChatId
+    if (!chatId) return
+
+    setShowContinueButton(false)
+    setIsWaitingForAi(true)
+
+    try {
+      // Re-invoke AI with a "continue" prompt
+      await chatApi.invokeAi(chatId, 'Please continue.')
+    } catch (err) {
+      console.error('Failed to continue AI:', err)
+      setIsWaitingForAi(false)
+      // Show continue button again so user can retry
+      setShowContinueButton(true)
+    }
+  }, [forceActiveChatId])
 
   const handleExport = () => {
     if (messages.length === 0) return
@@ -489,6 +520,41 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     }
   }, [])
 
+  // Fetch current user's Juicy ID
+  useEffect(() => {
+    const fetchIdentity = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || ''
+        const walletSession = getWalletSession()
+        const headers: Record<string, string> = {
+          'X-Session-ID': sessionId,
+        }
+        if (walletSession?.token) {
+          headers['X-Wallet-Session'] = walletSession.token
+        }
+        const res = await fetch(`${apiUrl}/identity/me`, { headers })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && data.data) {
+            setCurrentUserIdentity(data.data)
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+    fetchIdentity()
+  }, [sessionId, passkeyWallet?.address])
+
+  // Listen for identity changes from other components
+  useEffect(() => {
+    const handleIdentityChange = (e: CustomEvent<JuicyIdentity>) => {
+      setCurrentUserIdentity(e.detail)
+    }
+    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+  }, [])
+
   // Listen for SIWE wallet sign-in events and merge sessions
   useEffect(() => {
     const handleSiweSignIn = async (event: CustomEvent<{ address: string }>) => {
@@ -541,6 +607,30 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     window.addEventListener('juice:dock-scroll', handleDockScrollChange as EventListener)
     return () => window.removeEventListener('juice:dock-scroll', handleDockScrollChange as EventListener)
   }, [])
+
+  // Listen for empty AI responses - show "Nudge" button when Claude stops without output
+  useEffect(() => {
+    const handleEmptyResponse = (e: CustomEvent<{ chatId: string; messageId: string }>) => {
+      const currentChatId = forceActiveChatId || useChatStore.getState().activeChatId
+      if (e.detail.chatId === currentChatId) {
+        setShowContinueButton(true)
+        setIsWaitingForAi(false)
+      }
+    }
+    const handleStreamingStarted = (e: CustomEvent<{ chatId: string; messageId: string }>) => {
+      const currentChatId = forceActiveChatId || useChatStore.getState().activeChatId
+      if (e.detail.chatId === currentChatId) {
+        setShowContinueButton(false) // Clear nudge button when AI starts responding
+        setIsWaitingForAi(false) // Also clear thinking indicator
+      }
+    }
+    window.addEventListener('chat:ai-empty-response', handleEmptyResponse as EventListener)
+    window.addEventListener('chat:ai-streaming-started', handleStreamingStarted as EventListener)
+    return () => {
+      window.removeEventListener('chat:ai-empty-response', handleEmptyResponse as EventListener)
+      window.removeEventListener('chat:ai-streaming-started', handleStreamingStarted as EventListener)
+    }
+  }, [forceActiveChatId])
 
   // Load shared chat data and connect WebSocket when activeChatId changes
   useEffect(() => {
@@ -724,7 +814,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         setWalletPanelAnchorPosition(event.detail.anchorPosition)
         setAuthModalAnchorPosition(event.detail.anchorPosition)
       }
-      if (isWalletConnected) {
+      // Check for wagmi wallet OR passkey wallet (read from localStorage as source of truth)
+      const currentPasskeyWallet = getPasskeyWallet()
+      if (isWalletConnected || currentPasskeyWallet) {
         // Already connected - show wallet panel directly for top-up/balance
         setShowWalletPanel(true)
       } else {
@@ -761,9 +853,17 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     // Skip if we're topOnly (no input to handle messages)
     if (topOnly) return
 
-    const handleComponentMessage = (event: CustomEvent<{ message: string }>) => {
+    const handleComponentMessage = (event: CustomEvent<{ message: string; newChat?: boolean }>) => {
       if (event.detail?.message) {
-        handleSend(event.detail.message)
+        if (event.detail.newChat) {
+          // Navigate to root to clear active chat, then send message
+          // The setTimeout ensures navigation completes before sending
+          navigate('/', { replace: true })
+          useChatStore.getState().setActiveChat(null)
+          setTimeout(() => handleSend(event.detail.message), 50)
+        } else {
+          handleSend(event.detail.message)
+        }
       }
     }
 
@@ -771,7 +871,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => {
       window.removeEventListener('juice:send-message', handleComponentMessage as EventListener)
     }
-  }, [handleSend, topOnly])
+  }, [handleSend, topOnly, navigate])
 
   // Listen for settings open events (from LocalShareModal sign in button)
   useEffect(() => {
@@ -1234,6 +1334,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   currentUserMember={currentUserMember}
                   onlineMembers={onlineMembers}
                   onMemberUpdated={handleMemberUpdated}
+                  showNudgeButton={showContinueButton}
+                  onNudge={handleContinue}
                 />
                 {/* Bottom padding so content can scroll under the dock */}
                 <div className="h-[14.44vh]" />
@@ -1331,6 +1433,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       placeholder={isChatMode ? t('activeChat.typeMessage', 'Type a message...') : placeholder}
                       showDockButtons={!isChatMode}
                       onSettingsClick={() => setSettingsOpen(true)}
+                      onConnectedAsClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        closeAllPopovers()
+                        setWalletPanelAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+                        setShowWalletPanel(true)
+                      }}
                       walletInfoRightContent={
                         <div className="flex items-center gap-3">
                           {/* Three-dot overflow menu for small screens */}
@@ -1621,7 +1729,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
           }`}>
-            {t('beta.whatWeAreBuilding', "Juicy is the people's funding platform. Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams.")}
+            {t('beta.whatWeAreBuilding', "Juicy is the people's funding platform. Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.")}
           </p>
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
@@ -1638,7 +1746,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               onClick={() => {
                 setShowBetaPopover(false)
                 window.dispatchEvent(new CustomEvent('juice:send-message', {
-                  detail: { message: 'I want to pay project ID 1 (NANA)' }
+                  detail: { message: 'I want to pay project ID 1 (NANA)', newChat: true }
                 }))
               }}
               className={`px-3 py-1.5 text-xs font-medium border transition-colors ${
