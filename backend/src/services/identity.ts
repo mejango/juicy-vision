@@ -1,9 +1,9 @@
 /**
  * Juicy Identity Service
  *
- * Manages unique [emoji]username identities that resolve to addresses.
+ * Manages unique username[emoji] identities that resolve to addresses.
  * Each address has at most one identity.
- * Emoji + username combo must be unique (case-insensitive on username).
+ * Username + emoji combo must be unique (case-insensitive on username).
  */
 
 import { query, queryOne, execute } from '../db/index.ts';
@@ -181,7 +181,7 @@ export async function setIdentity(
   // Check availability (excluding current address for updates)
   const available = await isIdentityAvailable(emoji, username, address);
   if (!available) {
-    throw new Error(`${emoji}${username} is already taken`);
+    throw new Error(`${emoji} ${username} is already taken`);
   }
 
   // Check if this is an update (existing identity)
@@ -286,7 +286,8 @@ export async function getAllIdentities(): Promise<JuicyIdentity[]> {
 // ============================================================================
 
 /**
- * Parse a juicy identity string like "@🍉jango" or "🍉jango"
+ * Parse a juicy identity string like "@🍉 jango" or "🍉 jango"
+ * Also supports legacy format "jango🍉" for backwards compatibility
  * Returns { emoji, username } or null if invalid format
  */
 export function parseIdentityString(input: string): { emoji: string; username: string } | null {
@@ -295,10 +296,21 @@ export function parseIdentityString(input: string): { emoji: string; username: s
 
   if (!cleaned) return null;
 
-  // Try to match emoji at start
+  // Try to match emoji at beginning (new format: "🍉 jango" or "🍉jango")
   for (const emoji of VALID_EMOJIS) {
     if (cleaned.startsWith(emoji)) {
-      const username = cleaned.slice(emoji.length);
+      // Remove emoji and optional space
+      const rest = cleaned.slice(emoji.length).trimStart();
+      if (rest && validateUsername(rest).valid) {
+        return { emoji, username: rest };
+      }
+    }
+  }
+
+  // Fall back to emoji at end (legacy format: "jango🍉")
+  for (const emoji of VALID_EMOJIS) {
+    if (cleaned.endsWith(emoji)) {
+      const username = cleaned.slice(0, -emoji.length);
       if (username && validateUsername(username).valid) {
         return { emoji, username };
       }
@@ -312,14 +324,14 @@ export function parseIdentityString(input: string): { emoji: string; username: s
  * Format an identity for display
  */
 export function formatIdentity(emoji: string, username: string): string {
-  return `${emoji}${username}`;
+  return `${emoji} ${username}`;
 }
 
 /**
  * Format an identity for use in text (with @ prefix)
  */
 export function formatIdentityMention(emoji: string, username: string): string {
-  return `@${emoji}${username}`;
+  return `@${emoji} ${username}`;
 }
 
 /**
@@ -341,16 +353,16 @@ export function findIdentityMentions(text: string): Array<{
     end: number;
   }> = [];
 
-  // Build regex pattern for all valid emojis
+  // Build regex pattern for all valid emojis (username first, then emoji)
   const emojiPattern = VALID_EMOJIS.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const pattern = new RegExp(`@(${emojiPattern})([a-zA-Z][a-zA-Z0-9_]{2,19})`, 'g');
+  const pattern = new RegExp(`@([a-zA-Z][a-zA-Z0-9_]{2,19})(${emojiPattern})`, 'g');
 
   let match;
   while ((match = pattern.exec(text)) !== null) {
     mentions.push({
       match: match[0],
-      emoji: match[1],
-      username: match[2],
+      emoji: match[2],
+      username: match[1],
       start: match.index,
       end: match.index + match[0].length,
     });

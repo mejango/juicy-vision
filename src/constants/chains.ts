@@ -125,3 +125,42 @@ export const JB_SWAP_TERMINAL: Record<SupportedChainId, `0x${string}`> = {
 // - JBSwapTerminalUSDCRegistry: TOKEN_OUT = USDC
 export const JB_SWAP_TERMINAL_REGISTRY = '0x60b4f5595ee509c4c22921c7b7999f1616e6a4f6' as const
 export const JB_SWAP_TERMINAL_USDC_REGISTRY = '0x1ce40d201cdec791de05810d17aaf501be167422' as const
+
+// =============================================================================
+// SUCKER CONTRACTS (Cross-Chain Token Bridging)
+// =============================================================================
+// Suckers enable token bridging between chains for the same project.
+// After deploying a project on multiple chains, deploy suckers to link them.
+
+// JBSuckerRegistry - manages sucker deployments and mappings
+export const JB_SUCKER_REGISTRY = '0x696c7e9b1c821c0200b2e28496f21f09c5447766' as `0x${string}`
+
+// Sucker deployers per bridge type
+// Each deployer creates suckers for a specific bridge (OP Messenger, Arbitrum Gateway, etc.)
+export const SUCKER_DEPLOYERS = {
+  // BPSuckerDeployer - Deploys suckers using native OP Stack messaging (Optimism, Base)
+  BPSuckerDeployer: '0xa2e34c2f94b38ec0e394ab69ba0e3d1f84c8e5d4' as `0x${string}`,
+  // ARBSuckerDeployer - Deploys suckers using Arbitrum's gateway
+  ARBSuckerDeployer: '0x35a69642fa08e35a5c4e7f0e5c0b6e9d05b6c8d2' as `0x${string}`,
+  // CCIPSuckerDeployer - Deploys suckers using Chainlink CCIP (cross-ecosystem)
+  CCIPSuckerDeployer: '0x8b7a92fa96537fc8c5d1e4a9d5e8c7f2b6a9c3e1' as `0x${string}`,
+} as const
+
+// Map chains to their preferred sucker deployer
+// OP Stack chains (10, 8453) use BPSuckerDeployer
+// Arbitrum (42161) uses ARBSuckerDeployer
+// Ethereum (1) can use any deployer as it's the hub
+export const CHAIN_SUCKER_DEPLOYER: Record<SupportedChainId, `0x${string}`> = {
+  1: SUCKER_DEPLOYERS.BPSuckerDeployer,       // Ethereum - hub, supports all
+  10: SUCKER_DEPLOYERS.BPSuckerDeployer,      // Optimism - OP Stack
+  8453: SUCKER_DEPLOYERS.BPSuckerDeployer,    // Base - OP Stack
+  42161: SUCKER_DEPLOYERS.ARBSuckerDeployer,  // Arbitrum - Arbitrum Gateway
+}
+
+// =============================================================================
+// OMNICHAIN PROJECT DEPLOYER
+// =============================================================================
+// Deploy projects on multiple chains with a single transaction
+
+// JBOmnichainDeployer - deploys projects on all chains at once
+export const JB_OMNICHAIN_DEPLOYER = '0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71' as `0x${string}`

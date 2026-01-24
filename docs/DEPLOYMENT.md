@@ -159,6 +159,8 @@ railway run --service backend deno task migrate
 - Response time (p50, p95, p99)
 - WebSocket connections count
 - Database connection pool usage
+- Database replication lag (if replica configured)
+- Database disk usage and growth rate
 - Claude API token usage
 - Error rate by endpoint
 
@@ -167,7 +169,9 @@ Set up alerts for:
 - Error rate > 1%
 - Response time p95 > 2s
 - WebSocket disconnection spikes
-- Database connection exhaustion
+- Database connection exhaustion (pool at 80%+)
+- Database replication lag > 10s
+- Database disk usage > 80%
 - Claude API rate limit warnings
 
 ## Scaling
@@ -175,6 +179,7 @@ Set up alerts for:
 ### Horizontal Scaling
 - Backend: Railway auto-scales based on CPU/memory
 - Database: Vertical scaling (upgrade instance) or read replicas
+  - **TODO**: Configure read replica for failover (see Database Resilience section)
 
 ### Performance Optimizations
 - Frontend code splitting by vendor
@@ -193,24 +198,74 @@ Set up alerts for:
 - [ ] WebSocket connections require authentication
 - [ ] Cron endpoints require secret token
 - [ ] Frontend bundle does not contain API keys
+- [ ] `ENCRYPTION_MASTER_KEY` differs from `JWT_SECRET`
+- [ ] `RESERVES_PRIVATE_KEY` hot wallet has limited balance
 
 ## Deployment Guides
 
 - [Railway Deployment](../DEPLOY_RAILWAY.md) - Step-by-step Railway setup
 - [Local Development](../README.md) - Local dev environment
 
+## Database Resilience
+
+### Resilience Checklist
+
+- [ ] **Backup verification**: Confirm PITR (point-in-time recovery) is enabled on PostgreSQL instance
+- [ ] **Read replica**: Set up at least one read replica for failover and read scaling
+- [ ] **WAL archiving**: Enable WAL archiving for platform-independent recovery
+- [ ] **Disaster recovery drill**: Test restore process quarterly (document last test date)
+- [ ] **Connection pooling**: Verify pool size (currently 10) is appropriate for load
+- [ ] **Backup retention**: Confirm backup retention period meets compliance needs
+
+### Redundancy Status
+
+| Component | Current State | Target State |
+|-----------|---------------|--------------|
+| Primary DB | Single instance (Railway/GCP) | Same |
+| Read Replica | ❌ Not configured | ✅ At least 1 replica |
+| Multi-region | ❌ Single region | ⚠️ Consider for critical data |
+| PITR | ⚠️ Platform-dependent | ✅ Verified enabled |
+| WAL Archive | ❌ Not configured | ✅ External storage |
+
+### Event Sourcing Candidates
+
+These domains have audit trails but could benefit from full event sourcing if needed:
+
+| Domain | Current Approach | Event Sourcing Value |
+|--------|------------------|----------------------|
+| Juice transactions | Separate tables per action | High - financial audit trail |
+| Smart account exports | JSON status per chain | Medium - multi-chain coordination |
+| Identity changes | History table | Low - already sufficient |
+
 ## Disaster Recovery
 
 ### Database Backups
 - Railway: Automatic daily backups (Pro plan)
 - GCP: Point-in-time recovery enabled
+- **Verify**: Run `SELECT pg_is_in_recovery();` to confirm replica status
 
 ### Recovery Procedure
 1. Scale down backend services
 2. Restore database from backup
-3. Verify data integrity
-4. Scale up backend services
-5. Clear CDN cache if needed
+3. Run integrity checks:
+   ```sql
+   -- Verify critical table counts
+   SELECT 'users' as tbl, count(*) FROM users
+   UNION SELECT 'juice_balances', count(*) FROM juice_balances
+   UNION SELECT 'user_smart_accounts', count(*) FROM user_smart_accounts;
+   ```
+4. Verify foreign key constraints: `SELECT conname FROM pg_constraint WHERE contype = 'f';`
+5. Scale up backend services
+6. Clear CDN cache if needed
+7. **Document** the incident and recovery in runbook
+
+### Recovery Time Objectives
+
+| Scenario | RTO Target | RPO Target |
+|----------|------------|------------|
+| Database corruption | < 1 hour | < 5 minutes (with PITR) |
+| Region outage | < 4 hours | < 1 hour |
+| Full restore from backup | < 2 hours | Last daily backup |
 
 ### Rollback Procedure
 1. Identify last known good deployment

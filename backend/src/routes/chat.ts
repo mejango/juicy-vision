@@ -1180,12 +1180,19 @@ chatRouter.post(
         return c.json({ success: false, error: 'You do not have permission to invoke AI in this chat' }, 403);
       }
 
-      // Get previous messages for context
-      const previousMessages = await getChatMessages(chatId, 50);
-      const chatHistory: Array<{ role: 'user' | 'assistant'; content: string | Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> }> = previousMessages.map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      }));
+      // Build optimized context with summaries, state, and token budgeting
+      const { buildOptimizedContext, formatContextForClaude, logContextUsage } = await import('../services/contextManager.ts');
+      const { buildEnhancedPrompt } = await import('../services/claude.ts');
+
+      const optimizedContext = await buildOptimizedContext(chatId, walletSession.userId);
+      const chatHistory = formatContextForClaude(optimizedContext);
+
+      // Build enhanced system prompt with transaction state and user context
+      const { systemPrompt: enhancedSystem } = await buildEnhancedPrompt({
+        chatId,
+        userId: walletSession.userId,
+        includeOmnichain: true,
+      });
 
       // Build multimodal content blocks for the new prompt
       const contentBlocks: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
@@ -1229,7 +1236,7 @@ chatRouter.post(
       }
 
       // Import services
-      const { streamMessage } = await import('../services/claude.ts');
+      const { streamMessageWithTools } = await import('../services/claude.ts');
       const { importMessage } = await import('../services/chat.ts');
       const { streamAiToken, broadcastChatMessage } = await import('../services/websocket.ts');
 
@@ -1240,15 +1247,28 @@ chatRouter.post(
       // Extract user's API key if provided (BYOK)
       const userApiKey = body.apiKey;
 
-      // Stream Claude response and broadcast tokens via WebSocket
+      // Stream Claude response with automatic tool execution
       let fullContent = '';
 
-      for await (const event of streamMessage(chatId, { messages: chatHistory }, userApiKey)) {
+      for await (const event of streamMessageWithTools(chatId, { messages: chatHistory, system: enhancedSystem }, userApiKey)) {
         if (event.type === 'text') {
           const token = event.data as string;
           fullContent += token;
           // Broadcast each token to connected clients
           streamAiToken(chatId, messageId, token, false);
+        } else if (event.type === 'thinking') {
+          // Broadcast tool usage status (italicized)
+          const thinkingText = `\n\n*${event.data}*\n\n`;
+          fullContent += thinkingText;
+          streamAiToken(chatId, messageId, thinkingText, false);
+        } else if (event.type === 'tool_result') {
+          // Optionally show tool results (could be verbose, so we keep it subtle)
+          const result = event.data as { id: string; name: string; result?: string; error?: string };
+          if (result.error) {
+            const errorText = `\n\n> ⚠️ Tool error: ${result.error}\n\n`;
+            fullContent += errorText;
+            streamAiToken(chatId, messageId, errorText, false);
+          }
         }
       }
 
@@ -1262,6 +1282,43 @@ chatRouter.post(
         role: 'assistant',
         content: fullContent,
       });
+
+      // Context management: Extract transaction state and trigger summarization (async, non-blocking)
+      const { extractStateFromResponse } = await import('../services/transactionState.ts');
+      const { checkAndTriggerSummarization, queueAttachmentSummary } = await import('../services/summarization.ts');
+
+      // Extract project design decisions from the response
+      extractStateFromResponse(chatId, fullContent, aiMessage.id).catch(err => {
+        console.error('Failed to extract transaction state:', err);
+      });
+
+      // Check if we need to summarize older messages
+      checkAndTriggerSummarization(chatId).catch(err => {
+        console.error('Failed to check/trigger summarization:', err);
+      });
+
+      // Log context usage for analytics
+      logContextUsage(chatId, aiMessage.id, optimizedContext).catch(err => {
+        console.error('Failed to log context usage:', err);
+      });
+
+      // Queue attachment summaries for the user's message if any
+      if (body.attachments && body.attachments.length > 0) {
+        // We need the user message ID - get the latest user message
+        const userMessages = await getChatMessages(chatId, 2);
+        const userMessage = userMessages.find(m => m.role === 'user');
+        if (userMessage) {
+          for (let i = 0; i < body.attachments.length; i++) {
+            const att = body.attachments[i];
+            queueAttachmentSummary(userMessage.id, chatId, i, {
+              type: att.type,
+              mimeType: att.mimeType,
+              data: att.data,
+              filename: att.name,
+            });
+          }
+        }
+      }
 
       // Auto-generate title if the chat has a generic name
       const { isGenericName, generateChatTitle, setAutoGeneratedTitle } = await import('../services/chatCategorization.ts');

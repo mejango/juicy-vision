@@ -42,14 +42,7 @@ export function loadConfig(): EnvConfig {
     // Encryption (for E2E keypair storage - MUST be different from JWT secret)
     encryptionMasterKey: getEnv('ENCRYPTION_MASTER_KEY', 'dev-encryption-key-change-in-production'),
 
-    // GCP KMS
-    gcpProjectId: getEnv('GCP_PROJECT_ID', ''),
-    gcpKeyRingId: getEnv('GCP_KEY_RING_ID', ''),
-    gcpCryptoKeyId: getEnv('GCP_CRYPTO_KEY_ID', ''),
-    gcpLocationId: getEnv('GCP_LOCATION_ID', 'us-east1'),
-
-    // GCP Cloud Run
-    gcpServiceAccount: getEnv('GCP_SERVICE_ACCOUNT', ''),
+    // Cron jobs
     cronSecret: getEnv('CRON_SECRET', 'dev-cron-secret'),
 
     // Stripe
@@ -103,11 +96,6 @@ export function validateConfigForEncryption(config: EnvConfig): void {
   }
 }
 
-export function validateConfigForKms(config: EnvConfig): void {
-  if (!config.gcpProjectId || !config.gcpKeyRingId || !config.gcpCryptoKeyId) {
-    throw new Error('GCP KMS configuration is incomplete');
-  }
-}
 
 export function validateConfigForStripe(config: EnvConfig): void {
   if (!config.stripeSecretKey || !config.stripeWebhookSecret) {
@@ -124,5 +112,30 @@ export function validateConfigForClaude(config: EnvConfig): void {
 export function validateConfigForCron(config: EnvConfig): void {
   if (config.env === 'production' && config.cronSecret === 'dev-cron-secret') {
     throw new Error('CRON_SECRET must be set in production');
+  }
+}
+
+export function validateConfigForReserves(config: EnvConfig): void {
+  if (!config.reservesPrivateKey) {
+    throw new Error('RESERVES_PRIVATE_KEY is required for wallet operations');
+  }
+
+  // Basic format validation
+  if (!config.reservesPrivateKey.startsWith('0x') || config.reservesPrivateKey.length !== 66) {
+    throw new Error('RESERVES_PRIVATE_KEY must be a valid 32-byte hex string starting with 0x');
+  }
+
+  // Warn if using test key in production
+  if (config.env === 'production') {
+    // Check for known test keys
+    const testKeys = [
+      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80', // Hardhat #0
+      '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d', // Hardhat #1
+      '0xbc7633f748cb696bd42c031308235e89f985c787e909aca73cb5606a0ae01bfd', // Dev key from .env
+    ];
+
+    if (testKeys.includes(config.reservesPrivateKey.toLowerCase())) {
+      throw new Error('RESERVES_PRIVATE_KEY appears to be a test key - do not use in production');
+    }
   }
 }

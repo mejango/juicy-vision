@@ -848,3 +848,485 @@ export async function getUserProjectRoles(
     active: r.active,
   }));
 }
+
+// ============================================================================
+// Multi-Chain Export
+// ============================================================================
+
+interface ExportBlocker {
+  type: 'pending_withdrawal';
+  id: string;
+  chainId: number;
+  tokenAddress: string;
+  amount: string;
+}
+
+interface ExportSnapshot {
+  accounts: Array<{
+    chainId: number;
+    address: string;
+    deployed: boolean;
+    ethBalance: string;
+    tokens: Array<{ symbol: string; balance: string }>;
+  }>;
+  projectRoles: Array<{
+    projectId: number;
+    chainId: number;
+    role: string;
+    percentBps: number | null;
+  }>;
+}
+
+interface ExportRequest {
+  id: string;
+  userId: string;
+  newOwnerAddress: Address;
+  chainIds: number[];
+  chainStatus: Record<string, { status: string; txHash?: string; error?: string }>;
+  status: 'pending' | 'blocked' | 'processing' | 'completed' | 'partial' | 'failed' | 'cancelled';
+  blockedByPendingOps: boolean;
+  pendingOpsDetails: { withdrawals: ExportBlocker[] } | null;
+  exportSnapshot: ExportSnapshot | null;
+  userConfirmedAt: Date | null;
+  createdAt: Date;
+}
+
+/**
+ * Check if user can export (no pending operations blocking)
+ */
+export async function checkExportBlockers(userId: string): Promise<{
+  canExport: boolean;
+  blockers: ExportBlocker[];
+}> {
+  const pendingWithdrawals = await query<{
+    id: string;
+    chain_id: number;
+    token_address: string;
+    amount: string;
+  }>(
+    `SELECT w.id, sa.chain_id, w.token_address, w.amount
+     FROM smart_account_withdrawals w
+     JOIN user_smart_accounts sa ON sa.id = w.smart_account_id
+     WHERE sa.user_id = $1 AND w.status IN ('pending', 'processing')`,
+    [userId]
+  );
+
+  const blockers: ExportBlocker[] = pendingWithdrawals.map((w) => ({
+    type: 'pending_withdrawal',
+    id: w.id,
+    chainId: w.chain_id,
+    tokenAddress: w.token_address,
+    amount: w.amount,
+  }));
+
+  return {
+    canExport: blockers.length === 0,
+    blockers,
+  };
+}
+
+/**
+ * Build a snapshot of what user is exporting (for confirmation UI)
+ */
+async function buildExportSnapshot(userId: string): Promise<ExportSnapshot> {
+  const accounts = await getUserSmartAccounts(userId);
+  const projectRoles = await getUserProjectRoles(userId);
+
+  const accountSnapshots = await Promise.all(
+    accounts
+      .filter((a) => a.custodyStatus === 'managed')
+      .map(async (account) => {
+        // Get cached balances
+        const balances = await getAccountBalances(userId, account.chainId);
+        const ethBalance = balances.find(
+          (b) => b.tokenAddress === '0x0000000000000000000000000000000000000000'
+        );
+        const tokens = balances.filter(
+          (b) => b.tokenAddress !== '0x0000000000000000000000000000000000000000'
+        );
+
+        return {
+          chainId: account.chainId,
+          address: account.address,
+          deployed: account.deployed,
+          ethBalance: ethBalance?.balance || '0',
+          tokens: tokens.map((t) => ({ symbol: t.tokenSymbol, balance: t.balance })),
+        };
+      })
+  );
+
+  return {
+    accounts: accountSnapshots,
+    projectRoles: projectRoles
+      .filter((r) => r.active)
+      .map((r) => ({
+        projectId: r.projectId,
+        chainId: r.chainId,
+        role: r.roleType,
+        percentBps: r.percentBps,
+      })),
+  };
+}
+
+/**
+ * Request an export of all managed accounts to user's self-custody address
+ * Returns export request for user confirmation
+ */
+export async function requestExport(
+  userId: string,
+  newOwnerAddress: Address
+): Promise<{
+  exportId: string;
+  blocked: boolean;
+  blockers: ExportBlocker[];
+  snapshot: ExportSnapshot;
+  chainIds: number[];
+}> {
+  // Check for blockers
+  const { canExport, blockers } = await checkExportBlockers(userId);
+
+  // Get user's managed accounts
+  const accounts = await getUserSmartAccounts(userId);
+  const managedAccounts = accounts.filter((a) => a.custodyStatus === 'managed');
+
+  if (managedAccounts.length === 0) {
+    throw new Error('No managed accounts to export');
+  }
+
+  const chainIds = managedAccounts.map((a) => a.chainId);
+
+  // Build snapshot
+  const snapshot = await buildExportSnapshot(userId);
+
+  // Create export request
+  const [row] = await query<{ id: string }>(
+    `INSERT INTO smart_account_exports
+     (user_id, new_owner_address, chain_ids, status, blocked_by_pending_ops, pending_ops_details, export_snapshot)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id`,
+    [
+      userId,
+      newOwnerAddress,
+      chainIds,
+      canExport ? 'pending' : 'blocked',
+      !canExport,
+      blockers.length > 0 ? JSON.stringify({ withdrawals: blockers }) : null,
+      JSON.stringify(snapshot),
+    ]
+  );
+
+  logger.info('Export requested', {
+    exportId: row.id,
+    userId,
+    newOwnerAddress,
+    chainIds,
+    blocked: !canExport,
+    blockerCount: blockers.length,
+  });
+
+  return {
+    exportId: row.id,
+    blocked: !canExport,
+    blockers,
+    snapshot,
+    chainIds,
+  };
+}
+
+/**
+ * Confirm and execute the export
+ */
+export async function confirmExport(exportId: string): Promise<{
+  status: 'completed' | 'partial' | 'failed';
+  chainResults: Record<number, { success: boolean; txHash?: string; error?: string }>;
+}> {
+  // Get export request
+  const exportReq = await queryOne<{
+    id: string;
+    user_id: string;
+    new_owner_address: string;
+    chain_ids: number[];
+    status: string;
+    blocked_by_pending_ops: boolean;
+  }>(
+    `SELECT id, user_id, new_owner_address, chain_ids, status, blocked_by_pending_ops
+     FROM smart_account_exports WHERE id = $1`,
+    [exportId]
+  );
+
+  if (!exportReq) {
+    throw new Error('Export request not found');
+  }
+
+  if (exportReq.status !== 'pending') {
+    throw new Error(`Export is ${exportReq.status}, cannot confirm`);
+  }
+
+  if (exportReq.blocked_by_pending_ops) {
+    // Re-check blockers
+    const { canExport, blockers } = await checkExportBlockers(exportReq.user_id);
+    if (!canExport) {
+      throw new Error(`Export blocked by ${blockers.length} pending operation(s)`);
+    }
+    // Update to unblocked
+    await execute(
+      `UPDATE smart_account_exports
+       SET blocked_by_pending_ops = FALSE, pending_ops_details = NULL, status = 'pending'
+       WHERE id = $1`,
+      [exportId]
+    );
+  }
+
+  // Mark as confirmed and processing
+  await execute(
+    `UPDATE smart_account_exports
+     SET user_confirmed_at = NOW(), started_at = NOW(), status = 'processing'
+     WHERE id = $1`,
+    [exportId]
+  );
+
+  // Execute transfers
+  const chainResults: Record<number, { success: boolean; txHash?: string; error?: string }> = {};
+  const chainStatus: Record<string, { status: string; txHash?: string; error?: string; completedAt?: string }> = {};
+
+  for (const chainId of exportReq.chain_ids) {
+    try {
+      const { txHash } = await transferCustody(
+        exportReq.user_id,
+        chainId,
+        exportReq.new_owner_address as Address
+      );
+
+      chainResults[chainId] = { success: true, txHash };
+      chainStatus[chainId.toString()] = {
+        status: 'completed',
+        txHash,
+        completedAt: new Date().toISOString(),
+      };
+
+      logger.info('Chain export completed', { exportId, chainId, txHash });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      chainResults[chainId] = { success: false, error: errorMsg };
+      chainStatus[chainId.toString()] = {
+        status: 'failed',
+        error: errorMsg,
+      };
+
+      logger.error('Chain export failed', error as Error, { exportId, chainId });
+    }
+
+    // Update chain status after each chain
+    await execute(
+      `UPDATE smart_account_exports SET chain_status = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(chainStatus), exportId]
+    );
+  }
+
+  // Determine final status
+  const results = Object.values(chainResults);
+  const allSucceeded = results.every((r) => r.success);
+  const allFailed = results.every((r) => !r.success);
+  const finalStatus = allSucceeded ? 'completed' : allFailed ? 'failed' : 'partial';
+
+  await execute(
+    `UPDATE smart_account_exports
+     SET status = $1, completed_at = NOW(), updated_at = NOW()
+     WHERE id = $2`,
+    [finalStatus, exportId]
+  );
+
+  logger.info('Export finished', {
+    exportId,
+    finalStatus,
+    succeeded: results.filter((r) => r.success).length,
+    failed: results.filter((r) => !r.success).length,
+  });
+
+  return { status: finalStatus, chainResults };
+}
+
+/**
+ * Retry failed chains in a partial export
+ */
+export async function retryExport(exportId: string): Promise<{
+  status: 'completed' | 'partial' | 'failed';
+  chainResults: Record<number, { success: boolean; txHash?: string; error?: string }>;
+}> {
+  const exportReq = await queryOne<{
+    id: string;
+    user_id: string;
+    new_owner_address: string;
+    chain_ids: number[];
+    chain_status: Record<string, { status: string; txHash?: string; error?: string }>;
+    status: string;
+    retry_count: number;
+  }>(
+    `SELECT id, user_id, new_owner_address, chain_ids, chain_status, status, retry_count
+     FROM smart_account_exports WHERE id = $1`,
+    [exportId]
+  );
+
+  if (!exportReq) {
+    throw new Error('Export request not found');
+  }
+
+  if (exportReq.status !== 'partial' && exportReq.status !== 'failed') {
+    throw new Error(`Export is ${exportReq.status}, cannot retry`);
+  }
+
+  // Find failed chains
+  const failedChainIds = exportReq.chain_ids.filter(
+    (chainId) => exportReq.chain_status[chainId.toString()]?.status !== 'completed'
+  );
+
+  if (failedChainIds.length === 0) {
+    throw new Error('No failed chains to retry');
+  }
+
+  // Update retry count
+  await execute(
+    `UPDATE smart_account_exports
+     SET status = 'processing', retry_count = retry_count + 1, last_retry_at = NOW(), updated_at = NOW()
+     WHERE id = $1`,
+    [exportId]
+  );
+
+  const chainResults: Record<number, { success: boolean; txHash?: string; error?: string }> = {};
+  const chainStatus = { ...exportReq.chain_status };
+
+  for (const chainId of failedChainIds) {
+    try {
+      const { txHash } = await transferCustody(
+        exportReq.user_id,
+        chainId,
+        exportReq.new_owner_address as Address
+      );
+
+      chainResults[chainId] = { success: true, txHash };
+      chainStatus[chainId.toString()] = {
+        status: 'completed',
+        txHash,
+        completedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      chainResults[chainId] = { success: false, error: errorMsg };
+      chainStatus[chainId.toString()] = {
+        status: 'failed',
+        error: errorMsg,
+      };
+    }
+
+    await execute(
+      `UPDATE smart_account_exports SET chain_status = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(chainStatus), exportId]
+    );
+  }
+
+  // Check overall status (including previously successful chains)
+  const allChainStatuses = exportReq.chain_ids.map(
+    (chainId) => chainStatus[chainId.toString()]?.status
+  );
+  const allCompleted = allChainStatuses.every((s) => s === 'completed');
+  const allFailed = allChainStatuses.every((s) => s === 'failed');
+  const finalStatus = allCompleted ? 'completed' : allFailed ? 'failed' : 'partial';
+
+  await execute(
+    `UPDATE smart_account_exports
+     SET status = $1, completed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE completed_at END, updated_at = NOW()
+     WHERE id = $2`,
+    [finalStatus, exportId]
+  );
+
+  return { status: finalStatus, chainResults };
+}
+
+/**
+ * Cancel a pending export
+ */
+export async function cancelExport(exportId: string): Promise<void> {
+  const result = await execute(
+    `UPDATE smart_account_exports
+     SET status = 'cancelled', updated_at = NOW()
+     WHERE id = $1 AND status IN ('pending', 'blocked')`,
+    [exportId]
+  );
+
+  if (result.rowCount === 0) {
+    throw new Error('Export not found or cannot be cancelled');
+  }
+
+  logger.info('Export cancelled', { exportId });
+}
+
+/**
+ * Get export status
+ */
+export async function getExportStatus(exportId: string): Promise<ExportRequest | null> {
+  const row = await queryOne<{
+    id: string;
+    user_id: string;
+    new_owner_address: string;
+    chain_ids: number[];
+    chain_status: Record<string, { status: string; txHash?: string; error?: string }>;
+    status: string;
+    blocked_by_pending_ops: boolean;
+    pending_ops_details: { withdrawals: ExportBlocker[] } | null;
+    export_snapshot: ExportSnapshot | null;
+    user_confirmed_at: string | null;
+    created_at: string;
+  }>(`SELECT * FROM smart_account_exports WHERE id = $1`, [exportId]);
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    newOwnerAddress: row.new_owner_address as Address,
+    chainIds: row.chain_ids,
+    chainStatus: row.chain_status,
+    status: row.status as ExportRequest['status'],
+    blockedByPendingOps: row.blocked_by_pending_ops,
+    pendingOpsDetails: row.pending_ops_details,
+    exportSnapshot: row.export_snapshot,
+    userConfirmedAt: row.user_confirmed_at ? new Date(row.user_confirmed_at) : null,
+    createdAt: new Date(row.created_at),
+  };
+}
+
+/**
+ * Get user's export history
+ */
+export async function getUserExports(userId: string): Promise<ExportRequest[]> {
+  const rows = await query<{
+    id: string;
+    user_id: string;
+    new_owner_address: string;
+    chain_ids: number[];
+    chain_status: Record<string, { status: string; txHash?: string; error?: string }>;
+    status: string;
+    blocked_by_pending_ops: boolean;
+    pending_ops_details: { withdrawals: ExportBlocker[] } | null;
+    export_snapshot: ExportSnapshot | null;
+    user_confirmed_at: string | null;
+    created_at: string;
+  }>(
+    `SELECT * FROM smart_account_exports WHERE user_id = $1 ORDER BY created_at DESC`,
+    [userId]
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    newOwnerAddress: row.new_owner_address as Address,
+    chainIds: row.chain_ids,
+    chainStatus: row.chain_status,
+    status: row.status as ExportRequest['status'],
+    blockedByPendingOps: row.blocked_by_pending_ops,
+    pendingOpsDetails: row.pending_ops_details,
+    exportSnapshot: row.export_snapshot,
+    userConfirmedAt: row.user_confirmed_at ? new Date(row.user_confirmed_at) : null,
+    createdAt: new Date(row.created_at),
+  }));
+}

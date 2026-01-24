@@ -210,7 +210,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
                 <span className={`text-xs mr-1 ${
                   theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
                 }`}>
-                  {t('chat.private', 'Currently private')}
+                  {t('chat.private', 'Currently private to you')}
                 </span>
               ) : (
                 <ParticipantAvatars

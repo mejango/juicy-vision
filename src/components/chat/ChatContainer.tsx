@@ -632,6 +632,16 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     }
   }, [forceActiveChatId])
 
+  // Timeout fallback: if waiting for AI for 30+ seconds with no response, show Continue button
+  useEffect(() => {
+    if (!isWaitingForAi) return
+    const timeout = setTimeout(() => {
+      setIsWaitingForAi(false)
+      setShowContinueButton(true)
+    }, 30000) // 30 seconds
+    return () => clearTimeout(timeout)
+  }, [isWaitingForAi])
+
   // Load shared chat data and connect WebSocket when activeChatId changes
   useEffect(() => {
     if (!activeChatId) return
@@ -1092,26 +1102,41 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                     <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                       {t('dock.askAbout', 'See and take actions across the ecosystem.')}
                     </div>
-                    <button
-                      ref={betaButtonRef}
-                      onClick={(e) => {
-                        if (!showBetaPopover) {
-                          closeAllPopovers()
-                          const rect = e.currentTarget.getBoundingClientRect()
-                          const isInBottomHalf = rect.top > window.innerHeight / 2
-                          setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
-                          setBetaAnchorPosition({
-                            top: rect.bottom + 8,
-                            bottom: window.innerHeight - rect.top + 8,
-                            right: window.innerWidth - rect.right
-                          })
-                        }
-                        setShowBetaPopover(!showBetaPopover)
-                      }}
-                      className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
-                    >
-                      Beta
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleReport}
+                        disabled={isReporting}
+                        className={`px-2 py-0.5 text-xs font-medium bg-transparent border transition-colors ${
+                          reportSuccess
+                            ? 'border-green-500 text-green-500'
+                            : isReporting
+                              ? 'border-gray-500 text-gray-500 cursor-wait'
+                              : 'border-gray-500 text-gray-500 hover:border-red-400 hover:text-red-400'
+                        }`}
+                      >
+                        {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
+                      </button>
+                      <button
+                        ref={betaButtonRef}
+                        onClick={(e) => {
+                          if (!showBetaPopover) {
+                            closeAllPopovers()
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            const isInBottomHalf = rect.top > window.innerHeight / 2
+                            setBetaPopoverPosition(isInBottomHalf ? 'above' : 'below')
+                            setBetaAnchorPosition({
+                              top: rect.bottom + 8,
+                              bottom: window.innerHeight - rect.top + 8,
+                              right: window.innerWidth - rect.right
+                            })
+                          }
+                          setShowBetaPopover(!showBetaPopover)
+                        }}
+                        className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
+                      >
+                        Beta
+                      </button>
+                    </div>
                   </div>
 
                   {/* Material upload hints - below subtext, hidden when dock is pinned */}
@@ -1137,177 +1162,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
                 </div>
 
-                {/* AI controls row - hidden when dock is pinned (compact mode) or no active chat */}
-                {activeChatId && <div className={`flex items-center justify-end px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100'}`}>
-                    {/* Three-dot overflow menu for small screens */}
-                    <div className="relative sm:hidden">
-                      <button
-                        onClick={() => setShowOverflowMenu(!showOverflowMenu)}
-                        className={`p-1.5 transition-colors ${
-                          theme === 'dark' ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
-                        }`}
-                        title="More options"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <circle cx="12" cy="5" r="2" />
-                          <circle cx="12" cy="12" r="2" />
-                          <circle cx="12" cy="19" r="2" />
-                        </svg>
-                      </button>
-                      {showOverflowMenu && (
-                        <>
-                          <div className="fixed inset-0 z-[98]" onClick={() => setShowOverflowMenu(false)} />
-                          <div className={`absolute right-0 bottom-full mb-2 py-1 min-w-[140px] border shadow-lg z-[99] ${
-                            theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
-                          }`}>
-                            {canPauseAi && (
-                              <button
-                                onClick={() => {
-                                  setAiControlsExpanded(true)
-                                  setPersonalAiSkip(true)
-                                  setShowOverflowMenu(false)
-                                }}
-                                className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
-                                  theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
-                                }`}
-                              >
-                                {t('chat.pauseAi', 'Pause AI')}
-                              </button>
-                            )}
-                            {!canPauseAi && chatAiEnabled && (
-                              <button
-                                onClick={() => {
-                                  setPersonalAiSkip(!personalAiSkip)
-                                  setShowOverflowMenu(false)
-                                }}
-                                className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
-                                  personalAiSkip ? 'text-orange-400' : theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
-                                }`}
-                              >
-                                {personalAiSkip ? t('chat.skipping', 'Skipping AI') : t('chat.skipAi', 'Skip AI')}
-                              </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                handleReport()
-                                setShowOverflowMenu(false)
-                              }}
-                              disabled={isReporting}
-                              className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
-                                reportSuccess
-                                  ? 'text-green-500'
-                                  : isReporting
-                                    ? 'text-gray-500 cursor-wait'
-                                    : theme === 'dark' ? 'text-gray-300 hover:bg-white/5 hover:text-red-400' : 'text-gray-600 hover:bg-gray-50 hover:text-red-400'
-                              }`}
-                            >
-                              {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                    {/* AI toggles and Report button - hidden on small screens */}
-                    <div className="hidden sm:flex items-center gap-3">
-                      {/* Collapsible AI controls - only for users with canPauseAi permission */}
-                      {activeChatId && canPauseAi && (
-                        (!chatAiEnabled || personalAiSkip || aiControlsExpanded) ? (
-                          /* Expanded: Show both toggles */
-                          <div className="flex items-center gap-2">
-                            {/* Skip for all toggle */}
-                            <button
-                              onClick={handleToggleAi}
-                              disabled={isTogglingAi}
-                              className={`px-2 py-0.5 text-xs transition-colors border flex items-center gap-1.5 ${
-                                isTogglingAi ? 'opacity-50 cursor-wait' : ''
-                              } ${!chatAiEnabled
-                                ? 'border-orange-400/50 text-orange-400'
-                                : 'border-gray-600 text-gray-500'
-                              }`}
-                              title={!chatAiEnabled ? t('chat.skipAllOnTooltip', 'AI is paused for everyone') : t('chat.skipAllOffTooltip', 'Click to pause AI for everyone')}
-                            >
-                              <span className={`w-3 h-3 rounded-sm border ${!chatAiEnabled ? 'bg-orange-400 border-orange-400' : 'border-current'}`}>
-                                {!chatAiEnabled && <span className="block w-full h-full text-[8px] text-white flex items-center justify-center">✓</span>}
-                              </span>
-                              {t('chat.skipForAll', 'Skip for all')}
-                            </button>
-                            {/* Skip for you toggle */}
-                            <button
-                              onClick={() => {
-                                const newSkip = !personalAiSkip
-                                setPersonalAiSkip(newSkip)
-                                // Auto-collapse if both are now off
-                                if (!newSkip && chatAiEnabled) {
-                                  setAiControlsExpanded(false)
-                                }
-                              }}
-                              className={`px-2 py-0.5 text-xs transition-colors border flex items-center gap-1.5 ${
-                                personalAiSkip
-                                  ? 'border-orange-400/50 text-orange-400'
-                                  : 'border-gray-600 text-gray-500'
-                              }`}
-                              title={personalAiSkip ? t('chat.skipYouOnTooltip', 'Your messages won\'t invoke AI') : t('chat.skipYouOffTooltip', 'Click to skip AI for your messages')}
-                            >
-                              <span className={`w-3 h-3 rounded-sm border ${personalAiSkip ? 'bg-orange-400 border-orange-400' : 'border-current'}`}>
-                                {personalAiSkip && <span className="block w-full h-full text-[8px] text-white flex items-center justify-center">✓</span>}
-                              </span>
-                              {t('chat.skipForYou', 'Skip for you')}
-                            </button>
-                          </div>
-                        ) : (
-                          /* Collapsed: Show just Pause AI button */
-                          <button
-                            onClick={() => {
-                              setAiControlsExpanded(true)
-                              setPersonalAiSkip(true) // Default "Skip for you" to ON when expanding
-                            }}
-                            className="px-2 py-0.5 text-xs transition-colors border border-gray-600 text-gray-500 hover:border-orange-400/50 hover:text-orange-400"
-                            title={t('chat.pauseAiTooltip', 'Click to see AI skip options')}
-                          >
-                            {t('chat.pauseAi', 'Pause AI')}
-                          </button>
-                        )
-                      )}
-                      {/* For non-admins: just show Skip AI button when AI is on, or AI paused indicator */}
-                      {activeChatId && !canPauseAi && (
-                        chatAiEnabled ? (
-                          <button
-                            onClick={() => setPersonalAiSkip(!personalAiSkip)}
-                            className={`px-2 py-0.5 text-xs transition-colors border ${
-                              personalAiSkip
-                                ? 'border-orange-400/50 text-orange-400'
-                                : 'border-gray-600 text-gray-500'
-                            }`}
-                            title={personalAiSkip ? t('chat.personalSkipOnTooltip', 'Your messages won\'t invoke AI') : t('chat.personalSkipOffTooltip', 'Your messages will invoke AI')}
-                          >
-                            {personalAiSkip ? t('chat.skipping', 'Skipping') : t('chat.skipAi', 'Skip AI')}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setShowAiPausedPopover(!showAiPausedPopover)}
-                            className="px-2 py-0.5 text-xs transition-colors border border-gray-600 text-gray-500"
-                          >
-                            {t('chat.aiPaused', 'AI paused')}
-                          </button>
-                        )
-                      )}
-                      {activeChatId && (
-                        <button
-                          onClick={handleReport}
-                          disabled={isReporting}
-                          className={`px-2 py-0.5 text-xs font-medium bg-transparent border transition-colors ${
-                            reportSuccess
-                              ? 'border-green-500 text-green-500'
-                              : isReporting
-                                ? 'border-gray-500 text-gray-500 cursor-wait'
-                                : 'border-gray-500 text-gray-500 hover:border-red-400 hover:text-red-400'
-                          }`}
-                        >
-                          {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
-                        </button>
-                      )}
-                    </div>
-                  </div>}
                 {/* Wallet info - hidden when dock is pinned (compact mode) */}
                 <div className={`overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-16 opacity-100'}`}>
                   <WalletInfo />
@@ -1729,7 +1583,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
           }`}>
-            {t('beta.whatWeAreBuilding', "Juicy is the people's funding platform. Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.")}
+            {t('beta.tagline', "Juicy is the people's funding platform.")}
+          </p>
+          <p className={`text-xs leading-relaxed mb-2 ${
+            theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+          }`}>
+            {t('beta.whatWeAreBuilding', "Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.")}
           </p>
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'

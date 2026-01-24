@@ -98,7 +98,6 @@ walletRouter.post(
 
     try {
       const txHash = await signAndBroadcast(
-        user.custodialAddressIndex,
         body.chainId,
         body.to as `0x${string}`,
         body.data as `0x${string}`,

@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import { createPublicClient, http, namehash, getAddress } from 'viem'
 import { mainnet } from 'viem/chains'
 
-// Use LlamaRPC which is reliable for ENS
+// Use PublicNode's free RPC - no auth required, CORS-friendly
 const mainnetClient = createPublicClient({
   chain: mainnet,
-  transport: http('https://eth.llamarpc.com'),
+  transport: http('https://ethereum-rpc.publicnode.com'),
 })
 
 // Classic ENS reverse registrar - more reliable than universal resolver
@@ -20,8 +20,9 @@ const reverseResolverAbi = [
   },
 ] as const
 
-// Cache ENS names to avoid repeated lookups
-const ensCache = new Map<string, string | null>()
+// Cache ENS names to avoid repeated lookups (with TTL)
+const ensCache = new Map<string, { name: string | null; timestamp: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 /**
  * Reliably resolve ENS name for an address using the classic reverse resolver
@@ -41,9 +42,10 @@ export function useEnsNameResolved(address: string | undefined): {
 
     const normalizedAddress = address.toLowerCase()
 
-    // Check cache first
-    if (ensCache.has(normalizedAddress)) {
-      setEnsName(ensCache.get(normalizedAddress) || null)
+    // Check cache first (with TTL)
+    const cached = ensCache.get(normalizedAddress)
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      setEnsName(cached.name)
       return
     }
 
@@ -58,7 +60,7 @@ export function useEnsNameResolved(address: string | undefined): {
         })
 
         if (!cancelled) {
-          ensCache.set(normalizedAddress, name)
+          ensCache.set(normalizedAddress, { name, timestamp: Date.now() })
           setEnsName(name)
         }
       } catch (err) {
@@ -72,16 +74,16 @@ export function useEnsNameResolved(address: string | undefined): {
           })
 
           if (!cancelled && name) {
-            ensCache.set(normalizedAddress, name)
+            ensCache.set(normalizedAddress, { name, timestamp: Date.now() })
             setEnsName(name)
           } else if (!cancelled) {
-            ensCache.set(normalizedAddress, null)
+            ensCache.set(normalizedAddress, { name: null, timestamp: Date.now() })
             setEnsName(null)
           }
         } catch (fallbackErr) {
           console.error('ENS resolution failed:', fallbackErr)
           if (!cancelled) {
-            ensCache.set(normalizedAddress, null)
+            ensCache.set(normalizedAddress, { name: null, timestamp: Date.now() })
             setEnsName(null)
           }
         }

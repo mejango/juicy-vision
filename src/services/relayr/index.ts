@@ -14,6 +14,35 @@ export {
   buildQueueRulesetTransaction,
   buildOmnichainQueueRulesetTransactions,
   calculateSynchronizedStartTime,
+  // Omnichain distributions
+  buildOmnichainDistributeTransactions,
+  createPrepaidOmnichainDistribute,
+  sponsoredOmnichainDistribute,
+  // Omnichain ERC20 deployment
+  buildOmnichainDeployERC20Transactions,
+  createPrepaidOmnichainDeployERC20,
+  sponsoredOmnichainDeployERC20,
+  // Omnichain project launch
+  buildOmnichainLaunchProjectTransactions,
+  sponsoredOmnichainLaunchProject,
+  // Omnichain revnet deployment
+  buildOmnichainDeployRevnetTransactions,
+  sponsoredOmnichainDeployRevnet,
+  // Omnichain sucker deployment
+  buildOmnichainDeploySuckersTransactions,
+  sponsoredOmnichainDeploySuckers,
+  // Balance-based sponsorship
+  createBalanceBundle,
+  getBalance,
+  getBalanceUsage,
+  sponsoredPay,
+  sponsoredCashOut,
+  sponsoredOmnichainQueue,
+  // Prepaid bundles
+  createPrepaidBundle,
+  getBundleStatus,
+  sendBundlePayment,
+  createPrepaidOmnichainQueue,
   // Types
   type QuoteRequest,
   type Quote,
@@ -34,4 +63,34 @@ export {
   type JBQueueRulesetRequest,
   type JBOmnichainQueueRequest,
   type JBOmnichainQueueResponse,
+  type JBOmnichainDistributeRequest,
+  type JBOmnichainDistributeResponse,
+  type JBOmnichainDeployERC20Request,
+  type JBOmnichainDeployERC20Response,
+  // Project launch types
+  type JBTerminalConfig,
+  type JBLaunchProjectRequest,
+  type JBLaunchProjectResponse,
+  // Revnet deployment types
+  type REVStageConfig,
+  type REVSuckerDeploymentConfig,
+  type JBDeployRevnetRequest,
+  type JBDeployRevnetResponse,
+  // Sucker deployment types
+  type SuckerTokenMapping,
+  type JBDeploySuckersRequest,
+  type JBDeploySuckersResponse,
+  // Bundle types
+  type BalanceBundleTransaction,
+  type BalanceBundleRequest,
+  type BalanceBundleResponse,
+  type BalanceInfo,
+  type BalanceUsageRecord,
+  type PrepaidBundleTransaction,
+  type PaymentOption,
+  type PrepaidBundleRequest,
+  type PrepaidBundleResponse,
+  type BundleTransactionStatus,
+  type BundleStatusResponse,
+  type BundlePaymentRequest,
 } from './client'

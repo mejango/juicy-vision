@@ -282,15 +282,8 @@ export interface EnvConfig {
   // Encryption (for E2E keypair storage)
   encryptionMasterKey: string;
 
-  // GCP KMS
-  gcpProjectId: string;
-  gcpKeyRingId: string;
-  gcpCryptoKeyId: string;
-  gcpLocationId: string;
-
-  // GCP Cloud Run
-  gcpServiceAccount: string; // For OIDC token verification
-  cronSecret: string; // Fallback secret for cron endpoints
+  // Cron jobs
+  cronSecret: string;
 
   // Stripe
   stripeSecretKey: string;

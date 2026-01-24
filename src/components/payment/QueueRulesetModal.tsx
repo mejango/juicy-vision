@@ -5,7 +5,9 @@ import { encodeFunctionData, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useOmnichainQueueRuleset } from '../../hooks/relayr'
 import { type JBRulesetConfig } from '../../services/relayr'
+import ChainPaymentSelector from './ChainPaymentSelector'
 
 // Contract constants - JBController5_1
 const JB_CONTROLLER = '0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1' as const
@@ -171,20 +173,55 @@ export default function QueueRulesetModal({
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
 
+  // State for legacy mode (single chain at a time)
   const [chainStates, setChainStates] = useState<ChainTxState[]>([])
   const [currentChainIndex, setCurrentChainIndex] = useState<number>(-1)
   const [isStarted, setIsStarted] = useState(false)
+
+  // Relayr omnichain mode
+  const [useOmnichain, setUseOmnichain] = useState(true) // Default to omnichain for multi-chain
+  const {
+    queue,
+    bundleState,
+    isExecuting,
+    isComplete: omnichainComplete,
+    hasError: omnichainError,
+    reset: resetOmnichain,
+    setPaymentChain,
+  } = useOmnichainQueueRuleset({
+    onSuccess: (bundleId, txHashes) => {
+      console.log('Omnichain queue completed:', bundleId, txHashes)
+    },
+    onError: (error) => {
+      console.error('Omnichain queue failed:', error)
+    },
+  })
 
   const hasGasBalance = totalEth >= 0.001
   const isOmnichain = chainRulesetData.length > 1
   const startDate = new Date(synchronizedStartTime * 1000)
 
+  // Derive chain states from bundle state when in omnichain mode
+  const effectiveChainStates = useOmnichain && bundleState.bundleId
+    ? bundleState.chainStates.map(cs => ({
+        chainId: cs.chainId,
+        projectId: cs.projectId || chainRulesetData.find(cd => cd.chainId === cs.chainId)?.projectId || 0,
+        status: cs.status as ChainStatus,
+        txHash: cs.txHash,
+        error: cs.error,
+      }))
+    : chainStates
+
   // All chains completed (success or fail)
-  const allCompleted = chainStates.length > 0 && chainStates.every(
-    cs => cs.status === 'confirmed' || cs.status === 'failed'
-  )
-  const anyFailed = chainStates.some(cs => cs.status === 'failed')
-  const allSucceeded = chainStates.length > 0 && chainStates.every(cs => cs.status === 'confirmed')
+  const allCompleted = useOmnichain
+    ? omnichainComplete || omnichainError
+    : chainStates.length > 0 && chainStates.every(cs => cs.status === 'confirmed' || cs.status === 'failed')
+  const anyFailed = useOmnichain
+    ? omnichainError
+    : chainStates.some(cs => cs.status === 'failed')
+  const allSucceeded = useOmnichain
+    ? omnichainComplete
+    : chainStates.length > 0 && chainStates.every(cs => cs.status === 'confirmed')
 
   // Initialize chain states
   useEffect(() => {
@@ -198,8 +235,11 @@ export default function QueueRulesetModal({
       )
       setCurrentChainIndex(-1)
       setIsStarted(false)
+      resetOmnichain()
+      // Default to omnichain for multi-chain scenarios
+      setUseOmnichain(isOmnichain)
     }
-  }, [isOpen, chainRulesetData])
+  }, [isOpen, chainRulesetData, isOmnichain, resetOmnichain])
 
   const updateChainState = useCallback((chainId: number, update: Partial<ChainTxState>) => {
     setChainStates(prev =>
@@ -214,7 +254,7 @@ export default function QueueRulesetModal({
   // Convert ruleset config to contract format
   const buildRulesetArgs = useCallback(() => {
     return [{
-      mustStartAtOrAfter: rulesetConfig.mustStartAtOrAfter, // uint48 fits in number
+      mustStartAtOrAfter: rulesetConfig.mustStartAtOrAfter,
       duration: rulesetConfig.duration,
       weight: BigInt(rulesetConfig.weight),
       weightCutPercent: rulesetConfig.weightCutPercent,
@@ -266,9 +306,8 @@ export default function QueueRulesetModal({
     }]
   }, [rulesetConfig])
 
-  // Queue ruleset on a single chain
+  // Queue ruleset on a single chain (legacy mode)
   const queueOnChain = useCallback(async (chainData: ChainRulesetData) => {
-    // Check wallet connection based on mode
     if (isManagedMode) {
       if (!managedAddress) {
         throw new Error('Managed wallet not available')
@@ -312,10 +351,8 @@ export default function QueueRulesetModal({
       let hash: string
 
       if (isManagedMode) {
-        // Execute via backend for managed mode
         hash = await executeManagedTransaction(chainData.chainId, JB_CONTROLLER, callData, '0')
       } else {
-        // Execute via wallet for self-custody mode
         await switchChainAsync({ chainId: chainData.chainId })
         hash = await walletClient!.sendTransaction({
           to: JB_CONTROLLER,
@@ -337,37 +374,54 @@ export default function QueueRulesetModal({
 
   // Start the queuing process
   const handleStart = useCallback(async () => {
-    // Check wallet connection based on mode
-    if (isManagedMode) {
-      if (!managedAddress || chainRulesetData.length === 0) return
-    } else {
-      if (!walletClient || !address || chainRulesetData.length === 0) return
-    }
+    const activeAddress = isManagedMode ? managedAddress : address
+    if (!activeAddress || chainRulesetData.length === 0) return
 
     setIsStarted(true)
 
-    // Process chains sequentially to allow user to sign each
-    for (let i = 0; i < chainRulesetData.length; i++) {
-      setCurrentChainIndex(i)
-      try {
-        await queueOnChain(chainRulesetData[i])
-      } catch (err) {
-        console.error(`Queue failed on chain ${chainRulesetData[i].chainId}:`, err)
-        // Continue with next chain even if one fails
-      }
-    }
+    if (useOmnichain && isOmnichain) {
+      // Use Relayr omnichain execution
+      const projectIds: Record<number, number> = {}
+      chainRulesetData.forEach(cd => {
+        projectIds[cd.chainId] = cd.projectId
+      })
 
-    setCurrentChainIndex(-1)
-  }, [walletClient, address, chainRulesetData, queueOnChain, isManagedMode, managedAddress])
+      await queue({
+        chainIds: chainRulesetData.map(cd => cd.chainId),
+        projectIds,
+        rulesetConfigurations: [rulesetConfig],
+        memo,
+        mustStartAtOrAfter: synchronizedStartTime,
+      })
+    } else {
+      // Legacy: process chains sequentially
+      for (let i = 0; i < chainRulesetData.length; i++) {
+        setCurrentChainIndex(i)
+        try {
+          await queueOnChain(chainRulesetData[i])
+        } catch (err) {
+          console.error(`Queue failed on chain ${chainRulesetData[i].chainId}:`, err)
+        }
+      }
+      setCurrentChainIndex(-1)
+    }
+  }, [walletClient, address, chainRulesetData, queueOnChain, isManagedMode, managedAddress, useOmnichain, isOmnichain, queue, rulesetConfig, memo, synchronizedStartTime])
+
+  const handleClose = useCallback(() => {
+    resetOmnichain()
+    onClose()
+  }, [resetOmnichain, onClose])
 
   if (!isOpen) return null
+
+  const showOmnichainSelector = isOmnichain && !isStarted && !isManagedMode
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!isStarted || allCompleted ? onClose : undefined}
+        onClick={!isStarted || allCompleted ? handleClose : undefined}
       />
 
       {/* Modal */}
@@ -405,7 +459,7 @@ export default function QueueRulesetModal({
           </div>
           {(!isStarted || allCompleted) && (
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className={`p-2 transition-colors ${
                 isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
               }`}
@@ -434,9 +488,40 @@ export default function QueueRulesetModal({
             )}
           </div>
 
+          {/* Omnichain mode toggle (for multi-chain) */}
+          {showOmnichainSelector && (
+            <div className={`p-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useOmnichain}
+                  onChange={(e) => setUseOmnichain(e.target.checked)}
+                  className="w-4 h-4 rounded"
+                />
+                <div>
+                  <div className={`text-sm font-medium ${isDark ? 'text-juice-cyan' : 'text-cyan-700'}`}>
+                    Use Relayr for single-signature execution
+                  </div>
+                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Pay gas on one chain, execute on all {chainRulesetData.length} chains
+                  </div>
+                </div>
+              </label>
+            </div>
+          )}
+
+          {/* Payment chain selector (for omnichain mode with payment options) */}
+          {useOmnichain && bundleState.paymentOptions.length > 0 && !isStarted && (
+            <ChainPaymentSelector
+              paymentOptions={bundleState.paymentOptions}
+              selectedChainId={bundleState.selectedPaymentChain}
+              onSelect={setPaymentChain}
+            />
+          )}
+
           {/* Chain Status */}
           <div className="space-y-2">
-            {chainStates.map((cs, idx) => {
+            {effectiveChainStates.map((cs, idx) => {
               const chainInfo = CHAIN_INFO[cs.chainId]
               const isCurrent = idx === currentChainIndex
 
@@ -512,13 +597,13 @@ export default function QueueRulesetModal({
           {/* Error details */}
           {anyFailed && (
             <div className={`p-3 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
-              {chainStates.filter(cs => cs.status === 'failed').map(cs => (
+              {effectiveChainStates.filter(cs => cs.status === 'failed').map(cs => (
                 <div key={cs.chainId} className="text-xs">
                   <span className={isDark ? 'text-red-400' : 'text-red-600'}>
                     {CHAIN_INFO[cs.chainId]?.name || `Chain ${cs.chainId}`}:
                   </span>
                   <span className={`ml-1 ${isDark ? 'text-red-400/70' : 'text-red-500'}`}>
-                    {cs.error || 'Unknown error'}
+                    {cs.error || bundleState.error || 'Unknown error'}
                   </span>
                 </div>
               ))}
@@ -544,12 +629,35 @@ export default function QueueRulesetModal({
                 </div>
               )}
 
-              {isOmnichain && (
+              {isOmnichain && !useOmnichain && (
                 <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
                   You will need to sign {chainRulesetData.length} transactions, one for each chain.
                 </div>
               )}
+
+              {isOmnichain && useOmnichain && (
+                <div className={`p-3 text-sm ${isDark ? 'bg-green-500/10 text-green-300' : 'bg-green-50 text-green-700'}`}>
+                  Sign once to queue on all {chainRulesetData.length} chains via Relayr
+                </div>
+              )}
             </>
+          )}
+
+          {/* Processing indicator for omnichain */}
+          {isExecuting && (
+            <div className={`p-3 flex items-center gap-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
+              <div className="animate-spin w-5 h-5 border-2 border-juice-cyan border-t-transparent rounded-full" />
+              <div>
+                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {bundleState.status === 'creating' ? 'Creating bundle...' :
+                   bundleState.status === 'awaiting_payment' ? 'Awaiting payment...' :
+                   'Processing transactions...'}
+                </p>
+                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Relayr is executing on all chains
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
@@ -558,7 +666,7 @@ export default function QueueRulesetModal({
           {!isStarted && (
             <div className="flex gap-3">
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className={`flex-1 py-3 font-medium border-2 transition-colors ${
                   isDark
                     ? 'border-white/20 text-white hover:bg-white/10'
@@ -577,15 +685,21 @@ export default function QueueRulesetModal({
             </div>
           )}
 
-          {isStarted && !allCompleted && (
+          {isStarted && !allCompleted && !isExecuting && (
             <div className={`text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Please sign each transaction in your wallet
             </div>
           )}
 
+          {isExecuting && (
+            <div className={`text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Do not close this window
+            </div>
+          )}
+
           {allCompleted && (
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="w-full py-3 font-medium bg-purple-500 text-white hover:bg-purple-500/90 transition-colors"
             >
               Done

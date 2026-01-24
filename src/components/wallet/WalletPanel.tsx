@@ -544,6 +544,41 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
   const [signingIn, setSigningIn] = useState(false)
   const [signInError, setSignInError] = useState<string | null>(null)
   const [justSignedIn, setJustSignedIn] = useState(false)
+  const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(null)
+
+  // Fetch identity (Juicy ID)
+  useEffect(() => {
+    const fetchIdentity = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || ''
+        const sessionId = getSessionId()
+        const walletSession = getWalletSession()
+        const headers: Record<string, string> = {
+          'X-Session-ID': sessionId,
+        }
+        if (walletSession?.token) {
+          headers['X-Wallet-Session'] = walletSession.token
+        }
+        const res = await fetch(`${apiUrl}/identity/me`, { headers })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && data.data) {
+            setIdentity(data.data)
+          }
+        }
+      } catch {
+        // Ignore identity fetch errors
+      }
+    }
+    fetchIdentity()
+
+    // Listen for identity changes
+    const handleIdentityChange = (e: CustomEvent<{ emoji: string; username: string; formatted: string }>) => {
+      setIdentity(e.detail)
+    }
+    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+  }, [address])
 
   // Handle SIWE sign-in
   const handleSignIn = async () => {
@@ -696,6 +731,13 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
           </span>
         </div>
       </div>
+
+      {/* Juicy ID */}
+      {identity && (
+        <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+          {identity.formatted}
+        </div>
+      )}
 
       {/* Sign In Prompt - shown when connected but not signed in */}
       {!effectivelySignedIn && (
@@ -931,6 +973,41 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
   const { ensName } = useEnsNameResolved(wallet.address as `0x${string}`)
   const [balances, setBalances] = useState<ChainBalance[]>([])
   const [loading, setLoading] = useState(true)
+  const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(null)
+
+  // Fetch identity (Juicy ID)
+  useEffect(() => {
+    const fetchIdentity = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || ''
+        const sessionId = getSessionId()
+        const walletSession = getWalletSession()
+        const headers: Record<string, string> = {
+          'X-Session-ID': sessionId,
+        }
+        if (walletSession?.token) {
+          headers['X-Wallet-Session'] = walletSession.token
+        }
+        const res = await fetch(`${apiUrl}/identity/me`, { headers })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && data.data) {
+            setIdentity(data.data)
+          }
+        }
+      } catch {
+        // Ignore identity fetch errors
+      }
+    }
+    fetchIdentity()
+
+    // Listen for identity changes
+    const handleIdentityChange = (e: CustomEvent<{ emoji: string; username: string; formatted: string }>) => {
+      setIdentity(e.detail)
+    }
+    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+  }, [wallet.address])
 
   // Fetch balances across all chains
   const fetchAllBalances = useCallback(async () => {
@@ -1010,6 +1087,13 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
           </span>
         </div>
       </div>
+
+      {/* Juicy ID */}
+      {identity && (
+        <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+          {identity.formatted}
+        </div>
+      )}
 
       {/* Balances */}
       <div className={`border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>

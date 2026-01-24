@@ -1,5 +1,5 @@
 -- Juicy Identity System
--- Unique identities in format [emoji]username (e.g., 🍉jango)
+-- Unique identities in format username[emoji] (e.g., jango🍉)
 -- Each address has one identity, emoji+username combo must be unique
 
 CREATE TABLE IF NOT EXISTS juicy_identities (

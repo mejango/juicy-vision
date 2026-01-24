@@ -8,6 +8,12 @@
 import { Hono } from 'hono';
 import { getStats, getChatConnections } from '../services/websocket.ts';
 import { getConfig } from '../utils/config.ts';
+import {
+  getMetricsSummary,
+  getRecentToolUsage,
+  getRecentInvocations,
+  getChatToolUsage,
+} from '../services/aiMetrics.ts';
 
 export const debugRouter = new Hono();
 
@@ -470,4 +476,36 @@ debugRouter.post('/reset-db', async (c) => {
       error: error instanceof Error ? error.message : 'Unknown error'
     }, 500);
   }
+});
+
+// ============================================================================
+// AI Metrics Endpoints
+// ============================================================================
+
+// GET /debug/ai/metrics - Summary of AI usage metrics
+debugRouter.get('/ai/metrics', async (c) => {
+  const hoursBack = parseInt(c.req.query('hours') || '24', 10);
+  const summary = getMetricsSummary(hoursBack);
+  return c.json({ success: true, data: summary });
+});
+
+// GET /debug/ai/tools - Recent tool usage events
+debugRouter.get('/ai/tools', async (c) => {
+  const limit = parseInt(c.req.query('limit') || '100', 10);
+  const events = getRecentToolUsage(limit);
+  return c.json({ success: true, data: events });
+});
+
+// GET /debug/ai/invocations - Recent AI invocations
+debugRouter.get('/ai/invocations', async (c) => {
+  const limit = parseInt(c.req.query('limit') || '100', 10);
+  const events = getRecentInvocations(limit);
+  return c.json({ success: true, data: events });
+});
+
+// GET /debug/ai/chat/:chatId - Tool usage for a specific chat
+debugRouter.get('/ai/chat/:chatId', async (c) => {
+  const chatId = c.req.param('chatId');
+  const usage = getChatToolUsage(chatId);
+  return c.json({ success: true, data: usage });
 });

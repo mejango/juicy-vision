@@ -37,8 +37,8 @@ export interface RemoteHover {
 interface CollaborationState {
   // Map of groupId -> array of remote selections
   remoteSelections: Map<string, RemoteSelection[]>
-  // Array of users currently typing in memo field
-  remoteTyping: RemoteTyping[]
+  // Map of groupId -> array of users currently typing in that field
+  remoteTyping: Map<string, RemoteTyping[]>
   // Map of groupId -> array of users hovering
   remoteHovers: Map<string, RemoteHover[]>
 }
@@ -58,14 +58,12 @@ export function useComponentCollaboration({
 }: UseComponentCollaborationOptions) {
   const [state, setState] = useState<CollaborationState>({
     remoteSelections: new Map(),
-    remoteTyping: [],
+    remoteTyping: new Map(),
     remoteHovers: new Map(),
   })
 
-  // Track typing timeouts per user
+  // Track typing timeouts per user+groupId
   const typingTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  // Debounce timer for sending our own typing events
-  const typingDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Listen for incoming component interactions
   useEffect(() => {
@@ -118,48 +116,64 @@ export function useComponentCollaboration({
           }
 
           case 'typing': {
-            // Update typing indicator
-            const existingIdx = prev.remoteTyping.findIndex(
+            // Update typing indicator for this groupId
+            const typingMap = new Map(prev.remoteTyping)
+            const groupTyping = [...(typingMap.get(data.groupId) || [])]
+            const timeoutKey = `${senderAddress}:${data.groupId}`
+
+            const existingIdx = groupTyping.findIndex(
               (t) => t.address === senderAddress
             )
-            const newTyping = [...prev.remoteTyping]
 
             if (data.value) {
               // User is typing
               if (existingIdx !== -1) {
-                newTyping[existingIdx] = { address: senderAddress, emoji, text: data.value }
+                groupTyping[existingIdx] = { address: senderAddress, emoji, text: data.value }
               } else {
-                newTyping.push({ address: senderAddress, emoji, text: data.value })
+                groupTyping.push({ address: senderAddress, emoji, text: data.value })
               }
 
-              // Clear existing timeout for this user
-              const existingTimeout = typingTimeouts.current.get(senderAddress)
+              // Clear existing timeout for this user+group
+              const existingTimeout = typingTimeouts.current.get(timeoutKey)
               if (existingTimeout) {
                 clearTimeout(existingTimeout)
               }
 
               // Set timeout to remove typing indicator
               const timeout = setTimeout(() => {
-                setState((s) => ({
-                  ...s,
-                  remoteTyping: s.remoteTyping.filter(
+                setState((s) => {
+                  const newMap = new Map(s.remoteTyping)
+                  const filtered = (newMap.get(data.groupId) || []).filter(
                     (t) => t.address !== senderAddress
-                  ),
-                }))
-                typingTimeouts.current.delete(senderAddress)
+                  )
+                  if (filtered.length > 0) {
+                    newMap.set(data.groupId, filtered)
+                  } else {
+                    newMap.delete(data.groupId)
+                  }
+                  return { ...s, remoteTyping: newMap }
+                })
+                typingTimeouts.current.delete(timeoutKey)
               }, TYPING_TIMEOUT)
-              typingTimeouts.current.set(senderAddress, timeout)
+              typingTimeouts.current.set(timeoutKey, timeout)
+
+              typingMap.set(data.groupId, groupTyping)
             } else if (existingIdx !== -1) {
               // User stopped typing
-              newTyping.splice(existingIdx, 1)
-              const existingTimeout = typingTimeouts.current.get(senderAddress)
+              groupTyping.splice(existingIdx, 1)
+              const existingTimeout = typingTimeouts.current.get(timeoutKey)
               if (existingTimeout) {
                 clearTimeout(existingTimeout)
-                typingTimeouts.current.delete(senderAddress)
+                typingTimeouts.current.delete(timeoutKey)
+              }
+              if (groupTyping.length > 0) {
+                typingMap.set(data.groupId, groupTyping)
+              } else {
+                typingMap.delete(data.groupId)
               }
             }
 
-            newState.remoteTyping = newTyping
+            newState.remoteTyping = typingMap
             break
           }
 
@@ -222,33 +236,39 @@ export function useComponentCollaboration({
     [chatId, messageId, enabled]
   )
 
-  // Send typing event (debounced)
+  // Track debounce timers per groupId
+  const typingDebounceMap = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+
+  // Send typing event (debounced per groupId)
   const sendTyping = useCallback(
-    (text: string) => {
+    (text: string, groupId: string = '_memo') => {
       if (!chatId || !messageId || !enabled) return
 
-      // Clear existing debounce
-      if (typingDebounce.current) {
-        clearTimeout(typingDebounce.current)
+      // Clear existing debounce for this groupId
+      const existingDebounce = typingDebounceMap.current.get(groupId)
+      if (existingDebounce) {
+        clearTimeout(existingDebounce)
       }
 
       // Send immediately for first keystroke, then debounce subsequent
       sendComponentInteraction({
         messageId,
-        groupId: '_memo', // Special group ID for memo field
+        groupId,
         action: 'typing',
         value: text || undefined,
       })
 
       // Auto-clear after timeout if no more typing
-      typingDebounce.current = setTimeout(() => {
+      const timeout = setTimeout(() => {
         sendComponentInteraction({
           messageId,
-          groupId: '_memo',
+          groupId,
           action: 'typing',
           value: undefined,
         })
+        typingDebounceMap.current.delete(groupId)
       }, TYPING_TIMEOUT)
+      typingDebounceMap.current.set(groupId, timeout)
     },
     [chatId, messageId, enabled]
   )
@@ -267,12 +287,11 @@ export function useComponentCollaboration({
     [chatId, messageId, enabled]
   )
 
-  // Cleanup on unmount - send hover_end for any active hovers
+  // Cleanup on unmount - clear all debounce timers
   useEffect(() => {
     return () => {
-      if (typingDebounce.current) {
-        clearTimeout(typingDebounce.current)
-      }
+      typingDebounceMap.current.forEach((timeout) => clearTimeout(timeout))
+      typingDebounceMap.current.clear()
     }
   }, [])
 

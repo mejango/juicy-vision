@@ -4,6 +4,11 @@ import { executeReadyTransfers } from '../services/wallet.ts';
 import { cleanupExpiredSessions } from '../services/auth.ts';
 import { cleanupRateLimits } from '../services/claude.ts';
 import { processSettlements } from '../services/settlement.ts';
+import {
+  processCredits as processJuiceCredits,
+  processSpends as processJuiceSpends,
+  processCashOuts as processJuiceCashOuts,
+} from '../services/juice.ts';
 
 export const cronRouter = new Hono();
 
@@ -38,30 +43,9 @@ async function verifyCronAuth(
     return true;
   }
 
-  // Check shared secret
+  // Check shared secret (primary auth method for Railway/external cron services)
   if (cronSecret && cronSecret === config.cronSecret) {
     return true;
-  }
-
-  // Verify OIDC token from Cloud Scheduler
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.slice(7);
-    try {
-      // In production, verify the OIDC token
-      // This requires the google-auth-library or manual JWT verification
-      // For now, we'll rely on Cloud Run's built-in IAM if the service is private
-      // The Cloud Scheduler would have invoker permission on the Cloud Run service
-
-      // Basic token presence check - in production with IAM-protected Cloud Run,
-      // the request wouldn't reach here unless properly authenticated
-      if (token && config.gcpServiceAccount) {
-        // Could add full JWT verification here using google-auth-library
-        // For Cloud Run with IAM, this is often unnecessary as Cloud Run validates
-        return true;
-      }
-    } catch {
-      console.error('OIDC token verification failed');
-    }
   }
 
   return false;
@@ -253,6 +237,57 @@ cronRouter.post('/maintenance', async (c) => {
     };
   }
 
+  // Process Juice credits (cleared purchases)
+  try {
+    const creditResult = await processJuiceCredits();
+    results.juiceCredits = {
+      success: true,
+      count: creditResult.credited,
+      failed: creditResult.failed,
+      pending: creditResult.pending,
+    };
+  } catch (error) {
+    console.error('Juice credit processing failed:', error);
+    results.juiceCredits = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+
+  // Process Juice spends (project payments)
+  try {
+    const spendResult = await processJuiceSpends();
+    results.juiceSpends = {
+      success: true,
+      count: spendResult.executed,
+      failed: spendResult.failed,
+      pending: spendResult.pending,
+    };
+  } catch (error) {
+    console.error('Juice spend processing failed:', error);
+    results.juiceSpends = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+
+  // Process Juice cash outs (crypto withdrawals)
+  try {
+    const cashOutResult = await processJuiceCashOuts();
+    results.juiceCashOuts = {
+      success: true,
+      count: cashOutResult.processed,
+      failed: cashOutResult.failed,
+      pending: cashOutResult.pending,
+    };
+  } catch (error) {
+    console.error('Juice cash out processing failed:', error);
+    results.juiceCashOuts = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+
   const allSuccess = Object.values(results).every((r) => r.success);
 
   return c.json(
@@ -265,6 +300,97 @@ cronRouter.post('/maintenance', async (c) => {
     },
     allSuccess ? 200 : 207 // 207 Multi-Status if partial success
   );
+});
+
+// ============================================================================
+// Juice System Cron Endpoints
+// ============================================================================
+
+// Process Juice credits (purchases that have cleared risk delay)
+cronRouter.post('/juice/credits', async (c) => {
+  const startTime = Date.now();
+
+  try {
+    const result = await processJuiceCredits();
+
+    return c.json({
+      success: true,
+      data: {
+        credited: result.credited,
+        failed: result.failed,
+        pending: result.pending,
+        durationMs: Date.now() - startTime,
+      },
+    });
+  } catch (error) {
+    console.error('Cron Juice credit processing failed:', error);
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        durationMs: Date.now() - startTime,
+      },
+      500
+    );
+  }
+});
+
+// Process Juice spends (execute project payments)
+cronRouter.post('/juice/spends', async (c) => {
+  const startTime = Date.now();
+
+  try {
+    const result = await processJuiceSpends();
+
+    return c.json({
+      success: true,
+      data: {
+        executed: result.executed,
+        failed: result.failed,
+        pending: result.pending,
+        durationMs: Date.now() - startTime,
+      },
+    });
+  } catch (error) {
+    console.error('Cron Juice spend processing failed:', error);
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        durationMs: Date.now() - startTime,
+      },
+      500
+    );
+  }
+});
+
+// Process Juice cash outs (execute crypto withdrawals)
+cronRouter.post('/juice/cash-outs', async (c) => {
+  const startTime = Date.now();
+
+  try {
+    const result = await processJuiceCashOuts();
+
+    return c.json({
+      success: true,
+      data: {
+        processed: result.processed,
+        failed: result.failed,
+        pending: result.pending,
+        durationMs: Date.now() - startTime,
+      },
+    });
+  } catch (error) {
+    console.error('Cron Juice cash out processing failed:', error);
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        durationMs: Date.now() - startTime,
+      },
+      500
+    );
+  }
 });
 
 // Health check for cron system

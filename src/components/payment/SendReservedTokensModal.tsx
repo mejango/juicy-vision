@@ -5,7 +5,9 @@ import { encodeFunctionData, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useOmnichainDistribute } from '../../hooks/relayr'
 import { CHAINS as CHAIN_INFO } from '../../constants'
+import ChainPaymentSelector from './ChainPaymentSelector'
 
 // Contract constants
 const JB_CONTROLLER = '0x8C32BBA37a7C42b3A1Fa25E2eaF4D6539C481a16' as const
@@ -30,6 +32,11 @@ const CHAINS: Record<number, Chain> = {
   42161: arbitrum,
 }
 
+interface ChainProjectData {
+  chainId: number
+  projectId: number | string
+}
+
 interface SendReservedTokensModalProps {
   isOpen: boolean
   onClose: () => void
@@ -38,6 +45,8 @@ interface SendReservedTokensModalProps {
   chainId: number
   tokenSymbol: string
   amount: string // Raw amount in wei
+  // New: for omnichain support
+  allChainProjects?: ChainProjectData[]
 }
 
 type DistributeStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
@@ -50,6 +59,7 @@ export default function SendReservedTokensModal({
   chainId,
   tokenSymbol,
   amount,
+  allChainProjects,
 }: SendReservedTokensModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -68,10 +78,35 @@ export default function SendReservedTokensModal({
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Omnichain mode
+  const [useAllChains, setUseAllChains] = useState(false)
+  const {
+    distribute,
+    bundleState,
+    isExecuting,
+    isComplete: omnichainComplete,
+    hasError: omnichainError,
+    reset: resetOmnichain,
+    setPaymentChain,
+  } = useOmnichainDistribute({
+    onSuccess: (bundleId, txHashes) => {
+      console.log('Omnichain reserves distribution completed:', bundleId, txHashes)
+      setStatus('confirmed')
+    },
+    onError: (err) => {
+      console.error('Omnichain reserves distribution failed:', err)
+      setError(err.message)
+      setStatus('failed')
+    },
+  })
+
   const chainInfo = CHAIN_INFO[chainId] || CHAIN_INFO[1]
   const chainName = chainInfo.name
   const tokenAmount = parseFloat(amount) / 1e18
   const hasGasBalance = totalEth >= 0.001
+
+  // Check if omnichain is available
+  const hasMultipleChains = allChainProjects && allChainProjects.length > 1
 
   // Reset state when modal opens
   useEffect(() => {
@@ -79,8 +114,10 @@ export default function SendReservedTokensModal({
       setStatus('preview')
       setTxHash(null)
       setError(null)
+      setUseAllChains(false)
+      resetOmnichain()
     }
-  }, [isOpen])
+  }, [isOpen, resetOmnichain])
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
@@ -96,6 +133,25 @@ export default function SendReservedTokensModal({
       }
     }
 
+    if (useAllChains && allChainProjects && allChainProjects.length > 1) {
+      // Use Relayr omnichain distribution
+      setStatus('signing')
+      setError(null)
+
+      const projectIds: Record<number, number> = {}
+      allChainProjects.forEach(cp => {
+        projectIds[cp.chainId] = typeof cp.projectId === 'string' ? parseInt(cp.projectId) : cp.projectId
+      })
+
+      await distribute({
+        chainIds: allChainProjects.map(cp => cp.chainId),
+        projectIds,
+        type: 'reserves',
+      })
+      return
+    }
+
+    // Single chain execution
     setStatus('signing')
     setError(null)
 
@@ -148,16 +204,25 @@ export default function SendReservedTokensModal({
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, tokenAmount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress])
+  }, [walletClient, address, chainId, projectId, tokenAmount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, distribute])
+
+  const handleClose = useCallback(() => {
+    resetOmnichain()
+    onClose()
+  }, [resetOmnichain, onClose])
 
   if (!isOpen) return null
+
+  const isProcessing = status === 'signing' || status === 'pending' || isExecuting
+  const showConfirmed = status === 'confirmed' || omnichainComplete
+  const showFailed = status === 'failed' || omnichainError
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={status === 'preview' || status === 'confirmed' || status === 'failed' ? onClose : undefined}
+        onClick={status === 'preview' || showConfirmed || showFailed ? handleClose : undefined}
       />
 
       {/* Modal */}
@@ -176,16 +241,16 @@ export default function SendReservedTokensModal({
             </div>
             <div>
               <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {status === 'confirmed' ? 'Tokens Distributed' : status === 'failed' ? 'Distribution Failed' : 'Confirm Distribution'}
+                {showConfirmed ? 'Tokens Distributed' : showFailed ? 'Distribution Failed' : 'Confirm Distribution'}
               </h2>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {chainName}
+                {useAllChains && allChainProjects ? `${allChainProjects.length} Chains` : chainName}
               </p>
             </div>
           </div>
-          {(status === 'preview' || status === 'confirmed' || status === 'failed') && (
+          {(status === 'preview' || showConfirmed || showFailed) && (
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className={`p-2 transition-colors ${
                 isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
               }`}
@@ -200,7 +265,7 @@ export default function SendReservedTokensModal({
         {/* Content */}
         <div className="p-5 space-y-4">
           {/* Status Messages */}
-          {status === 'signing' && (
+          {status === 'signing' && !isExecuting && (
             <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-amber-500/10' : 'bg-amber-50'}`}>
               <div className="animate-spin w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full" />
               <div>
@@ -214,7 +279,23 @@ export default function SendReservedTokensModal({
             </div>
           )}
 
-          {status === 'pending' && (
+          {isExecuting && (
+            <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
+              <div className="animate-spin w-5 h-5 border-2 border-juice-cyan border-t-transparent rounded-full" />
+              <div>
+                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {bundleState.status === 'creating' ? 'Creating bundle...' :
+                   bundleState.status === 'awaiting_payment' ? 'Awaiting payment...' :
+                   'Distributing on all chains...'}
+                </p>
+                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Relayr is processing transactions
+                </p>
+              </div>
+            </div>
+          )}
+
+          {status === 'pending' && !isExecuting && (
             <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
               <div className="animate-spin w-5 h-5 border-2 border-juice-cyan border-t-transparent rounded-full" />
               <div>
@@ -228,7 +309,7 @@ export default function SendReservedTokensModal({
             </div>
           )}
 
-          {status === 'confirmed' && (
+          {showConfirmed && (
             <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
               <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -249,24 +330,60 @@ export default function SendReservedTokensModal({
                     View on explorer →
                   </a>
                 )}
+                {useAllChains && omnichainComplete && (
+                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Distributed on all {allChainProjects?.length} chains
+                  </p>
+                )}
               </div>
             </div>
           )}
 
-          {status === 'failed' && error && (
+          {showFailed && error && (
             <div className={`p-4 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
               <p className={`font-medium ${isDark ? 'text-red-400' : 'text-red-600'}`}>
                 Transaction failed
               </p>
               <p className={`text-sm mt-1 ${isDark ? 'text-red-400/70' : 'text-red-500'}`}>
-                {error}
+                {error || bundleState.error}
               </p>
             </div>
           )}
 
           {/* Distribution Details */}
-          {(status === 'preview' || status === 'signing' || status === 'pending') && (
+          {(status === 'preview' || isProcessing) && !showConfirmed && !showFailed && (
             <>
+              {/* Omnichain toggle */}
+              {hasMultipleChains && !isManagedMode && status === 'preview' && (
+                <div className={`p-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useAllChains}
+                      onChange={(e) => setUseAllChains(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                    />
+                    <div>
+                      <div className={`text-sm font-medium ${isDark ? 'text-juice-cyan' : 'text-cyan-700'}`}>
+                        Distribute on all {allChainProjects?.length} chains
+                      </div>
+                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Pay gas once via Relayr, execute everywhere
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {/* Payment chain selector */}
+              {useAllChains && bundleState.paymentOptions.length > 0 && status === 'preview' && (
+                <ChainPaymentSelector
+                  paymentOptions={bundleState.paymentOptions}
+                  selectedChainId={bundleState.selectedPaymentChain}
+                  onSelect={setPaymentChain}
+                />
+              )}
+
               {/* Project */}
               <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                 <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -311,7 +428,7 @@ export default function SendReservedTokensModal({
           )}
 
           {/* Summary (for confirmed) */}
-          {status === 'confirmed' && (
+          {showConfirmed && (
             <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
@@ -330,7 +447,7 @@ export default function SendReservedTokensModal({
           {status === 'preview' && (
             <div className="flex gap-3">
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className={`flex-1 py-3 font-medium border-2 transition-colors ${
                   isDark
                     ? 'border-white/20 text-white hover:bg-white/10'
@@ -344,20 +461,20 @@ export default function SendReservedTokensModal({
                 disabled={!hasGasBalance}
                 className="flex-1 py-3 font-bold bg-amber-500 text-black hover:bg-amber-500/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Distribute {tokenSymbol}
+                {useAllChains ? `Distribute on ${allChainProjects?.length} Chains` : `Distribute ${tokenSymbol}`}
               </button>
             </div>
           )}
 
-          {(status === 'signing' || status === 'pending') && (
+          {isProcessing && (
             <div className={`text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Do not close this window
             </div>
           )}
 
-          {(status === 'confirmed' || status === 'failed') && (
+          {(showConfirmed || showFailed) && (
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="w-full py-3 font-medium bg-amber-500 text-black hover:bg-amber-500/90 transition-colors"
             >
               Done

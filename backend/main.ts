@@ -17,13 +17,20 @@ import { inviteRouter } from './src/routes/invite.ts';
 import { passkeyRouter } from './src/routes/passkey.ts';
 import { siweRouter } from './src/routes/siwe.ts';
 import { transactionsRouter } from './src/routes/transactions.ts';
+import { projectsRouter } from './src/routes/projects.ts';
 import { debugRouter, logDebugEvent } from './src/routes/debug.ts';
 import { identityRouter } from './src/routes/identity.ts';
-import { getConfig, validateConfigForAuth, validateConfigForEncryption } from './src/utils/config.ts';
+import { juiceRouter } from './src/routes/juice.ts';
+import { getConfig, validateConfigForAuth, validateConfigForEncryption, validateConfigForReserves } from './src/utils/config.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
 import { executeReadyTransfers } from './src/services/wallet.ts';
 import { cleanupExpiredChallenges } from './src/services/passkey.ts';
+import {
+  processCredits as processJuiceCredits,
+  processSpends as processJuiceSpends,
+  processCashOuts as processJuiceCashOuts,
+} from './src/services/juice.ts';
 import { runMigrations } from './src/db/migrate.ts';
 
 // Run migrations before starting the server
@@ -34,6 +41,7 @@ const bootConfig = getConfig();
 if (bootConfig.env === 'production') {
   validateConfigForAuth(bootConfig);
   validateConfigForEncryption(bootConfig);
+  validateConfigForReserves(bootConfig);
 }
 
 const app = new Hono();
@@ -126,8 +134,10 @@ app.route('/api/locale', localeRouter);
 app.route('/api/chat', inviteRouter);
 app.route('/api/passkey', passkeyRouter);
 app.route('/api/transactions', transactionsRouter);
+app.route('/api/projects', projectsRouter);
 app.route('/api/debug', debugRouter);
 app.route('/api/identity', identityRouter);
+app.route('/api/juice', juiceRouter);
 
 // ============================================================================
 // Error Handling
@@ -208,6 +218,42 @@ if (config.env === 'development') {
       console.error('[Dev] Failed to cleanup passkey challenges:', error);
     }
   }, 10 * 60 * 1000);
+
+  // Process Juice credits every 5 minutes
+  setInterval(async () => {
+    try {
+      const result = await processJuiceCredits();
+      if (result.credited > 0) {
+        console.log(`[Dev] Credited ${result.credited} Juice purchases`);
+      }
+    } catch (error) {
+      console.error('[Dev] Failed to process Juice credits:', error);
+    }
+  }, 5 * 60 * 1000);
+
+  // Process Juice spends every 2 minutes
+  setInterval(async () => {
+    try {
+      const result = await processJuiceSpends();
+      if (result.executed > 0) {
+        console.log(`[Dev] Executed ${result.executed} Juice spends`);
+      }
+    } catch (error) {
+      console.error('[Dev] Failed to process Juice spends:', error);
+    }
+  }, 2 * 60 * 1000);
+
+  // Process Juice cash outs every 5 minutes
+  setInterval(async () => {
+    try {
+      const result = await processJuiceCashOuts();
+      if (result.processed > 0) {
+        console.log(`[Dev] Processed ${result.processed} Juice cash outs`);
+      }
+    } catch (error) {
+      console.error('[Dev] Failed to process Juice cash outs:', error);
+    }
+  }, 5 * 60 * 1000);
 } else {
   console.log('Production mode: Use GCP Cloud Scheduler for cron jobs');
 }
@@ -248,6 +294,13 @@ console.log(`
 ║    GET  /api/wallet/address   - Get custodial address     ║
 ║    GET  /api/wallet/balances  - Get token balances        ║
 ║    POST /api/wallet/transfer  - Request transfer          ║
+║                                                           ║
+║  Juice (Stored Value):                                    ║
+║    GET  /api/juice/balance    - Get Juice balance         ║
+║    POST /api/juice/purchase   - Buy Juice with fiat       ║
+║    POST /api/juice/spend      - Pay a project with Juice  ║
+║    POST /api/juice/cash-out   - Convert Juice to crypto   ║
+║    GET  /api/juice/transactions - Transaction history     ║
 ║                                                           ║
 ║  Proxy Endpoints:                                         ║
 ║    POST /api/proxy/bendystraw - Bendystraw GraphQL        ║

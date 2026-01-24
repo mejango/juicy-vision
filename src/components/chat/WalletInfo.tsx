@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useAccount, useDisconnect } from 'wagmi'
+import { useAccount, useDisconnect, useChainId, useSignMessage } from 'wagmi'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
-import { hasValidWalletSession, getWalletSession, clearWalletSession } from '../../services/siwe'
+import { hasValidWalletSession, getWalletSession, clearWalletSession, signInWithWallet } from '../../services/siwe'
 import { getSessionId } from '../../services/session'
 import { getEmojiFromAddress, FRUIT_EMOJIS } from './ParticipantAvatars'
 import { signInWithPasskey, getPasskeyWallet, forgetPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
@@ -44,13 +44,19 @@ export function JuicyIdPopover({
   const { selectedFruit, setSelectedFruit } = useSettingsStore()
   const popoverRef = useRef<HTMLDivElement>(null)
 
+  // Check if wallet is already connected (wagmi)
+  const { address: connectedAddress, isConnected } = useAccount()
+  const chainId = useChainId()
+  const { signMessageAsync } = useSignMessage()
+
   const isSignedIn = hasValidWalletSession()
 
   // Auth state (for not signed in)
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
+  const [pendingClaim, setPendingClaim] = useState(false) // Waiting for sign-in to claim name
 
-  // Identity state (for signed in)
+  // Identity state
   const [username, setUsername] = useState('')
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null)
   const [checkingAvailability, setCheckingAvailability] = useState(false)
@@ -81,9 +87,9 @@ export function JuicyIdPopover({
     return headers
   }, [])
 
-  // Check availability
+  // Check availability - works for signed-in users OR connected users setting up their name
   useEffect(() => {
-    if (!isSignedIn || !username || username.length < 3) {
+    if ((!isSignedIn && !isConnected) || !username || username.length < 3) {
       setIsAvailable(null)
       return
     }
@@ -108,11 +114,11 @@ export function JuicyIdPopover({
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [isSignedIn, username, currentEmoji, getApiHeaders])
+  }, [isSignedIn, isConnected, username, currentEmoji, getApiHeaders])
 
-  // Save identity
-  const handleSave = async () => {
-    if (!username || username.length < 3 || isAvailable === false) return
+  // Save identity (called after sign-in is confirmed)
+  const saveIdentity = async () => {
+    if (!username || username.length < 3) return false
 
     setIsSaving(true)
     setSaveError(null)
@@ -141,13 +147,29 @@ export function JuicyIdPopover({
         // Dispatch event so other components can refresh their identity
         window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
         onClose()
+        return true
       } else {
         setSaveError(data.error || 'Failed to set identity')
+        return false
       }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to set identity')
+      return false
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  // Handle "Set" button click
+  const handleSave = async () => {
+    if (!username || username.length < 3 || isAvailable === false) return
+
+    if (isSignedIn) {
+      // Already signed in - save directly
+      await saveIdentity()
+    } else if (isConnected) {
+      // Connected but not signed in - show sign-in prompt
+      setPendingClaim(true)
     }
   }
 
@@ -171,6 +193,35 @@ export function JuicyIdPopover({
           setAuthError('Failed. Try another method.')
         }
       }
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
+
+  // Sign in with connected wallet (SIWE) - then auto-save if pending claim
+  const handleWalletSignIn = async () => {
+    if (!connectedAddress || !chainId) return
+
+    setIsAuthenticating(true)
+    setAuthError(null)
+    try {
+      await signInWithWallet(
+        connectedAddress,
+        chainId,
+        async (message: string) => {
+          const signature = await signMessageAsync({ message })
+          return signature
+        }
+      )
+      // If we have a pending claim, save the identity now
+      if (pendingClaim && username && username.length >= 3) {
+        await saveIdentity()
+      } else {
+        onClose()
+      }
+    } catch (err) {
+      console.error('Wallet sign-in failed:', err)
+      setAuthError(err instanceof Error ? err.message : 'Sign in failed')
     } finally {
       setIsAuthenticating(false)
     }
@@ -206,6 +257,7 @@ export function JuicyIdPopover({
       setIsAvailable(null)
       setAuthError(null)
       setSaveError(null)
+      setPendingClaim(false)
     }
   }, [isOpen])
 
@@ -234,8 +286,8 @@ export function JuicyIdPopover({
             </svg>
           </button>
 
-          {isSignedIn ? (
-            // Signed in: Set Juicy ID form
+          {(isSignedIn || (isConnected && !pendingClaim)) ? (
+            // Show name selection form (signed in OR connected but not yet claiming)
             <>
               <h2 className={`text-sm font-semibold mb-3 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 Set Juicy ID
@@ -306,9 +358,54 @@ export function JuicyIdPopover({
               <p className={`text-[10px] ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
                 3-20 chars, letters/numbers/underscore
               </p>
+
+              {/* Preview of final Juicy ID */}
+              {username.length >= 3 && (
+                <p className={`text-sm mt-3 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {currentEmoji} {username}
+                </p>
+              )}
+            </>
+          ) : pendingClaim ? (
+            // Connected, clicked Set - show sign-in to claim
+            <>
+              <h2 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                Sign in
+              </h2>
+              <p className={`text-xs mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Sign in to claim {currentEmoji} {username}
+              </p>
+
+              {authError && (
+                <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+                  {authError}
+                </div>
+              )}
+
+              <div className="flex justify-between items-center">
+                <button
+                  onClick={() => setPendingClaim(false)}
+                  className={`text-xs transition-colors ${
+                    isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  ← Back
+                </button>
+                <button
+                  onClick={handleWalletSignIn}
+                  disabled={isAuthenticating}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    isAuthenticating
+                      ? 'bg-gray-500 text-gray-300 cursor-wait'
+                      : 'bg-green-500 text-black hover:bg-green-600'
+                  }`}
+                >
+                  {isAuthenticating ? 'Signing...' : 'Sign In'}
+                </button>
+              </div>
             </>
           ) : (
-            // Not signed in: Show sign in options
+            // Not signed in and no wallet connected - show Touch ID and Wallet options
             <>
               <h2 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 First, sign in

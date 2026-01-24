@@ -8,6 +8,12 @@ import {
   markPaymentRefunded,
   settlePayment,
 } from '../services/settlement.ts';
+import {
+  createPurchase as createJuicePurchase,
+  creditJuice,
+  markPurchaseDisputed as markJuicePurchaseDisputed,
+  markPurchaseRefunded as markJuicePurchaseRefunded,
+} from '../services/juice.ts';
 
 export const stripeWebhookRouter = new Hono();
 
@@ -150,9 +156,109 @@ stripeWebhookRouter.post('/', async (c) => {
 });
 
 /**
- * Handle successful payment - create pending payment with risk-based delay
+ * Handle successful payment - route to appropriate handler based on type
  */
 async function handlePaymentSucceeded(
+  stripe: Stripe,
+  paymentIntent: Stripe.PaymentIntent
+): Promise<void> {
+  const metadata = paymentIntent.metadata;
+
+  // Check if this is a Juice purchase
+  if (metadata.type === 'juice_purchase') {
+    await handleJuicePurchaseSucceeded(stripe, paymentIntent);
+    return;
+  }
+
+  // Otherwise, handle as direct project payment
+  await handleDirectPaymentSucceeded(stripe, paymentIntent);
+}
+
+/**
+ * Handle successful Juice purchase - credit after risk-based delay
+ */
+async function handleJuicePurchaseSucceeded(
+  stripe: Stripe,
+  paymentIntent: Stripe.PaymentIntent
+): Promise<void> {
+  const metadata = paymentIntent.metadata;
+
+  if (!metadata.userId || !metadata.juiceAmount) {
+    logger.warn('Juice purchase missing required metadata', {
+      paymentIntentId: paymentIntent.id,
+    });
+    return;
+  }
+
+  // Get risk score
+  let riskScore = extractRiskScore(paymentIntent);
+  let riskLevel: string | undefined;
+
+  if (typeof paymentIntent.latest_charge === 'string') {
+    try {
+      const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
+      riskScore = charge.outcome?.risk_score ?? 50;
+      riskLevel = charge.outcome?.risk_level;
+    } catch {
+      logger.warn('Failed to fetch charge for risk score', {
+        chargeId: paymentIntent.latest_charge,
+      });
+    }
+  } else if (paymentIntent.latest_charge) {
+    riskLevel = paymentIntent.latest_charge.outcome?.risk_level;
+  }
+
+  const delayDays = calculateSettlementDelayDays(riskScore);
+  const fiatAmount = paymentIntent.amount / 100;
+
+  logger.info('Processing Juice purchase', {
+    paymentIntentId: paymentIntent.id,
+    userId: metadata.userId,
+    fiatAmount,
+    riskScore,
+    riskLevel,
+    delayDays,
+  });
+
+  // Create the purchase record
+  const purchaseId = await createJuicePurchase({
+    userId: metadata.userId,
+    stripePaymentIntentId: paymentIntent.id,
+    stripeChargeId: typeof paymentIntent.latest_charge === 'string'
+      ? paymentIntent.latest_charge
+      : paymentIntent.latest_charge?.id,
+    fiatAmount,
+    riskScore,
+    riskLevel,
+    settlementDelayDays: delayDays,
+  });
+
+  // If low risk, credit immediately
+  if (delayDays === 0) {
+    logger.info('Low risk Juice purchase - crediting immediately', {
+      purchaseId,
+      riskScore,
+    });
+
+    try {
+      await creditJuice(metadata.userId, fiatAmount, purchaseId);
+      logger.info('Immediate Juice credit successful', {
+        purchaseId,
+        amount: fiatAmount,
+      });
+    } catch (error) {
+      // Credit failed but purchase is recorded - cron will retry
+      logger.error('Immediate Juice credit failed, will retry via cron', error as Error, {
+        purchaseId,
+      });
+    }
+  }
+}
+
+/**
+ * Handle successful direct project payment - create pending payment with risk-based delay
+ */
+async function handleDirectPaymentSucceeded(
   stripe: Stripe,
   paymentIntent: Stripe.PaymentIntent
 ): Promise<void> {
@@ -234,7 +340,7 @@ async function handlePaymentSucceeded(
 }
 
 /**
- * Handle chargeback/dispute - prevent settlement
+ * Handle chargeback/dispute - prevent settlement for both direct payments and Juice purchases
  */
 async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
   const paymentIntentId = dispute.payment_intent;
@@ -244,14 +350,26 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
     return;
   }
 
-  const success = await markPaymentDisputed(
+  // Try to mark as disputed in both systems
+  // (only one will match based on where the payment was recorded)
+  const directSuccess = await markPaymentDisputed(
     paymentIntentId,
     dispute.id,
     dispute.reason ?? undefined
   );
 
-  if (success) {
-    logger.warn('Payment marked as disputed', {
+  const juiceSuccess = await markJuicePurchaseDisputed(paymentIntentId);
+
+  if (directSuccess) {
+    logger.warn('Direct payment marked as disputed', {
+      paymentIntentId,
+      disputeId: dispute.id,
+      reason: dispute.reason,
+    });
+  }
+
+  if (juiceSuccess) {
+    logger.warn('Juice purchase marked as disputed', {
       paymentIntentId,
       disputeId: dispute.id,
       reason: dispute.reason,
@@ -260,7 +378,7 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
 }
 
 /**
- * Handle refund - prevent settlement
+ * Handle refund - prevent settlement for both direct payments and Juice purchases
  */
 async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
   const paymentIntentId = charge.payment_intent;
@@ -272,10 +390,19 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
 
   // Only handle full refunds
   if (charge.amount_refunded >= charge.amount) {
-    const success = await markPaymentRefunded(paymentIntentId);
+    // Try to mark as refunded in both systems
+    const directSuccess = await markPaymentRefunded(paymentIntentId);
+    const juiceSuccess = await markJuicePurchaseRefunded(paymentIntentId);
 
-    if (success) {
-      logger.info('Payment marked as refunded', {
+    if (directSuccess) {
+      logger.info('Direct payment marked as refunded', {
+        paymentIntentId,
+        chargeId: charge.id,
+      });
+    }
+
+    if (juiceSuccess) {
+      logger.info('Juice purchase marked as refunded', {
         paymentIntentId,
         chargeId: charge.id,
       });

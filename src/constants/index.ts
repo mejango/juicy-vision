@@ -124,6 +124,14 @@ export const CHAINS: Record<number, {
 export const ALL_CHAIN_IDS = [1, 10, 8453, 42161] as const
 export type SupportedChainIdType = typeof ALL_CHAIN_IDS[number]
 
+// Explorer transaction URLs (convenience export derived from CHAINS)
+export const EXPLORER_URLS: Record<number, string> = {
+  1: CHAINS[1].explorerTx,
+  10: CHAINS[10].explorerTx,
+  8453: CHAINS[8453].explorerTx,
+  42161: CHAINS[42161].explorerTx,
+}
+
 // Currency configurations
 export const CURRENCIES = {
   ETH: { symbol: 'ETH', name: 'Ether', decimals: 18, baseCurrency: 1 },

@@ -731,7 +731,7 @@ export default function ConversationHistory() {
         <div className="flex items-center justify-between mt-auto pt-3">
           {/* Participant avatars with username */}
           {chat.members && chat.members.length > 0 ? (
-            <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+            <div className="flex items-center gap-1 min-w-0 flex-1 mr-2">
               {/* Skip first member in avatars since they're shown separately */}
               {chat.members.length > 1 && (
                 <ParticipantAvatars
@@ -744,19 +744,23 @@ export default function ConversationHistory() {
                   onMemberUpdated={(member) => handleMemberUpdated(chat.id, member)}
                 />
               )}
-              {/* Show first member's name and emoji */}
-              {chat.members.length > 0 && (
-                <div className="flex flex-col min-w-0">
+              {/* Show first member's Juicy ID (emoji + username) - hide if only one member (you) */}
+              {chat.members.length > 1 && (
+                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border ${
+                  theme === 'dark'
+                    ? 'border-white/15 bg-juice-dark'
+                    : 'border-gray-200 bg-white'
+                }`}>
+                  <span className="text-sm shrink-0">
+                    {chat.members[0].customEmoji || getEmojiFromAddress(chat.members[0].address)}
+                  </span>
                   {chat.members[0].displayName && (
-                    <span className={`text-xs truncate max-w-[120px] ${
+                    <span className={`text-xs truncate max-w-[100px] ${
                       theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
                     }`}>
                       {chat.members[0].displayName}
                     </span>
                   )}
-                  <span className="text-sm">
-                    {chat.members[0].customEmoji || getEmojiFromAddress(chat.members[0].address)}
-                  </span>
                 </div>
               )}
             </div>

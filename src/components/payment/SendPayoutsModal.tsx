@@ -5,7 +5,9 @@ import { parseEther, encodeFunctionData, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useOmnichainDistribute } from '../../hooks/relayr'
 import { CHAINS as CHAIN_INFO, NATIVE_TOKEN } from '../../constants'
+import ChainPaymentSelector from './ChainPaymentSelector'
 
 // Contract constants
 const JB_MULTI_TERMINAL = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const
@@ -34,6 +36,11 @@ const CHAINS: Record<number, Chain> = {
   42161: arbitrum,
 }
 
+interface ChainProjectData {
+  chainId: number
+  projectId: number | string
+}
+
 interface SendPayoutsModalProps {
   isOpen: boolean
   onClose: () => void
@@ -43,6 +50,8 @@ interface SendPayoutsModalProps {
   amount: string
   baseCurrency?: number // 1 = ETH, 2 = USD
   splits?: Array<{ beneficiary: string; percent: number }>
+  // New: for omnichain support
+  allChainProjects?: ChainProjectData[]
 }
 
 type PayoutStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
@@ -56,6 +65,7 @@ export default function SendPayoutsModal({
   amount,
   baseCurrency = 1,
   splits = [],
+  allChainProjects,
 }: SendPayoutsModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -74,6 +84,28 @@ export default function SendPayoutsModal({
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Omnichain mode
+  const [useAllChains, setUseAllChains] = useState(false)
+  const {
+    distribute,
+    bundleState,
+    isExecuting,
+    isComplete: omnichainComplete,
+    hasError: omnichainError,
+    reset: resetOmnichain,
+    setPaymentChain,
+  } = useOmnichainDistribute({
+    onSuccess: (bundleId, txHashes) => {
+      console.log('Omnichain distribute completed:', bundleId, txHashes)
+      setStatus('confirmed')
+    },
+    onError: (err) => {
+      console.error('Omnichain distribute failed:', err)
+      setError(err.message)
+      setStatus('failed')
+    },
+  })
+
   const chainInfo = CHAIN_INFO[chainId] || CHAIN_INFO[1]
   const chainName = chainInfo.name
   const currencyLabel = baseCurrency === 2 ? 'USDC' : 'ETH'
@@ -82,14 +114,19 @@ export default function SendPayoutsModal({
   const netPayout = amountNum - protocolFee
   const hasGasBalance = totalEth >= 0.001
 
+  // Check if omnichain is available
+  const hasMultipleChains = allChainProjects && allChainProjects.length > 1
+
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setStatus('preview')
       setTxHash(null)
       setError(null)
+      setUseAllChains(false)
+      resetOmnichain()
     }
-  }, [isOpen])
+  }, [isOpen, resetOmnichain])
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
@@ -105,6 +142,25 @@ export default function SendPayoutsModal({
       }
     }
 
+    if (useAllChains && allChainProjects && allChainProjects.length > 1) {
+      // Use Relayr omnichain distribution
+      setStatus('signing')
+      setError(null)
+
+      const projectIds: Record<number, number> = {}
+      allChainProjects.forEach(cp => {
+        projectIds[cp.chainId] = typeof cp.projectId === 'string' ? parseInt(cp.projectId) : cp.projectId
+      })
+
+      await distribute({
+        chainIds: allChainProjects.map(cp => cp.chainId),
+        projectIds,
+        type: 'payouts',
+      })
+      return
+    }
+
+    // Single chain execution
     setStatus('signing')
     setError(null)
 
@@ -165,16 +221,25 @@ export default function SendPayoutsModal({
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, amount, baseCurrency, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress])
+  }, [walletClient, address, chainId, projectId, amount, baseCurrency, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, distribute])
+
+  const handleClose = useCallback(() => {
+    resetOmnichain()
+    onClose()
+  }, [resetOmnichain, onClose])
 
   if (!isOpen) return null
+
+  const isProcessing = status === 'signing' || status === 'pending' || isExecuting
+  const showConfirmed = status === 'confirmed' || omnichainComplete
+  const showFailed = status === 'failed' || omnichainError
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={status === 'preview' || status === 'confirmed' || status === 'failed' ? onClose : undefined}
+        onClick={status === 'preview' || showConfirmed || showFailed ? handleClose : undefined}
       />
 
       {/* Modal */}
@@ -193,16 +258,16 @@ export default function SendPayoutsModal({
             </div>
             <div>
               <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {status === 'confirmed' ? 'Payouts Sent' : status === 'failed' ? 'Payout Failed' : 'Confirm Payouts'}
+                {showConfirmed ? 'Payouts Sent' : showFailed ? 'Payout Failed' : 'Confirm Payouts'}
               </h2>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {chainName}
+                {useAllChains && allChainProjects ? `${allChainProjects.length} Chains` : chainName}
               </p>
             </div>
           </div>
-          {(status === 'preview' || status === 'confirmed' || status === 'failed') && (
+          {(status === 'preview' || showConfirmed || showFailed) && (
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className={`p-2 transition-colors ${
                 isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
               }`}
@@ -217,7 +282,7 @@ export default function SendPayoutsModal({
         {/* Content */}
         <div className="p-5 space-y-4">
           {/* Status Messages */}
-          {status === 'signing' && (
+          {status === 'signing' && !isExecuting && (
             <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-orange/10' : 'bg-orange-50'}`}>
               <div className="animate-spin w-5 h-5 border-2 border-juice-orange border-t-transparent rounded-full" />
               <div>
@@ -231,7 +296,23 @@ export default function SendPayoutsModal({
             </div>
           )}
 
-          {status === 'pending' && (
+          {isExecuting && (
+            <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
+              <div className="animate-spin w-5 h-5 border-2 border-juice-cyan border-t-transparent rounded-full" />
+              <div>
+                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {bundleState.status === 'creating' ? 'Creating bundle...' :
+                   bundleState.status === 'awaiting_payment' ? 'Awaiting payment...' :
+                   'Distributing on all chains...'}
+                </p>
+                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Relayr is processing transactions
+                </p>
+              </div>
+            </div>
+          )}
+
+          {status === 'pending' && !isExecuting && (
             <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
               <div className="animate-spin w-5 h-5 border-2 border-juice-cyan border-t-transparent rounded-full" />
               <div>
@@ -245,7 +326,7 @@ export default function SendPayoutsModal({
             </div>
           )}
 
-          {status === 'confirmed' && (
+          {showConfirmed && (
             <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
               <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -266,24 +347,60 @@ export default function SendPayoutsModal({
                     View on explorer →
                   </a>
                 )}
+                {useAllChains && omnichainComplete && (
+                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Distributed on all {allChainProjects?.length} chains
+                  </p>
+                )}
               </div>
             </div>
           )}
 
-          {status === 'failed' && error && (
+          {showFailed && error && (
             <div className={`p-4 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
               <p className={`font-medium ${isDark ? 'text-red-400' : 'text-red-600'}`}>
                 Transaction failed
               </p>
               <p className={`text-sm mt-1 ${isDark ? 'text-red-400/70' : 'text-red-500'}`}>
-                {error}
+                {error || bundleState.error}
               </p>
             </div>
           )}
 
           {/* Payout Details */}
-          {(status === 'preview' || status === 'signing' || status === 'pending') && (
+          {(status === 'preview' || isProcessing) && !showConfirmed && !showFailed && (
             <>
+              {/* Omnichain toggle */}
+              {hasMultipleChains && !isManagedMode && status === 'preview' && (
+                <div className={`p-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useAllChains}
+                      onChange={(e) => setUseAllChains(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                    />
+                    <div>
+                      <div className={`text-sm font-medium ${isDark ? 'text-juice-cyan' : 'text-cyan-700'}`}>
+                        Distribute on all {allChainProjects?.length} chains
+                      </div>
+                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Pay gas once via Relayr, execute everywhere
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {/* Payment chain selector */}
+              {useAllChains && bundleState.paymentOptions.length > 0 && status === 'preview' && (
+                <ChainPaymentSelector
+                  paymentOptions={bundleState.paymentOptions}
+                  selectedChainId={bundleState.selectedPaymentChain}
+                  onSelect={setPaymentChain}
+                />
+              )}
+
               {/* Project */}
               <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                 <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -365,7 +482,7 @@ export default function SendPayoutsModal({
           )}
 
           {/* Summary (for confirmed) */}
-          {status === 'confirmed' && (
+          {showConfirmed && (
             <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
@@ -396,7 +513,7 @@ export default function SendPayoutsModal({
           {status === 'preview' && (
             <div className="flex gap-3">
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className={`flex-1 py-3 font-medium border-2 transition-colors ${
                   isDark
                     ? 'border-white/20 text-white hover:bg-white/10'
@@ -410,20 +527,20 @@ export default function SendPayoutsModal({
                 disabled={!hasGasBalance}
                 className="flex-1 py-3 font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Send Payouts
+                {useAllChains ? `Send on ${allChainProjects?.length} Chains` : 'Send Payouts'}
               </button>
             </div>
           )}
 
-          {(status === 'signing' || status === 'pending') && (
+          {isProcessing && (
             <div className={`text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Do not close this window
             </div>
           )}
 
-          {(status === 'confirmed' || status === 'failed') && (
+          {(showConfirmed || showFailed) && (
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="w-full py-3 font-medium bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors"
             >
               Done

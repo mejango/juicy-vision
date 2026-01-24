@@ -3,6 +3,7 @@ import { getConfig } from '../utils/config.ts';
 import { OMNICHAIN_CONTEXT, OMNICHAIN_TOOLS } from '../context/omnichain.ts';
 import { handleOmnichainTool } from './omnichain.ts';
 import { SYSTEM_PROMPT } from '@shared/prompts.ts';
+import { recordToolUsage, recordInvocation } from './aiMetrics.ts';
 
 // ============================================================================
 // Rate Limiting (Simple in-memory implementation)
@@ -19,7 +20,7 @@ const rateLimits = new Map<string, RateLimitEntry>();
 // Rate limit config (per user, per hour)
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const MAX_REQUESTS_PER_WINDOW = 100;
-const MAX_TOKENS_PER_WINDOW = 100_000; // Input + output tokens
+const MAX_TOKENS_PER_WINDOW = 500_000; // Input + output tokens (increased for testing)
 
 function getRateLimitKey(userId: string): string {
   return `rate:${userId}`;
@@ -145,8 +146,18 @@ export interface ClaudeRequest {
 // System prompt imported from @shared/prompts.ts (single source of truth)
 // To edit the prompt, update /shared/prompts.ts
 
+// Import context management (lazy to avoid circular deps)
+let _buildEnhancedSystemPrompt: typeof import('./contextManager.ts').buildEnhancedSystemPrompt | null = null;
+async function getBuildEnhancedSystemPrompt() {
+  if (!_buildEnhancedSystemPrompt) {
+    const contextManager = await import('./contextManager.ts');
+    _buildEnhancedSystemPrompt = contextManager.buildEnhancedSystemPrompt;
+  }
+  return _buildEnhancedSystemPrompt;
+}
+
 /**
- * Build the full system prompt including omnichain context
+ * Build the full system prompt including omnichain context (sync version for backward compat)
  */
 function buildSystemPrompt(customSystem?: string, includeOmnichain = true): string {
   const parts: string[] = [];
@@ -161,6 +172,26 @@ function buildSystemPrompt(customSystem?: string, includeOmnichain = true): stri
   }
 
   return parts.join('');
+}
+
+/**
+ * Build enhanced system prompt with context management
+ * Use this for chat-aware AI invocations
+ */
+export async function buildEnhancedPrompt(options: {
+  customSystem?: string;
+  chatId?: string;
+  userId?: string;
+  includeOmnichain?: boolean;
+}): Promise<{ systemPrompt: string; context: import('./contextManager.ts').OptimizedContext | null }> {
+  const builder = await getBuildEnhancedSystemPrompt();
+  return builder({
+    basePrompt: options.customSystem || SYSTEM_PROMPT,
+    chatId: options.chatId,
+    userId: options.userId,
+    includeOmnichain: options.includeOmnichain,
+    omnichainContext: OMNICHAIN_CONTEXT,
+  });
 }
 
 /**
@@ -218,38 +249,40 @@ export async function sendMessage(
     : request.tools ?? [];
 
   // Build message request with multimodal support
+  const messages = request.messages.map((m) => ({
+    role: m.role,
+    content: typeof m.content === 'string'
+      ? m.content
+      : m.content.map(block => {
+          if (block.type === 'text') {
+            return { type: 'text' as const, text: block.text };
+          } else if (block.type === 'image') {
+            return {
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: block.source.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                data: block.source.data,
+              },
+            };
+          } else {
+            // Document block
+            return {
+              type: 'document' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: block.source.media_type as 'application/pdf',
+                data: block.source.data,
+              },
+            };
+          }
+        }),
+  })) as unknown as Anthropic.MessageParam[];
+
   const messageRequest: Anthropic.MessageCreateParams = {
     model: 'claude-sonnet-4-20250514',
     max_tokens: request.maxTokens ?? 4096,
-    messages: request.messages.map((m) => ({
-      role: m.role,
-      content: typeof m.content === 'string'
-        ? m.content
-        : m.content.map(block => {
-            if (block.type === 'text') {
-              return { type: 'text' as const, text: block.text };
-            } else if (block.type === 'image') {
-              return {
-                type: 'image' as const,
-                source: {
-                  type: 'base64' as const,
-                  media_type: block.source.media_type,
-                  data: block.source.data,
-                },
-              };
-            } else {
-              // Document block
-              return {
-                type: 'document' as const,
-                source: {
-                  type: 'base64' as const,
-                  media_type: block.source.media_type,
-                  data: block.source.data,
-                },
-              };
-            }
-          }),
-    })),
+    messages,
     system: systemPrompt,
   };
 
@@ -330,38 +363,59 @@ export async function* streamMessage(
     : request.tools ?? [];
 
   // Build message request with multimodal support
+  // Using 'as unknown as Anthropic.MessageParam[]' to handle dynamic content types
+  const messages = request.messages.map((m) => ({
+    role: m.role,
+    content: typeof m.content === 'string'
+      ? m.content
+      : m.content.map((block: ContentBlock | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> } | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }) => {
+          if (block.type === 'text') {
+            return { type: 'text' as const, text: block.text };
+          } else if (block.type === 'image') {
+            return {
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: block.source.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                data: block.source.data,
+              },
+            };
+          } else if (block.type === 'document') {
+            return {
+              type: 'document' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: block.source.media_type as 'application/pdf',
+                data: block.source.data,
+              },
+            };
+          } else if (block.type === 'tool_use') {
+            // Tool use block (assistant message)
+            return {
+              type: 'tool_use' as const,
+              id: block.id,
+              name: block.name,
+              input: block.input,
+            };
+          } else if (block.type === 'tool_result') {
+            // Tool result block (user message)
+            return {
+              type: 'tool_result' as const,
+              tool_use_id: block.tool_use_id,
+              content: block.content,
+              is_error: block.is_error,
+            };
+          } else {
+            // Unknown block type, pass through
+            return block;
+          }
+        }),
+  })) as unknown as Anthropic.MessageParam[];
+
   const messageRequest: Anthropic.MessageCreateParams = {
     model: 'claude-sonnet-4-20250514',
     max_tokens: request.maxTokens ?? 4096,
-    messages: request.messages.map((m) => ({
-      role: m.role,
-      content: typeof m.content === 'string'
-        ? m.content
-        : m.content.map(block => {
-            if (block.type === 'text') {
-              return { type: 'text' as const, text: block.text };
-            } else if (block.type === 'image') {
-              return {
-                type: 'image' as const,
-                source: {
-                  type: 'base64' as const,
-                  media_type: block.source.media_type,
-                  data: block.source.data,
-                },
-              };
-            } else {
-              // Document block
-              return {
-                type: 'document' as const,
-                source: {
-                  type: 'base64' as const,
-                  media_type: block.source.media_type,
-                  data: block.source.data,
-                },
-              };
-            }
-          }),
-    })),
+    messages,
     system: systemPrompt,
     stream: true,
   };
@@ -383,18 +437,53 @@ export async function* streamMessage(
 
   let inputTokens = 0;
   let outputTokens = 0;
+  let stopReason = 'end_turn';
+
+  // Track tool use blocks being built
+  const toolUseBlocks: Map<number, { id: string; name: string; inputJson: string }> = new Map();
+  let currentBlockIndex = -1;
 
   for await (const event of stream) {
-    if (event.type === 'content_block_delta') {
+    if (event.type === 'content_block_start') {
+      currentBlockIndex = event.index;
+      if (event.content_block.type === 'tool_use') {
+        toolUseBlocks.set(event.index, {
+          id: event.content_block.id,
+          name: event.content_block.name,
+          inputJson: '',
+        });
+      }
+    } else if (event.type === 'content_block_delta') {
       const delta = event.delta;
       if ('text' in delta) {
         yield { type: 'text', data: delta.text };
       } else if ('partial_json' in delta) {
-        yield { type: 'tool_use', data: delta.partial_json };
+        // Accumulate JSON for tool use
+        const block = toolUseBlocks.get(currentBlockIndex);
+        if (block) {
+          block.inputJson += delta.partial_json;
+        }
+      }
+    } else if (event.type === 'content_block_stop') {
+      // If this was a tool use block, yield the complete tool call
+      const block = toolUseBlocks.get(event.index);
+      if (block) {
+        try {
+          const input = JSON.parse(block.inputJson);
+          yield {
+            type: 'tool_use',
+            data: { id: block.id, name: block.name, input },
+          };
+        } catch {
+          // Invalid JSON, skip this tool call
+        }
       }
     } else if (event.type === 'message_delta') {
       if (event.usage) {
         outputTokens = event.usage.output_tokens;
+      }
+      if (event.delta?.stop_reason) {
+        stopReason = event.delta.stop_reason;
       }
     } else if (event.type === 'message_start') {
       if (event.message.usage) {
@@ -411,7 +500,186 @@ export async function* streamMessage(
 
   yield {
     type: 'usage',
-    data: { inputTokens, outputTokens },
+    data: { inputTokens, outputTokens, stopReason },
+  };
+}
+
+// ============================================================================
+// Agentic Streaming with Tool Execution
+// ============================================================================
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+export interface ToolResult {
+  tool_use_id: string;
+  content: string;
+  is_error?: boolean;
+}
+
+/**
+ * Stream messages with automatic tool execution loop.
+ * Continues calling Claude until it stops requesting tools.
+ */
+export async function* streamMessageWithTools(
+  userId: string,
+  request: ClaudeRequest,
+  userApiKey?: string,
+  maxIterations = 10 // Safety limit to prevent infinite loops
+): AsyncGenerator<{ type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }> {
+  const includeOmnichain = request.includeOmnichainContext !== false;
+
+  // Build the conversation messages (mutable copy)
+  const messages: ChatMessage[] = [...request.messages];
+
+  // Metrics tracking
+  const invocationStart = Date.now();
+  const toolsUsed: string[] = [];
+  let fullResponseContent = '';
+
+  let iteration = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
+  while (iteration < maxIterations) {
+    iteration++;
+
+    // Collect this turn's response
+    let textContent = '';
+    const toolCalls: ToolCall[] = [];
+    let stopReason = 'end_turn';
+
+    // Stream Claude's response for this turn
+    for await (const event of streamMessage(userId, { ...request, messages }, userApiKey)) {
+      if (event.type === 'text') {
+        textContent += event.data as string;
+        fullResponseContent += event.data as string;
+        yield event; // Pass through text tokens
+      } else if (event.type === 'tool_use') {
+        const toolCall = event.data as ToolCall;
+        toolCalls.push(toolCall);
+        toolsUsed.push(toolCall.name);
+        // Notify that Claude is using a tool
+        yield { type: 'thinking', data: `Using tool: ${toolCall.name}` };
+      } else if (event.type === 'usage') {
+        const usage = event.data as { inputTokens: number; outputTokens: number; stopReason: string };
+        totalInputTokens += usage.inputTokens;
+        totalOutputTokens += usage.outputTokens;
+        stopReason = usage.stopReason;
+      }
+    }
+
+    // If no tool calls, we're done
+    if (toolCalls.length === 0 || stopReason !== 'tool_use') {
+      break;
+    }
+
+    // Build the assistant message with text and tool use blocks
+    const assistantContent: Array<{ type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }> = [];
+
+    if (textContent) {
+      assistantContent.push({ type: 'text', text: textContent });
+    }
+
+    for (const tc of toolCalls) {
+      assistantContent.push({
+        type: 'tool_use',
+        id: tc.id,
+        name: tc.name,
+        input: tc.input,
+      });
+    }
+
+    // Add assistant's response to messages
+    messages.push({
+      role: 'assistant',
+      content: assistantContent as unknown as string, // Type coercion for internal use
+    });
+
+    // Execute tools and collect results
+    const toolResults: ToolResult[] = [];
+
+    for (const toolCall of toolCalls) {
+      yield { type: 'tool_use', data: toolCall };
+
+      const toolStart = Date.now();
+      try {
+        // Execute the tool
+        const result = await handleOmnichainTool(toolCall.name, toolCall.input);
+        const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+
+        toolResults.push({
+          tool_use_id: toolCall.id,
+          content: resultStr,
+        });
+
+        // Record successful tool usage
+        recordToolUsage({
+          chatId: userId,
+          toolName: toolCall.name,
+          success: true,
+          durationMs: Date.now() - toolStart,
+        });
+
+        yield { type: 'tool_result', data: { id: toolCall.id, name: toolCall.name, result: resultStr } };
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Tool execution failed';
+        toolResults.push({
+          tool_use_id: toolCall.id,
+          content: `Error: ${errorMsg}`,
+          is_error: true,
+        });
+
+        // Record failed tool usage
+        recordToolUsage({
+          chatId: userId,
+          toolName: toolCall.name,
+          success: false,
+          durationMs: Date.now() - toolStart,
+          errorMessage: errorMsg,
+        });
+
+        yield { type: 'tool_result', data: { id: toolCall.id, name: toolCall.name, error: errorMsg } };
+      }
+    }
+
+    // Add tool results as user message
+    messages.push({
+      role: 'user',
+      content: toolResults.map(tr => ({
+        type: 'tool_result',
+        tool_use_id: tr.tool_use_id,
+        content: tr.content,
+        is_error: tr.is_error,
+      })) as unknown as string, // Type coercion for internal use
+    });
+  }
+
+  // Record the full invocation metrics
+  const promptLength = request.messages.reduce((sum, m) => {
+    if (typeof m.content === 'string') return sum + m.content.length;
+    return sum + JSON.stringify(m.content).length;
+  }, 0);
+
+  recordInvocation({
+    chatId: userId,
+    promptLength,
+    responseLength: fullResponseContent.length,
+    totalDurationMs: Date.now() - invocationStart,
+    toolsUsed: [...new Set(toolsUsed)], // Dedupe tool names
+    iterations: iteration,
+    inputTokens: totalInputTokens,
+    outputTokens: totalOutputTokens,
+    success: true,
+  });
+
+  // Yield final usage stats
+  yield {
+    type: 'usage',
+    data: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
   };
 }
 

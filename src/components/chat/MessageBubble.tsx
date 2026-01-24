@@ -251,7 +251,7 @@ export default function MessageBubble({
                     : 'text-green-600 hover:text-green-500'
                 }`}
               >
-                Add your Juicy ID
+                Set your Juicy ID
               </button>
               <JuicyIdPopover
                 isOpen={juicyIdPopoverOpen}

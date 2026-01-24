@@ -310,6 +310,194 @@ export async function sponsoredOmnichainQueue(
   }
 }
 
+// ============================================================================
+// Prepaid Bundles (Self-Custody Mode)
+// ============================================================================
+// User pays gas on ONE chain, Relayr executes on ALL chains.
+// For connected wallets (wagmi) doing omnichain operations.
+
+export interface PrepaidBundleTransaction {
+  chain: number           // Target chain ID
+  target: string          // Destination contract address (0x...)
+  data?: string           // Calldata (0x...)
+  value?: string          // ETH value in wei
+  gas_limit?: number      // Optional gas limit override
+}
+
+export interface PaymentOption {
+  chainId: number         // Chain to pay gas from
+  token: string           // Payment token (ETH address or ERC20)
+  amount: string          // Amount required in wei
+  estimatedGas: string    // Total gas estimate
+}
+
+export interface PrepaidBundleRequest {
+  transactions: PrepaidBundleTransaction[]
+  perform_simulation?: boolean    // Default: true
+  signer_address: string          // User's connected wallet address
+}
+
+export interface PrepaidBundleResponse {
+  bundle_uuid: string
+  tx_uuids: string[]
+  payment_options: PaymentOption[]  // Available chains to pay from
+  expires_at: number                // Unix timestamp when quote expires
+}
+
+export interface BundleTransactionStatus {
+  tx_uuid: string
+  chain_id: number
+  status: 'pending' | 'submitted' | 'confirmed' | 'failed'
+  tx_hash?: string
+  error?: string
+  gas_used?: string
+}
+
+export interface BundleStatusResponse {
+  bundle_uuid: string
+  status: 'pending' | 'processing' | 'completed' | 'partial' | 'failed'
+  transactions: BundleTransactionStatus[]
+  payment_received: boolean
+  payment_chain_id?: number
+  payment_tx_hash?: string
+}
+
+export interface BundlePaymentRequest {
+  bundle_uuid: string
+  chain_id: number          // Chain the user is paying from
+  signed_tx: string         // Signed payment transaction
+}
+
+/**
+ * Create a prepaid bundle for self-custody wallets.
+ * User will pay gas on one chain, Relayr executes on all target chains.
+ * Returns payment options showing cost per chain.
+ */
+export async function createPrepaidBundle(request: PrepaidBundleRequest): Promise<PrepaidBundleResponse> {
+  return fetchApi<PrepaidBundleResponse>('/v1/bundle/prepaid', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/**
+ * Get the status of a bundle (works for both prepaid and balance bundles).
+ * Poll this to track transaction confirmations across chains.
+ */
+export async function getBundleStatus(bundleId: string): Promise<BundleStatusResponse> {
+  return fetchApi<BundleStatusResponse>(`/v1/bundle/${bundleId}/status`)
+}
+
+/**
+ * Submit signed payment transaction for a prepaid bundle.
+ * Call this after user signs the payment tx on their chosen chain.
+ */
+export async function sendBundlePayment(request: BundlePaymentRequest): Promise<void> {
+  await fetchApi<{}>('/v1/bundle/payment', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/**
+ * Helper to build omnichain transactions for prepaid mode.
+ * Similar to sponsoredOmnichainQueue but returns prepaid bundle with payment options.
+ */
+export async function createPrepaidOmnichainQueue(
+  signerAddress: string,
+  request: JBOmnichainQueueRequest
+): Promise<{ bundle: PrepaidBundleResponse; synchronizedStartTime: number }> {
+  const omnichainResponse = await buildOmnichainQueueRulesetTransactions(request)
+  const bundle = await createPrepaidBundle({
+    signer_address: signerAddress,
+    transactions: omnichainResponse.transactions.map(tx => ({
+      chain: tx.txData.chainId,
+      target: tx.txData.to,
+      data: tx.txData.data,
+      value: tx.txData.value,
+    })),
+  })
+  return {
+    bundle,
+    synchronizedStartTime: omnichainResponse.synchronizedStartTime,
+  }
+}
+
+// ============================================================================
+// Omnichain Distributions (Payouts + Reserved Tokens)
+// ============================================================================
+
+export interface JBOmnichainDistributeRequest {
+  chainIds: number[]
+  projectIds: Record<number, number>  // chainId -> projectId mapping
+  type: 'payouts' | 'reserves'
+}
+
+export interface JBOmnichainDistributeResponse {
+  transactions: Array<{
+    chainId: number
+    projectId: number
+    txData: JBTransactionData
+    estimatedGas: string
+  }>
+}
+
+/**
+ * Build omnichain distribution transactions.
+ * Works for both sendPayoutsOf (payouts) and sendReservedTokensToSplitsOf (reserves).
+ */
+export async function buildOmnichainDistributeTransactions(
+  request: JBOmnichainDistributeRequest
+): Promise<JBOmnichainDistributeResponse> {
+  return fetchApi<JBOmnichainDistributeResponse>('/v1/juicebox/omnichainDistribute', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/**
+ * Create a prepaid bundle for omnichain distributions.
+ */
+export async function createPrepaidOmnichainDistribute(
+  signerAddress: string,
+  request: JBOmnichainDistributeRequest
+): Promise<PrepaidBundleResponse> {
+  const distributeResponse = await buildOmnichainDistributeTransactions(request)
+  return createPrepaidBundle({
+    signer_address: signerAddress,
+    transactions: distributeResponse.transactions.map(tx => ({
+      chain: tx.txData.chainId,
+      target: tx.txData.to,
+      data: tx.txData.data,
+      value: tx.txData.value,
+    })),
+  })
+}
+
+/**
+ * Create a sponsored bundle for omnichain distributions.
+ */
+export async function sponsoredOmnichainDistribute(
+  appId: string,
+  request: JBOmnichainDistributeRequest
+): Promise<{ bundleId: string; txIds: string[] }> {
+  const distributeResponse = await buildOmnichainDistributeTransactions(request)
+  const bundle = await createBalanceBundle({
+    app_id: appId,
+    transactions: distributeResponse.transactions.map(tx => ({
+      chain: tx.txData.chainId,
+      target: tx.txData.to,
+      data: tx.txData.data,
+      value: tx.txData.value,
+    })),
+    virtual_nonce_mode: 'MultiChain',
+  })
+  return {
+    bundleId: bundle.bundle_uuid,
+    txIds: bundle.tx_uuids,
+  }
+}
+
 // Omnichain ruleset queueing
 
 export interface JBRulesetMetadataConfig {
@@ -410,6 +598,330 @@ export async function buildQueueRulesetTransaction(request: JBQueueRulesetReques
     method: 'POST',
     body: JSON.stringify(request),
   })
+}
+
+// ============================================================================
+// Omnichain ERC20 Deployment
+// ============================================================================
+// Deploy ERC20 token on multiple chains with SAME address using CREATE2.
+// Uses identical salt across all chains to ensure deterministic address.
+
+export interface JBOmnichainDeployERC20Request {
+  chainIds: number[]
+  projectIds: Record<number, number>  // chainId -> projectId mapping
+  tokenName: string
+  tokenSymbol: string
+  salt: string                         // bytes32 - SAME salt for all chains
+}
+
+export interface JBOmnichainDeployERC20Response {
+  transactions: Array<{
+    chainId: number
+    projectId: number
+    txData: JBTransactionData
+    estimatedGas: string
+  }>
+  predictedAddress: string             // Same address on all chains
+}
+
+/**
+ * Build omnichain ERC20 deployment transactions.
+ * Uses same salt to deploy at identical address on all chains.
+ */
+export async function buildOmnichainDeployERC20Transactions(
+  request: JBOmnichainDeployERC20Request
+): Promise<JBOmnichainDeployERC20Response> {
+  return fetchApi<JBOmnichainDeployERC20Response>('/v1/juicebox/omnichainDeployERC20', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/**
+ * Create a prepaid bundle for omnichain ERC20 deployment.
+ */
+export async function createPrepaidOmnichainDeployERC20(
+  signerAddress: string,
+  request: JBOmnichainDeployERC20Request
+): Promise<{ bundle: PrepaidBundleResponse; predictedAddress: string }> {
+  const deployResponse = await buildOmnichainDeployERC20Transactions(request)
+  const bundle = await createPrepaidBundle({
+    signer_address: signerAddress,
+    transactions: deployResponse.transactions.map(tx => ({
+      chain: tx.txData.chainId,
+      target: tx.txData.to,
+      data: tx.txData.data,
+      value: tx.txData.value,
+    })),
+  })
+  return {
+    bundle,
+    predictedAddress: deployResponse.predictedAddress,
+  }
+}
+
+/**
+ * Create a sponsored bundle for omnichain ERC20 deployment.
+ */
+export async function sponsoredOmnichainDeployERC20(
+  appId: string,
+  request: JBOmnichainDeployERC20Request
+): Promise<{ bundleId: string; txIds: string[]; predictedAddress: string }> {
+  const deployResponse = await buildOmnichainDeployERC20Transactions(request)
+  const bundle = await createBalanceBundle({
+    app_id: appId,
+    transactions: deployResponse.transactions.map(tx => ({
+      chain: tx.txData.chainId,
+      target: tx.txData.to,
+      data: tx.txData.data,
+      value: tx.txData.value,
+    })),
+    virtual_nonce_mode: 'MultiChain',
+  })
+  return {
+    bundleId: bundle.bundle_uuid,
+    txIds: bundle.tx_uuids,
+    predictedAddress: deployResponse.predictedAddress,
+  }
+}
+
+// ============================================================================
+// Omnichain Project Launch
+// ============================================================================
+// Deploy a new Juicebox project on multiple chains simultaneously.
+// Uses JBController.launchProjectFor() on each chain.
+
+export interface JBTerminalConfig {
+  terminal: string                      // JBMultiTerminal address
+  accountingContextsToAccept: Array<{
+    token: string                       // NATIVE_TOKEN or ERC20 address
+    decimals: number                    // Token decimals (18 for ETH, 6 for USDC)
+    currency: number                    // 1=ETH, 2=USD
+  }>
+}
+
+export interface JBLaunchProjectRequest {
+  chainIds: number[]
+  owner: string                         // Project owner address
+  projectUri: string                    // IPFS CID for project metadata
+  rulesetConfigurations: JBRulesetConfig[]
+  terminalConfigurations: JBTerminalConfig[]
+  memo: string
+}
+
+export interface JBLaunchProjectResponse {
+  transactions: Array<{
+    chainId: number
+    txData: JBTransactionData
+    estimatedGas: string
+  }>
+  predictedProjectIds: Record<number, number>  // chainId -> predicted project ID
+}
+
+/**
+ * Build omnichain project launch transactions.
+ * Creates a new project on each specified chain with identical configuration.
+ */
+export async function buildOmnichainLaunchProjectTransactions(
+  request: JBLaunchProjectRequest
+): Promise<JBLaunchProjectResponse> {
+  return fetchApi<JBLaunchProjectResponse>('/v1/juicebox/omnichainLaunchProject', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/**
+ * Create a sponsored bundle for omnichain project launch.
+ * Admin pays gas for all users via balance bundle.
+ */
+export async function sponsoredOmnichainLaunchProject(
+  appId: string,
+  request: JBLaunchProjectRequest
+): Promise<{ bundleId: string; txIds: string[]; predictedProjectIds: Record<number, number> }> {
+  const launchResponse = await buildOmnichainLaunchProjectTransactions(request)
+  const bundle = await createBalanceBundle({
+    app_id: appId,
+    transactions: launchResponse.transactions.map(tx => ({
+      chain: tx.txData.chainId,
+      target: tx.txData.to,
+      data: tx.txData.data,
+      value: tx.txData.value,
+    })),
+    virtual_nonce_mode: 'MultiChain',
+  })
+  return {
+    bundleId: bundle.bundle_uuid,
+    txIds: bundle.tx_uuids,
+    predictedProjectIds: launchResponse.predictedProjectIds,
+  }
+}
+
+// ============================================================================
+// Omnichain Revnet Deployment
+// ============================================================================
+// Deploy a revnet (revenue network) using REVDeployer on multiple chains.
+// Revnets have stage-based configuration with automated issuance decay.
+
+export interface REVStageConfig {
+  startsAtOrAfter: number               // Unix timestamp
+  splitPercent: number                  // To operator (0-1000000000, 1B = 100%)
+  initialIssuance: string               // Tokens per currency unit (as string for bigint)
+  issuanceDecayFrequency: number        // Seconds between decay applications
+  issuanceDecayPercent: number          // Decay amount (0-1000000000)
+  cashOutTaxRate: number                // Exit tax (0-10000, 10000 = 100%)
+  extraMetadata: number                 // Additional stage metadata
+}
+
+export interface REVSuckerDeploymentConfig {
+  deployerConfigurations: Array<{
+    deployer: string                    // Sucker deployer address
+    mappings: Array<{
+      localToken: string                // Token on this chain
+      remoteToken: string               // Token on remote chain
+      minGas: number                    // Minimum gas for bridge
+      minBridgeAmount: string           // Minimum amount to bridge
+    }>
+  }>
+  salt: string                          // bytes32 for deterministic addresses
+}
+
+export interface JBDeployRevnetRequest {
+  chainIds: number[]
+  stageConfigurations: REVStageConfig[]
+  splitOperator: string                 // Address that receives operator split
+  description: {
+    name: string
+    tagline: string
+    salt: string                        // bytes32 for CREATE2
+  }
+  suckerDeploymentConfiguration?: REVSuckerDeploymentConfig
+  initialTokenReceivers?: Array<{
+    beneficiary: string
+    count: number                       // Number of tokens to mint
+  }>
+}
+
+export interface JBDeployRevnetResponse {
+  transactions: Array<{
+    chainId: number
+    txData: JBTransactionData
+    estimatedGas: string
+  }>
+  predictedProjectIds: Record<number, number>  // chainId -> predicted project ID
+  predictedTokenAddress: string                // Same on all chains via CREATE2
+}
+
+/**
+ * Build omnichain revnet deployment transactions.
+ * Creates a revnet on each specified chain with stage-based configuration.
+ */
+export async function buildOmnichainDeployRevnetTransactions(
+  request: JBDeployRevnetRequest
+): Promise<JBDeployRevnetResponse> {
+  return fetchApi<JBDeployRevnetResponse>('/v1/juicebox/omnichainDeployRevnet', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/**
+ * Create a sponsored bundle for omnichain revnet deployment.
+ * Admin pays gas for all users via balance bundle.
+ */
+export async function sponsoredOmnichainDeployRevnet(
+  appId: string,
+  request: JBDeployRevnetRequest
+): Promise<{ bundleId: string; txIds: string[]; predictedProjectIds: Record<number, number>; predictedTokenAddress: string }> {
+  const deployResponse = await buildOmnichainDeployRevnetTransactions(request)
+  const bundle = await createBalanceBundle({
+    app_id: appId,
+    transactions: deployResponse.transactions.map(tx => ({
+      chain: tx.txData.chainId,
+      target: tx.txData.to,
+      data: tx.txData.data,
+      value: tx.txData.value,
+    })),
+    virtual_nonce_mode: 'MultiChain',
+  })
+  return {
+    bundleId: bundle.bundle_uuid,
+    txIds: bundle.tx_uuids,
+    predictedProjectIds: deployResponse.predictedProjectIds,
+    predictedTokenAddress: deployResponse.predictedTokenAddress,
+  }
+}
+
+// ============================================================================
+// Omnichain Sucker Deployment
+// ============================================================================
+// Deploy suckers to link projects across chains after creation.
+// Enables token bridging between the same project on different chains.
+
+export interface SuckerTokenMapping {
+  localToken: string                    // Token address on this chain
+  remoteToken: string                   // Token address on remote chain
+  minGas: number                        // Minimum gas for bridge operation
+  minBridgeAmount: string               // Minimum amount to bridge (as string)
+}
+
+export interface JBDeploySuckersRequest {
+  chainIds: number[]
+  projectIds: Record<number, number>    // chainId -> projectId mapping
+  salt: string                          // bytes32 for deterministic addresses
+  tokenMappings: SuckerTokenMapping[]
+  deployerOverrides?: Record<number, string>  // chainId -> deployer address override
+}
+
+export interface JBDeploySuckersResponse {
+  transactions: Array<{
+    chainId: number
+    projectId: number
+    txData: JBTransactionData
+    estimatedGas: string
+  }>
+  suckerAddresses: Record<number, string>  // chainId -> predicted sucker address
+  suckerGroupId: string                    // Shared ID linking all suckers
+}
+
+/**
+ * Build omnichain sucker deployment transactions.
+ * Creates suckers on each chain to enable cross-chain token bridging.
+ */
+export async function buildOmnichainDeploySuckersTransactions(
+  request: JBDeploySuckersRequest
+): Promise<JBDeploySuckersResponse> {
+  return fetchApi<JBDeploySuckersResponse>('/v1/juicebox/omnichainDeploySuckers', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+/**
+ * Create a sponsored bundle for omnichain sucker deployment.
+ * Admin pays gas for all users via balance bundle.
+ */
+export async function sponsoredOmnichainDeploySuckers(
+  appId: string,
+  request: JBDeploySuckersRequest
+): Promise<{ bundleId: string; txIds: string[]; suckerAddresses: Record<number, string>; suckerGroupId: string }> {
+  const deployResponse = await buildOmnichainDeploySuckersTransactions(request)
+  const bundle = await createBalanceBundle({
+    app_id: appId,
+    transactions: deployResponse.transactions.map(tx => ({
+      chain: tx.txData.chainId,
+      target: tx.txData.to,
+      data: tx.txData.data,
+      value: tx.txData.value,
+    })),
+    virtual_nonce_mode: 'MultiChain',
+  })
+  return {
+    bundleId: bundle.bundle_uuid,
+    txIds: bundle.tx_uuids,
+    suckerAddresses: deployResponse.suckerAddresses,
+    suckerGroupId: deployResponse.suckerGroupId,
+  }
 }
 
 // Build omnichain queue ruleset transactions with synchronized start time

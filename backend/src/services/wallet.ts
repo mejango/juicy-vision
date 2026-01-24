@@ -36,84 +36,38 @@ const TRANSFER_HOLD_DAYS = 7;
 const TRANSFER_HOLD_MS = TRANSFER_HOLD_DAYS * 24 * 60 * 60 * 1000;
 
 // ============================================================================
-// GCP KMS Integration (Placeholder - requires actual GCP SDK)
+// Reserves Wallet Operations
 // ============================================================================
 
-// In production, this would use @google-cloud/kms to derive keys
-// For now, we simulate with a master seed + HD derivation
-// The actual implementation would:
-// 1. Store master seed in GCP KMS
-// 2. Use KMS to sign derivation requests
-// 3. Never expose private keys outside KMS HSM
-
-interface KmsConfig {
-  projectId: string;
-  locationId: string;
-  keyRingId: string;
-  cryptoKeyId: string;
-}
-
-// Simulated KMS key derivation (replace with actual GCP KMS in production)
-async function deriveKeyFromKms(
-  _config: KmsConfig,
-  userIndex: number
-): Promise<`0x${string}`> {
-  // WARNING: This is a placeholder implementation
-  // In production, use GCP KMS to derive keys deterministically
-  // The KMS would hold a master key and use HKDF or similar to derive child keys
-
-  // For development, we use a deterministic derivation from a seed
-  // This should NEVER be used in production
-  const envConfig = getConfig();
-  if (!envConfig.reservesPrivateKey) {
+/**
+ * Get address for user's managed wallet.
+ * Currently returns the reserves wallet address (shared).
+ * For per-user wallets, users should use Smart Accounts (ERC-4337).
+ *
+ * @deprecated Use smart accounts for per-user wallet addresses
+ */
+export async function getCustodialAddress(_userAddressIndex: number): Promise<Address> {
+  const config = getConfig();
+  if (!config.reservesPrivateKey) {
     throw new Error('RESERVES_PRIVATE_KEY not configured');
   }
-
-  // Placeholder: In production, this would be a KMS API call
-  // that returns a signature we can use to derive an address
-  // For now, just return the reserves key (NOT FOR PRODUCTION)
-  console.warn('WARNING: Using placeholder KMS implementation. NOT FOR PRODUCTION.');
-
-  // In production, implement proper HD derivation via KMS:
-  // 1. Call KMS with derivation path
-  // 2. KMS internally derives child key
-  // 3. KMS returns public key + signing capability (never private key)
-  return envConfig.reservesPrivateKey as `0x${string}`;
-}
-
-// Get user's custodial address
-export async function getCustodialAddress(userAddressIndex: number): Promise<Address> {
-  const config = getConfig();
-  const kmsConfig: KmsConfig = {
-    projectId: config.gcpProjectId,
-    locationId: config.gcpLocationId,
-    keyRingId: config.gcpKeyRingId,
-    cryptoKeyId: config.gcpCryptoKeyId,
-  };
-
-  const privateKey = await deriveKeyFromKms(kmsConfig, userAddressIndex);
-  const account = privateKeyToAccount(privateKey);
+  const account = privateKeyToAccount(config.reservesPrivateKey as `0x${string}`);
   return account.address;
 }
 
-// Sign and broadcast a transaction using KMS-derived key
+// Sign and broadcast a transaction using the reserves wallet
 export async function signAndBroadcast(
-  userAddressIndex: number,
   chainId: number,
   to: Address,
   data: `0x${string}`,
   value: bigint = 0n
 ): Promise<Hash> {
   const config = getConfig();
-  const kmsConfig: KmsConfig = {
-    projectId: config.gcpProjectId,
-    locationId: config.gcpLocationId,
-    keyRingId: config.gcpKeyRingId,
-    cryptoKeyId: config.gcpCryptoKeyId,
-  };
+  if (!config.reservesPrivateKey) {
+    throw new Error('RESERVES_PRIVATE_KEY not configured');
+  }
 
-  const privateKey = await deriveKeyFromKms(kmsConfig, userAddressIndex);
-  const account = privateKeyToAccount(privateKey);
+  const account = privateKeyToAccount(config.reservesPrivateKey as `0x${string}`);
 
   const chain = CHAINS[chainId as keyof typeof CHAINS];
   if (!chain) {
@@ -453,7 +407,6 @@ export async function executeReadyTransfers(): Promise<number> {
       });
 
       const txHash = await signAndBroadcast(
-        transfer.custodial_address_index,
         transfer.chain_id,
         transfer.token_address as Address,
         data

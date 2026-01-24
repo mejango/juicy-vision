@@ -183,11 +183,14 @@ export function isAddressOnline(address: string): boolean {
 
 /**
  * Broadcast a message to all clients in a chat
+ * @param excludeAddress - Exclude all connections from this address
+ * @param excludeSocket - Exclude only this specific socket (for same-user multi-window)
  */
 export function broadcastToChat(
   chatId: string,
   message: WsMessage,
-  excludeAddress?: string
+  excludeAddress?: string,
+  excludeSocket?: WebSocket
 ): void {
   const clients = chatConnections.get(chatId);
   if (!clients) return;
@@ -195,7 +198,10 @@ export function broadcastToChat(
   const payload = JSON.stringify(message);
 
   for (const client of clients) {
-    if (excludeAddress && client.address === excludeAddress) continue;
+    // If excludeSocket is provided, only exclude that specific socket
+    // Otherwise fall back to excluding by address
+    if (excludeSocket && client.socket === excludeSocket) continue;
+    if (!excludeSocket && excludeAddress && client.address === excludeAddress) continue;
 
     try {
       if (client.socket.readyState === WebSocket.OPEN) {
@@ -364,13 +370,17 @@ export function broadcastChatUpdate(
 }
 
 /**
- * Broadcast component interaction to chat members (excluding sender)
+ * Broadcast component interaction to chat members (excluding sender's specific socket)
  * Used for real-time collaboration on OptionsPicker and similar components
+ *
+ * Note: We exclude only the specific socket, not all connections from the sender.
+ * This allows the same user with multiple windows to see their own updates in other tabs.
  */
 export function broadcastComponentInteraction(
   chatId: string,
   senderAddress: string,
-  data: ComponentInteractionData
+  data: ComponentInteractionData,
+  senderSocket?: WebSocket
 ): void {
   broadcastToChat(
     chatId,
@@ -381,7 +391,8 @@ export function broadcastComponentInteraction(
       sender: senderAddress,
       timestamp: Date.now(),
     },
-    senderAddress // Exclude sender
+    undefined, // Don't exclude by address
+    senderSocket // Exclude only the specific socket that sent the message
   );
 }
 
@@ -461,10 +472,13 @@ export function handleWsMessage(
 
       case 'component_interaction':
         // Broadcast component interaction to other chat members (ephemeral, no persistence)
+        // Pass the client's socket so we exclude only this specific connection,
+        // allowing the same user in multiple tabs to see real-time updates
         broadcastComponentInteraction(
           client.chatId,
           client.address,
-          message.data as ComponentInteractionData
+          message.data as ComponentInteractionData,
+          client.socket
         );
         break;
 

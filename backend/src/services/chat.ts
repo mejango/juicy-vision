@@ -995,6 +995,14 @@ export async function updateUserEmoji(
 // ============================================================================
 
 /**
+ * Estimate token count from text (rough approximation)
+ */
+function estimateTokenCount(text: string): number {
+  // Rough estimate: 4 characters per token on average
+  return Math.ceil(text.length / 4);
+}
+
+/**
  * Send a message to a chat
  */
 export async function sendMessage(params: SendMessageParams): Promise<ChatMessage> {
@@ -1031,20 +1039,26 @@ export async function sendMessage(params: SendMessageParams): Promise<ChatMessag
     }
   }
 
+  // Estimate token count for context management
+  const tokenCount = estimateTokenCount(finalContent);
+
   // Insert message
   const result = await query<{ id: string }>(
     `INSERT INTO multi_chat_messages (
        chat_id, sender_address, sender_user_id, role, content,
-       is_encrypted, signature, reply_to_id
-     ) VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
+       is_encrypted, signature, reply_to_id, token_count
+     ) VALUES ($1, $2, $3, 'user', $4, $5, $6, $7, $8)
      RETURNING id`,
-    [chatId, senderAddress, senderUserId ?? null, finalContent, isEncrypted, signature ?? null, replyToId ?? null]
+    [chatId, senderAddress, senderUserId ?? null, finalContent, isEncrypted, signature ?? null, replyToId ?? null, tokenCount]
   );
 
   const messageId = result[0].id;
 
-  // Update chat's updated_at
-  await execute('UPDATE multi_chats SET updated_at = NOW() WHERE id = $1', [chatId]);
+  // Update chat's updated_at and increment message count
+  await execute(
+    'UPDATE multi_chats SET updated_at = NOW(), total_message_count = COALESCE(total_message_count, 0) + 1 WHERE id = $1',
+    [chatId]
+  );
 
   // Broadcast to connected clients (user messages)
   broadcastChatMessage(chatId, messageId, finalContent, senderAddress, isEncrypted, 'user');
@@ -1062,20 +1076,26 @@ export async function importMessage(params: ImportMessageParams): Promise<ChatMe
   const chat = await getChatById(chatId);
   if (!chat) throw new Error('Chat not found');
 
+  // Estimate token count for context management
+  const tokenCount = estimateTokenCount(content);
+
   // Insert message directly without permission checks
   const result = await query<{ id: string }>(
     `INSERT INTO multi_chat_messages (
        chat_id, sender_address, sender_user_id, role, content,
-       is_encrypted, signature, reply_to_id
-     ) VALUES ($1, $2, $3, $4, $5, FALSE, NULL, NULL)
+       is_encrypted, signature, reply_to_id, token_count
+     ) VALUES ($1, $2, $3, $4, $5, FALSE, NULL, NULL, $6)
      RETURNING id`,
-    [chatId, senderAddress, senderUserId ?? null, role, content]
+    [chatId, senderAddress, senderUserId ?? null, role, content, tokenCount]
   );
 
   const messageId = result[0].id;
 
-  // Update chat's updated_at
-  await execute('UPDATE multi_chats SET updated_at = NOW() WHERE id = $1', [chatId]);
+  // Update chat's updated_at and increment message count
+  await execute(
+    'UPDATE multi_chats SET updated_at = NOW(), total_message_count = COALESCE(total_message_count, 0) + 1 WHERE id = $1',
+    [chatId]
+  );
 
   return (await getMessageById(messageId))!;
 }

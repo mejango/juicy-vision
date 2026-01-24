@@ -31,6 +31,8 @@ interface OptionsPickerProps {
   // Real-time collaboration props
   chatId?: string
   messageId?: string
+  // Creative mode: show "generate more ideas" button for brainstorming
+  creative?: boolean
 }
 
 // Values that indicate "other" / custom input
@@ -42,7 +44,7 @@ const DONE_WORDS = ['Great', 'Super', 'Got it', 'Ok', 'Nice']
 // Normalize value for comparison (lowercase, trim, collapse spaces)
 const normalizeValue = (value: string) => value.toLowerCase().trim().replace(/[\s_-]+/g, ' ')
 
-export default function OptionsPicker({ groups, submitLabel = 'Continue', allSelectedLabel, onSubmit, expectedGroupCount, isStreaming, chatId, messageId }: OptionsPickerProps) {
+export default function OptionsPicker({ groups, submitLabel = 'Continue', allSelectedLabel, onSubmit, expectedGroupCount, isStreaming, chatId, messageId, creative }: OptionsPickerProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -142,6 +144,11 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
   const getRemoteHoversForGroup = useCallback((groupId: string) => {
     return remoteHovers.get(groupId) || []
   }, [remoteHovers])
+
+  // Get remote typing for a specific group
+  const getRemoteTypingForGroup = useCallback((groupId: string) => {
+    return remoteTyping.get(groupId) || []
+  }, [remoteTyping])
 
   const isSelected = (groupId: string, value: string, isMulti?: boolean): boolean => {
     const sel = selections[groupId]
@@ -460,34 +467,76 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
             })()}
 
             {/* Text input */}
-            {group.type === 'text' && (
-              <input
-                type="text"
-                value={(selections[group.id] as string) || ''}
-                onChange={(e) => setSelections(prev => ({ ...prev, [group.id]: e.target.value }))}
-                placeholder={group.placeholder}
-                className={`w-full px-3 py-2 text-sm border transition-colors outline-none ${
-                  isDark
-                    ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-green-500'
-                    : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-green-500'
-                }`}
-              />
-            )}
+            {group.type === 'text' && (() => {
+              const groupTyping = getRemoteTypingForGroup(group.id)
+              return (
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    value={(selections[group.id] as string) || ''}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setSelections(prev => ({ ...prev, [group.id]: value }))
+                      sendTyping(value, group.id)
+                    }}
+                    placeholder={group.placeholder}
+                    className={`w-full px-3 py-2 text-sm border transition-colors outline-none ${
+                      isDark
+                        ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-green-500'
+                        : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-green-500'
+                    }`}
+                  />
+                  {/* Remote typing indicators */}
+                  {groupTyping.length > 0 && (
+                    <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {groupTyping.map((rt, i) => (
+                        <span key={rt.address} className="animate-fade-in">
+                          {i > 0 && ', '}
+                          <span className="text-xs">{rt.emoji}</span>
+                          <span className="italic"> {rt.text || 'typing...'}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Textarea input */}
-            {group.type === 'textarea' && (
-              <textarea
-                value={(selections[group.id] as string) || ''}
-                onChange={(e) => setSelections(prev => ({ ...prev, [group.id]: e.target.value }))}
-                placeholder={group.placeholder}
-                rows={3}
-                className={`w-full px-3 py-2 text-sm border transition-colors outline-none resize-none ${
-                  isDark
-                    ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-green-500'
-                    : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-green-500'
-                }`}
-              />
-            )}
+            {group.type === 'textarea' && (() => {
+              const groupTyping = getRemoteTypingForGroup(group.id)
+              return (
+                <div className="space-y-1">
+                  <textarea
+                    value={(selections[group.id] as string) || ''}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setSelections(prev => ({ ...prev, [group.id]: value }))
+                      sendTyping(value, group.id)
+                    }}
+                    placeholder={group.placeholder}
+                    rows={3}
+                    className={`w-full px-3 py-2 text-sm border transition-colors outline-none resize-none ${
+                      isDark
+                        ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-green-500'
+                        : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-green-500'
+                    }`}
+                  />
+                  {/* Remote typing indicators */}
+                  {groupTyping.length > 0 && (
+                    <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {groupTyping.map((rt, i) => (
+                        <span key={rt.address} className="animate-fade-in">
+                          {i > 0 && ', '}
+                          <span className="text-xs">{rt.emoji}</span>
+                          <span className="italic"> {rt.text || 'typing...'}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         ))}
 
@@ -625,18 +674,42 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                 </button>
               </div>
               {/* Remote typing indicators */}
-              {remoteTyping.length > 0 && (
-                <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {remoteTyping.map((rt, i) => (
-                    <span key={rt.address} className="animate-fade-in">
-                      {i > 0 && ', '}
-                      <span className="text-xs">{rt.emoji}</span>
-                      <span className="italic"> is typing...</span>
-                    </span>
-                  ))}
-                </div>
-              )}
+              {(() => {
+                const memoTyping = getRemoteTypingForGroup('_memo')
+                return memoTyping.length > 0 && (
+                  <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {memoTyping.map((rt, i) => (
+                      <span key={rt.address} className="animate-fade-in">
+                        {i > 0 && ', '}
+                        <span className="text-xs">{rt.emoji}</span>
+                        <span className="italic"> {rt.text || 'typing...'}</span>
+                      </span>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
+            {/* Generate more ideas button for creative brainstorming */}
+            {creative && !hasSubmitted && !stillStreaming && (
+              <button
+                onClick={() => {
+                  // Extract context from the group labels
+                  const context = groups.map(g => g.label).join(', ')
+                  window.dispatchEvent(new CustomEvent('juice:send-message', {
+                    detail: {
+                      message: `Generate more unconventional ideas for: ${context}. Think outside the box - invert the problem, combine unexpected concepts, explore contrarian approaches, or find inspiration from unrelated industries.`
+                    }
+                  }))
+                }}
+                className={`text-xs transition-colors ${
+                  isDark
+                    ? 'text-gray-500 hover:text-gray-300'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                + Generate more ideas
+              </button>
+            )}
           </div>
         )
       })()}

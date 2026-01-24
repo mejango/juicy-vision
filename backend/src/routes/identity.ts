@@ -1,7 +1,7 @@
 /**
  * Juicy Identity API Routes
  *
- * Endpoints for managing and resolving [emoji]username identities
+ * Endpoints for managing and resolving username[emoji] identities
  */
 
 import { Hono } from 'hono';
@@ -34,7 +34,7 @@ function serializeIdentity(identity: Awaited<ReturnType<typeof getIdentityByAddr
     address: identity.address,
     emoji: identity.emoji,
     username: identity.username,
-    formatted: `${identity.emoji}${identity.username}`,
+    formatted: `${identity.emoji} ${identity.username}`,
     createdAt: identity.createdAt.toISOString(),
     updatedAt: identity.updatedAt.toISOString(),
   };
@@ -45,7 +45,7 @@ function serializeHistoryEntry(entry: Awaited<ReturnType<typeof getIdentityHisto
     id: entry.id,
     emoji: entry.emoji,
     username: entry.username,
-    formatted: `${entry.emoji}${entry.username}`,
+    formatted: `${entry.emoji} ${entry.username}`,
     startedAt: entry.startedAt.toISOString(),
     endedAt: entry.endedAt.toISOString(),
     changeType: entry.changeType,
@@ -143,14 +143,14 @@ identityRouter.get('/check', zValidator('query', CheckAvailabilitySchema), async
     data: {
       emoji,
       username,
-      formatted: `${emoji}${username}`,
+      formatted: `${emoji} ${username}`,
       available,
     },
   });
 });
 
 // GET /identity/resolve/:identity - Resolve identity to address
-// e.g., /identity/resolve/@🍉jango or /identity/resolve/🍉jango
+// e.g., /identity/resolve/@jango🍉 or /identity/resolve/jango🍉
 identityRouter.get('/resolve/:identity', async (c) => {
   const identityStr = decodeURIComponent(c.req.param('identity'));
   const parsed = parseIdentityString(identityStr);
@@ -159,7 +159,7 @@ identityRouter.get('/resolve/:identity', async (c) => {
     return c.json(
       {
         success: false,
-        error: 'Invalid identity format. Use @🍉username or 🍉username',
+        error: 'Invalid identity format. Use @🍉 username or 🍉 username',
       },
       400
     );
@@ -171,7 +171,7 @@ identityRouter.get('/resolve/:identity', async (c) => {
     return c.json(
       {
         success: false,
-        error: `Identity ${parsed.emoji}${parsed.username} not found`,
+        error: `Identity ${parsed.emoji} ${parsed.username} not found`,
       },
       404
     );
@@ -182,7 +182,7 @@ identityRouter.get('/resolve/:identity', async (c) => {
     data: {
       emoji: parsed.emoji,
       username: parsed.username,
-      formatted: `${parsed.emoji}${parsed.username}`,
+      formatted: `${parsed.emoji} ${parsed.username}`,
       address,
     },
   });

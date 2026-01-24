@@ -19,6 +19,8 @@ const SendReservedTokensForm = lazy(() => import('./SendReservedTokensForm'))
 const UseSurplusAllowanceForm = lazy(() => import('./UseSurplusAllowanceForm'))
 const DeployERC20Form = lazy(() => import('./DeployERC20Form'))
 const QueueRulesetForm = lazy(() => import('./QueueRulesetForm'))
+const CreateProjectForm = lazy(() => import('./CreateProjectForm'))
+const CreateRevnetForm = lazy(() => import('./CreateRevnetForm'))
 const PriceChart = lazy(() => import('./PriceChart'))
 const ActivityFeed = lazy(() => import('./ActivityFeed'))
 const RulesetSchedule = lazy(() => import('./RulesetSchedule'))
@@ -100,6 +102,14 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
   'queue-ruleset-form': {
     component: QueueRulesetForm,
     mapProps: (p) => ({ projectId: p.projectId, chainId: p.chainId }),
+  },
+  'create-project-form': {
+    component: CreateProjectForm,
+    mapProps: (p) => ({ defaultOwner: p.owner, defaultChainIds: p.chainIds }),
+  },
+  'create-revnet-form': {
+    component: CreateRevnetForm,
+    mapProps: (p) => ({ defaultOperator: p.operator, defaultChainIds: p.chainIds }),
   },
 
   // Transactions
@@ -457,6 +467,7 @@ function renderOptionsPicker(
         isStreaming={componentIsStreaming || false}
         chatId={chatId}
         messageId={messageId}
+        creative={props.creative === 'true' || props.creative === true}
       />
     )
   }
@@ -528,6 +539,7 @@ function renderOptionsPicker(
       isStreaming={isStreaming}
       chatId={chatId}
       messageId={messageId}
+      creative={props.creative === 'true' || props.creative === true}
     />
   )
 }

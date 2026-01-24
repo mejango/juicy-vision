@@ -223,7 +223,7 @@ export function MemberPopover({
       <div className="flex items-center gap-3 mb-2">
         <span className="text-2xl">{emoji}</span>
         <div className="flex-1 min-w-0">
-          {/* Juicy Identity username (without emoji prefix) */}
+          {/* Juicy Identity username (emoji shown separately) */}
           {identity && (
             <p className={`text-sm font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {identity.username}
