@@ -48,7 +48,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   // Local streaming state (no longer in store)
   const [isStreaming, setIsStreaming] = useState(false)
   // Track if we're waiting for AI response (between invokeAi call and first streaming token)
-  const [isWaitingForAi, setIsWaitingForAi] = useState(false)
+  // Uses store state so it persists across navigation (e.g., when creating new chats)
+  const waitingForAiChatId = useChatStore(state => state.waitingForAiChatId)
+  const setWaitingForAiChatId = useChatStore(state => state.setWaitingForAiChatId)
 
   const { language, setLanguage } = useSettingsStore()
   const { theme, toggleTheme } = useThemeStore()
@@ -77,6 +79,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   // Use forceActiveChatId (from URL) over store value to prevent race conditions
   // The store is updated in a useEffect which runs AFTER render, so the prop is more reliable
   const activeChatId = forceActiveChatId || storeActiveChatId
+
+  // Compute isWaitingForAi from store state
+  const isWaitingForAi = waitingForAiChatId === activeChatId && !!activeChatId
 
   // Get chat using the resolved activeChatId, not store's getActiveChat
   // Filter out null entries that can occur during state cleanup
@@ -286,6 +291,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   // Use display messages for everything
   const messages = displayMessages
 
+  // Check if any message is currently streaming
+  const hasStreamingMessage = messages.some(m => m.isStreaming)
+
   // Count assistant messages to trigger placeholder change only on new bot responses
   const assistantMessageCount = messages.filter(m => m.role === 'assistant').length
 
@@ -327,9 +335,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     setError(null)
     setIsStreaming(true)
     setShowContinueButton(false) // Clear nudge button when user sends a new message
-    if (effectiveAiEnabled) {
-      setIsWaitingForAi(true) // Show thinking indicator immediately when user sends (only if AI is on)
-    }
 
     try {
       let chatId = currentChatId
@@ -387,19 +392,21 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       // Invoke AI to respond - backend handles Claude API call and broadcasts response
       // Only invoke if AI is enabled for this chat (global toggle AND personal preference)
       if (effectiveAiEnabled) {
-        // isWaitingForAi is already true, will be cleared when first streaming token arrives via WebSocket
+        // Set waiting state NOW (after navigation for new chats, so state doesn't reset)
+        // Uses store state so it persists across navigation
+        setWaitingForAiChatId(chatId)
         try {
           await chatApi.invokeAi(chatId, content, attachmentData)
         } catch (aiErr) {
           console.error('Failed to invoke AI:', aiErr)
-          setIsWaitingForAi(false)
+          setWaitingForAiChatId(null)
           // Don't set error - the user message was sent successfully
         }
       }
     } catch (err) {
       console.error('Failed to send message:', err)
       setError(err instanceof Error ? err.message : 'Failed to send message')
-      setIsWaitingForAi(false)
+      setWaitingForAiChatId(null)
     } finally {
       setIsStreaming(false)
     }
@@ -415,14 +422,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     if (!chatId) return
 
     setShowContinueButton(false)
-    setIsWaitingForAi(true)
+    setWaitingForAiChatId(chatId)
 
     try {
       // Re-invoke AI with a "continue" prompt
       await chatApi.invokeAi(chatId, 'Please continue.')
     } catch (err) {
       console.error('Failed to continue AI:', err)
-      setIsWaitingForAi(false)
+      setWaitingForAiChatId(null)
       // Show continue button again so user can retry
       setShowContinueButton(true)
     }
@@ -616,14 +623,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       const currentChatId = forceActiveChatId || useChatStore.getState().activeChatId
       if (e.detail.chatId === currentChatId) {
         setShowContinueButton(true)
-        setIsWaitingForAi(false)
+        setWaitingForAiChatId(null)
       }
     }
     const handleStreamingStarted = (e: CustomEvent<{ chatId: string; messageId: string }>) => {
       const currentChatId = forceActiveChatId || useChatStore.getState().activeChatId
       if (e.detail.chatId === currentChatId) {
         setShowContinueButton(false) // Clear nudge button when AI starts responding
-        setIsWaitingForAi(false) // Also clear thinking indicator
+        // Note: isWaitingForAi is cleared in WebSocket handler when streaming message is created
       }
     }
     window.addEventListener('chat:ai-empty-response', handleEmptyResponse as EventListener)
@@ -638,10 +645,43 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   useEffect(() => {
     if (!isWaitingForAi) return
     const timeout = setTimeout(() => {
-      setIsWaitingForAi(false)
+      setWaitingForAiChatId(null)
       setShowContinueButton(true)
     }, 30000) // 30 seconds
     return () => clearTimeout(timeout)
+  }, [isWaitingForAi, setWaitingForAiChatId])
+
+  // When waiting for AI, scroll to bottom so the expanded padding pushes content up
+  // This creates visible space for the AI response
+  // Only scroll if user is in the bottom half AND there's enough content to scroll
+  useEffect(() => {
+    if (!isWaitingForAi) return
+    const container = messagesScrollRef.current
+    if (!container) return
+
+    // Skip if content is already near the top (new chat with first message)
+    // Only scroll if there's meaningful scroll distance (more than 100px from current position)
+    const currentScrollBottom = container.scrollTop + container.clientHeight
+    const scrollDistance = container.scrollHeight - currentScrollBottom
+    if (scrollDistance < 100) return
+
+    // Check if user is in bottom half of scroll area
+    const scrollPosition = container.scrollTop + container.clientHeight
+    const totalHeight = container.scrollHeight
+    const isInBottomHalf = scrollPosition > totalHeight / 2
+
+    if (!isInBottomHalf) return
+
+    // Small delay to let the padding increase take effect
+    setTimeout(() => {
+      // Don't scroll all the way to bottom - leave ~15% of viewport showing previous content
+      const offset = container.clientHeight * 0.15
+      const targetScroll = container.scrollHeight - container.clientHeight - offset
+      container.scrollTo({
+        top: Math.max(0, targetScroll),
+        behavior: 'smooth'
+      })
+    }, 50)
   }, [isWaitingForAi])
 
   // Load shared chat data and connect WebSocket when activeChatId changes
@@ -767,9 +807,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             // Handle streaming AI response tokens with buffering
             const { messageId, token, isDone } = msg.data as { messageId: string; token: string; isDone: boolean }
 
-            // Clear the "waiting for AI" state as soon as we get the first token
-            setIsWaitingForAi(false)
-
             if (isDone) {
               // Streaming complete - flush final content and remove from tracking
               if (pendingUpdates.has(messageId)) {
@@ -778,6 +815,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               streamingMessages.delete(messageId)
               // Mark message as no longer streaming
               useChatStore.getState().updateMessage(targetChatId, messageId, { isStreaming: false })
+              // Clear waiting state when streaming is done
+              useChatStore.getState().setWaitingForAiChatId(null)
             } else {
               // Accumulate tokens in buffer - store chatId with content to avoid closure issues
               const existing = streamingMessages.get(messageId)
@@ -785,7 +824,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               const newContent = currentContent + token
               streamingMessages.set(messageId, { content: newContent, chatId: targetChatId })
               pendingUpdates.set(messageId, { content: newContent, chatId: targetChatId })
-              scheduleUpdate()
+
+              // On FIRST token, create the message immediately for instant feedback
+              // Then use batching for subsequent tokens
+              if (!existing) {
+                flushUpdates() // Create message immediately
+                useChatStore.getState().setWaitingForAiChatId(null) // Clear thinking indicator once message exists
+              } else {
+                scheduleUpdate() // Batch subsequent tokens
+              }
             }
             break
           }
@@ -905,6 +952,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => window.removeEventListener('juice:open-settings', handleOpenSettings)
   }, [closeAllPopovers])
 
+
   // Listen for action bar events from Header
   useEffect(() => {
     const onInvite = (e: Event) => {
@@ -961,7 +1009,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           </div>
         )}
 
-        {messages.length === 0 ? (
+        {messages.length === 0 && !isWaitingForAi ? (
           <>
             {/* Welcome screen (recommendations) - fills full area, extends behind dock */}
             {(topOnly || (!topOnly && !bottomOnly)) && (
@@ -1202,9 +1250,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   onMemberUpdated={handleMemberUpdated}
                   showNudgeButton={showContinueButton}
                   onNudge={handleContinue}
+                  scrollContainerRef={messagesScrollRef}
                 />
-                {/* Bottom padding so content can scroll under the dock */}
-                <div className="h-[14.44vh]" />
+                {/* Bottom padding - larger when waiting for AI or streaming to create space for response */}
+                <div className={(isWaitingForAi || hasStreamingMessage) ? "h-[70vh]" : "h-[14.44vh]"} />
               </div>
             )}
 

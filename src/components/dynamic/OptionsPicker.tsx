@@ -33,6 +33,8 @@ interface OptionsPickerProps {
   messageId?: string
   // Creative mode: show "generate more ideas" button for brainstorming
   creative?: boolean
+  // User's response to this picker (if already submitted) - used to restore state after page refresh
+  userResponse?: string
 }
 
 // Values that indicate "other" / custom input
@@ -44,16 +46,22 @@ const DONE_WORDS = ['Great', 'Super', 'Got it', 'Ok', 'Nice']
 // Normalize value for comparison (lowercase, trim, collapse spaces)
 const normalizeValue = (value: string) => value.toLowerCase().trim().replace(/[\s_-]+/g, ' ')
 
-export default function OptionsPicker({ groups, submitLabel = 'Continue', allSelectedLabel, onSubmit, expectedGroupCount, isStreaming, chatId, messageId, creative }: OptionsPickerProps) {
+export default function OptionsPicker({ groups, submitLabel = 'Continue', allSelectedLabel, onSubmit, expectedGroupCount, isStreaming, chatId, messageId, creative, userResponse }: OptionsPickerProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
   // Track if the picker has been submitted (to show idle state)
-  const [hasSubmitted, setHasSubmitted] = useState(false)
-  const [doneWord, setDoneWord] = useState('')
+  // Initialize as submitted if we have a userResponse (component was previously submitted)
+  const [hasSubmitted, setHasSubmitted] = useState(!!userResponse)
+  const [doneWord, setDoneWord] = useState(() => userResponse ? 'Done' : '')
 
-  // Optional memo/note from user
-  const [memo, setMemo] = useState('')
+  // Optional memo/note from user - restore from userResponse if present
+  const [memo, setMemo] = useState(() => {
+    if (userResponse && userResponse.includes('. Note: ')) {
+      return userResponse.split('. Note: ')[1] || ''
+    }
+    return ''
+  })
 
   // Real-time collaboration
   const collaborationEnabled = !!(chatId && messageId)
@@ -70,8 +78,85 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     enabled: collaborationEnabled,
   })
 
+  // Parse userResponse to restore selections (format: "GroupLabel: Value, GroupLabel2: Value2. Note: memo")
+  const parseUserResponse = (response: string): Record<string, string | string[]> => {
+    const result: Record<string, string | string[]> = {}
+
+    // Remove memo suffix if present
+    const mainPart = response.split('. Note:')[0].trim()
+
+    // Find positions of all group labels in the response
+    const positions: { group: OptionGroup; start: number; labelEnd: number }[] = []
+
+    for (const group of groups) {
+      // Match group label at start or after ", "
+      const escapedLabel = group.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const pattern = new RegExp(`(^|, )${escapedLabel}:\\s*`, 'i')
+      const match = mainPart.match(pattern)
+      if (match && match.index !== undefined) {
+        const prefixLen = match[1]?.length || 0
+        const start = match.index + prefixLen
+        positions.push({
+          group,
+          start,
+          labelEnd: start + match[0].length - prefixLen
+        })
+      }
+    }
+
+    // Sort by position in string
+    positions.sort((a, b) => a.start - b.start)
+
+    // Extract values between each group label
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i]
+      const valueStart = pos.labelEnd
+      const valueEnd = positions[i + 1]?.start ?? mainPart.length
+      let valueStr = mainPart.slice(valueStart, valueEnd).trim()
+      // Remove trailing comma if present (from joining multiple groups)
+      valueStr = valueStr.replace(/,\s*$/, '')
+
+      const options = pos.group.options || []
+
+      if (pos.group.multiSelect) {
+        // Split by comma and find matching option values
+        const labels = valueStr.split(/,\s*/)
+        const values = labels.map(label => {
+          const opt = options.find(o => o.label.toLowerCase() === label.toLowerCase().trim())
+          return opt?.value
+        }).filter((v): v is string => !!v)
+        result[pos.group.id] = values
+      } else {
+        // Find matching option value
+        const opt = options.find(o => o.label.toLowerCase() === valueStr.toLowerCase())
+        result[pos.group.id] = opt?.value || valueStr
+      }
+    }
+
+    return result
+  }
+
   // Initialize with pre-selected options or first option of each group
   const [selections, setSelections] = useState<Record<string, string | string[]>>(() => {
+    // If we have a userResponse, parse it to restore previous selections
+    if (userResponse) {
+      const parsed = parseUserResponse(userResponse)
+      // Merge with defaults for any groups not found in response
+      const initial: Record<string, string | string[]> = {}
+      groups.forEach(g => {
+        if (parsed[g.id] !== undefined) {
+          initial[g.id] = parsed[g.id]
+        } else if (g.type === 'text' || g.type === 'textarea') {
+          initial[g.id] = ''
+        } else if (g.multiSelect) {
+          initial[g.id] = []
+        } else if ((g.options || []).length > 0) {
+          initial[g.id] = g.options![0].value
+        }
+      })
+      return initial
+    }
+
     const initial: Record<string, string | string[]> = {}
     groups.forEach(g => {
       // Text inputs start empty

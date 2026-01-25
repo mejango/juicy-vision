@@ -118,6 +118,7 @@ interface ChatState {
   chats: Chat[]
   folders: ChatFolder[]
   activeChatId: string | null
+  waitingForAiChatId: string | null  // Track which chat is waiting for AI response (persists across navigation)
   isLoading: boolean
   isConnected: boolean
   error: string | null
@@ -164,6 +165,7 @@ interface ChatState {
   setError: (error: string | null) => void
   clearUnread: (chatId: string) => void
   incrementUnread: (chatId: string) => void
+  setWaitingForAiChatId: (chatId: string | null) => void
 }
 
 export const useChatStore = create<ChatState>()(
@@ -172,6 +174,7 @@ export const useChatStore = create<ChatState>()(
       chats: [],
       folders: [],
       activeChatId: null,
+      waitingForAiChatId: null,
       isLoading: false,
       isConnected: false,
       error: null,
@@ -425,6 +428,8 @@ export const useChatStore = create<ChatState>()(
               : c
           ),
         })),
+
+      setWaitingForAiChatId: (chatId) => set({ waitingForAiChatId: chatId }),
     }),
     {
       name: 'juice-chat',

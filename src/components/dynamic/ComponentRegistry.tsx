@@ -273,6 +273,7 @@ interface ComponentRegistryProps {
   component: ParsedComponent
   chatId?: string
   messageId?: string
+  userResponse?: string // The user's response to this component (if submitted)
 }
 
 function LazyWrapper({
@@ -469,7 +470,8 @@ function renderOptionsPicker(
   props: Record<string, unknown>,
   componentIsStreaming?: boolean,
   chatId?: string,
-  messageId?: string
+  messageId?: string,
+  userResponse?: string
 ) {
   const groupsStr = props.groups as string | undefined
   const streamTotal = props.streamTotal
@@ -488,6 +490,7 @@ function renderOptionsPicker(
         chatId={chatId}
         messageId={messageId}
         creative={props.creative === 'true' || props.creative === true}
+        userResponse={userResponse}
       />
     )
   }
@@ -560,11 +563,12 @@ function renderOptionsPicker(
       chatId={chatId}
       messageId={messageId}
       creative={props.creative === 'true' || props.creative === true}
+      userResponse={userResponse}
     />
   )
 }
 
-export default function ComponentRegistry({ component, chatId, messageId }: ComponentRegistryProps) {
+export default function ComponentRegistry({ component, chatId, messageId, userResponse }: ComponentRegistryProps) {
   const { type, props, isStreaming } = component
 
   // Handle loading state
@@ -574,7 +578,7 @@ export default function ComponentRegistry({ component, chatId, messageId }: Comp
 
   // Handle special case: options-picker needs custom parsing logic
   if (type === 'options-picker') {
-    return renderOptionsPicker(props, isStreaming, chatId, messageId)
+    return renderOptionsPicker(props, isStreaming, chatId, messageId, userResponse)
   }
 
   // Look up component in registry

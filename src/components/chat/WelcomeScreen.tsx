@@ -2710,6 +2710,7 @@ const ChipButton = memo(function ChipButton({
 }) {
   const { displayText, isCategory, badgeType } = chip
   const isDark = theme === 'dark'
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null)
 
   const className = isCategory
     ? isDark
@@ -2739,10 +2740,39 @@ const ChipButton = memo(function ChipButton({
                 ? 'bg-gray-700/40 border-white/10 text-gray-300 hover:bg-gray-600/50 hover:border-white/25 hover:text-white'
                 : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900'
 
+  // Handle touch start - record position for drag detection
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() }
+  }, [])
+
+  // Handle touch end - only trigger click if it wasn't a drag
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current) return
+
+    const touch = e.changedTouches[0]
+    const dx = touch.clientX - touchStartRef.current.x
+    const dy = touch.clientY - touchStartRef.current.y
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    const duration = Date.now() - touchStartRef.current.time
+
+    // Only trigger click if:
+    // - Movement was less than 10px (finger wobble tolerance)
+    // - Touch duration was less than 500ms (not a long press/drag)
+    if (distance < 10 && duration < 500) {
+      e.preventDefault()
+      e.stopPropagation()
+      onClick()
+    }
+
+    touchStartRef.current = null
+  }, [onClick])
+
   return (
     <button
-      onMouseUp={onClick}
-      onTouchEnd={onClick}
+      onClick={onClick}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
       className={`px-3 py-2 border text-sm whitespace-nowrap select-none flex items-center gap-2 transition-[background-color,border-color,color] duration-100 ${className}`}
       style={{ height: CHIP_HEIGHT }}
     >
@@ -2788,6 +2818,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   const [scale, setScale] = useState(1)
   const isDraggingRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
+  const mouseStartRef = useRef({ x: 0, y: 0 }) // Track initial mouse position for threshold
   const offsetRef = useRef({ x: 0, y: 0 })
   const scaleRef = useRef(1)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -2795,6 +2826,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   const rafIdRef = useRef<number | null>(null) // For requestAnimationFrame cleanup
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const hasDraggedRef = useRef(false)
+  const DRAG_THRESHOLD = 5 // Minimum pixels of movement before considering it a drag
   const lastPinchDistRef = useRef<number | null>(null)
   const [selectedTraits, setSelectedTraits] = useState<Set<TraitId>>(new Set())
 
@@ -2928,7 +2960,17 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDraggingRef.current) return
-      hasDraggedRef.current = true
+
+      // Calculate distance from initial mouse position
+      const dx = e.clientX - mouseStartRef.current.x
+      const dy = e.clientY - mouseStartRef.current.y
+      const distance = Math.sqrt(dx * dx + dy * dy)
+
+      // Only consider it a drag if movement exceeds threshold
+      if (distance > DRAG_THRESHOLD) {
+        hasDraggedRef.current = true
+      }
+
       offsetRef.current = {
         x: e.clientX - dragStartRef.current.x,
         y: e.clientY - dragStartRef.current.y,
@@ -2967,8 +3009,19 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
 
       // Single finger drag
       if (!isDraggingRef.current) return
-      hasDraggedRef.current = true
+
       const touch = e.touches[0]
+
+      // Calculate distance from initial touch position
+      const dx = touch.clientX - mouseStartRef.current.x
+      const dy = touch.clientY - mouseStartRef.current.y
+      const distance = Math.sqrt(dx * dx + dy * dy)
+
+      // Only consider it a drag if movement exceeds threshold
+      if (distance > DRAG_THRESHOLD) {
+        hasDraggedRef.current = true
+      }
+
       offsetRef.current = {
         x: touch.clientX - dragStartRef.current.x,
         y: touch.clientY - dragStartRef.current.y,
@@ -3040,6 +3093,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   const handleMouseDown = (e: React.MouseEvent) => {
     isDraggingRef.current = true
     hasDraggedRef.current = false
+    mouseStartRef.current = { x: e.clientX, y: e.clientY }
     dragStartRef.current = {
       x: e.clientX - offsetRef.current.x,
       y: e.clientY - offsetRef.current.y,
@@ -3050,6 +3104,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
     const touch = e.touches[0]
     isDraggingRef.current = true
     hasDraggedRef.current = false
+    mouseStartRef.current = { x: touch.clientX, y: touch.clientY }
     dragStartRef.current = {
       x: touch.clientX - offsetRef.current.x,
       y: touch.clientY - offsetRef.current.y,

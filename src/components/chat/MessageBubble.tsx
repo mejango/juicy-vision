@@ -23,6 +23,7 @@ interface MessageBubbleProps {
   currentUserMember?: ChatMember
   onlineMembers?: string[]
   onMemberUpdated?: (member: ChatMember) => void
+  userResponse?: string // The user's response to this message (if any), used to show submitted state for interactive components
 }
 
 // Download popover component
@@ -184,6 +185,7 @@ export default function MessageBubble({
   currentUserMember,
   onlineMembers,
   onMemberUpdated,
+  userResponse,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const parsed = parseMessageContent(message.content)
@@ -330,7 +332,7 @@ export default function MessageBubble({
                 } else {
                   return (
                     <div key={index} className="my-3">
-                      <ComponentRegistry component={segment.component} chatId={chatId} messageId={message.id} />
+                      <ComponentRegistry component={segment.component} chatId={chatId} messageId={message.id} userResponse={userResponse} />
                     </div>
                   )
                 }
@@ -374,10 +376,48 @@ export default function MessageBubble({
         /* Assistant message */
         <div className={`w-full bg-transparent px-4 py-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
           <div className="flex items-start gap-3">
-            {/* Lightning bolt for AI */}
-            <div className="shrink-0 pt-0.5 text-lg leading-none">
+            {/* Lightning bolt for AI - flickers when streaming */}
+            <div
+              className="shrink-0 pt-0.5 text-lg leading-none"
+              style={message.isStreaming ? {
+                animation: 'lightning 2.5s ease-in-out infinite',
+              } : undefined}
+            >
               ⚡️
             </div>
+            {message.isStreaming && (
+              <style>{`
+                @keyframes lightning {
+                  0%, 100% { opacity: 0.3; }
+                  8% { opacity: 0.3; }
+                  9% { opacity: 1; }
+                  10% { opacity: 0.15; }
+                  11% { opacity: 0.6; }
+                  12% { opacity: 0.3; }
+                  25% { opacity: 0.3; }
+                  26% { opacity: 1; }
+                  27% { opacity: 0.2; }
+                  28% { opacity: 0.9; }
+                  29% { opacity: 0.15; }
+                  31% { opacity: 0.3; }
+                  45% { opacity: 0.3; }
+                  46% { opacity: 1; }
+                  48% { opacity: 0.2; }
+                  50% { opacity: 0.3; }
+                  65% { opacity: 0.3; }
+                  66% { opacity: 1; }
+                  67% { opacity: 0.15; }
+                  68% { opacity: 0.85; }
+                  69% { opacity: 0.1; }
+                  70% { opacity: 0.95; }
+                  71% { opacity: 0.2; }
+                  73% { opacity: 0.3; }
+                  88% { opacity: 0.3; }
+                  89% { opacity: 0.8; }
+                  91% { opacity: 0.3; }
+                }
+              `}</style>
+            )}
             {/* Message content */}
             <div className="flex-1 min-w-0">
           {parsed.segments.map((segment, index) => {
@@ -419,7 +459,7 @@ export default function MessageBubble({
             } else {
               return (
                 <div key={index} className="my-3">
-                  <ComponentRegistry component={segment.component} chatId={chatId} messageId={message.id} />
+                  <ComponentRegistry component={segment.component} chatId={chatId} messageId={message.id} userResponse={userResponse} />
                 </div>
               )
             }
