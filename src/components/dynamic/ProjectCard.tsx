@@ -204,6 +204,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   const [suckerBalance, setSuckerBalance] = useState<SuckerGroupBalance | null>(null)
   // ETH price in USD
   const [ethPrice, setEthPrice] = useState<number | null>(null)
+  const [ethPriceLoading, setEthPriceLoading] = useState(true)
+  const [ethPriceError, setEthPriceError] = useState(false)
   // Owners count (unique token holders with balance > 0)
   const [ownersCount, setOwnersCount] = useState<number | null>(null)
   // Tooltip hover states
@@ -266,7 +268,18 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
 
   // Fetch ETH price on mount
   useEffect(() => {
-    fetchEthPrice().then(setEthPrice)
+    setEthPriceLoading(true)
+    setEthPriceError(false)
+    fetchEthPrice()
+      .then((price) => {
+        setEthPrice(price)
+        setEthPriceError(price === null)
+      })
+      .catch(() => {
+        setEthPrice(null)
+        setEthPriceError(true)
+      })
+      .finally(() => setEthPriceLoading(false))
   }, [])
 
   // Fetch project data and issuance rate when chain changes
@@ -372,6 +385,12 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   useEffect(() => {
     fetchWalletBalances()
   }, [fetchWalletBalances])
+
+  // Check if cross-currency conversion is needed (requires ETH price)
+  const projectCurrency = suckerBalance?.currency ?? 1 // 1=ETH, 2=USD
+  const needsCrossConversion = (projectCurrency === 2 && selectedToken === 'ETH') ||
+                               (projectCurrency === 1 && selectedToken === 'USDC')
+  const crossConversionBlocked = needsCrossConversion && !ethPrice && !ethPriceLoading
 
   // Calculate expected tokens based on amount and issuance rate
   // issuanceRate.tokensPerEth is calculated from recent pay events:
@@ -872,9 +891,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
           </div>
           <button
             onClick={handlePay}
-            disabled={paying || !amount || parseFloat(amount) <= 0}
+            disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
-              paying || !amount || parseFloat(amount) <= 0
+              paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked
                 ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                 : 'bg-green-500 hover:bg-green-600 text-black'
             }`}
@@ -894,6 +913,20 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
             isDark={isDark}
             onRetry={() => setActivePaymentId(null)}
           />
+        )}
+
+        {/* Cross-currency warning when ETH price unavailable */}
+        {crossConversionBlocked && (
+          <div className={`mt-2 p-2 text-sm ${
+            isDark ? 'bg-yellow-500/10' : 'bg-yellow-50'
+          }`}>
+            <div className={`flex items-center gap-2 ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>ETH price unavailable — pay with {projectCurrency === 2 ? 'USDC' : 'ETH'} instead</span>
+            </div>
+          </div>
         )}
 
         {/* Quick amount options */}

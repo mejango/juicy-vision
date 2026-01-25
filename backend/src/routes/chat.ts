@@ -69,6 +69,8 @@ import {
 } from '../services/websocket.ts';
 import { query, queryOne, execute } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
+import { getPseudoAddress, verifyWalletSignature, parseSessionMergeMessage, isTimestampValid } from '../utils/crypto.ts';
+import { rateLimitMiddleware, rateLimitByWallet } from '../services/rateLimit.ts';
 
 const chatRouter = new Hono();
 
@@ -170,9 +172,9 @@ async function requireWalletOrAuth(c: any, next: any) {
   // Try anonymous session (X-Session-ID header)
   const sessionId = c.req.header('X-Session-ID');
   if (sessionId && sessionId.startsWith('ses_')) {
-    // Create a pseudo-address from the session ID for anonymous users
+    // Create a pseudo-address using HMAC-SHA256 for anonymous users
     // This allows them to own chats and create invites
-    const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+    const pseudoAddress = await getPseudoAddress(sessionId);
     c.set('walletSession', {
       address: pseudoAddress,
       sessionId,
@@ -213,7 +215,7 @@ async function optionalWalletSession(c: any, next: any) {
   // Try anonymous session (X-Session-ID header)
   const sessionId = c.req.header('X-Session-ID');
   if (sessionId && sessionId.startsWith('ses_')) {
-    const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+    const pseudoAddress = await getPseudoAddress(sessionId);
     c.set('walletSession', {
       address: pseudoAddress,
       sessionId,
@@ -247,6 +249,7 @@ chatRouter.post(
   '/',
   optionalAuth,
   requireWalletOrAuth,
+  rateLimitByWallet('chatCreate'),
   zValidator('json', CreateChatSchema),
   async (c) => {
     const walletSession = c.get('walletSession')!;
@@ -797,6 +800,7 @@ chatRouter.post(
   '/:chatId/messages',
   optionalAuth,
   requireWalletOrAuth,
+  rateLimitByWallet('chatMessage'),
   zValidator('json', SendMessageSchema),
   async (c) => {
     const chatId = c.req.param('chatId');
@@ -810,7 +814,7 @@ chatRouter.post(
     let canWrite = await checkPermission(chatId, senderAddress, 'write');
 
     if (!canWrite && sessionId && sessionId.startsWith('ses_')) {
-      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+      const pseudoAddress = await getPseudoAddress(sessionId);
       if (pseudoAddress !== walletSession.address) {
         const pseudoCanWrite = await checkPermission(chatId, pseudoAddress, 'write');
         if (pseudoCanWrite) {
@@ -1640,12 +1644,17 @@ chatRouter.post(
  * POST /chat/merge-session - Merge anonymous session memberships to authenticated address
  *
  * When a user connects their wallet or passkey, this endpoint:
- * 1. Finds all chats where the session's pseudo-address is a member
- * 2. For each chat, updates the member record to use the authenticated address
- * 3. Returns the list of merged chat IDs
+ * 1. Verifies the user owns the new address via wallet signature
+ * 2. Finds all chats where the session's pseudo-address is a member
+ * 3. For each chat, updates the member record to use the authenticated address
+ * 4. Returns the list of merged chat IDs
+ *
+ * Security: Requires signed message proving ownership of newAddress with recent timestamp
  */
 const MergeSessionSchema = z.object({
   newAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  signature: z.string().regex(/^0x[a-fA-F0-9]+$/),
+  message: z.string(),
 });
 
 chatRouter.post(
@@ -1659,9 +1668,32 @@ chatRouter.post(
       return c.json({ success: false, error: 'Session ID required' }, 400);
     }
 
-    // Generate pseudo-address from session ID (same logic as middleware)
-    const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
     const newAddress = body.newAddress.toLowerCase();
+
+    // Verify the message format and extract timestamp
+    const parsed = parseSessionMergeMessage(body.message);
+    if (!parsed) {
+      return c.json({ success: false, error: 'Invalid message format' }, 400);
+    }
+
+    // Verify the message is for the claimed address
+    if (parsed.address !== newAddress) {
+      return c.json({ success: false, error: 'Message address mismatch' }, 400);
+    }
+
+    // Verify timestamp is within 5 minute window
+    if (!isTimestampValid(parsed.timestamp)) {
+      return c.json({ success: false, error: 'Message expired or invalid timestamp' }, 400);
+    }
+
+    // Verify the signature
+    const isValidSignature = await verifyWalletSignature(body.message, body.signature, newAddress);
+    if (!isValidSignature) {
+      return c.json({ success: false, error: 'Invalid signature' }, 401);
+    }
+
+    // Generate pseudo-address using HMAC (same logic as middleware)
+    const pseudoAddress = await getPseudoAddress(sessionId);
 
     if (pseudoAddress.toLowerCase() === newAddress) {
       // Same address, nothing to merge

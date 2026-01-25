@@ -112,6 +112,46 @@ const ANKR_CHAIN_SLUGS: Record<number, string> = {
   42161: 'arbitrum',
 };
 
+// Allowlist of safe read-only RPC methods
+const ALLOWED_RPC_METHODS = new Set([
+  // Read state
+  'eth_call',
+  'eth_getBalance',
+  'eth_getCode',
+  'eth_getStorageAt',
+  'eth_getTransactionCount',
+  'eth_getTransactionByHash',
+  'eth_getTransactionReceipt',
+  'eth_getBlockByHash',
+  'eth_getBlockByNumber',
+  'eth_blockNumber',
+  'eth_chainId',
+  'eth_gasPrice',
+  'eth_estimateGas',
+  'eth_feeHistory',
+  'eth_maxPriorityFeePerGas',
+  'eth_getLogs',
+  // Network info
+  'net_version',
+  'net_listening',
+  'web3_clientVersion',
+]);
+
+// Explicitly blocked dangerous methods (for clarity and logging)
+const BLOCKED_RPC_METHODS = new Set([
+  'eth_sign',
+  'eth_signTransaction',
+  'eth_sendTransaction',
+  'eth_sendRawTransaction',
+  'personal_sign',
+  'personal_sendTransaction',
+  'eth_signTypedData',
+  'eth_signTypedData_v3',
+  'eth_signTypedData_v4',
+  'wallet_addEthereumChain',
+  'wallet_switchEthereumChain',
+]);
+
 proxyRouter.post('/rpc/:chainId', async (c) => {
   const config = getConfig();
   const chainId = parseInt(c.req.param('chainId'), 10);
@@ -127,6 +167,22 @@ proxyRouter.post('/rpc/:chainId', async (c) => {
 
   try {
     const body = await c.req.json();
+
+    // Validate RPC method is allowed
+    const method = body.method;
+    if (!method || typeof method !== 'string') {
+      return c.json({ error: 'Invalid RPC request: missing method' }, 400);
+    }
+
+    if (BLOCKED_RPC_METHODS.has(method)) {
+      console.warn(`[RPC Proxy] Blocked dangerous method: ${method}`);
+      return c.json({ error: `Method not allowed: ${method}` }, 403);
+    }
+
+    if (!ALLOWED_RPC_METHODS.has(method)) {
+      console.warn(`[RPC Proxy] Blocked unknown method: ${method}`);
+      return c.json({ error: `Method not allowed: ${method}` }, 403);
+    }
 
     // Use Ankr with API key if available, otherwise fall back to public endpoints
     let endpoint: string;

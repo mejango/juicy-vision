@@ -408,7 +408,8 @@ function formatSimpleValue(value: unknown, key?: string, chainId?: string): stri
       909516616: 'USDC',
     }
     const label = currencyLabels[numValue]
-    return label ? `${numValue} (${label})` : String(numValue)
+    const formattedNum = numValue.toLocaleString()
+    return label ? `${formattedNum} (${label})` : formattedNum
   }
 
   // Weight has 18 decimals - convert to human readable

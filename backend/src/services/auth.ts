@@ -37,11 +37,14 @@ const OTP_EXPIRY_MINUTES = 10;
 const OTP_LENGTH = 6;
 
 function generateOtpCode(): string {
-  // Generate a 6-digit numeric code
-  const digits = '0123456789';
+  // Generate a 6-digit numeric code using cryptographically secure random
+  const randomBytes = new Uint8Array(OTP_LENGTH);
+  crypto.getRandomValues(randomBytes);
+
   let code = '';
   for (let i = 0; i < OTP_LENGTH; i++) {
-    code += digits[Math.floor(Math.random() * digits.length)];
+    // Use modulo to convert random byte (0-255) to digit (0-9)
+    code += (randomBytes[i] % 10).toString();
   }
   return code;
 }

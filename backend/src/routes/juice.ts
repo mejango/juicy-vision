@@ -21,6 +21,7 @@ import {
   getUserSpends,
   getUserCashOuts,
 } from '../services/juice.ts';
+import { rateLimitByUser } from '../services/rateLimit.ts';
 
 export const juiceRouter = new Hono();
 
@@ -63,6 +64,7 @@ const PurchaseSchema = z.object({
 juiceRouter.post(
   '/purchase',
   requireAuth,
+  rateLimitByUser('juicePurchase'),
   zValidator('json', PurchaseSchema),
   async (c) => {
     const user = c.get('user');
@@ -157,6 +159,7 @@ const SpendSchema = z.object({
 juiceRouter.post(
   '/spend',
   requireAuth,
+  rateLimitByUser('juiceSpend'),
   zValidator('json', SpendSchema),
   async (c) => {
     const user = c.get('user');
@@ -233,6 +236,7 @@ const CashOutSchema = z.object({
 juiceRouter.post(
   '/cash-out',
   requireAuth,
+  rateLimitByUser('juiceCashOut'),
   zValidator('json', CashOutSchema),
   async (c) => {
     const user = c.get('user');
