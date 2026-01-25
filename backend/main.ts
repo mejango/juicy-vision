@@ -321,6 +321,7 @@ import {
 } from './src/services/websocket.ts';
 import { checkPermission } from './src/services/chat.ts';
 import { queryOne } from './src/db/index.ts';
+import { generatePseudoAddress } from './src/utils/crypto.ts';
 
 // WebSocket authentication helper (duplicated from chat.ts for use at server level)
 async function extractWalletSessionForWs(
@@ -381,7 +382,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
         // Fall back to anonymous session
         if (!walletSession && sessionId && sessionId.startsWith('ses_')) {
-          const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+          const pseudoAddress = await generatePseudoAddress(sessionId);
           walletSession = { address: pseudoAddress, sessionId, isAnonymous: true };
         }
 
@@ -393,13 +394,7 @@ async function handleRequest(req: Request): Promise<Response> {
         // Check permission
         let canRead = await checkPermission(chatId, walletSession.address, 'read');
 
-        // Fallback to session pseudo-address
-        if (!canRead && sessionId && sessionId.startsWith('ses_')) {
-          const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
-          if (pseudoAddress !== walletSession.address) {
-            canRead = await checkPermission(chatId, pseudoAddress, 'read');
-          }
-        }
+        // Fallback to session pseudo-address (already using correct address from generatePseudoAddress)
 
         if (!canRead) {
           socket.close(4003, 'Access denied');

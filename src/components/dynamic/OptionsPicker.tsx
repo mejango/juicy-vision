@@ -16,6 +16,7 @@ interface OptionGroup {
   type?: 'radio' | 'toggle' | 'chips' | 'text' | 'textarea'
   multiSelect?: boolean // Allow multiple selections for chips
   placeholder?: string // Placeholder for text/textarea inputs
+  value?: string // Pre-fill value for text/textarea inputs
   optional?: boolean // Mark field as optional (shows "(optional)" label)
   expectedOptionCount?: number // Show ghost cards for remaining options during streaming
 }
@@ -147,7 +148,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
         if (parsed[g.id] !== undefined) {
           initial[g.id] = parsed[g.id]
         } else if (g.type === 'text' || g.type === 'textarea') {
-          initial[g.id] = ''
+          initial[g.id] = g.value || ''
         } else if (g.multiSelect) {
           initial[g.id] = []
         } else if ((g.options || []).length > 0) {
@@ -159,9 +160,9 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
     const initial: Record<string, string | string[]> = {}
     groups.forEach(g => {
-      // Text inputs start empty
+      // Text inputs use pre-filled value if provided, otherwise empty
       if (g.type === 'text' || g.type === 'textarea') {
-        initial[g.id] = ''
+        initial[g.id] = g.value || ''
         return
       }
       const options = g.options || []
@@ -305,7 +306,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     : 0
 
   return (
-    <div className={`border overflow-hidden inline-block max-w-lg ${
+    <div className={`border overflow-hidden inline-block max-w-xl ${
       isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
     }`}>
       <div className="p-4 space-y-4">

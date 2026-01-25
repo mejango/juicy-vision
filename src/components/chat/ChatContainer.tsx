@@ -20,19 +20,24 @@ import AuthOptionsModal from './AuthOptionsModal'
 import { useAccount } from 'wagmi'
 import { type PasskeyWallet, getPasskeyWallet } from '../../services/passkeyWallet'
 import WalletPanel from '../wallet/WalletPanel'
-import { getSessionId } from '../../services/session'
+import { getSessionId, getCachedPseudoAddress, getSessionPseudoAddress } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
 import { getEmojiFromAddress } from './ParticipantAvatars'
 
 // Helper to get current user's address
-// Prefers SIWE wallet address if authenticated, otherwise generates pseudo-address from session ID
+// Prefers SIWE wallet address if authenticated, otherwise uses cached pseudo-address from backend
 function getCurrentUserAddress(): string {
   // First check if user has SIWE session with real wallet address
   const walletSession = getWalletSession()
   if (walletSession?.address) {
     return walletSession.address.toLowerCase()
   }
-  // Fallback to pseudo-address from session ID (matches backend logic for anonymous users)
+  // Use cached pseudo-address from backend (uses HMAC-SHA256 with server secret)
+  const cached = getCachedPseudoAddress()
+  if (cached) {
+    return cached.toLowerCase()
+  }
+  // Fallback before cache is populated - will be updated on next render
   const sessionId = getSessionId()
   return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
 }

@@ -13,6 +13,10 @@
 
 import { storage, STORAGE_KEYS } from './storage'
 
+// Cache for the pseudo-address (fetched from backend)
+let cachedPseudoAddress: string | null = null
+let fetchPromise: Promise<string> | null = null
+
 /**
  * Get or create a session ID
  * This ID persists across page reloads but is unique per browser/device
@@ -25,8 +29,9 @@ export function getSessionId(): string {
     sessionId = generateSessionId()
     console.log('[session] Generated NEW session ID:', sessionId)
     storage.setString(STORAGE_KEYS.SESSION_ID, sessionId)
-  } else {
-    console.log('[session] Using EXISTING session ID:', sessionId)
+    // Clear cached pseudo-address when session changes
+    cachedPseudoAddress = null
+    fetchPromise = null
   }
 
   return sessionId
@@ -64,4 +69,71 @@ export function getSessionHeader(): Record<string, string> {
   return {
     'X-Session-ID': getSessionId(),
   }
+}
+
+/**
+ * Get the pseudo-address for the current session.
+ * This address is computed by the backend using HMAC-SHA256 and is cached locally.
+ * Use this instead of trying to compute the address on the frontend.
+ */
+export async function getSessionPseudoAddress(): Promise<string> {
+  // Return cached value if available
+  if (cachedPseudoAddress) {
+    return cachedPseudoAddress
+  }
+
+  // If already fetching, wait for it
+  if (fetchPromise) {
+    return fetchPromise
+  }
+
+  // Fetch from backend
+  const sessionId = getSessionId()
+  const apiUrl = import.meta.env.VITE_API_URL || ''
+
+  fetchPromise = fetch(`${apiUrl}/auth/session-address`, {
+    headers: {
+      'X-Session-ID': sessionId,
+    },
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success && data.data?.address) {
+        cachedPseudoAddress = data.data.address
+        return data.data.address
+      }
+      throw new Error('Failed to get session address')
+    })
+    .catch(err => {
+      console.error('[session] Failed to fetch pseudo-address:', err)
+      fetchPromise = null
+      // Fallback to a deterministic local computation (won't match backend, but better than nothing)
+      return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+    })
+
+  return fetchPromise
+}
+
+/**
+ * Get the cached pseudo-address synchronously.
+ * Returns null if not yet fetched. Use getSessionPseudoAddress() for async access.
+ */
+export function getCachedPseudoAddress(): string | null {
+  return cachedPseudoAddress
+}
+
+/**
+ * Clear the cached pseudo-address (e.g., when session changes)
+ */
+export function clearPseudoAddressCache(): void {
+  cachedPseudoAddress = null
+  fetchPromise = null
+}
+
+// Pre-fetch pseudo-address on module load to populate cache early
+// This runs as soon as the module is imported, before React renders
+if (typeof window !== 'undefined') {
+  getSessionPseudoAddress().catch(() => {
+    // Silently handle errors - components will use fallback
+  })
 }

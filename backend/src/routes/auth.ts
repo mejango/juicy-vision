@@ -122,4 +122,22 @@ authRouter.patch(
   }
 );
 
+// GET /auth/session-address - Get the pseudo-address for the current session
+// This is needed because the frontend can't compute HMAC addresses (no access to secret)
+authRouter.get('/session-address', async (c) => {
+  const sessionId = c.req.header('X-Session-ID');
+
+  if (!sessionId || !sessionId.startsWith('ses_')) {
+    return c.json({ success: false, error: 'No valid session ID' }, 400);
+  }
+
+  const { getPseudoAddress } = await import('../utils/crypto.ts');
+  const address = await getPseudoAddress(sessionId);
+
+  return c.json({
+    success: true,
+    data: { address, sessionId },
+  });
+});
+
 export { authRouter };

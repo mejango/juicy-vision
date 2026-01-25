@@ -81,8 +81,18 @@ const JB_ADDRESSES: Record<string, string> = {
   // Hooks and extensions
   '0xfe9c4f3e5c27ffd8ee523c6ca388aaa95692c25d': 'JBBuybackHook',
   '0x0c02e48e55f4451a499e48a53595de55c40f3574': 'JBSwapTerminal',
+  // Swap terminal registries - use USDC version when primary terminal accepts USDC, ETH version when accepting native token
+  '0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe': 'JBSwapTerminalUSDCRegistry',
+  '0xde1d0fed5380fc6c9bdcae65329dbad7a96cde0a': 'JBSwapTerminalRegistry',
   // Suckers
   '0x696c7e794fe2a7c2e3b7da4ae91733345fc1bf68': 'JBSuckerRegistry',
+  // CCIP Sucker Deployers (cross-chain)
+  '0x34b40205b249e5733cf93d86b7c9783b015dd3e7': 'CCIPSuckerDeployer',
+  '0xde901ebafc70d545f9d43034308c136ce8c94a5c': 'CCIPSuckerDeployer_1',
+  '0x9d4858cc9d3552507eeabce722787afef64c615e': 'CCIPSuckerDeployer_2',
+  '0x39132ea75b9eae5cbff7ba1997c804302a7ff413': 'CCIPSuckerDeployer_1',
+  '0xb825f2f6995966eb6dd772a8707d4a547028ac26': 'CCIPSuckerDeployer_2',
+  '0x3d7fb0aa325ad5d2349274f9ef33d4424135d963': 'CCIPSuckerDeployer_2',
   // Native token (JBConstants.NATIVE_TOKEN)
   '0x000000000000000000000000000000000000eeee': 'NATIVE_TOKEN (ETH)',
   // Zero address
@@ -140,6 +150,7 @@ function getAddressLabel(address: string, chainId?: string): string | null {
 function AddressDisplay({ address, chainId, isDark }: { address: string; chainId?: string; isDark: boolean }) {
   const [ensName, setEnsName] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [showChainAddresses, setShowChainAddresses] = useState(false)
 
   useEffect(() => {
     // Only resolve ENS for addresses that look like wallet addresses (not known contracts)
@@ -175,39 +186,75 @@ function AddressDisplay({ address, chainId, isDark }: { address: string; chainId
     navigator.clipboard.writeText(address)
   }
 
+  const handleBadgeClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setShowChainAddresses(!showChainAddresses)
+  }
+
   return (
-    <span
-      className="font-mono cursor-pointer hover:underline inline-flex items-center gap-1"
-      onClick={handleCopy}
-      title={`Click to copy: ${address}`}
-    >
-      {/* ENS name if available */}
-      {ensName && (
-        <span className={isDark ? 'text-juice-orange' : 'text-orange-600'}>
-          {ensName}
+    <span className="inline-flex items-center gap-1 flex-wrap relative">
+      <span
+        className="font-mono cursor-pointer hover:underline inline-flex items-center gap-1"
+        onClick={handleCopy}
+        title={`Click to copy: ${address}`}
+      >
+        {/* ENS name if available */}
+        {ensName && (
+          <span className={isDark ? 'text-juice-orange' : 'text-orange-600'}>
+            {ensName}
+          </span>
+        )}
+        {/* Loading indicator */}
+        {loading && !label && (
+          <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>...</span>
+        )}
+        {/* Known label (contract name or token) */}
+        {label && (
+          <span className={isChainSpecific ? (isDark ? 'text-yellow-400' : 'text-yellow-600') : ''}>
+            {label}
+          </span>
+        )}
+        {/* Address (full or truncated based on context) */}
+        <span className={label || ensName ? (isDark ? 'text-gray-500' : 'text-gray-400') : ''}>
+          {label || ensName ? `(${truncated})` : address}
         </span>
-      )}
-      {/* Loading indicator */}
-      {loading && !label && (
-        <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>...</span>
-      )}
-      {/* Known label (contract name or token) */}
-      {label && (
-        <span className={isChainSpecific ? (isDark ? 'text-yellow-400' : 'text-yellow-600') : ''}>
-          {label}
-          {isChainSpecific && (
-            <span className={`ml-1 text-[9px] px-1 py-0.5 rounded ${
-              isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
-            }`}>
-              chain-specific
-            </span>
-          )}
-        </span>
-      )}
-      {/* Address (full or truncated based on context) */}
-      <span className={label || ensName ? (isDark ? 'text-gray-500' : 'text-gray-400') : ''}>
-        {label || ensName ? `(${truncated})` : address}
       </span>
+      {/* Chain-specific badge - clickable to show all addresses */}
+      {isChainSpecific && (
+        <button
+          onClick={handleBadgeClick}
+          className={`text-[9px] px-1 py-0.5 rounded cursor-pointer hover:opacity-80 ${
+            isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+          }`}
+          title="Click to see addresses per chain"
+        >
+          chain-specific {showChainAddresses ? '▲' : '▼'}
+        </button>
+      )}
+      {/* Expanded chain addresses dropdown */}
+      {isChainSpecific && showChainAddresses && (
+        <div className={`absolute top-full right-0 mt-1 z-10 p-2 rounded border text-[10px] ${
+          isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200 shadow-lg'
+        }`}>
+          <div className={`font-semibold mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+            USDC addresses by chain:
+          </div>
+          {Object.entries(USDC_ADDRESSES).map(([cid, addr]) => (
+            <div key={cid} className="flex gap-2 py-0.5">
+              <span className={`font-medium w-20 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {CHAIN_NAMES[cid]}:
+              </span>
+              <span
+                className="font-mono cursor-pointer hover:underline text-[9px]"
+                onClick={() => navigator.clipboard.writeText(addr)}
+                title="Click to copy"
+              >
+                {addr}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </span>
   )
 }
@@ -316,13 +363,33 @@ export default function TransactionPreview({
   chainConfigs,
 }: TransactionPreviewProps) {
   const [expanded, setExpanded] = useState(true)
-  const [selectedChainTab, setSelectedChainTab] = useState<string | null>(null)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
+  // Helper to update mustStartAtOrAfter to 5 minutes from now
+  const updateTimestamps = (obj: unknown): unknown => {
+    if (obj === null || obj === undefined) return obj
+    if (Array.isArray(obj)) return obj.map(updateTimestamps)
+    if (typeof obj === 'object') {
+      const result: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+        if (key.toLowerCase() === 'muststartatOrafter'.toLowerCase()) {
+          // Always set to 5 minutes from now
+          result[key] = Math.floor(Date.now() / 1000) + 300
+        } else {
+          result[key] = updateTimestamps(value)
+        }
+      }
+      return result
+    }
+    return obj
+  }
+
   let parsedParams: Record<string, unknown> = {}
   try {
-    parsedParams = JSON.parse(parameters)
+    const rawParams = JSON.parse(parameters)
+    // Update timestamps to be 5 minutes in the future
+    parsedParams = updateTimestamps(rawParams) as Record<string, unknown>
   } catch {
     parsedParams = { raw: parameters }
   }
@@ -338,19 +405,9 @@ export default function TransactionPreview({
   }
 
   const isMultiChain = parsedChainConfigs.length > 0
-  const activeChainId = selectedChainTab || (isMultiChain ? parsedChainConfigs[0]?.chainId : chainId)
 
-  // Merge base params with chain-specific overrides for display
-  const getParamsForChain = (cid: string): Record<string, unknown> => {
-    const chainOverride = parsedChainConfigs.find(c => c.chainId === cid)
-    if (!chainOverride) return parsedParams as Record<string, unknown>
-    return deepMerge(parsedParams as Record<string, unknown>, chainOverride.overrides)
-  }
-
-  const displayParams = isMultiChain ? getParamsForChain(activeChainId) : parsedParams
-
-  const chainName = CHAIN_NAMES[activeChainId] || `Chain ${activeChainId}`
-  const chainColor = CHAIN_COLORS[activeChainId] || 'bg-gray-500/20 text-gray-300 border-gray-500/30'
+  const chainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`
+  const chainColor = CHAIN_COLORS[chainId] || 'bg-gray-500/20 text-gray-300 border-gray-500/30'
   const actionIcon = ACTION_ICONS[action] || '📝'
 
   return (
@@ -390,32 +447,6 @@ export default function TransactionPreview({
             )}
           </div>
         </div>
-        {/* Chain tabs for viewing chain-specific details in multi-chain deployments */}
-        {isMultiChain && (
-          <div className="flex gap-1 mt-3 flex-wrap">
-            {parsedChainConfigs.map((config) => {
-              const cid = config.chainId
-              const name = config.label || CHAIN_NAMES[cid] || `Chain ${cid}`
-              const color = CHAIN_COLORS[cid] || 'bg-gray-500/20 text-gray-300 border-gray-500/30'
-              const isActive = cid === activeChainId
-              return (
-                <button
-                  key={cid}
-                  onClick={() => setSelectedChainTab(cid)}
-                  className={`px-2 py-0.5 text-xs font-medium border transition-all ${
-                    isActive
-                      ? color
-                      : isDark
-                        ? 'bg-transparent text-gray-500 border-gray-700 hover:border-gray-600'
-                        : 'bg-transparent text-gray-400 border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  {name}
-                </button>
-              )
-            })}
-          </div>
-        )}
       </div>
 
       {/* Explanation */}
@@ -426,9 +457,9 @@ export default function TransactionPreview({
       </div>
 
       {/* Project metadata preview */}
-      {typeof displayParams.projectMetadata === 'object' && displayParams.projectMetadata !== null && (
+      {typeof parsedParams.projectMetadata === 'object' && parsedParams.projectMetadata !== null && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          <ProjectMetadataPreview metadata={displayParams.projectMetadata as Record<string, unknown>} isDark={isDark} />
+          <ProjectMetadataPreview metadata={parsedParams.projectMetadata as Record<string, unknown>} isDark={isDark} />
         </div>
       )}
 
@@ -470,8 +501,8 @@ export default function TransactionPreview({
               </div>
             )}
 
-            {Object.entries(displayParams).map(([key, value]) => (
-              <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={activeChainId} />
+            {Object.entries(parsedParams).map(([key, value]) => (
+              <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
             ))}
           </div>
         )}
@@ -503,6 +534,7 @@ function formatSimpleValue(value: unknown, key?: string, chainId?: string): stri
 
   // Currency field (JBAccountingContext uses uint32 currency codes)
   // Currency = uint32(uint160(tokenAddress)) - lowest 32 bits of the token address
+  // Don't use commas - currency codes are identifiers, not numerical values
   if (keyLower === 'currency' && numValue !== null) {
     // Known currency codes: uint32(uint160(tokenAddress))
     const currencyLabels: Record<number, string> = {
@@ -513,8 +545,7 @@ function formatSimpleValue(value: unknown, key?: string, chainId?: string): stri
       909516616: 'USDC',
     }
     const label = currencyLabels[numValue]
-    const formattedNum = numValue.toLocaleString()
-    return label ? `${formattedNum} (${label})` : formattedNum
+    return label ? `${numValue} (${label})` : String(numValue)
   }
 
   // Weight has 18 decimals - convert to human readable
@@ -537,6 +568,31 @@ function formatSimpleValue(value: unknown, key?: string, chainId?: string): stri
     if (rawWeight >= 1e6) return `${(rawWeight / 1e6).toFixed(1)}M tokens/USD`
     if (rawWeight >= 1e3) return `${(rawWeight / 1e3).toFixed(1)}K tokens/USD`
     return `${rawWeight.toLocaleString()} tokens/USD`
+  }
+
+  // Unix timestamps - mustStartAtOrAfter, lockedUntil, etc.
+  if ((keyLower.includes('startat') || keyLower.includes('lockeduntil')) && numValue !== null && numValue > 1000000000) {
+    const date = new Date(numValue * 1000)
+    const now = new Date()
+    const diffMs = date.getTime() - now.getTime()
+    const diffMins = Math.round(diffMs / 60000)
+
+    // Format the date
+    const dateStr = date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    })
+
+    // Add relative context
+    if (numValue === 0) return '0 (immediately)'
+    if (diffMins > 0 && diffMins < 60) return `${dateStr} (in ~${diffMins} min)`
+    if (diffMins > 0 && diffMins < 1440) return `${dateStr} (in ~${Math.round(diffMins / 60)} hours)`
+    if (diffMins < 0) return `${dateStr} (past)`
+    return dateStr
   }
 
   if (keyLower.includes('duration') && numValue !== null) {
@@ -583,8 +639,20 @@ function formatSimpleValue(value: unknown, key?: string, chainId?: string): stri
     return value
   }
 
+  // Handle groupId - it's uint256(uint160(tokenAddress)), identifies which token's payouts are split
+  if (keyLower.includes('groupid')) {
+    // Known group IDs from USDC addresses
+    const groupIdLabels: Record<string, string> = {
+      '918640019851866092946544831648579639063834485832': 'USDC payouts',
+      // Add more known group IDs as needed
+    }
+    const label = groupIdLabels[value]
+    return label ? `${label}` : `Token group ${value.slice(0, 8)}...`
+  }
+
   // Handle large numbers (likely wei) - show both formats
-  if (/^\d{18,}$/.test(value)) {
+  // Skip this for values that look like group IDs (very large uint256)
+  if (/^\d{18,}$/.test(value) && !keyLower.includes('groupid')) {
     const eth = parseFloat(value) / 1e18
     return `${eth.toFixed(4)} ETH (${value})`
   }
@@ -607,20 +675,25 @@ function isEmptyArray(value: unknown): boolean {
 }
 
 // Get a human-readable label for array items based on parent context
+// Returns empty string for items that should show content directly without a wrapper label
 function getArrayItemLabel(parentName: string, index: number): string {
   const lower = parentName.toLowerCase()
   if (lower.includes('ruleset')) return `Ruleset ${index + 1}`
   if (lower.includes('terminal')) return `Terminal ${index + 1}`
-  if (lower.includes('split')) return `Split ${index + 1}`
+  // Don't label individual splits - just show them inline
+  if (lower === 'splits') return ''
+  if (lower.includes('splitgroup')) return `Split Group ${index + 1}`
   if (lower.includes('sucker')) return `Sucker ${index + 1}`
   if (lower.includes('chain')) return `Chain ${index + 1}`
   if (lower.includes('hook')) return `Hook ${index + 1}`
+  if (lower.includes('mapping')) return ''  // Don't label individual mappings
   return `Item ${index + 1}`
 }
 
 // Get tooltip text for known parameters
 function getParamTooltip(name: string): string | undefined {
   const tooltips: Record<string, string> = {
+    groupId: 'Identifies which token\'s payouts this split group applies to. Derived from uint256(uint160(tokenAddress)).',
     weight: 'Tokens minted per unit of base currency (e.g., 1000000 = 1M tokens per dollar)',
     weightCutPercent: 'How much issuance decreases each cycle (0 = no cut, 1000000000 = 100% cut)',
     reservedPercent: 'Percentage of minted tokens reserved (0-10000, where 10000 = 100%)',
@@ -732,11 +805,11 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
     )
   }
 
-  // For single-item arrays with generic "Item 1" labels, skip the header and show content directly
+  // For single-item arrays with generic labels or no labels, skip the wrapper and show content directly
   if (Array.isArray(value) && value.length === 1) {
     const label = getArrayItemLabel(name, 0)
-    // Skip the "Item 1" wrapper if it's a generic label
-    if (label.startsWith('Item ')) {
+    // Skip the wrapper if label is empty or generic "Item N"
+    if (label === '' || label.startsWith('Item ')) {
       const innerValue = value[0]
       if (typeof innerValue === 'object' && innerValue !== null) {
         return (
@@ -750,6 +823,50 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
           </div>
         )
       }
+    }
+  }
+
+  // For multi-item arrays where items should render without labels (like splits)
+  if (Array.isArray(value) && value.length > 1) {
+    const label = getArrayItemLabel(name, 0)
+    if (label === '') {
+      // Render items directly without "[0]", "[1]" labels
+      return (
+        <div style={{ paddingLeft: indent }}>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className={`flex items-center gap-1.5 w-full text-left py-0.5 ${isDark ? 'text-gray-300 hover:text-gray-200' : 'text-gray-600 hover:text-gray-700'}`}
+          >
+            <svg
+              className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span className="font-medium">{displayName}</span>
+            <span className={`ml-auto text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              {value.length} items
+            </span>
+          </button>
+          {expanded && (
+            <div className={`mt-0.5 space-y-1 border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
+              {value.map((item, i) => (
+                <div key={i} className={`${i > 0 ? 'pt-1 border-t ' + (isDark ? 'border-gray-700/50' : 'border-gray-200') : ''}`}>
+                  {typeof item === 'object' && item !== null ? (
+                    Object.entries(item as Record<string, unknown>).map(([k, v]) => (
+                      <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} />
+                    ))
+                  ) : (
+                    <span className="font-mono">{String(item)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )
     }
   }
 

@@ -11,7 +11,7 @@ import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import { useChatStore, useThemeStore, type ChatMember } from './stores'
 import { useTransactionExecutor } from './hooks'
-import { getSessionId } from './services/session'
+import { getSessionId, getSessionPseudoAddress, getCachedPseudoAddress } from './services/session'
 import { getWalletSession } from './services/siwe'
 import { useEnsNameResolved } from './hooks'
 
@@ -52,8 +52,17 @@ function Header({ showActions = false }: { showActions?: boolean }) {
   // Must match backend logic: SIWE session address OR session pseudo-address
   // (wagmiAddress alone isn't verified by backend, so don't use it here)
   const walletSession = getWalletSession()
-  const sessionId = getSessionId()
-  const sessionPseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+
+  // Pseudo-address must be fetched from backend (uses HMAC-SHA256 with server secret)
+  const [sessionPseudoAddress, setSessionPseudoAddress] = useState<string | null>(getCachedPseudoAddress())
+
+  useEffect(() => {
+    // Fetch the pseudo-address from backend if not cached
+    if (!sessionPseudoAddress) {
+      getSessionPseudoAddress().then(setSessionPseudoAddress)
+    }
+  }, [sessionPseudoAddress])
+
   const currentAddress = walletSession?.address || sessionPseudoAddress
   const { ensName } = useEnsNameResolved(walletSession?.address)
 
@@ -66,8 +75,8 @@ function Header({ showActions = false }: { showActions?: boolean }) {
     // have created/joined chat before connecting wallet
     const currentUserInList = serverMembers.some(m => {
       const memberAddr = m.address?.toLowerCase()
-      return memberAddr === currentAddress.toLowerCase() ||
-             (walletSession && memberAddr === sessionPseudoAddress.toLowerCase())
+      return (currentAddress && memberAddr === currentAddress.toLowerCase()) ||
+             (walletSession && sessionPseudoAddress && memberAddr === sessionPseudoAddress.toLowerCase())
     })
 
     // If current user is not in server members, add them
@@ -81,7 +90,9 @@ function Header({ showActions = false }: { showActions?: boolean }) {
     }
 
     // Current user is in the list, use server members (or fallback if empty)
-    return serverMembers.length > 0 ? serverMembers : [{
+    if (serverMembers.length > 0) return serverMembers
+    if (!currentAddress) return []
+    return [{
       address: currentAddress,
       role: 'member' as const,
       displayName: ensName || undefined,
@@ -93,8 +104,8 @@ function Header({ showActions = false }: { showActions?: boolean }) {
   const currentUserMember = useMemo(() => {
     return participants.find(m => {
       const memberAddr = m.address?.toLowerCase()
-      return memberAddr === currentAddress.toLowerCase() ||
-             (walletSession && memberAddr === sessionPseudoAddress.toLowerCase())
+      return (currentAddress && memberAddr === currentAddress.toLowerCase()) ||
+             (walletSession && sessionPseudoAddress && memberAddr === sessionPseudoAddress.toLowerCase())
     })
   }, [participants, currentAddress, sessionPseudoAddress, walletSession])
 
@@ -125,7 +136,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
 
     // If signed in, also add pseudo-address so participant shows as online
     // (their member entry might still use the pseudo-address)
-    if (walletSession && !result.some(a => a?.toLowerCase() === sessionPseudoAddress.toLowerCase())) {
+    if (walletSession && sessionPseudoAddress && !result.some(a => a?.toLowerCase() === sessionPseudoAddress.toLowerCase())) {
       result.push(sessionPseudoAddress)
     }
 
@@ -834,6 +845,11 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
 }
 
 export default function App() {
+  // Pre-fetch pseudo-address from backend on mount (populates cache for all components)
+  useEffect(() => {
+    getSessionPseudoAddress()
+  }, [])
+
   // Handle legacy hash URLs (e.g., /#/eth:3 -> /eth:3)
   useEffect(() => {
     const hash = window.location.hash

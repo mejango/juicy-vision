@@ -567,7 +567,7 @@ chatRouter.get('/:chatId', optionalAuth, optionalWalletSession, async (c) => {
     // If primary auth failed, try anonymous session ID as fallback
     // This handles cases where user joined via invite with session ID but has a different wallet connected
     if (!canRead && sessionId && sessionId.startsWith('ses_')) {
-      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+      const pseudoAddress = await getPseudoAddress(sessionId);
       if (pseudoAddress !== walletSession.address) {
         await debugLog(`[Fetch Chat] Trying fallback pseudo-address: ${pseudoAddress}`);
         canRead = await checkPermission(chatId, pseudoAddress, 'read');
@@ -640,7 +640,7 @@ chatRouter.get(
 
       // If primary auth failed, try anonymous session ID as fallback
       if (!canRead && sessionId && sessionId.startsWith('ses_')) {
-        const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+        const pseudoAddress = await getPseudoAddress(sessionId);
         if (pseudoAddress !== walletSession.address) {
           canRead = await checkPermission(chatId, pseudoAddress, 'read');
         }
@@ -893,7 +893,7 @@ chatRouter.get('/:chatId/messages', optionalAuth, optionalWalletSession, async (
 
     // If primary auth failed, try anonymous session ID as fallback
     if (!canRead && sessionId && sessionId.startsWith('ses_')) {
-      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+      const pseudoAddress = await getPseudoAddress(sessionId);
       if (pseudoAddress !== walletSession.address) {
         canRead = await checkPermission(chatId, pseudoAddress, 'read');
       }
