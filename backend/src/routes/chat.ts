@@ -1272,12 +1272,36 @@ chatRouter.post(
           }
         }
       } catch (streamError) {
-        // If streaming fails, append error message so user knows what happened
-        const errorMsg = streamError instanceof Error ? streamError.message : 'Stream interrupted';
-        console.error(`[AI] ${chatId}: Stream error - ${errorMsg}`);
+        // Parse error and provide user-friendly message
+        const rawMsg = streamError instanceof Error ? streamError.message : 'Stream interrupted';
+        console.error(`[AI] ${chatId}: Stream error - ${rawMsg}`);
+
+        // Categorize the error for better UX
+        // BYOK users get specific messages about their own API key
+        const isUsingOwnKey = !!userApiKey;
+        let userFriendlyMsg: string;
+
+        if (rawMsg.includes('credit balance is too low') || rawMsg.includes('purchase credits')) {
+          userFriendlyMsg = isUsingOwnKey
+            ? "Your Anthropic API key has run out of credits. Please add credits at console.anthropic.com or remove your key to use Juicy's service."
+            : "I'm temporarily unavailable due to a service limit. The team has been notified - please try again shortly!";
+        } else if (rawMsg.includes('rate_limit') || rawMsg.includes('too many requests')) {
+          userFriendlyMsg = isUsingOwnKey
+            ? "Your API key has hit a rate limit. Please wait a moment and try again."
+            : "I'm getting a lot of requests right now. Please wait a moment and try again.";
+        } else if (rawMsg.includes('overloaded') || rawMsg.includes('capacity')) {
+          userFriendlyMsg = "The AI service is a bit overloaded. Please try again in a few seconds.";
+        } else if (rawMsg.includes('invalid_api_key') || rawMsg.includes('authentication')) {
+          userFriendlyMsg = isUsingOwnKey
+            ? "Your API key appears to be invalid. Please check your key in Settings."
+            : "There's a configuration issue. The team has been notified.";
+        } else {
+          userFriendlyMsg = "Something went wrong. Please try again.";
+        }
+
         if (streamingStarted) {
-          fullContent += `\n\n*Response interrupted: ${errorMsg}*`;
-          streamAiToken(chatId, messageId, `\n\n*Response interrupted: ${errorMsg}*`, false);
+          fullContent += `\n\n*${userFriendlyMsg}*`;
+          streamAiToken(chatId, messageId, `\n\n*${userFriendlyMsg}*`, false);
         }
       } finally {
         // Always signal streaming is done, even on error

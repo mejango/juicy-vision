@@ -472,11 +472,23 @@ describe('ComponentRegistry', () => {
   })
 
   describe('_loading component', () => {
-    it('renders OptionsPickerShimmer for loading state', () => {
+    it('renders ComponentShimmer for generic loading state', () => {
       const component: ParsedComponent = {
         type: '_loading',
         props: {},
         raw: '<juice-component',
+      }
+
+      render(<ComponentRegistry component={component} />)
+
+      expect(screen.getByTestId('component-shimmer')).toBeInTheDocument()
+    })
+
+    it('renders OptionsPickerShimmer when loadingType is options-picker', () => {
+      const component: ParsedComponent = {
+        type: '_loading',
+        props: { loadingType: 'options-picker' },
+        raw: '<juice-component type="options-picker"',
       }
 
       render(<ComponentRegistry component={component} />)

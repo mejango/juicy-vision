@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useThemeStore } from '../../stores'
+import { resolveEnsName, truncateAddress } from '../../utils/ens'
 
 interface ChainOverride {
   chainId: string
@@ -108,6 +109,20 @@ const CHAIN_TOKENS: Record<string, Record<string, string>> = {
   },
 }
 
+// All USDC addresses by chain for chain-specific display
+const USDC_ADDRESSES: Record<string, string> = {
+  '1': '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+  '10': '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
+  '8453': '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+  '42161': '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+}
+
+// Check if an address is USDC (varies by chain)
+function isUsdcAddress(address: string): boolean {
+  const lower = address.toLowerCase()
+  return Object.values(USDC_ADDRESSES).some(addr => addr.toLowerCase() === lower)
+}
+
 // Get human-readable name for a known address (chain-aware for tokens)
 function getAddressLabel(address: string, chainId?: string): string | null {
   const lower = address.toLowerCase()
@@ -119,6 +134,82 @@ function getAddressLabel(address: string, chainId?: string): string | null {
 
   // Fall back to global addresses
   return JB_ADDRESSES[lower] || null
+}
+
+// Component to display an address with optional ENS name
+function AddressDisplay({ address, chainId, isDark }: { address: string; chainId?: string; isDark: boolean }) {
+  const [ensName, setEnsName] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    // Only resolve ENS for addresses that look like wallet addresses (not known contracts)
+    const knownLabel = getAddressLabel(address, chainId)
+    if (knownLabel) {
+      setEnsName(null)
+      return
+    }
+
+    let cancelled = false
+    setLoading(true)
+
+    resolveEnsName(address).then(name => {
+      if (!cancelled) {
+        setEnsName(name)
+        setLoading(false)
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setEnsName(null)
+        setLoading(false)
+      }
+    })
+
+    return () => { cancelled = true }
+  }, [address, chainId])
+
+  const label = getAddressLabel(address, chainId)
+  const isChainSpecific = isUsdcAddress(address)
+  const truncated = truncateAddress(address)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(address)
+  }
+
+  return (
+    <span
+      className="font-mono cursor-pointer hover:underline inline-flex items-center gap-1"
+      onClick={handleCopy}
+      title={`Click to copy: ${address}`}
+    >
+      {/* ENS name if available */}
+      {ensName && (
+        <span className={isDark ? 'text-juice-orange' : 'text-orange-600'}>
+          {ensName}
+        </span>
+      )}
+      {/* Loading indicator */}
+      {loading && !label && (
+        <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>...</span>
+      )}
+      {/* Known label (contract name or token) */}
+      {label && (
+        <span className={isChainSpecific ? (isDark ? 'text-yellow-400' : 'text-yellow-600') : ''}>
+          {label}
+          {isChainSpecific && (
+            <span className={`ml-1 text-[9px] px-1 py-0.5 rounded ${
+              isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+            }`}>
+              chain-specific
+            </span>
+          )}
+        </span>
+      )}
+      {/* Address (full or truncated based on context) */}
+      <span className={label || ensName ? (isDark ? 'text-gray-500' : 'text-gray-400') : ''}>
+        {label || ensName ? `(${truncated})` : address}
+      </span>
+    </span>
+  )
 }
 
 // Deep merge two objects, with source overriding target
@@ -276,16 +367,30 @@ export default function TransactionPreview({
           <div className="flex items-center gap-2">
             <span className="text-xl">{actionIcon}</span>
             <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Summary
+              Review for deployment
             </span>
           </div>
-          {!isMultiChain && (
-            <span className={`px-2 py-0.5 text-xs font-medium border ${chainColor}`}>
-              {chainName}
-            </span>
-          )}
+          {/* Show all deployment chains as chips */}
+          <div className="flex gap-1 flex-wrap">
+            {isMultiChain ? (
+              parsedChainConfigs.map((config) => {
+                const cid = config.chainId
+                const name = config.label || CHAIN_NAMES[cid] || `Chain ${cid}`
+                const color = CHAIN_COLORS[cid] || 'bg-gray-500/20 text-gray-300 border-gray-500/30'
+                return (
+                  <span key={cid} className={`px-2 py-0.5 text-xs font-medium border ${color}`}>
+                    {name}
+                  </span>
+                )
+              })
+            ) : (
+              <span className={`px-2 py-0.5 text-xs font-medium border ${chainColor}`}>
+                {chainName}
+              </span>
+            )}
+          </div>
         </div>
-        {/* Chain tabs for multi-chain deployments */}
+        {/* Chain tabs for viewing chain-specific details in multi-chain deployments */}
         {isMultiChain && (
           <div className="flex gap-1 mt-3 flex-wrap">
             {parsedChainConfigs.map((config) => {
@@ -321,7 +426,7 @@ export default function TransactionPreview({
       </div>
 
       {/* Project metadata preview */}
-      {displayParams.projectMetadata && typeof displayParams.projectMetadata === 'object' && (
+      {typeof displayParams.projectMetadata === 'object' && displayParams.projectMetadata !== null && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <ProjectMetadataPreview metadata={displayParams.projectMetadata as Record<string, unknown>} isDark={isDark} />
         </div>
@@ -573,6 +678,7 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
   if (!isComplex) {
     const formattedValue = formatSimpleValue(value, name, chainId)
     const isIpfsUri = typeof value === 'string' && value.startsWith('ipfs://')
+    const isAddress = typeof value === 'string' && value.startsWith('0x') && value.length === 42
 
     const handleCopy = () => {
       if (typeof value === 'string') {
@@ -608,6 +714,10 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
             >
               {formattedValue}
             </a>
+          ) : isAddress ? (
+            <span className="text-right break-all">
+              <AddressDisplay address={value as string} chainId={chainId} isDark={isDark} />
+            </span>
           ) : (
             <span
               className="font-mono text-right break-all cursor-pointer hover:underline"

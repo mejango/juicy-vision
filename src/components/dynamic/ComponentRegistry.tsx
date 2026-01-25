@@ -3,6 +3,7 @@ import { ParsedComponent } from '../../utils/messageParser'
 import ErrorBoundary, { ComponentErrorFallback } from '../ui/ErrorBoundary'
 import ComponentShimmer from './ComponentShimmer'
 import OptionsPickerShimmer from './OptionsPickerShimmer'
+import TransactionPreviewShimmer from './TransactionPreviewShimmer'
 
 // =============================================================================
 // Lazy-loaded Components
@@ -573,7 +574,15 @@ export default function ComponentRegistry({ component, chatId, messageId, userRe
 
   // Handle loading state
   if (type === '_loading') {
-    return <OptionsPickerShimmer />
+    // Show component-specific shimmers for better UX
+    const loadingType = props.loadingType as string | undefined
+    if (loadingType === 'options-picker') {
+      return <OptionsPickerShimmer />
+    }
+    if (loadingType === 'transaction-preview') {
+      return <TransactionPreviewShimmer />
+    }
+    return <ComponentShimmer />
   }
 
   // Handle special case: options-picker needs custom parsing logic

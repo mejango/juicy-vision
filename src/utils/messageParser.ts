@@ -176,11 +176,17 @@ export function parseMessageContent(content: string): ParsedContent {
       })
     } else {
       // Fall back to loading placeholder for non-streamable components
+      // Extract the component type from the partial tag if available
+      const typeMatch = partialTag.match(/type=["']([^"']+)["']/)
+      const loadingProps: Record<string, string> = {}
+      if (typeMatch) {
+        loadingProps.loadingType = typeMatch[1]
+      }
       segments.push({
         type: 'component',
         component: {
           type: '_loading',
-          props: {},
+          props: loadingProps,
           raw: partialTag,
         },
       })
