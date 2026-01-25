@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { HashRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { useTranslation } from 'react-i18next'
@@ -371,6 +371,25 @@ function HomeRouteHandler() {
 // UUID regex for validating chat IDs
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// Project slug regex: chainSlug:projectId (e.g., eth:3, base:123)
+const PROJECT_SLUG_REGEX = /^([a-z]+):(\d+)$/i
+
+// Map chain slugs to chain IDs
+const CHAIN_SLUG_TO_ID: Record<string, number> = {
+  eth: 1,
+  op: 10,
+  base: 8453,
+  arb: 42161,
+}
+
+// Map chain IDs to display names
+const CHAIN_ID_TO_NAME: Record<number, string> = {
+  1: 'Ethereum',
+  10: 'Optimism',
+  8453: 'Base',
+  42161: 'Arbitrum',
+}
+
 // Component to show when a chat isn't found
 function ChatNotFound() {
   const navigate = useNavigate()
@@ -393,6 +412,61 @@ function ChatNotFound() {
           {t('chat.goHome', 'Start a new chat')}
         </button>
       </div>
+    </div>
+  )
+}
+
+// Component to handle project deep links like /eth:3 or /base:123
+function ProjectRouteHandler() {
+  const { projectSlug } = useParams<{ projectSlug: string }>()
+  const navigate = useNavigate()
+  const { setActiveChat } = useChatStore()
+  const [dispatched, setDispatched] = useState(false)
+
+  useEffect(() => {
+    if (!projectSlug || dispatched) return
+
+    const match = projectSlug.match(PROJECT_SLUG_REGEX)
+    if (!match) {
+      // Not a valid project slug, go home
+      navigate('/')
+      return
+    }
+
+    const [, chainSlug, projectId] = match
+    const chainId = CHAIN_SLUG_TO_ID[chainSlug.toLowerCase()]
+
+    if (!chainId) {
+      // Unknown chain, go home
+      navigate('/')
+      return
+    }
+
+    const chainName = CHAIN_ID_TO_NAME[chainId]
+
+    // Clear any active chat to start fresh
+    setActiveChat(null)
+
+    // Navigate to home first, then dispatch the message
+    navigate('/')
+
+    // Small delay to ensure navigation completes before dispatching
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('juice:send-message', {
+        detail: {
+          message: `Tell me about project #${projectId} on ${chainName}. What's the project's current state, treasury balance, and recent activity?`,
+          newChat: true
+        }
+      }))
+    }, 100)
+
+    setDispatched(true)
+  }, [projectSlug, navigate, setActiveChat, dispatched])
+
+  // Show loading while redirecting
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-juice-dark">
+      <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
     </div>
   )
 }
@@ -758,17 +832,28 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
 }
 
 export default function App() {
+  // Handle legacy hash URLs (e.g., /#/eth:3 -> /eth:3)
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash.startsWith('#/')) {
+      const path = hash.slice(1) // Remove the '#', keep the '/'
+      window.history.replaceState(null, '', path)
+      window.location.reload()
+    }
+  }, [])
+
   return (
     <ErrorBoundary>
       <AppProviders>
-        <HashRouter>
+        <BrowserRouter>
           <Routes>
             <Route path="/join/:code" element={<JoinChatPage />} />
             <Route path="/chat/:chatId" element={<ChatRouteHandler />} />
+            <Route path="/:projectSlug" element={<ProjectRouteHandler />} />
             <Route path="/" element={<HomeRouteHandler />} />
             <Route path="*" element={<HomeRouteHandler />} />
           </Routes>
-        </HashRouter>
+        </BrowserRouter>
       </AppProviders>
     </ErrorBoundary>
   )

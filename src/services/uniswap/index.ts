@@ -64,12 +64,12 @@ const VIEM_CHAINS: Record<number, typeof mainnet | typeof optimism | typeof arbi
   8453: base,
 }
 
-// RPC endpoints
+// RPC endpoints (using Ankr for reliability)
 const RPC_ENDPOINTS: Record<number, string> = {
-  1: 'https://eth.llamarpc.com',
-  10: 'https://optimism.llamarpc.com',
-  42161: 'https://arbitrum.llamarpc.com',
-  8453: 'https://base.llamarpc.com',
+  1: 'https://rpc.ankr.com/eth',
+  10: 'https://rpc.ankr.com/optimism',
+  42161: 'https://rpc.ankr.com/arbitrum',
+  8453: 'https://rpc.ankr.com/base',
 }
 
 // Cache for pool addresses

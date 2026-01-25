@@ -48,6 +48,9 @@ const SUCKER_REGISTRY: Record<number, Address> = {
 // Juicerkle API for merkle proofs
 const JUICERKLE_API = 'https://juicerkle-production.up.railway.app';
 
+// MCP Documentation API
+const MCP_API = 'https://docs.juicebox.money/api/mcp';
+
 // Bendystraw GraphQL API
 const BENDYSTRAW_API = 'https://bendystraw.xyz/graphql';
 
@@ -102,6 +105,118 @@ interface CrossChainBalance {
 // ============================================================================
 // Tool Implementations
 // ============================================================================
+
+/**
+ * Search for projects by name, description, or tags
+ */
+export async function searchProjects(params: {
+  query: string;
+  limit?: number;
+}): Promise<{
+  projects: Array<{
+    projectId: number;
+    chainId: number;
+    name: string;
+    description: string | null;
+    logoUri: string | null;
+    handle: string | null;
+    tags: string[];
+    volume: string;
+    balance: string;
+  }>;
+  count: number;
+}> {
+  const config = getConfig();
+  const apiKey = config.bendystrawApiKey;
+  const limit = Math.min(params.limit ?? 10, 50);
+
+  // Use Bendystraw's project search with OR filters
+  const query = `
+    query SearchProjects($searchText: String!, $limit: Int!) {
+      projects(
+        where: {
+          OR: [
+            { name_contains: $searchText },
+            { description_contains: $searchText },
+            { tags_has: $searchText }
+          ]
+        }
+        limit: $limit
+        orderBy: "volumeUsd"
+        orderDirection: "desc"
+      ) {
+        items {
+          projectId
+          chainId
+          name
+          description
+          logoUri
+          handle
+          tags
+          volume
+          balance
+        }
+      }
+    }
+  `;
+
+  try {
+    const response = await fetch(BENDYSTRAW_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          searchText: params.query,
+          limit,
+        },
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('Bendystraw GraphQL error', new Error(data.errors[0]?.message), {
+        query: params.query,
+        errors: data.errors,
+      });
+      throw new Error(data.errors[0]?.message || 'GraphQL query failed');
+    }
+
+    const projects = data.data?.projects?.items ?? [];
+
+    return {
+      projects: projects.map((p: {
+        projectId: number;
+        chainId: number;
+        name: string;
+        description: string | null;
+        logoUri: string | null;
+        handle: string | null;
+        tags: string[] | null;
+        volume: string;
+        balance: string;
+      }) => ({
+        projectId: p.projectId,
+        chainId: p.chainId,
+        name: p.name,
+        description: p.description,
+        logoUri: p.logoUri,
+        handle: p.handle,
+        tags: p.tags ?? [],
+        volume: p.volume,
+        balance: p.balance,
+      })),
+      count: projects.length,
+    };
+  } catch (error) {
+    logger.error('Failed to search projects', error as Error, { query: params.query });
+    throw error;
+  }
+}
 
 /**
  * Get all sucker pairs for a project (available bridge destinations)
@@ -559,6 +674,156 @@ export async function getCrossChainBalance(params: {
 }
 
 // ============================================================================
+// MCP Documentation API Client
+// ============================================================================
+
+/**
+ * Search Juicebox documentation
+ */
+export async function searchDocs(params: {
+  query: string;
+  category?: string;
+  version?: string;
+  limit?: number;
+}): Promise<unknown> {
+  const response = await fetch(`${MCP_API}/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: params.query,
+      category: params.category ?? 'all',
+      version: params.version ?? 'v5',
+      limit: params.limit ?? 10,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`MCP search failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get a specific documentation page
+ */
+export async function getDoc(params: { path: string }): Promise<unknown> {
+  const response = await fetch(`${MCP_API}/get-doc`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: params.path }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`MCP get-doc failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get contract addresses
+ */
+export async function getContracts(params: {
+  contract?: string;
+  chainId?: string;
+  category?: string;
+}): Promise<unknown> {
+  const queryParams = new URLSearchParams();
+  if (params.contract) queryParams.set('contract', params.contract);
+  if (params.chainId) queryParams.set('chainId', params.chainId);
+  if (params.category) queryParams.set('category', params.category);
+
+  const url = queryParams.toString()
+    ? `${MCP_API}/contracts?${queryParams}`
+    : `${MCP_API}/contracts`;
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`MCP contracts failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get integration patterns
+ */
+export async function getPatterns(params: {
+  projectType?: string;
+}): Promise<unknown> {
+  const url = params.projectType
+    ? `${MCP_API}/patterns?projectType=${params.projectType}`
+    : `${MCP_API}/patterns`;
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`MCP patterns failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// ============================================================================
+// IPFS Pinning
+// ============================================================================
+
+interface PinToIpfsParams {
+  content: Record<string, unknown>;
+  name?: string;
+}
+
+interface PinToIpfsResult {
+  cid: string;
+  uri: string;
+  size?: number;
+}
+
+async function pinToIpfs(params: PinToIpfsParams): Promise<PinToIpfsResult> {
+  const config = getConfig();
+  const apiUrl = config.ipfsApiUrl ?? 'https://api.pinata.cloud';
+  const apiKey = config.ipfsApiKey;
+  const apiSecret = config.ipfsApiSecret;
+
+  if (!apiKey || !apiSecret) {
+    throw new Error('IPFS pinning not configured. Set IPFS_API_KEY and IPFS_API_SECRET in environment.');
+  }
+
+  const body = {
+    pinataContent: params.content,
+    pinataMetadata: params.name ? { name: params.name } : undefined,
+  };
+
+  const response = await fetch(`${apiUrl}/pinning/pinJSONToIPFS`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'pinata_api_key': apiKey,
+      'pinata_secret_api_key': apiSecret,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`IPFS pin failed: ${error}`);
+  }
+
+  const result = await response.json();
+  const cid = result.IpfsHash;
+
+  logger.info(`[IPFS] Pinned content to CID: ${cid}`);
+
+  return {
+    cid,
+    uri: `ipfs://${cid}`,
+    size: result.PinSize,
+  };
+}
+
+// ============================================================================
 // Tool Handler Router
 // ============================================================================
 
@@ -567,6 +832,12 @@ export async function handleOmnichainTool(
   input: Record<string, unknown>
 ): Promise<unknown> {
   switch (toolName) {
+    case 'search_projects':
+      return searchProjects({
+        query: input.query as string,
+        limit: input.limit as number | undefined,
+      });
+
     case 'get_sucker_pairs':
       return getSuckerPairs(
         input.projectId as number,
@@ -616,6 +887,38 @@ export async function handleOmnichainTool(
       return getCrossChainBalance({
         suckerGroupId: input.suckerGroupId as string,
         userAddress: input.userAddress as Address,
+      });
+
+    // === MCP Documentation Tools ===
+    case 'search_docs':
+      return searchDocs({
+        query: input.query as string,
+        category: input.category as string | undefined,
+        version: input.version as string | undefined,
+        limit: input.limit as number | undefined,
+      });
+
+    case 'get_doc':
+      return getDoc({
+        path: input.path as string,
+      });
+
+    case 'get_contracts':
+      return getContracts({
+        contract: input.contract as string | undefined,
+        chainId: input.chainId as string | undefined,
+        category: input.category as string | undefined,
+      });
+
+    case 'get_patterns':
+      return getPatterns({
+        projectType: input.projectType as string | undefined,
+      });
+
+    case 'pin_to_ipfs':
+      return pinToIpfs({
+        content: input.content as Record<string, unknown>,
+        name: input.name as string | undefined,
       });
 
     default:

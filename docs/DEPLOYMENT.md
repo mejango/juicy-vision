@@ -188,6 +188,34 @@ Set up alerts for:
 - Response caching for static data
 - CDN caching for frontend assets
 
+## Production TODO
+
+### SPA Routing for Clean URLs
+- [ ] Configure server to serve `index.html` for all routes (enables `/eth:3` style URLs)
+  - **Cloudflare Pages**: Automatic (no config needed)
+  - **Railway**: Automatic for static sites
+  - **Nginx**: Add `try_files $uri /index.html;`
+  - **Netlify**: Add `_redirects` file with `/* /index.html 200`
+- Note: Hash URLs (`/#/eth:3`) work everywhere including IPFS as fallback
+
+### Bundle & Privacy
+- [ ] Verify MetaMask SDK is tree-shaken out (we use `injected()` not `metaMask()`)
+- [ ] Verify Coinbase Wallet SDK is tree-shaken out (we use `injected()` not `coinbaseWallet()`)
+- [ ] Confirm WalletConnect telemetry is minimized (check network tab for `pulse.walletconnect.org`)
+- [ ] Audit outbound requests in production build for unexpected analytics endpoints
+- [ ] Review bundle size - ensure unused wallet SDKs aren't included
+
+### Wallet Connection
+- [ ] Test all supported wallets with `injected()` connector (MetaMask, Coinbase, Rainbow, etc.)
+- [ ] Test WalletConnect flow on mobile
+- [ ] Test Safe wallet integration
+- [ ] Verify RPC endpoints are working (Ankr) - no fallback to llamarpc or other public RPCs
+
+### Third-Party Dependencies
+- [ ] Review wagmi/viem version for security updates
+- [ ] Check for known vulnerabilities in dependencies (`npm audit`)
+- [ ] Document all external API dependencies and their data handling policies
+
 ## Security Checklist
 
 - [ ] All API keys stored in environment variables, not in code

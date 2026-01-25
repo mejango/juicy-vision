@@ -66,7 +66,7 @@ export const PAGINATION = {
 // =============================================================================
 export const BENDYSTRAW_ENDPOINT = 'https://api.bendystraw.xyz/graphql'
 export const RELAYR_ENDPOINT = 'https://api.relayr.ba5ed.com'
-export const ENS_RPC_ENDPOINT = 'https://eth.llamarpc.com'
+export const ENS_RPC_ENDPOINT = 'https://rpc.ankr.com/eth'
 
 // IPFS Gateways
 export const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/'

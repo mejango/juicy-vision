@@ -296,9 +296,8 @@ async function buildParticipantContext(chatId: string): Promise<string | null> {
        mcm.member_address,
        mcm.member_user_id,
        mcm.role::text as role,
-       u.display_name
+       mcm.display_name
      FROM multi_chat_members mcm
-     LEFT JOIN users u ON mcm.member_user_id = u.id
      WHERE mcm.chat_id = $1 AND mcm.is_active = true`,
     [chatId]
   );

@@ -312,4 +312,136 @@ console.log(`
 ╚═══════════════════════════════════════════════════════════╝
 `);
 
-Deno.serve({ port }, app.fetch);
+// Import WebSocket handler functions
+import {
+  registerConnection,
+  removeConnection,
+  handleWsMessage,
+  type WsClient,
+} from './src/services/websocket.ts';
+import { checkPermission } from './src/services/chat.ts';
+import { queryOne } from './src/db/index.ts';
+
+// WebSocket authentication helper (duplicated from chat.ts for use at server level)
+async function extractWalletSessionForWs(
+  sessionToken: string | undefined
+): Promise<{ address: string; userId?: string; sessionId?: string; isAnonymous?: boolean } | null> {
+  if (!sessionToken) return null;
+
+  // Try JWT token validation
+  const { validateSession } = await import('./src/services/auth.ts');
+  const { getCustodialAddress } = await import('./src/services/wallet.ts');
+
+  const jwtResult = await validateSession(sessionToken);
+  if (jwtResult) {
+    const address = await getCustodialAddress(jwtResult.user.custodialAddressIndex ?? 0);
+    return { address, userId: jwtResult.user.id };
+  }
+
+  // Try SIWE session token
+  const session = await queryOne<{ wallet_address: string; expires_at: Date }>(
+    `SELECT wallet_address, expires_at FROM wallet_sessions WHERE session_token = $1 AND expires_at > NOW()`,
+    [sessionToken]
+  );
+
+  if (session) {
+    const user = await queryOne<{ id: string }>(
+      `SELECT u.id FROM users u JOIN multi_chat_members mcm ON mcm.member_user_id = u.id WHERE mcm.member_address = $1 LIMIT 1`,
+      [session.wallet_address]
+    );
+    return { address: session.wallet_address, userId: user?.id };
+  }
+
+  return null;
+}
+
+// Handle WebSocket requests at the server level to avoid Hono middleware interference
+async function handleRequest(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+
+  // Check if this is a WebSocket upgrade request for chat
+  const upgradeHeader = req.headers.get('upgrade');
+  const isWsUpgrade = upgradeHeader?.toLowerCase() === 'websocket';
+  const wsMatch = url.pathname.match(/^\/api\/chat\/([^\/]+)\/ws$/);
+
+  if (isWsUpgrade && wsMatch) {
+    const chatId = wsMatch[1];
+    const sessionToken = url.searchParams.get('session') || undefined;
+    const sessionId = url.searchParams.get('sessionId') || undefined;
+
+    // Perform WebSocket upgrade SYNCHRONOUSLY
+    const { socket, response } = Deno.upgradeWebSocket(req);
+
+    let client: WsClient | null = null;
+
+    socket.onopen = async () => {
+      try {
+        // Try token-based auth first
+        let walletSession = await extractWalletSessionForWs(sessionToken);
+
+        // Fall back to anonymous session
+        if (!walletSession && sessionId && sessionId.startsWith('ses_')) {
+          const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+          walletSession = { address: pseudoAddress, sessionId, isAnonymous: true };
+        }
+
+        if (!walletSession) {
+          socket.close(4001, 'Authentication required');
+          return;
+        }
+
+        // Check permission
+        let canRead = await checkPermission(chatId, walletSession.address, 'read');
+
+        // Fallback to session pseudo-address
+        if (!canRead && sessionId && sessionId.startsWith('ses_')) {
+          const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+          if (pseudoAddress !== walletSession.address) {
+            canRead = await checkPermission(chatId, pseudoAddress, 'read');
+          }
+        }
+
+        if (!canRead) {
+          socket.close(4003, 'Access denied');
+          return;
+        }
+
+        client = {
+          socket,
+          address: walletSession.address,
+          userId: walletSession.userId,
+          chatId,
+          connectedAt: new Date(),
+        };
+        registerConnection(client);
+        console.log(`[WS] Connected: ${walletSession.address} to chat ${chatId}`);
+      } catch (err) {
+        console.error('[WS] Auth error:', err);
+        socket.close(4000, 'Authentication failed');
+      }
+    };
+
+    socket.onmessage = (event) => {
+      if (client) handleWsMessage(client, event.data.toString());
+    };
+
+    socket.onclose = () => {
+      if (client) {
+        removeConnection(client);
+        console.log(`[WS] Disconnected: ${client.address} from chat ${client.chatId}`);
+      }
+    };
+
+    socket.onerror = (err) => {
+      console.error('[WS] Error:', err);
+      if (client) removeConnection(client);
+    };
+
+    return response;
+  }
+
+  // For all other requests, use Hono
+  return app.fetch(req);
+}
+
+Deno.serve({ port }, handleRequest);

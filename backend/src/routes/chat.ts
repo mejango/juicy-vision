@@ -9,7 +9,6 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { upgradeWebSocket } from 'hono/deno';
 import { requireAuth, optionalAuth } from '../middleware/auth.ts';
 import {
   createChat,
@@ -66,11 +65,7 @@ import {
   getLatestArchiveCid,
 } from '../services/ipfs.ts';
 import {
-  registerConnection,
-  removeConnection,
-  handleWsMessage,
   getOnlineMembers,
-  type WsClient,
 } from '../services/websocket.ts';
 import { query, queryOne, execute } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
@@ -1249,31 +1244,41 @@ chatRouter.post(
 
       // Stream Claude response with automatic tool execution
       let fullContent = '';
+      let streamingStarted = false;
 
-      for await (const event of streamMessageWithTools(chatId, { messages: chatHistory, system: enhancedSystem }, userApiKey)) {
-        if (event.type === 'text') {
-          const token = event.data as string;
-          fullContent += token;
-          // Broadcast each token to connected clients
-          streamAiToken(chatId, messageId, token, false);
-        } else if (event.type === 'thinking') {
-          // Broadcast tool usage status (italicized)
-          const thinkingText = `\n\n*${event.data}*\n\n`;
-          fullContent += thinkingText;
-          streamAiToken(chatId, messageId, thinkingText, false);
-        } else if (event.type === 'tool_result') {
-          // Optionally show tool results (could be verbose, so we keep it subtle)
-          const result = event.data as { id: string; name: string; result?: string; error?: string };
-          if (result.error) {
-            const errorText = `\n\n> ⚠️ Tool error: ${result.error}\n\n`;
-            fullContent += errorText;
-            streamAiToken(chatId, messageId, errorText, false);
+      try {
+        for await (const event of streamMessageWithTools(chatId, { messages: chatHistory, system: enhancedSystem }, userApiKey)) {
+          streamingStarted = true;
+          if (event.type === 'text') {
+            const token = event.data as string;
+            fullContent += token;
+            // Broadcast each token to connected clients
+            streamAiToken(chatId, messageId, token, false);
+          } else if (event.type === 'thinking') {
+            // Log tool usage for debugging (not shown to user)
+            console.log(`[AI] ${chatId}: ${event.data}`);
+          } else if (event.type === 'tool_result') {
+            // Optionally show tool results (could be verbose, so we keep it subtle)
+            const result = event.data as { id: string; name: string; result?: string; error?: string };
+            if (result.error) {
+              const errorText = `\n\n> ⚠️ Tool error: ${result.error}\n\n`;
+              fullContent += errorText;
+              streamAiToken(chatId, messageId, errorText, false);
+            }
           }
         }
+      } catch (streamError) {
+        // If streaming fails, append error message so user knows what happened
+        const errorMsg = streamError instanceof Error ? streamError.message : 'Stream interrupted';
+        console.error(`[AI] ${chatId}: Stream error - ${errorMsg}`);
+        if (streamingStarted) {
+          fullContent += `\n\n*Response interrupted: ${errorMsg}*`;
+          streamAiToken(chatId, messageId, `\n\n*Response interrupted: ${errorMsg}*`, false);
+        }
+      } finally {
+        // Always signal streaming is done, even on error
+        streamAiToken(chatId, messageId, '', true);
       }
-
-      // Signal streaming is done
-      streamAiToken(chatId, messageId, '', true);
 
       // Store the complete AI response as a message
       const aiMessage = await importMessage({
@@ -1574,86 +1579,9 @@ chatRouter.post(
 );
 
 // ============================================================================
-// WebSocket Route
+// WebSocket Route - Handled at server level in main.ts for clean upgrade
+// See main.ts handleRequest() for WebSocket implementation
 // ============================================================================
-
-// Upgrade to WebSocket for real-time messaging
-chatRouter.get(
-  '/:chatId/ws',
-  upgradeWebSocket((c) => {
-    const chatId = c.req.param('chatId');
-    const sessionToken = c.req.query('session');
-    const sessionId = c.req.query('sessionId');
-    let client: WsClient | null = null;
-
-    return {
-      async onOpen(_event, ws) {
-        // Try token-based auth first
-        let walletSession = await extractWalletSession(undefined, sessionToken);
-
-        // Fall back to anonymous session if no token auth
-        if (!walletSession && sessionId && sessionId.startsWith('ses_')) {
-          // Create pseudo-address from session ID (same logic as requireWalletOrAuth)
-          const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
-          walletSession = {
-            address: pseudoAddress,
-            sessionId,
-            isAnonymous: true,
-          };
-        }
-
-        if (!walletSession) {
-          ws.close(4001, 'Authentication required');
-          return;
-        }
-
-        // Check permission
-        let canRead = await checkPermission(chatId, walletSession.address, 'read');
-
-        // If primary auth failed, try anonymous session ID as fallback
-        if (!canRead && sessionId && sessionId.startsWith('ses_')) {
-          const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
-          if (pseudoAddress !== walletSession.address) {
-            canRead = await checkPermission(chatId, pseudoAddress, 'read');
-          }
-        }
-
-        if (!canRead) {
-          ws.close(4003, 'Access denied');
-          return;
-        }
-
-        // Register connection
-        client = {
-          socket: ws.raw as WebSocket,
-          address: walletSession.address,
-          userId: walletSession.userId,
-          chatId,
-          connectedAt: new Date(),
-        };
-
-        registerConnection(client);
-      },
-
-      onMessage(event, ws) {
-        if (!client) return;
-        handleWsMessage(client, event.data.toString());
-      },
-
-      onClose(_event, _ws) {
-        if (client) {
-          removeConnection(client);
-        }
-      },
-
-      onError(_event, _ws) {
-        if (client) {
-          removeConnection(client);
-        }
-      },
-    };
-  })
-);
 
 // ============================================================================
 // Report Chat

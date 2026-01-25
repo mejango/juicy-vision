@@ -70,6 +70,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     clearUnread,
     updateMember,
     updateChat,
+    removeChat,
+    setActiveChat,
   } = useChatStore()
 
   // Use forceActiveChatId (from URL) over store value to prevent race conditions
@@ -687,7 +689,17 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       } catch (err) {
         if (!isMounted) return
         console.error('Failed to load shared chat:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load chat')
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load chat'
+
+        // If chat doesn't exist (404), remove stale reference and redirect
+        if (errorMessage === 'Chat not found') {
+          removeChat(activeChatId!)
+          setActiveChat(null)
+          navigate('/', { replace: true })
+          return
+        }
+
+        setError(errorMessage)
         return
       }
 

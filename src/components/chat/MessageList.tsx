@@ -52,23 +52,62 @@ export default function MessageList({
     isNearBottomRef.current = checkIfNearBottom()
   }, [checkIfNearBottom])
 
+  // Scroll to position an element at a percentage from the top of the viewport
+  const scrollToPosition = useCallback((element: HTMLElement, percentFromTop: number) => {
+    const container = containerRef.current
+    if (!container || !element) return
+
+    const elementRect = element.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+
+    // Calculate where the element should be (at percentFromTop of container height)
+    const targetPosition = containerRect.height * percentFromTop
+
+    // Calculate current element position relative to container
+    const elementTopInContainer = elementRect.top - containerRect.top + container.scrollTop
+
+    // Calculate scroll position to place element at target percentage
+    const scrollTo = elementTopInContainer - targetPosition
+
+    container.scrollTo({
+      top: Math.max(0, scrollTo),
+      behavior: 'smooth'
+    })
+  }, [])
+
+  // Track the last message for scroll targeting
+  const lastUserMessageRef = useRef<HTMLDivElement>(null)
+
   // Only auto-scroll when a new message is added AND user was near bottom
   useEffect(() => {
     const isNewMessage = messages.length > prevMessageCountRef.current
+    const lastMessage = messages[messages.length - 1]
     prevMessageCountRef.current = messages.length
 
     // Auto-scroll only if new message added and user was near bottom
     if (isNewMessage && isNearBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      // If user just sent a message, position it at 38% from top (room for AI response)
+      if (lastMessage?.role === 'user' && lastUserMessageRef.current) {
+        // Small delay to ensure DOM is updated
+        setTimeout(() => {
+          if (lastUserMessageRef.current) {
+            scrollToPosition(lastUserMessageRef.current, 0.38)
+          }
+        }, 50)
+      } else {
+        // Assistant message - scroll to bottom as before
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }
     }
-  }, [messages.length])
+  }, [messages.length, messages, scrollToPosition])
 
   // Auto-scroll when ghost card appears (user sent a message, waiting for response)
+  // Position user's message at 38% from top to leave room for AI response
   useEffect(() => {
-    if (showGhostCard && isNearBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (showGhostCard && isNearBottomRef.current && lastUserMessageRef.current) {
+      scrollToPosition(lastUserMessageRef.current, 0.38)
     }
-  }, [showGhostCard])
+  }, [showGhostCard, scrollToPosition])
 
   return (
     <div
@@ -82,17 +121,27 @@ export default function MessageList({
           const lastAssistantIndex = messages.reduce((acc, m, i) =>
             m.role === 'assistant' ? i : acc, -1
           )
+          // Find last user message index
+          const lastUserIndex = messages.reduce((acc, m, i) =>
+            m.role === 'user' ? i : acc, -1
+          )
+          const isLastUserMessage = message.role === 'user' && index === lastUserIndex
+
           return (
-            <MessageBubble
+            <div
               key={message.id}
-              message={message}
-              members={members}
-              isLastAssistant={message.role === 'assistant' && index === lastAssistantIndex}
-              chatId={chatId}
-              currentUserMember={currentUserMember}
-              onlineMembers={onlineMembers}
-              onMemberUpdated={onMemberUpdated}
-            />
+              ref={isLastUserMessage ? lastUserMessageRef : undefined}
+            >
+              <MessageBubble
+                message={message}
+                members={members}
+                isLastAssistant={message.role === 'assistant' && index === lastAssistantIndex}
+                chatId={chatId}
+                currentUserMember={currentUserMember}
+                onlineMembers={onlineMembers}
+                onMemberUpdated={onMemberUpdated}
+              />
+            </div>
           )
         })}
         {/* Ghost card - shows while waiting for first streaming token */}

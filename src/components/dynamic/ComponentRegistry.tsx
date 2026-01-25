@@ -33,6 +33,8 @@ const NFTCard = lazy(() => import('./NFTCard'))
 const Storefront = lazy(() => import('./Storefront'))
 const LandingPagePreview = lazy(() => import('./LandingPagePreview'))
 const SuccessVisualization = lazy(() => import('./SuccessVisualization'))
+const InteractionsSheet = lazy(() => import('./InteractionsSheet'))
+const ActionButton = lazy(() => import('./ActionButton'))
 
 // Chart components
 const BalanceChart = lazy(() => import('./charts').then(m => ({ default: m.BalanceChart })))
@@ -126,6 +128,14 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
       projectId: p.projectId,
       parameters: p.parameters,
       explanation: p.explanation,
+      chainConfigs: p.chainConfigs,
+    }),
+  },
+  'action-button': {
+    component: ActionButton,
+    mapProps: (p) => ({
+      action: p.action,
+      label: p.label,
     }),
   },
 
@@ -218,6 +228,16 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
       sortBy: p.sortBy,
       filterCategory: p.filterCategory,
       showSoldOut: p.showSoldOut,
+    }),
+  },
+
+  // Interactions
+  'interactions-sheet': {
+    component: InteractionsSheet,
+    mapProps: (p) => ({
+      context: p.context || 'app',
+      projectId: p.projectId,
+      chainId: p.chainId,
     }),
   },
 

@@ -161,6 +161,112 @@ export const SUCKER_REGISTRY_ADDRESS = '0x00000000000000000000000000000000000000
  * Tool definitions for omnichain operations
  */
 export const OMNICHAIN_TOOLS = [
+  // === Documentation Tools (via docs.juicebox.money MCP API) ===
+  {
+    name: 'search_docs',
+    description:
+      'Search Juicebox documentation for concepts, guides, and API reference. Use when users ask "how does X work?" or need technical explanations about the protocol.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query - what to find in the docs',
+        },
+        category: {
+          type: 'string',
+          enum: ['developer', 'user', 'dao', 'ecosystem', 'all'],
+          description: 'Category to search within (default: all)',
+        },
+        version: {
+          type: 'string',
+          enum: ['v4', 'v5', 'all'],
+          description: 'Protocol version (default: v5)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results (default: 10)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'get_doc',
+    description:
+      'Get a specific documentation page by path or title. Use when you need the full content of a known doc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Document path like "dev/v5/build/examples/pay"',
+        },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'get_contracts',
+    description:
+      'Get Juicebox V5 contract addresses. Use when users ask for contract addresses on specific chains.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contract: {
+          type: 'string',
+          description: 'Contract name filter like "JBController", "JBMultiTerminal", "REVDeployer"',
+        },
+        chainId: {
+          type: 'string',
+          enum: ['1', '10', '8453', '42161', 'all'],
+          description: 'Chain ID: 1 (Ethereum), 10 (Optimism), 8453 (Base), 42161 (Arbitrum), or all',
+        },
+        category: {
+          type: 'string',
+          enum: ['core', 'revnet', 'hooks', 'suckers', 'all'],
+          description: 'Contract category filter',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_patterns',
+    description:
+      'Get integration patterns and best practices for building on Juicebox. Use when helping users implement specific features.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        projectType: {
+          type: 'string',
+          description: 'Type of project: crowdfund, dao, creator, nft, revnet',
+        },
+      },
+      required: [],
+    },
+  },
+  // === Project Search ===
+  {
+    name: 'search_projects',
+    description:
+      'Search for Juicebox projects by name, description, or tags. Use this when users ask about projects by name or want to find projects matching certain keywords.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query - matches against project name, description, and tags',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results to return (default: 10, max: 50)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  // === Omnichain/Bridge Tools ===
   {
     name: 'get_sucker_pairs',
     description:
@@ -340,6 +446,26 @@ export const OMNICHAIN_TOOLS = [
         },
       },
       required: ['suckerGroupId', 'userAddress'],
+    },
+  },
+  // === IPFS Tools ===
+  {
+    name: 'pin_to_ipfs',
+    description:
+      'Pin JSON metadata to IPFS and get a real CID. Use this to upload project metadata before showing transaction-preview. ALWAYS use this tool to get real CIDs - never use placeholder CIDs.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        content: {
+          type: 'object',
+          description: 'The JSON object to pin to IPFS (e.g., project metadata with name, description, logoUri, infoUri)',
+        },
+        name: {
+          type: 'string',
+          description: 'Optional name for the pin (helps identify it in Pinata dashboard)',
+        },
+      },
+      required: ['content'],
     },
   },
 ];
