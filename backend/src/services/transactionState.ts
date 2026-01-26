@@ -433,7 +433,11 @@ export function formatStateForPrompt(state: ChatTransactionState): string {
   if (state.payoutSplits?.length) {
     sections.push('\n## Payout Splits');
     state.payoutSplits.forEach(split => {
-      sections.push(`- ${formatAddress(split.address)}: ${split.percent}%`);
+      if (split.address) {
+        sections.push(`- ${formatAddress(split.address)}: ${split.percent}%`);
+      } else if (split.projectId) {
+        sections.push(`- Project #${split.projectId}: ${split.percent}%`);
+      }
     });
   }
 
