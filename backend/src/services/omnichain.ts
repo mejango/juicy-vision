@@ -70,6 +70,36 @@ function getClient(chainId: number) {
 }
 
 // ============================================================================
+// Fetch with Timeout
+// ============================================================================
+
+const DEFAULT_TIMEOUT_MS = 10000; // 10 seconds
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs}ms: ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -161,7 +191,7 @@ export async function searchProjects(params: {
   `;
 
   try {
-    const response = await fetch(BENDYSTRAW_API, {
+    const response = await fetchWithTimeout(BENDYSTRAW_API, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -281,7 +311,7 @@ async function getSuckerPairsFromSubgraph(
   `;
 
   try {
-    const response = await fetch(BENDYSTRAW_API, {
+    const response = await fetchWithTimeout(BENDYSTRAW_API, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -349,7 +379,7 @@ export async function getBridgeTransactions(params: {
   `;
 
   try {
-    const response = await fetch(BENDYSTRAW_API, {
+    const response = await fetchWithTimeout(BENDYSTRAW_API, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -513,7 +543,7 @@ export async function claimBridgeTransaction(params: {
   }>;
 }> {
   // Fetch proofs from Juicerkle (note: addresses must be lowercase)
-  const response = await fetch(`${JUICERKLE_API}/claims`, {
+  const response = await fetchWithTimeout(`${JUICERKLE_API}/claims`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -604,7 +634,7 @@ export async function getCrossChainBalance(params: {
     }
   `;
 
-  const response = await fetch(BENDYSTRAW_API, {
+  const response = await fetchWithTimeout(BENDYSTRAW_API, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -686,7 +716,7 @@ export async function searchDocs(params: {
   version?: string;
   limit?: number;
 }): Promise<unknown> {
-  const response = await fetch(`${MCP_API}/search`, {
+  const response = await fetchWithTimeout(`${MCP_API}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -708,7 +738,7 @@ export async function searchDocs(params: {
  * Get a specific documentation page
  */
 export async function getDoc(params: { path: string }): Promise<unknown> {
-  const response = await fetch(`${MCP_API}/get-doc`, {
+  const response = await fetchWithTimeout(`${MCP_API}/get-doc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path: params.path }),
@@ -738,7 +768,7 @@ export async function getContracts(params: {
     ? `${MCP_API}/contracts?${queryParams}`
     : `${MCP_API}/contracts`;
 
-  const response = await fetch(url);
+  const response = await fetchWithTimeout(url);
 
   if (!response.ok) {
     throw new Error(`MCP contracts failed: ${response.status}`);
@@ -757,7 +787,7 @@ export async function getPatterns(params: {
     ? `${MCP_API}/patterns?projectType=${params.projectType}`
     : `${MCP_API}/patterns`;
 
-  const response = await fetch(url);
+  const response = await fetchWithTimeout(url);
 
   if (!response.ok) {
     throw new Error(`MCP patterns failed: ${response.status}`);
@@ -796,7 +826,7 @@ async function pinToIpfs(params: PinToIpfsParams): Promise<PinToIpfsResult> {
     pinataMetadata: params.name ? { name: params.name } : undefined,
   };
 
-  const response = await fetch(`${apiUrl}/pinning/pinJSONToIPFS`, {
+  const response = await fetchWithTimeout(`${apiUrl}/pinning/pinJSONToIPFS`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -17,3 +17,4 @@ export { useTransactionStore, type Transaction, type TransactionStatus, type Pay
 export { useThemeStore } from './themeStore'
 export { useAuthStore, PRIVACY_MODES, type UserMode, type PrivacyMode, type ManagedUser } from './authStore'
 export { useActivityStore } from './activityStore'
+export { useProjectDraftStore, type DraftTier, type DraftSplit } from './projectDraftStore'

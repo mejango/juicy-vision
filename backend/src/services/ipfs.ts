@@ -13,6 +13,36 @@ import { query, queryOne, execute } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
 
 // ============================================================================
+// Timeout Helper
+// ============================================================================
+
+const DEFAULT_TIMEOUT_MS = 15000; // 15 seconds for IPFS operations
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`IPFS request timed out after ${timeoutMs}ms: ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -92,7 +122,7 @@ class IpfsClient {
       pinataMetadata: name ? { name } : undefined,
     };
 
-    const response = await fetch(`${this.apiUrl}/pinning/pinJSONToIPFS`, {
+    const response = await fetchWithTimeout(`${this.apiUrl}/pinning/pinJSONToIPFS`, {
       method: 'POST',
       headers: this.headers,
       body: JSON.stringify(body),
@@ -111,11 +141,46 @@ class IpfsClient {
   }
 
   /**
+   * Pin a file (binary data) to IPFS
+   */
+  async pinFile(data: Uint8Array, name: string, mimeType: string): Promise<PinResponse> {
+    const formData = new FormData();
+    const blob = new Blob([data], { type: mimeType });
+    formData.append('file', blob, name);
+    formData.append('pinataMetadata', JSON.stringify({ name }));
+
+    // Don't set Content-Type - let the browser set it with boundary
+    const headers: HeadersInit = {};
+    if (this.headers['pinata_api_key']) {
+      headers['pinata_api_key'] = this.headers['pinata_api_key'] as string;
+      headers['pinata_secret_api_key'] = this.headers['pinata_secret_api_key'] as string;
+    }
+
+    // File uploads may take longer, use 30 second timeout
+    const response = await fetchWithTimeout(`${this.apiUrl}/pinning/pinFileToIPFS`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    }, 30000);
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`IPFS file pin failed: ${error}`);
+    }
+
+    const result = await response.json();
+    return {
+      cid: result.IpfsHash,
+      size: result.PinSize,
+    };
+  }
+
+  /**
    * Fetch content by CID
    */
   async get<T>(cid: string): Promise<T> {
     // Use IPFS gateway
-    const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
+    const response = await fetchWithTimeout(`https://gateway.pinata.cloud/ipfs/${cid}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch CID: ${cid}`);
     }
@@ -126,7 +191,7 @@ class IpfsClient {
    * Unpin content (optional cleanup)
    */
   async unpin(cid: string): Promise<void> {
-    const response = await fetch(`${this.apiUrl}/pinning/unpin/${cid}`, {
+    const response = await fetchWithTimeout(`${this.apiUrl}/pinning/unpin/${cid}`, {
       method: 'DELETE',
       headers: this.headers,
     });
@@ -387,6 +452,37 @@ export async function cleanupOldArchives(
   }
 
   return unpinned;
+}
+
+// ============================================================================
+// File Pinning (for user uploads)
+// ============================================================================
+
+/**
+ * Pin a file to IPFS from base64 data
+ * @param base64Data - Base64 encoded file data (without data URL prefix)
+ * @param fileName - File name for metadata
+ * @param mimeType - MIME type of the file
+ * @returns IPFS CID
+ */
+export async function pinFileToIpfs(
+  base64Data: string,
+  fileName: string,
+  mimeType: string
+): Promise<string> {
+  const client = getIpfsClient();
+
+  // Decode base64 to binary
+  const binaryString = atob(base64Data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  const result = await client.pinFile(bytes, fileName, mimeType);
+  console.log(`[IPFS] Pinned file ${fileName} to CID: ${result.cid}`);
+
+  return result.cid;
 }
 
 // ============================================================================

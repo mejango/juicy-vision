@@ -1,6 +1,21 @@
-import { useState, useEffect, useMemo, startTransition } from 'react'
+import { useState, useEffect, useMemo, startTransition, useRef } from 'react'
 import { useThemeStore } from '../../stores'
+import { useProjectDraftStore } from '../../stores/projectDraftStore'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
+import { decodeEncodedIPFSUri, encodeIpfsUri } from '../../utils/ipfs'
+import {
+  CHAIN_NAMES,
+  CHAIN_COLORS,
+  getAddressLabel,
+  formatParamName,
+  formatSimpleValue,
+  isComplexValue,
+  isEmptyArray,
+  getArrayItemLabel,
+  getParamTooltip,
+  isUsdcAddress,
+  USDC_ADDRESSES,
+} from '../../utils/technicalDetails'
 
 interface ChainOverride {
   chainId: string
@@ -19,20 +34,6 @@ interface TransactionPreviewProps {
   _isTruncated?: string // Flag set by parser when component was truncated mid-stream
 }
 
-const CHAIN_NAMES: Record<string, string> = {
-  '1': 'Ethereum',
-  '10': 'Optimism',
-  '8453': 'Base',
-  '42161': 'Arbitrum',
-}
-
-const CHAIN_COLORS: Record<string, string> = {
-  '1': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  '10': 'bg-red-500/20 text-red-300 border-red-500/30',
-  '8453': 'bg-blue-400/20 text-blue-200 border-blue-400/30',
-  '42161': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-}
-
 const ACTION_ICONS: Record<string, string> = {
   pay: '💰',
   cashOut: '🔄',
@@ -42,6 +43,7 @@ const ACTION_ICONS: Record<string, string> = {
   burnTokens: '🔥',
   launchProject: '🚀',
   launch721Project: '🚀',
+  deployRevnet: '🔄',
   queueRuleset: '📋',
   deployERC20: '🎟️',
 }
@@ -55,98 +57,9 @@ const ACTION_BUTTON_LABELS: Record<string, string> = {
   burnTokens: 'Burn Tokens',
   launchProject: 'Launch Project',
   launch721Project: 'Launch Project',
+  deployRevnet: 'Deploy Revnet',
   queueRuleset: 'Queue Ruleset',
   deployERC20: 'Deploy Token',
-}
-
-// Known JB ecosystem addresses (same on all chains)
-const JB_ADDRESSES: Record<string, string> = {
-  // Shared contracts (V5 and V5.1)
-  '0x885f707efa18d2cb12f05a3a8eba6b4b26c8c1d4': 'JBProjects',
-  '0x4d0edd347fb1fa21589c1e109b3474924be87636': 'JBTokens',
-  '0x0061e516886a0540f63157f112c0588ee0651dcf': 'JBDirectory',
-  '0x7160a322fea44945a6ef9adfd65c322258df3c5e': 'JBSplits',
-  '0x3a46b21720c8b70184b0434a2293b2fdcc497ce7': 'JBFundAccessLimits',
-  '0xba948dab74e875b19cf0e2ca7a4546c0c2defc40': 'JBPermissions',
-  '0x6e92e3b5ce1e7a4344c6d27c0c54efd00df92fb6': 'JBPrices',
-  '0xf76f7124f73abc7c30b2f76121afd4c52be19442': 'JBFeelessAddresses',
-  // V5.1 contracts
-  '0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1': 'JBController5_1',
-  '0x52869db3d61dde1e391967f2ce5039ad0ecd371c': 'JBMultiTerminal5_1',
-  '0xd4257005ca8d27bbe11f356453b0e4692414b056': 'JBRulesets5_1',
-  '0x82239c5a21f0e09573942caa41c580fa36e27071': 'JBTerminalStore5_1',
-  '0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71': 'JBOmnichainDeployer5_1',
-  // V5 contracts (Revnets)
-  '0x27da30646502e2f642be5281322ae8c394f7668a': 'JBController',
-  '0x2db6d704058e552defe415753465df8df0361846': 'JBMultiTerminal',
-  '0x6292281d69c3593fcf6ea074e5797341476ab428': 'JBRulesets',
-  '0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d': 'REVDeployer',
-  // Hooks and extensions
-  '0xfe9c4f3e5c27ffd8ee523c6ca388aaa95692c25d': 'JBBuybackHook',
-  '0x0c02e48e55f4451a499e48a53595de55c40f3574': 'JBSwapTerminal',
-  // Swap terminal registries - use USDC version when primary terminal accepts USDC, ETH version when accepting native token
-  '0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe': 'JBSwapTerminalUSDCRegistry',
-  '0xde1d0fed5380fc6c9bdcae65329dbad7a96cde0a': 'JBSwapTerminalRegistry',
-  // Suckers
-  '0x696c7e794fe2a7c2e3b7da4ae91733345fc1bf68': 'JBSuckerRegistry',
-  // CCIP Sucker Deployers (cross-chain)
-  '0x34b40205b249e5733cf93d86b7c9783b015dd3e7': 'CCIPSuckerDeployer',
-  '0xde901ebafc70d545f9d43034308c136ce8c94a5c': 'CCIPSuckerDeployer_1',
-  '0x9d4858cc9d3552507eeabce722787afef64c615e': 'CCIPSuckerDeployer_2',
-  '0x39132ea75b9eae5cbff7ba1997c804302a7ff413': 'CCIPSuckerDeployer_1',
-  '0xb825f2f6995966eb6dd772a8707d4a547028ac26': 'CCIPSuckerDeployer_2',
-  '0x3d7fb0aa325ad5d2349274f9ef33d4424135d963': 'CCIPSuckerDeployer_2',
-  // Native token (JBConstants.NATIVE_TOKEN)
-  '0x000000000000000000000000000000000000eeee': 'NATIVE_TOKEN (ETH)',
-  // Zero address
-  '0x0000000000000000000000000000000000000000': 'None',
-}
-
-// Chain-aware token addresses (different per chain)
-const CHAIN_TOKENS: Record<string, Record<string, string>> = {
-  // Ethereum mainnet
-  '1': {
-    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 'USDC',
-  },
-  // Optimism
-  '10': {
-    '0x0b2c639c533813f4aa9d7837caf62653d097ff85': 'USDC',
-  },
-  // Base
-  '8453': {
-    '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': 'USDC',
-  },
-  // Arbitrum
-  '42161': {
-    '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',
-  },
-}
-
-// All USDC addresses by chain for chain-specific display
-const USDC_ADDRESSES: Record<string, string> = {
-  '1': '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-  '10': '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
-  '8453': '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
-  '42161': '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
-}
-
-// Check if an address is USDC (varies by chain)
-function isUsdcAddress(address: string): boolean {
-  const lower = address.toLowerCase()
-  return Object.values(USDC_ADDRESSES).some(addr => addr.toLowerCase() === lower)
-}
-
-// Get human-readable name for a known address (chain-aware for tokens)
-function getAddressLabel(address: string, chainId?: string): string | null {
-  const lower = address.toLowerCase()
-
-  // Check chain-specific tokens first
-  if (chainId && CHAIN_TOKENS[chainId]?.[lower]) {
-    return CHAIN_TOKENS[chainId][lower]
-  }
-
-  // Fall back to global addresses
-  return JB_ADDRESSES[lower] || null
 }
 
 // Component to display an address with optional ENS name
@@ -484,6 +397,12 @@ interface TierInfo {
   encodedIPFSUri?: string
   resolvedUri?: string // Resolved IPFS URI (ipfs://...)
   media?: string // Direct media URL from user upload
+  mediaUri?: string // Alternative field name for media
+  imageUri?: string // Alternative field name
+  uri?: string // Generic URI field
+  image?: string // Direct image field
+  ipfsUri?: string // Raw IPFS URI before encoding
+  tierUri?: string // Another possible field name
   description?: string
 }
 
@@ -495,23 +414,53 @@ function TierPreview({ tier, index, isDark }: { tier: TierInfo; index: number; i
 
   const supplyText = tier.initialSupply >= 4294967290 ? 'Unlimited' : `${tier.initialSupply.toLocaleString()} available`
 
-  // Get image URL from various possible sources
+  // Get image URL from various possible sources - check all possible field names
   const getImageUrl = (): string | null => {
-    // Direct media URL (from user upload)
-    if (tier.media) {
-      if (tier.media.startsWith('ipfs://')) {
-        return `https://ipfs.io/ipfs/${tier.media.replace('ipfs://', '')}`
+    // Helper to resolve any IPFS, HTTP, or data URL
+    const resolveUrl = (url: string | undefined | null): string | null => {
+      if (!url) return null
+      // Data URLs (from user uploads) - return as-is
+      if (url.startsWith('data:image/') || url.startsWith('data:video/')) {
+        return url
       }
-      return tier.media
-    }
-    // Resolved IPFS URI
-    if (tier.resolvedUri) {
-      if (tier.resolvedUri.startsWith('ipfs://')) {
-        return `https://ipfs.io/ipfs/${tier.resolvedUri.replace('ipfs://', '')}`
+      if (url.startsWith('ipfs://')) {
+        return `https://ipfs.io/ipfs/${url.replace('ipfs://', '')}`
       }
-      return tier.resolvedUri
+      if (url.startsWith('http')) {
+        return url
+      }
+      // Might be a raw CID
+      if (url.startsWith('Qm') || url.startsWith('baf')) {
+        return `https://ipfs.io/ipfs/${url}`
+      }
+      return null
     }
-    // encodedIPFSUri is bytes32 - not useful for display without decoding
+
+    // Check all possible field names for the image
+    const possibleUrls = [
+      tier.media,
+      tier.mediaUri,
+      tier.imageUri,
+      tier.image,
+      tier.uri,
+      tier.resolvedUri,
+      tier.ipfsUri,
+      tier.tierUri,
+    ]
+
+    for (const url of possibleUrls) {
+      const resolved = resolveUrl(url)
+      if (resolved) return resolved
+    }
+
+    // Try to decode bytes32 encodedIPFSUri (on-chain format)
+    if (tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
+      const decoded = decodeEncodedIPFSUri(tier.encodedIPFSUri)
+      if (decoded) {
+        return `https://ipfs.io/ipfs/${decoded.replace('ipfs://', '')}`
+      }
+    }
+
     return null
   }
   const imageUrl = getImageUrl()
@@ -549,13 +498,42 @@ function TierPreview({ tier, index, isDark }: { tier: TierInfo; index: number; i
   )
 }
 
-function TiersPreview({ tiers, currency, decimals, isDark, onEdit }: {
+// Skeleton tier card for loading state
+function TierSkeleton({ isDark }: { isDark: boolean }) {
+  return (
+    <div className={`flex gap-3 p-3 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+      <div className={`w-16 h-16 rounded flex-shrink-0 animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className={`h-5 w-24 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          <div className={`h-5 w-12 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+        </div>
+        <div className={`h-3 w-20 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+      </div>
+    </div>
+  )
+}
+
+function TiersPreview({ tiers, currency, decimals, isDark, onEdit, isLoading }: {
   tiers: TierInfo[];
   currency: number;
   decimals: number;
   isDark: boolean;
-  onEdit?: () => void
+  onEdit?: () => void;
+  isLoading?: boolean;
 }) {
+  // Show skeleton state when loading
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        <SectionHeader title="Reward Tiers" isDark={isDark} />
+        <div className="space-y-2">
+          <TierSkeleton isDark={isDark} />
+        </div>
+      </div>
+    )
+  }
+
   if (!tiers || tiers.length === 0) return null
 
   return (
@@ -565,6 +543,32 @@ function TiersPreview({ tiers, currency, decimals, isDark, onEdit }: {
         {tiers.map((tier, i) => (
           <TierPreview key={i} tier={{ ...tier, currency, decimals }} index={i} isDark={isDark} />
         ))}
+      </div>
+    </div>
+  )
+}
+
+// Skeleton funding breakdown for loading state
+function FundingSkeleton({ isDark }: { isDark: boolean }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeader title="Payout Distribution" isDark={isDark} />
+      <div className={`flex justify-between items-center py-2 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+        <div className={`h-4 w-24 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+        <div className={`h-6 w-16 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+      </div>
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <div className={`h-4 w-12 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          <div className={`h-4 w-20 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+        </div>
+        <div className="flex justify-between items-center">
+          <div className={`h-4 w-20 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          <div className={`h-4 w-14 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+        </div>
+      </div>
+      <div className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+        This one can take a minute...
       </div>
     </div>
   )
@@ -581,12 +585,16 @@ function FundingBreakdown({
   payoutLimit,
   splits,
   isDark,
-  onEdit
+  onEdit,
+  juicyFeeEnabled,
+  onToggleJuicyFee
 }: {
   payoutLimit?: number;
   splits: SplitInfo[];
   isDark: boolean;
   onEdit?: () => void;
+  juicyFeeEnabled: boolean;
+  onToggleJuicyFee: (enabled: boolean) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editPayoutLimit, setEditPayoutLimit] = useState(payoutLimit ? (payoutLimit / 1000000).toString() : '')
@@ -597,22 +605,39 @@ function FundingBreakdown({
     return `$${amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
   }
 
+  // Filter out Juicy fee from display (projectId === 1)
+  const juicyFee = splits.find(s => s.projectId === 1)
+  const displaySplits = splits.filter(s => s.projectId !== 1)
+
   // Calculate total split percentage and implied owner share
-  const totalSplitPercent = splits.reduce((sum, s) => sum + s.percent, 0)
+  // When Juicy is disabled, exclude Juicy from calculations
+  const activeSplits = juicyFeeEnabled ? splits : displaySplits
+  const totalSplitPercent = activeSplits.reduce((sum, s) => sum + s.percent, 0)
   const ownerPercent = 1000000000 - totalSplitPercent // 100% in basis points
-  const hasImpliedOwner = ownerPercent > 0 && !splits.some(s => s.projectId === 0 || (s.beneficiary && s.beneficiary !== '0x0000000000000000000000000000000000000000'))
+  const hasImpliedOwner = ownerPercent > 0 && !activeSplits.some(s => s.projectId === 0 || (s.beneficiary && s.beneficiary !== '0x0000000000000000000000000000000000000000'))
 
   // Check if payout limit is defined (not unlimited)
   // Unlimited is represented by very large values (type(uint224).max) or 0/undefined
   const UNLIMITED_THRESHOLD = 1e15 // $1 quadrillion - anything above this is effectively unlimited
   const hasDefinedLimit = payoutLimit && payoutLimit > 0 && payoutLimit < UNLIMITED_THRESHOLD
 
-  // Filter out Juicy fee from display (projectId === 1)
-  const displaySplits = splits.filter(s => s.projectId !== 1)
-  const juicyFee = splits.find(s => s.projectId === 1)
+  // Calculate effective payout limit - when Juicy is disabled, reduce the limit
+  // to the user's original intended amount (floor to remove rounding artifacts)
+  const effectivePayoutLimit = useMemo(() => {
+    if (!hasDefinedLimit || !juicyFee || juicyFeeEnabled) {
+      return payoutLimit
+    }
+    // Owner's original dollar amount (what they'd get after Juicy's cut)
+    const ownerAmount = (payoutLimit! / 1000000) * ((1000000000 - (juicyFee?.percent || 0)) / 1000000000)
+    // Floor to get the user's original intended amount (e.g., $5,000.775 → $5,000)
+    return Math.floor(ownerAmount) * 1000000
+  }, [payoutLimit, juicyFee, juicyFeeEnabled, hasDefinedLimit])
 
-  // Find owner split (projectId 0 with beneficiary)
-  const ownerSplit = splits.find(s => s.projectId === 0 && s.beneficiary && s.beneficiary !== '0x0000000000000000000000000000000000000000')
+  // Find owner split (projectId 0, regardless of beneficiary)
+  const ownerSplit = activeSplits.find(s => s.projectId === 0)
+
+  // When Juicy is disabled, the owner gets 100% of the reduced payout limit
+  const effectiveOwnerPercent = !juicyFeeEnabled && juicyFee ? 1000000000 : (ownerSplit?.percent || ownerPercent)
 
   const handleEdit = () => {
     setIsEditing(true)
@@ -676,8 +701,8 @@ function FundingBreakdown({
           <div className={`flex justify-between items-center py-2 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
             <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Payout Limit</span>
             <span className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {hasDefinedLimit
-                ? `$${(payoutLimit! / 1000000).toLocaleString()}`
+              {hasDefinedLimit && effectivePayoutLimit
+                ? `$${(effectivePayoutLimit / 1000000).toLocaleString()}`
                 : 'Unlimited'}
             </span>
           </div>
@@ -688,7 +713,7 @@ function FundingBreakdown({
               <div className="flex justify-between items-center">
                 <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>You</span>
                 <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {hasDefinedLimit ? formatAmount(payoutLimit!, ownerPercent) : formatPercent(ownerPercent)}
+                  {hasDefinedLimit && effectivePayoutLimit ? formatAmount(effectivePayoutLimit, effectiveOwnerPercent) : formatPercent(effectiveOwnerPercent)}
                 </span>
               </div>
             )}
@@ -698,7 +723,7 @@ function FundingBreakdown({
               <div className="flex justify-between items-center">
                 <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>You</span>
                 <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {hasDefinedLimit ? formatAmount(payoutLimit!, ownerSplit.percent) : formatPercent(ownerSplit.percent)}
+                  {hasDefinedLimit && effectivePayoutLimit ? formatAmount(effectivePayoutLimit, effectiveOwnerPercent) : formatPercent(effectiveOwnerPercent)}
                 </span>
               </div>
             )}
@@ -714,15 +739,58 @@ function FundingBreakdown({
                   )}
                 </span>
                 <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {hasDefinedLimit ? formatAmount(payoutLimit!, split.percent) : formatPercent(split.percent)}
+                  {hasDefinedLimit && effectivePayoutLimit ? formatAmount(effectivePayoutLimit, split.percent) : formatPercent(split.percent)}
                 </span>
               </div>
             ))}
 
-            {/* Show Juicy fee subtly at the end */}
+            {/* Show Juicy fee with toggle to opt out */}
             {juicyFee && (
-              <div className={`flex justify-between items-center text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                <span>Pay Juicy</span>
+              <div className={`flex justify-between items-center text-sm ${
+                juicyFeeEnabled
+                  ? (isDark ? 'text-gray-500' : 'text-gray-400')
+                  : (isDark ? 'text-gray-600 line-through' : 'text-gray-300 line-through')
+              }`}>
+                <span className="inline-flex items-center gap-1.5">
+                  {/* Toggle checkbox */}
+                  <button
+                    onClick={() => onToggleJuicyFee(!juicyFeeEnabled)}
+                    className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                      juicyFeeEnabled
+                        ? (isDark
+                            ? 'border-gray-600 bg-gray-700 hover:border-gray-500 text-gray-400'
+                            : 'border-gray-300 bg-gray-100 hover:border-gray-400 text-gray-500')
+                        : (isDark
+                            ? 'border-gray-700 bg-transparent hover:border-gray-600'
+                            : 'border-gray-200 bg-transparent hover:border-gray-300')
+                    }`}
+                    title={juicyFeeEnabled ? "Click to remove Juicy fee" : "Click to add Juicy fee"}
+                  >
+                    {juicyFeeEnabled && (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                  Pay Juicy
+                  <span className="relative group">
+                    <span
+                      className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[10px] font-medium cursor-help ${
+                        isDark ? 'bg-white/10 text-gray-400 hover:bg-white/20' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                      }`}
+                    >
+                      ?
+                    </span>
+                    {/* Tooltip */}
+                    <div className={`absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 p-2 text-xs leading-relaxed rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 ${
+                      isDark ? 'bg-gray-800 text-gray-200 border border-white/10' : 'bg-white text-gray-700 border border-gray-200'
+                    }`}>
+                      JUICY runs like a co-op and is the revenue token that powers this app. When you pay 2.5% into JUICY, you receive JUICY tokens proportional to your payment. As Juicy's balance grows over time, so does the value backing each token.
+                      <br /><br />
+                      JUICY wants skin in the game as we help your project succeed.
+                    </div>
+                  </span>
+                </span>
                 <span>{hasDefinedLimit ? formatAmount(payoutLimit!, juicyFee.percent) : formatPercent(juicyFee.percent)}</span>
               </div>
             )}
@@ -745,34 +813,94 @@ export default function TransactionPreview({
 }: TransactionPreviewProps) {
   const [expanded, setExpanded] = useState(false)
   const [technicalDetailsReady, setTechnicalDetailsReady] = useState(false)
+  const [juicyFeeEnabled, setJuicyFeeEnabled] = useState(true)
+  const [showRawJson, setShowRawJson] = useState(false)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  // Check if parameters JSON is valid - if truncated, show error state
-  const isParamsValid = useMemo(() => {
-    if (_isTruncated === 'true') return false
+  // Get draft data collected from forms - use as fallback while transaction JSON streams
+  const draftTiers = useProjectDraftStore(state => state.tiers)
+  const draftPayoutLimit = useProjectDraftStore(state => state.payoutLimit)
+  const draftPayoutCurrency = useProjectDraftStore(state => state.payoutCurrency)
+
+  // Single JSON parse - extract all preview data at once for fast initial render
+  const previewData = useMemo(() => {
+    if (_isTruncated === 'true') return null
     try {
-      JSON.parse(parameters || '{}')
-      return true
+      const raw = JSON.parse(parameters || '{}')
+
+      // Extract project metadata
+      const projectMetadata = raw?.projectMetadata as Record<string, unknown> | null
+
+      // Extract tiers info
+      let tiersInfo: { tiers: TierInfo[]; currency: number; decimals: number } | null = null
+      const tiersConfig = raw?.deployTiersHookConfig?.tiersConfig
+      if (tiersConfig?.tiers && Array.isArray(tiersConfig.tiers)) {
+        tiersInfo = {
+          tiers: tiersConfig.tiers as TierInfo[],
+          currency: tiersConfig.currency || 2,
+          decimals: tiersConfig.decimals || 6
+        }
+      }
+
+      // Extract funding info
+      let fundingInfo: { splits: SplitInfo[]; payoutLimit?: number } | null = null
+      const rulesets = raw?.rulesetConfigurations || raw?.launchProjectConfig?.rulesetConfigurations
+      if (rulesets && Array.isArray(rulesets) && rulesets.length > 0) {
+        const firstRuleset = rulesets[0]
+        const splits: SplitInfo[] = []
+        let payoutLimit: number | undefined
+
+        if (firstRuleset.splitGroups && Array.isArray(firstRuleset.splitGroups)) {
+          for (const group of firstRuleset.splitGroups) {
+            if (group.splits && Array.isArray(group.splits)) {
+              for (const split of group.splits) {
+                splits.push({
+                  percent: split.percent || 0,
+                  projectId: split.projectId || 0,
+                  beneficiary: split.beneficiary || ''
+                })
+              }
+            }
+          }
+        }
+
+        if (firstRuleset.fundAccessLimitGroups && Array.isArray(firstRuleset.fundAccessLimitGroups)) {
+          for (const group of firstRuleset.fundAccessLimitGroups) {
+            if (group.payoutLimits && Array.isArray(group.payoutLimits)) {
+              for (const limit of group.payoutLimits) {
+                if (limit.amount) {
+                  payoutLimit = typeof limit.amount === 'string' ? parseInt(limit.amount) : limit.amount
+                  break
+                }
+              }
+            }
+          }
+        }
+
+        fundingInfo = { splits, payoutLimit }
+      }
+
+      // Check for multi-chain suckers
+      const hasMultiChainSuckers = raw?.suckerDeploymentConfiguration?.deployerConfigurations?.length > 0
+
+      return { raw, projectMetadata, tiersInfo, fundingInfo, hasMultiChainSuckers, isValid: true }
     } catch {
-      return false
+      return null
     }
   }, [parameters, _isTruncated])
 
-  // Quick extraction of just projectMetadata for the preview (fast)
-  // Must be before early return to satisfy React hooks rules
-  const projectMetadata = useMemo(() => {
-    if (!isParamsValid) return null
-    try {
-      const raw = JSON.parse(parameters)
-      if (raw && typeof raw.projectMetadata === 'object') {
-        return raw.projectMetadata as Record<string, unknown>
-      }
-      return null
-    } catch {
-      return null
-    }
-  }, [parameters, isParamsValid])
+  // "Sticky" content: once we've successfully parsed content, remember it
+  // This prevents flashing back to shimmer during state transitions
+  const lastValidPreviewData = useRef<typeof previewData>(null)
+  if (previewData?.isValid) {
+    lastValidPreviewData.current = previewData
+  }
+
+  // Use current data if valid, otherwise fall back to last valid data
+  const effectivePreviewData = previewData?.isValid ? previewData : lastValidPreviewData.current
+  const isParamsValid = effectivePreviewData?.isValid ?? false
+  const projectMetadata = effectivePreviewData?.projectMetadata ?? null
 
   // Helper to generate a random 32-byte hex string for salt
   const generateRandomSalt = (): string => {
@@ -806,13 +934,43 @@ export default function TransactionPreview({
     return obj
   }
 
+  // Helper to encode media URIs into encodedIPFSUri and remove media field
+  // This converts the AI's convenience "media" field (ipfs://...) into the contract's
+  // expected "encodedIPFSUri" (bytes32 hex) format
+  const processMediaUris = (obj: unknown): unknown => {
+    if (obj === null || obj === undefined) return obj
+    if (Array.isArray(obj)) return obj.map(processMediaUris)
+    if (typeof obj === 'object') {
+      const record = obj as Record<string, unknown>
+      const result: Record<string, unknown> = {}
+
+      for (const [key, value] of Object.entries(record)) {
+        // Skip the media field - we'll encode it into encodedIPFSUri
+        if (key === 'media') {
+          continue
+        }
+        // If this object has a media field, encode it into encodedIPFSUri
+        if (key === 'encodedIPFSUri' && record.media && typeof record.media === 'string') {
+          const encoded = encodeIpfsUri(record.media as string)
+          result[key] = encoded || value // Use encoded value or fallback to original
+        } else {
+          result[key] = processMediaUris(value)
+        }
+      }
+      return result
+    }
+    return obj
+  }
+
   // Deferred full parameter parsing - only computed when technical details are expanded
   // Must be before early return to satisfy React hooks rules
   const parsedParams = useMemo(() => {
     if (!isParamsValid || !technicalDetailsReady) return null
     try {
       const rawParams = JSON.parse(parameters)
-      return updateTimestamps(rawParams) as Record<string, unknown>
+      // Apply transformations: timestamps, then media URI encoding
+      const withTimestamps = updateTimestamps(rawParams)
+      return processMediaUris(withTimestamps) as Record<string, unknown>
     } catch {
       return { raw: parameters }
     }
@@ -828,91 +986,66 @@ export default function TransactionPreview({
     }
   }, [expanded, technicalDetailsReady])
 
-  // Detect multi-chain deployment from suckerDeploymentConfiguration in parameters
-  // This handles cases where chainConfigs isn't provided but suckers are configured
-  // Must be before early return to satisfy React hooks rules
-  const hasMultiChainSuckers = useMemo(() => {
-    try {
-      const raw = JSON.parse(parameters)
-      const suckerConfig = raw?.suckerDeploymentConfiguration
-      return suckerConfig?.deployerConfigurations?.length > 0
-    } catch {
-      return false
-    }
-  }, [parameters])
+  // Use pre-extracted data from single parse (using effective data for sticky content)
+  const hasMultiChainSuckers = effectivePreviewData?.hasMultiChainSuckers ?? false
 
-  // Extract tier info for launch721Project
-  // Must be before early return to satisfy React hooks rules
+  // Use draft data as fallback while transaction JSON streams
+  // When streamed data arrives, preserve draft tier images (data URLs) since IPFS gateway can be slow
   const tiersInfo = useMemo(() => {
-    if (!isParamsValid) return null
-    try {
-      const raw = JSON.parse(parameters)
-      // Only support the correct format: deployTiersHookConfig.tiersConfig.tiers
-      const tiersConfig = raw?.deployTiersHookConfig?.tiersConfig
-      if (tiersConfig?.tiers && Array.isArray(tiersConfig.tiers)) {
-        return {
-          tiers: tiersConfig.tiers as TierInfo[],
-          currency: tiersConfig.currency || 2,
-          decimals: tiersConfig.decimals || 6
-        }
-      }
-      return null
-    } catch {
-      return null
-    }
-  }, [parameters, isParamsValid])
+    const streamedTiers = effectivePreviewData?.tiersInfo
+    const draftTierImages = new Map(draftTiers.map(t => [t.name.toLowerCase(), t.imageUrl]))
 
-  // Extract funding info (splits and payout limits)
-  // Must be before early return to satisfy React hooks rules
-  const fundingInfo = useMemo(() => {
-    if (!isParamsValid) return null
-    try {
-      const raw = JSON.parse(parameters)
-      // Handle both launchProject (top level) and launch721Project (in launchProjectConfig)
-      const rulesets = raw?.rulesetConfigurations || raw?.launchProjectConfig?.rulesetConfigurations
-      if (!rulesets || !Array.isArray(rulesets) || rulesets.length === 0) return null
-
-      const firstRuleset = rulesets[0]
-      const splits: SplitInfo[] = []
-      let payoutLimit: number | undefined
-
-      // Extract splits
-      if (firstRuleset.splitGroups && Array.isArray(firstRuleset.splitGroups)) {
-        for (const group of firstRuleset.splitGroups) {
-          if (group.splits && Array.isArray(group.splits)) {
-            for (const split of group.splits) {
-              splits.push({
-                percent: split.percent || 0,
-                projectId: split.projectId || 0,
-                beneficiary: split.beneficiary || ''
-              })
-            }
+    if (streamedTiers) {
+      // Enhance streamed tiers with draft images if available
+      return {
+        ...streamedTiers,
+        tiers: streamedTiers.tiers.map(tier => {
+          const draftImage = tier.name ? draftTierImages.get(tier.name.toLowerCase()) : undefined
+          // Use draft image if available (data URL loads instantly vs IPFS gateway)
+          if (draftImage && !tier.resolvedUri) {
+            return { ...tier, resolvedUri: draftImage }
           }
-        }
+          return tier
+        })
       }
-
-      // Extract payout limit
-      if (firstRuleset.fundAccessLimitGroups && Array.isArray(firstRuleset.fundAccessLimitGroups)) {
-        for (const group of firstRuleset.fundAccessLimitGroups) {
-          if (group.payoutLimits && Array.isArray(group.payoutLimits)) {
-            for (const limit of group.payoutLimits) {
-              if (limit.amount) {
-                payoutLimit = typeof limit.amount === 'string' ? parseInt(limit.amount) : limit.amount
-                break
-              }
-            }
-          }
-        }
-      }
-
-      return { splits, payoutLimit }
-    } catch {
-      return null
     }
-  }, [parameters, isParamsValid])
 
-  // If component is still being streamed (truncated), show loading shimmer
-  if (_isTruncated === 'true') {
+    // Fall back to draft tiers if no streamed data
+    if (draftTiers.length > 0) {
+      return {
+        tiers: draftTiers.map(t => ({
+          name: t.name,
+          price: t.price * (t.currency === 2 ? 1000000 : 1e18),
+          currency: t.currency,
+          decimals: t.currency === 2 ? 6 : 18,
+          initialSupply: 1000000000,
+          description: t.description,
+          resolvedUri: t.imageUrl,
+        })),
+        currency: draftTiers[0]?.currency ?? 2,
+        decimals: draftTiers[0]?.currency === 2 ? 6 : 18
+      }
+    }
+
+    return null
+  }, [effectivePreviewData?.tiersInfo, draftTiers])
+
+  // Build funding info from streamed data or draft data
+  // Prefer draft data if streamed data exists but is empty
+  const streamedFundingInfo = effectivePreviewData?.fundingInfo
+  const hasStreamedFundingData = streamedFundingInfo && (streamedFundingInfo.payoutLimit || streamedFundingInfo.splits.length > 0)
+  const draftFundingInfo = draftPayoutLimit ? {
+    splits: [
+      { percent: 975000000, projectId: 0, beneficiary: '' }, // 97.5% to owner
+      { percent: 25000000, projectId: 1, beneficiary: '' },  // 2.5% to Juicy
+    ],
+    payoutLimit: draftPayoutLimit * (draftPayoutCurrency === 2 ? 1000000 : 1e18)
+  } : null
+  const fundingInfo = hasStreamedFundingData ? streamedFundingInfo : draftFundingInfo
+
+  // If component is still being streamed (truncated) AND we don't have valid data yet, show shimmer
+  // Once we have valid data, we keep showing it even during prop transitions
+  if (_isTruncated === 'true' && !lastValidPreviewData.current) {
     return (
       <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
         isDark
@@ -1013,28 +1146,35 @@ export default function TransactionPreview({
         </div>
       )}
 
-      {/* Tiers preview for launch721Project */}
-      {tiersInfo && tiersInfo.tiers.length > 0 && (
+      {/* Tiers preview for launch721Project - show skeleton if expected but not loaded */}
+      {action === 'launch721Project' && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <TiersPreview
-            tiers={tiersInfo.tiers}
-            currency={tiersInfo.currency}
-            decimals={tiersInfo.decimals}
+            tiers={tiersInfo?.tiers || []}
+            currency={tiersInfo?.currency || 2}
+            decimals={tiersInfo?.decimals || 6}
             isDark={isDark}
             onEdit={() => window.dispatchEvent(new CustomEvent('juice:edit-section', { detail: { section: 'tiers' } }))}
+            isLoading={!tiersInfo || tiersInfo.tiers.length === 0}
           />
         </div>
       )}
 
-      {/* Funding breakdown */}
-      {fundingInfo && (fundingInfo.payoutLimit || fundingInfo.splits.length > 0) && (
+      {/* Funding breakdown - show skeleton if expected but not loaded */}
+      {(action === 'launch721Project' || action === 'launchProject') && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          <FundingBreakdown
-            payoutLimit={fundingInfo.payoutLimit}
-            splits={fundingInfo.splits}
-            isDark={isDark}
-            onEdit={() => window.dispatchEvent(new CustomEvent('juice:edit-section', { detail: { section: 'funding' } }))}
-          />
+          {fundingInfo && (fundingInfo.payoutLimit || fundingInfo.splits.length > 0) ? (
+            <FundingBreakdown
+              payoutLimit={fundingInfo.payoutLimit}
+              splits={fundingInfo.splits}
+              isDark={isDark}
+              onEdit={() => window.dispatchEvent(new CustomEvent('juice:edit-section', { detail: { section: 'funding' } }))}
+              juicyFeeEnabled={juicyFeeEnabled}
+              onToggleJuicyFee={setJuicyFeeEnabled}
+            />
+          ) : (
+            <FundingSkeleton isDark={isDark} />
+          )}
         </div>
       )}
 
@@ -1110,12 +1250,36 @@ export default function TransactionPreview({
               </div>
             )}
 
+            {/* Toggle between structured and raw JSON view */}
+            {parsedParams && (
+              <div className={`flex justify-end pt-2 pb-1 border-t mt-2 ${isDark ? 'border-white/5' : 'border-gray-100'}`}>
+                <button
+                  onClick={() => setShowRawJson(!showRawJson)}
+                  className={`text-xs px-2 py-0.5 rounded ${
+                    isDark
+                      ? 'text-gray-400 hover:text-gray-300 hover:bg-white/5'
+                      : 'text-gray-500 hover:text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {showRawJson ? 'Structured View' : 'Raw JSON'}
+                </button>
+              </div>
+            )}
+
             {parsedParams ? (
-              Object.entries(parsedParams)
-                .filter(([key]) => key !== 'chainConfigs') // Hide chainConfigs - it's redundant with the Chains display
-                .map(([key, value]) => (
-                <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
-              ))
+              showRawJson ? (
+                <pre className={`text-[10px] leading-relaxed overflow-x-auto p-2 rounded max-h-96 overflow-y-auto ${
+                  isDark ? 'bg-black/30 text-gray-300' : 'bg-gray-50 text-gray-700'
+                }`}>
+                  {JSON.stringify(parsedParams, null, 2)}
+                </pre>
+              ) : (
+                Object.entries(parsedParams)
+                  .filter(([key]) => key !== 'chainConfigs') // Hide chainConfigs - it's redundant with the Chains display
+                  .map(([key, value]) => (
+                  <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
+                ))
+              )
             ) : (
               <div className={`flex items-center gap-2 py-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                 <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1139,7 +1303,35 @@ export default function TransactionPreview({
             let actionParams: Record<string, unknown>
             try {
               const rawParams = JSON.parse(parameters)
-              actionParams = updateTimestamps(rawParams) as Record<string, unknown>
+              // Apply transformations: timestamps, then media URI encoding
+              const withTimestamps = updateTimestamps(rawParams)
+              actionParams = processMediaUris(withTimestamps) as Record<string, unknown>
+
+              // If Juicy fee is disabled, remove the Juicy split (projectId === 1)
+              if (!juicyFeeEnabled) {
+                const removeJuicySplit = (obj: unknown): unknown => {
+                  if (obj === null || obj === undefined) return obj
+                  if (Array.isArray(obj)) return obj.map(removeJuicySplit)
+                  if (typeof obj === 'object') {
+                    const record = obj as Record<string, unknown>
+                    // Check if this is a splitGroups array
+                    if (record.splitGroups && Array.isArray(record.splitGroups)) {
+                      record.splitGroups = (record.splitGroups as Array<{ groupId?: string; splits?: Array<{ projectId?: number }> }>).map(group => ({
+                        ...group,
+                        splits: group.splits?.filter(split => split.projectId !== 1) || []
+                      }))
+                    }
+                    // Recursively process all values
+                    const result: Record<string, unknown> = {}
+                    for (const [key, value] of Object.entries(record)) {
+                      result[key] = removeJuicySplit(value)
+                    }
+                    return result
+                  }
+                  return obj
+                }
+                actionParams = removeJuicySplit(actionParams) as Record<string, unknown>
+              }
             } catch {
               actionParams = { raw: parameters }
             }
@@ -1157,216 +1349,8 @@ export default function TransactionPreview({
   )
 }
 
-// Helper to format parameter names
-function formatParamName(key: string): string {
-  return key
-    // Add space between acronym and next word (e.g., "IPFSUri" → "IPFS Uri")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-    // Add space between lowercase and uppercase (e.g., "encodedIPFS" → "encoded IPFS")
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/^./, str => str.toUpperCase())
-    .trim()
-}
-
-// Helper to format simple parameter values with context-aware descriptions
-function formatSimpleValue(value: unknown, key?: string, chainId?: string): string {
-  if (value === null || value === undefined) return 'null'
-
-  const keyLower = (key || '').toLowerCase().replace(/\s+/g, '')
-  const numValue = typeof value === 'number' ? value : (typeof value === 'string' && /^\d+$/.test(value) ? parseInt(value) : null)
-
-  // Context-aware formatting based on parameter name
-  if (keyLower.includes('basecurrency') && numValue !== null) {
-    return numValue === 1 ? '1 (ETH)' : numValue === 2 ? '2 (USD)' : String(value)
-  }
-
-  // Currency field (JBAccountingContext uses uint32 currency codes)
-  // Currency = uint32(uint160(tokenAddress)) - lowest 32 bits of the token address
-  // Don't use commas - currency codes are identifiers, not numerical values
-  if (keyLower === 'currency' && numValue !== null) {
-    // Known currency codes: uint32(uint160(tokenAddress))
-    const currencyLabels: Record<number, string> = {
-      // NATIVE_TOKEN (JBConstants.NATIVE_TOKEN): 0x000000000000000000000000000000000000EEEe -> u32 = 61166
-      61166: 'ETH',
-      // USDC addresses vary by chain - these are the Ethereum mainnet USDC code
-      // Other chains: Optimism=3530704773, Base=3169378579, Arbitrum=1156540465
-      909516616: 'USDC',
-    }
-    const label = currencyLabels[numValue]
-    return label ? `${numValue} (${label})` : String(numValue)
-  }
-
-  // Weight has 18 decimals - convert to human readable
-  if (keyLower.includes('weight') && !keyLower.includes('cut')) {
-    // Handle both string (large numbers) and number values
-    let rawWeight: number
-    if (typeof value === 'string' && /^\d+$/.test(value)) {
-      // Large string number - divide by 10^18
-      rawWeight = parseFloat(value) / 1e18
-    } else if (numValue !== null) {
-      // If it's already a reasonable number, use it directly
-      // But if it's huge (> 1 trillion), assume it has 18 decimals
-      rawWeight = numValue > 1e12 ? numValue / 1e18 : numValue
-    } else {
-      return String(value)
-    }
-
-    // Format nicely
-    if (rawWeight >= 1e9) return `${(rawWeight / 1e9).toFixed(1)}B tokens/USD`
-    if (rawWeight >= 1e6) return `${(rawWeight / 1e6).toFixed(1)}M tokens/USD`
-    if (rawWeight >= 1e3) return `${(rawWeight / 1e3).toFixed(1)}K tokens/USD`
-    return `${rawWeight.toLocaleString()} tokens/USD`
-  }
-
-  // Unix timestamps - mustStartAtOrAfter, lockedUntil, etc.
-  if ((keyLower.includes('startat') || keyLower.includes('lockeduntil')) && numValue !== null && numValue > 1000000000) {
-    const date = new Date(numValue * 1000)
-    const now = new Date()
-    const diffMs = date.getTime() - now.getTime()
-    const diffMins = Math.round(diffMs / 60000)
-
-    // Format the date
-    const dateStr = date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    })
-
-    // Add relative context
-    if (numValue === 0) return '0 (immediately)'
-    if (diffMins > 0 && diffMins < 60) return `${dateStr} (in ~${diffMins} min)`
-    if (diffMins > 0 && diffMins < 1440) return `${dateStr} (in ~${Math.round(diffMins / 60)} hours)`
-    if (diffMins < 0) return `${dateStr} (past)`
-    return dateStr
-  }
-
-  if (keyLower.includes('duration') && numValue !== null) {
-    if (numValue === 0) return '0 (ongoing)'
-    const days = Math.floor(numValue / 86400)
-    const hours = Math.floor((numValue % 86400) / 3600)
-    if (days > 0) return `${days}d ${hours}h`
-    return `${hours}h`
-  }
-
-  if (keyLower.includes('reservedpercent') && numValue !== null) {
-    const pct = (numValue / 100).toFixed(0)
-    return `${pct}%${numValue === 0 ? ' (all to contributors)' : ''}`
-  }
-
-  if (keyLower.includes('cashouttaxrate') && numValue !== null) {
-    const pct = (numValue / 100).toFixed(0)
-    if (numValue === 0) return '0% (full refunds)'
-    if (numValue === 10000) return '100% (disabled)'
-    return `${pct}%`
-  }
-
-  if (keyLower.includes('weightcutpercent') && numValue !== null) {
-    const pct = (numValue / 10000000).toFixed(1)
-    return numValue === 0 ? '0% (no cut)' : `${pct}%/cycle`
-  }
-
-  if ((keyLower.includes('pausepay') || keyLower.includes('allowownerminting')) && typeof value === 'boolean') {
-    return value ? 'Yes' : 'No'
-  }
-
-  if (typeof value === 'boolean') return value ? 'true' : 'false'
-  if (typeof value === 'number') return value.toLocaleString()
-  if (typeof value !== 'string') return String(value)
-
-  // Handle addresses - show label if known JB address, always show full address
-  if (value.startsWith('0x') && value.length === 42) {
-    const label = getAddressLabel(value, chainId)
-    return label ? `${label} (${value})` : value
-  }
-
-  // Handle IPFS URIs - show full URI
-  if (value.startsWith('ipfs://')) {
-    return value
-  }
-
-  // Handle groupId - it's uint256(uint160(tokenAddress)), identifies which token's payouts are split
-  if (keyLower.includes('groupid')) {
-    // Known group IDs from USDC addresses
-    const groupIdLabels: Record<string, string> = {
-      '918640019851866092946544831648579639063834485832': 'USDC payouts',
-      // Add more known group IDs as needed
-    }
-    const label = groupIdLabels[value]
-    return label || value
-  }
-
-  // Handle large numbers (likely wei) - show both formats
-  // Skip this for values that look like group IDs (very large uint256)
-  if (/^\d{18,}$/.test(value) && !keyLower.includes('groupid')) {
-    const eth = parseFloat(value) / 1e18
-    return `${eth.toFixed(4)} ETH (${value})`
-  }
-
-  // Show full value, no truncation
-  return value
-}
-
-// Check if value is a complex object that needs expansion
-function isComplexValue(value: unknown): boolean {
-  if (value === null || value === undefined) return false
-  if (Array.isArray(value)) return value.length > 0
-  if (typeof value === 'object') return Object.keys(value).length > 0
-  return false
-}
-
-// Check if value is an empty array
-function isEmptyArray(value: unknown): boolean {
-  return Array.isArray(value) && value.length === 0
-}
-
-// Get a human-readable label for array items based on parent context
-// Return empty string to skip the wrapper and render contents directly
-function getArrayItemLabel(parentName: string, index: number): string {
-  const lower = parentName.toLowerCase()
-  if (lower.includes('ruleset')) return `Ruleset ${index + 1}`
-  if (lower.includes('terminal')) return `Terminal ${index + 1}`
-  if (lower === 'splits') return '' // Skip wrapper, show contents directly
-  if (lower.includes('splitgroup')) return '' // Skip wrapper, show contents directly
-  if (lower.includes('sucker')) return `Sucker ${index + 1}`
-  if (lower.includes('chain')) return `Chain ${index + 1}`
-  if (lower.includes('hook')) return `Hook ${index + 1}`
-  if (lower.includes('mapping')) return `Mapping ${index + 1}`
-  if (lower.includes('tier')) return '' // Skip wrapper, show contents directly
-  if (lower.includes('deployer')) return `Deployer ${index + 1}`
-  if (lower.includes('limit')) return '' // Skip wrapper, show contents directly
-  if (lower.includes('allowance')) return '' // Skip wrapper, show contents directly
-  return `Item ${index + 1}`
-}
-
-// Get tooltip text for known parameters
-function getParamTooltip(name: string): string | undefined {
-  const tooltips: Record<string, string> = {
-    groupId: 'Identifies which token\'s payouts this split group applies to. Derived from uint256(uint160(tokenAddress)).',
-    weight: 'Tokens minted per unit of base currency (e.g., 1000000 = 1M tokens per dollar)',
-    weightCutPercent: 'How much issuance decreases each cycle (0 = no cut, 1000000000 = 100% cut)',
-    reservedPercent: 'Percentage of minted tokens reserved (0-10000, where 10000 = 100%)',
-    cashOutTaxRate: 'Bonding curve tax on cash outs (0 = full refund, 10000 = disabled)',
-    baseCurrency: '1 = ETH, 2 = USD - determines how token issuance is calculated',
-    duration: 'Ruleset duration in seconds (0 = no automatic cycling)',
-    pausePay: 'If true, payments are disabled',
-    allowOwnerMinting: 'If true, owner can mint tokens directly',
-    terminal: 'Contract address that handles payments and cash outs',
-    tokensToIssue: 'ERC-20 token addresses this terminal can accept',
-    hook: 'Optional hook contract for custom behavior',
-    projectUri: 'IPFS link to project metadata (name, description, logo)',
-    memo: 'On-chain message attached to this transaction',
-  }
-  const key = name.replace(/\s+/g, '').toLowerCase()
-  for (const [k, v] of Object.entries(tooltips)) {
-    if (key.includes(k.toLowerCase())) return v
-  }
-  return undefined
-}
-
 // Component to render a parameter row with support for nested objects
+// Uses shared utilities from technicalDetails.ts
 function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '' }: {
   name: string;
   value: unknown;

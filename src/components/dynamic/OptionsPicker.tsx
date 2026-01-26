@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useThemeStore } from '../../stores'
+import { useProjectDraftStore } from '../../stores/projectDraftStore'
 import { useComponentCollaboration } from '../../hooks/useComponentCollaboration'
 
 interface Option {
@@ -57,6 +58,7 @@ const normalizeValue = (value: string) => value.toLowerCase().trim().replace(/[\
 export default function OptionsPicker({ groups, submitLabel = 'Continue', allSelectedLabel, onSubmit, expectedGroupCount, isStreaming, chatId, messageId, creative, userResponse }: OptionsPickerProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+  const parseFormSubmission = useProjectDraftStore(state => state.parseFormSubmission)
 
   // Track if the picker has been submitted (to show idle state)
   // Initialize as submitted if we have a userResponse (component was previously submitted)
@@ -320,6 +322,9 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
     // Build response message for normal selections
     // Filter out empty/undefined values to avoid showing "undefined" in messages
+    // Also collect file attachments to send separately
+    const fileAttachments: Record<string, string> = {}
+
     const parts = groups.map(g => {
       const sel = selections[g.id]
       const options = g.options || []
@@ -333,10 +338,15 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
         return `${g.label}: ${labels.join(', ')}`
       }
 
-      // For file type, just indicate a logo was provided (only if it's a valid image URL)
+      // For file type, collect the data URL and indicate upload in message
       if (g.type === 'file') {
         const isValidImage = typeof sel === 'string' && (sel.startsWith('data:image/') || sel.startsWith('http://') || sel.startsWith('https://'))
-        return isValidImage ? `${g.label}: [uploaded]` : null
+        if (isValidImage) {
+          // Store the file data keyed by group ID for the backend to process
+          fileAttachments[g.id] = sel
+          return `${g.label}: [uploaded]`
+        }
+        return null
       }
 
       const selected = options.find(o => o.value === sel)
@@ -349,10 +359,19 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
       message += `. Note: ${memo.trim()}`
     }
 
+    // Capture tier/payout/metadata in draft store for instant preview
+    parseFormSubmission(selections as Record<string, string>)
+
     if (onSubmit) {
       onSubmit(selections as Record<string, string>)
     } else {
-      window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message } }))
+      // Include file attachments in the event for backend processing
+      window.dispatchEvent(new CustomEvent('juice:send-message', {
+        detail: {
+          message,
+          fileAttachments: Object.keys(fileAttachments).length > 0 ? fileAttachments : undefined
+        }
+      }))
     }
   }
 
@@ -917,7 +936,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                           loop
                           muted
                           playsInline
-                          className={`w-24 h-24 object-contain border ${
+                          className={`w-48 h-48 object-contain border ${
                             isDark ? 'border-white/20 bg-white/5' : 'border-gray-200 bg-gray-50'
                           }`}
                         />
@@ -925,7 +944,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                         <img
                           src={displayUrl}
                           alt="Preview"
-                          className={`w-24 h-24 object-contain border ${
+                          className={`w-48 h-48 object-contain border ${
                             isDark ? 'border-white/20 bg-white/5' : 'border-gray-200 bg-gray-50'
                           }`}
                         />
@@ -947,10 +966,10 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                       )}
                     </div>
                   ) : isLocked ? (
-                    <div className={`w-24 h-24 border flex items-center justify-center ${
+                    <div className={`w-48 h-48 border flex items-center justify-center ${
                       isDark ? 'border-white/10 bg-white/5 text-gray-600' : 'border-gray-200 bg-gray-50 text-gray-400'
                     }`}>
-                      <span className="text-xs">No image</span>
+                      <span className="text-sm">No image</span>
                     </div>
                   ) : (
                     <label

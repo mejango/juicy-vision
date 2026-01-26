@@ -1,14 +1,16 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { parseEther, encodeFunctionData, type Hex, type Address, type Chain } from 'viem'
+import { parseEther, encodeFunctionData, createPublicClient, http, type Hex, type Address, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
-import { CHAINS as CHAIN_INFO, NATIVE_TOKEN } from '../../constants'
-
-// Contract constants
-const JB_MULTI_TERMINAL = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const
+import { CHAINS as CHAIN_INFO, NATIVE_TOKEN, RPC_ENDPOINTS } from '../../constants'
+import TechnicalDetails from '../shared/TechnicalDetails'
+import TransactionSummary from '../shared/TransactionSummary'
+import TransactionWarning from '../shared/TransactionWarning'
+import { verifyPayParams } from '../../utils/transactionVerification'
+import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
 
 const TERMINAL_PAY_ABI = [
   {
@@ -86,6 +88,9 @@ export default function PayModal({
   const [status, setStatus] = useState<PaymentStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
+  const [terminalAddress, setTerminalAddress] = useState<Address | null>(null)
+  const [terminalLoading, setTerminalLoading] = useState(false)
 
   const chainInfo = CHAIN_INFO[chainId] || CHAIN_INFO[1]
   const chainName = chainInfo.name
@@ -94,14 +99,67 @@ export default function PayModal({
   const totalAmount = amountNum + feeNum
   const hasEnoughBalance = totalEth >= totalAmount + 0.001 // Leave some for gas
 
+  // Verify transaction parameters
+  const verificationResult = useMemo(() => {
+    const activeAddress = isManagedMode ? managedAddress : address
+    return verifyPayParams({
+      projectId: BigInt(projectId),
+      token: NATIVE_TOKEN,
+      amount: parseEther(amount || '0'),
+      beneficiary: activeAddress || '0x0000000000000000000000000000000000000000',
+      minReturnedTokens: 0n,
+      memo: memo || '',
+    })
+  }, [projectId, amount, memo, address, managedAddress, isManagedMode])
+
+  const hasWarnings = verificationResult.doubts.length > 0
+  const canProceed = hasEnoughBalance && (verificationResult.isValid || warningsAcknowledged) && !!terminalAddress && !terminalLoading
+
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setStatus('preview')
       setTxHash(null)
       setError(null)
+      setWarningsAcknowledged(false)
     }
   }, [isOpen])
+
+  // Fetch the project's terminal from JBDirectory
+  useEffect(() => {
+    if (!isOpen || !projectId || !chainId) {
+      setTerminalAddress(null)
+      return
+    }
+
+    const fetchTerminal = async () => {
+      setTerminalLoading(true)
+      try {
+        const chain = CHAINS[chainId]
+        if (!chain) {
+          console.error('Unsupported chain for terminal lookup:', chainId)
+          return
+        }
+
+        const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+        const publicClient = createPublicClient({
+          chain,
+          transport: http(rpcUrl),
+        })
+
+        const paymentToken = getPaymentTokenAddress(token, chainId)
+        const terminal = await getPaymentTerminal(publicClient, chainId, BigInt(projectId), paymentToken)
+        setTerminalAddress(terminal.address)
+      } catch (err) {
+        console.error('Failed to fetch payment terminal:', err)
+        setError('Failed to fetch payment terminal')
+      } finally {
+        setTerminalLoading(false)
+      }
+    }
+
+    fetchTerminal()
+  }, [isOpen, projectId, chainId, token])
 
   const buildPayCallData = useCallback((
     projId: number,
@@ -151,6 +209,12 @@ export default function PayModal({
       return
     }
 
+    if (!terminalAddress) {
+      setError('Terminal address not available')
+      setStatus('failed')
+      return
+    }
+
     try {
       // Create transaction record
       const txId = addTransaction({
@@ -169,14 +233,14 @@ export default function PayModal({
       if (isManagedMode) {
         // Execute via backend for managed mode
         const projectCallData = buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo)
-        const hash = await executeManagedTransaction(chainId, JB_MULTI_TERMINAL, projectCallData, projectAmount.toString())
+        const hash = await executeManagedTransaction(chainId, terminalAddress, projectCallData, projectAmount.toString())
         setTxHash(hash)
         updateTransaction(txId, { hash, status: 'submitted' })
 
         // Send JUICY fee if enabled
         if (payUs && juicyFeeAmount > 0n) {
           const feeCallData = buildPayCallData(juicyProjectId, juicyFeeAmount, beneficiary, 'juicy fee')
-          await executeManagedTransaction(chainId, JB_MULTI_TERMINAL, feeCallData, juicyFeeAmount.toString())
+          await executeManagedTransaction(chainId, terminalAddress, feeCallData, juicyFeeAmount.toString())
         }
 
         setStatus('confirmed')
@@ -192,12 +256,12 @@ export default function PayModal({
           // Try batched transaction first
           const calls = [
             {
-              to: JB_MULTI_TERMINAL as Address,
+              to: terminalAddress,
               data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
               value: projectAmount,
             },
             {
-              to: JB_MULTI_TERMINAL as Address,
+              to: terminalAddress,
               data: buildPayCallData(juicyProjectId, juicyFeeAmount, beneficiary, 'juicy fee'),
               value: juicyFeeAmount,
             },
@@ -223,7 +287,7 @@ export default function PayModal({
 
           // Sequential fallback
           const projectHash = await walletClient!.sendTransaction({
-            to: JB_MULTI_TERMINAL,
+            to: terminalAddress,
             data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
             value: projectAmount,
             chain,
@@ -235,7 +299,7 @@ export default function PayModal({
 
           // Send JUICY fee
           await walletClient!.sendTransaction({
-            to: JB_MULTI_TERMINAL,
+            to: terminalAddress,
             data: buildPayCallData(juicyProjectId, juicyFeeAmount, beneficiary, 'juicy fee'),
             value: juicyFeeAmount,
             chain,
@@ -246,7 +310,7 @@ export default function PayModal({
         } else {
           // Single transaction
           const hash = await walletClient!.sendTransaction({
-            to: JB_MULTI_TERMINAL,
+            to: terminalAddress,
             data: buildPayCallData(parseInt(projectId), projectAmount, beneficiary, memo),
             value: projectAmount,
             chain,
@@ -382,20 +446,22 @@ export default function PayModal({
           {/* Payment Details */}
           {(status === 'preview' || status === 'signing' || status === 'pending') && (
             <>
-              {/* Project */}
-              <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  Paying
-                </div>
-                <div className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {projectName || `Project #${projectId}`}
-                </div>
-                {estimatedTokens > 0 && (
-                  <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    You receive ~{estimatedTokens.toLocaleString()} tokens
-                  </p>
-                )}
-              </div>
+              {/* 1. Human-readable summary */}
+              <TransactionSummary
+                type="pay"
+                details={{
+                  projectId,
+                  projectName,
+                  amount: amount,
+                  amountFormatted: `${amountNum.toFixed(token === 'USDC' ? 2 : 4)} ${token}`,
+                  estimatedTokens: estimatedTokens > 0 ? estimatedTokens.toLocaleString() : undefined,
+                  fee: payUs ? feeAmount : undefined,
+                  feeFormatted: payUs && feeNum > 0 ? `${feeNum.toFixed(token === 'USDC' ? 2 : 4)} ${token}` : undefined,
+                  memo: memo || undefined,
+                  currency: token,
+                }}
+                isDark={isDark}
+              />
 
               {/* Amount breakdown */}
               <div className="space-y-2">
@@ -443,12 +509,35 @@ export default function PayModal({
                 </div>
               )}
 
-              {memo && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                  <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Memo: </span>
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>{memo}</span>
+              {/* 2. Warning banner (if any doubts) */}
+              {hasWarnings && status === 'preview' && (
+                <TransactionWarning
+                  doubts={verificationResult.doubts}
+                  onConfirm={() => setWarningsAcknowledged(true)}
+                  onCancel={onClose}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* Terminal loading indicator */}
+              {terminalLoading && (
+                <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-juice-cyan/10 text-juice-cyan' : 'bg-cyan-50 text-cyan-700'}`}>
+                  <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                  Fetching payment terminal...
                 </div>
               )}
+
+              {/* 3. Technical details (expandable) */}
+              <TechnicalDetails
+                contract="JB_MULTI_TERMINAL"
+                contractAddress={terminalAddress || '0x0000000000000000000000000000000000000000'}
+                functionName="pay"
+                chainId={chainId}
+                chainName={chainName}
+                projectId={projectId}
+                parameters={verificationResult.verifiedParams}
+                isDark={isDark}
+              />
             </>
           )}
 
@@ -499,7 +588,7 @@ export default function PayModal({
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={!hasEnoughBalance}
+                disabled={!canProceed}
                 className="flex-1 py-3 font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Confirm & Pay

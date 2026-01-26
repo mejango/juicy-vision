@@ -76,7 +76,7 @@ describe('LaunchProjectModal', () => {
       mustStartAtOrAfter: 0,
       duration: 0,
       weight: '1000000000000000000000000',
-      decayPercent: 0,
+      weightCutPercent: 0,
       approvalHook: '0x0000000000000000000000000000000000000000',
       metadata: {
         reservedPercent: 0,
@@ -132,7 +132,7 @@ describe('LaunchProjectModal', () => {
 
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
-    useAuthStore.setState({ mode: 'connected' })
+    useAuthStore.setState({ mode: 'self_custody' })
     vi.clearAllMocks()
     resetMockState()
     defaultProps.onClose = vi.fn()
@@ -143,7 +143,8 @@ describe('LaunchProjectModal', () => {
       render(<LaunchProjectModal {...defaultProps} />)
 
       expect(screen.getByText('Launch Project')).toBeInTheDocument()
-      expect(screen.getByText('Test Project')).toBeInTheDocument()
+      // Project name appears in both header and TransactionSummary
+      expect(screen.getAllByText('Test Project').length).toBeGreaterThanOrEqual(1)
     })
 
     it('does not render when closed', () => {

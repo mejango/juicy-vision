@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useOmnichainLaunchProject, type OmnichainLaunchProjectParams } from './useOmnichainLaunchProject'
+import type { BundleStatus } from './types'
 
 // Mock stores
 vi.mock('../../stores', () => ({
   useAuthStore: vi.fn(() => ({
-    mode: 'connected',
+    mode: 'self_custody',
     isAuthenticated: () => true,
   })),
 }))
@@ -30,14 +31,22 @@ vi.mock('../../services/relayr', () => ({
 }))
 
 // Mock useRelayrBundle
-const mockBundleState = {
-  bundleId: null as string | null,
-  status: 'idle' as const,
-  chainStates: [] as Array<{ chainId: number; projectId?: number; status: string; txHash?: string }>,
+const mockBundleState: {
+  bundleId: string | null
+  status: BundleStatus
+  chainStates: Array<{ chainId: number; projectId?: number; status: string; txHash?: string }>
+  paymentOptions: unknown[]
+  selectedPaymentChain: number | null
+  paymentTxHash: string | null
+  error: string | null
+} = {
+  bundleId: null,
+  status: 'idle',
+  chainStates: [],
   paymentOptions: [],
   selectedPaymentChain: null,
   paymentTxHash: null,
-  error: null as string | null,
+  error: null,
 }
 
 const mockReset = vi.fn()
@@ -86,7 +95,7 @@ describe('useOmnichainLaunchProject', () => {
       mustStartAtOrAfter: 0,
       duration: 0,
       weight: '1000000000000000000000000',
-      decayPercent: 0,
+      weightCutPercent: 0,
       approvalHook: '0x0000000000000000000000000000000000000000',
       metadata: {
         reservedPercent: 0,

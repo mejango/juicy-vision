@@ -109,6 +109,162 @@ export function isIpfsUri(uri: string): boolean {
   return uri?.startsWith('ipfs://')
 }
 
+// Base58 alphabet (Bitcoin/IPFS style)
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+/**
+ * Decode base58 string to bytes
+ */
+function base58Decode(str: string): Uint8Array {
+  const bytes: number[] = []
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i]
+    const value = BASE58_ALPHABET.indexOf(char)
+    if (value === -1) {
+      throw new Error(`Invalid base58 character: ${char}`)
+    }
+
+    let carry = value
+    for (let j = 0; j < bytes.length; j++) {
+      carry += bytes[j] * 58
+      bytes[j] = carry & 0xff
+      carry >>= 8
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff)
+      carry >>= 8
+    }
+  }
+
+  // Handle leading zeros (1's in base58)
+  for (let i = 0; i < str.length && str[i] === '1'; i++) {
+    bytes.push(0)
+  }
+
+  return new Uint8Array(bytes.reverse())
+}
+
+/**
+ * Encode bytes to base58
+ */
+function base58Encode(bytes: Uint8Array): string {
+  const digits = [0]
+  for (let i = 0; i < bytes.length; i++) {
+    let carry = bytes[i]
+    for (let j = 0; j < digits.length; j++) {
+      carry += digits[j] << 8
+      digits[j] = carry % 58
+      carry = Math.floor(carry / 58)
+    }
+    while (carry > 0) {
+      digits.push(carry % 58)
+      carry = Math.floor(carry / 58)
+    }
+  }
+  // Handle leading zeros
+  let result = ''
+  for (let i = 0; i < bytes.length && bytes[i] === 0; i++) {
+    result += BASE58_ALPHABET[0]
+  }
+  // Convert digits to string (reversed)
+  for (let i = digits.length - 1; i >= 0; i--) {
+    result += BASE58_ALPHABET[digits[i]]
+  }
+  return result
+}
+
+/**
+ * Encode an IPFS CID to a hex bytes32 for on-chain storage
+ *
+ * This matches juice-interface's encodeIpfsUri function.
+ * Input: CIDv0 string (Qm...)
+ * Output: 0x + 32-byte hex (the raw SHA-256 hash, without the multihash prefix)
+ *
+ * @param cid - IPFS CID (Qm... format) or ipfs:// URI
+ * @returns bytes32 hex string (0x...) or null if invalid
+ */
+export function encodeIpfsUri(cid: string | undefined | null): string | null {
+  if (!cid) return null
+
+  // Extract CID if it's an ipfs:// URI
+  let cleanCid = cid
+  if (cid.startsWith('ipfs://')) {
+    cleanCid = cid.slice(7) // Remove 'ipfs://'
+  }
+
+  // Should be a CIDv0 starting with Qm
+  if (!cleanCid.startsWith('Qm')) {
+    return null
+  }
+
+  try {
+    // Decode base58 to get the multihash bytes
+    const decoded = base58Decode(cleanCid)
+
+    // CIDv0 multihash: 0x12 (sha2-256) + 0x20 (32 bytes) + 32-byte hash
+    // We need to skip the first 2 bytes (0x1220) and get the 32-byte hash
+    if (decoded.length !== 34) {
+      return null
+    }
+
+    // Extract the 32-byte hash (skip first 2 bytes)
+    const hash = decoded.slice(2)
+
+    // Convert to hex
+    const hex = Array.from(hash)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('')
+
+    return `0x${hex}`
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Decode Juicebox's bytes32 encodedIPFSUri to an IPFS CIDv0 (Qm...)
+ *
+ * Format: 0x01 + 32-byte SHA-256 hash
+ * Output: base58btc(0x1220 + hash) = Qm...
+ *
+ * @param encodedUri - bytes32 hex string (with or without 0x prefix)
+ * @returns IPFS URI (ipfs://Qm...) or null if invalid
+ */
+export function decodeEncodedIPFSUri(encodedUri: string | undefined | null): string | null {
+  if (!encodedUri) return null
+
+  // Remove 0x prefix if present
+  let hex = encodedUri.startsWith('0x') ? encodedUri.slice(2) : encodedUri
+
+  // Must be 64 or 66 hex chars (32 or 33 bytes)
+  if (hex.length !== 64 && hex.length !== 66) return null
+
+  // If 66 chars, skip the first byte (version marker 01)
+  if (hex.length === 66) {
+    hex = hex.slice(2)
+  }
+
+  // Check for zero hash (no IPFS content)
+  if (hex === '0'.repeat(64)) return null
+
+  // Build the multihash: 0x1220 (sha2-256, 32 bytes) + hash
+  const multihashHex = '1220' + hex
+
+  // Convert hex to bytes
+  const bytes = new Uint8Array(multihashHex.length / 2)
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(multihashHex.slice(i * 2, i * 2 + 2), 16)
+  }
+
+  // Base58 encode to get CIDv0 (Qm...)
+  const cid = base58Encode(bytes)
+
+  // CIDv0 should start with Qm
+  if (!cid.startsWith('Qm')) return null
+
+  return `ipfs://${cid}`
+}
+
 // Extract CID from IPFS URI
 export function cidFromIpfsUri(uri: string): string | null {
   if (!isIpfsUri(uri)) return null

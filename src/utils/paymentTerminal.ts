@@ -7,7 +7,7 @@ const JB_MULTI_TERMINAL = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const
 // Native token address for ETH payments
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
 
-// ABI for JBDirectory.primaryTerminalOf
+// ABI for JBDirectory
 const JB_DIRECTORY_ABI = [
   {
     name: 'primaryTerminalOf',
@@ -16,6 +16,15 @@ const JB_DIRECTORY_ABI = [
     inputs: [
       { name: 'projectId', type: 'uint256' },
       { name: 'token', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'controllerOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
     ],
     outputs: [{ name: '', type: 'address' }],
   },
@@ -91,4 +100,28 @@ export function getPaymentTokenAddress(token: 'ETH' | 'USDC', chainId: number): 
     return NATIVE_TOKEN
   }
   return USDC_ADDRESSES[chainId as SupportedChainId] || NATIVE_TOKEN
+}
+
+/**
+ * Gets the controller address for a project from JBDirectory.
+ *
+ * Queries JBDirectory.controllerOf(projectId) to find the controller that manages
+ * the project's configuration, rulesets, and reserved token distributions.
+ *
+ * @param client - Viem public client for the chain
+ * @param projectId - Juicebox project ID
+ * @returns The controller address for the project
+ */
+export async function getProjectController(
+  client: PublicClient,
+  projectId: bigint
+): Promise<Address> {
+  const controller = await client.readContract({
+    address: JB_CONTRACTS.JBDirectory,
+    abi: JB_DIRECTORY_ABI,
+    functionName: 'controllerOf',
+    args: [projectId],
+  })
+
+  return controller
 }

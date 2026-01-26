@@ -1196,12 +1196,44 @@ chatRouter.post(
       // Build multimodal content blocks for the new prompt
       const contentBlocks: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
 
-      // Add text content if present
-      if (body.prompt && body.prompt.length > 0) {
-        contentBlocks.push({ type: 'text', text: body.prompt });
+      // Pin image attachments to IPFS first so we can include URIs in the prompt
+      const ipfsUris: Record<string, string> = {};
+      if (body.attachments && body.attachments.length > 0) {
+        const { pinFileToIpfs } = await import('../services/ipfs.ts');
+        for (const attachment of body.attachments) {
+          if (attachment.type === 'image') {
+            try {
+              const cid = await pinFileToIpfs(
+                attachment.data,
+                attachment.name || `image.${attachment.mimeType.split('/')[1] || 'png'}`,
+                attachment.mimeType
+              );
+              // Extract field ID from attachment name (format: fieldId.ext)
+              const fieldId = attachment.name?.split('.')[0] || 'image';
+              ipfsUris[fieldId] = `ipfs://${cid}`;
+              console.log(`[IPFS] Pinned attachment ${fieldId} to ${ipfsUris[fieldId]}`);
+            } catch (err) {
+              console.error('Failed to pin image to IPFS:', err);
+            }
+          }
+        }
       }
 
-      // Add attachments as content blocks
+      // Build prompt text, including IPFS URIs for any pinned images
+      let promptText = body.prompt || '';
+      if (Object.keys(ipfsUris).length > 0) {
+        const uriList = Object.entries(ipfsUris)
+          .map(([fieldId, uri]) => `- ${fieldId}: ${uri}`)
+          .join('\n');
+        promptText += `\n\n[Uploaded images pinned to IPFS - use these URIs in transaction parameters:\n${uriList}]`;
+      }
+
+      // Add text content if present
+      if (promptText.length > 0) {
+        contentBlocks.push({ type: 'text', text: promptText });
+      }
+
+      // Add attachments as content blocks (for Claude to see the image)
       if (body.attachments && body.attachments.length > 0) {
         for (const attachment of body.attachments) {
           if (attachment.type === 'image') {

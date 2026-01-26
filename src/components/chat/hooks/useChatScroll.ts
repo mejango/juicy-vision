@@ -69,13 +69,29 @@ export function useChatScroll({
 
       // Dispatch scroll direction event for header to shrink/expand
       const currentScrollTop = dock.scrollTop
-      const isScrollingDown = currentScrollTop > lastDockScrollTop.current
+      const scrollDelta = currentScrollTop - lastDockScrollTop.current
+
+      // Thresholds for detecting intentional scroll direction
+      const scrollDownThreshold = 5  // Small threshold to detect scroll down
+      const scrollUpThreshold = 30   // Larger threshold to show header (less sensitive)
+
+      const isScrollingDown = scrollDelta > scrollDownThreshold
+      const isGenuineScrollUp = scrollDelta < -scrollUpThreshold
+
       lastDockScrollTop.current = currentScrollTop
 
-      // Shrink header when scrolling up in dock (which increases scrollTop)
-      window.dispatchEvent(new CustomEvent('juice:scroll-direction', {
-        detail: { isScrollingDown, scrollTop: currentScrollTop }
-      }))
+      // Only dispatch direction change on significant scroll movement
+      // When scroll stops (delta near 0), maintain current header state
+      if (isScrollingDown) {
+        window.dispatchEvent(new CustomEvent('juice:scroll-direction', {
+          detail: { isScrollingDown: true, scrollTop: currentScrollTop }
+        }))
+      } else if (isGenuineScrollUp) {
+        window.dispatchEvent(new CustomEvent('juice:scroll-direction', {
+          detail: { isScrollingDown: false, scrollTop: currentScrollTop }
+        }))
+      }
+      // Otherwise, don't dispatch - maintain current state
     }
 
     dock.addEventListener('scroll', handleScroll)
@@ -182,7 +198,12 @@ export function useChatScroll({
     const handleScroll = () => {
       const currentScrollTop = container.scrollTop
       const scrollDelta = currentScrollTop - lastScrollTop.current
-      const isScrollingDown = scrollDelta > 0
+
+      // Thresholds for detecting intentional scroll direction
+      const scrollDownThreshold = 5  // Small threshold to detect scroll down
+      const scrollUpThreshold = 30   // Larger threshold to show header (less sensitive)
+
+      const isScrollingDown = scrollDelta > scrollDownThreshold
 
       // Detect if we're at/near the bottom of the scroll container
       // This helps ignore iOS elastic bounce which falsely registers as "scroll up"
@@ -190,27 +211,32 @@ export function useChatScroll({
       const isAtBottom = distanceFromBottom < SCROLL_THRESHOLDS.SNAP_THRESHOLD
 
       // Require meaningful scroll delta to show action bar - small deltas from bounce are ignored
-      // Bounce typically produces small fluctuations, genuine scroll up has larger delta
-      const isGenuineScrollUp = !isScrollingDown && Math.abs(scrollDelta) > SCROLL_THRESHOLDS.SNAP_THRESHOLD && !isAtBottom
+      const isGenuineScrollUp = scrollDelta < -scrollUpThreshold && !isAtBottom
 
       // Use same threshold as header - both compact/hide together
       const shouldCompact = isScrollingDown && currentScrollTop > SCROLL_THRESHOLDS.SHOW_SCROLL_BUTTON
 
       // Show action bar only on genuine scroll up, hide on scroll down
+      // When scroll stops, maintain current state
       if (isGenuineScrollUp) {
         setShowActionBar(true)
       } else if (shouldCompact) {
         setShowActionBar(false)
       }
-      // Otherwise maintain current state (ignore bounce noise)
 
       lastScrollTop.current = currentScrollTop
 
-      // Dispatch event for header to shrink when scrolling down, expand when scrolling up
-      // Use same genuine scroll up detection to avoid bounce triggering header expand
-      window.dispatchEvent(new CustomEvent('juice:scroll-direction', {
-        detail: { isScrollingDown: isScrollingDown || !isGenuineScrollUp, scrollTop: currentScrollTop }
-      }))
+      // Dispatch event for header to shrink/expand
+      // Only dispatch on significant scroll movement - maintain state when scroll stops
+      if (isScrollingDown) {
+        window.dispatchEvent(new CustomEvent('juice:scroll-direction', {
+          detail: { isScrollingDown: true, scrollTop: currentScrollTop }
+        }))
+      } else if (isGenuineScrollUp) {
+        window.dispatchEvent(new CustomEvent('juice:scroll-direction', {
+          detail: { isScrollingDown: false, scrollTop: currentScrollTop }
+        }))
+      }
     }
 
     container.addEventListener('scroll', handleScroll)

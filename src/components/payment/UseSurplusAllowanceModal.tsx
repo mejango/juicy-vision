@@ -1,13 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { parseEther, encodeFunctionData, type Chain } from 'viem'
+import { parseEther, encodeFunctionData, createPublicClient, http, type Chain, type Address } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { RPC_ENDPOINTS } from '../../constants'
+import TechnicalDetails from '../shared/TechnicalDetails'
+import TransactionSummary from '../shared/TransactionSummary'
+import TransactionWarning from '../shared/TransactionWarning'
+import { verifyUseAllowanceParams } from '../../utils/transactionVerification'
+import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
 
 // Contract constants
-const JB_MULTI_TERMINAL = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
 
 const TERMINAL_USE_ALLOWANCE_ABI = [
@@ -87,7 +92,11 @@ export default function UseSurplusAllowanceModal({
   const [status, setStatus] = useState<WithdrawStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
+  const [terminalAddress, setTerminalAddress] = useState<Address | null>(null)
+  const [terminalLoading, setTerminalLoading] = useState(false)
 
+  const activeAddress = isManagedMode ? managedAddress : address
   const chainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`
   const currencyLabel = baseCurrency === 2 ? 'USDC' : 'ETH'
   const amountNum = parseFloat(amount) || 0
@@ -95,14 +104,70 @@ export default function UseSurplusAllowanceModal({
   const netWithdraw = amountNum - protocolFee
   const hasGasBalance = totalEth >= 0.001
 
+  // Verify transaction parameters
+  const verificationResult = useMemo(() => {
+    const defaultAddress = '0x0000000000000000000000000000000000000000'
+    return verifyUseAllowanceParams({
+      projectId: BigInt(projectId),
+      token: NATIVE_TOKEN,
+      amount: parseEther(amount || '0'),
+      currency: BigInt(baseCurrency),
+      minTokensPaidOut: 0n,
+      beneficiary: activeAddress || defaultAddress,
+      feeBeneficiary: activeAddress || defaultAddress,
+      memo: '',
+    })
+  }, [projectId, amount, baseCurrency, activeAddress])
+
+  const hasWarnings = verificationResult.doubts.length > 0
+  const canProceed = hasGasBalance && (!hasWarnings || warningsAcknowledged) && !!terminalAddress && !terminalLoading
+
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setStatus('preview')
       setTxHash(null)
       setError(null)
+      setWarningsAcknowledged(false)
     }
   }, [isOpen])
+
+  // Fetch the project's terminal from JBDirectory
+  useEffect(() => {
+    if (!isOpen || !projectId || !chainId) {
+      setTerminalAddress(null)
+      return
+    }
+
+    const fetchTerminal = async () => {
+      setTerminalLoading(true)
+      try {
+        const chain = CHAINS[chainId]
+        if (!chain) {
+          console.error('Unsupported chain for terminal lookup:', chainId)
+          return
+        }
+
+        const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+        const publicClient = createPublicClient({
+          chain,
+          transport: http(rpcUrl),
+        })
+
+        // Use allowance withdraws the native token (or USDC based on baseCurrency)
+        const withdrawToken = getPaymentTokenAddress(baseCurrency === 2 ? 'USDC' : 'ETH', chainId)
+        const terminal = await getPaymentTerminal(publicClient, chainId, BigInt(projectId), withdrawToken)
+        setTerminalAddress(terminal.address)
+      } catch (err) {
+        console.error('Failed to fetch payment terminal:', err)
+        setError('Failed to fetch payment terminal')
+      } finally {
+        setTerminalLoading(false)
+      }
+    }
+
+    fetchTerminal()
+  }, [isOpen, projectId, chainId, baseCurrency])
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
@@ -126,6 +191,12 @@ export default function UseSurplusAllowanceModal({
 
     if (!chain) {
       setError('Unsupported chain')
+      setStatus('failed')
+      return
+    }
+
+    if (!terminalAddress) {
+      setError('Terminal address not available')
       setStatus('failed')
       return
     }
@@ -163,12 +234,12 @@ export default function UseSurplusAllowanceModal({
 
       if (isManagedMode) {
         // Execute via backend for managed mode
-        hash = await executeManagedTransaction(chainId, JB_MULTI_TERMINAL, callData, '0')
+        hash = await executeManagedTransaction(chainId, terminalAddress, callData, '0')
       } else {
         // Execute via wallet for self-custody mode
         await switchChainAsync({ chainId })
         hash = await walletClient!.sendTransaction({
-          to: JB_MULTI_TERMINAL,
+          to: terminalAddress,
           data: callData,
           value: 0n,
         })
@@ -182,7 +253,7 @@ export default function UseSurplusAllowanceModal({
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, amount, baseCurrency, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress])
+  }, [walletClient, address, chainId, projectId, amount, baseCurrency, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, terminalAddress])
 
   if (!isOpen) return null
 
@@ -358,6 +429,54 @@ export default function UseSurplusAllowanceModal({
                   Insufficient ETH for gas fees
                 </div>
               )}
+
+              {/* Transaction Summary */}
+              <TransactionSummary
+                type="useAllowance"
+                details={{
+                  projectId,
+                  projectName,
+                  amount: amountNum.toString(),
+                  amountFormatted: `${amountNum.toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
+                  fee: protocolFee.toString(),
+                  feeFormatted: `${protocolFee.toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
+                  netAmount: (amountNum - protocolFee).toString(),
+                  netAmountFormatted: `${(amountNum - protocolFee).toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
+                  destination: activeAddress || '',
+                  currency: currencyLabel,
+                }}
+                isDark={isDark}
+              />
+
+              {/* Transaction Warning */}
+              {hasWarnings && (
+                <TransactionWarning
+                  doubts={verificationResult.doubts}
+                  onConfirm={() => setWarningsAcknowledged(true)}
+                  onCancel={onClose}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* Technical Details */}
+              {/* Terminal loading indicator */}
+              {terminalLoading && (
+                <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-juice-cyan/10 text-juice-cyan' : 'bg-cyan-50 text-cyan-700'}`}>
+                  <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                  Fetching payment terminal...
+                </div>
+              )}
+
+              <TechnicalDetails
+                contract="JB_MULTI_TERMINAL"
+                contractAddress={terminalAddress || '0x0000000000000000000000000000000000000000'}
+                functionName="useAllowanceOf"
+                chainId={chainId}
+                chainName={chainName}
+                projectId={projectId}
+                parameters={verificationResult.verifiedParams}
+                isDark={isDark}
+              />
             </>
           )}
 
@@ -404,7 +523,7 @@ export default function UseSurplusAllowanceModal({
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={!hasGasBalance}
+                disabled={!canProceed}
                 className="flex-1 py-3 font-bold bg-purple-500 text-white hover:bg-purple-500/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Withdraw

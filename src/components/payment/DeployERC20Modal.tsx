@@ -1,15 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { encodeFunctionData, keccak256, toBytes, type Chain } from 'viem'
+import { encodeFunctionData, keccak256, toBytes, createPublicClient, http, type Chain, type Address } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { useOmnichainDeployERC20 } from '../../hooks/relayr'
+import { RPC_ENDPOINTS } from '../../constants'
 import ChainPaymentSelector from './ChainPaymentSelector'
-
-// Contract constants
-const JB_CONTROLLER = '0x8C32BBA37a7C42b3A1Fa25E2eaF4D6539C481a16' as const
+import TechnicalDetails from '../shared/TechnicalDetails'
+import TransactionSummary from '../shared/TransactionSummary'
+import TransactionWarning from '../shared/TransactionWarning'
+import { verifyDeployERC20Params } from '../../utils/transactionVerification'
+import { getProjectController } from '../../utils/paymentTerminal'
 
 const CONTROLLER_DEPLOY_ERC20_ABI = [
   {
@@ -92,6 +95,9 @@ export default function DeployERC20Modal({
   const [status, setStatus] = useState<DeployStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
+  const [controllerAddress, setControllerAddress] = useState<Address | null>(null)
+  const [controllerLoading, setControllerLoading] = useState(false)
 
   // Omnichain mode
   const [useAllChains, setUseAllChains] = useState(false)
@@ -121,6 +127,19 @@ export default function DeployERC20Modal({
   // Check if omnichain is available
   const hasMultipleChains = allChainProjects && allChainProjects.length > 1
 
+  // Verify transaction parameters
+  const verificationResult = useMemo(() => {
+    return verifyDeployERC20Params({
+      projectId: BigInt(projectId),
+      name: tokenName,
+      symbol: tokenSymbol,
+      salt: '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`, // Placeholder
+    })
+  }, [projectId, tokenName, tokenSymbol])
+
+  const hasWarnings = verificationResult.doubts.length > 0
+  const canProceed = hasGasBalance && (!hasWarnings || warningsAcknowledged) && !!controllerAddress && !controllerLoading
+
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -128,9 +147,45 @@ export default function DeployERC20Modal({
       setTxHash(null)
       setError(null)
       setUseAllChains(false)
+      setWarningsAcknowledged(false)
       resetOmnichain()
     }
   }, [isOpen, resetOmnichain])
+
+  // Fetch the project's controller from JBDirectory
+  useEffect(() => {
+    if (!isOpen || !projectId || !chainId) {
+      setControllerAddress(null)
+      return
+    }
+
+    const fetchController = async () => {
+      setControllerLoading(true)
+      try {
+        const chain = CHAINS[chainId]
+        if (!chain) {
+          console.error('Unsupported chain for controller lookup:', chainId)
+          return
+        }
+
+        const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+        const publicClient = createPublicClient({
+          chain,
+          transport: http(rpcUrl),
+        })
+
+        const controller = await getProjectController(publicClient, BigInt(projectId))
+        setControllerAddress(controller)
+      } catch (err) {
+        console.error('Failed to fetch project controller:', err)
+        setError('Failed to fetch project controller')
+      } finally {
+        setControllerLoading(false)
+      }
+    }
+
+    fetchController()
+  }, [isOpen, projectId, chainId])
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
@@ -178,6 +233,12 @@ export default function DeployERC20Modal({
       return
     }
 
+    if (!controllerAddress) {
+      setError('Controller address not available')
+      setStatus('failed')
+      return
+    }
+
     try {
       // Create transaction record
       const txId = addTransaction({
@@ -209,12 +270,12 @@ export default function DeployERC20Modal({
 
       if (isManagedMode) {
         // Execute via backend for managed mode
-        hash = await executeManagedTransaction(chainId, JB_CONTROLLER, callData, '0')
+        hash = await executeManagedTransaction(chainId, controllerAddress, callData, '0')
       } else {
         // Execute via wallet for self-custody mode
         await switchChainAsync({ chainId })
         hash = await walletClient!.sendTransaction({
-          to: JB_CONTROLLER,
+          to: controllerAddress,
           data: callData,
           value: 0n,
         })
@@ -228,7 +289,7 @@ export default function DeployERC20Modal({
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, tokenName, tokenSymbol, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, deploy])
+  }, [walletClient, address, chainId, projectId, tokenName, tokenSymbol, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, deploy, controllerAddress])
 
   const handleClose = useCallback(() => {
     resetOmnichain()
@@ -463,6 +524,54 @@ export default function DeployERC20Modal({
                   Insufficient ETH for gas fees
                 </div>
               )}
+
+              {/* Transaction Summary */}
+              <TransactionSummary
+                type="deployERC20"
+                details={{
+                  projectId,
+                  projectName,
+                  tokenName,
+                  tokenSymbol,
+                  chainIds: useAllChains && allChainProjects ? allChainProjects.map(cp => cp.chainId) : [chainId],
+                }}
+                isDark={isDark}
+              />
+
+              {/* Transaction Warning */}
+              {hasWarnings && (
+                <TransactionWarning
+                  doubts={verificationResult.doubts}
+                  onConfirm={() => setWarningsAcknowledged(true)}
+                  onCancel={handleClose}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* Technical Details */}
+              {/* Controller loading indicator */}
+              {controllerLoading && (
+                <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-juice-cyan/10 text-juice-cyan' : 'bg-cyan-50 text-cyan-700'}`}>
+                  <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                  Fetching project controller...
+                </div>
+              )}
+
+              <TechnicalDetails
+                contract="JB_CONTROLLER"
+                contractAddress={controllerAddress || '0x0000000000000000000000000000000000000000'}
+                functionName="deployERC20For"
+                chainId={chainId}
+                chainName={useAllChains ? `${allChainProjects?.length} chains` : chainName}
+                projectId={projectId}
+                parameters={verificationResult.verifiedParams}
+                isDark={isDark}
+                allChains={useAllChains && allChainProjects ? allChainProjects.map(cp => ({
+                  chainId: cp.chainId,
+                  chainName: CHAIN_NAMES[cp.chainId] || `Chain ${cp.chainId}`,
+                  projectId: typeof cp.projectId === 'string' ? parseInt(cp.projectId) : cp.projectId,
+                })) : undefined}
+              />
             </>
           )}
 
@@ -509,7 +618,7 @@ export default function DeployERC20Modal({
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={!hasGasBalance}
+                disabled={!canProceed}
                 className="flex-1 py-3 font-bold bg-juice-cyan text-black hover:bg-juice-cyan/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {useAllChains ? `Deploy on ${allChainProjects?.length} Chains` : `Deploy $${tokenSymbol}`}

@@ -968,16 +968,36 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     // Skip if we're topOnly (no input to handle messages)
     if (topOnly) return
 
-    const handleComponentMessage = (event: CustomEvent<{ message: string; newChat?: boolean }>) => {
+    const handleComponentMessage = (event: CustomEvent<{ message: string; newChat?: boolean; fileAttachments?: Record<string, string> }>) => {
       if (event.detail?.message) {
+        // Convert file attachments (data URLs) to Attachment objects
+        let attachments: Attachment[] | undefined
+        if (event.detail.fileAttachments) {
+          attachments = Object.entries(event.detail.fileAttachments).map(([fieldId, dataUrl]) => {
+            // Extract mime type and base64 data from data URL (format: data:image/png;base64,XXXX)
+            const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+            if (matches) {
+              const [, mimeType, base64Data] = matches
+              return {
+                id: `file-${fieldId}-${Date.now()}`,
+                type: mimeType.startsWith('image/') ? 'image' as const : 'document' as const,
+                name: `${fieldId}.${mimeType.split('/')[1] || 'bin'}`,
+                mimeType,
+                data: base64Data,
+              }
+            }
+            return null
+          }).filter((a): a is Attachment => a !== null)
+        }
+
         if (event.detail.newChat) {
           // Navigate to root to clear active chat, then send message
           // The setTimeout ensures navigation completes before sending
           navigate('/', { replace: true })
           useChatStore.getState().setActiveChat(null)
-          setTimeout(() => handleSend(event.detail.message), 50)
+          setTimeout(() => handleSend(event.detail.message, attachments), 50)
         } else {
-          handleSend(event.detail.message)
+          handleSend(event.detail.message, attachments)
         }
       }
     }
@@ -1008,11 +1028,11 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         }
       }, 30000) // 30 second timeout
     }
-    window.addEventListener('juice:request-generation', handleGenerationRequest as EventListener)
+    window.addEventListener('juice:request-generation', handleGenerationRequest as unknown as EventListener)
 
     return () => {
       window.removeEventListener('juice:send-message', handleComponentMessage as EventListener)
-      window.removeEventListener('juice:request-generation', handleGenerationRequest as EventListener)
+      window.removeEventListener('juice:request-generation', handleGenerationRequest as unknown as EventListener)
     }
   }, [handleSend, topOnly, navigate])
 

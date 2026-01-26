@@ -1,11 +1,22 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { useOmnichainDeployRevnet, useOmnichainDeploySuckers } from '../../hooks/relayr'
 import { type REVStageConfig } from '../../services/relayr'
-import { CHAINS, EXPLORER_URLS } from '../../constants'
+import { CHAINS, EXPLORER_URLS, REV_DEPLOYER, JB_SUCKER_REGISTRY } from '../../constants'
+import TechnicalDetails from '../shared/TechnicalDetails'
+import TransactionSummary from '../shared/TransactionSummary'
+import TransactionWarning from '../shared/TransactionWarning'
+import { verifyDeployRevnetParams } from '../../utils/transactionVerification'
+
+const CHAIN_NAMES: Record<number, string> = {
+  1: 'Ethereum',
+  10: 'Optimism',
+  8453: 'Base',
+  42161: 'Arbitrum',
+}
 
 interface DeployRevnetModalProps {
   isOpen: boolean
@@ -40,6 +51,7 @@ export default function DeployRevnetModal({
 
   const [hasStarted, setHasStarted] = useState(false)
   const [phase, setPhase] = useState<DeployPhase>('revnet')
+  const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
 
   // Revnet deployment hook
   const {
@@ -98,11 +110,26 @@ export default function DeployRevnetModal({
   const allComplete = phase === 'complete' || (!autoDeploySuckers && revnetComplete)
   const hasError = revnetError || suckersError
 
+  // Verify transaction parameters
+  const verificationResult = useMemo(() => {
+    return verifyDeployRevnetParams({
+      splitOperator: splitOperator as `0x${string}`,
+      name,
+      tagline,
+      chainIds,
+      stageConfigurations,
+    })
+  }, [splitOperator, name, tagline, chainIds, stageConfigurations])
+
+  const hasWarnings = verificationResult.doubts.length > 0
+  const canProceed = !hasWarnings || warningsAcknowledged
+
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setHasStarted(false)
       setPhase('revnet')
+      setWarningsAcknowledged(false)
       resetRevnet()
       resetSuckers()
     }
@@ -367,6 +394,66 @@ export default function DeployRevnetModal({
                   Revnet deployment on all {chainIds.length} chain{chainIds.length !== 1 ? 's' : ''} is free
                 </div>
               </div>
+
+              {/* Transaction Summary */}
+              <TransactionSummary
+                type="deployRevnet"
+                details={{
+                  name,
+                  chainIds,
+                  stages: stageConfigurations.map((stage) => ({
+                    splitPercent: stage.splitPercent / 10000000,
+                    decayPercent: stage.issuanceDecayPercent / 10000000,
+                    decayFrequency: `${Math.round(stage.issuanceDecayFrequency / 86400)} days`,
+                  })),
+                  autoDeploySuckers,
+                }}
+                isDark={isDark}
+              />
+
+              {/* Transaction Warning */}
+              {hasWarnings && (
+                <TransactionWarning
+                  doubts={verificationResult.doubts}
+                  onConfirm={() => setWarningsAcknowledged(true)}
+                  onCancel={handleClose}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* Technical Details - Revnet Deployment */}
+              <TechnicalDetails
+                contract="REV_DEPLOYER"
+                contractAddress={REV_DEPLOYER}
+                functionName="deployFor"
+                chainId={chainIds[0]}
+                parameters={verificationResult.verifiedParams}
+                isDark={isDark}
+                allChains={chainIds.map(cid => ({
+                  chainId: cid,
+                  chainName: CHAIN_NAMES[cid] || `Chain ${cid}`,
+                }))}
+              />
+
+              {/* Technical Details - Sucker Deployment (if enabled) */}
+              {autoDeploySuckers && chainIds.length > 1 && (
+                <TechnicalDetails
+                  contract="JB_SUCKER_REGISTRY"
+                  contractAddress={JB_SUCKER_REGISTRY}
+                  functionName="deploySuckersFor"
+                  chainId={chainIds[0]}
+                  parameters={{
+                    note: 'Suckers will be deployed after revnet creation',
+                    chainIds,
+                    projectIds: 'TBD after revnet deploys',
+                  }}
+                  isDark={isDark}
+                  allChains={chainIds.map(cid => ({
+                    chainId: cid,
+                    chainName: CHAIN_NAMES[cid] || `Chain ${cid}`,
+                  }))}
+                />
+              )}
             </>
           )}
 
@@ -449,7 +536,8 @@ export default function DeployRevnetModal({
               </button>
               <button
                 onClick={handleDeploy}
-                className="flex-1 py-3 font-bold bg-purple-500 text-white hover:bg-purple-600 transition-colors"
+                disabled={!canProceed}
+                className="flex-1 py-3 font-bold bg-purple-500 text-white hover:bg-purple-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Deploy Revnet
               </button>

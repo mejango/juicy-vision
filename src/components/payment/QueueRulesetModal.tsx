@@ -1,16 +1,19 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { encodeFunctionData, type Chain } from 'viem'
+import { encodeFunctionData, type Chain, createPublicClient, http, type Address } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { useOmnichainQueueRuleset } from '../../hooks/relayr'
 import { type JBRulesetConfig } from '../../services/relayr'
 import ChainPaymentSelector from './ChainPaymentSelector'
-
-// Contract constants - JBController5_1
-const JB_CONTROLLER = '0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1' as const
+import TechnicalDetails from '../shared/TechnicalDetails'
+import TransactionSummary from '../shared/TransactionSummary'
+import TransactionWarning from '../shared/TransactionWarning'
+import { verifyQueueRulesetParams } from '../../utils/transactionVerification'
+import { getProjectController } from '../../utils/paymentTerminal'
+import { RPC_ENDPOINTS } from '../../constants'
 
 // ABI for queueRulesetsOf
 const CONTROLLER_QUEUE_RULESETS_ABI = [
@@ -177,6 +180,12 @@ export default function QueueRulesetModal({
   const [chainStates, setChainStates] = useState<ChainTxState[]>([])
   const [currentChainIndex, setCurrentChainIndex] = useState<number>(-1)
   const [isStarted, setIsStarted] = useState(false)
+  const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
+
+  // Controller addresses fetched from JBDirectory (per chain)
+  const [controllerAddresses, setControllerAddresses] = useState<Record<number, Address>>({})
+  const [controllersLoading, setControllersLoading] = useState(false)
+  const [controllerError, setControllerError] = useState<string | null>(null)
 
   // Relayr omnichain mode
   const [useOmnichain, setUseOmnichain] = useState(true) // Default to omnichain for multi-chain
@@ -200,6 +209,19 @@ export default function QueueRulesetModal({
   const hasGasBalance = totalEth >= 0.001
   const isOmnichain = chainRulesetData.length > 1
   const startDate = new Date(synchronizedStartTime * 1000)
+
+  // Verify transaction parameters
+  const verificationResult = useMemo(() => {
+    return verifyQueueRulesetParams({
+      projectId: BigInt(chainRulesetData[0]?.projectId || 0),
+      rulesetConfigurations: [rulesetConfig],
+      memo,
+    })
+  }, [chainRulesetData, rulesetConfig, memo])
+
+  const hasWarnings = verificationResult.doubts.length > 0
+  const allControllersLoaded = chainRulesetData.every(cd => controllerAddresses[cd.chainId])
+  const canProceed = hasGasBalance && (!hasWarnings || warningsAcknowledged) && allControllersLoaded && !controllersLoading && !controllerError
 
   // Derive chain states from bundle state when in omnichain mode
   const effectiveChainStates = useOmnichain && bundleState.bundleId
@@ -235,11 +257,53 @@ export default function QueueRulesetModal({
       )
       setCurrentChainIndex(-1)
       setIsStarted(false)
+      setWarningsAcknowledged(false)
       resetOmnichain()
       // Default to omnichain for multi-chain scenarios
       setUseOmnichain(isOmnichain)
     }
   }, [isOpen, chainRulesetData, isOmnichain, resetOmnichain])
+
+  // Fetch controllers from JBDirectory for all chains
+  useEffect(() => {
+    if (!isOpen || chainRulesetData.length === 0) {
+      setControllerAddresses({})
+      setControllerError(null)
+      return
+    }
+
+    const fetchControllers = async () => {
+      setControllersLoading(true)
+      setControllerError(null)
+      const addresses: Record<number, Address> = {}
+
+      try {
+        for (const cd of chainRulesetData) {
+          const chain = CHAINS[cd.chainId]
+          if (!chain) continue
+
+          const rpcUrl = RPC_ENDPOINTS[cd.chainId]?.[0]
+          if (!rpcUrl) continue
+
+          const publicClient = createPublicClient({
+            chain,
+            transport: http(rpcUrl),
+          })
+
+          const controller = await getProjectController(publicClient, BigInt(cd.projectId))
+          addresses[cd.chainId] = controller
+        }
+        setControllerAddresses(addresses)
+      } catch (err) {
+        console.error('Failed to fetch controllers:', err)
+        setControllerError('Failed to fetch project controllers from JBDirectory')
+      } finally {
+        setControllersLoading(false)
+      }
+    }
+
+    fetchControllers()
+  }, [isOpen, chainRulesetData])
 
   const updateChainState = useCallback((chainId: number, update: Partial<ChainTxState>) => {
     setChainStates(prev =>
@@ -323,6 +387,11 @@ export default function QueueRulesetModal({
       throw new Error(`Unsupported chain: ${chainData.chainId}`)
     }
 
+    const controllerAddress = controllerAddresses[chainData.chainId]
+    if (!controllerAddress) {
+      throw new Error(`Controller not found for chain: ${chainData.chainId}`)
+    }
+
     updateChainState(chainData.chainId, { status: 'signing' })
 
     try {
@@ -351,11 +420,11 @@ export default function QueueRulesetModal({
       let hash: string
 
       if (isManagedMode) {
-        hash = await executeManagedTransaction(chainData.chainId, JB_CONTROLLER, callData, '0')
+        hash = await executeManagedTransaction(chainData.chainId, controllerAddress, callData, '0')
       } else {
         await switchChainAsync({ chainId: chainData.chainId })
         hash = await walletClient!.sendTransaction({
-          to: JB_CONTROLLER,
+          to: controllerAddress,
           data: callData,
           value: 0n,
         })
@@ -370,7 +439,7 @@ export default function QueueRulesetModal({
       updateChainState(chainData.chainId, { status: 'failed', error: errorMessage })
       throw err
     }
-  }, [walletClient, address, memo, buildRulesetArgs, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress])
+  }, [walletClient, address, memo, buildRulesetArgs, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress, controllerAddresses])
 
   // Start the queuing process
   const handleStart = useCallback(async () => {
@@ -629,6 +698,19 @@ export default function QueueRulesetModal({
                 </div>
               )}
 
+              {controllersLoading && (
+                <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-600'}`}>
+                  <div className="animate-spin w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full" />
+                  Loading controller addresses...
+                </div>
+              )}
+
+              {controllerError && (
+                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
+                  {controllerError}
+                </div>
+              )}
+
               {isOmnichain && !useOmnichain && (
                 <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
                   You will need to sign {chainRulesetData.length} transactions, one for each chain.
@@ -640,6 +722,49 @@ export default function QueueRulesetModal({
                   Sign once to queue on all {chainRulesetData.length} chains via Relayr
                 </div>
               )}
+
+              {/* Transaction Summary */}
+              <TransactionSummary
+                type="queueRuleset"
+                details={{
+                  projectId: chainRulesetData[0]?.projectId?.toString() || '',
+                  projectName,
+                  effectiveDate: startDate.toLocaleString(),
+                  changes: [
+                    { field: 'Duration', to: rulesetConfig.duration ? `${rulesetConfig.duration / 86400} days` : 'Ongoing' },
+                    { field: 'Token issuance', to: `${rulesetConfig.weight} tokens/ETH` },
+                    { field: 'Reserved rate', to: `${(rulesetConfig.metadata.reservedPercent / 100).toFixed(1)}%` },
+                    { field: 'Cash out tax', to: `${(rulesetConfig.metadata.cashOutTaxRate / 100).toFixed(1)}%` },
+                  ],
+                }}
+                isDark={isDark}
+              />
+
+              {/* Transaction Warning */}
+              {hasWarnings && (
+                <TransactionWarning
+                  doubts={verificationResult.doubts}
+                  onConfirm={() => setWarningsAcknowledged(true)}
+                  onCancel={handleClose}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* Technical Details */}
+              <TechnicalDetails
+                contract="JB_CONTROLLER"
+                contractAddress={controllerAddresses[chainRulesetData[0]?.chainId] || '0x...'}
+                functionName="queueRulesetsOf"
+                chainId={chainRulesetData[0]?.chainId || 1}
+                projectId={chainRulesetData[0]?.projectId?.toString()}
+                parameters={verificationResult.verifiedParams}
+                isDark={isDark}
+                allChains={isOmnichain ? chainRulesetData.map(cd => ({
+                  chainId: cd.chainId,
+                  chainName: CHAIN_INFO[cd.chainId]?.name || `Chain ${cd.chainId}`,
+                  projectId: cd.projectId,
+                })) : undefined}
+              />
             </>
           )}
 
@@ -677,7 +802,7 @@ export default function QueueRulesetModal({
               </button>
               <button
                 onClick={handleStart}
-                disabled={!hasGasBalance}
+                disabled={!canProceed}
                 className="flex-1 py-3 font-bold bg-purple-500 text-white hover:bg-purple-500/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Queue{isOmnichain ? ` on ${chainRulesetData.length} Chains` : ''}

@@ -47,7 +47,7 @@ describe('CreateProjectForm', () => {
 
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
-    useAuthStore.setState({ mode: 'connected' })
+    useAuthStore.setState({ mode: 'self_custody' })
     localStorage.clear()
     vi.clearAllMocks()
 

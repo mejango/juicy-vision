@@ -1,16 +1,17 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { encodeFunctionData, type Chain } from 'viem'
+import { encodeFunctionData, createPublicClient, http, type Chain, type Address } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { useOmnichainDistribute } from '../../hooks/relayr'
-import { CHAINS as CHAIN_INFO } from '../../constants'
+import { CHAINS as CHAIN_INFO, RPC_ENDPOINTS } from '../../constants'
 import ChainPaymentSelector from './ChainPaymentSelector'
-
-// Contract constants
-const JB_CONTROLLER = '0x8C32BBA37a7C42b3A1Fa25E2eaF4D6539C481a16' as const
+import TransactionSummary from '../shared/TransactionSummary'
+import TransactionWarning from '../shared/TransactionWarning'
+import { verifySendReservedTokensParams } from '../../utils/transactionVerification'
+import { getProjectController } from '../../utils/paymentTerminal'
 
 const CONTROLLER_SEND_RESERVED_ABI = [
   {
@@ -37,6 +38,14 @@ interface ChainProjectData {
   projectId: number | string
 }
 
+interface ReservedSplit {
+  name?: string
+  address: string
+  percent: number
+  projectId?: number
+  lockedUntil?: number
+}
+
 interface SendReservedTokensModalProps {
   isOpen: boolean
   onClose: () => void
@@ -45,6 +54,8 @@ interface SendReservedTokensModalProps {
   chainId: number
   tokenSymbol: string
   amount: string // Raw amount in wei
+  reservedRate?: number // Percentage (0-100)
+  splits?: ReservedSplit[] // Reserved token recipients
   // New: for omnichain support
   allChainProjects?: ChainProjectData[]
 }
@@ -59,6 +70,8 @@ export default function SendReservedTokensModal({
   chainId,
   tokenSymbol,
   amount,
+  reservedRate,
+  splits,
   allChainProjects,
 }: SendReservedTokensModalProps) {
   const { theme } = useThemeStore()
@@ -77,6 +90,9 @@ export default function SendReservedTokensModal({
   const [status, setStatus] = useState<DistributeStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [warningAcknowledged, setWarningAcknowledged] = useState(false)
+  const [controllerAddress, setControllerAddress] = useState<Address | null>(null)
+  const [controllerLoading, setControllerLoading] = useState(false)
 
   // Omnichain mode
   const [useAllChains, setUseAllChains] = useState(false)
@@ -108,6 +124,25 @@ export default function SendReservedTokensModal({
   // Check if omnichain is available
   const hasMultipleChains = allChainProjects && allChainProjects.length > 1
 
+  // Transaction verification
+  const verificationResult = useMemo(() => {
+    return verifySendReservedTokensParams({
+      projectId: BigInt(projectId),
+      pendingReservedTokens: BigInt(amount),
+      reservedRate,
+      splits: splits?.map(s => ({
+        beneficiary: s.address,
+        percent: s.percent,
+        projectId: s.projectId,
+        lockedUntil: s.lockedUntil,
+      })),
+    })
+  }, [projectId, amount, reservedRate, splits])
+
+  const hasWarnings = verificationResult.doubts.length > 0
+  const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
+  const canProceed = hasGasBalance && (!hasWarnings || warningAcknowledged) && !hasCriticalDoubts && !!controllerAddress && !controllerLoading
+
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -115,9 +150,45 @@ export default function SendReservedTokensModal({
       setTxHash(null)
       setError(null)
       setUseAllChains(false)
+      setWarningAcknowledged(false)
       resetOmnichain()
     }
   }, [isOpen, resetOmnichain])
+
+  // Fetch the project's controller from JBDirectory
+  useEffect(() => {
+    if (!isOpen || !projectId || !chainId) {
+      setControllerAddress(null)
+      return
+    }
+
+    const fetchController = async () => {
+      setControllerLoading(true)
+      try {
+        const chain = CHAINS[chainId]
+        if (!chain) {
+          console.error('Unsupported chain for controller lookup:', chainId)
+          return
+        }
+
+        const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+        const publicClient = createPublicClient({
+          chain,
+          transport: http(rpcUrl),
+        })
+
+        const controller = await getProjectController(publicClient, BigInt(projectId))
+        setControllerAddress(controller)
+      } catch (err) {
+        console.error('Failed to fetch project controller:', err)
+        setError('Failed to fetch project controller')
+      } finally {
+        setControllerLoading(false)
+      }
+    }
+
+    fetchController()
+  }, [isOpen, projectId, chainId])
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
@@ -181,16 +252,22 @@ export default function SendReservedTokensModal({
 
       setStatus('pending')
 
+      if (!controllerAddress) {
+        setError('Controller address not available')
+        setStatus('failed')
+        return
+      }
+
       let hash: string
 
       if (isManagedMode) {
         // Execute via backend for managed mode
-        hash = await executeManagedTransaction(chainId, JB_CONTROLLER, callData, '0')
+        hash = await executeManagedTransaction(chainId, controllerAddress, callData, '0')
       } else {
         // Execute via wallet for self-custody mode
         await switchChainAsync({ chainId })
         hash = await walletClient!.sendTransaction({
-          to: JB_CONTROLLER,
+          to: controllerAddress,
           data: callData,
           value: 0n,
         })
@@ -204,7 +281,7 @@ export default function SendReservedTokensModal({
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, tokenAmount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, distribute])
+  }, [walletClient, address, chainId, projectId, tokenAmount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, distribute, controllerAddress])
 
   const handleClose = useCallback(() => {
     resetOmnichain()
@@ -353,6 +430,39 @@ export default function SendReservedTokensModal({
           {/* Distribution Details */}
           {(status === 'preview' || isProcessing) && !showConfirmed && !showFailed && (
             <>
+              {/* Transaction Summary */}
+              <TransactionSummary
+                type="sendReservedTokens"
+                details={{
+                  projectId,
+                  projectName,
+                  pendingTokens: amount,
+                  pendingTokensFormatted: `${tokenAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${tokenSymbol}`,
+                  reservedRate,
+                  recipients: splits?.map(s => ({
+                    name: s.name,
+                    address: s.address,
+                    percent: s.percent,
+                    tokens: s.percent && tokenAmount
+                      ? `${((tokenAmount * s.percent) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                      : undefined,
+                    isProject: !!s.projectId,
+                    projectId: s.projectId,
+                  })),
+                }}
+                isDark={isDark}
+              />
+
+              {/* Transaction Warnings */}
+              {hasWarnings && status === 'preview' && (
+                <TransactionWarning
+                  doubts={verificationResult.doubts}
+                  onConfirm={() => setWarningAcknowledged(true)}
+                  onCancel={onClose}
+                  isDark={isDark}
+                />
+              )}
+
               {/* Omnichain toggle */}
               {hasMultipleChains && !isManagedMode && status === 'preview' && (
                 <div className={`p-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
@@ -384,31 +494,6 @@ export default function SendReservedTokensModal({
                 />
               )}
 
-              {/* Project */}
-              <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  Distributing from
-                </div>
-                <div className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {projectName || `Project #${projectId}`}
-                </div>
-              </div>
-
-              {/* Amount */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Reserved {tokenSymbol}</span>
-                  <span className={`font-mono font-medium text-lg ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
-                    {tokenAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
-                  </span>
-                </div>
-              </div>
-
-              <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
-                These tokens will be distributed to the configured reserved token recipients.
-                Anyone can trigger this distribution.
-              </div>
-
               {/* Gas balance check */}
               <div className={`flex justify-between items-center text-sm ${
                 isDark ? 'text-gray-400' : 'text-gray-500'
@@ -422,6 +507,13 @@ export default function SendReservedTokensModal({
               {!hasGasBalance && (
                 <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
                   Insufficient ETH for gas fees
+                </div>
+              )}
+
+              {controllerLoading && (
+                <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-juice-cyan/10 text-juice-cyan' : 'bg-cyan-50 text-cyan-700'}`}>
+                  <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                  Fetching project controller...
                 </div>
               )}
             </>
@@ -458,7 +550,7 @@ export default function SendReservedTokensModal({
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={!hasGasBalance}
+                disabled={!canProceed}
                 className="flex-1 py-3 font-bold bg-amber-500 text-black hover:bg-amber-500/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {useAllChains ? `Distribute on ${allChainProjects?.length} Chains` : `Distribute ${tokenSymbol}`}

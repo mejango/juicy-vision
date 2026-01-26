@@ -1,11 +1,22 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { useOmnichainLaunchProject } from '../../hooks/relayr'
 import { type JBRulesetConfig, type JBTerminalConfig } from '../../services/relayr'
-import { CHAINS, EXPLORER_URLS } from '../../constants'
+import { CHAINS, EXPLORER_URLS, JB_CONTRACTS } from '../../constants'
+import TechnicalDetails from '../shared/TechnicalDetails'
+import TransactionSummary from '../shared/TransactionSummary'
+import TransactionWarning from '../shared/TransactionWarning'
+import { verifyLaunchProjectParams } from '../../utils/transactionVerification'
+
+const CHAIN_NAMES: Record<number, string> = {
+  1: 'Ethereum',
+  10: 'Optimism',
+  8453: 'Base',
+  42161: 'Arbitrum',
+}
 
 interface LaunchProjectModalProps {
   isOpen: boolean
@@ -41,6 +52,7 @@ export default function LaunchProjectModal({
   const { address: managedAddress } = useManagedWallet()
 
   const [hasStarted, setHasStarted] = useState(false)
+  const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
 
   const {
     launch,
@@ -62,10 +74,26 @@ export default function LaunchProjectModal({
   const startDate = new Date(synchronizedStartTime * 1000)
   const allCompleted = isComplete || hasError
 
+  // Verify transaction parameters
+  const verificationResult = useMemo(() => {
+    return verifyLaunchProjectParams({
+      owner: owner as `0x${string}`,
+      projectUri,
+      chainIds,
+      rulesetConfigurations: [rulesetConfig],
+      terminalConfigurations,
+      memo,
+    })
+  }, [owner, projectUri, chainIds, rulesetConfig, terminalConfigurations, memo])
+
+  const hasWarnings = verificationResult.doubts.length > 0
+  const canProceed = !hasWarnings || warningsAcknowledged
+
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setHasStarted(false)
+      setWarningsAcknowledged(false)
       reset()
     }
   }, [isOpen, reset])
@@ -267,6 +295,41 @@ export default function LaunchProjectModal({
                   Project creation on all {chainIds.length} chain{chainIds.length !== 1 ? 's' : ''} is free
                 </div>
               </div>
+
+              {/* Transaction Summary */}
+              <TransactionSummary
+                type="launchProject"
+                details={{
+                  projectName,
+                  owner,
+                  chainIds,
+                }}
+                isDark={isDark}
+              />
+
+              {/* Transaction Warning */}
+              {hasWarnings && (
+                <TransactionWarning
+                  doubts={verificationResult.doubts}
+                  onConfirm={() => setWarningsAcknowledged(true)}
+                  onCancel={handleClose}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* Technical Details */}
+              <TechnicalDetails
+                contract="JB_CONTROLLER"
+                contractAddress={JB_CONTRACTS.JBController}
+                functionName="launchProjectFor"
+                chainId={chainIds[0]}
+                parameters={verificationResult.verifiedParams}
+                isDark={isDark}
+                allChains={chainIds.map(cid => ({
+                  chainId: cid,
+                  chainName: CHAIN_NAMES[cid] || `Chain ${cid}`,
+                }))}
+              />
             </>
           )}
 
@@ -329,7 +392,8 @@ export default function LaunchProjectModal({
               </button>
               <button
                 onClick={handleLaunch}
-                className="flex-1 py-3 font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors"
+                disabled={!canProceed}
+                className="flex-1 py-3 font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Create Project{chainIds.length > 1 ? `s` : ''}
               </button>

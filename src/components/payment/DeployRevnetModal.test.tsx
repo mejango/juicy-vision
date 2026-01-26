@@ -145,7 +145,7 @@ describe('DeployRevnetModal', () => {
 
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
-    useAuthStore.setState({ mode: 'connected' })
+    useAuthStore.setState({ mode: 'self_custody' })
     vi.clearAllMocks()
     resetMockState()
     defaultProps.onClose = vi.fn()
@@ -157,7 +157,8 @@ describe('DeployRevnetModal', () => {
 
       // Use heading role to be more specific
       expect(screen.getByRole('heading', { name: 'Deploy Revnet' })).toBeInTheDocument()
-      expect(screen.getByText('Test Revnet')).toBeInTheDocument()
+      // Revnet name appears in both header and TransactionSummary
+      expect(screen.getAllByText('Test Revnet').length).toBeGreaterThanOrEqual(1)
     })
 
     it('does not render when closed', () => {
