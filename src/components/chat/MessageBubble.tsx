@@ -232,9 +232,10 @@ export default function MessageBubble({
         /* User message: text right-aligned with arrow in right margin */
         <div className={`max-w-[85%] md:max-w-[75%] text-right ${isDark ? 'text-white' : 'text-gray-900'}`}>
           {/* Sender name for shared chat - above the message row */}
-          {message.senderName && (
+          {/* Prefer live member displayName over baked-in senderName for real-time updates */}
+          {(senderMember?.displayName || message.senderName) && (
             <p className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              {message.senderName}
+              {senderMember?.displayName || message.senderName}
             </p>
           )}
           {/* Add Juicy ID prompt when user doesn't have one */}

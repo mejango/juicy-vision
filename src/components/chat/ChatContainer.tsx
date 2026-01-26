@@ -57,7 +57,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const waitingForAiChatId = useChatStore(state => state.waitingForAiChatId)
   const setWaitingForAiChatId = useChatStore(state => state.setWaitingForAiChatId)
 
-  const { language, setLanguage } = useSettingsStore()
+  const { language, setLanguage, privateMode, setPrivateMode } = useSettingsStore()
   const { theme, toggleTheme } = useThemeStore()
   const { isAuthenticated, user } = useAuthStore()
   const { isConnected: isWalletConnected } = useAccount()
@@ -350,6 +350,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         const newChat = await chatApi.createChat({
           name: 'New Chat',
           isPublic: false,
+          isPrivate: privateMode, // Pass user's privacy preference
         })
         chatId = newChat.id
 
@@ -513,6 +514,18 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         setTimeout(() => {
           chatApi.connectToChat(currentChatId)
         }, 100)
+        // Refresh members and messages to reflect merged identity
+        setTimeout(async () => {
+          try {
+            const mbrs = await chatApi.fetchMembers(currentChatId)
+            setMembers(currentChatId, mbrs)
+            // Also refresh messages since sender addresses were updated
+            const msgs = await chatApi.fetchMessages(currentChatId)
+            setChatMessages(currentChatId, msgs)
+          } catch (err) {
+            console.error('[ChatContainer] Failed to refresh data after passkey auth:', err)
+          }
+        }, 300)
       }
     } catch (err) {
       console.error('[ChatContainer] Failed to merge session:', err)
@@ -601,6 +614,18 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           setTimeout(() => {
             chatApi.connectToChat(currentChatId)
           }, 100)
+          // Refresh members and messages to reflect merged identity
+          setTimeout(async () => {
+            try {
+              const mbrs = await chatApi.fetchMembers(currentChatId)
+              setMembers(currentChatId, mbrs)
+              // Also refresh messages since sender addresses were updated
+              const msgs = await chatApi.fetchMessages(currentChatId)
+              setChatMessages(currentChatId, msgs)
+            } catch (err) {
+              console.error('[ChatContainer] Failed to refresh data after SIWE auth:', err)
+            }
+          }, 300)
         }
       } catch (err) {
         console.error('[ChatContainer] Failed to merge SIWE session:', err)
@@ -611,7 +636,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => {
       window.removeEventListener('juice:siwe-signed-in', handleSiweSignIn as unknown as EventListener)
     }
-  }, [addChat, forceActiveChatId])
+  }, [addChat, forceActiveChatId, setMembers, setChatMessages])
 
   // Listen for dock scroll enable/disable events
   useEffect(() => {
@@ -1168,6 +1193,21 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       {t('dock.askAbout', 'See and take actions across the ecosystem.')}
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* Privacy toggle */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setPrivateMode(!privateMode)
+                        }}
+                        className={`px-2 py-0.5 text-xs font-medium bg-transparent border transition-colors ${
+                          privateMode
+                            ? 'border-juice-orange text-juice-orange'
+                            : 'border-gray-500 text-gray-500 hover:border-gray-400 hover:text-gray-400'
+                        }`}
+                        title={privateMode ? 'Private mode - chats won\'t be stored for study' : 'Open mode - chats help improve Juicy'}
+                      >
+                        {privateMode ? t('chat.private', 'Private') : t('chat.open', 'Open')}
+                      </button>
                       <button
                         onClick={handleReport}
                         disabled={isReporting}
@@ -1680,7 +1720,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   : 'border-teal-600 text-teal-600 hover:bg-teal-50'
               }`}
             >
-              {t('beta.payUs', 'Pay us')}
+              {t('beta.payUs', 'Pay us so we can go faster')}
             </button>
           </div>
         </div>

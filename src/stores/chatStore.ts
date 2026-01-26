@@ -76,6 +76,7 @@ export interface Chat {
   name: string
   description?: string
   isPublic: boolean
+  isPrivate: boolean // When true, chat won't be stored for study/improvement
   aiBalanceWei: string
   aiTotalSpentWei: string
   encrypted: boolean
@@ -105,6 +106,7 @@ export interface CreateChatParams {
   name: string
   description?: string
   isPublic?: boolean
+  isPrivate?: boolean // When true, chat won't be stored for study/improvement
   encrypted?: boolean
   tokenGate?: {
     chainId: number

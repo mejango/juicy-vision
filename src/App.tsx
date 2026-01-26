@@ -216,14 +216,8 @@ function Header({ showActions = false }: { showActions?: boolean }) {
             isCompact ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}>
             <div className="max-w-5xl mx-auto flex justify-end items-center gap-2">
-              {/* Participants - show "Currently private" if alone */}
-              {participants.length <= 1 ? (
-                <span className={`text-xs mr-1 ${
-                  theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-                }`}>
-                  {t('chat.private', 'Currently private to you')}
-                </span>
-              ) : (
+              {/* Participants */}
+              {participants.length > 1 && (
                 <ParticipantAvatars
                   members={participants}
                   onlineMembers={onlineMembers}

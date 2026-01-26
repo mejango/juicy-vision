@@ -235,6 +235,7 @@ const CreateChatSchema = z.object({
   name: z.string().max(255).optional(),
   description: z.string().max(2000).optional(),
   isPublic: z.boolean().default(true),
+  isPrivate: z.boolean().default(false), // When true, chat won't be stored for study/improvement
   encrypted: z.boolean().default(false),
   tokenGate: z.object({
     chainId: z.number(),
@@ -262,6 +263,7 @@ chatRouter.post(
         name: body.name,
         description: body.description,
         isPublic: body.isPublic,
+        isPrivate: body.isPrivate,
         encrypted: body.encrypted,
         tokenGate: body.tokenGate ? {
           chainId: body.tokenGate.chainId,
@@ -1668,52 +1670,76 @@ chatRouter.post(
  * POST /chat/merge-session - Merge anonymous session memberships to authenticated address
  *
  * When a user connects their wallet or passkey, this endpoint:
- * 1. Verifies the user owns the new address via wallet signature
+ * 1. Verifies the user owns the new address via JWT token, SIWE session, or wallet signature
  * 2. Finds all chats where the session's pseudo-address is a member
- * 3. For each chat, updates the member record to use the authenticated address
+ * 3. For each chat, updates the member record and messages to use the authenticated address
  * 4. Returns the list of merged chat IDs
  *
- * Security: Requires signed message proving ownership of newAddress with recent timestamp
+ * Security: Requires one of:
+ * - Valid JWT token (passkey wallet) - address derived from token
+ * - Valid SIWE session (self-custody wallet) - address from session
+ * - Signed message proving ownership of newAddress (fallback)
  */
 const MergeSessionSchema = z.object({
   newAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  signature: z.string().regex(/^0x[a-fA-F0-9]+$/),
-  message: z.string(),
+  signature: z.string().regex(/^0x[a-fA-F0-9]+$/).optional(),
+  message: z.string().optional(),
 });
 
 chatRouter.post(
   '/merge-session',
+  optionalAuth,
   zValidator('json', MergeSessionSchema),
   async (c) => {
     const sessionId = c.req.header('X-Session-ID');
+    const authHeader = c.req.header('Authorization');
     const body = c.req.valid('json');
+    const user = c.get('user');
 
     if (!sessionId || !sessionId.startsWith('ses_')) {
       return c.json({ success: false, error: 'Session ID required' }, 400);
     }
 
     const newAddress = body.newAddress.toLowerCase();
+    let isAuthorized = false;
+    let authorizedAddress: string | null = null;
 
-    // Verify the message format and extract timestamp
-    const parsed = parseSessionMergeMessage(body.message);
-    if (!parsed) {
-      return c.json({ success: false, error: 'Invalid message format' }, 400);
+    // Method 1: JWT token (passkey wallet) - user is already authenticated
+    if (user) {
+      const { getCustodialAddress } = await import('../services/wallet.ts');
+      authorizedAddress = await getCustodialAddress(user.custodialAddressIndex ?? 0);
+      if (authorizedAddress.toLowerCase() === newAddress) {
+        isAuthorized = true;
+      }
     }
 
-    // Verify the message is for the claimed address
-    if (parsed.address !== newAddress) {
-      return c.json({ success: false, error: 'Message address mismatch' }, 400);
+    // Method 2: SIWE session (self-custody wallet)
+    if (!isAuthorized && authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const siweSession = await queryOne<{ wallet_address: string }>(
+        `SELECT wallet_address FROM wallet_sessions WHERE session_token = $1 AND expires_at > NOW()`,
+        [token]
+      );
+      if (siweSession && siweSession.wallet_address.toLowerCase() === newAddress) {
+        isAuthorized = true;
+        authorizedAddress = siweSession.wallet_address;
+      }
     }
 
-    // Verify timestamp is within 5 minute window
-    if (!isTimestampValid(parsed.timestamp)) {
-      return c.json({ success: false, error: 'Message expired or invalid timestamp' }, 400);
+    // Method 3: Signed message (fallback for when no existing session)
+    if (!isAuthorized && body.signature && body.message) {
+      const parsed = parseSessionMergeMessage(body.message);
+      if (parsed && parsed.address === newAddress && isTimestampValid(parsed.timestamp)) {
+        const isValidSignature = await verifyWalletSignature(body.message, body.signature, newAddress);
+        if (isValidSignature) {
+          isAuthorized = true;
+          authorizedAddress = newAddress;
+        }
+      }
     }
 
-    // Verify the signature
-    const isValidSignature = await verifyWalletSignature(body.message, body.signature, newAddress);
-    if (!isValidSignature) {
-      return c.json({ success: false, error: 'Invalid signature' }, 401);
+    if (!isAuthorized) {
+      return c.json({ success: false, error: 'Not authorized to merge to this address' }, 401);
     }
 
     // Generate pseudo-address using HMAC (same logic as middleware)
@@ -1755,6 +1781,13 @@ chatRouter.post(
             [newAddress, record.chat_id, pseudoAddress]
           );
         }
+
+        // Update all messages sent by the pseudo-address to use the new address
+        // This ensures message history is associated with the user's real identity
+        await execute(
+          `UPDATE multi_chat_messages SET sender_address = $1 WHERE chat_id = $2 AND sender_address = $3`,
+          [newAddress, record.chat_id, pseudoAddress]
+        );
 
         mergedChatIds.push(record.chat_id);
       }

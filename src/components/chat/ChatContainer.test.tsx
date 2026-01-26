@@ -137,6 +137,7 @@ const createMockChat = (overrides?: Partial<Chat>): Chat => ({
   id: 'test-chat-id',
   name: 'Test Chat',
   isPublic: false,
+  isPrivate: false,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   founderAddress: '0x1234567890123456789012345678901234567890',

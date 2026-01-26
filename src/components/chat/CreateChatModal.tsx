@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useThemeStore, useChatStore } from '../../stores'
+import { useThemeStore, useChatStore, useSettingsStore } from '../../stores'
 import * as chatApi from '../../services/chat'
 
 interface CreateChatModalProps {
@@ -15,6 +15,7 @@ export default function CreateChatModal({
   const { theme } = useThemeStore()
   const { t } = useTranslation()
   const { addChat, setActiveChat } = useChatStore()
+  const { privateMode } = useSettingsStore()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -37,6 +38,7 @@ export default function CreateChatModal({
         name: name.trim(),
         description: description.trim() || undefined,
         isPublic,
+        isPrivate: privateMode, // Pass user's privacy preference
         encrypted: isEncrypted,
       })
       addChat(chat)

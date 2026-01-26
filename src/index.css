@@ -224,3 +224,21 @@
   @apply mb-1;
 }
 
+/* Highlighted text styling - Dark mode */
+.dark .prose-juice mark {
+  background: linear-gradient(135deg, rgba(245, 166, 35, 0.25) 0%, rgba(236, 72, 153, 0.25) 100%);
+  color: #fff;
+  padding: 0.125em 0.25em;
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(245, 166, 35, 0.3), inset 0 0 0 1px rgba(245, 166, 35, 0.2);
+}
+
+/* Highlighted text styling - Light mode */
+.light .prose-juice mark {
+  background: linear-gradient(135deg, rgba(245, 166, 35, 0.35) 0%, rgba(236, 72, 153, 0.25) 100%);
+  color: #1a1a1a;
+  padding: 0.125em 0.25em;
+  border-radius: 2px;
+  box-shadow: 0 0 6px rgba(245, 166, 35, 0.25), inset 0 0 0 1px rgba(245, 166, 35, 0.3);
+}
+

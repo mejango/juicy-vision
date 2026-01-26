@@ -110,7 +110,8 @@
   "chat": {
     "you": "You",
     "anonymous": "Anonymous",
-    "private": "Currently private to you",
+    "private": "Private",
+    "privateOn": "private chat on",
     "conspire": "Conspire",
     "save": "Save",
     "export": "Export",
@@ -186,8 +187,8 @@
     "intro": "Juicy is the people's funding platform.",
     "useIt": "Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.",
     "paragraph1": "JUICY runs like a co-op, and is the revenue token that powers this app. When you pay into Juicy, you receive JUICY revnet tokens proportional to your payment.",
-    "paragraph2": "As Juicy's balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business.",
-    "paragraph3": "We run extremely lean, but paying for LLM tokens is expensive for now. Revenue from the app mostly flows to JUICY holders, guaranteed. The more value created, the more everyone benefits. We're in this together.",
+    "paragraph2": "As Juicy's balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business. Fully automated by blockchains, no one's in control.",
+    "paragraph3": "We run extremely lean, but paying for LLM tokens is expensive for now. Revenue from the app mostly flows to back JUICY, guaranteed. The more value created, the more everyone benefits. We're in this together.",
     "poweredBy": "Uses revnets, powered by Juicebox, secured by Ethereum, Optimism, Base, and Arbitrum."
   },
   "beta": {
@@ -196,7 +197,7 @@
     "whatWeAreBuilding": "Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.",
     "whyBeta": "We're still working out the kinks. Expect bugs.",
     "whenNotBeta": "We'll drop the beta tag when it just works.",
-    "payUs": "Pay us",
+    "payUs": "Pay us so we can go faster",
     "supportUs": "Support Juicy Vision",
     "comingSoon": "JUICY coming soon. Currently using NANA."
   },

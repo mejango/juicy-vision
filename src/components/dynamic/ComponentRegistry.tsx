@@ -130,6 +130,7 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
       parameters: p.parameters,
       explanation: p.explanation,
       chainConfigs: p.chainConfigs,
+      _isTruncated: p._isTruncated,
     }),
   },
   'action-button': {

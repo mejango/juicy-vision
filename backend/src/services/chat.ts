@@ -60,6 +60,7 @@ export interface Chat {
   name?: string;
   description?: string;
   isPublic: boolean;
+  isPrivate: boolean; // When true, chat won't be stored for study/improvement
   ipfsCid?: string;
   lastArchivedAt?: Date;
   tokenGate?: TokenGate;
@@ -160,6 +161,7 @@ export interface CreateChatParams {
   name?: string;
   description?: string;
   isPublic?: boolean;
+  isPrivate?: boolean; // When true, chat won't be stored for study/improvement (default false)
   encrypted?: boolean;
   tokenGate?: Omit<TokenGate, 'enabled'>;
 }
@@ -192,6 +194,7 @@ interface DbChat {
   name: string | null;
   description: string | null;
   is_public: boolean;
+  is_private: boolean;
   ipfs_cid: string | null;
   last_archived_at: Date | null;
   token_gate_enabled: boolean;
@@ -263,6 +266,7 @@ function dbToChat(db: DbChat): Chat {
     name: db.name ?? undefined,
     description: db.description ?? undefined,
     isPublic: db.is_public,
+    isPrivate: db.is_private ?? false,
     ipfsCid: db.ipfs_cid ?? undefined,
     lastArchivedAt: db.last_archived_at ?? undefined,
     tokenGate: db.token_gate_enabled
@@ -345,6 +349,7 @@ export async function createChat(params: CreateChatParams): Promise<Chat> {
     name,
     description,
     isPublic = false, // Chats are private by default
+    isPrivate = false, // Default to open - backend can study chats
     encrypted = false,
     tokenGate,
   } = params;
@@ -358,12 +363,12 @@ export async function createChat(params: CreateChatParams): Promise<Chat> {
     // Insert chat
     const result = await client.queryObject<{ id: string }>`
       INSERT INTO multi_chats (
-        founder_address, founder_user_id, name, description, is_public, encrypted,
+        founder_address, founder_user_id, name, description, is_public, is_private, encrypted,
         token_gate_enabled, token_gate_chain_id, token_gate_token_address,
         token_gate_project_id, token_gate_min_balance
       ) VALUES (
         ${founderAddress}, ${founderUserId ?? null}, ${name ?? null}, ${description ?? null},
-        ${isPublic}, ${encrypted},
+        ${isPublic}, ${isPrivate}, ${encrypted},
         ${!!tokenGate}, ${tokenGate?.chainId ?? null}, ${tokenGate?.tokenAddress ?? null},
         ${tokenGate?.projectId ?? null}, ${tokenGate?.minBalance?.toString() ?? null}
       ) RETURNING id

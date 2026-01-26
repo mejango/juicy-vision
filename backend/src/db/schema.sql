@@ -878,7 +878,8 @@ CREATE TABLE public.multi_chats (
     auto_generated_title character varying(255),
     ai_enabled boolean DEFAULT true NOT NULL,
     last_summarized_message_id uuid,
-    total_message_count integer DEFAULT 0 NOT NULL
+    total_message_count integer DEFAULT 0 NOT NULL,
+    is_private boolean DEFAULT false NOT NULL
 );
 
 
@@ -1458,6 +1459,18 @@ CREATE TABLE public.users (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     passkey_enabled boolean DEFAULT false NOT NULL,
     CONSTRAINT users_privacy_mode_check CHECK (((privacy_mode)::text = ANY ((ARRAY['open_book'::character varying, 'anonymous'::character varying, 'private'::character varying, 'ghost'::character varying])::text[])))
+);
+
+
+--
+-- Name: rate_limits; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.rate_limits (
+    identifier character varying(255) NOT NULL,
+    count integer DEFAULT 1 NOT NULL,
+    window_start bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now()
 );
 
 
@@ -2083,6 +2096,14 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: rate_limits rate_limits_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rate_limits
+    ADD CONSTRAINT rate_limits_pkey PRIMARY KEY (identifier);
 
 
 --
@@ -3010,6 +3031,27 @@ CREATE INDEX idx_user_regions_visited ON public.user_regions USING btree (visite
 --
 
 CREATE INDEX idx_users_email ON public.users USING btree (email);
+
+
+--
+-- Name: idx_rate_limits_window_start; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_rate_limits_window_start ON public.rate_limits USING btree (window_start);
+
+
+--
+-- Name: idx_rate_limits_identifier; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_rate_limits_identifier ON public.rate_limits USING btree (identifier varchar_pattern_ops);
+
+
+--
+-- Name: idx_multi_chats_private; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_multi_chats_private ON public.multi_chats USING btree (is_private);
 
 
 --

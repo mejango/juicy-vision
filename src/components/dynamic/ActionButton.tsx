@@ -13,6 +13,7 @@ const ACTION_LABELS: Record<string, string> = {
   mintTokens: 'Mint Tokens',
   burnTokens: 'Burn Tokens',
   launchProject: 'Launch Project',
+  launch721Project: 'Launch Project',
   queueRuleset: 'Queue Ruleset',
   deployERC20: 'Deploy Token',
 }

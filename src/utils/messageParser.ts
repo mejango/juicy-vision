@@ -26,7 +26,7 @@ function unescapeAttrValue(value: string): string {
     .replace(/\\\\/g, '\\')
 }
 // Types that support progressive streaming (render partial content as it arrives)
-const STREAMABLE_COMPONENT_TYPES = ['options-picker']
+const STREAMABLE_COMPONENT_TYPES = ['options-picker', 'transaction-preview']
 
 // Detect partial component tag that's still being streamed
 // Note: We can't use [^>]* because JSON attribute values may contain > characters
@@ -77,23 +77,33 @@ function parsePartialComponent(partialTag: string): ParsedComponent | null {
     }
   }
 
-  // For single-quoted attributes (like groups JSON), try to extract partial content
-  // Look for groups=' and capture as much valid content as possible
-  const groupsMatch = partialTag.match(/groups='(\[[\s\S]*)$/)
-  if (groupsMatch) {
-    // We have a partial groups array - include it for progressive parsing
-    props.groups = groupsMatch[1]
-  } else {
-    // Try complete single-quoted attributes
-    const singleMatches = partialTag.matchAll(/(\w+)='([\s\S]*?)'\s*(?=\w+=|\/?>|$)/g)
-    for (const match of singleMatches) {
-      if (match[1] !== 'type') {
-        props[match[1]] = unescapeAttrValue(match[2])
-      }
+  // For single-quoted attributes (like groups JSON or parameters JSON), try to extract partial content
+  if (type === 'options-picker') {
+    // Look for groups=' and capture as much valid content as possible
+    const groupsMatch = partialTag.match(/groups='(\[[\s\S]*)$/)
+    if (groupsMatch) {
+      // We have a partial groups array - include it for progressive parsing
+      props.groups = groupsMatch[1]
+    }
+  } else if (type === 'transaction-preview') {
+    // Look for parameters=' and capture as much valid content as possible
+    const paramsMatch = partialTag.match(/parameters='(\{[\s\S]*)$/)
+    if (paramsMatch) {
+      // We have a partial parameters object - mark it as truncated
+      props.parameters = paramsMatch[1]
+      props._isTruncated = 'true'
     }
   }
 
-  // For options-picker, show shell immediately even without groups
+  // Try complete single-quoted attributes for any remaining props
+  const singleMatches = partialTag.matchAll(/(\w+)='([\s\S]*?)'\s*(?=\w+=|\/?>|$)/g)
+  for (const match of singleMatches) {
+    if (match[1] !== 'type' && !props[match[1]]) {
+      props[match[1]] = unescapeAttrValue(match[2])
+    }
+  }
+
+  // For streamable components, show shell immediately even without full content
   // This makes the component appear sooner while streaming
   return {
     type,

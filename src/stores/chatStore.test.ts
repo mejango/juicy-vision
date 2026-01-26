@@ -9,6 +9,7 @@ function createMockChat(overrides: Partial<Chat> = {}): Chat {
     founderAddress: '0x123',
     name: 'Test Chat',
     isPublic: true,
+    isPrivate: false,
     aiBalanceWei: '0',
     aiTotalSpentWei: '0',
     encrypted: false,

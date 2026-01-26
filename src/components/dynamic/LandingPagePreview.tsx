@@ -61,10 +61,10 @@ export default function LandingPagePreview({
       try {
         return JSON.parse(showComponents) as ComponentType[]
       } catch {
-        return DEFAULT_COMPONENTS[layoutType]
+        return DEFAULT_COMPONENTS[layoutType] || DEFAULT_COMPONENTS.hero
       }
     }
-    return DEFAULT_COMPONENTS[layoutType]
+    return DEFAULT_COMPONENTS[layoutType] || DEFAULT_COMPONENTS.hero
   })()
 
   useEffect(() => {
@@ -376,10 +376,12 @@ function generateStaticHtml(
   project: Project | null,
   metadata: IpfsProjectMetadata | null,
   balance: SuckerGroupBalance | null,
-  components: ComponentType[],
+  components: ComponentType[] | undefined,
   _layout: LayoutType,
   isDark: boolean
 ): string {
+  // Fallback to default components if undefined
+  const safeComponents = components || DEFAULT_COMPONENTS.hero
   const title = project?.name || 'Project'
   const subtitle = metadata?.tagline || metadata?.projectTagline || ''
   const logoUrl = project?.logoUri ? resolveIpfsUri(project.logoUri) : null
@@ -451,7 +453,7 @@ function generateStaticHtml(
   </style>
 </head>
 <body>
-  ${components.includes('hero-banner') ? `
+  ${safeComponents.includes('hero-banner') ? `
   <div class="hero">
     ${logoUrl ? `<img src="${logoUrl}" alt="${title}" class="logo">` : ''}
     <h1>${title}</h1>
@@ -460,7 +462,7 @@ function generateStaticHtml(
   ` : ''}
 
   <div class="content">
-    ${components.includes('project-card') ? `
+    ${safeComponents.includes('project-card') ? `
     <div class="stats">
       <div class="stat">
         <div class="stat-value">${balanceStr} ${currency}</div>

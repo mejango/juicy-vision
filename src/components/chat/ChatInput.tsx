@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react'
+import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, ClipboardEvent, DragEvent } from 'react'
 import { useAccount, useDisconnect, useSignMessage, useChainId } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
@@ -193,6 +193,95 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     setAttachments(prev => prev.filter(a => a.id !== id))
   }
 
+  // Drag state for visual feedback
+  const [isDragging, setIsDragging] = useState(false)
+
+  // Process files from paste or drag-drop
+  const processFiles = (files: FileList | File[]) => {
+    const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    const documentTypes = ['application/pdf', 'text/plain', 'text/markdown', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+
+    Array.from(files).forEach(file => {
+      const isImage = file.type.startsWith('image/') || imageTypes.includes(file.type)
+      const isDocument = documentTypes.includes(file.type)
+
+      if (!isImage && !isDocument) return
+
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string
+        const data = base64.split(',')[1]
+
+        const attachment: Attachment = {
+          id: generateId(),
+          type: isImage ? 'image' : 'document',
+          name: file.name,
+          mimeType: file.type,
+          data,
+        }
+        setAttachments(prev => [...prev, attachment])
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // Handle paste - check for images in clipboard
+  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    const imageItems: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile()
+        if (file) {
+          // Generate a name for pasted images
+          const ext = item.type.split('/')[1] || 'png'
+          const namedFile = new File([file], `pasted-image-${Date.now()}.${ext}`, { type: item.type })
+          imageItems.push(namedFile)
+        }
+      }
+    }
+
+    if (imageItems.length > 0) {
+      e.preventDefault() // Prevent pasting image data as text
+      processFiles(imageItems)
+    }
+  }
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // Only set to false if leaving the actual drop zone (not entering a child)
+    if (e.currentTarget === e.target) {
+      setIsDragging(false)
+    }
+  }
+
+  const handleDragOver = (e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleDrop = (e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const files = e.dataTransfer?.files
+    if (files && files.length > 0) {
+      processFiles(files)
+    }
+  }
+
   // Max 5 lines then scroll (line-height ~24px, so ~120px max)
   const maxHeight = 120
   const minHeight = 48
@@ -382,12 +471,25 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
         </div>
       )}
 
-      <div className="flex gap-3 items-start">
+      <div
+        className={`relative flex gap-3 items-start transition-all ${
+          isDragging
+            ? theme === 'dark'
+              ? 'ring-2 ring-juice-cyan ring-offset-2 ring-offset-juice-dark rounded'
+              : 'ring-2 ring-juice-cyan ring-offset-2 ring-offset-white rounded'
+            : ''
+        }`}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
         <textarea
           ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={currentPlaceholder}
           disabled={disabled}
           rows={1}
@@ -399,7 +501,18 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           }`}
           style={{ minHeight: '48px' }}
         />
-
+        {/* Drag overlay */}
+        {isDragging && (
+          <div className={`absolute inset-0 flex items-center justify-center pointer-events-none ${
+            theme === 'dark' ? 'bg-juice-dark/80' : 'bg-white/80'
+          }`}>
+            <span className={`text-sm font-medium ${
+              theme === 'dark' ? 'text-juice-cyan' : 'text-juice-cyan'
+            }`}>
+              Drop files here
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Wallet status display */}

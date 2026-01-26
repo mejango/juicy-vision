@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, startTransition } from 'react'
 import { useThemeStore } from '../../stores'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 
@@ -16,6 +16,7 @@ interface TransactionPreviewProps {
   parameters: string // JSON string of parameters
   explanation: string
   chainConfigs?: string // JSON string of ChainOverride[] for multi-chain deployments
+  _isTruncated?: string // Flag set by parser when component was truncated mid-stream
 }
 
 const CHAIN_NAMES: Record<string, string> = {
@@ -40,6 +41,7 @@ const ACTION_ICONS: Record<string, string> = {
   mintTokens: '🪙',
   burnTokens: '🔥',
   launchProject: '🚀',
+  launch721Project: '🚀',
   queueRuleset: '📋',
   deployERC20: '🎟️',
 }
@@ -52,6 +54,7 @@ const ACTION_BUTTON_LABELS: Record<string, string> = {
   mintTokens: 'Mint Tokens',
   burnTokens: 'Burn Tokens',
   launchProject: 'Launch Project',
+  launch721Project: 'Launch Project',
   queueRuleset: 'Queue Ruleset',
   deployERC20: 'Deploy Token',
 }
@@ -279,8 +282,27 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
   return result
 }
 
+// Section header with optional edit button
+function SectionHeader({ title, isDark, onEdit }: { title: string; isDark: boolean; onEdit?: () => void }) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className={`text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+        {title}
+      </div>
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          className={`text-xs ${isDark ? 'text-juice-orange hover:text-juice-orange/80' : 'text-orange-600 hover:text-orange-500'}`}
+        >
+          Edit
+        </button>
+      )}
+    </div>
+  )
+}
+
 // Component to show a preview of project metadata (name, description, website, etc.)
-function ProjectMetadataPreview({ metadata, isDark }: { metadata: Record<string, unknown>; isDark: boolean }) {
+function ProjectMetadataPreview({ metadata, isDark, onEdit }: { metadata: Record<string, unknown>; isDark: boolean; onEdit?: () => void }) {
   const name = metadata.name as string | undefined
   const description = metadata.description as string | undefined
   const tagline = metadata.tagline as string | undefined
@@ -289,25 +311,28 @@ function ProjectMetadataPreview({ metadata, isDark }: { metadata: Record<string,
   const logoUri = metadata.logoUri as string | undefined
 
   return (
-    <div className="space-y-2">
-      <div className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-        Project Preview
-      </div>
+    <div className="space-y-3">
+      <SectionHeader title="Project" isDark={isDark} onEdit={onEdit} />
       <div className="flex gap-3">
-        {/* Logo placeholder */}
-        {logoUri && (
-          <div className={`w-12 h-12 rounded-lg flex-shrink-0 flex items-center justify-center ${
-            isDark ? 'bg-white/5' : 'bg-gray-100'
-          }`}>
-            <span className="text-2xl">🖼️</span>
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          {name && (
-            <div className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {name}
-            </div>
+        {/* Logo */}
+        <div className={`w-14 h-14 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden ${
+          isDark ? 'bg-white/5' : 'bg-gray-100'
+        }`}>
+          {logoUri ? (
+            <img
+              src={logoUri.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${logoUri.replace('ipfs://', '')}` : logoUri}
+              alt=""
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          ) : (
+            <span className="text-2xl">🚀</span>
           )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {name || 'Untitled Project'}
+          </div>
           {tagline && (
             <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
               {tagline}
@@ -316,12 +341,12 @@ function ProjectMetadataPreview({ metadata, isDark }: { metadata: Record<string,
         </div>
       </div>
       {description && (
-        <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+        <p className={`text-sm leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
           {description}
         </p>
       )}
       {tags && tags.length > 0 && (
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap">
           {tags.map((tag, i) => (
             <span
               key={i}
@@ -353,6 +378,162 @@ function ProjectMetadataPreview({ metadata, isDark }: { metadata: Record<string,
   )
 }
 
+// Component to show NFT tier preview
+interface TierInfo {
+  name?: string
+  price: number
+  currency: number
+  decimals: number
+  initialSupply: number
+  encodedIPFSUri?: string
+  description?: string
+}
+
+function TierPreview({ tier, index, isDark }: { tier: TierInfo; index: number; isDark: boolean }) {
+  // Convert price based on decimals
+  const priceFormatted = tier.currency === 2
+    ? `$${(tier.price / Math.pow(10, tier.decimals || 6)).toLocaleString()}`
+    : `${(tier.price / 1e18).toFixed(4)} ETH`
+
+  const supplyText = tier.initialSupply >= 4294967290 ? 'Unlimited' : `${tier.initialSupply.toLocaleString()} available`
+
+  // Try to get image from encodedIPFSUri (would need decoding in real implementation)
+  const imageUrl = tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
+    ? `https://ipfs.io/ipfs/${tier.encodedIPFSUri.replace('0x', '')}`
+    : null
+
+  return (
+    <div className={`flex gap-3 p-3 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+      <div className={`w-16 h-16 rounded flex-shrink-0 flex items-center justify-center overflow-hidden ${
+        isDark ? 'bg-white/10' : 'bg-gray-200'
+      }`}>
+        {imageUrl ? (
+          <img src={imageUrl} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+        ) : (
+          <span className="text-2xl">🎁</span>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {tier.name || `Tier ${index + 1}`}
+          </div>
+          <div className={`font-semibold ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+            {priceFormatted}
+          </div>
+        </div>
+        <div className={`text-xs mt-0.5 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+          {supplyText}
+        </div>
+        {tier.description && (
+          <div className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            {tier.description}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TiersPreview({ tiers, currency, decimals, isDark, onEdit }: {
+  tiers: TierInfo[];
+  currency: number;
+  decimals: number;
+  isDark: boolean;
+  onEdit?: () => void
+}) {
+  if (!tiers || tiers.length === 0) return null
+
+  return (
+    <div className="space-y-3">
+      <SectionHeader title={`Reward Tiers (${tiers.length})`} isDark={isDark} onEdit={onEdit} />
+      <div className="space-y-2">
+        {tiers.map((tier, i) => (
+          <TierPreview key={i} tier={{ ...tier, currency, decimals }} index={i} isDark={isDark} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Component to show funding breakdown
+interface SplitInfo {
+  percent: number
+  projectId: number
+  beneficiary: string
+}
+
+function FundingBreakdown({
+  payoutLimit,
+  splits,
+  isDark,
+  onEdit
+}: {
+  payoutLimit?: number;
+  splits: SplitInfo[];
+  isDark: boolean;
+  onEdit?: () => void;
+}) {
+  const formatPercent = (p: number) => `${(p / 10000000).toFixed(1)}%`
+
+  // Calculate total split percentage and implied owner share
+  const totalSplitPercent = splits.reduce((sum, s) => sum + s.percent, 0)
+  const ownerPercent = 1000000000 - totalSplitPercent // 100% in basis points
+  const hasImpliedOwner = ownerPercent > 0 && !splits.some(s => s.projectId === 0 || (s.beneficiary && s.beneficiary !== '0x0000000000000000000000000000000000000000'))
+
+  return (
+    <div className="space-y-3">
+      <SectionHeader title="Funding" isDark={isDark} onEdit={onEdit} />
+
+      {payoutLimit && payoutLimit > 0 && (
+        <div className={`flex justify-between items-center py-2 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Funding Target</span>
+          <span className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            ${(payoutLimit / 1000000).toLocaleString()}
+          </span>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>Distribution</div>
+
+        {/* Show implied owner share first (the majority) */}
+        {hasImpliedOwner && (
+          <div className="flex justify-between items-center">
+            <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>You</span>
+            <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {formatPercent(ownerPercent)}
+            </span>
+          </div>
+        )}
+
+        {/* Then show explicit splits */}
+        {splits.map((split, i) => (
+          <div key={i} className="flex justify-between items-center">
+            <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>
+              {split.projectId === 1 ? (
+                <span className="inline-flex items-center gap-1">
+                  <span className="text-juice-orange">Juicy</span>
+                  <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>(platform fee)</span>
+                </span>
+              ) : split.projectId > 0 ? (
+                <span>Project #{split.projectId}</span>
+              ) : split.beneficiary && split.beneficiary !== '0x0000000000000000000000000000000000000000' ? (
+                <span>You</span>
+              ) : (
+                <span>Owner</span>
+              )}
+            </span>
+            <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {formatPercent(split.percent)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function TransactionPreview({
   action,
   contract,
@@ -361,12 +542,41 @@ export default function TransactionPreview({
   parameters,
   explanation,
   chainConfigs,
+  _isTruncated,
 }: TransactionPreviewProps) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
+  const [technicalDetailsReady, setTechnicalDetailsReady] = useState(false)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
+  // Check if parameters JSON is valid - if truncated, show error state
+  const isParamsValid = useMemo(() => {
+    if (_isTruncated === 'true') return false
+    try {
+      JSON.parse(parameters || '{}')
+      return true
+    } catch {
+      return false
+    }
+  }, [parameters, _isTruncated])
+
+  // Quick extraction of just projectMetadata for the preview (fast)
+  // Must be before early return to satisfy React hooks rules
+  const projectMetadata = useMemo(() => {
+    if (!isParamsValid) return null
+    try {
+      const raw = JSON.parse(parameters)
+      if (raw && typeof raw.projectMetadata === 'object') {
+        return raw.projectMetadata as Record<string, unknown>
+      }
+      return null
+    } catch {
+      return null
+    }
+  }, [parameters, isParamsValid])
+
   // Helper to update mustStartAtOrAfter to 5 minutes from now
+  // Must be defined before useMemo that uses it
   const updateTimestamps = (obj: unknown): unknown => {
     if (obj === null || obj === undefined) return obj
     if (Array.isArray(obj)) return obj.map(updateTimestamps)
@@ -385,13 +595,161 @@ export default function TransactionPreview({
     return obj
   }
 
-  let parsedParams: Record<string, unknown> = {}
-  try {
-    const rawParams = JSON.parse(parameters)
-    // Update timestamps to be 5 minutes in the future
-    parsedParams = updateTimestamps(rawParams) as Record<string, unknown>
-  } catch {
-    parsedParams = { raw: parameters }
+  // Deferred full parameter parsing - only computed when technical details are expanded
+  // Must be before early return to satisfy React hooks rules
+  const parsedParams = useMemo(() => {
+    if (!isParamsValid || !technicalDetailsReady) return null
+    try {
+      const rawParams = JSON.parse(parameters)
+      return updateTimestamps(rawParams) as Record<string, unknown>
+    } catch {
+      return { raw: parameters }
+    }
+  }, [parameters, technicalDetailsReady, isParamsValid])
+
+  // When expanded, trigger deferred processing using startTransition
+  // Must be before early return to satisfy React hooks rules
+  useEffect(() => {
+    if (expanded && !technicalDetailsReady) {
+      startTransition(() => {
+        setTechnicalDetailsReady(true)
+      })
+    }
+  }, [expanded, technicalDetailsReady])
+
+  // Detect multi-chain deployment from suckerDeploymentConfiguration in parameters
+  // This handles cases where chainConfigs isn't provided but suckers are configured
+  // Must be before early return to satisfy React hooks rules
+  const hasMultiChainSuckers = useMemo(() => {
+    try {
+      const raw = JSON.parse(parameters)
+      const suckerConfig = raw?.suckerDeploymentConfiguration
+      return suckerConfig?.deployerConfigurations?.length > 0
+    } catch {
+      return false
+    }
+  }, [parameters])
+
+  // Extract tier info for launch721Project
+  // Must be before early return to satisfy React hooks rules
+  const tiersInfo = useMemo(() => {
+    if (!isParamsValid) return null
+    try {
+      const raw = JSON.parse(parameters)
+      // Only support the correct format: deployTiersHookConfig.tiersConfig.tiers
+      const tiersConfig = raw?.deployTiersHookConfig?.tiersConfig
+      if (tiersConfig?.tiers && Array.isArray(tiersConfig.tiers)) {
+        return {
+          tiers: tiersConfig.tiers as TierInfo[],
+          currency: tiersConfig.currency || 2,
+          decimals: tiersConfig.decimals || 6
+        }
+      }
+      return null
+    } catch {
+      return null
+    }
+  }, [parameters, isParamsValid])
+
+  // Extract funding info (splits and payout limits)
+  // Must be before early return to satisfy React hooks rules
+  const fundingInfo = useMemo(() => {
+    if (!isParamsValid) return null
+    try {
+      const raw = JSON.parse(parameters)
+      // Handle both launchProject (top level) and launch721Project (in launchProjectConfig)
+      const rulesets = raw?.rulesetConfigurations || raw?.launchProjectConfig?.rulesetConfigurations
+      if (!rulesets || !Array.isArray(rulesets) || rulesets.length === 0) return null
+
+      const firstRuleset = rulesets[0]
+      const splits: SplitInfo[] = []
+      let payoutLimit: number | undefined
+
+      // Extract splits
+      if (firstRuleset.splitGroups && Array.isArray(firstRuleset.splitGroups)) {
+        for (const group of firstRuleset.splitGroups) {
+          if (group.splits && Array.isArray(group.splits)) {
+            for (const split of group.splits) {
+              splits.push({
+                percent: split.percent || 0,
+                projectId: split.projectId || 0,
+                beneficiary: split.beneficiary || ''
+              })
+            }
+          }
+        }
+      }
+
+      // Extract payout limit
+      if (firstRuleset.fundAccessLimitGroups && Array.isArray(firstRuleset.fundAccessLimitGroups)) {
+        for (const group of firstRuleset.fundAccessLimitGroups) {
+          if (group.payoutLimits && Array.isArray(group.payoutLimits)) {
+            for (const limit of group.payoutLimits) {
+              if (limit.amount) {
+                payoutLimit = typeof limit.amount === 'string' ? parseInt(limit.amount) : limit.amount
+                break
+              }
+            }
+          }
+        }
+      }
+
+      return { splits, payoutLimit }
+    } catch {
+      return null
+    }
+  }, [parameters, isParamsValid])
+
+  // If component is still being streamed (truncated), show loading shimmer
+  if (_isTruncated === 'true') {
+    return (
+      <div className={`inline-block border overflow-hidden min-w-[360px] max-w-md ${
+        isDark
+          ? 'bg-juice-dark-lighter border-white/10'
+          : 'bg-white border-gray-200'
+      }`}>
+        <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <div className="flex items-center gap-2">
+            <div className={`w-6 h-6 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <div className={`h-5 w-40 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          </div>
+        </div>
+        <div className="px-4 py-3 space-y-2">
+          <div className={`h-4 w-full rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          <div className={`h-4 w-3/4 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          <div className={`h-4 w-1/2 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+        </div>
+        <div className={`px-4 py-3 border-t flex justify-end ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <div className={`h-9 w-28 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+        </div>
+      </div>
+    )
+  }
+
+  // If parameters are invalid after streaming finished, show error state
+  if (!isParamsValid) {
+    return (
+      <div className={`inline-block border overflow-hidden min-w-[360px] max-w-md ${
+        isDark
+          ? 'bg-juice-dark-lighter border-white/10'
+          : 'bg-white border-gray-200'
+      }`}>
+        <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <div className="flex items-center gap-2">
+            <span className="text-xl">⚠️</span>
+            <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Transaction Preview Incomplete
+            </span>
+          </div>
+        </div>
+        <div className="px-4 py-3">
+          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            The response was cut off before the transaction details could be fully generated.
+            Please ask me to try again.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   // Parse chain-specific configs for multi-chain deployments
@@ -404,14 +762,19 @@ export default function TransactionPreview({
     // Ignore parsing errors
   }
 
-  const isMultiChain = parsedChainConfigs.length > 0
+  const isMultiChain = parsedChainConfigs.length > 0 || hasMultiChainSuckers
 
-  const chainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`
-  const chainColor = CHAIN_COLORS[chainId] || 'bg-gray-500/20 text-gray-300 border-gray-500/30'
+  // All supported chains for multi-chain deployments
+  const ALL_CHAINS = ['1', '10', '8453', '42161'] // Ethereum, Optimism, Base, Arbitrum
+
+  // Handle undefined/invalid chainId - default to multi-chain if chainConfigs exist
+  const validChainId = chainId && chainId !== 'undefined' && CHAIN_NAMES[chainId] ? chainId : null
+  const chainName = validChainId ? CHAIN_NAMES[validChainId] : 'Multi-chain'
+  const chainColor = validChainId ? CHAIN_COLORS[validChainId] : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
   const actionIcon = ACTION_ICONS[action] || '📝'
 
   return (
-    <div className={`inline-block border overflow-hidden ${
+    <div className={`inline-block border overflow-hidden min-w-[360px] max-w-md ${
       isDark
         ? 'bg-juice-dark-lighter border-white/10'
         : 'bg-white border-gray-200'
@@ -420,46 +783,56 @@ export default function TransactionPreview({
       <div className={`px-4 py-3 border-b ${
         isDark ? 'border-white/10' : 'border-gray-200'
       }`}>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">{actionIcon}</span>
-            <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Review for deployment
-            </span>
-          </div>
-          {/* Show all deployment chains as chips */}
-          <div className="flex gap-1 flex-wrap">
-            {isMultiChain ? (
-              parsedChainConfigs.map((config) => {
-                const cid = config.chainId
-                const name = config.label || CHAIN_NAMES[cid] || `Chain ${cid}`
-                const color = CHAIN_COLORS[cid] || 'bg-gray-500/20 text-gray-300 border-gray-500/30'
-                return (
-                  <span key={cid} className={`px-2 py-0.5 text-xs font-medium border ${color}`}>
-                    {name}
-                  </span>
-                )
-              })
-            ) : (
-              <span className={`px-2 py-0.5 text-xs font-medium border ${chainColor}`}>
-                {chainName}
-              </span>
-            )}
-          </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xl">{actionIcon}</span>
+          <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            Review for deployment
+          </span>
         </div>
       </div>
 
-      {/* Explanation */}
-      <div className="px-4 py-3">
-        <p className={`text-sm leading-relaxed ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
-          {explanation}
-        </p>
-      </div>
-
       {/* Project metadata preview */}
-      {typeof parsedParams.projectMetadata === 'object' && parsedParams.projectMetadata !== null && (
+      {projectMetadata && (
+        <div className={`px-4 py-3 ${isDark ? '' : ''}`}>
+          <ProjectMetadataPreview
+            metadata={projectMetadata}
+            isDark={isDark}
+            onEdit={() => window.dispatchEvent(new CustomEvent('juice:edit-section', { detail: { section: 'metadata' } }))}
+          />
+        </div>
+      )}
+
+      {/* Tiers preview for launch721Project */}
+      {tiersInfo && tiersInfo.tiers.length > 0 && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          <ProjectMetadataPreview metadata={parsedParams.projectMetadata as Record<string, unknown>} isDark={isDark} />
+          <TiersPreview
+            tiers={tiersInfo.tiers}
+            currency={tiersInfo.currency}
+            decimals={tiersInfo.decimals}
+            isDark={isDark}
+            onEdit={() => window.dispatchEvent(new CustomEvent('juice:edit-section', { detail: { section: 'tiers' } }))}
+          />
+        </div>
+      )}
+
+      {/* Funding breakdown */}
+      {fundingInfo && (fundingInfo.payoutLimit || fundingInfo.splits.length > 0) && (
+        <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <FundingBreakdown
+            payoutLimit={fundingInfo.payoutLimit}
+            splits={fundingInfo.splits}
+            isDark={isDark}
+            onEdit={() => window.dispatchEvent(new CustomEvent('juice:edit-section', { detail: { section: 'funding' } }))}
+          />
+        </div>
+      )}
+
+      {/* Brief explanation if no rich preview available */}
+      {!projectMetadata && !tiersInfo && !fundingInfo && (
+        <div className="px-4 py-3">
+          <p className={`text-sm leading-relaxed ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
+            {explanation}
+          </p>
         </div>
       )}
 
@@ -494,6 +867,31 @@ export default function TransactionPreview({
               <span className="font-mono">{action}</span>
             </div>
 
+            {/* Chain tags */}
+            <div className={`flex justify-between items-start ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+              <span>Chains</span>
+              <div className="flex gap-1 flex-wrap justify-end">
+                {isMultiChain ? (
+                  (parsedChainConfigs.length > 0 ? parsedChainConfigs.map(c => c.chainId) : ALL_CHAINS).map((cid) => {
+                    const config = parsedChainConfigs.find(c => c.chainId === cid)
+                    const name = config?.label || CHAIN_NAMES[cid] || `Chain ${cid}`
+                    const color = CHAIN_COLORS[cid] || 'bg-gray-500/20 text-gray-300 border-gray-500/30'
+                    return (
+                      <span key={cid} className={`px-2 py-0.5 text-xs font-medium border ${color}`}>
+                        {name}
+                      </span>
+                    )
+                  })
+                ) : validChainId ? (
+                  <span className={`px-2 py-0.5 text-xs font-medium border ${chainColor}`}>
+                    {chainName}
+                  </span>
+                ) : (
+                  <span className="font-mono">Unknown</span>
+                )}
+              </div>
+            </div>
+
             {projectId && (
               <div className={`flex justify-between ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
                 <span>Project</span>
@@ -501,11 +899,45 @@ export default function TransactionPreview({
               </div>
             )}
 
-            {Object.entries(parsedParams).map(([key, value]) => (
-              <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
-            ))}
+            {parsedParams ? (
+              Object.entries(parsedParams).map(([key, value]) => (
+                <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
+              ))
+            ) : (
+              <div className={`flex items-center gap-2 py-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Loading parameters...</span>
+              </div>
+            )}
           </div>
         )}
+      </div>
+
+      {/* Action button */}
+      <div className={`px-4 py-3 border-t flex justify-end ${
+        isDark ? 'border-white/10' : 'border-gray-200'
+      }`}>
+        <button
+          onClick={() => {
+            // Parse parameters on-demand for the action (avoids waiting for deferred parsing)
+            let actionParams: Record<string, unknown>
+            try {
+              const rawParams = JSON.parse(parameters)
+              actionParams = updateTimestamps(rawParams) as Record<string, unknown>
+            } catch {
+              actionParams = { raw: parameters }
+            }
+            window.dispatchEvent(new CustomEvent('juice:execute-action', {
+              detail: { action, contract, chainId: validChainId || '1', projectId, parameters: actionParams }
+            }))
+          }}
+          className="px-5 py-2 text-sm font-bold border-2 bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600 transition-colors"
+        >
+          {ACTION_BUTTON_LABELS[action] || action}
+        </button>
       </div>
 
     </div>
@@ -647,7 +1079,7 @@ function formatSimpleValue(value: unknown, key?: string, chainId?: string): stri
       // Add more known group IDs as needed
     }
     const label = groupIdLabels[value]
-    return label ? `${label}` : `Token group ${value.slice(0, 8)}...`
+    return label || value
   }
 
   // Handle large numbers (likely wei) - show both formats
@@ -675,18 +1107,20 @@ function isEmptyArray(value: unknown): boolean {
 }
 
 // Get a human-readable label for array items based on parent context
-// Returns empty string for items that should show content directly without a wrapper label
 function getArrayItemLabel(parentName: string, index: number): string {
   const lower = parentName.toLowerCase()
   if (lower.includes('ruleset')) return `Ruleset ${index + 1}`
   if (lower.includes('terminal')) return `Terminal ${index + 1}`
-  // Don't label individual splits - just show them inline
-  if (lower === 'splits') return ''
+  if (lower === 'splits') return `Split ${index + 1}`
   if (lower.includes('splitgroup')) return `Split Group ${index + 1}`
   if (lower.includes('sucker')) return `Sucker ${index + 1}`
   if (lower.includes('chain')) return `Chain ${index + 1}`
   if (lower.includes('hook')) return `Hook ${index + 1}`
-  if (lower.includes('mapping')) return ''  // Don't label individual mappings
+  if (lower.includes('mapping')) return `Mapping ${index + 1}`
+  if (lower.includes('tier')) return `Tier ${index + 1}`
+  if (lower.includes('deployer')) return `Deployer ${index + 1}`
+  if (lower.includes('limit')) return `Limit ${index + 1}`
+  if (lower.includes('allowance')) return `Allowance ${index + 1}`
   return `Item ${index + 1}`
 }
 

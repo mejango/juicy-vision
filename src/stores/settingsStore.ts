@@ -26,6 +26,7 @@ interface SettingsState {
   relayrEndpoint: string
   language: Language
   selectedFruit: string | null // null = use address-based default
+  privateMode: boolean // true = chats are private, backend won't store for study
 
   setClaudeApiKey: (key: string) => void
   setParaApiKey: (key: string) => void
@@ -36,6 +37,7 @@ interface SettingsState {
   setRelayrEndpoint: (endpoint: string) => void
   setLanguage: (lang: Language) => void
   setSelectedFruit: (fruit: string | null) => void
+  setPrivateMode: (isPrivate: boolean) => void
   clearSettings: () => void
   isConfigured: () => boolean
   isPinataConfigured: () => boolean
@@ -53,6 +55,7 @@ export const useSettingsStore = create<SettingsState>()(
       relayrEndpoint: 'https://api.relayr.ba5ed.com',
       language: 'en',
       selectedFruit: null,
+      privateMode: false, // default to open (not private) - allows backend to study chats
 
       setClaudeApiKey: (key) => set({ claudeApiKey: key }),
       setParaApiKey: (key) => set({ paraApiKey: key }),
@@ -66,6 +69,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({ language: lang })
       },
       setSelectedFruit: (fruit) => set({ selectedFruit: fruit }),
+      setPrivateMode: (isPrivate) => set({ privateMode: isPrivate }),
 
       clearSettings: () => set({
         claudeApiKey: '',
@@ -87,7 +91,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'juice-settings',
-      version: 8,
+      version: 9,
       onRehydrateStorage: () => (state) => {
         // Sync i18n with persisted language on app start
         if (state?.language) {
@@ -131,6 +135,13 @@ export const useSettingsStore = create<SettingsState>()(
           state = {
             ...state,
             selectedFruit: null,
+          }
+        }
+        if (version < 9) {
+          // Migration: add privateMode preference (default false = open/shareable)
+          state = {
+            ...state,
+            privateMode: false,
           }
         }
         return state

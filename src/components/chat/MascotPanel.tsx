@@ -50,7 +50,7 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
       </div>
 
       <div className={`absolute right-2 bottom-2 z-10 animate-bounce ${
-        theme === 'dark' ? 'text-gray-600' : 'text-gray-300'
+        theme === 'dark' ? 'text-green-500' : 'text-green-600'
       }`}>
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
@@ -78,13 +78,41 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
           <div className={`p-4 max-w-[340px] ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
           }`}>
+            {/* Hero section */}
+            <div className={`pb-4 mb-4 border-b ${
+              theme === 'dark' ? 'border-white/10' : 'border-gray-200'
+            }`}>
+              <p className={`text-sm leading-relaxed font-medium ${
+                theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
+              }`}>
+                {t('juicyExplainer.intro', "Juicy is the people's funding platform.")}
+              </p>
+              <p className={`text-sm leading-relaxed mt-3 ${
+                theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
+              }`}>
+                {t('juicyExplainer.useIt', 'Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.')}
+              </p>
+              <button
+                onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
+                className={`mt-4 px-3 py-1.5 text-sm border transition-colors ${
+                  theme === 'dark'
+                    ? 'border-green-500/50 text-green-400 hover:border-green-500 hover:bg-green-500/10'
+                    : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50'
+                }`}
+              >
+                Pay us so we can grow
+              </button>
+              {balanceUsd !== null && (
+                <p className={`text-xs font-mono mt-2 ${
+                  theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                }`}>
+                  {t('ui.nanaBalance', 'NANA balance')} ${balanceUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+              )}
+            </div>
+
+            {/* Details section */}
             <p className="text-xs leading-relaxed">
-              {t('juicyExplainer.intro', "Juicy is the people's funding platform.")}
-            </p>
-            <p className="text-xs leading-relaxed mt-3">
-              {t('juicyExplainer.useIt', 'Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.')}
-            </p>
-            <p className="text-xs leading-relaxed mt-3">
               {t('juicyExplainer.paragraph1')}
             </p>
             <p className="text-xs leading-relaxed mt-3">
@@ -105,13 +133,6 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
             >
               {t('ui.payUs', 'Pay us')}
             </button>
-            {balanceUsd !== null && (
-              <p className={`text-xs font-mono mt-2 ${
-                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-              }`}>
-                {t('ui.nanaBalance', 'NANA balance')} ${balanceUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </p>
-            )}
             <p className={`text-xs leading-relaxed mt-4 pt-4 border-t ${
               theme === 'dark' ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-200'
             }`}>

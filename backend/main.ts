@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { timing } from 'hono/timing';
+import { serveStatic } from 'hono/deno';
 
 import { authRouter } from './src/routes/auth.ts';
 import { chatRouter } from './src/routes/chat.ts';
@@ -102,19 +103,15 @@ app.use('/api/*', async (c, next) => {
 });
 
 // ============================================================================
-// Health Check
+// Health Check (API endpoint only)
 // ============================================================================
 
-app.get('/', (c) => {
+app.get('/api/health', (c) => {
   return c.json({
     name: 'Juicy Vision API',
     version: '0.1.0',
     status: 'healthy',
   });
-});
-
-app.get('/health', (c) => {
-  return c.json({ status: 'ok' });
 });
 
 // ============================================================================
@@ -138,6 +135,28 @@ app.route('/api/projects', projectsRouter);
 app.route('/api/debug', debugRouter);
 app.route('/api/identity', identityRouter);
 app.route('/api/juice', juiceRouter);
+
+// ============================================================================
+// Static File Serving (Frontend SPA)
+// ============================================================================
+
+// Serve static files from the frontend build directory
+app.use('/*', serveStatic({ root: '../dist' }));
+
+// SPA fallback - serve index.html for any non-API route that doesn't match a static file
+app.get('*', async (c) => {
+  // Don't serve index.html for API routes
+  if (c.req.path.startsWith('/api/')) {
+    return c.notFound();
+  }
+
+  try {
+    const indexHtml = await Deno.readTextFile('../dist/index.html');
+    return c.html(indexHtml);
+  } catch {
+    return c.text('Frontend not built. Run: npm run build', 404);
+  }
+});
 
 // ============================================================================
 // Error Handling

@@ -179,6 +179,9 @@ export async function fetchProject(projectId: string, chainId: number = 1, versi
   )
 
   const project = data.project
+  if (!project) {
+    throw new Error(`Project ${projectId} not found on chain ${chainId}`)
+  }
   // metadata comes back as JSON scalar, parse if string
   const metadata: ProjectMetadata | undefined =
     typeof project.metadata === 'string' ? JSON.parse(project.metadata) : project.metadata
