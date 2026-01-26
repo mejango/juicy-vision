@@ -236,7 +236,7 @@ function AddressDisplay({ address, chainId, isDark }: { address: string; chainId
       )}
       {/* Expanded chain addresses dropdown */}
       {isChainSpecific && showChainAddresses && (
-        <div className={`absolute top-full right-0 mt-1 z-10 p-2 rounded border text-[10px] ${
+        <div className={`absolute top-full right-0 mt-1 z-10 p-2 rounded border text-[10px] whitespace-nowrap ${
           isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200 shadow-lg'
         }`}>
           <div className={`font-semibold mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -244,11 +244,11 @@ function AddressDisplay({ address, chainId, isDark }: { address: string; chainId
           </div>
           {Object.entries(USDC_ADDRESSES).map(([cid, addr]) => (
             <div key={cid} className="flex gap-2 py-0.5">
-              <span className={`font-medium w-20 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className={`font-medium w-16 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 {CHAIN_NAMES[cid]}:
               </span>
               <span
-                className="font-mono cursor-pointer hover:underline text-[9px]"
+                className="font-mono cursor-pointer hover:underline"
                 onClick={() => navigator.clipboard.writeText(addr)}
                 title="Click to copy"
               >
@@ -303,6 +303,11 @@ function SectionHeader({ title, isDark, onEdit }: { title: string; isDark: boole
 
 // Component to show a preview of project metadata (name, description, website, etc.)
 function ProjectMetadataPreview({ metadata, isDark, onEdit }: { metadata: Record<string, unknown>; isDark: boolean; onEdit?: () => void }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState((metadata.name as string) || '')
+  const [editDescription, setEditDescription] = useState((metadata.description as string) || '')
+  const [editTags, setEditTags] = useState((metadata.tags as string[])?.join(', ') || '')
+
   const name = metadata.name as string | undefined
   const description = metadata.description as string | undefined
   const tagline = metadata.tagline as string | undefined
@@ -310,69 +315,160 @@ function ProjectMetadataPreview({ metadata, isDark, onEdit }: { metadata: Record
   const infoUri = metadata.infoUri as string | undefined
   const logoUri = metadata.logoUri as string | undefined
 
+  const handleEdit = () => {
+    setIsEditing(true)
+  }
+
+  const handleSave = () => {
+    const parsedTags = editTags.split(',').map(t => t.trim()).filter(Boolean)
+    window.dispatchEvent(new CustomEvent('juice:update-metadata', {
+      detail: { name: editName, description: editDescription, tags: parsedTags }
+    }))
+    setIsEditing(false)
+  }
+
+  const handleCancel = () => {
+    setEditName((metadata.name as string) || '')
+    setEditDescription((metadata.description as string) || '')
+    setEditTags((metadata.tags as string[])?.join(', ') || '')
+    setIsEditing(false)
+  }
+
   return (
     <div className="space-y-3">
-      <SectionHeader title="Project" isDark={isDark} onEdit={onEdit} />
-      <div className="flex gap-3">
-        {/* Logo */}
-        <div className={`w-14 h-14 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden ${
-          isDark ? 'bg-white/5' : 'bg-gray-100'
-        }`}>
-          {logoUri ? (
-            <img
-              src={logoUri.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${logoUri.replace('ipfs://', '')}` : logoUri}
-              alt=""
-              className="w-full h-full object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+      <SectionHeader title="Project" isDark={isDark} onEdit={isEditing ? undefined : handleEdit} />
+
+      {isEditing ? (
+        <div className="space-y-3">
+          <div>
+            <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Project Name
+            </label>
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className={`w-full px-3 py-2 rounded border text-sm ${
+                isDark
+                  ? 'bg-white/5 border-white/10 text-white focus:border-juice-orange'
+                  : 'bg-white border-gray-300 text-gray-900 focus:border-orange-500'
+              } focus:outline-none`}
+              placeholder="My Project"
             />
-          ) : (
-            <span className="text-2xl">🚀</span>
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {name || 'Untitled Project'}
           </div>
-          {tagline && (
-            <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              {tagline}
-            </div>
-          )}
-        </div>
-      </div>
-      {description && (
-        <p className={`text-sm leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-          {description}
-        </p>
-      )}
-      {tags && tags.length > 0 && (
-        <div className="flex gap-1.5 flex-wrap">
-          {tags.map((tag, i) => (
-            <span
-              key={i}
-              className={`px-2 py-0.5 text-xs rounded-full ${
-                isDark ? 'bg-white/10 text-gray-300' : 'bg-gray-100 text-gray-600'
+          <div>
+            <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Description
+            </label>
+            <textarea
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              rows={3}
+              className={`w-full px-3 py-2 rounded border text-sm resize-none ${
+                isDark
+                  ? 'bg-white/5 border-white/10 text-white focus:border-juice-orange'
+                  : 'bg-white border-gray-300 text-gray-900 focus:border-orange-500'
+              } focus:outline-none`}
+              placeholder="Describe your project..."
+            />
+          </div>
+          <div>
+            <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Tags (comma-separated)
+            </label>
+            <input
+              type="text"
+              value={editTags}
+              onChange={(e) => setEditTags(e.target.value)}
+              className={`w-full px-3 py-2 rounded border text-sm ${
+                isDark
+                  ? 'bg-white/5 border-white/10 text-white focus:border-juice-orange'
+                  : 'bg-white border-gray-300 text-gray-900 focus:border-orange-500'
+              } focus:outline-none`}
+              placeholder="defi, dao, nft"
+            />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={handleCancel}
+              className={`px-3 py-1.5 text-xs rounded ${
+                isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {tag}
-            </span>
-          ))}
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-3 py-1.5 text-xs rounded bg-juice-orange text-black font-medium hover:bg-juice-orange/90"
+            >
+              Save
+            </button>
+          </div>
         </div>
-      )}
-      {infoUri && (
-        <a
-          href={infoUri}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`inline-flex items-center gap-1 text-sm ${
-            isDark ? 'text-juice-orange hover:text-juice-orange/80' : 'text-orange-600 hover:text-orange-500'
-          }`}
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
-          {infoUri.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-        </a>
+      ) : (
+        <>
+          <div className="flex gap-3">
+            {/* Logo */}
+            <div className={`w-14 h-14 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden ${
+              isDark ? 'bg-white/5' : 'bg-gray-100'
+            }`}>
+              {logoUri ? (
+                <img
+                  src={logoUri.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${logoUri.replace('ipfs://', '')}` : logoUri}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              ) : (
+                <span className="text-2xl">🚀</span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {name || 'Untitled Project'}
+              </div>
+              {tagline && (
+                <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {tagline}
+                </div>
+              )}
+            </div>
+          </div>
+          {description && (
+            <p className={`text-sm leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+              {description}
+            </p>
+          )}
+          {tags && tags.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap">
+              {tags.map((tag, i) => (
+                <span
+                  key={i}
+                  className={`px-2 py-0.5 text-xs rounded-full ${
+                    isDark ? 'bg-white/10 text-gray-300' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+          {infoUri && (
+            <a
+              href={infoUri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`inline-flex items-center gap-1 text-sm ${
+                isDark ? 'text-juice-orange hover:text-juice-orange/80' : 'text-orange-600 hover:text-orange-500'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              {infoUri.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+            </a>
+          )}
+        </>
       )}
     </div>
   )
@@ -386,6 +482,8 @@ interface TierInfo {
   decimals: number
   initialSupply: number
   encodedIPFSUri?: string
+  resolvedUri?: string // Resolved IPFS URI (ipfs://...)
+  media?: string // Direct media URL from user upload
   description?: string
 }
 
@@ -397,10 +495,26 @@ function TierPreview({ tier, index, isDark }: { tier: TierInfo; index: number; i
 
   const supplyText = tier.initialSupply >= 4294967290 ? 'Unlimited' : `${tier.initialSupply.toLocaleString()} available`
 
-  // Try to get image from encodedIPFSUri (would need decoding in real implementation)
-  const imageUrl = tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
-    ? `https://ipfs.io/ipfs/${tier.encodedIPFSUri.replace('0x', '')}`
-    : null
+  // Get image URL from various possible sources
+  const getImageUrl = (): string | null => {
+    // Direct media URL (from user upload)
+    if (tier.media) {
+      if (tier.media.startsWith('ipfs://')) {
+        return `https://ipfs.io/ipfs/${tier.media.replace('ipfs://', '')}`
+      }
+      return tier.media
+    }
+    // Resolved IPFS URI
+    if (tier.resolvedUri) {
+      if (tier.resolvedUri.startsWith('ipfs://')) {
+        return `https://ipfs.io/ipfs/${tier.resolvedUri.replace('ipfs://', '')}`
+      }
+      return tier.resolvedUri
+    }
+    // encodedIPFSUri is bytes32 - not useful for display without decoding
+    return null
+  }
+  const imageUrl = getImageUrl()
 
   return (
     <div className={`flex gap-3 p-3 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
@@ -474,62 +588,147 @@ function FundingBreakdown({
   isDark: boolean;
   onEdit?: () => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editPayoutLimit, setEditPayoutLimit] = useState(payoutLimit ? (payoutLimit / 1000000).toString() : '')
+
   const formatPercent = (p: number) => `${(p / 10000000).toFixed(1)}%`
+  const formatAmount = (limit: number, percent: number) => {
+    const amount = (limit / 1000000) * (percent / 1000000000)
+    return `$${amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+  }
 
   // Calculate total split percentage and implied owner share
   const totalSplitPercent = splits.reduce((sum, s) => sum + s.percent, 0)
   const ownerPercent = 1000000000 - totalSplitPercent // 100% in basis points
   const hasImpliedOwner = ownerPercent > 0 && !splits.some(s => s.projectId === 0 || (s.beneficiary && s.beneficiary !== '0x0000000000000000000000000000000000000000'))
 
+  // Check if payout limit is defined (not unlimited)
+  // Unlimited is represented by very large values (type(uint224).max) or 0/undefined
+  const UNLIMITED_THRESHOLD = 1e15 // $1 quadrillion - anything above this is effectively unlimited
+  const hasDefinedLimit = payoutLimit && payoutLimit > 0 && payoutLimit < UNLIMITED_THRESHOLD
+
+  // Filter out Juicy fee from display (projectId === 1)
+  const displaySplits = splits.filter(s => s.projectId !== 1)
+  const juicyFee = splits.find(s => s.projectId === 1)
+
+  // Find owner split (projectId 0 with beneficiary)
+  const ownerSplit = splits.find(s => s.projectId === 0 && s.beneficiary && s.beneficiary !== '0x0000000000000000000000000000000000000000')
+
+  const handleEdit = () => {
+    setIsEditing(true)
+  }
+
+  const handleSave = () => {
+    const newLimit = parseFloat(editPayoutLimit) * 1000000
+    window.dispatchEvent(new CustomEvent('juice:update-funding', {
+      detail: { payoutLimit: newLimit }
+    }))
+    setIsEditing(false)
+  }
+
+  const handleCancel = () => {
+    setEditPayoutLimit(payoutLimit ? (payoutLimit / 1000000).toString() : '')
+    setIsEditing(false)
+  }
+
   return (
     <div className="space-y-3">
-      <SectionHeader title="Funding" isDark={isDark} onEdit={onEdit} />
+      <SectionHeader title="Payout Distribution" isDark={isDark} onEdit={isEditing ? undefined : handleEdit} />
 
-      {payoutLimit && payoutLimit > 0 && (
-        <div className={`flex justify-between items-center py-2 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Funding Target</span>
-          <span className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ${(payoutLimit / 1000000).toLocaleString()}
-          </span>
+      {isEditing ? (
+        <div className="space-y-3">
+          <div>
+            <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Payout Limit (USD)
+            </label>
+            <input
+              type="number"
+              value={editPayoutLimit}
+              onChange={(e) => setEditPayoutLimit(e.target.value)}
+              className={`w-full px-3 py-2 rounded border text-sm ${
+                isDark
+                  ? 'bg-white/5 border-white/10 text-white focus:border-juice-orange'
+                  : 'bg-white border-gray-300 text-gray-900 focus:border-orange-500'
+              } focus:outline-none`}
+              placeholder="10000"
+            />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={handleCancel}
+              className={`px-3 py-1.5 text-xs rounded ${
+                isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-3 py-1.5 text-xs rounded bg-juice-orange text-black font-medium hover:bg-juice-orange/90"
+            >
+              Save
+            </button>
+          </div>
         </div>
-      )}
-
-      <div className="space-y-2">
-        <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>Distribution</div>
-
-        {/* Show implied owner share first (the majority) */}
-        {hasImpliedOwner && (
-          <div className="flex justify-between items-center">
-            <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>You</span>
-            <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {formatPercent(ownerPercent)}
+      ) : (
+        <>
+          {/* Payout limit header - show prominently */}
+          <div className={`flex justify-between items-center py-2 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+            <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Payout Limit</span>
+            <span className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {hasDefinedLimit
+                ? `$${(payoutLimit! / 1000000).toLocaleString()}`
+                : 'Unlimited'}
             </span>
           </div>
-        )}
 
-        {/* Then show explicit splits */}
-        {splits.map((split, i) => (
-          <div key={i} className="flex justify-between items-center">
-            <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>
-              {split.projectId === 1 ? (
-                <span className="inline-flex items-center gap-1">
-                  <span className="text-juice-orange">Juicy</span>
-                  <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>(platform fee)</span>
+          <div className="space-y-2">
+            {/* Show implied owner share first (when not explicitly split) */}
+            {hasImpliedOwner && (
+              <div className="flex justify-between items-center">
+                <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>You</span>
+                <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {hasDefinedLimit ? formatAmount(payoutLimit!, ownerPercent) : formatPercent(ownerPercent)}
                 </span>
-              ) : split.projectId > 0 ? (
-                <span>Project #{split.projectId}</span>
-              ) : split.beneficiary && split.beneficiary !== '0x0000000000000000000000000000000000000000' ? (
-                <span>You</span>
-              ) : (
-                <span>Owner</span>
-              )}
-            </span>
-            <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {formatPercent(split.percent)}
-            </span>
+              </div>
+            )}
+
+            {/* Show explicit owner split if it exists */}
+            {ownerSplit && (
+              <div className="flex justify-between items-center">
+                <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>You</span>
+                <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {hasDefinedLimit ? formatAmount(payoutLimit!, ownerSplit.percent) : formatPercent(ownerSplit.percent)}
+                </span>
+              </div>
+            )}
+
+            {/* Show other explicit splits (excluding Juicy fee and owner) */}
+            {displaySplits.filter(s => s !== ownerSplit).map((split, i) => (
+              <div key={i} className="flex justify-between items-center">
+                <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>
+                  {split.projectId > 0 ? (
+                    <span>Project #{split.projectId}</span>
+                  ) : (
+                    <span>Owner</span>
+                  )}
+                </span>
+                <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {hasDefinedLimit ? formatAmount(payoutLimit!, split.percent) : formatPercent(split.percent)}
+                </span>
+              </div>
+            ))}
+
+            {/* Show Juicy fee subtly at the end */}
+            {juicyFee && (
+              <div className={`flex justify-between items-center text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                <span>Pay Juicy</span>
+                <span>{hasDefinedLimit ? formatAmount(payoutLimit!, juicyFee.percent) : formatPercent(juicyFee.percent)}</span>
+              </div>
+            )}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </div>
   )
 }
@@ -575,7 +774,16 @@ export default function TransactionPreview({
     }
   }, [parameters, isParamsValid])
 
-  // Helper to update mustStartAtOrAfter to 5 minutes from now
+  // Helper to generate a random 32-byte hex string for salt
+  const generateRandomSalt = (): string => {
+    const bytes = new Uint8Array(32)
+    crypto.getRandomValues(bytes)
+    return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+  }
+
+  // Helper to transform parameters before display/execution
+  // - Updates mustStartAtOrAfter to 5 minutes from now
+  // - Randomizes salt values
   // Must be defined before useMemo that uses it
   const updateTimestamps = (obj: unknown): unknown => {
     if (obj === null || obj === undefined) return obj
@@ -586,6 +794,9 @@ export default function TransactionPreview({
         if (key.toLowerCase() === 'muststartatOrafter'.toLowerCase()) {
           // Always set to 5 minutes from now
           result[key] = Math.floor(Date.now() / 1000) + 300
+        } else if (key.toLowerCase() === 'salt') {
+          // Always use a random salt for unique deployments
+          result[key] = generateRandomSalt()
         } else {
           result[key] = updateTimestamps(value)
         }
@@ -703,7 +914,7 @@ export default function TransactionPreview({
   // If component is still being streamed (truncated), show loading shimmer
   if (_isTruncated === 'true') {
     return (
-      <div className={`inline-block border overflow-hidden min-w-[360px] max-w-md ${
+      <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
         isDark
           ? 'bg-juice-dark-lighter border-white/10'
           : 'bg-white border-gray-200'
@@ -729,7 +940,7 @@ export default function TransactionPreview({
   // If parameters are invalid after streaming finished, show error state
   if (!isParamsValid) {
     return (
-      <div className={`inline-block border overflow-hidden min-w-[360px] max-w-md ${
+      <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
         isDark
           ? 'bg-juice-dark-lighter border-white/10'
           : 'bg-white border-gray-200'
@@ -774,7 +985,7 @@ export default function TransactionPreview({
   const actionIcon = ACTION_ICONS[action] || '📝'
 
   return (
-    <div className={`inline-block border overflow-hidden min-w-[360px] max-w-md ${
+    <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
       isDark
         ? 'bg-juice-dark-lighter border-white/10'
         : 'bg-white border-gray-200'
@@ -900,7 +1111,9 @@ export default function TransactionPreview({
             )}
 
             {parsedParams ? (
-              Object.entries(parsedParams).map(([key, value]) => (
+              Object.entries(parsedParams)
+                .filter(([key]) => key !== 'chainConfigs') // Hide chainConfigs - it's redundant with the Chains display
+                .map(([key, value]) => (
                 <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
               ))
             ) : (
@@ -947,7 +1160,10 @@ export default function TransactionPreview({
 // Helper to format parameter names
 function formatParamName(key: string): string {
   return key
-    .replace(/([A-Z])/g, ' $1')
+    // Add space between acronym and next word (e.g., "IPFSUri" → "IPFS Uri")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    // Add space between lowercase and uppercase (e.g., "encodedIPFS" → "encoded IPFS")
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/^./, str => str.toUpperCase())
     .trim()
 }
@@ -1107,20 +1323,21 @@ function isEmptyArray(value: unknown): boolean {
 }
 
 // Get a human-readable label for array items based on parent context
+// Return empty string to skip the wrapper and render contents directly
 function getArrayItemLabel(parentName: string, index: number): string {
   const lower = parentName.toLowerCase()
   if (lower.includes('ruleset')) return `Ruleset ${index + 1}`
   if (lower.includes('terminal')) return `Terminal ${index + 1}`
-  if (lower === 'splits') return `Split ${index + 1}`
-  if (lower.includes('splitgroup')) return `Split Group ${index + 1}`
+  if (lower === 'splits') return '' // Skip wrapper, show contents directly
+  if (lower.includes('splitgroup')) return '' // Skip wrapper, show contents directly
   if (lower.includes('sucker')) return `Sucker ${index + 1}`
   if (lower.includes('chain')) return `Chain ${index + 1}`
   if (lower.includes('hook')) return `Hook ${index + 1}`
   if (lower.includes('mapping')) return `Mapping ${index + 1}`
-  if (lower.includes('tier')) return `Tier ${index + 1}`
+  if (lower.includes('tier')) return '' // Skip wrapper, show contents directly
   if (lower.includes('deployer')) return `Deployer ${index + 1}`
-  if (lower.includes('limit')) return `Limit ${index + 1}`
-  if (lower.includes('allowance')) return `Allowance ${index + 1}`
+  if (lower.includes('limit')) return '' // Skip wrapper, show contents directly
+  if (lower.includes('allowance')) return '' // Skip wrapper, show contents directly
   return `Item ${index + 1}`
 }
 
@@ -1240,10 +1457,13 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
   }
 
   // For single-item arrays with generic labels or no labels, skip the wrapper and show content directly
+  // But keep the toggle for important structural arrays like splitGroups and splits
   if (Array.isArray(value) && value.length === 1) {
     const label = getArrayItemLabel(name, 0)
-    // Skip the wrapper if label is empty or generic "Item N"
-    if (label === '' || label.startsWith('Item ')) {
+    const nameLower = name.toLowerCase()
+    const keepToggle = nameLower.includes('splitgroup') || nameLower === 'splits' || nameLower === 'tiers'
+    // Skip the wrapper if label is empty or generic "Item N", unless it's an important structural array
+    if (!keepToggle && (label === '' || label.startsWith('Item '))) {
       const innerValue = value[0]
       if (typeof innerValue === 'object' && innerValue !== null) {
         return (
@@ -1254,6 +1474,41 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
                 <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} />
               ))}
             </div>
+          </div>
+        )
+      }
+    }
+    // For arrays that keep toggle but have empty item labels, show header with toggle but render item contents directly
+    if (keepToggle && label === '') {
+      const innerValue = value[0]
+      if (typeof innerValue === 'object' && innerValue !== null) {
+        const fields = Object.entries(innerValue as Record<string, unknown>)
+        return (
+          <div style={{ paddingLeft: indent }}>
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className={`flex items-center gap-1.5 w-full text-left py-0.5 ${isDark ? 'text-gray-300 hover:text-gray-200' : 'text-gray-600 hover:text-gray-700'}`}
+            >
+              <svg
+                className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span className="font-medium">{displayName}</span>
+              <span className={`ml-auto text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                {fields.length} fields
+              </span>
+            </button>
+            {expanded && (
+              <div className={`mt-0.5 space-y-0 border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
+                {fields.map(([k, v]) => (
+                  <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} />
+                ))}
+              </div>
+            )}
           </div>
         )
       }

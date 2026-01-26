@@ -7,6 +7,11 @@ interface Option {
   label: string
   sublabel?: string
   selected?: boolean // Pre-select this option (useful for multiSelect defaults)
+  inputWhenSelected?: { // Show inline input when this option is selected
+    id: string // ID to store the value under in selections
+    placeholder?: string
+    type?: 'text' | 'number'
+  }
 }
 
 interface OptionGroup {
@@ -20,6 +25,7 @@ interface OptionGroup {
   optional?: boolean // Mark field as optional (shows "(optional)" label)
   expectedOptionCount?: number // Show ghost cards for remaining options during streaming
   suggestions?: string[] // Quick-pick suggestions for text inputs (shown as horizontally scrolling chips)
+  autoGenerate?: boolean | string // Show "Auto-generate" button for textarea (true or custom prompt)
 }
 
 interface OptionsPickerProps {
@@ -178,12 +184,51 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({})
   const blobUrlsRef = useRef<string[]>([])
 
+  // Track which fields are currently auto-generating
+  const [generating, setGenerating] = useState<Record<string, boolean>>({})
+
+  // Listen for auto-generated content
+  useEffect(() => {
+    const handleGenerated = (e: CustomEvent<{ fieldId: string; content: string }>) => {
+      const { fieldId, content } = e.detail
+      setSelections(prev => ({ ...prev, [fieldId]: content }))
+      setGenerating(prev => ({ ...prev, [fieldId]: false }))
+    }
+    window.addEventListener('juice:generated-content' as never, handleGenerated as EventListener)
+    return () => {
+      window.removeEventListener('juice:generated-content' as never, handleGenerated as EventListener)
+    }
+  }, [])
+
   // Cleanup blob URLs on unmount
   useEffect(() => {
     return () => {
       blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
     }
   }, [])
+
+  // Sync pre-filled values from groups when they change (for streaming/late-loading)
+  useEffect(() => {
+    if (hasSubmitted) return // Don't overwrite after submission
+
+    setSelections(prev => {
+      const updated = { ...prev }
+      let changed = false
+
+      groups.forEach(g => {
+        // Only sync text/textarea fields with a value prop
+        if ((g.type === 'text' || g.type === 'textarea') && g.value) {
+          // Only set if currently empty (don't overwrite user input)
+          if (!prev[g.id] || prev[g.id] === '') {
+            updated[g.id] = g.value
+            changed = true
+          }
+        }
+      })
+
+      return changed ? updated : prev
+    })
+  }, [groups, hasSubmitted])
 
   const isOtherValue = (value: string) => {
     const normalized = normalizeValue(value)
@@ -317,7 +362,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     : 0
 
   return (
-    <div className={`border overflow-hidden inline-block max-w-xl ${
+    <div className={`border overflow-hidden inline-block w-full max-w-xl ${
       isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
     }`}>
       <div className="p-4 space-y-4">
@@ -482,13 +527,16 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                     const remoteSelectionsForOption = getRemoteSelectionsForOption(group.id, option.value)
                     // After submission: locked state with subtle styling
                     const isLocked = hasSubmitted
+                    const hasChildInput = option.inputWhenSelected && selected
+                    const childInputId = option.inputWhenSelected?.id
+                    const childInputValue = childInputId ? (selections[childInputId] as string || '') : ''
+
                     return (
-                      <button
+                      <div
                         key={option.value}
-                        onClick={() => !isLocked && handleSelect(group.id, option.value)}
+                        onClick={() => !isLocked && !hasChildInput && handleSelect(group.id, option.value)}
                         onMouseEnter={() => !isLocked && handleOptionHover(group.id, true)}
                         onMouseLeave={() => !isLocked && handleOptionHover(group.id, false)}
-                        disabled={isLocked}
                         className={`relative w-full flex items-start gap-3 px-3 py-2 text-sm border text-left ${
                           isLocked
                             ? selected
@@ -505,10 +553,15 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                               : isDark
                                 ? 'bg-white/5 border-white/10 hover:border-white/30'
                                 : 'bg-gray-50 border-gray-200 hover:border-gray-400'
-                        } ${isLocked ? 'cursor-default' : ''}`}
+                        } ${isLocked ? 'cursor-default' : 'cursor-pointer'}`}
                       >
-                        {/* Always checkbox - everything is multi-select */}
-                        <div className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center shrink-0 ${
+                        {/* Checkbox */}
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!isLocked) handleSelect(group.id, option.value)
+                          }}
+                          className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center shrink-0 ${
                           isLocked && selected
                             ? isDark ? 'border-gray-500 bg-gray-500' : 'border-gray-400 bg-gray-400'
                             : selected
@@ -522,15 +575,42 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                           )}
                         </div>
                         <div className="flex flex-col min-w-0 text-left flex-1">
-                          <span className={`${
-                            isLocked && selected
-                              ? isDark ? 'text-gray-300' : 'text-gray-600'
-                              : selected
-                                ? isDark ? 'text-green-400' : 'text-green-700'
-                                : isDark ? 'text-gray-300' : 'text-gray-600'
-                          }`}>
-                            {option.label}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`${
+                              isLocked && selected
+                                ? isDark ? 'text-gray-300' : 'text-gray-600'
+                                : selected
+                                  ? isDark ? 'text-green-400' : 'text-green-700'
+                                  : isDark ? 'text-gray-300' : 'text-gray-600'
+                            }`}>
+                              {option.label}
+                            </span>
+                            {/* Inline input when option is selected */}
+                            {hasChildInput && option.inputWhenSelected && (
+                              <input
+                                type={option.inputWhenSelected.type || 'text'}
+                                value={childInputValue}
+                                onChange={(e) => {
+                                  if (isLocked) return
+                                  const value = e.target.value
+                                  setSelections(prev => ({ ...prev, [option.inputWhenSelected!.id]: value }))
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                disabled={isLocked}
+                                placeholder={option.inputWhenSelected.placeholder || 'Enter amount...'}
+                                autoFocus
+                                className={`w-20 px-2 py-0.5 text-sm border transition-colors outline-none ${
+                                  isLocked
+                                    ? isDark
+                                      ? 'bg-white/5 border-white/10 text-gray-400 cursor-default'
+                                      : 'bg-gray-50 border-gray-200 text-gray-500 cursor-default'
+                                    : isDark
+                                      ? 'bg-white/5 border-white/20 text-white placeholder-gray-500 focus:border-green-500'
+                                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-green-500'
+                                }`}
+                              />
+                            )}
+                          </div>
                           {option.sublabel && (
                             <span className={`mt-0.5 text-xs text-left whitespace-pre-line ${
                               isDark ? 'text-gray-400' : 'text-gray-500'
@@ -563,7 +643,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                             )}
                           </span>
                         )}
-                      </button>
+                      </div>
                     )
                   })}
                   {/* Ghost cards for remaining expected options */}
@@ -669,6 +749,33 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
             {group.type === 'textarea' && (() => {
               const groupTyping = getRemoteTypingForGroup(group.id)
               const isLocked = hasSubmitted
+              const isGenerating = generating[group.id]
+              const canAutoGenerate = group.autoGenerate && !isLocked && !isGenerating
+
+              const handleAutoGenerate = () => {
+                setGenerating(prev => ({ ...prev, [group.id]: true }))
+                // Build context from other selections
+                const context = groups.map(g => {
+                  const sel = selections[g.id]
+                  if (!sel || (Array.isArray(sel) && sel.length === 0)) return null
+                  const options = g.options || []
+                  if (Array.isArray(sel)) {
+                    const labels = sel.map(v => options.find(o => o.value === v)?.label || v)
+                    return `${g.label}: ${labels.join(', ')}`
+                  }
+                  if (g.type === 'file') return null
+                  const opt = options.find(o => o.value === sel)
+                  return `${g.label}: ${opt?.label || sel}`
+                }).filter(Boolean).join('. ')
+
+                const customPrompt = typeof group.autoGenerate === 'string' ? group.autoGenerate : null
+                const prompt = customPrompt || `Generate a brief, compelling ${group.label.toLowerCase()} based on: ${context}`
+
+                window.dispatchEvent(new CustomEvent('juice:request-generation', {
+                  detail: { fieldId: group.id, prompt, context }
+                }))
+              }
+
               return (
                 <div className="space-y-1">
                   <textarea
@@ -679,19 +786,45 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                       setSelections(prev => ({ ...prev, [group.id]: value }))
                       sendTyping(value, group.id)
                     }}
-                    disabled={isLocked}
-                    placeholder={group.placeholder}
+                    disabled={isLocked || isGenerating}
+                    placeholder={isGenerating ? 'Generating...' : group.placeholder}
                     rows={3}
                     className={`w-full px-3 py-2 text-sm border transition-colors outline-none resize-none ${
                       isLocked
                         ? isDark
                           ? 'bg-white/5 border-white/10 text-gray-400 cursor-default'
                           : 'bg-gray-50 border-gray-200 text-gray-500 cursor-default'
-                        : isDark
-                          ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-green-500'
-                          : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-green-500'
+                        : isGenerating
+                          ? isDark
+                            ? 'bg-white/5 border-white/10 text-gray-500 animate-pulse'
+                            : 'bg-gray-50 border-gray-200 text-gray-400 animate-pulse'
+                          : isDark
+                            ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-green-500'
+                            : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-green-500'
                     }`}
                   />
+                  {/* Auto-generate button */}
+                  {canAutoGenerate && (
+                    <button
+                      onClick={handleAutoGenerate}
+                      className={`text-xs transition-colors ${
+                        isDark
+                          ? 'text-gray-500 hover:text-gray-300'
+                          : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      ✨ Auto-generate
+                    </button>
+                  )}
+                  {isGenerating && (
+                    <div className={`flex items-center gap-1.5 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Generating...
+                    </div>
+                  )}
                   {/* Remote typing indicators */}
                   {groupTyping.length > 0 && (
                     <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -710,14 +843,15 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
             {/* File upload / drop area */}
             {group.type === 'file' && (() => {
-              const currentValue = (selections[group.id] as string) || ''
+              const rawValue = selections[group.id]
+              const currentValue = typeof rawValue === 'string' ? rawValue : ''
               const previewUrl = previewUrls[group.id] || ''
               // Check if it's an image or video data URL, blob URL, or http(s) URL
-              const isImage = currentValue.startsWith('data:image/') ||
-                             previewUrl.startsWith('blob:') ||
-                             (currentValue.startsWith('http') && /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(currentValue))
-              const isVideo = currentValue.startsWith('data:video/') ||
-                             (currentValue.startsWith('http') && /\.(mp4|webm|mov)(\?|$)/i.test(currentValue))
+              const isImage = (currentValue && currentValue.startsWith('data:image/')) ||
+                             (previewUrl && previewUrl.startsWith('blob:')) ||
+                             (currentValue && currentValue.startsWith('http') && /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(currentValue))
+              const isVideo = (currentValue && currentValue.startsWith('data:video/')) ||
+                             (currentValue && currentValue.startsWith('http') && /\.(mp4|webm|mov)(\?|$)/i.test(currentValue))
               const hasFile = isImage || isVideo
               const isLocked = hasSubmitted
               // Use blob URL for preview if available (more reliable for large files like GIFs)

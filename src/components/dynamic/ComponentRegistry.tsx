@@ -35,7 +35,6 @@ const Storefront = lazy(() => import('./Storefront'))
 const LandingPagePreview = lazy(() => import('./LandingPagePreview'))
 const SuccessVisualization = lazy(() => import('./SuccessVisualization'))
 const InteractionsSheet = lazy(() => import('./InteractionsSheet'))
-const ActionButton = lazy(() => import('./ActionButton'))
 
 // Chart components
 const BalanceChart = lazy(() => import('./charts').then(m => ({ default: m.BalanceChart })))
@@ -133,13 +132,8 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
       _isTruncated: p._isTruncated,
     }),
   },
-  'action-button': {
-    component: ActionButton,
-    mapProps: (p) => ({
-      action: p.action,
-      label: p.label,
-    }),
-  },
+  // action-button is REMOVED - transaction-preview has a built-in button
+  // Keeping the comment here to prevent re-adding it
 
   // Charts
   'price-chart': {

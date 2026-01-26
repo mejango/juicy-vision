@@ -842,6 +842,22 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               if (pendingUpdates.has(messageId)) {
                 flushUpdates()
               }
+
+              // Check if there's a pending auto-generation request
+              const pendingFieldId = (window as unknown as { __pendingGenerationFieldId?: string }).__pendingGenerationFieldId
+              if (pendingFieldId) {
+                // Get the final content and dispatch it to the OptionsPicker
+                let finalContent = streamingMessages.get(messageId)?.content || ''
+                // Strip any component tags - we just want the plain text
+                finalContent = finalContent.replace(/<juice-component[^>]*\/>/g, '').trim()
+                // Also strip any preamble like "Here's a description:"
+                finalContent = finalContent.replace(/^(Here'?s?|The|A|An|Your)\s+(a\s+)?(brief\s+)?(compelling\s+)?(project\s+)?description:?\s*/i, '').trim()
+                window.dispatchEvent(new CustomEvent('juice:generated-content', {
+                  detail: { fieldId: pendingFieldId, content: finalContent }
+                }))
+                delete (window as unknown as { __pendingGenerationFieldId?: string }).__pendingGenerationFieldId
+              }
+
               streamingMessages.delete(messageId)
               // Mark message as no longer streaming
               useChatStore.getState().updateMessage(targetChatId, messageId, { isStreaming: false })
@@ -967,8 +983,36 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     }
 
     window.addEventListener('juice:send-message', handleComponentMessage as EventListener)
+
+    // Handle auto-generation requests from OptionsPicker
+    const handleGenerationRequest = async (event: CustomEvent<{ fieldId: string; prompt: string; context: string }>) => {
+      if (!topOnly) return // Only handle in the main chat
+      const { fieldId, context } = event.detail
+      // Send a message asking the AI to generate content
+      // The AI should respond with just the generated text
+      const message = `Generate a brief, compelling project description (2-3 sentences) based on what we've discussed: ${context}. Respond with ONLY the description text, no preamble or explanation.`
+      handleSend(message)
+
+      // Store the fieldId so we can capture the response
+      ;(window as unknown as { __pendingGenerationFieldId?: string }).__pendingGenerationFieldId = fieldId
+
+      // Add a timeout to prevent infinite spinning if generation fails
+      setTimeout(() => {
+        const stillPending = (window as unknown as { __pendingGenerationFieldId?: string }).__pendingGenerationFieldId
+        if (stillPending === fieldId) {
+          // Generation didn't complete - clear the pending state
+          delete (window as unknown as { __pendingGenerationFieldId?: string }).__pendingGenerationFieldId
+          window.dispatchEvent(new CustomEvent('juice:generated-content', {
+            detail: { fieldId, content: '' } // Empty content signals failure, component will stop spinning
+          }))
+        }
+      }, 30000) // 30 second timeout
+    }
+    window.addEventListener('juice:request-generation', handleGenerationRequest as EventListener)
+
     return () => {
       window.removeEventListener('juice:send-message', handleComponentMessage as EventListener)
+      window.removeEventListener('juice:request-generation', handleGenerationRequest as EventListener)
     }
   }, [handleSend, topOnly, navigate])
 
