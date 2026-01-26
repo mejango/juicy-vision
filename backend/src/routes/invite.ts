@@ -101,8 +101,9 @@ async function requireWalletOrAuth(c: any, next: any) {
   // Try anonymous session (X-Session-ID header)
   const sessionId = c.req.header('X-Session-ID');
   if (sessionId && sessionId.startsWith('ses_')) {
-    // Create a pseudo-address from the session ID for anonymous users
-    const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+    // Use secure HMAC-based pseudo-address generation (same as chat.ts)
+    const { getPseudoAddress } = await import('../utils/crypto.ts');
+    const pseudoAddress = await getPseudoAddress(sessionId);
     c.set('walletSession', {
       address: pseudoAddress,
       sessionId,
@@ -320,13 +321,11 @@ inviteRouter.get('/invite/:code', async (c) => {
   });
 });
 
-// Debug log to file
-async function debugLog(msg: string) {
-  const line = `${new Date().toISOString()} ${msg}\n`;
-  console.log(msg);
-  try {
-    await Deno.writeTextFile('/tmp/invite-debug.log', line, { append: true });
-  } catch {}
+// Debug log (console only, no filesystem writes for security)
+function debugLog(msg: string) {
+  if (Deno.env.get('DENO_ENV') !== 'production') {
+    console.log(`[Invite Debug] ${msg}`);
+  }
 }
 
 /**
@@ -341,9 +340,9 @@ inviteRouter.post(
     const walletSession = c.get('walletSession')!;
     const sessionId = c.req.header('X-Session-ID');
 
-    await debugLog(`[Invite Join] Session ID: ${sessionId}`);
-    await debugLog(`[Invite Join] Pseudo-address: ${walletSession.address}`);
-    await debugLog(`[Invite Join] Is anonymous: ${walletSession.isAnonymous}`);
+    debugLog(`[Invite Join] Session ID: ${sessionId}`);
+    debugLog(`[Invite Join] Pseudo-address: ${walletSession.address}`);
+    debugLog(`[Invite Join] Is anonymous: ${walletSession.isAnonymous}`);
 
     const invite = await getInviteByCode(code);
     if (!invite) {
@@ -356,7 +355,7 @@ inviteRouter.post(
 
     // Check if already a member - if so, just take them to the chat
     const existingMember = await getMember(invite.chatId, walletSession.address);
-    await debugLog(`[Invite Join] Existing member: ${existingMember ? 'yes' : 'no'}`);
+    debugLog(`[Invite Join] Existing member: ${existingMember ? 'yes' : 'no'}`);
     if (existingMember) {
       const chat = await getChatById(invite.chatId);
       return c.json({
@@ -371,7 +370,7 @@ inviteRouter.post(
 
     try {
       // Add member with invite permissions
-      await debugLog(`[Invite Join] Adding new member with address: ${walletSession.address}`);
+      debugLog(`[Invite Join] Adding new member with address: ${walletSession.address}`);
       await addMemberViaInvite(invite.chatId, {
         address: walletSession.address,
         userId: walletSession.userId,
@@ -381,7 +380,7 @@ inviteRouter.post(
         canInvokeAi: invite.canInvokeAi,
         canPauseAi: invite.canPauseAi,
       });
-      await debugLog('[Invite Join] Member added successfully');
+      debugLog('[Invite Join] Member added successfully');
 
       // Increment invite uses
       await useInvite(invite.id);

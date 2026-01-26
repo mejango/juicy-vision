@@ -528,13 +528,11 @@ chatRouter.post(
   }
 );
 
-// Debug log to file
-async function debugLog(msg: string) {
-  const line = `${new Date().toISOString()} ${msg}\n`;
-  console.log(msg);
-  try {
-    await Deno.writeTextFile('/tmp/invite-debug.log', line, { append: true });
-  } catch {}
+// Debug log (console only, no filesystem writes for security)
+function debugLog(msg: string) {
+  if (Deno.env.get('DENO_ENV') !== 'production') {
+    console.log(`[Chat Debug] ${msg}`);
+  }
 }
 
 // GET /chat/:chatId - Get chat details
@@ -543,42 +541,42 @@ chatRouter.get('/:chatId', optionalAuth, optionalWalletSession, async (c) => {
   const sessionId = c.req.header('X-Session-ID');
   const chat = await getChatById(chatId);
 
-  await debugLog(`[Fetch Chat] Chat ID: ${chatId}`);
-  await debugLog(`[Fetch Chat] Session ID: ${sessionId}`);
+  debugLog(`[Fetch Chat] Chat ID: ${chatId}`);
+  debugLog(`[Fetch Chat] Session ID: ${sessionId}`);
 
   if (!chat) {
     return c.json({ success: false, error: 'Chat not found' }, 404);
   }
 
   const walletSession = c.get('walletSession');
-  await debugLog(`[Fetch Chat] Has wallet session: ${!!walletSession}`);
-  await debugLog(`[Fetch Chat] Wallet address: ${walletSession?.address}`);
-  await debugLog(`[Fetch Chat] Is anonymous: ${walletSession?.isAnonymous}`);
-  await debugLog(`[Fetch Chat] Chat is public: ${chat?.isPublic}`);
+  debugLog(`[Fetch Chat] Has wallet session: ${!!walletSession}`);
+  debugLog(`[Fetch Chat] Wallet address: ${walletSession?.address}`);
+  debugLog(`[Fetch Chat] Is anonymous: ${walletSession?.isAnonymous}`);
+  debugLog(`[Fetch Chat] Chat is public: ${chat?.isPublic}`);
 
   // Check read permission for private chats
   if (!chat.isPublic) {
     if (!walletSession) {
-      await debugLog('[Fetch Chat] DENIED: No wallet session for private chat');
+      debugLog('[Fetch Chat] DENIED: No wallet session for private chat');
       return c.json({ success: false, error: 'Authentication required' }, 401);
     }
 
     let canRead = await checkPermission(chatId, walletSession.address, 'read');
-    await debugLog(`[Fetch Chat] Can read with primary address: ${canRead}`);
+    debugLog(`[Fetch Chat] Can read with primary address: ${canRead}`);
 
     // If primary auth failed, try anonymous session ID as fallback
     // This handles cases where user joined via invite with session ID but has a different wallet connected
     if (!canRead && sessionId && sessionId.startsWith('ses_')) {
       const pseudoAddress = await getPseudoAddress(sessionId);
       if (pseudoAddress !== walletSession.address) {
-        await debugLog(`[Fetch Chat] Trying fallback pseudo-address: ${pseudoAddress}`);
+        debugLog(`[Fetch Chat] Trying fallback pseudo-address: ${pseudoAddress}`);
         canRead = await checkPermission(chatId, pseudoAddress, 'read');
-        await debugLog(`[Fetch Chat] Can read with pseudo-address: ${canRead}`);
+        debugLog(`[Fetch Chat] Can read with pseudo-address: ${canRead}`);
       }
     }
 
     if (!canRead) {
-      await debugLog(`[Fetch Chat] DENIED: No read permission for address ${walletSession.address}`);
+      debugLog(`[Fetch Chat] DENIED: No read permission for address ${walletSession.address}`);
       return c.json({ success: false, error: 'Access denied' }, 403);
     }
   }
