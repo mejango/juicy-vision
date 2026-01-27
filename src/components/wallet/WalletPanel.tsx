@@ -7,7 +7,7 @@ import { useManagedWallet, useEnsNameResolved } from '../../hooks'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
 import { CHAINS, ALL_CHAIN_IDS } from '../../constants'
 import { hasValidWalletSession, signInWithWallet, clearWalletSession } from '../../services/siwe'
-import { getPasskeyWallet, clearPasskeyWallet, forgetPasskeyWallet, signInWithPasskey, type PasskeyWallet } from '../../services/passkeyWallet'
+import { getPasskeyWallet, clearPasskeyWallet, forgetPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
 import { FRUIT_EMOJIS, getEmojiFromAddress } from '../chat/ParticipantAvatars'
 import { getSessionId } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
@@ -51,9 +51,10 @@ function shortenAddress(address: string, chars = 6): string {
 // Connect options - Touch ID or Wallet (matches AuthOptionsModal)
 function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
   onWalletClick: () => void
-  onPasskeySuccess: (wallet: PasskeyWallet) => void
+  onPasskeySuccess: () => void
 }) {
   const { theme } = useThemeStore()
+  const { loginWithPasskey } = useAuthStore()
   const isDark = theme === 'dark'
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,18 +64,19 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
     setError(null)
 
     try {
-      const wallet = await signInWithPasskey()
-      onPasskeySuccess(wallet)
+      // Use managed passkey auth - creates user record and sets mode to 'managed'
+      await loginWithPasskey()
+      onPasskeySuccess()
     } catch (err) {
       console.error('Passkey auth failed:', err)
       if (err instanceof Error) {
         const msg = err.message.toLowerCase()
         if (msg.includes('cancelled') || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('abort')) {
           // User cancelled, no error needed
-        } else if (msg.includes('prf') || msg.includes('not supported')) {
-          setError('Touch ID wallets not supported on this device. Try Wallet instead.')
+        } else if (msg.includes('not supported')) {
+          setError('Touch ID not supported on this device. Try Wallet instead.')
         } else {
-          setError('Failed to create wallet. Try another method.')
+          setError('Failed to sign in. Try another method.')
         }
       }
     } finally {
@@ -1180,27 +1182,95 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
 }
 
 // Managed account view
-function ManagedAccountView({ onDisconnect }: { onDisconnect: () => void }) {
+function ManagedAccountView({ onDisconnect, onTopUp, onSettings }: { onDisconnect: () => void; onTopUp: () => void; onSettings: () => void }) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { user, passkeys, loadPasskeys, registerPasskey, deletePasskey, isPasskeyAvailable, isLoading } = useAuthStore()
+  const { user, token, passkeys, loadPasskeys, registerPasskey, deletePasskey, isPasskeyAvailable, isLoading } = useAuthStore()
   const { address, balances, loading } = useManagedWallet()
   const [copied, setCopied] = useState(false)
   const [showPasskeys, setShowPasskeys] = useState(false)
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
+  const [addingPasskey, setAddingPasskey] = useState(false)
+  const [newPasskeyName, setNewPasskeyName] = useState('')
+  const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(null)
+
+  // Fetch identity with auth token
+  useEffect(() => {
+    const fetchIdentity = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || ''
+        const sessionId = getSessionId()
+        const walletSession = getWalletSession()
+        const headers: Record<string, string> = {
+          'X-Session-ID': sessionId,
+        }
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+        if (walletSession?.token) {
+          headers['X-Wallet-Session'] = walletSession.token
+        }
+        const res = await fetch(`${apiUrl}/identity/me`, { headers })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && data.data) {
+            setIdentity(data.data)
+            // Notify other components (like ChatInput) of the loaded identity
+            window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
+          }
+        }
+      } catch {
+        // Ignore identity fetch errors
+      }
+    }
+    fetchIdentity()
+
+    // Listen for identity changes from other components
+    const handleIdentityChange = (e: CustomEvent<{ emoji: string; username: string; formatted: string }>) => {
+      setIdentity(e.detail)
+    }
+    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+  }, [token, address])
 
   const handleShowPasskeys = async () => {
     setShowPasskeys(true)
     await loadPasskeys()
   }
 
-  const handleAddPasskey = async () => {
+  // Get default device name suggestion
+  const getDefaultDeviceName = (): string => {
+    if (typeof navigator === 'undefined') return 'My Device'
+    const ua = navigator.userAgent
+    if (/Mac/i.test(ua)) return 'My Mac'
+    if (/iPhone/i.test(ua)) return 'My iPhone'
+    if (/iPad/i.test(ua)) return 'My iPad'
+    if (/Android/i.test(ua)) return 'My Android'
+    if (/Windows/i.test(ua)) return 'My PC'
+    return 'My Device'
+  }
+
+  const handleStartAddPasskey = () => {
+    setNewPasskeyName(getDefaultDeviceName())
+    setAddingPasskey(true)
+    setPasskeyError(null)
+  }
+
+  const handleConfirmAddPasskey = async () => {
     setPasskeyError(null)
     try {
-      await registerPasskey()
+      await registerPasskey(newPasskeyName.trim() || getDefaultDeviceName())
+      setAddingPasskey(false)
+      setNewPasskeyName('')
     } catch (err) {
       setPasskeyError(err instanceof Error ? err.message : 'Failed to add passkey')
     }
+  }
+
+  const handleCancelAddPasskey = () => {
+    setAddingPasskey(false)
+    setNewPasskeyName('')
+    setPasskeyError(null)
   }
 
   const handleDeletePasskey = async (id: string) => {
@@ -1223,133 +1293,126 @@ function ManagedAccountView({ onDisconnect }: { onDisconnect: () => void }) {
     }
   }
 
+  // Format device type for display
+  const formatDeviceType = (deviceType: string | null | undefined): string => {
+    if (!deviceType) return 'Passkey'
+    switch (deviceType) {
+      case 'platform':
+        // Try to detect platform from user agent
+        if (typeof navigator !== 'undefined') {
+          const ua = navigator.userAgent
+          if (/Mac/i.test(ua)) return 'Touch ID (Mac)'
+          if (/iPhone|iPad/i.test(ua)) return 'Face ID / Touch ID'
+          if (/Android/i.test(ua)) return 'Biometric (Android)'
+          if (/Windows/i.test(ua)) return 'Windows Hello'
+        }
+        return 'This Device'
+      case 'cross-platform':
+      case 'security_key':
+        return 'Security Key'
+      default:
+        return 'Passkey'
+    }
+  }
+
+  // Get auth method display
+  const getAuthMethod = (): string => {
+    if (user.email?.includes('@passkey.local')) {
+      if (typeof navigator !== 'undefined') {
+        const ua = navigator.userAgent
+        if (/Mac/i.test(ua)) return 'Touch ID'
+        if (/iPhone|iPad/i.test(ua)) return 'Face ID'
+        if (/Android/i.test(ua)) return 'Biometric'
+        if (/Windows/i.test(ua)) return 'Windows Hello'
+      }
+      return 'Passkey'
+    }
+    return 'Email'
+  }
+
   return (
     <div className="space-y-3">
-      {/* Account row */}
+      {/* Address + Set Juicy ID CTA */}
       <div className="flex items-center justify-between">
-        <div className={`text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          {user.email}
+        <div>
+          {address ? (
+            <button
+              onClick={copyAddress}
+              className={`font-mono text-sm ${isDark ? 'text-white hover:text-green-400' : 'text-gray-900 hover:text-green-600'} transition-colors`}
+            >
+              {shortenAddress(address, 6)}
+            </button>
+          ) : (
+            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Loading...</span>
+          )}
+          {copied && <span className={`ml-2 text-xs ${isDark ? 'text-green-400' : 'text-green-600'}`}>Copied!</span>}
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-          <span className={`text-xs ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-            Active
-          </span>
-        </div>
+        <button
+          onClick={onSettings}
+          className={`text-xs ${identity ? (isDark ? 'text-white hover:text-green-400' : 'text-gray-900 hover:text-green-600') : (isDark ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-700')}`}
+        >
+          {identity ? identity.formatted : 'Set Juicy ID'}
+        </button>
       </div>
 
-      {/* Address */}
-      {address && (
-        <div className="flex items-center justify-between">
-          <div className={`font-mono text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            {shortenAddress(address, 8)}
-          </div>
-          <button
-            onClick={copyAddress}
-            className={`text-xs ${isDark ? 'text-green-400' : 'text-green-600'}`}
-          >
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
-      )}
-
-      {/* Balances */}
+      {/* Balances - Juice, USDC (aggregate), ETH (aggregate) */}
       <div className={`border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
         {loading ? (
           <div className={`px-3 py-3 text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             Loading...
           </div>
-        ) : balances.length > 0 ? (
-          <div className="divide-y divide-white/5">
-            {balances.map((balance, i) => {
-              const formatted = Number(balance.balance) / Math.pow(10, balance.decimals)
-              return (
-                <div key={i} className="px-3 py-2 flex justify-between text-xs">
-                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{balance.tokenSymbol}</span>
-                  <span className={isDark ? 'text-white' : 'text-gray-900'}>
-                    {formatted.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
         ) : (
-          <div className={`px-3 py-3 text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            No balances
+          <div className={`divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
+            {/* Juice credits - internal accounting (placeholder for now) */}
+            <div className="px-3 py-2 flex justify-between text-xs">
+              <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Juice credits</span>
+              <span className={isDark ? 'text-white' : 'text-gray-900'}>0</span>
+            </div>
+            {/* USDC - aggregate across all chains */}
+            <div className="px-3 py-2 flex justify-between text-xs">
+              <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>USDC</span>
+              <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                {balances
+                  .filter(b => b.tokenSymbol === 'USDC')
+                  .reduce((sum, b) => sum + Number(b.balance) / Math.pow(10, b.decimals), 0)
+                  .toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            {/* ETH - aggregate across all chains */}
+            <div className="px-3 py-2 flex justify-between text-xs">
+              <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>ETH</span>
+              <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                {balances
+                  .filter(b => b.tokenSymbol === 'ETH')
+                  .reduce((sum, b) => sum + Number(b.balance) / Math.pow(10, b.decimals), 0)
+                  .toLocaleString(undefined, { maximumFractionDigits: 4 })}
+              </span>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Passkey Management - collapsed by default */}
-      {isPasskeyAvailable() && (
-        <div className={`border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          <button
-            onClick={showPasskeys ? () => setShowPasskeys(false) : handleShowPasskeys}
-            className={`w-full px-3 py-2 flex items-center justify-between text-xs ${
-              isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            <span>Passkeys</span>
-            <svg className={`w-3 h-3 transition-transform ${showPasskeys ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {showPasskeys && (
-            <div className={`px-3 pb-3 space-y-2 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-              {passkeyError && (
-                <div className={`p-2 text-xs border mt-2 ${
-                  isDark ? 'border-red-500/50 bg-red-500/10 text-red-400' : 'border-red-300 bg-red-50 text-red-600'
-                }`}>
-                  {passkeyError}
-                </div>
-              )}
-
-              {passkeys.length > 0 && (
-                <div className="space-y-1 mt-2">
-                  {passkeys.map((pk) => (
-                    <div key={pk.id} className="flex items-center justify-between text-xs py-1">
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>
-                        {pk.displayName || pk.deviceType || 'Passkey'}
-                      </span>
-                      <button
-                        onClick={() => handleDeletePasskey(pk.id)}
-                        className={`text-xs ${isDark ? 'text-red-400' : 'text-red-500'}`}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <button
-                onClick={handleAddPasskey}
-                disabled={isLoading}
-                className={`w-full py-1.5 text-xs font-medium mt-2 transition-colors disabled:opacity-50 ${
-                  isDark
-                    ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30 border border-green-500/50'
-                    : 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
-                }`}
-              >
-                {isLoading ? 'Adding...' : 'Add Passkey'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Sign out */}
-      <button
-        onClick={onDisconnect}
-        className={`w-full py-2 text-sm border transition-colors ${
-          isDark
-            ? 'border-white/20 text-gray-400 hover:text-white hover:border-white/40'
-            : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300'
-        }`}
-      >
-        Sign Out
-      </button>
+      {/* Bottom row: Sign Out + Top Up */}
+      <div className="flex justify-end items-center gap-3">
+        <button
+          onClick={onDisconnect}
+          className={`text-xs transition-colors ${
+            isDark ? 'text-gray-500 hover:text-red-400' : 'text-gray-400 hover:text-red-500'
+          }`}
+        >
+          Sign Out
+        </button>
+        <button
+          onClick={onTopUp}
+          className={`px-4 py-1.5 text-xs font-medium transition-colors ${
+            isDark
+              ? 'bg-green-500 text-black hover:bg-green-400'
+              : 'bg-green-500 text-white hover:bg-green-600'
+          }`}
+        >
+          Top Up
+        </button>
+      </div>
     </div>
   )
 }
@@ -1437,11 +1500,13 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     logout,
     requestOtp,
     login,
+    loginWithPasskey,
     registerPasskey,
     loadPasskeys,
     token,
   } = useAuthStore()
   const isLoggedIn = isAuthenticated()
+  const { address: managedAddress } = useManagedWallet()
 
   // Wallet connection
   const { address: walletAddress, isConnected: isWalletConnected } = useAccount()
@@ -1463,6 +1528,9 @@ function SettingsView({ onBack }: { onBack: () => void }) {
   // Passkey state
   const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
+  const [showPasskeysList, setShowPasskeysList] = useState(false)
+  const [addingPasskey, setAddingPasskey] = useState(false)
+  const [newPasskeyName, setNewPasskeyName] = useState('')
 
   // Juicy ID state
   const [identityUsername, setIdentityUsername] = useState('')
@@ -1471,6 +1539,8 @@ function SettingsView({ onBack }: { onBack: () => void }) {
   const [identityAvailable, setIdentityAvailable] = useState<boolean | null>(null)
   const [checkingAvailability, setCheckingAvailability] = useState(false)
   const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(null)
+  const [pendingIdentity, setPendingIdentity] = useState<{ emoji: string; username: string } | null>(null)
+  const [showSignInPrompt, setShowSignInPrompt] = useState(false)
 
   // Get API headers for identity requests
   const getApiHeaders = useCallback(() => {
@@ -1480,11 +1550,14 @@ function SettingsView({ onBack }: { onBack: () => void }) {
       'Content-Type': 'application/json',
       'X-Session-ID': sessionId,
     }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
     if (walletSession?.token) {
       headers['X-Wallet-Session'] = walletSession.token
     }
     return headers
-  }, [])
+  }, [token])
 
   // Load current identity
   const loadIdentity = useCallback(async () => {
@@ -1529,16 +1602,24 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     }
   }, [getApiHeaders])
 
-  // Save identity
-  const saveIdentity = useCallback(async () => {
+  // Save identity (will prompt sign-in if not authenticated)
+  const saveIdentity = useCallback(async (overrideEmoji?: string, overrideUsername?: string) => {
     const walletSession = getWalletSession()
     const sessionId = getSessionId()
     const addr = walletSession?.address ||
       `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
-    const emoji = selectedFruit || getEmojiFromAddress(addr)
+    const emoji = overrideEmoji || selectedFruit || getEmojiFromAddress(addr)
+    const username = overrideUsername || identityUsername
 
-    if (!identityUsername || identityUsername.length < 3) {
+    if (!username || username.length < 3) {
       setIdentityError('Username must be at least 3 characters')
+      return
+    }
+
+    // If not logged in, save pending identity and show sign-in prompt
+    if (!isLoggedIn) {
+      setPendingIdentity({ emoji, username })
+      setShowSignInPrompt(true)
       return
     }
 
@@ -1550,12 +1631,15 @@ function SettingsView({ onBack }: { onBack: () => void }) {
       const res = await fetch(`${apiUrl}/identity/me`, {
         method: 'PUT',
         headers: getApiHeaders(),
-        body: JSON.stringify({ emoji, username: identityUsername }),
+        body: JSON.stringify({ emoji, username }),
       })
       const data = await res.json()
       if (data.success && data.data) {
         setIdentity(data.data)
         setIdentityError(null)
+        setPendingIdentity(null)
+        // Notify other components of identity change
+        window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
       } else {
         setIdentityError(data.error || 'Failed to set identity')
       }
@@ -1564,7 +1648,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     } finally {
       setIdentityLoading(false)
     }
-  }, [selectedFruit, identityUsername, getApiHeaders])
+  }, [selectedFruit, identityUsername, getApiHeaders, isLoggedIn])
 
   // Load passkeys and identity on mount
   useEffect(() => {
@@ -1572,7 +1656,27 @@ function SettingsView({ onBack }: { onBack: () => void }) {
       loadPasskeys()
     }
     loadIdentity()
+
+    // Listen for identity changes from other components
+    const handleIdentityChange = (e: CustomEvent<{ emoji: string; username: string; formatted: string }>) => {
+      setIdentity(e.detail)
+      setIdentityUsername(e.detail.username)
+    }
+    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
   }, [isLoggedIn, loadPasskeys, loadIdentity])
+
+  // Auto-save pending identity after sign-in
+  useEffect(() => {
+    if (isLoggedIn && pendingIdentity) {
+      setShowSignInPrompt(false)
+      // Small delay to ensure token is set
+      const timer = setTimeout(() => {
+        saveIdentity(pendingIdentity.emoji, pendingIdentity.username)
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [isLoggedIn, pendingIdentity, saveIdentity])
 
   // Check availability when username or selected fruit changes
   useEffect(() => {
@@ -1645,9 +1749,11 @@ function SettingsView({ onBack }: { onBack: () => void }) {
 
     try {
       if (isLoggedIn && token) {
+        // Already logged in - register additional passkey
         await registerPasskey()
       } else {
-        await signInWithPasskey()
+        // Not logged in - authenticate with passkey (creates managed user)
+        await loginWithPasskey()
       }
     } catch (err) {
       console.error('Passkey error:', err)
@@ -1676,6 +1782,17 @@ function SettingsView({ onBack }: { onBack: () => void }) {
         Back
       </button>
 
+      {/* Signed in state */}
+      {isLoggedIn && user && (
+        <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          {user.email && !user.email.includes('@passkey.local') ? (
+            <p>Signed in as <span className={isDark ? 'text-white' : 'text-gray-900'}>{user.email}</span></p>
+          ) : (
+            <p>Signed in via <span className={isDark ? 'text-white' : 'text-gray-900'}>Touch ID</span> on {passkeys.length || 1} device{passkeys.length !== 1 ? 's' : ''}</p>
+          )}
+        </div>
+      )}
+
       {/* Auth methods */}
       <div className="space-y-1">
         {/* Email */}
@@ -1687,8 +1804,9 @@ function SettingsView({ onBack }: { onBack: () => void }) {
             }`}
           >
             <span>Email</span>
-            <span className={isLoggedIn && user?.email ? 'text-green-500' : isDark ? 'text-gray-600' : 'text-gray-400'}>
-              {isLoggedIn && user?.email ? 'Connected' : 'Add'}
+            {/* Don't count auto-generated passkey emails as "connected" */}
+            <span className={isLoggedIn && user?.email && !user.email.includes('@passkey.local') ? 'text-green-500' : isDark ? 'text-gray-600' : 'text-gray-400'}>
+              {isLoggedIn && user?.email && !user.email.includes('@passkey.local') ? 'Connected' : 'Add'}
             </span>
           </button>
         ) : (
@@ -1770,29 +1888,194 @@ function SettingsView({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
-        {/* Passkey / Touch ID */}
-        {passkeyWalletConnected ? (
-          <div className={`flex items-center justify-between px-3 py-2 text-xs ${
-            isDark ? 'text-gray-300' : 'text-gray-700'
-          }`}>
-            <span>Touch ID</span>
-            <span className="text-green-500">Connected</span>
-          </div>
-        ) : (
+        {/* Passkey / Touch ID - expandable dropdown */}
+        <div className={`border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <button
-            onClick={handleAddPasskey}
-            disabled={passkeyLoading}
+            onClick={() => {
+              setShowPasskeysList(!showPasskeysList)
+              if (!showPasskeysList && isLoggedIn) {
+                loadPasskeys()
+              }
+            }}
             className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
               isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
-            } ${passkeyLoading ? 'opacity-50' : ''}`}
+            }`}
           >
-            <span>{passkeyLoading ? 'Setting up...' : 'Touch ID'}</span>
-            <span className={isLoggedIn && passkeys.length > 0 ? 'text-green-500' : isDark ? 'text-gray-600' : 'text-gray-400'}>
-              {isLoggedIn && passkeys.length > 0 ? `${passkeys.length}` : 'Add'}
-            </span>
+            <span>Touch ID</span>
+            <div className="flex items-center gap-2">
+              {(isLoggedIn && passkeys.length > 0) || passkeyWalletConnected ? (
+                <span><span className="text-green-500">{passkeys.length || 1}</span> <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>· Add more</span></span>
+              ) : (
+                <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Add</span>
+              )}
+              <svg className={`w-3 h-3 transition-transform ${showPasskeysList ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </button>
-        )}
-        {passkeyError && <p className="text-[10px] text-red-400 px-3">{passkeyError}</p>}
+
+          {showPasskeysList && (
+            <div className={`px-3 pb-3 space-y-2 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
+              {passkeyError && (
+                <p className="text-[10px] text-red-400 mt-2">{passkeyError}</p>
+              )}
+
+              {/* List of passkeys */}
+              {passkeys.length > 0 ? (
+                <div className="space-y-1 mt-2">
+                  {passkeys.map((pk) => {
+                    // Format device type for display
+                    const formatDevice = (deviceType: string | null | undefined): string => {
+                      if (!deviceType) return 'Passkey'
+                      switch (deviceType) {
+                        case 'platform':
+                          if (typeof navigator !== 'undefined') {
+                            const ua = navigator.userAgent
+                            if (/Mac/i.test(ua)) return 'Mac'
+                            if (/iPhone/i.test(ua)) return 'iPhone'
+                            if (/iPad/i.test(ua)) return 'iPad'
+                            if (/Android/i.test(ua)) return 'Android'
+                            if (/Windows/i.test(ua)) return 'Windows'
+                          }
+                          return 'This Device'
+                        case 'cross-platform':
+                        case 'security_key':
+                          return 'Security Key'
+                        default:
+                          return 'Passkey'
+                      }
+                    }
+
+                    return (
+                      <div key={pk.id} className="flex items-center justify-between text-xs py-1">
+                        <div className="flex flex-col">
+                          <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>
+                            {pk.displayName || formatDevice(pk.deviceType)}
+                          </span>
+                          <span className={`text-[9px] font-mono ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                            {/* Derive passkey-user-xxx from user email if it's a passkey.local email */}
+                            {user?.email?.match(/^passkey-([a-f0-9]+)@passkey\.local$/)?.[1]
+                              ? `passkey-user-${user.email.match(/^passkey-([a-f0-9]+)@passkey\.local$/)?.[1]}`
+                              : pk.id}
+                          </span>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (confirm('Remove this passkey?')) {
+                              try {
+                                const { deletePasskey } = useAuthStore.getState()
+                                await deletePasskey(pk.id)
+                              } catch (err) {
+                                setPasskeyError(err instanceof Error ? err.message : 'Failed to remove')
+                              }
+                            }
+                          }}
+                          className={`p-1 transition-colors ${isDark ? 'text-gray-600 hover:text-red-400' : 'text-gray-400 hover:text-red-500'}`}
+                          title="Remove"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : passkeyWalletConnected ? (
+                <p className={`text-xs mt-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Touch ID connected
+                </p>
+              ) : null}
+
+              {/* Add passkey */}
+              {addingPasskey ? (
+                <div className="mt-2 space-y-2">
+                  <input
+                    type="text"
+                    value={newPasskeyName}
+                    onChange={(e) => setNewPasskeyName(e.target.value)}
+                    placeholder="Name this device (e.g. My Mac)"
+                    autoFocus
+                    className={`w-full px-2 py-1.5 text-xs border ${
+                      isDark
+                        ? 'bg-white/5 border-white/20 text-white placeholder-gray-500'
+                        : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                    }`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        setPasskeyLoading(true)
+                        setPasskeyError(null)
+                        registerPasskey(newPasskeyName.trim() || 'My Device')
+                          .then(() => {
+                            setAddingPasskey(false)
+                            setNewPasskeyName('')
+                          })
+                          .catch((err) => setPasskeyError(err instanceof Error ? err.message : 'Failed'))
+                          .finally(() => setPasskeyLoading(false))
+                      }
+                      if (e.key === 'Escape') {
+                        setAddingPasskey(false)
+                        setNewPasskeyName('')
+                      }
+                    }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setAddingPasskey(false); setNewPasskeyName('') }}
+                      className={`flex-1 py-1.5 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPasskeyLoading(true)
+                        setPasskeyError(null)
+                        registerPasskey(newPasskeyName.trim() || 'My Device')
+                          .then(() => {
+                            setAddingPasskey(false)
+                            setNewPasskeyName('')
+                          })
+                          .catch((err) => setPasskeyError(err instanceof Error ? err.message : 'Failed'))
+                          .finally(() => setPasskeyLoading(false))
+                      }}
+                      disabled={passkeyLoading}
+                      className="flex-1 py-1.5 text-xs text-green-500 disabled:opacity-50"
+                    >
+                      {passkeyLoading ? '...' : 'Add'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => {
+                      // Suggest device name based on platform
+                      let defaultName = 'My Device'
+                      if (typeof navigator !== 'undefined') {
+                        const ua = navigator.userAgent
+                        if (/Mac/i.test(ua)) defaultName = 'My Mac'
+                        else if (/iPhone/i.test(ua)) defaultName = 'My iPhone'
+                        else if (/iPad/i.test(ua)) defaultName = 'My iPad'
+                        else if (/Android/i.test(ua)) defaultName = 'My Android'
+                        else if (/Windows/i.test(ua)) defaultName = 'My PC'
+                      }
+                      setNewPasskeyName(defaultName)
+                      setAddingPasskey(true)
+                    }}
+                    disabled={passkeyLoading}
+                    className={`px-2 py-1 text-xs transition-colors disabled:opacity-50 border ${
+                      isDark
+                        ? 'text-green-400 border-green-500/30 hover:border-green-500/50'
+                        : 'text-green-600 border-green-500/40 hover:border-green-500/60'
+                    }`}
+                  >
+                    Add more
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Wallet */}
         {isWalletConnected && walletAddress ? (
@@ -1825,19 +2108,27 @@ function SettingsView({ onBack }: { onBack: () => void }) {
 
       {/* Juicy ID */}
       <div className={`pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-        <p className={`text-[10px] mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+        <p className={`text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
           Juicy ID
         </p>
 
-        {/* Current identity display */}
-        {identity && (
-          <p className={`text-sm mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {identity.formatted}
-          </p>
-        )}
+        {/* Live preview of composite ID */}
+        <p className={`text-sm mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          {(() => {
+            const walletSession = getWalletSession()
+            const sessionId = getSessionId()
+            const currentAddress = walletSession?.address ||
+              `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+            const defaultEmoji = getEmojiFromAddress(currentAddress)
+            const emoji = selectedFruit || defaultEmoji
+            const name = identityUsername || identity?.username || 'username'
+            return `${emoji} ${name}`
+          })()}
+        </p>
 
         {/* Emoji picker row */}
-        <div className="flex flex-wrap gap-1 mb-2">
+        <p className={`text-[10px] mb-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>Pick a flavor</p>
+        <div className="flex flex-wrap gap-1 mb-3">
           {FRUIT_EMOJIS.map((fruit) => {
             const walletSession = getWalletSession()
             const sessionId = getSessionId()
@@ -1893,6 +2184,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
         </div>
 
         {/* Username input */}
+        <p className={`text-[10px] mb-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>Pick a name</p>
         <div className="flex gap-2">
           <div className="flex-1 relative">
             <input
@@ -1924,7 +2216,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
             )}
           </div>
           <button
-            onClick={saveIdentity}
+            onClick={() => saveIdentity()}
             disabled={identityLoading || !identityUsername || identityUsername.length < 3 || identityAvailable === false}
             className={`px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${
               isDark
@@ -1938,18 +2230,45 @@ function SettingsView({ onBack }: { onBack: () => void }) {
         {identityError && (
           <p className="text-[10px] text-red-400 mt-1">{identityError}</p>
         )}
+        {/* Sign-in prompt when trying to save without auth */}
+        {showSignInPrompt && (
+          <div className={`mt-2 p-2 text-xs rounded ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+            <p className={`mb-2 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+              Sign in to claim your Juicy ID
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    await loginWithPasskey()
+                  } catch (err) {
+                    setIdentityError(err instanceof Error ? err.message : 'Sign in failed')
+                  }
+                }}
+                className={`flex-1 px-2 py-1.5 text-xs transition-colors ${
+                  isDark
+                    ? 'text-green-500 border border-green-500/30 hover:border-green-500/50'
+                    : 'text-green-600 border border-green-500/40 hover:border-green-500/60'
+                }`}
+              >
+                Sign in with Touch ID
+              </button>
+              <button
+                onClick={() => {
+                  setShowSignInPrompt(false)
+                  setPendingIdentity(null)
+                }}
+                className={`px-2 py-1.5 text-xs transition-colors ${
+                  isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'
+                }`}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
           3-20 chars, letters/numbers/underscore
-        </p>
-
-        {/* Address - subtle, small, full */}
-        <p className={`text-[10px] font-mono mt-3 pt-2 border-t break-all ${isDark ? 'text-gray-600 border-white/5' : 'text-gray-400 border-gray-100'}`}>
-          {(() => {
-            const walletSession = getWalletSession()
-            const sessionId = getSessionId()
-            return walletSession?.address ||
-              `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
-          })()}
         </p>
       </div>
 
@@ -2064,8 +2383,10 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
   }
 
   // Determine current state
+  // Use isAuthenticated() which internally checks mode === 'managed' && token && user
+  // This avoids stale state issues from zustand hydration timing
   const isSelfCustodyConnected = mode === 'self_custody' && walletConnected
-  const isManagedConnected = mode === 'managed' && isAuthenticated()
+  const isManagedConnected = isAuthenticated()
   const isPasskeyConnected = !!passkeyWallet
 
   const currentView = (() => {
@@ -2165,8 +2486,8 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
         {currentView === 'select' && (
           <ConnectOptions
             onWalletClick={() => setView('self_custody')}
-            onPasskeySuccess={(wallet) => {
-              setPasskeyWallet(wallet)
+            onPasskeySuccess={() => {
+              setPasskeyWallet(getPasskeyWallet())
             }}
           />
         )}
@@ -2206,7 +2527,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
         )}
 
         {currentView === 'managed' && isManagedConnected && (
-          <ManagedAccountView onDisconnect={handleDisconnect} />
+          <ManagedAccountView onDisconnect={handleDisconnect} onTopUp={() => setView('topup')} onSettings={() => setView('settings')} />
         )}
 
         {currentView === 'wallet' && isSelfCustodyConnected && (

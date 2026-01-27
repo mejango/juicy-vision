@@ -15,6 +15,8 @@ import {
   getUserPasskeys,
   deletePasskey,
   renamePasskey,
+  createSignupChallenge,
+  verifySignupRegistration,
   type RegistrationResponse,
   type AuthenticationResponse,
 } from '../services/passkey.ts';
@@ -81,6 +83,85 @@ passkeyRouter.post(
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Registration failed';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// ============================================================================
+// Signup with Passkey (no auth required - creates new user)
+// ============================================================================
+
+// GET /passkey/signup/options - Get registration options for new user
+passkeyRouter.get('/signup/options', async (c) => {
+  try {
+    const options = await createSignupChallenge();
+    return c.json({ success: true, data: options });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to create challenge';
+    return c.json({ success: false, error: message }, 400);
+  }
+});
+
+// POST /passkey/signup/verify - Verify registration and create user
+const SignupVerifySchema = z.object({
+  credential: z.object({
+    id: z.string(),
+    rawId: z.string(),
+    response: z.object({
+      clientDataJSON: z.string(),
+      attestationObject: z.string(),
+      transports: z.array(z.string()).optional(),
+    }),
+    authenticatorAttachment: z.string().optional(),
+    type: z.literal('public-key'),
+  }),
+  displayName: z.string().max(100).optional(),
+});
+
+passkeyRouter.post(
+  '/signup/verify',
+  zValidator('json', SignupVerifySchema),
+  async (c) => {
+    const { credential, displayName } = c.req.valid('json');
+
+    try {
+      // Verify registration and create user
+      const { userId, credential: passkey } = await verifySignupRegistration(
+        credential as RegistrationResponse,
+        displayName
+      );
+
+      // Get the created user
+      const user = await findUserById(userId);
+      if (!user) {
+        throw new Error('User creation failed');
+      }
+
+      // Create session
+      const session = await createSession(userId);
+
+      return c.json({
+        success: true,
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            privacyMode: user.privacyMode,
+            emailVerified: user.emailVerified,
+            passkeyEnabled: true,
+          },
+          token: session.token,
+          passkey: {
+            id: passkey.id,
+            displayName: passkey.displayName,
+            deviceType: passkey.deviceType,
+            createdAt: passkey.createdAt,
+          },
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Signup failed';
       return c.json({ success: false, error: message }, 400);
     }
   }

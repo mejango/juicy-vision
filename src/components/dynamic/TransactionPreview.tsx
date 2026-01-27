@@ -67,6 +67,21 @@ const ACTION_BUTTON_LABELS: Record<string, string> = {
   deployERC20: 'Deploy Token',
 }
 
+// Map semantic action names to actual Solidity function names
+const ACTION_FUNCTION_NAMES: Record<string, string> = {
+  pay: 'pay',
+  cashOut: 'cashOutTokensOf',
+  sendPayouts: 'sendPayoutsOf',
+  useAllowance: 'useAllowanceOf',
+  mintTokens: 'mintTokensOf',
+  burnTokens: 'burnTokensOf',
+  launchProject: 'launchProjectFor',
+  launch721Project: 'launch721RulesetsFor',
+  deployRevnet: 'deployFor',
+  queueRuleset: 'queueRulesetsOf',
+  deployERC20: 'deployERC20For',
+}
+
 // Component to display an address with optional ENS name
 function AddressDisplay({ address, chainId, isDark }: { address: string; chainId?: string; isDark: boolean }) {
   const [ensName, setEnsName] = useState<string | null>(null)
@@ -1194,10 +1209,26 @@ export default function TransactionPreview({
     // Get memo
     const memo = (raw.memo as string) || 'Project launch via Juicy Vision'
 
+    // Get sucker deployment configuration (for atomic project+sucker deployment via JBOmnichainDeployer)
+    const suckerDeploymentConfiguration = raw.suckerDeploymentConfiguration as {
+      deployerConfigurations: Array<{
+        deployer: string
+        mappings: Array<{
+          localToken: string
+          remoteToken: string
+          minGas: number
+          minBridgeAmount: string
+        }>
+      }>
+      salt: string
+    } | undefined
+
     // Validate - but skip validation if we're in managed mode and still loading the wallet
     const isWaitingForManagedWallet = isManagedMode && !managedAddress && managedWalletLoading
+    // Also handle wallet error state - don't show "Invalid owner" when the real issue is auth
+    const hasWalletError = isManagedMode && !managedAddress && !!managedWalletError
     const verification = verifyLaunchProjectParams({
-      owner: isWaitingForManagedWallet ? '0x0000000000000000000000000000000000000001' : owner, // Use placeholder to avoid false critical during loading
+      owner: (isWaitingForManagedWallet || hasWalletError) ? '0x0000000000000000000000000000000000000001' : owner, // Use placeholder to avoid false critical during loading or error
       projectUri,
       chainIds: launchChainIds,
       rulesetConfigurations,
@@ -1205,10 +1236,22 @@ export default function TransactionPreview({
       memo,
     })
 
-    // Filter out owner-related issues while waiting for managed wallet
-    const filteredDoubts = isWaitingForManagedWallet
+    // Filter out owner-related issues while waiting for managed wallet or if there's a wallet error
+    let filteredDoubts = (isWaitingForManagedWallet || hasWalletError)
       ? verification.doubts.filter(d => !d.message.toLowerCase().includes('owner'))
       : verification.doubts
+
+    // If there's a wallet error, add a specific doubt for it
+    if (hasWalletError) {
+      filteredDoubts = [
+        {
+          field: 'owner',
+          message: `Authentication error: ${managedWalletError}. Please sign out and sign in again.`,
+          severity: 'critical' as const,
+        },
+        ...filteredDoubts,
+      ]
+    }
 
     return {
       owner,
@@ -1217,13 +1260,15 @@ export default function TransactionPreview({
       rulesetConfigurations,
       terminalConfigurations,
       memo,
+      suckerDeploymentConfiguration,
       projectName: (projectMetadata?.name as string) || 'New Project',
       doubts: filteredDoubts,
       hasIssues: filteredDoubts.length > 0,
       hasCritical: filteredDoubts.some(d => d.severity === 'critical'),
       isWaitingForWallet: isWaitingForManagedWallet,
+      hasWalletError,
     }
-  }, [action, effectivePreviewData?.raw, isManagedMode, managedAddress, managedWalletLoading, parsedChainConfigs, validChainId, projectMetadata?.name])
+  }, [action, effectivePreviewData?.raw, isManagedMode, managedAddress, managedWalletLoading, managedWalletError, parsedChainConfigs, validChainId, projectMetadata?.name])
 
   // Handle launch button click
   const handleLaunchClick = useCallback(async () => {
@@ -1237,6 +1282,7 @@ export default function TransactionPreview({
       rulesetConfigurations,
       terminalConfigurations,
       memo,
+      suckerDeploymentConfiguration,
     } = launchValidation
 
     await launch({
@@ -1246,6 +1292,7 @@ export default function TransactionPreview({
       rulesetConfigurations: rulesetConfigurations as JBRulesetConfig[],
       terminalConfigurations: terminalConfigurations as JBTerminalConfig[],
       memo,
+      suckerDeploymentConfiguration,
     })
   }, [launchValidation, issuesAcknowledged, launch])
 
@@ -1321,8 +1368,8 @@ export default function TransactionPreview({
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <SectionHeader title="Project Owner" isDark={isDark} />
           <div className={`mt-2 p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-            {/* Show loading state while managed wallet is loading OR while preview data is still loading */}
-            {(managedWalletLoading || !fundingInfo) ? (
+            {/* Show loading state only while managed wallet is loading */}
+            {managedWalletLoading ? (
               <div className="flex items-center gap-2">
                 <div className="animate-spin w-4 h-4 border-2 border-juice-cyan border-t-transparent rounded-full" />
                 <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -1331,7 +1378,8 @@ export default function TransactionPreview({
               </div>
             ) : managedWalletError ? (
               <div className={`text-sm ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-                Wallet error: {managedWalletError}
+                <span className="font-medium">Session expired.</span>{' '}
+                <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Please sign out and sign in again to continue.</span>
               </div>
             ) : launchValidation.owner ? (
               <div className="flex items-center gap-2">
@@ -1347,7 +1395,7 @@ export default function TransactionPreview({
             ) : (
               <div className={`text-sm ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
                 {isManagedMode
-                  ? 'Fetching wallet address...'
+                  ? 'Session expired - sign in again with Touch ID'
                   : 'No owner address - please connect wallet'}
               </div>
             )}
@@ -1391,8 +1439,8 @@ export default function TransactionPreview({
             </div>
 
             <div className={`flex justify-between ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-              <span>Action</span>
-              <span className="font-mono">{action}</span>
+              <span>Function</span>
+              <span className="font-mono">{ACTION_FUNCTION_NAMES[action] || action}</span>
             </div>
 
             {/* Chain tags */}
@@ -1451,11 +1499,21 @@ export default function TransactionPreview({
                   {JSON.stringify(parsedParams, null, 2)}
                 </pre>
               ) : (
-                Object.entries(parsedParams)
-                  .filter(([key]) => key !== 'chainConfigs') // Hide chainConfigs - it's redundant with the Chains display
-                  .map(([key, value]) => (
-                  <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
-                ))
+                <>
+                  {/* For launch actions, show owner first (derived from wallet) */}
+                  {(action === 'launchProject' || action === 'launch721Project') && launchValidation?.owner && (
+                    <ParamRow key="owner" name="owner" value={launchValidation.owner} isDark={isDark} chainId={chainId} />
+                  )}
+                  {Object.entries(parsedParams)
+                    .filter(([key]) => key !== 'chainConfigs' && key !== 'projectMetadata') // Hide redundant fields
+                    .map(([key, value]) => (
+                    <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
+                  ))}
+                  {/* For launch actions, show controller last (default value) */}
+                  {(action === 'launchProject' || action === 'launch721Project') && (
+                    <ParamRow key="controller" name="controller" value="0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1" isDark={isDark} chainId={chainId} />
+                  )}
+                </>
               )
             ) : (
               <div className={`flex items-center gap-2 py-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

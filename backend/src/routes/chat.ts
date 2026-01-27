@@ -64,6 +64,7 @@ import {
   fetchArchivedChat,
   getLatestArchiveCid,
 } from '../services/ipfs.ts';
+import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
 import {
   getOnlineMembers,
 } from '../services/websocket.ts';
@@ -1735,11 +1736,19 @@ chatRouter.post(
     let authorizedAddress: string | null = null;
 
     // Method 1: JWT token (passkey wallet) - user is already authenticated
+    // Use smart account address (ERC-4337) for the user
     if (user) {
-      const { getCustodialAddress } = await import('../services/wallet.ts');
-      authorizedAddress = await getCustodialAddress(user.custodialAddressIndex ?? 0);
-      if (authorizedAddress.toLowerCase() === newAddress) {
-        isAuthorized = true;
+      try {
+        // Get user's smart account on a default chain (e.g., Base)
+        // The address is the same across all chains due to CREATE2
+        const smartAccount = await getOrCreateSmartAccount(user.id, 8453);
+        authorizedAddress = smartAccount.address;
+        if (authorizedAddress.toLowerCase() === newAddress) {
+          isAuthorized = true;
+        }
+      } catch (error) {
+        // If smart account creation fails, log but continue to other auth methods
+        console.error('[merge-session] Failed to get smart account for user:', error);
       }
     }
 

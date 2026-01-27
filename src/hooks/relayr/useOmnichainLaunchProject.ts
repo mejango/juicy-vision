@@ -7,7 +7,9 @@ import {
   type JBLaunchProjectRequest,
   type JBRulesetConfig,
   type JBTerminalConfig,
+  type JBSuckerDeploymentConfig,
 } from '../../services/relayr'
+import { buildOmnichainLaunchTransactions } from '../../services/omnichainDeployer'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
@@ -22,6 +24,7 @@ export interface OmnichainLaunchProjectParams {
   rulesetConfigurations: JBRulesetConfig[]
   terminalConfigurations: JBTerminalConfig[]
   memo: string
+  suckerDeploymentConfiguration?: JBSuckerDeploymentConfig  // Optional: deploy suckers atomically
 }
 
 export interface UseOmnichainLaunchProjectReturn {
@@ -128,6 +131,7 @@ export function useOmnichainLaunchProject(
       rulesetConfigurations,
       terminalConfigurations,
       memo,
+      suckerDeploymentConfiguration,
     } = params
 
     // For managed mode, use managed wallet as owner if not specified
@@ -140,30 +144,63 @@ export function useOmnichainLaunchProject(
     bundle._setCreating()
 
     try {
-      // Build launch transactions for all chains
-      const launchRequest: JBLaunchProjectRequest = {
-        chainIds,
-        owner: projectOwner,
-        projectUri,
-        rulesetConfigurations,
-        terminalConfigurations,
-        memo,
-      }
+      let transactions: Array<{ chain: number; target: string; data: string; value: string }>
+      let predictedIds: Record<number, number> = {}
 
-      const launchResponse = await buildOmnichainLaunchProjectTransactions(launchRequest)
+      if (suckerDeploymentConfiguration) {
+        // Use JBOmnichainDeployer.launchProjectFor() - encode calldata locally
+        // This creates projects AND deploys suckers atomically
+        const txs = buildOmnichainLaunchTransactions({
+          chainIds,
+          owner: projectOwner as `0x${string}`,
+          projectUri,
+          rulesetConfigurations,
+          terminalConfigurations,
+          memo,
+          suckerDeploymentConfiguration,
+        })
 
-      // Store predicted project IDs
-      setPredictedProjectIds(launchResponse.predictedProjectIds)
+        transactions = txs.map(tx => ({
+          chain: tx.chainId,
+          target: tx.to,
+          data: tx.data,
+          value: tx.value,
+        }))
 
-      // Create balance-sponsored bundle (admin pays gas)
-      const bundleResponse = await createBalanceBundle({
-        app_id: RELAYR_APP_ID,
-        transactions: launchResponse.transactions.map(tx => ({
+        // Project IDs will be determined after transactions confirm
+        // For now, use placeholder - they'll be extracted from events
+        chainIds.forEach(chainId => {
+          predictedIds[chainId] = 0 // Will be updated from tx receipt
+        })
+      } else {
+        // Use API endpoint for backward compatibility (JBController.launchProjectFor)
+        const launchRequest: JBLaunchProjectRequest = {
+          chainIds,
+          owner: projectOwner,
+          projectUri,
+          rulesetConfigurations,
+          terminalConfigurations,
+          memo,
+        }
+
+        const launchResponse = await buildOmnichainLaunchProjectTransactions(launchRequest)
+        predictedIds = launchResponse.predictedProjectIds
+
+        transactions = launchResponse.transactions.map(tx => ({
           chain: tx.txData.chainId,
           target: tx.txData.to,
           data: tx.txData.data,
           value: tx.txData.value,
-        })),
+        }))
+      }
+
+      // Store predicted project IDs
+      setPredictedProjectIds(predictedIds)
+
+      // Create balance-sponsored bundle (admin pays gas)
+      const bundleResponse = await createBalanceBundle({
+        app_id: RELAYR_APP_ID,
+        transactions,
         virtual_nonce_mode: 'MultiChain',
       })
 
@@ -171,7 +208,7 @@ export function useOmnichainLaunchProject(
       bundle._initializeBundle(
         bundleResponse.bundle_uuid,
         chainIds,
-        launchResponse.predictedProjectIds,
+        predictedIds,
         [],  // No payment options - admin sponsored
       )
 

@@ -3,40 +3,77 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.ts';
 import {
-  getCustodialAddress,
-  getTokenBalance,
-  getProjectTokenBalances,
-  requestTransfer,
-  getUserPendingTransfers,
-  cancelTransfer,
   getReservesBalance,
   getReservesAddress,
-  signAndBroadcast,
 } from '../services/wallet.ts';
+import {
+  getOrCreateSmartAccount,
+  getUserSmartAccounts,
+  getAccountBalances,
+  syncAccountBalances,
+  executeTransaction,
+  requestWithdrawal,
+  getUserWithdrawals,
+  requestExport,
+  confirmExport,
+  retryExport,
+  cancelExport,
+  getExportStatus,
+  getUserExports,
+  checkExportBlockers,
+} from '../services/smartAccounts.ts';
+import type { Address } from 'viem';
 
 const walletRouter = new Hono();
 
 // ============================================================================
-// User Wallet Endpoints
+// User Wallet Endpoints (Smart Accounts)
 // ============================================================================
 
-// GET /wallet/address - Get user's custodial wallet address
+// GET /wallet/address - Get user's smart account address
+// Creates deterministic address if not exists (does not deploy contract)
 walletRouter.get('/address', requireAuth, async (c) => {
   const user = c.get('user');
+  const chainId = Number(c.req.query('chainId')) || 1; // Default to mainnet
 
-  if (user.custodialAddressIndex === undefined) {
-    return c.json({ success: false, error: 'No custodial wallet assigned' }, 400);
+  try {
+    const smartAccount = await getOrCreateSmartAccount(user.id, chainId);
+
+    return c.json({
+      success: true,
+      data: {
+        address: smartAccount.address,
+        chainId: smartAccount.chainId,
+        deployed: smartAccount.deployed,
+        custodyStatus: smartAccount.custodyStatus,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to get smart account address:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get address';
+    return c.json({ success: false, error: message }, 500);
   }
-
-  const address = await getCustodialAddress(user.custodialAddressIndex);
-
-  return c.json({
-    success: true,
-    data: { address },
-  });
 });
 
-// GET /wallet/balances - Get all token balances
+// GET /wallet/accounts - Get all user's smart accounts across chains
+walletRouter.get('/accounts', requireAuth, async (c) => {
+  const user = c.get('user');
+
+  try {
+    const accounts = await getUserSmartAccounts(user.id);
+
+    return c.json({
+      success: true,
+      data: { accounts },
+    });
+  } catch (error) {
+    console.error('Failed to get smart accounts:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get accounts';
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
+// GET /wallet/balances - Get smart account token balances
 const BalancesQuerySchema = z.object({
   chainId: z.coerce.number().optional(),
 });
@@ -47,41 +84,73 @@ walletRouter.get('/balances', requireAuth, async (c) => {
     chainId: c.req.query('chainId'),
   });
 
-  if (user.custodialAddressIndex === undefined) {
-    return c.json({ success: false, error: 'No custodial wallet assigned' }, 400);
-  }
-
-  const address = await getCustodialAddress(user.custodialAddressIndex);
-
   // Default to all supported chains
   const chainIds = query.chainId ? [query.chainId] : [1, 10, 8453, 42161];
 
-  const balances = await Promise.all(
+  // Use Promise.allSettled to handle individual chain failures gracefully
+  const settledResults = await Promise.allSettled(
     chainIds.map(async (chainId) => {
-      const projectTokens = await getProjectTokenBalances(address, chainId);
-      return projectTokens;
+      // Ensure account exists (creates if needed)
+      const account = await getOrCreateSmartAccount(user.id, chainId);
+      const balances = await getAccountBalances(user.id, chainId);
+
+      return {
+        chainId,
+        address: account.address,
+        deployed: account.deployed,
+        custodyStatus: account.custodyStatus,
+        balances,
+      };
     })
   );
 
-  return c.json({
-    success: true,
-    data: {
-      address,
-      balances: balances.flat(),
-    },
+  // Extract successful results and track errors
+  const results: Array<{
+    chainId: number;
+    address: string;
+    deployed: boolean;
+    custodyStatus: string;
+    balances: Array<{ tokenAddress: string; tokenSymbol: string; balance: string; decimals: number }>;
+  }> = [];
+  const errors: Array<{ chainId: number; error: string }> = [];
+
+  settledResults.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      results.push(result.value);
+    } else {
+      const errorMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      console.error(`Failed to get account for chain ${chainIds[index]}:`, result.reason);
+      errors.push({ chainId: chainIds[index], error: errorMsg });
+    }
   });
+
+  // Return partial success if at least one chain succeeded
+  if (results.length > 0) {
+    return c.json({
+      success: true,
+      data: { accounts: results },
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  }
+
+  // All chains failed
+  return c.json({
+    success: false,
+    error: 'Failed to get balances for all chains',
+    errors,
+  }, 500);
 });
 
 // ============================================================================
-// Transaction Execution (for managed mode users)
+// Transaction Execution (Gas-sponsored for managed accounts)
 // ============================================================================
 
-// POST /wallet/execute - Execute a transaction on behalf of managed user
+// POST /wallet/execute - Execute a transaction via smart account
 const ExecuteTransactionSchema = z.object({
   chainId: z.number(),
   to: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   data: z.string().regex(/^0x[a-fA-F0-9]*$/),
-  value: z.string().optional().default('0'), // BigInt as string, defaults to 0
+  value: z.string().optional().default('0'), // BigInt as string
 });
 
 walletRouter.post(
@@ -92,21 +161,21 @@ walletRouter.post(
     const user = c.get('user');
     const body = c.req.valid('json');
 
-    if (user.custodialAddressIndex === undefined) {
-      return c.json({ success: false, error: 'No custodial wallet assigned' }, 400);
-    }
-
     try {
-      const txHash = await signAndBroadcast(
-        body.chainId,
-        body.to as `0x${string}`,
-        body.data as `0x${string}`,
-        BigInt(body.value)
-      );
+      const result = await executeTransaction({
+        userId: user.id,
+        chainId: body.chainId,
+        to: body.to as Address,
+        data: body.data as `0x${string}`,
+        value: BigInt(body.value),
+      });
 
       return c.json({
         success: true,
-        data: { txHash },
+        data: {
+          txHash: result.txHash,
+          accountAddress: result.accountAddress,
+        },
       });
     } catch (error) {
       console.error('Transaction execution failed:', error);
@@ -117,11 +186,11 @@ walletRouter.post(
 );
 
 // ============================================================================
-// Transfer Endpoints (30-day hold)
+// Withdrawals (Gas-sponsored for managed accounts)
 // ============================================================================
 
-// POST /wallet/transfer - Request a transfer to self-custody
-const TransferRequestSchema = z.object({
+// POST /wallet/withdraw - Request a gas-sponsored withdrawal from smart account
+const WithdrawSchema = z.object({
   chainId: z.number(),
   tokenAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   amount: z.string(), // BigInt as string
@@ -129,61 +198,182 @@ const TransferRequestSchema = z.object({
 });
 
 walletRouter.post(
-  '/transfer',
+  '/withdraw',
   requireAuth,
-  zValidator('json', TransferRequestSchema),
+  zValidator('json', WithdrawSchema),
   async (c) => {
     const user = c.get('user');
     const body = c.req.valid('json');
 
-    if (user.custodialAddressIndex === undefined) {
-      return c.json({ success: false, error: 'No custodial wallet assigned' }, 400);
-    }
-
     try {
-      const transfer = await requestTransfer(
-        user.id,
-        user.custodialAddressIndex,
-        body.chainId,
-        body.tokenAddress,
-        body.amount,
-        body.toAddress
-      );
+      const result = await requestWithdrawal({
+        userId: user.id,
+        chainId: body.chainId,
+        tokenAddress: body.tokenAddress as Address,
+        amount: BigInt(body.amount),
+        toAddress: body.toAddress as Address,
+      });
 
       return c.json({
         success: true,
-        data: transfer,
+        data: result,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Transfer request failed';
+      console.error('Withdrawal failed:', error);
+      const message = error instanceof Error ? error.message : 'Withdrawal failed';
       return c.json({ success: false, error: message }, 400);
     }
   }
 );
 
-// GET /wallet/transfers - Get all pending transfers
-walletRouter.get('/transfers', requireAuth, async (c) => {
+// GET /wallet/withdrawals - Get user's withdrawal history
+walletRouter.get('/withdrawals', requireAuth, async (c) => {
   const user = c.get('user');
-
-  const transfers = await getUserPendingTransfers(user.id);
-
-  return c.json({
-    success: true,
-    data: transfers,
-  });
-});
-
-// DELETE /wallet/transfers/:id - Cancel a pending transfer
-walletRouter.delete('/transfers/:id', requireAuth, async (c) => {
-  const user = c.get('user');
-  const transferId = c.req.param('id');
 
   try {
-    await cancelTransfer(transferId, user.id);
+    const withdrawals = await getUserWithdrawals(user.id);
+    return c.json({
+      success: true,
+      data: { withdrawals },
+    });
+  } catch (error) {
+    console.error('Failed to get withdrawals:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get withdrawals';
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
+// ============================================================================
+// Export Endpoints (Transfer custody to self-custody EOA)
+// ============================================================================
+
+// GET /wallet/export/check - Check if user can export (no pending blockers)
+walletRouter.get('/export/check', requireAuth, async (c) => {
+  const user = c.get('user');
+
+  try {
+    const { canExport, blockers } = await checkExportBlockers(user.id);
+    return c.json({
+      success: true,
+      data: { canExport, blockers },
+    });
+  } catch (error) {
+    console.error('Failed to check export blockers:', error);
+    const message = error instanceof Error ? error.message : 'Failed to check export status';
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
+// POST /wallet/export - Request export of all managed accounts to self-custody
+const ExportRequestSchema = z.object({
+  newOwnerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+});
+
+walletRouter.post(
+  '/export',
+  requireAuth,
+  zValidator('json', ExportRequestSchema),
+  async (c) => {
+    const user = c.get('user');
+    const body = c.req.valid('json');
+
+    try {
+      const result = await requestExport(user.id, body.newOwnerAddress as Address);
+
+      return c.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      console.error('Export request failed:', error);
+      const message = error instanceof Error ? error.message : 'Export request failed';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// POST /wallet/export/:id/confirm - Confirm and execute export
+walletRouter.post('/export/:id/confirm', requireAuth, async (c) => {
+  const exportId = c.req.param('id');
+
+  try {
+    const result = await confirmExport(exportId);
+    return c.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Export confirmation failed:', error);
+    const message = error instanceof Error ? error.message : 'Export confirmation failed';
+    return c.json({ success: false, error: message }, 400);
+  }
+});
+
+// POST /wallet/export/:id/retry - Retry failed chains in partial export
+walletRouter.post('/export/:id/retry', requireAuth, async (c) => {
+  const exportId = c.req.param('id');
+
+  try {
+    const result = await retryExport(exportId);
+    return c.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Export retry failed:', error);
+    const message = error instanceof Error ? error.message : 'Export retry failed';
+    return c.json({ success: false, error: message }, 400);
+  }
+});
+
+// DELETE /wallet/export/:id - Cancel a pending export
+walletRouter.delete('/export/:id', requireAuth, async (c) => {
+  const exportId = c.req.param('id');
+
+  try {
+    await cancelExport(exportId);
     return c.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Cancel failed';
+    console.error('Export cancel failed:', error);
+    const message = error instanceof Error ? error.message : 'Export cancel failed';
     return c.json({ success: false, error: message }, 400);
+  }
+});
+
+// GET /wallet/export/:id - Get export status
+walletRouter.get('/export/:id', requireAuth, async (c) => {
+  const exportId = c.req.param('id');
+
+  try {
+    const status = await getExportStatus(exportId);
+    if (!status) {
+      return c.json({ success: false, error: 'Export not found' }, 404);
+    }
+    return c.json({
+      success: true,
+      data: status,
+    });
+  } catch (error) {
+    console.error('Failed to get export status:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get export status';
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
+// GET /wallet/exports - Get user's export history
+walletRouter.get('/exports', requireAuth, async (c) => {
+  const user = c.get('user');
+
+  try {
+    const exports = await getUserExports(user.id);
+    return c.json({
+      success: true,
+      data: { exports },
+    });
+  } catch (error) {
+    console.error('Failed to get exports:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get exports';
+    return c.json({ success: false, error: message }, 500);
   }
 });
 

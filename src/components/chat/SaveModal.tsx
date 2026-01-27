@@ -2,9 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useSignMessage } from 'wagmi'
 import { useTranslation } from 'react-i18next'
-import { useThemeStore } from '../../stores'
+import { useThemeStore, useAuthStore } from '../../stores'
 import { signInWithWallet, hasValidWalletSession, getWalletSession } from '../../services/siwe'
-import { signInWithPasskey, type PasskeyWallet } from '../../services/passkeyWallet'
 import { useEnsNameResolved } from '../../hooks/useEnsName'
 
 export interface AnchorPosition {
@@ -18,7 +17,7 @@ interface SaveModalProps {
   isOpen: boolean
   onClose: () => void
   onSaved?: () => void
-  onPasskeySuccess?: (wallet: PasskeyWallet) => void
+  onPasskeySuccess?: () => void
   onWalletClick?: () => void
   anchorPosition?: AnchorPosition | null
 }
@@ -54,13 +53,16 @@ export default function SaveModal({ isOpen, onClose, onSaved, onPasskeySuccess, 
     }
   }, [isOpen])
 
+  const { loginWithPasskey } = useAuthStore()
+
   const handlePasskeyAuth = async () => {
     setIsAuthenticating(true)
     setError(null)
 
     try {
-      const wallet = await signInWithPasskey()
-      onPasskeySuccess?.(wallet)
+      // Use managed passkey auth - creates user record and sets mode to 'managed'
+      await loginWithPasskey()
+      onPasskeySuccess?.()
       setSuccess(true)
       onSaved?.()
       setTimeout(() => {
@@ -72,10 +74,10 @@ export default function SaveModal({ isOpen, onClose, onSaved, onPasskeySuccess, 
         const msg = err.message.toLowerCase()
         if (msg.includes('cancelled') || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('abort')) {
           // User cancelled, no error needed
-        } else if (msg.includes('prf') || msg.includes('not supported')) {
-          setError('Touch ID wallets not supported on this device. Try Wallet instead.')
+        } else if (msg.includes('not supported')) {
+          setError('Touch ID not supported on this device. Try Wallet instead.')
         } else {
-          setError('Failed to create wallet. Try another method.')
+          setError('Failed to sign in. Try another method.')
         }
       }
     } finally {

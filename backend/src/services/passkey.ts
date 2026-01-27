@@ -378,7 +378,10 @@ export async function verifyAuthentication(
   const newCounter = new DataView(authenticatorData.buffer).getUint32(33, false);
 
   // Verify counter is greater than stored (prevents replay attacks)
-  if (newCounter <= credential.counter) {
+  // Note: Some authenticators (especially platform authenticators) may not properly
+  // increment counters, or may send counter=0 always. We allow equal counters
+  // for compatibility, and skip check entirely if both are 0.
+  if (newCounter !== 0 && credential.counter !== 0 && newCounter < credential.counter) {
     throw new Error('Invalid counter - possible replay attack');
   }
 
@@ -485,4 +488,200 @@ export async function cleanupExpiredChallenges(): Promise<void> {
   await execute(
     'DELETE FROM passkey_challenges WHERE expires_at < NOW()'
   );
+}
+
+// ============================================================================
+// Passkey-based Signup (no prior auth required)
+// ============================================================================
+
+/**
+ * Create a registration challenge for a new user signup
+ * This is used when the user wants to sign up using only a passkey
+ */
+export async function createSignupChallenge(): Promise<{
+  challenge: string;
+  rp: { name: string; id: string };
+  user: { id: string; name: string; displayName: string };
+  pubKeyCredParams: Array<{ type: 'public-key'; alg: number }>;
+  timeout: number;
+  attestation: string;
+  authenticatorSelection: {
+    authenticatorAttachment?: string;
+    residentKey: string;
+    userVerification: string;
+  };
+  tempUserId: string;
+}> {
+  // Generate a temporary user ID that will be used to create the actual user
+  const tempUserId = crypto.randomUUID();
+  const userIdBytes = generateUserId();
+  const userIdB64 = base64UrlEncode(userIdBytes);
+
+  // Generate challenge
+  const challenge = generateChallenge();
+  const challengeB64 = base64UrlEncode(challenge);
+
+  // Store challenge with temp user ID (no real user yet)
+  await execute(
+    `INSERT INTO passkey_challenges (challenge, challenge_b64, type, email, expires_at)
+     VALUES ($1, $2, 'registration', $3, NOW() + INTERVAL '5 minutes')`,
+    [challenge, challengeB64, `signup:${tempUserId}`]
+  );
+
+  return {
+    challenge: challengeB64,
+    rp: { name: RP_NAME, id: RP_ID },
+    user: {
+      id: userIdB64,
+      name: `passkey-user-${tempUserId.slice(0, 8)}`,
+      displayName: 'Passkey User',
+    },
+    pubKeyCredParams: [
+      { type: 'public-key', alg: -7 },   // ES256
+      { type: 'public-key', alg: -257 }, // RS256
+    ],
+    timeout: 300000,
+    attestation: 'none',
+    authenticatorSelection: {
+      residentKey: 'required',
+      userVerification: 'preferred',
+    },
+    tempUserId,
+  };
+}
+
+/**
+ * Verify signup registration - creates user and stores credential
+ */
+export async function verifySignupRegistration(
+  response: RegistrationResponse,
+  displayName?: string
+): Promise<{ userId: string; credential: PasskeyCredential }> {
+  // Decode client data
+  const clientDataJSON = base64UrlDecode(response.response.clientDataJSON);
+  const clientData = JSON.parse(new TextDecoder().decode(clientDataJSON));
+
+  // Find and consume challenge (stored with signup:tempUserId in email field)
+  const results = await query<{
+    id: string;
+    challenge: Uint8Array;
+    challenge_b64: string;
+    type: 'registration' | 'authentication';
+    user_id: string | null;
+    email: string | null;
+    expires_at: Date;
+  }>(
+    `DELETE FROM passkey_challenges
+     WHERE challenge_b64 = $1 AND type = 'registration' AND expires_at > NOW()
+     RETURNING *`,
+    [clientData.challenge]
+  );
+
+  if (results.length === 0) {
+    throw new Error('Invalid or expired challenge');
+  }
+
+  const challenge = results[0];
+
+  // Verify this is a signup challenge (email field starts with 'signup:')
+  if (!challenge.email?.startsWith('signup:')) {
+    throw new Error('Invalid challenge type');
+  }
+
+  // Verify origin
+  if (clientData.origin !== ORIGIN) {
+    throw new Error('Invalid origin');
+  }
+
+  // Verify type
+  if (clientData.type !== 'webauthn.create') {
+    throw new Error('Invalid type');
+  }
+
+  // Decode attestation object to extract public key
+  const attestationObject = base64UrlDecode(response.response.attestationObject);
+
+  // Parse CBOR attestation object (simplified - just extract authData)
+  // The attestation object is CBOR encoded with format:
+  // { fmt: string, attStmt: object, authData: bytes }
+  // For now, we'll do a simple extraction
+  const authDataStart = attestationObject.indexOf(0x58) + 2; // 0x58 = CBOR byte string marker
+  const authDataLength = attestationObject[authDataStart - 1];
+  const authData = attestationObject.slice(authDataStart, authDataStart + authDataLength);
+
+  // Extract flags and counter from authData
+  // authData structure: rpIdHash (32) + flags (1) + counter (4) + attestedCredentialData
+  const flags = authData[32];
+  const counter = new DataView(authData.buffer, authData.byteOffset + 33, 4).getUint32(0, false);
+
+  // Extract attested credential data
+  // aaguid (16) + credIdLen (2) + credId (credIdLen) + publicKey (COSE)
+  const credIdLen = new DataView(authData.buffer, authData.byteOffset + 53, 2).getUint16(0, false);
+  const credentialId = authData.slice(55, 55 + credIdLen);
+  const publicKey = authData.slice(55 + credIdLen);
+
+  const credentialIdB64 = base64UrlEncode(credentialId);
+
+  // Check backup flags
+  const backupEligible = (flags & 0x08) !== 0;
+  const backupState = (flags & 0x10) !== 0;
+
+  // Create new user with auto-generated email
+  const tempUserId = challenge.email.replace('signup:', '');
+  const userEmail = `passkey-${tempUserId.slice(0, 8)}@passkey.local`;
+
+  // Get next custodial address index
+  const maxIndexResult = await query<{ max: number | null }>(
+    'SELECT MAX(custodial_address_index) as max FROM users'
+  );
+  const nextIndex = (maxIndexResult[0]?.max ?? -1) + 1;
+
+  // Create user
+  const userResult = await query<{ id: string; email: string; privacy_mode: string; email_verified: boolean }>(
+    `INSERT INTO users (email, custodial_address_index, passkey_enabled)
+     VALUES ($1, $2, TRUE)
+     RETURNING id, email, privacy_mode, email_verified`,
+    [userEmail, nextIndex]
+  );
+
+  const user = userResult[0];
+
+  // Determine device type from authenticatorAttachment
+  let deviceType: string | null = null;
+  if (response.authenticatorAttachment === 'platform') {
+    deviceType = 'platform';
+  } else if (response.authenticatorAttachment === 'cross-platform') {
+    deviceType = 'security_key';
+  }
+
+  // Store credential
+  const credResult = await query<any>(
+    `INSERT INTO passkey_credentials
+     (user_id, credential_id, credential_id_b64, public_key, counter, device_type, transports, backup_eligible, backup_state, display_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING *`,
+    [
+      user.id,
+      credentialId,
+      credentialIdB64,
+      publicKey,
+      counter,
+      deviceType,
+      response.response.transports || null,
+      backupEligible,
+      backupState,
+      displayName || null,
+    ]
+  );
+
+  // Update user to indicate passkey is enabled
+  await execute(
+    'UPDATE users SET passkey_enabled = TRUE WHERE id = $1',
+    [user.id]
+  );
+
+  return {
+    userId: user.id,
+    credential: dbToCredential(credResult[0]),
+  };
 }

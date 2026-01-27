@@ -21,6 +21,15 @@ export {
   JB_SUCKER_REGISTRY_ABI,
 } from './jbSuckerRegistry'
 
+export {
+  JB_OMNICHAIN_DEPLOYER_ADDRESS,
+  JB_OMNICHAIN_DEPLOYER_ABI,
+} from './jbOmnichainDeployer'
+
+export {
+  JB_721_TIERS_HOOK_ABI,
+} from './jb721TiersHook'
+
 // Type definitions for ABI inputs
 export interface PayParams {
   projectId: bigint

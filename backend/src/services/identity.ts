@@ -144,16 +144,20 @@ export async function resolveIdentity(emoji: string, username: string): Promise<
 /**
  * Check if an [emoji]username combo is available
  */
-export async function isIdentityAvailable(emoji: string, username: string, excludeAddress?: string): Promise<boolean> {
+export async function isIdentityAvailable(
+  emoji: string,
+  username: string,
+  excludeAddress?: string
+): Promise<boolean> {
   const params: (string | undefined)[] = [emoji, username.toLowerCase()];
-  let query_str = `SELECT 1 FROM juicy_identities WHERE emoji = $1 AND username_lower = $2`;
+  let query_str = `SELECT address FROM juicy_identities WHERE emoji = $1 AND username_lower = $2`;
 
   if (excludeAddress) {
     query_str += ` AND LOWER(address) != LOWER($3)`;
     params.push(excludeAddress);
   }
 
-  const db = await queryOne<{ '1': number }>(query_str, params);
+  const db = await queryOne<{ address: string }>(query_str, params);
   return !db;
 }
 
@@ -186,7 +190,6 @@ export async function setIdentity(
 
   // Check if this is an update (existing identity)
   const existing = await getIdentityByAddress(address);
-  const isUpdate = !!existing;
   const hasChanged = existing && (existing.emoji !== emoji || existing.username.toLowerCase() !== usernameLower);
 
   // Record history if updating and something changed
@@ -388,3 +391,4 @@ export async function resolveAllMentions(text: string): Promise<Map<string, stri
 
   return results;
 }
+

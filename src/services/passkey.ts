@@ -272,3 +272,77 @@ export async function renamePasskey(
     token
   )
 }
+
+// ============================================================================
+// Signup with Passkey (creates new user)
+// ============================================================================
+
+interface SignupOptions {
+  challenge: string
+  rp: { name: string; id: string }
+  user: { id: string; name: string; displayName: string }
+  pubKeyCredParams: Array<{ type: 'public-key'; alg: number }>
+  timeout: number
+  attestation: string
+  authenticatorSelection: {
+    authenticatorAttachment?: string
+    residentKey: string
+    userVerification: string
+  }
+  tempUserId: string
+}
+
+export async function signupWithPasskey(): Promise<LoginResult> {
+  // 1. Get signup options from server
+  const options = await apiRequest<SignupOptions>('/passkey/signup/options', {
+    method: 'GET',
+  })
+
+  // 2. Create credential using WebAuthn API
+  const credential = await navigator.credentials.create({
+    publicKey: {
+      challenge: base64UrlToArrayBuffer(options.challenge),
+      rp: options.rp,
+      user: {
+        id: base64UrlToArrayBuffer(options.user.id),
+        name: options.user.name,
+        displayName: options.user.displayName,
+      },
+      pubKeyCredParams: options.pubKeyCredParams,
+      timeout: options.timeout,
+      attestation: options.attestation as AttestationConveyancePreference,
+      authenticatorSelection: {
+        residentKey: options.authenticatorSelection
+          .residentKey as ResidentKeyRequirement,
+        userVerification: options.authenticatorSelection
+          .userVerification as UserVerificationRequirement,
+      },
+    },
+  }) as PublicKeyCredential | null
+
+  if (!credential) {
+    throw new Error('Passkey creation was cancelled')
+  }
+
+  const response = credential.response as AuthenticatorAttestationResponse
+
+  // 3. Send credential to server for verification and user creation
+  const result = await apiRequest<LoginResult>('/passkey/signup/verify', {
+    method: 'POST',
+    body: JSON.stringify({
+      credential: {
+        id: credential.id,
+        rawId: arrayBufferToBase64Url(credential.rawId),
+        response: {
+          clientDataJSON: arrayBufferToBase64Url(response.clientDataJSON),
+          attestationObject: arrayBufferToBase64Url(response.attestationObject),
+          transports: response.getTransports?.() || [],
+        },
+        authenticatorAttachment: (credential as any).authenticatorAttachment,
+        type: credential.type,
+      },
+    }),
+  })
+
+  return result
+}

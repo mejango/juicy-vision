@@ -69,6 +69,9 @@ export {
   type JBOmnichainDeployERC20Response,
   // Project launch types
   type JBTerminalConfig,
+  type JBSuckerTokenMapping,
+  type JBSuckerDeployerConfig,
+  type JBSuckerDeploymentConfig,
   type JBLaunchProjectRequest,
   type JBLaunchProjectResponse,
   // Revnet deployment types

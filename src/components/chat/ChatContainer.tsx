@@ -484,15 +484,45 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   }
 
   // Handle successful passkey wallet creation/authentication
-  const handlePasskeySuccess = async (wallet: PasskeyWallet) => {
-    setPasskeyWallet(wallet)
+  const handlePasskeySuccess = async () => {
+    // Refresh passkey wallet state
+    setPasskeyWallet(getPasskeyWallet())
 
     // Get the current chat ID at the time of sign-in
     const currentChatId = forceActiveChatId || useChatStore.getState().activeChatId
 
+    // Fetch the Smart Account address for merge session
+    const token = useAuthStore.getState().token
+    if (!token) {
+      console.log('[ChatContainer] No auth token after passkey success, skipping merge')
+      return
+    }
+
+    let smartAccountAddress: string | null = null
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+      const response = await fetch(`${API_BASE_URL}/wallet/address`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      const data = await response.json()
+      if (response.ok && data.success) {
+        smartAccountAddress = data.data.address
+      }
+    } catch (err) {
+      console.error('[ChatContainer] Failed to fetch smart account address:', err)
+    }
+
+    if (!smartAccountAddress) {
+      console.log('[ChatContainer] No smart account address, skipping merge')
+      return
+    }
+
     // Merge anonymous session chats to the connected account
     try {
-      const result = await chatApi.mergeSession(wallet.address)
+      const result = await chatApi.mergeSession(smartAccountAddress)
       console.log('[ChatContainer] Session merge result:', result)
 
       // Refresh chat list to show merged chats
@@ -929,9 +959,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         setWalletPanelAnchorPosition(event.detail.anchorPosition)
         setAuthModalAnchorPosition(event.detail.anchorPosition)
       }
-      // Check for wagmi wallet OR passkey wallet (read from localStorage as source of truth)
+      // Check for wagmi wallet OR passkey wallet OR managed auth (auth store)
       const currentPasskeyWallet = getPasskeyWallet()
-      if (isWalletConnected || currentPasskeyWallet) {
+      const isManagedAuth = isAuthenticated()
+      if (isWalletConnected || currentPasskeyWallet || isManagedAuth) {
         // Already connected - show wallet panel directly for top-up/balance
         setShowWalletPanel(true)
       } else {
@@ -944,7 +975,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => {
       window.removeEventListener('juice:open-wallet-panel', handleOpenWalletPanel as EventListener)
     }
-  }, [isWalletConnected, closeAllPopovers, showWalletPanel])
+  }, [isWalletConnected, isAuthenticated, closeAllPopovers, showWalletPanel])
 
   // Listen for identity changes to refresh member data
   useEffect(() => {

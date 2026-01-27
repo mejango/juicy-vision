@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { useSettingsStore, useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
-import { signInWithPasskey } from '../../services/passkeyWallet'
+// Note: signInWithPasskey removed - use authStore.loginWithPasskey() instead for managed mode
 import { FRUIT_EMOJIS, getEmojiFromAddress } from '../chat/ParticipantAvatars'
 import { getSessionId } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
@@ -61,6 +61,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     logout,
     requestOtp,
     login,
+    loginWithPasskey,
     registerPasskey,
     loadPasskeys,
   } = useAuthStore()
@@ -84,6 +85,9 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
   // Passkey state
   const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
+  const [showPasskeysList, setShowPasskeysList] = useState(false)
+  const [addingPasskey, setAddingPasskey] = useState(false)
+  const [newPasskeyName, setNewPasskeyName] = useState('')
 
   // Juicy ID state
   const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
@@ -92,6 +96,8 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
   const [identityError, setIdentityError] = useState<string | null>(null)
   const [identityAvailable, setIdentityAvailable] = useState<boolean | null>(null)
   const [checkingAvailability, setCheckingAvailability] = useState(false)
+  const [pendingIdentity, setPendingIdentity] = useState<{ emoji: string; username: string } | null>(null)
+  const [showSignInPrompt, setShowSignInPrompt] = useState(false)
 
   // Get API headers for identity requests
   const getApiHeaders = useCallback(() => {
@@ -101,11 +107,14 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
       'Content-Type': 'application/json',
       'X-Session-ID': sessionId,
     }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
     if (walletSession?.token) {
       headers['X-Wallet-Session'] = walletSession.token
     }
     return headers
-  }, [])
+  }, [token])
 
   // Load current identity
   const loadIdentity = useCallback(async () => {
@@ -119,6 +128,8 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
         if (data.success && data.data) {
           setIdentity(data.data)
           setIdentityUsername(data.data.username)
+          // Notify other components (like ChatInput) of the loaded identity
+          window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
         }
       }
     } catch (err) {
@@ -150,18 +161,26 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     }
   }, [getApiHeaders])
 
-  // Save identity
-  const saveIdentity = useCallback(async () => {
-    const emoji = selectedFruit || (() => {
+  // Save identity (will prompt sign-in if not authenticated)
+  const saveIdentity = useCallback(async (overrideEmoji?: string, overrideUsername?: string) => {
+    const emoji = overrideEmoji || selectedFruit || (() => {
       const walletSession = getWalletSession()
       const sessionId = getSessionId()
       const addr = walletSession?.address ||
         `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
       return getEmojiFromAddress(addr)
     })()
+    const username = overrideUsername || identityUsername
 
-    if (!identityUsername || identityUsername.length < 3) {
+    if (!username || username.length < 3) {
       setIdentityError('Username must be at least 3 characters')
+      return
+    }
+
+    // If not logged in, save pending identity and show sign-in prompt
+    if (!isLoggedIn) {
+      setPendingIdentity({ emoji, username })
+      setShowSignInPrompt(true)
       return
     }
 
@@ -173,12 +192,15 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
       const res = await fetch(`${apiUrl}/identity/me`, {
         method: 'PUT',
         headers: getApiHeaders(),
-        body: JSON.stringify({ emoji, username: identityUsername }),
+        body: JSON.stringify({ emoji, username }),
       })
       const data = await res.json()
       if (data.success && data.data) {
         setIdentity(data.data)
         setIdentityError(null)
+        setPendingIdentity(null)
+        // Notify other components of identity change
+        window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
       } else {
         setIdentityError(data.error || 'Failed to set identity')
       }
@@ -187,7 +209,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     } finally {
       setIdentityLoading(false)
     }
-  }, [selectedFruit, identityUsername, getApiHeaders])
+  }, [selectedFruit, identityUsername, getApiHeaders, isLoggedIn])
 
   // Load passkeys when panel opens
   useEffect(() => {
@@ -202,6 +224,18 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
       loadIdentity()
     }
   }, [isOpen, loadIdentity])
+
+  // Auto-save pending identity after sign-in
+  useEffect(() => {
+    if (isLoggedIn && pendingIdentity) {
+      setShowSignInPrompt(false)
+      // Small delay to ensure token is set
+      const timer = setTimeout(() => {
+        saveIdentity(pendingIdentity.emoji, pendingIdentity.username)
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [isLoggedIn, pendingIdentity, saveIdentity])
 
   // Check availability when username or selected fruit changes
   useEffect(() => {
@@ -302,9 +336,11 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
 
     try {
       if (isLoggedIn && token) {
+        // Already logged in - register additional passkey
         await registerPasskey()
       } else {
-        await signInWithPasskey()
+        // Not logged in - authenticate with passkey (creates managed user)
+        await loginWithPasskey()
       }
     } catch (err) {
       console.error('Passkey error:', err)
@@ -410,8 +446,11 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
               {/* Signed in state */}
               {isLoggedIn && user ? (
                 <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {user.email && <p>Signed in as <span className={isDark ? 'text-white' : 'text-gray-900'}>{user.email}</span></p>}
-                  {managedAddress && <p className="font-mono mt-1">{truncateAddress(managedAddress)}</p>}
+                  {user.email && !user.email.includes('@passkey.local') ? (
+                    <p>Signed in as <span className={isDark ? 'text-white' : 'text-gray-900'}>{user.email}</span></p>
+                  ) : (
+                    <p>Signed in via <span className={isDark ? 'text-white' : 'text-gray-900'}>Touch ID</span> on {passkeys.length || 1} device{passkeys.length !== 1 ? 's' : ''}</p>
+                  )}
                 </div>
               ) : (
                 <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -430,8 +469,9 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                     }`}
                   >
                     <span>Email</span>
-                    <span className={isLoggedIn && user?.email ? 'text-green-500' : isDark ? 'text-gray-600' : 'text-gray-400'}>
-                      {isLoggedIn && user?.email ? 'Connected' : 'Add'}
+                    {/* Don't count auto-generated passkey emails as "connected" */}
+                    <span className={isLoggedIn && user?.email && !user.email.includes('@passkey.local') ? 'text-green-500' : isDark ? 'text-gray-600' : 'text-gray-400'}>
+                      {isLoggedIn && user?.email && !user.email.includes('@passkey.local') ? 'Connected' : 'Connect'}
                     </span>
                   </button>
                 ) : (
@@ -513,20 +553,201 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                   </div>
                 )}
 
-                {/* Passkey */}
-                <button
-                  onClick={handleAddPasskey}
-                  disabled={passkeyLoading}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
-                    isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
-                  } ${passkeyLoading ? 'opacity-50' : ''}`}
-                >
-                  <span>{passkeyLoading ? 'Setting up...' : 'Touch ID'}</span>
-                  <span className={isLoggedIn && passkeys.length > 0 ? 'text-green-500' : isDark ? 'text-gray-600' : 'text-gray-400'}>
-                    {isLoggedIn && passkeys.length > 0 ? `${passkeys.length}` : 'Add'}
-                  </span>
-                </button>
-                {passkeyError && <p className="text-[10px] text-red-400 px-3">{passkeyError}</p>}
+                {/* Passkey / Touch ID */}
+                {isLoggedIn ? (
+                  /* Logged in: expandable dropdown */
+                  <div className={`border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                    <button
+                      onClick={() => {
+                        setShowPasskeysList(!showPasskeysList)
+                        if (!showPasskeysList) {
+                          loadPasskeys()
+                        }
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
+                        isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
+                      }`}
+                    >
+                      <span>Touch ID</span>
+                      <div className="flex items-center gap-2">
+                        <span><span className="text-green-500">{passkeys.length}</span> <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>· Add more</span></span>
+                        <svg className={`w-3 h-3 transition-transform ${showPasskeysList ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </button>
+
+                    {showPasskeysList && (
+                    <div className={`px-3 pb-3 space-y-2 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
+                      {passkeyError && (
+                        <p className="text-[10px] text-red-400 mt-2">{passkeyError}</p>
+                      )}
+
+                      {/* List of passkeys */}
+                      {passkeys.length > 0 && (
+                        <div className="space-y-1 mt-2">
+                          {passkeys.map((pk) => {
+                            const formatDevice = (deviceType: string | null | undefined): string => {
+                              if (!deviceType) return 'Passkey'
+                              switch (deviceType) {
+                                case 'platform':
+                                  if (typeof navigator !== 'undefined') {
+                                    const ua = navigator.userAgent
+                                    if (/Mac/i.test(ua)) return 'Mac'
+                                    if (/iPhone/i.test(ua)) return 'iPhone'
+                                    if (/iPad/i.test(ua)) return 'iPad'
+                                    if (/Android/i.test(ua)) return 'Android'
+                                    if (/Windows/i.test(ua)) return 'Windows'
+                                  }
+                                  return 'This Device'
+                                case 'cross-platform':
+                                case 'security_key':
+                                  return 'Security Key'
+                                default:
+                                  return 'Passkey'
+                              }
+                            }
+
+                            return (
+                              <div key={pk.id} className="flex items-center justify-between text-xs py-1">
+                                <div className="flex flex-col">
+                                  <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>
+                                    {pk.displayName || formatDevice(pk.deviceType)}
+                                  </span>
+                                  <span className={`text-[9px] font-mono ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                                    {/* Derive passkey-user-xxx from user email if it's a passkey.local email */}
+                                    {user?.email?.match(/^passkey-([a-f0-9]+)@passkey\.local$/)?.[1]
+                                      ? `passkey-user-${user.email.match(/^passkey-([a-f0-9]+)@passkey\.local$/)?.[1]}`
+                                      : pk.id}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={async () => {
+                                    if (confirm('Remove this passkey?')) {
+                                      try {
+                                        const { deletePasskey } = useAuthStore.getState()
+                                        await deletePasskey(pk.id)
+                                      } catch (err) {
+                                        setPasskeyError(err instanceof Error ? err.message : 'Failed to remove')
+                                      }
+                                    }
+                                  }}
+                                  className={`p-1 transition-colors ${isDark ? 'text-gray-600 hover:text-red-400' : 'text-gray-400 hover:text-red-500'}`}
+                                  title="Remove"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Add passkey */}
+                      {addingPasskey ? (
+                        <div className="mt-2 space-y-2">
+                          <input
+                            type="text"
+                            value={newPasskeyName}
+                            onChange={(e) => setNewPasskeyName(e.target.value)}
+                            placeholder="Name this device (e.g. My Mac)"
+                            autoFocus
+                            className={`w-full px-2 py-1.5 text-xs border ${
+                              isDark
+                                ? 'bg-white/5 border-white/20 text-white placeholder-gray-500'
+                                : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                            }`}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                setPasskeyLoading(true)
+                                setPasskeyError(null)
+                                registerPasskey(newPasskeyName.trim() || 'My Device')
+                                  .then(() => {
+                                    setAddingPasskey(false)
+                                    setNewPasskeyName('')
+                                  })
+                                  .catch((err) => setPasskeyError(err instanceof Error ? err.message : 'Failed'))
+                                  .finally(() => setPasskeyLoading(false))
+                              }
+                              if (e.key === 'Escape') {
+                                setAddingPasskey(false)
+                                setNewPasskeyName('')
+                              }
+                            }}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => { setAddingPasskey(false); setNewPasskeyName('') }}
+                              className={`flex-1 py-1.5 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPasskeyLoading(true)
+                                setPasskeyError(null)
+                                registerPasskey(newPasskeyName.trim() || 'My Device')
+                                  .then(() => {
+                                    setAddingPasskey(false)
+                                    setNewPasskeyName('')
+                                  })
+                                  .catch((err) => setPasskeyError(err instanceof Error ? err.message : 'Failed'))
+                                  .finally(() => setPasskeyLoading(false))
+                              }}
+                              disabled={passkeyLoading}
+                              className="flex-1 py-1.5 text-xs text-green-500 disabled:opacity-50"
+                            >
+                              {passkeyLoading ? '...' : 'Add'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end mt-2">
+                          <button
+                            onClick={() => {
+                              let defaultName = 'My Device'
+                              if (typeof navigator !== 'undefined') {
+                                const ua = navigator.userAgent
+                                if (/Mac/i.test(ua)) defaultName = 'My Mac'
+                                else if (/iPhone/i.test(ua)) defaultName = 'My iPhone'
+                                else if (/iPad/i.test(ua)) defaultName = 'My iPad'
+                                else if (/Android/i.test(ua)) defaultName = 'My Android'
+                                else if (/Windows/i.test(ua)) defaultName = 'My PC'
+                              }
+                              setNewPasskeyName(defaultName)
+                              setAddingPasskey(true)
+                            }}
+                            disabled={passkeyLoading}
+                            className={`px-2 py-1 text-xs transition-colors disabled:opacity-50 border ${
+                              isDark
+                                ? 'text-green-400 border-green-500/30 hover:border-green-500/50'
+                                : 'text-green-600 border-green-500/40 hover:border-green-500/60'
+                            }`}
+                          >
+                            Add more
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  </div>
+                ) : (
+                  /* Not logged in: simple connect button */
+                  <button
+                    onClick={handleAddPasskey}
+                    disabled={passkeyLoading}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
+                      isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <span>Touch ID</span>
+                    <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>
+                      {passkeyLoading ? '...' : 'Connect'}
+                    </span>
+                  </button>
+                )}
 
                 {/* Wallet */}
                 {isWalletConnected && walletAddress ? (
@@ -559,19 +780,27 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
 
               {/* Juicy ID */}
               <div className={`pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-                <p className={`text-[10px] mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                <p className={`text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                   Juicy ID
                 </p>
 
-                {/* Current identity display */}
-                {identity && (
-                  <p className={`text-sm mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {identity.formatted}
-                  </p>
-                )}
+                {/* Live preview of composite ID */}
+                <p className={`text-sm mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {(() => {
+                    const walletSession = getWalletSession()
+                    const sessionId = getSessionId()
+                    const currentAddress = walletSession?.address ||
+                      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+                    const defaultEmoji = getEmojiFromAddress(currentAddress)
+                    const emoji = selectedFruit || defaultEmoji
+                    const name = identityUsername || identity?.username || 'username'
+                    return `${emoji} ${name}`
+                  })()}
+                </p>
 
                 {/* Emoji picker row */}
-                <div className="flex flex-wrap gap-1 mb-2">
+                <p className={`text-[10px] mb-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>Pick a flavor</p>
+                <div className="flex flex-wrap gap-1 mb-3">
                   {FRUIT_EMOJIS.map((fruit) => {
                     // Get default emoji based on current user's address
                     const walletSession = getWalletSession()
@@ -628,6 +857,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                 </div>
 
                 {/* Username input */}
+                <p className={`text-[10px] mb-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>Pick a name</p>
                 <div className="flex gap-2">
                   <div className="flex-1 relative">
                     <input
@@ -659,7 +889,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                     )}
                   </div>
                   <button
-                    onClick={saveIdentity}
+                    onClick={() => saveIdentity()}
                     disabled={identityLoading || !identityUsername || identityUsername.length < 3 || identityAvailable === false}
                     className={`px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${
                       isDark
@@ -673,6 +903,43 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                 {identityError && (
                   <p className="text-[10px] text-red-400 mt-1">{identityError}</p>
                 )}
+                {/* Sign-in prompt when trying to save without auth */}
+                {showSignInPrompt && (
+                  <div className={`mt-2 p-2 text-xs rounded ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                    <p className={`mb-2 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                      Sign in to claim your Juicy ID
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            await loginWithPasskey()
+                          } catch (err) {
+                            setIdentityError(err instanceof Error ? err.message : 'Sign in failed')
+                          }
+                        }}
+                        className={`flex-1 px-2 py-1.5 text-xs transition-colors ${
+                          isDark
+                            ? 'text-juice-cyan border border-juice-cyan/30 hover:border-juice-cyan/50'
+                            : 'text-juice-cyan border border-juice-cyan/40 hover:border-juice-cyan/60'
+                        }`}
+                      >
+                        Sign in with Touch ID
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowSignInPrompt(false)
+                          setPendingIdentity(null)
+                        }}
+                        className={`px-2 py-1.5 text-xs transition-colors ${
+                          isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'
+                        }`}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
                   3-20 chars, letters/numbers/underscore
                 </p>
@@ -680,10 +947,12 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                 {/* Address - subtle, small, full */}
                 <p className={`text-[10px] font-mono mt-3 pt-2 border-t break-all ${isDark ? 'text-gray-600 border-white/5' : 'text-gray-400 border-gray-100'}`}>
                   {(() => {
+                    // Priority: managed smart account > wallet session > session-based pseudo-address
+                    if (managedAddress) return managedAddress
                     const walletSession = getWalletSession()
+                    if (walletSession?.address) return walletSession.address
                     const sessionId = getSessionId()
-                    return walletSession?.address ||
-                      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+                    return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
                   })()}
                 </p>
               </div>

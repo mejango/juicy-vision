@@ -689,7 +689,7 @@ export async function sponsoredOmnichainDeployERC20(
 // Omnichain Project Launch
 // ============================================================================
 // Deploy a new Juicebox project on multiple chains simultaneously.
-// Uses JBController.launchProjectFor() on each chain.
+// Uses JBOmnichainDeployer.launchProjectFor() to create projects with suckers atomically.
 
 export interface JBTerminalConfig {
   terminal: string                      // JBMultiTerminal address
@@ -700,6 +700,26 @@ export interface JBTerminalConfig {
   }>
 }
 
+// Token mapping for cross-chain bridging via suckers
+export interface JBSuckerTokenMapping {
+  localToken: string                    // Token address on local chain (0xEEEe... for native)
+  remoteToken: string                   // Token address on remote chain
+  minGas: number                        // Minimum gas for bridge operation
+  minBridgeAmount: string               // Minimum amount to bridge (in wei)
+}
+
+// Sucker deployer configuration for a specific bridge type
+export interface JBSuckerDeployerConfig {
+  deployer: string                      // Sucker deployer contract address
+  mappings: JBSuckerTokenMapping[]      // Token mappings for this deployer
+}
+
+// Full sucker deployment configuration for atomic project+sucker deployment
+export interface JBSuckerDeploymentConfig {
+  deployerConfigurations: JBSuckerDeployerConfig[]  // One per bridge type (BP, ARB, CCIP)
+  salt: string                                      // bytes32 for deterministic addresses
+}
+
 export interface JBLaunchProjectRequest {
   chainIds: number[]
   owner: string                         // Project owner address
@@ -707,6 +727,7 @@ export interface JBLaunchProjectRequest {
   rulesetConfigurations: JBRulesetConfig[]
   terminalConfigurations: JBTerminalConfig[]
   memo: string
+  suckerDeploymentConfiguration?: JBSuckerDeploymentConfig  // Optional: deploy suckers atomically
 }
 
 export interface JBLaunchProjectResponse {

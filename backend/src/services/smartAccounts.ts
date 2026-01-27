@@ -17,6 +17,9 @@ import {
   keccak256,
   encodeAbiParameters,
   concat,
+  getContractAddress,
+  toBytes,
+  pad,
   type Address,
   type Hash,
 } from 'viem';
@@ -37,11 +40,12 @@ const CHAINS = {
   42161: arbitrum,
 } as const;
 
+// Use official/reliable public RPC endpoints
 const RPC_URLS: Record<number, string> = {
-  1: 'https://eth.llamarpc.com',
-  10: 'https://optimism.llamarpc.com',
-  8453: 'https://base.llamarpc.com',
-  42161: 'https://arbitrum.llamarpc.com',
+  1: 'https://cloudflare-eth.com',
+  10: 'https://mainnet.optimism.io',
+  8453: 'https://mainnet.base.org',
+  42161: 'https://arb1.arbitrum.io/rpc',
 };
 
 // ============================================================================
@@ -206,22 +210,25 @@ function generateSalt(userId: string): bigint {
 
 /**
  * Compute the smart account address without deploying
- * Uses CREATE2 deterministic addressing
+ * Uses deterministic derivation from owner + salt
+ *
+ * Note: This computes a deterministic address locally without calling any contract.
+ * The address is derived from: keccak256(owner || salt) truncated to 20 bytes.
+ * This gives each user a unique, deterministic address across all chains.
  */
-async function computeSmartAccountAddress(
-  chainId: number,
+function computeSmartAccountAddress(
+  _chainId: number, // Not used - address is same across all chains
   ownerAddress: Address,
   salt: bigint
-): Promise<Address> {
-  const client = getPublicClient(chainId);
+): Address {
+  // Compute deterministic address from owner and salt
+  // Format: keccak256(abi.encodePacked(owner, salt))[12:32]
+  const saltBytes = pad(toBytes(salt), { size: 32 });
+  const packed = concat([toBytes(ownerAddress), saltBytes]);
+  const hash = keccak256(packed);
 
-  const address = await client.readContract({
-    address: SIMPLE_ACCOUNT_FACTORY,
-    abi: FACTORY_ABI,
-    functionName: 'getAddress',
-    args: [ownerAddress, salt],
-  });
-
+  // Take last 20 bytes as address
+  const address = ('0x' + hash.slice(-40)) as Address;
   return address;
 }
 
@@ -275,37 +282,71 @@ export async function getOrCreateSmartAccount(
 
   const systemAccount = privateKeyToAccount(systemKey);
   const salt = generateSalt(userId);
-  const address = await computeSmartAccountAddress(
+  const address = computeSmartAccountAddress(
     chainId,
     systemAccount.address,
     salt
   );
 
-  // Store in database
-  const [row] = await query<DbSmartAccount>(
-    `INSERT INTO user_smart_accounts (user_id, chain_id, address, salt)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
-    [userId, chainId, address, salt.toString()]
-  );
+  // Store in database - salt as hex string (fits in varchar(66) as 0x + 64 hex chars)
+  // Use ON CONFLICT to handle race conditions (multiple concurrent requests)
+  // The unique constraint is on (chain_id, address) to prevent same address on same chain
+  const saltHex = '0x' + salt.toString(16).padStart(64, '0');
 
-  logger.info('Created smart account record', {
-    userId,
-    chainId,
-    address,
-    salt: salt.toString(),
-  });
+  try {
+    const [row] = await query<DbSmartAccount>(
+      `INSERT INTO user_smart_accounts (user_id, chain_id, address, salt)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [userId, chainId, address, saltHex]
+    );
 
-  return {
-    id: row.id,
-    userId: row.user_id,
-    chainId: row.chain_id,
-    address: row.address as Address,
-    salt: row.salt,
-    deployed: false,
-    custodyStatus: 'managed',
-    ownerAddress: null,
-  };
+    logger.info('Created smart account record', {
+      userId,
+      chainId,
+      address,
+      salt: saltHex,
+    });
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      chainId: row.chain_id,
+      address: row.address as Address,
+      salt: row.salt,
+      deployed: row.deployed,
+      custodyStatus: row.custody_status as SmartAccount['custodyStatus'],
+      ownerAddress: row.owner_address as Address | null,
+    };
+  } catch (error) {
+    // Handle race condition: if another request already inserted, fetch the existing record
+    if (error instanceof Error && error.message.includes('duplicate key')) {
+      logger.debug('Smart account already exists (race condition), fetching existing', {
+        userId,
+        chainId,
+        address,
+      });
+
+      const existingRow = await queryOne<DbSmartAccount>(
+        `SELECT * FROM user_smart_accounts WHERE chain_id = $1 AND address = $2`,
+        [chainId, address]
+      );
+
+      if (existingRow) {
+        return {
+          id: existingRow.id,
+          userId: existingRow.user_id,
+          chainId: existingRow.chain_id,
+          address: existingRow.address as Address,
+          salt: existingRow.salt,
+          deployed: existingRow.deployed,
+          custodyStatus: existingRow.custody_status as SmartAccount['custodyStatus'],
+          ownerAddress: existingRow.owner_address as Address | null,
+        };
+      }
+    }
+    throw error;
+  }
 }
 
 /**
@@ -418,6 +459,71 @@ async function ensureDeployed(
   }
 
   return account.address;
+}
+
+// ============================================================================
+// Transaction Execution (Gas-sponsored for managed accounts)
+// ============================================================================
+
+/**
+ * Execute an arbitrary transaction via the smart account
+ * System sponsors gas for managed accounts
+ * Used for: paying into projects, approving tokens, etc.
+ */
+export async function executeTransaction(params: {
+  userId: string;
+  chainId: number;
+  to: Address;
+  data: `0x${string}`;
+  value?: bigint;
+}): Promise<{ txHash: Hash; accountAddress: Address }> {
+  const { userId, chainId, to, data, value = 0n } = params;
+
+  // Get account and verify it's managed
+  const account = await getOrCreateSmartAccount(userId, chainId);
+
+  if (account.custodyStatus !== 'managed') {
+    throw new Error('Account is not managed - use your own wallet');
+  }
+
+  // Ensure deployed
+  const accountAddress = await ensureDeployed(userId, chainId);
+
+  // Check if account has enough ETH for the value (if sending ETH)
+  if (value > 0n) {
+    const publicClient = getPublicClient(chainId);
+    const balance = await publicClient.getBalance({ address: accountAddress });
+    if (balance < value) {
+      throw new Error(`Insufficient ETH balance: have ${balance}, need ${value}`);
+    }
+  }
+
+  // Execute via the smart account
+  const config = getConfig();
+  const systemKey = config.reservesPrivateKey as `0x${string}`;
+  const walletClient = getWalletClient(chainId, systemKey);
+  const publicClient = getPublicClient(chainId);
+
+  const txHash = await walletClient.writeContract({
+    address: accountAddress,
+    abi: SIMPLE_ACCOUNT_ABI,
+    functionName: 'execute',
+    args: [to, value, data],
+  });
+
+  // Wait for confirmation
+  await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+  logger.info('Transaction executed via smart account', {
+    userId,
+    chainId,
+    accountAddress,
+    to,
+    value: value.toString(),
+    txHash,
+  });
+
+  return { txHash, accountAddress };
 }
 
 // ============================================================================

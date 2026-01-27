@@ -59,6 +59,7 @@ authRouter.post(
 
     try {
       const { user, token } = await verifyOtpAndLogin(email, code);
+
       return c.json({
         success: true,
         data: {

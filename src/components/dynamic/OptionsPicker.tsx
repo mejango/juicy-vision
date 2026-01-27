@@ -292,86 +292,118 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     setHasSubmitted(true)
     setDoneWord(DONE_WORDS[Math.floor(Math.random() * DONE_WORDS.length)])
 
-    // Check if any "other" option is selected - if so, prefill prompt and focus
-    // Skip file fields since they handle their own input
-    for (const g of groups) {
-      if (g.type === 'file') continue
-      const sel = selections[g.id]
-      if (typeof sel === 'string' && isOtherValue(sel)) {
-        // Create a useful prompt prefix based on the group label
-        const labelLower = g.label.toLowerCase()
-        let prefix = ''
-        if (labelLower.includes('type') || labelLower.includes('project') || labelLower.includes('building')) {
-          prefix = "I'm building "
-        } else if (labelLower.includes('structure') || labelLower.includes('model')) {
-          prefix = "I want to "
-        } else if (labelLower.includes('size') || labelLower.includes('team')) {
-          prefix = "We have "
-        } else if (labelLower.includes('goal') || labelLower.includes('funding')) {
-          prefix = "I'm looking to raise "
+    try {
+      // Check if any "other" option is selected - if so, prefill prompt and focus
+      // Skip file fields since they handle their own input
+      for (const g of groups) {
+        if (g.type === 'file') continue
+        const sel = selections[g.id]
+        // Check if "other" is selected - sel can be a string or an array
+        const hasOther = Array.isArray(sel)
+          ? sel.some(v => isOtherValue(v))
+          : typeof sel === 'string' && isOtherValue(sel)
+        if (hasOther) {
+          // Create a useful prompt prefix based on the group label
+          const labelLower = g.label.toLowerCase()
+          let prefix = ''
+          if (labelLower.includes('type') || labelLower.includes('project') || labelLower.includes('building')) {
+            prefix = "I'm building "
+          } else if (labelLower.includes('structure') || labelLower.includes('model')) {
+            prefix = "I want to "
+          } else if (labelLower.includes('size') || labelLower.includes('team')) {
+            prefix = "We have "
+          } else if (labelLower.includes('goal') || labelLower.includes('funding')) {
+            prefix = "I'm looking to raise "
+          } else {
+            prefix = `${g.label}: `
+          }
+          // Dispatch event to prefill prompt field
+          window.dispatchEvent(new CustomEvent('juice:prefill-prompt', {
+            detail: { text: prefix, focus: true }
+          }))
+          return
+        }
+      }
+
+      // Build response message for normal selections
+      // Filter out empty/undefined values to avoid showing "undefined" in messages
+      // Also collect file attachments to send separately
+      const fileAttachments: Record<string, string> = {}
+
+      const parts = groups.map(g => {
+        const sel = selections[g.id]
+        const options = g.options || []
+
+        // Skip empty selections entirely
+        if (sel === undefined || sel === null || sel === '') return null
+        if (Array.isArray(sel) && sel.length === 0) return null
+
+        if (Array.isArray(sel)) {
+          const labels = sel.map(v => options.find(o => o.value === v)?.label || v)
+          return `${g.label}: ${labels.join(', ')}`
+        }
+
+        // For file type, collect the data URL and indicate upload in message
+        if (g.type === 'file') {
+          const isValidImage = typeof sel === 'string' && (sel.startsWith('data:image/') || sel.startsWith('http://') || sel.startsWith('https://'))
+          if (isValidImage) {
+            // Store the file data keyed by group ID for the backend to process
+            fileAttachments[g.id] = sel
+            return `${g.label}: [uploaded]`
+          }
+          return null
+        }
+
+        const selected = options.find(o => o.value === sel)
+        return `${g.label}: ${selected?.label || sel}`
+      }).filter(Boolean) // Remove null entries
+      let message = parts.join(', ')
+
+      // Append memo if provided
+      if (memo.trim()) {
+        message += `. Note: ${memo.trim()}`
+      }
+
+      // If message is empty (all fields were optional and empty), create a confirmation message
+      if (!message.trim()) {
+        message = '[Confirmed]'
+      }
+
+      // Capture tier/payout/metadata in draft store for instant preview (non-blocking)
+      try {
+        parseFormSubmission(selections as Record<string, string>)
+      } catch (err) {
+        console.error('Failed to parse form submission for draft store:', err)
+        // Continue anyway - this is just for preview, not critical
+      }
+
+      // Normalize selections: for non-multiSelect groups, return single value instead of array
+      const normalizedSelections: Record<string, string | string[]> = {}
+      groups.forEach(g => {
+        const sel = selections[g.id]
+        if (Array.isArray(sel) && !g.multiSelect) {
+          // Single-select groups return first value or empty string
+          normalizedSelections[g.id] = sel[0] || ''
         } else {
-          prefix = `${g.label}: `
+          normalizedSelections[g.id] = sel
         }
-        // Dispatch event to prefill prompt field
-        window.dispatchEvent(new CustomEvent('juice:prefill-prompt', {
-          detail: { text: prefix, focus: true }
+      })
+
+      if (onSubmit) {
+        onSubmit(normalizedSelections as Record<string, string>)
+      } else {
+        // Include file attachments in the event for backend processing
+        window.dispatchEvent(new CustomEvent('juice:send-message', {
+          detail: {
+            message,
+            fileAttachments: Object.keys(fileAttachments).length > 0 ? fileAttachments : undefined
+          }
         }))
-        return
       }
-    }
-
-    // Build response message for normal selections
-    // Filter out empty/undefined values to avoid showing "undefined" in messages
-    // Also collect file attachments to send separately
-    const fileAttachments: Record<string, string> = {}
-
-    const parts = groups.map(g => {
-      const sel = selections[g.id]
-      const options = g.options || []
-
-      // Skip empty selections entirely
-      if (sel === undefined || sel === null || sel === '') return null
-      if (Array.isArray(sel) && sel.length === 0) return null
-
-      if (Array.isArray(sel)) {
-        const labels = sel.map(v => options.find(o => o.value === v)?.label || v)
-        return `${g.label}: ${labels.join(', ')}`
-      }
-
-      // For file type, collect the data URL and indicate upload in message
-      if (g.type === 'file') {
-        const isValidImage = typeof sel === 'string' && (sel.startsWith('data:image/') || sel.startsWith('http://') || sel.startsWith('https://'))
-        if (isValidImage) {
-          // Store the file data keyed by group ID for the backend to process
-          fileAttachments[g.id] = sel
-          return `${g.label}: [uploaded]`
-        }
-        return null
-      }
-
-      const selected = options.find(o => o.value === sel)
-      return `${g.label}: ${selected?.label || sel}`
-    }).filter(Boolean) // Remove null entries
-    let message = parts.join(', ')
-
-    // Append memo if provided
-    if (memo.trim()) {
-      message += `. Note: ${memo.trim()}`
-    }
-
-    // Capture tier/payout/metadata in draft store for instant preview
-    parseFormSubmission(selections as Record<string, string>)
-
-    if (onSubmit) {
-      onSubmit(selections as Record<string, string>)
-    } else {
-      // Include file attachments in the event for backend processing
-      window.dispatchEvent(new CustomEvent('juice:send-message', {
-        detail: {
-          message,
-          fileAttachments: Object.keys(fileAttachments).length > 0 ? fileAttachments : undefined
-        }
-      }))
+    } catch (err) {
+      console.error('OptionsPicker handleSubmit error:', err)
+      // Reset submitted state so user can try again
+      setHasSubmitted(false)
     }
   }
 
@@ -500,7 +532,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                   isDark ? 'border-white/10' : 'border-gray-200'
                 }`}>
                   {(group.options || []).map((option, idx) => {
-                    const selected = selections[group.id] === option.value
+                    const selected = isSelected(group.id, option.value)
                     return (
                       <button
                         key={option.value}

@@ -344,4 +344,110 @@ describe('Passkey Service', () => {
       )
     })
   })
+
+  describe('signupWithPasskey', () => {
+    it('completes signup flow successfully', async () => {
+      // Mock server response for signup options
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          success: true,
+          data: {
+            challenge: 'dGVzdC1jaGFsbGVuZ2U',
+            rp: { name: 'Juicy Vision', id: 'localhost' },
+            user: { id: 'dXNlci1pZA', name: 'New User', displayName: 'New User' },
+            pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+            timeout: 300000,
+            attestation: 'none',
+            authenticatorSelection: {
+              residentKey: 'preferred',
+              userVerification: 'preferred',
+            },
+            tempUserId: 'temp-user-123',
+          },
+        }),
+      })
+
+      // Mock WebAuthn credential creation
+      const mockCredential = {
+        id: 'credential-id',
+        rawId: new ArrayBuffer(16),
+        response: {
+          clientDataJSON: new ArrayBuffer(100),
+          attestationObject: new ArrayBuffer(200),
+          getTransports: () => ['internal'],
+        },
+        authenticatorAttachment: 'platform',
+        type: 'public-key',
+      }
+      mockCredentialsCreate.mockResolvedValueOnce(mockCredential)
+
+      // Mock server response for signup verification
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          success: true,
+          data: {
+            user: {
+              id: 'user-123',
+              email: null,
+              privacyMode: 'open_book',
+              emailVerified: false,
+              passkeyEnabled: true,
+            },
+            token: 'jwt-token',
+          },
+        }),
+      })
+
+      const { signupWithPasskey } = await import('./passkey')
+      const result = await signupWithPasskey()
+
+      expect(result.user.id).toBe('user-123')
+      expect(result.user.passkeyEnabled).toBe(true)
+      expect(result.token).toBe('jwt-token')
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      expect(mockCredentialsCreate).toHaveBeenCalledTimes(1)
+    })
+
+    it('throws error when credential creation is cancelled', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          success: true,
+          data: {
+            challenge: 'dGVzdC1jaGFsbGVuZ2U',
+            rp: { name: 'Juicy Vision', id: 'localhost' },
+            user: { id: 'dXNlci1pZA', name: 'New User', displayName: 'New User' },
+            pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+            timeout: 300000,
+            attestation: 'none',
+            authenticatorSelection: {
+              residentKey: 'preferred',
+              userVerification: 'preferred',
+            },
+            tempUserId: 'temp-user-123',
+          },
+        }),
+      })
+
+      mockCredentialsCreate.mockResolvedValueOnce(null)
+
+      const { signupWithPasskey } = await import('./passkey')
+      await expect(signupWithPasskey()).rejects.toThrow('Passkey creation was cancelled')
+    })
+
+    it('handles server error on signup options request', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: () => Promise.resolve({
+          success: false,
+          error: 'Server unavailable',
+        }),
+      })
+
+      const { signupWithPasskey } = await import('./passkey')
+      await expect(signupWithPasskey()).rejects.toThrow('Server unavailable')
+    })
+  })
 })

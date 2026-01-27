@@ -6,7 +6,8 @@ import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResol
 import { hasValidWalletSession, getWalletSession, clearWalletSession, signInWithWallet } from '../../services/siwe'
 import { getSessionId } from '../../services/session'
 import { getEmojiFromAddress, FRUIT_EMOJIS } from './ParticipantAvatars'
-import { signInWithPasskey, getPasskeyWallet, forgetPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
+import { getPasskeyWallet, forgetPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
+import { useAuthStore } from '../../stores'
 import { storage } from '../../services/storage'
 
 export interface JuicyIdentity {
@@ -27,7 +28,7 @@ interface JuicyIdPopoverProps {
   onClose: () => void
   anchorPosition: AnchorPosition | null
   onWalletClick: () => void
-  onPasskeySuccess?: (wallet: PasskeyWallet) => void
+  onPasskeySuccess?: () => void
   onIdentitySet?: (identity: JuicyIdentity) => void
 }
 
@@ -173,13 +174,15 @@ export function JuicyIdPopover({
     }
   }
 
-  // Passkey auth
+  // Passkey auth - uses managed mode (creates user record)
+  const { loginWithPasskey } = useAuthStore()
+
   const handlePasskeyAuth = async () => {
     setIsAuthenticating(true)
     setAuthError(null)
     try {
-      const wallet = await signInWithPasskey()
-      onPasskeySuccess?.(wallet)
+      await loginWithPasskey()
+      onPasskeySuccess?.()
       onClose() // Close and user can click Set Juicy ID again now that they're signed in
     } catch (err) {
       console.error('Passkey auth failed:', err)
@@ -187,7 +190,7 @@ export function JuicyIdPopover({
         const msg = err.message.toLowerCase()
         if (msg.includes('cancelled') || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('abort')) {
           // User cancelled
-        } else if (msg.includes('prf') || msg.includes('not supported')) {
+        } else if (msg.includes('not supported')) {
           setAuthError('Touch ID not supported on this device.')
         } else {
           setAuthError('Failed. Try another method.')
@@ -476,6 +479,9 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
   const [isSessionStale, setIsSessionStale] = useState(false)
 
+  // Auth store for managed passkey users (server-side passkey auth)
+  const { user: authUser, token: authToken, isAuthenticated } = useAuthStore()
+
   // Reset stale connection - clears all auth state
   const resetConnection = useCallback(() => {
     clearWalletSession()
@@ -608,7 +614,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
     <div className={`flex items-center text-xs ${
       theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
     }`}>
-      {(!isConnected && !address && !passkeyWallet) ? (
+      {(!isConnected && !address && !passkeyWallet && !isAuthenticated()) ? (
         <button
           onClick={openWalletPanel}
           className={`transition-colors ${
@@ -643,7 +649,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
                 : 'text-gray-400 hover:text-gray-600'
             }`}
           >
-            {isSignedIn || passkeyWallet ? (
+            {isSignedIn || passkeyWallet || isAuthenticated() ? (
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 shrink-0" />
             ) : (
               <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50 mr-1.5 shrink-0" />

@@ -7,8 +7,9 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { optionalAuth } from '../middleware/auth.ts';
+import { optionalAuth, requireAuth } from '../middleware/auth.ts';
 import { requireWalletOrAuth } from '../middleware/walletSession.ts';
+import { getCustodialAddress } from '../services/wallet.ts';
 import {
   getIdentityByAddress,
   setIdentity,
@@ -68,6 +69,7 @@ identityRouter.get('/me', optionalAuth, requireWalletOrAuth, async (c) => {
 });
 
 // PUT /identity/me - Set or update current user's identity
+// Requires authentication (must be signed in, not anonymous)
 const SetIdentitySchema = z.object({
   emoji: z.string().refine((e) => VALID_EMOJIS.includes(e), {
     message: 'Invalid emoji. Must be a fruit or juice emoji.',
@@ -84,15 +86,16 @@ const SetIdentitySchema = z.object({
 
 identityRouter.put(
   '/me',
-  optionalAuth,
-  requireWalletOrAuth,
+  requireAuth, // Must be authenticated (not anonymous)
   zValidator('json', SetIdentitySchema),
   async (c) => {
-    const walletSession = c.get('walletSession')!;
+    const user = c.get('user')!;
     const body = c.req.valid('json');
 
     try {
-      const identity = await setIdentity(walletSession.address, body.emoji, body.username);
+      // Get user's custodial address
+      const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
+      const identity = await setIdentity(address, body.emoji, body.username);
       return c.json({
         success: true,
         data: serializeIdentity(identity),
@@ -105,11 +108,13 @@ identityRouter.put(
 );
 
 // DELETE /identity/me - Delete current user's identity
-identityRouter.delete('/me', optionalAuth, requireWalletOrAuth, async (c) => {
-  const walletSession = c.get('walletSession')!;
+// Requires authentication
+identityRouter.delete('/me', requireAuth, async (c) => {
+  const user = c.get('user')!;
 
   try {
-    await deleteIdentity(walletSession.address);
+    const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
+    await deleteIdentity(address);
     return c.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete identity';
@@ -134,9 +139,17 @@ const CheckAvailabilitySchema = z.object({
   username: z.string(),
 });
 
-identityRouter.get('/check', zValidator('query', CheckAvailabilitySchema), async (c) => {
+identityRouter.get('/check', optionalAuth, zValidator('query', CheckAvailabilitySchema), async (c) => {
   const { emoji, username } = c.req.valid('query');
-  const available = await isIdentityAvailable(emoji, username);
+
+  // Get current user's address to exclude from check (so they can update their own identity)
+  let excludeAddress: string | undefined;
+  const user = c.get('user');
+  if (user) {
+    excludeAddress = await getCustodialAddress(user.custodialAddressIndex ?? 0);
+  }
+
+  const available = await isIdentityAvailable(emoji, username, excludeAddress);
 
   return c.json({
     success: true,

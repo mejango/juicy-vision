@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, ClipboardEvent, DragEvent } from 'react'
 import { useAccount, useDisconnect, useSignMessage, useChainId } from 'wagmi'
-import { useThemeStore } from '../../stores'
+import { useThemeStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
 import { hasValidWalletSession, clearWalletSession, signInWithWallet, getWalletSession } from '../../services/siwe'
 import { getPasskeyWallet, clearPasskeyWallet } from '../../services/passkeyWallet'
@@ -68,6 +68,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme, toggleTheme } = useThemeStore()
+  const { token: authToken, _hasHydrated } = useAuthStore()
   const { address, isConnected } = useAccount()
   const { ensName } = useEnsNameResolved(address)
   const { disconnect } = useDisconnect()
@@ -94,6 +95,9 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
         const headers: Record<string, string> = {
           'X-Session-ID': sessionId,
         }
+        if (authToken) {
+          headers['Authorization'] = `Bearer ${authToken}`
+        }
         if (walletSession?.token) {
           headers['X-Wallet-Session'] = walletSession.token
         }
@@ -102,14 +106,16 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           const data = await res.json()
           if (data.success && data.data) {
             setIdentity(data.data)
+            // Notify other components of the loaded identity
+            window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
           }
         }
-      } catch (err) {
+      } catch {
         // Ignore errors
       }
     }
     fetchIdentity()
-  }, [address, passkeyWallet?.address])
+  }, [address, passkeyWallet?.address, authToken, _hasHydrated])
 
   // Listen for identity changes from other components
   useEffect(() => {

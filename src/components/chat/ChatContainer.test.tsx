@@ -58,6 +58,7 @@ vi.mock('../../services/chat', () => ({
 
 vi.mock('../../services/session', () => ({
   getSessionId: vi.fn(() => 'test-session-id-12345678901234567890'),
+  getCachedPseudoAddress: vi.fn(() => null),
 }))
 
 vi.mock('wagmi', async () => {

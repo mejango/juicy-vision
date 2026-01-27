@@ -7,6 +7,7 @@ import {
   listPasskeys,
   deletePasskey as passkeyDelete,
   renamePasskey as passkeyRename,
+  signupWithPasskey as passkeySignup,
 } from '../services/passkey'
 
 // ============================================================================
@@ -142,6 +143,7 @@ interface AuthState {
   // Passkey actions
   passkeys: PasskeyInfo[]
   loginWithPasskey: (email?: string) => Promise<void>
+  signupWithPasskey: () => Promise<void>
   registerPasskey: (displayName?: string) => Promise<PasskeyInfo>
   loadPasskeys: () => Promise<void>
   deletePasskey: (id: string) => Promise<void>
@@ -157,6 +159,9 @@ interface AuthState {
   isManagedMode: () => boolean
   isSelfCustodyMode: () => boolean
   canUseGhostMode: () => boolean
+
+  // Hydration
+  _hasHydrated: boolean
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -170,6 +175,7 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       error: null,
       currentSessionId: null,
+      _hasHydrated: false,
       passkeys: [],
 
       // Mode setters
@@ -260,11 +266,14 @@ export const useAuthStore = create<AuthState>()(
             // Ignore logout errors
           }
         }
+        // Clear cached smart account address
+        localStorage.removeItem('juice-smart-account-address')
         set({
           user: null,
           token: null,
           mode: 'self_custody',
           currentSessionId: null,
+          passkeys: [],
         })
       },
 
@@ -299,9 +308,70 @@ export const useAuthStore = create<AuthState>()(
             privacyMode: result.user.privacyMode as PrivacyMode,
             isLoading: false,
           })
+
+          // Fetch and cache smart account address immediately after login
+          // This ensures we have the address cached for offline/expired token scenarios
+          try {
+            const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+            const response = await fetch(`${API_BASE_URL}/wallet/address`, {
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${result.token}`,
+              },
+            })
+            const data = await response.json()
+            if (data.success && data.data?.address) {
+              localStorage.setItem('juice-smart-account-address', data.data.address)
+            }
+          } catch {
+            // Non-critical, will be fetched later by useManagedWallet
+          }
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : 'Passkey login failed',
+            isLoading: false,
+          })
+          throw error
+        }
+      },
+
+      signupWithPasskey: async () => {
+        set({ isLoading: true, error: null })
+        try {
+          const result = await passkeySignup()
+          set({
+            user: {
+              id: result.user.id,
+              email: result.user.email,
+              privacyMode: result.user.privacyMode as PrivacyMode,
+              hasCustodialWallet: false,
+              passkeyEnabled: result.user.passkeyEnabled,
+            },
+            token: result.token,
+            mode: 'managed',
+            privacyMode: result.user.privacyMode as PrivacyMode,
+            isLoading: false,
+          })
+
+          // Fetch and cache smart account address immediately after signup
+          try {
+            const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+            const response = await fetch(`${API_BASE_URL}/wallet/address`, {
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${result.token}`,
+              },
+            })
+            const data = await response.json()
+            if (data.success && data.data?.address) {
+              localStorage.setItem('juice-smart-account-address', data.data.address)
+            }
+          } catch {
+            // Non-critical, will be fetched later by useManagedWallet
+          }
+        } catch (error) {
+          set({
+            error: error instanceof Error ? error.message : 'Passkey signup failed',
             isLoading: false,
           })
           throw error
@@ -452,6 +522,9 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         token: state.token,
       }),
+      onRehydrateStorage: () => () => {
+        useAuthStore.setState({ _hasHydrated: true })
+      },
     }
   )
 )

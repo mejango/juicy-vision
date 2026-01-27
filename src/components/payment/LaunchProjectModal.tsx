@@ -48,8 +48,21 @@ export default function LaunchProjectModal({
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
 
-  const { isConnected } = useAccount()
+  const { isConnected, address: connectedAddress } = useAccount()
   const { address: managedAddress } = useManagedWallet()
+
+  // Determine the effective owner: Smart Account for managed mode, connected wallet for self-custody
+  // This ensures the project is owned by the user's actual address, not a placeholder from the AI
+  const effectiveOwner = useMemo(() => {
+    if (isManagedMode && managedAddress) {
+      return managedAddress
+    }
+    if (isConnected && connectedAddress) {
+      return connectedAddress
+    }
+    // Fallback to prop value (may be empty or from AI output)
+    return owner
+  }, [isManagedMode, managedAddress, isConnected, connectedAddress, owner])
 
   const [hasStarted, setHasStarted] = useState(false)
   const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
@@ -77,14 +90,14 @@ export default function LaunchProjectModal({
   // Verify transaction parameters
   const verificationResult = useMemo(() => {
     return verifyLaunchProjectParams({
-      owner: owner as `0x${string}`,
+      owner: effectiveOwner as `0x${string}`,
       projectUri,
       chainIds,
       rulesetConfigurations: [rulesetConfig],
       terminalConfigurations,
       memo,
     })
-  }, [owner, projectUri, chainIds, rulesetConfig, terminalConfigurations, memo])
+  }, [effectiveOwner, projectUri, chainIds, rulesetConfig, terminalConfigurations, memo])
 
   const hasWarnings = verificationResult.doubts.length > 0
   const canProceed = !hasWarnings || warningsAcknowledged
@@ -99,18 +112,18 @@ export default function LaunchProjectModal({
   }, [isOpen, reset])
 
   const handleLaunch = useCallback(async () => {
-    if (!owner) return
+    if (!effectiveOwner) return
 
     setHasStarted(true)
     await launch({
       chainIds,
-      owner,
+      owner: effectiveOwner,
       projectUri,
       rulesetConfigurations: [rulesetConfig],
       terminalConfigurations,
       memo,
     })
-  }, [owner, chainIds, projectUri, rulesetConfig, terminalConfigurations, memo, launch])
+  }, [effectiveOwner, chainIds, projectUri, rulesetConfig, terminalConfigurations, memo, launch])
 
   const handleClose = useCallback(() => {
     reset()
@@ -279,10 +292,10 @@ export default function LaunchProjectModal({
               {/* Owner */}
               <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                 <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Project Owner
+                  Project Owner {isManagedMode && '(Smart Account)'}
                 </div>
                 <div className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {owner.slice(0, 8)}...{owner.slice(-6)}
+                  {effectiveOwner ? `${effectiveOwner.slice(0, 8)}...${effectiveOwner.slice(-6)}` : 'Not connected'}
                 </div>
               </div>
 
@@ -301,7 +314,7 @@ export default function LaunchProjectModal({
                 type="launchProject"
                 details={{
                   projectName,
-                  owner,
+                  owner: effectiveOwner,
                   chainIds,
                 }}
                 isDark={isDark}

@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { useThemeStore } from '../../stores'
-import { signInWithPasskey, type PasskeyWallet } from '../../services/passkeyWallet'
+import { useThemeStore, useAuthStore } from '../../stores'
+import { forgetPasskeyWallet } from '../../services/passkeyWallet'
 
 export interface AnchorPosition {
   top: number
@@ -15,7 +15,7 @@ interface AuthOptionsModalProps {
   isOpen: boolean
   onClose: () => void
   onWalletClick: () => void
-  onPasskeySuccess?: (wallet: PasskeyWallet) => void
+  onPasskeySuccess?: () => void
   title?: string
   description?: string
   anchorPosition?: AnchorPosition | null
@@ -32,6 +32,7 @@ export default function AuthOptionsModal({
 }: AuthOptionsModalProps) {
   const { t } = useTranslation()
   const { theme } = useThemeStore()
+  const { loginWithPasskey, signupWithPasskey } = useAuthStore()
   const isDark = theme === 'dark'
 
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -89,8 +90,9 @@ export default function AuthOptionsModal({
     setError(null)
 
     try {
-      const wallet = await signInWithPasskey()
-      onPasskeySuccess?.(wallet)
+      // Use managed passkey auth - creates user record and sets mode to 'managed'
+      await loginWithPasskey()
+      onPasskeySuccess?.()
       handleClose()
     } catch (err) {
       console.error('Passkey auth failed:', err)
@@ -98,10 +100,38 @@ export default function AuthOptionsModal({
         const msg = err.message.toLowerCase()
         if (msg.includes('cancelled') || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('abort')) {
           // User cancelled, no error needed
-        } else if (msg.includes('prf') || msg.includes('not supported')) {
-          setError('Touch ID wallets not supported on this device. Try Wallet instead.')
+        } else if (msg.includes('not supported')) {
+          setError('Touch ID not supported on this device. Try Wallet instead.')
+        } else if (msg.includes('credential not found') || msg.includes('not registered')) {
+          // Server doesn't recognize the passkey - browser has stale credential
+          // This happens when database is cleared but browser still has old passkey
+          // Try to create a new account with a new passkey
+          console.log('[AuthOptionsModal] Credential not found, clearing local state and trying signup...')
+          forgetPasskeyWallet()
+          localStorage.removeItem('juice-smart-account-address')
+
+          try {
+            // Try to create a new account with a fresh passkey
+            await signupWithPasskey()
+            onPasskeySuccess?.()
+            handleClose()
+            return // Success - don't show error
+          } catch (signupErr) {
+            console.error('Passkey signup also failed:', signupErr)
+            // If signup also fails, show error
+            if (signupErr instanceof Error) {
+              const signupMsg = signupErr.message.toLowerCase()
+              if (signupMsg.includes('cancelled') || signupMsg.includes('abort')) {
+                setError('Sign up cancelled. Try again or use Wallet.')
+              } else {
+                setError('Could not create account. Try connecting a wallet instead.')
+              }
+            } else {
+              setError('Could not create account. Try connecting a wallet instead.')
+            }
+          }
         } else {
-          setError('Failed to create wallet. Try another method.')
+          setError('Failed to sign in. Try another method.')
         }
       }
     } finally {
