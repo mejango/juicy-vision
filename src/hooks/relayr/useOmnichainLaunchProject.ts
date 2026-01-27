@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useAuthStore } from '../../stores'
 import { useManagedWallet } from '../useManagedWallet'
 import {
   createBalanceBundle,
@@ -58,10 +57,8 @@ export function useOmnichainLaunchProject(
 ): UseOmnichainLaunchProjectReturn {
   const { onSuccess, onError } = options
 
-  // Auth state
-  const { mode, isAuthenticated } = useAuthStore()
-  const isManagedMode = mode === 'managed' && isAuthenticated()
-  const { address: managedAddress } = useManagedWallet()
+  // Get wallet address - works for both passkey (Touch ID) and managed mode users
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
 
   // Track predicted project IDs from launch response
   const [predictedProjectIds, setPredictedProjectIds] = useState<Record<number, number>>({})
@@ -74,7 +71,8 @@ export function useOmnichainLaunchProject(
       chainIds: number[],
       projectIds: Record<number, number>,
       paymentOptions: Array<{ chainId: number; token: string; amount: string; estimatedGas: string }>,
-      synchronizedStartTime?: number
+      synchronizedStartTime?: number,
+      expiresAt?: number
     ) => void
     _setCreating: () => void
     _setProcessing: (txHash: string) => void

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import type { BundleTransactionStatus, PaymentOption } from '../../services/relayr'
 import type { BundleState, BundleStatus, ChainState, UseRelayrBundleReturn } from './types'
 
@@ -10,7 +10,11 @@ const INITIAL_STATE: BundleState = {
   selectedPaymentChain: null,
   paymentTxHash: null,
   error: null,
+  expiresAt: undefined,
 }
+
+// Buffer before expiration to warn user (30 seconds)
+const EXPIRATION_BUFFER_MS = 30_000
 
 /**
  * Hook for managing bundle lifecycle state.
@@ -41,7 +45,8 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
     chainIds: number[],
     projectIds: Record<number, number>,
     paymentOptions: PaymentOption[],
-    synchronizedStartTime?: number
+    synchronizedStartTime?: number,
+    expiresAt?: number
   ) => {
     setBundleState({
       bundleId,
@@ -56,6 +61,7 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
       paymentTxHash: null,
       error: null,
       synchronizedStartTime,
+      expiresAt,
     })
   }, [])
 
@@ -91,6 +97,53 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
       error,
     }))
   }, [])
+
+  /**
+   * Set expired state (quote timed out before payment)
+   */
+  const setExpired = useCallback(() => {
+    setBundleState(prev => ({
+      ...prev,
+      status: 'expired',
+      error: 'Payment quote expired. Please create a new transaction.',
+    }))
+  }, [])
+
+  // Track mounted state to avoid setting state after unmount
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  // Check for expiration periodically when awaiting payment
+  useEffect(() => {
+    if (bundleState.status !== 'awaiting_payment' || !bundleState.expiresAt) {
+      return
+    }
+
+    const checkExpiration = () => {
+      if (!isMountedRef.current) return
+
+      const now = Date.now()
+      const expiresAtMs = bundleState.expiresAt! * 1000 // Convert from Unix seconds to ms
+      const timeRemaining = expiresAtMs - now
+
+      if (timeRemaining <= 0) {
+        setExpired()
+      }
+    }
+
+    // Check immediately
+    checkExpiration()
+
+    // Then check every second
+    const intervalId = setInterval(checkExpiration, 1000)
+
+    return () => clearInterval(intervalId)
+  }, [bundleState.status, bundleState.expiresAt, setExpired])
 
   /**
    * Update state from status polling response
@@ -148,14 +201,27 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
   const isCreating = bundleState.status === 'creating'
   const isProcessing = bundleState.status === 'processing' || bundleState.status === 'awaiting_payment'
   const isComplete = bundleState.status === 'completed'
-  const hasError = bundleState.status === 'failed' || bundleState.status === 'partial'
+  const isExpired = bundleState.status === 'expired'
+  const hasError = bundleState.status === 'failed' || bundleState.status === 'partial' || bundleState.status === 'expired'
+
+  // Calculate time remaining until expiration (in seconds)
+  const timeRemainingSeconds = useMemo(() => {
+    if (!bundleState.expiresAt || bundleState.status !== 'awaiting_payment') {
+      return null
+    }
+    const now = Math.floor(Date.now() / 1000)
+    const remaining = bundleState.expiresAt - now
+    return remaining > 0 ? remaining : 0
+  }, [bundleState.expiresAt, bundleState.status])
 
   return useMemo(() => ({
     bundleState,
     isCreating,
     isProcessing,
     isComplete,
+    isExpired,
     hasError,
+    timeRemainingSeconds,
     reset,
     setPaymentChain,
     updateFromStatus,
@@ -164,12 +230,15 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
     _setCreating: setCreating,
     _setProcessing: setProcessing,
     _setError: setError,
+    _setExpired: setExpired,
   }), [
     bundleState,
     isCreating,
     isProcessing,
     isComplete,
+    isExpired,
     hasError,
+    timeRemainingSeconds,
     reset,
     setPaymentChain,
     updateFromStatus,
@@ -177,10 +246,12 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
     setCreating,
     setProcessing,
     setError,
+    setExpired,
   ]) as UseRelayrBundleReturn & {
     _initializeBundle: typeof initializeBundle
     _setCreating: typeof setCreating
     _setProcessing: typeof setProcessing
     _setError: typeof setError
+    _setExpired: typeof setExpired
   }
 }

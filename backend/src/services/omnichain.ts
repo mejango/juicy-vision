@@ -37,12 +37,11 @@ const CHAINS: Record<number, { chain: typeof mainnet; rpcUrl: string }> = {
 };
 
 // JBSuckerRegistry address (same on all chains via CREATE2)
-// TODO: Update with actual deployed address
 const SUCKER_REGISTRY: Record<number, Address> = {
-  1: '0x0000000000000000000000000000000000000000',
-  10: '0x0000000000000000000000000000000000000000',
-  8453: '0x0000000000000000000000000000000000000000',
-  42161: '0x0000000000000000000000000000000000000000',
+  1: '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3',
+  10: '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3',
+  8453: '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3',
+  42161: '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3',
 };
 
 // Juicerkle API for merkle proofs

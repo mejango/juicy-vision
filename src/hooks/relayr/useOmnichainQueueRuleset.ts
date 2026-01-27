@@ -56,6 +56,7 @@ export function useOmnichainQueueRuleset(
     bundleState: transaction.bundleState,
     isExecuting: transaction.isExecuting,
     isComplete: transaction.isComplete,
+    isExpired: transaction.isExpired,
     hasError: transaction.hasError,
     reset: transaction.reset,
     setPaymentChain: transaction.setPaymentChain,

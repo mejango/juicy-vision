@@ -4,7 +4,7 @@ import type { BundleTransactionStatus, PaymentOption } from '../../services/rela
 // Bundle State Types
 // ============================================================================
 
-export type BundleStatus = 'idle' | 'creating' | 'awaiting_payment' | 'processing' | 'completed' | 'partial' | 'failed'
+export type BundleStatus = 'idle' | 'creating' | 'awaiting_payment' | 'processing' | 'completed' | 'partial' | 'failed' | 'expired'
 
 export interface ChainState {
   chainId: number
@@ -24,6 +24,7 @@ export interface BundleState {
   paymentTxHash: string | null
   error: string | null
   synchronizedStartTime?: number
+  expiresAt?: number  // Unix timestamp when payment quote expires
 }
 
 // ============================================================================
@@ -48,7 +49,9 @@ export interface UseRelayrBundleReturn {
   isCreating: boolean
   isProcessing: boolean
   isComplete: boolean
+  isExpired: boolean
   hasError: boolean
+  timeRemainingSeconds: number | null  // Seconds until quote expires, null if not applicable
   reset: () => void
   setPaymentChain: (chainId: number) => void
   updateFromStatus: (status: {
@@ -64,6 +67,7 @@ export interface UseOmnichainTransactionReturn {
   bundleState: BundleState
   isExecuting: boolean
   isComplete: boolean
+  isExpired: boolean
   hasError: boolean
   reset: () => void
   setPaymentChain: (chainId: number) => void

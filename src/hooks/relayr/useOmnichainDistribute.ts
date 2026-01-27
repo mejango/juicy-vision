@@ -60,6 +60,7 @@ export function useOmnichainDistribute(
     bundleState: transaction.bundleState,
     isExecuting: transaction.isExecuting,
     isComplete: transaction.isComplete,
+    isExpired: transaction.isExpired,
     hasError: transaction.hasError,
     reset: transaction.reset,
     setPaymentChain: transaction.setPaymentChain,

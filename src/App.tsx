@@ -11,6 +11,7 @@ import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import { useChatStore, useThemeStore, type ChatMember } from './stores'
 import { useTransactionExecutor } from './hooks'
+import ActionExecutor from './components/ActionExecutor'
 import { getSessionId, getSessionPseudoAddress, getCachedPseudoAddress } from './services/session'
 import { getWalletSession } from './services/siwe'
 import { useEnsNameResolved } from './hooks'
@@ -763,6 +764,7 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
     return (
       <div className={`h-screen overflow-hidden flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
         <TransactionExecutor />
+        <ActionExecutor />
         {/* Mobile header with activity toggle */}
         <div className="flex-shrink-0">
           <Header showActions={!!hasMessages} />
@@ -801,6 +803,8 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
     <div className={`h-screen overflow-hidden flex ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
       {/* Transaction executor - listens for pay events */}
       <TransactionExecutor />
+      {/* Action executor - listens for execute-action events (launch, queue, etc.) */}
+      <ActionExecutor />
 
       {/* Left border - always visible (4px to match border-4) */}
       <div className="w-[4px] bg-juice-orange shrink-0" />

@@ -99,7 +99,8 @@ export function useOmnichainDeployRevnet(
       chainIds: number[],
       projectIds: Record<number, number>,
       paymentOptions: Array<{ chainId: number; token: string; amount: string; estimatedGas: string }>,
-      synchronizedStartTime?: number
+      synchronizedStartTime?: number,
+      expiresAt?: number
     ) => void
     _setCreating: () => void
     _setProcessing: (txHash: string) => void

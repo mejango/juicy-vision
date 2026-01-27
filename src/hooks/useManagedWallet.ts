@@ -1,7 +1,26 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore } from '../stores'
+import { getPasskeyWallet, getStoredCredentialId } from '../services/passkeyWallet'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+
+/**
+ * Lookup passkey wallet address from backend by credential ID
+ */
+async function lookupPasskeyWalletFromBackend(credentialId: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/passkey/wallet/${encodeURIComponent(credentialId)}`)
+    if (response.ok) {
+      const data = await response.json()
+      if (data.success && data.data?.walletAddress) {
+        return data.data.walletAddress
+      }
+    }
+  } catch (error) {
+    console.warn('[useManagedWallet] Failed to lookup passkey wallet from backend:', error)
+  }
+  return null
+}
 
 export interface ManagedWalletBalance {
   chainId: number
@@ -50,22 +69,70 @@ async function apiRequest<T>(
 
 /**
  * Hook for managed mode wallet data (address and balances)
- * Only fetches data when user is authenticated in managed mode
+ * Checks passkey wallet first (Touch ID users), then falls back to API
  */
-export function useManagedWallet(): ManagedWalletData {
-  const { token, isAuthenticated, mode } = useAuthStore()
-  const [address, setAddress] = useState<string | null>(null)
+export function useManagedWallet(): ManagedWalletData & { isManagedMode: boolean } {
+  // Access token, user, and mode directly for proper reactivity
+  const { token, user, mode } = useAuthStore()
+
+  // Check passkey wallet first - this is the primary source for Touch ID users
+  const passkeyWallet = getPasskeyWallet()
+  const hasPasskeyWallet = !!passkeyWallet?.address
+  const hasStoredCredential = !!getStoredCredentialId()
+
+  // User is in "managed mode" if they have a passkey wallet, stored credential, or are authenticated via managed mode
+  const isManagedMode = hasPasskeyWallet || hasStoredCredential || (mode === 'managed' && !!token && !!user)
+
+  // Initialize address from passkey wallet if available
+  const [address, setAddress] = useState<string | null>(() => passkeyWallet?.address || null)
   const [balances, setBalances] = useState<ManagedWalletBalance[]>([])
-  const [loading, setLoading] = useState(false)
+  // Initialize loading to true if we might need to fetch (have credential but no address, or managed mode)
+  const [loading, setLoading] = useState(() => {
+    if (passkeyWallet?.address) return false // Already have address from passkey
+    if (hasStoredCredential) return true // Need to fetch from backend
+    const state = useAuthStore.getState()
+    return state.mode === 'managed' && !!state.token && !!state.user
+  })
   const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
-    if (!isAuthenticated() || mode !== 'managed' || !token) {
-      setAddress(null)
+    // First, check if there's a passkey wallet in localStorage (Touch ID users)
+    const passkeyWallet = getPasskeyWallet()
+    if (passkeyWallet?.address) {
+      console.log('[useManagedWallet] Found passkey wallet in localStorage:', passkeyWallet.address)
+      setAddress(passkeyWallet.address)
       setBalances([])
+      setLoading(false)
+      setError(null)
       return
     }
 
+    // If we have a stored credential ID but no wallet, try backend lookup
+    const credentialId = getStoredCredentialId()
+    if (credentialId) {
+      console.log('[useManagedWallet] Trying backend lookup for credential:', credentialId)
+      setLoading(true)
+      const backendAddress = await lookupPasskeyWalletFromBackend(credentialId)
+      if (backendAddress) {
+        console.log('[useManagedWallet] Got address from backend:', backendAddress)
+        setAddress(backendAddress)
+        setBalances([])
+        setLoading(false)
+        setError(null)
+        return
+      }
+    }
+
+    // Check managed mode using direct values (for email/OTP authenticated users)
+    if (mode !== 'managed' || !token || !user) {
+      setAddress(null)
+      setBalances([])
+      setLoading(false)
+      console.log('[useManagedWallet] Skipping fetch - not in managed mode', { mode, hasToken: !!token, hasUser: !!user })
+      return
+    }
+
+    console.log('[useManagedWallet] Fetching wallet address for managed mode user')
     setLoading(true)
     setError(null)
 
@@ -76,21 +143,22 @@ export function useManagedWallet(): ManagedWalletData {
         apiRequest<{ address: string; balances: ManagedWalletBalance[] }>('/wallet/balances', token),
       ])
 
+      console.log('[useManagedWallet] Got address:', addressData.address)
       setAddress(addressData.address)
       setBalances(balanceData.balances)
     } catch (err) {
-      console.error('Failed to fetch managed wallet data:', err)
+      console.error('[useManagedWallet] Failed to fetch managed wallet data:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch wallet data')
     } finally {
       setLoading(false)
     }
-  }, [token, isAuthenticated, mode])
+  }, [token, user, mode])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
 
-  return { address, balances, loading, error, refetch: fetchData }
+  return { address, balances, loading, error, refetch: fetchData, isManagedMode }
 }
 
 /**
@@ -123,8 +191,11 @@ export async function executeManagedTransaction(
 
 /**
  * Helper to check if user is in managed mode and authenticated
+ * Also checks for passkey wallet (Touch ID users) or stored credential
  */
 export function useIsManagedMode(): boolean {
-  const { mode, isAuthenticated } = useAuthStore()
-  return mode === 'managed' && isAuthenticated()
+  const { mode, token, user } = useAuthStore()
+  const passkeyWallet = getPasskeyWallet()
+  const hasStoredCredential = !!getStoredCredentialId()
+  return !!passkeyWallet?.address || hasStoredCredential || (mode === 'managed' && !!token && !!user)
 }

@@ -1,8 +1,11 @@
-import { useState, useEffect, useMemo, startTransition, useRef } from 'react'
+import { useState, useEffect, useMemo, startTransition, useRef, useCallback } from 'react'
 import { useThemeStore } from '../../stores'
 import { useProjectDraftStore } from '../../stores/projectDraftStore'
+import { useManagedWallet } from '../../hooks'
+import { useOmnichainLaunchProject } from '../../hooks/relayr'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { decodeEncodedIPFSUri, encodeIpfsUri } from '../../utils/ipfs'
+import { verifyLaunchProjectParams, type TransactionDoubt } from '../../utils/transactionVerification'
 import {
   CHAIN_NAMES,
   CHAIN_COLORS,
@@ -16,6 +19,8 @@ import {
   isUsdcAddress,
   USDC_ADDRESSES,
 } from '../../utils/technicalDetails'
+import { CHAINS, EXPLORER_URLS } from '../../constants'
+import type { JBRulesetConfig, JBTerminalConfig } from '../../services/relayr'
 
 interface ChainOverride {
   chainId: string
@@ -815,8 +820,47 @@ export default function TransactionPreview({
   const [technicalDetailsReady, setTechnicalDetailsReady] = useState(false)
   const [juicyFeeEnabled, setJuicyFeeEnabled] = useState(true)
   const [showRawJson, setShowRawJson] = useState(false)
+  const [issuesAcknowledged, setIssuesAcknowledged] = useState(false)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+
+  // Auth state for managed wallet users - use isManagedMode from hook for consistent state
+  const {
+    address: managedAddress,
+    loading: managedWalletLoading,
+    error: managedWalletError,
+    isManagedMode
+  } = useManagedWallet()
+
+  // Debug: log managed wallet state
+  useEffect(() => {
+    if (action === 'launchProject' || action === 'launch721Project') {
+      console.log('Managed wallet debug:', {
+        isManagedMode,
+        managedAddress,
+        managedWalletLoading,
+        managedWalletError,
+      })
+    }
+  }, [action, isManagedMode, managedAddress, managedWalletLoading, managedWalletError])
+
+  // Omnichain launch hook - only used for launchProject action
+  const {
+    launch,
+    bundleState,
+    isLaunching,
+    isComplete,
+    hasError,
+    createdProjectIds,
+    reset: resetLaunch,
+  } = useOmnichainLaunchProject({
+    onSuccess: (bundleId, txHashes) => {
+      console.log('Projects launched:', bundleId, txHashes)
+    },
+    onError: (error) => {
+      console.error('Launch failed:', error)
+    },
+  })
 
   // Get draft data collected from forms - use as fallback while transaction JSON streams
   const draftTiers = useProjectDraftStore(state => state.tiers)
@@ -1117,6 +1161,100 @@ export default function TransactionPreview({
   const chainColor = validChainId ? CHAIN_COLORS[validChainId] : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
   const actionIcon = ACTION_ICONS[action] || '📝'
 
+  // For launchProject, extract and validate parameters
+  const launchValidation = useMemo(() => {
+    if (action !== 'launchProject' && action !== 'launch721Project') return null
+    if (!effectivePreviewData?.raw) return null
+
+    const raw = effectivePreviewData.raw
+
+    // Get owner from params or use managed wallet address
+    const ownerFromParams = raw.owner as string | undefined
+    const owner = ownerFromParams || (isManagedMode ? managedAddress : '') || ''
+
+    // Get project URI
+    const projectUri = (raw.projectUri as string) || ''
+
+    // Get chain IDs
+    let launchChainIds: number[] = []
+    if (parsedChainConfigs.length > 0) {
+      launchChainIds = parsedChainConfigs.map(c => Number(c.chainId))
+    } else if (validChainId) {
+      launchChainIds = [Number(validChainId)]
+    } else {
+      launchChainIds = [1, 10, 8453, 42161] // Default to all supported chains
+    }
+
+    // Get ruleset configurations
+    const rulesetConfigurations = (raw.rulesetConfigurations as unknown[]) || []
+
+    // Get terminal configurations
+    const terminalConfigurations = (raw.terminalConfigurations as unknown[]) || []
+
+    // Get memo
+    const memo = (raw.memo as string) || 'Project launch via Juicy Vision'
+
+    // Validate - but skip validation if we're in managed mode and still loading the wallet
+    const isWaitingForManagedWallet = isManagedMode && !managedAddress && managedWalletLoading
+    const verification = verifyLaunchProjectParams({
+      owner: isWaitingForManagedWallet ? '0x0000000000000000000000000000000000000001' : owner, // Use placeholder to avoid false critical during loading
+      projectUri,
+      chainIds: launchChainIds,
+      rulesetConfigurations,
+      terminalConfigurations,
+      memo,
+    })
+
+    // Filter out owner-related issues while waiting for managed wallet
+    const filteredDoubts = isWaitingForManagedWallet
+      ? verification.doubts.filter(d => !d.message.toLowerCase().includes('owner'))
+      : verification.doubts
+
+    return {
+      owner,
+      projectUri,
+      chainIds: launchChainIds,
+      rulesetConfigurations,
+      terminalConfigurations,
+      memo,
+      projectName: (projectMetadata?.name as string) || 'New Project',
+      doubts: filteredDoubts,
+      hasIssues: filteredDoubts.length > 0,
+      hasCritical: filteredDoubts.some(d => d.severity === 'critical'),
+      isWaitingForWallet: isWaitingForManagedWallet,
+    }
+  }, [action, effectivePreviewData?.raw, isManagedMode, managedAddress, managedWalletLoading, parsedChainConfigs, validChainId, projectMetadata?.name])
+
+  // Handle launch button click
+  const handleLaunchClick = useCallback(async () => {
+    if (!launchValidation) return
+    if (launchValidation.hasCritical && !issuesAcknowledged) return
+
+    const {
+      owner,
+      projectUri,
+      chainIds,
+      rulesetConfigurations,
+      terminalConfigurations,
+      memo,
+    } = launchValidation
+
+    await launch({
+      chainIds,
+      owner,
+      projectUri,
+      rulesetConfigurations: rulesetConfigurations as JBRulesetConfig[],
+      terminalConfigurations: terminalConfigurations as JBTerminalConfig[],
+      memo,
+    })
+  }, [launchValidation, issuesAcknowledged, launch])
+
+  // Can proceed with launch?
+  const canLaunch = launchValidation &&
+    !launchValidation.isWaitingForWallet &&
+    launchValidation.owner &&
+    (!launchValidation.hasCritical || issuesAcknowledged)
+
   return (
     <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
       isDark
@@ -1175,6 +1313,45 @@ export default function TransactionPreview({
           ) : (
             <FundingSkeleton isDark={isDark} />
           )}
+        </div>
+      )}
+
+      {/* Owner section for launch actions */}
+      {(action === 'launchProject' || action === 'launch721Project') && launchValidation && (
+        <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <SectionHeader title="Project Owner" isDark={isDark} />
+          <div className={`mt-2 p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+            {/* Show loading state while managed wallet is loading OR while preview data is still loading */}
+            {(managedWalletLoading || !fundingInfo) ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin w-4 h-4 border-2 border-juice-cyan border-t-transparent rounded-full" />
+                <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Loading...
+                </span>
+              </div>
+            ) : managedWalletError ? (
+              <div className={`text-sm ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+                Wallet error: {managedWalletError}
+              </div>
+            ) : launchValidation.owner ? (
+              <div className="flex items-center gap-2">
+                <span className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {launchValidation.owner.slice(0, 8)}...{launchValidation.owner.slice(-6)}
+                </span>
+                {isManagedMode && (
+                  <span className={`text-xs px-2 py-0.5 ${isDark ? 'bg-juice-cyan/20 text-juice-cyan' : 'bg-teal-100 text-teal-700'}`}>
+                    Touch ID Wallet
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className={`text-sm ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                {isManagedMode
+                  ? 'Fetching wallet address...'
+                  : 'No owner address - please connect wallet'}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1293,56 +1470,267 @@ export default function TransactionPreview({
         )}
       </div>
 
+      {/* Launch progress section - shown when launching */}
+      {(action === 'launchProject' || action === 'launch721Project') && (isLaunching || isComplete || hasError) && (
+        <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          {/* Chain status */}
+          <div className="space-y-2 mb-3">
+            {launchValidation?.chainIds.map((cid) => {
+              const chain = CHAINS[cid]
+              const chainState = bundleState.chainStates.find(cs => cs.chainId === cid)
+              const createdProjectId = createdProjectIds[cid]
+
+              return (
+                <div
+                  key={cid}
+                  className={`p-2 flex items-center justify-between ${
+                    isDark ? 'bg-white/5' : 'bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: chain?.color || '#888' }}
+                    />
+                    <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      {chain?.name || `Chain ${cid}`}
+                    </span>
+                    {createdProjectId && (
+                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        #{createdProjectId}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!chainState && (
+                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Waiting...
+                      </span>
+                    )}
+                    {chainState?.status === 'pending' && (
+                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Pending
+                      </span>
+                    )}
+                    {chainState?.status === 'submitted' && (
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin w-3 h-3 border-2 border-juice-orange border-t-transparent rounded-full" />
+                        <span className={`text-xs ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
+                          Creating...
+                        </span>
+                      </div>
+                    )}
+                    {chainState?.status === 'confirmed' && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-500">✓</span>
+                        {chainState.txHash && EXPLORER_URLS[cid] && (
+                          <a
+                            href={`${EXPLORER_URLS[cid]}${chainState.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-juice-cyan hover:underline"
+                          >
+                            View
+                          </a>
+                        )}
+                      </div>
+                    )}
+                    {chainState?.status === 'failed' && (
+                      <span className="text-xs text-red-400">
+                        Failed
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Processing indicator */}
+          {isLaunching && (
+            <div className={`p-3 flex items-center gap-3 ${isDark ? 'bg-juice-orange/10' : 'bg-orange-50'}`}>
+              <div className="animate-spin w-5 h-5 border-2 border-juice-orange border-t-transparent rounded-full" />
+              <div>
+                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {bundleState.status === 'creating' ? 'Creating bundle...' : 'Creating projects...'}
+                </p>
+                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Relayr is deploying on all chains
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Error details */}
+          {hasError && bundleState.error && (
+            <div className={`p-3 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
+              <span className={`text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+                {bundleState.error}
+              </span>
+            </div>
+          )}
+
+          {/* Success summary */}
+          {isComplete && Object.keys(createdProjectIds).length > 0 && (
+            <div className={`p-3 ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
+              <div className={`text-xs font-medium mb-2 ${isDark ? 'text-green-400' : 'text-green-700'}`}>
+                Projects Created Successfully
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {Object.entries(createdProjectIds).map(([chainIdStr, projectIdNum]) => (
+                  <div key={chainIdStr} className="flex items-center gap-2">
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: CHAINS[Number(chainIdStr)]?.color || '#888' }}
+                    />
+                    <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                      {CHAINS[Number(chainIdStr)]?.shortName}: #{projectIdNum}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Issues section - shown for launch actions with validation issues, but only after data is loaded */}
+      {launchValidation && launchValidation.hasIssues && !isLaunching && !isComplete && !managedWalletLoading && fundingInfo && (
+        <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <div className={`p-3 border-l-4 ${
+            launchValidation.hasCritical
+              ? isDark ? 'bg-red-500/10 border-red-500' : 'bg-red-50 border-red-500'
+              : isDark ? 'bg-yellow-500/10 border-yellow-500' : 'bg-yellow-50 border-yellow-500'
+          }`}>
+            <div className={`text-sm font-medium mb-2 ${
+              launchValidation.hasCritical
+                ? isDark ? 'text-red-400' : 'text-red-700'
+                : isDark ? 'text-yellow-400' : 'text-yellow-700'
+            }`}>
+              {launchValidation.hasCritical ? '! Review Required' : 'Warnings'}
+            </div>
+            <div className="space-y-1">
+              {launchValidation.doubts.map((doubt, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className={`text-xs px-1.5 py-0.5 font-medium ${
+                    doubt.severity === 'critical'
+                      ? isDark ? 'bg-red-500/20 text-red-400' : 'bg-red-100 text-red-700'
+                      : isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {doubt.severity === 'critical' ? 'Critical' : 'Warning'}
+                  </span>
+                  <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {doubt.message}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {launchValidation.hasCritical && (
+              <label className={`flex items-center gap-2 mt-3 cursor-pointer ${
+                isDark ? 'text-gray-400' : 'text-gray-600'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={issuesAcknowledged}
+                  onChange={(e) => setIssuesAcknowledged(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-xs">I understand the risks and want to proceed anyway</span>
+              </label>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Action button */}
       <div className={`px-4 py-3 border-t flex justify-end ${
         isDark ? 'border-white/10' : 'border-gray-200'
       }`}>
-        <button
-          onClick={() => {
-            // Parse parameters on-demand for the action (avoids waiting for deferred parsing)
-            let actionParams: Record<string, unknown>
-            try {
-              const rawParams = JSON.parse(parameters)
-              // Apply transformations: timestamps, then media URI encoding
-              const withTimestamps = updateTimestamps(rawParams)
-              actionParams = processMediaUris(withTimestamps) as Record<string, unknown>
+        {(action === 'launchProject' || action === 'launch721Project') ? (
+          // Direct launch execution for launch actions
+          isComplete ? (
+            <button
+              onClick={() => resetLaunch()}
+              className={`px-5 py-2 text-sm font-bold border-2 ${
+                isDark
+                  ? 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                  : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
+              } transition-colors`}
+            >
+              Done
+            </button>
+          ) : isLaunching ? (
+            <button
+              disabled
+              className="px-5 py-2 text-sm font-bold border-2 bg-gray-500 text-white border-gray-500 cursor-not-allowed opacity-75"
+            >
+              <span className="flex items-center gap-2">
+                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                Launching...
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={handleLaunchClick}
+              disabled={!canLaunch}
+              className={`px-5 py-2 text-sm font-bold border-2 transition-colors ${
+                canLaunch
+                  ? 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
+                  : 'bg-gray-500 text-white border-gray-500 cursor-not-allowed opacity-75'
+              }`}
+            >
+              {ACTION_BUTTON_LABELS[action] || action}
+            </button>
+          )
+        ) : (
+          // Original dispatch for other actions
+          <button
+            onClick={() => {
+              // Parse parameters on-demand for the action (avoids waiting for deferred parsing)
+              let actionParams: Record<string, unknown>
+              try {
+                const rawParams = JSON.parse(parameters)
+                // Apply transformations: timestamps, then media URI encoding
+                const withTimestamps = updateTimestamps(rawParams)
+                actionParams = processMediaUris(withTimestamps) as Record<string, unknown>
 
-              // If Juicy fee is disabled, remove the Juicy split (projectId === 1)
-              if (!juicyFeeEnabled) {
-                const removeJuicySplit = (obj: unknown): unknown => {
-                  if (obj === null || obj === undefined) return obj
-                  if (Array.isArray(obj)) return obj.map(removeJuicySplit)
-                  if (typeof obj === 'object') {
-                    const record = obj as Record<string, unknown>
-                    // Check if this is a splitGroups array
-                    if (record.splitGroups && Array.isArray(record.splitGroups)) {
-                      record.splitGroups = (record.splitGroups as Array<{ groupId?: string; splits?: Array<{ projectId?: number }> }>).map(group => ({
-                        ...group,
-                        splits: group.splits?.filter(split => split.projectId !== 1) || []
-                      }))
+                // If Juicy fee is disabled, remove the Juicy split (projectId === 1)
+                if (!juicyFeeEnabled) {
+                  const removeJuicySplit = (obj: unknown): unknown => {
+                    if (obj === null || obj === undefined) return obj
+                    if (Array.isArray(obj)) return obj.map(removeJuicySplit)
+                    if (typeof obj === 'object') {
+                      const record = obj as Record<string, unknown>
+                      // Check if this is a splitGroups array
+                      if (record.splitGroups && Array.isArray(record.splitGroups)) {
+                        record.splitGroups = (record.splitGroups as Array<{ groupId?: string; splits?: Array<{ projectId?: number }> }>).map(group => ({
+                          ...group,
+                          splits: group.splits?.filter(split => split.projectId !== 1) || []
+                        }))
+                      }
+                      // Recursively process all values
+                      const result: Record<string, unknown> = {}
+                      for (const [key, value] of Object.entries(record)) {
+                        result[key] = removeJuicySplit(value)
+                      }
+                      return result
                     }
-                    // Recursively process all values
-                    const result: Record<string, unknown> = {}
-                    for (const [key, value] of Object.entries(record)) {
-                      result[key] = removeJuicySplit(value)
-                    }
-                    return result
+                    return obj
                   }
-                  return obj
+                  actionParams = removeJuicySplit(actionParams) as Record<string, unknown>
                 }
-                actionParams = removeJuicySplit(actionParams) as Record<string, unknown>
+              } catch {
+                actionParams = { raw: parameters }
               }
-            } catch {
-              actionParams = { raw: parameters }
-            }
-            window.dispatchEvent(new CustomEvent('juice:execute-action', {
-              detail: { action, contract, chainId: validChainId || '1', projectId, parameters: actionParams }
-            }))
-          }}
-          className="px-5 py-2 text-sm font-bold border-2 bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600 transition-colors"
-        >
-          {ACTION_BUTTON_LABELS[action] || action}
-        </button>
+              window.dispatchEvent(new CustomEvent('juice:execute-action', {
+                detail: { action, contract, chainId: validChainId || '1', projectId, parameters: actionParams }
+              }))
+            }}
+            className="px-5 py-2 text-sm font-bold border-2 bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600 transition-colors"
+          >
+            {ACTION_BUTTON_LABELS[action] || action}
+          </button>
+        )}
       </div>
 
     </div>

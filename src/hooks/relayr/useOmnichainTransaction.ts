@@ -62,11 +62,13 @@ export function useOmnichainTransaction(
       chainIds: number[],
       projectIds: Record<number, number>,
       paymentOptions: Array<{ chainId: number; token: string; amount: string; estimatedGas: string }>,
-      synchronizedStartTime?: number
+      synchronizedStartTime?: number,
+      expiresAt?: number
     ) => void
     _setCreating: () => void
     _setProcessing: (txHash: string) => void
     _setError: (error: string) => void
+    _setExpired: () => void
   }
   const { bundleState, reset, setPaymentChain, updateFromStatus } = bundle
 
@@ -97,9 +99,9 @@ export function useOmnichainTransaction(
     }
   }, [bundleState.status, bundleState.bundleId, bundleState.chainStates, onSuccess])
 
-  // Call onError when failed
+  // Call onError when failed or expired
   useEffect(() => {
-    if (bundleState.status === 'failed' && bundleState.error) {
+    if ((bundleState.status === 'failed' || bundleState.status === 'expired') && bundleState.error) {
       onError?.(new Error(bundleState.error))
     }
   }, [bundleState.status, bundleState.error, onError])
@@ -255,7 +257,8 @@ export function useOmnichainTransaction(
           chainIds,
           projectIds,
           bundleResponse.payment_options,
-          synchronizedStartTime
+          synchronizedStartTime,
+          bundleResponse.expires_at
         )
 
         // Notify about payment options
@@ -311,7 +314,8 @@ export function useOmnichainTransaction(
     bundleState,
     isExecuting,
     isComplete: bundleState.status === 'completed',
-    hasError: bundleState.status === 'failed' || bundleState.status === 'partial',
+    isExpired: bundleState.status === 'expired',
+    hasError: bundleState.status === 'failed' || bundleState.status === 'partial' || bundleState.status === 'expired',
     reset,
     setPaymentChain,
   }), [

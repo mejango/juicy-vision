@@ -39,6 +39,7 @@ export interface UseOmnichainDeploySuckersReturn {
 /**
  * Generate a deterministic salt for sucker deployment.
  * Uses project IDs to ensure unique, linked sucker addresses.
+ * IMPORTANT: Salt must be identical across all chains for CREATE2 deterministic addresses.
  */
 function generateSuckerSalt(projectIds: Record<number, number>): string {
   // Sort chain IDs for consistent salt regardless of order
@@ -46,7 +47,8 @@ function generateSuckerSalt(projectIds: Record<number, number>): string {
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([chainId, projectId]) => `${chainId}:${projectId}`)
     .join('-')
-  const saltInput = `sucker-v1-${sortedEntries}-${Date.now()}`
+  // NO timestamp - salt must be deterministic for same address on all chains
+  const saltInput = `sucker-v1-${sortedEntries}`
   return keccak256(toBytes(saltInput))
 }
 
@@ -101,7 +103,8 @@ export function useOmnichainDeploySuckers(
       chainIds: number[],
       projectIds: Record<number, number>,
       paymentOptions: Array<{ chainId: number; token: string; amount: string; estimatedGas: string }>,
-      synchronizedStartTime?: number
+      synchronizedStartTime?: number,
+      expiresAt?: number
     ) => void
     _setCreating: () => void
     _setProcessing: (txHash: string) => void

@@ -155,7 +155,7 @@ export const BRIDGE_PROTOCOLS: Record<string, string> = {
 /**
  * JBSuckerRegistry addresses (same on all chains via CREATE2)
  */
-export const SUCKER_REGISTRY_ADDRESS = '0x0000000000000000000000000000000000000000' as const; // TODO: Fill in actual address
+export const SUCKER_REGISTRY_ADDRESS = '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3' as const;
 
 /**
  * Tool definitions for omnichain operations
