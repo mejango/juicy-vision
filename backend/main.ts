@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { timing } from 'hono/timing';
-import { serveStatic } from 'hono/deno';
+// Static file serving disabled - frontend deployed separately
 
 import { authRouter } from './src/routes/auth.ts';
 import { chatRouter } from './src/routes/chat.ts';
@@ -88,7 +88,7 @@ app.use('*', logger());
 app.use('*', timing());
 
 // Debug event logging for API calls
-app.use('/api/*', async (c, next) => {
+app.use('*', async (c, next) => {
   const start = Date.now();
   await next();
   const duration = Date.now() - start;
@@ -103,10 +103,10 @@ app.use('/api/*', async (c, next) => {
 });
 
 // ============================================================================
-// Health Check (API endpoint only)
+// Health Check
 // ============================================================================
 
-app.get('/api/health', (c) => {
+app.get('/health', (c) => {
   return c.json({
     name: 'Juicy Vision API',
     version: '0.1.0',
@@ -115,48 +115,31 @@ app.get('/api/health', (c) => {
 });
 
 // ============================================================================
-// API Routes
+// API Routes (no /api prefix - use api.domain.com subdomain instead)
 // ============================================================================
 
-app.route('/api/auth', authRouter);
-app.route('/api/auth/siwe', siweRouter);
-app.route('/api/chat', chatRouter);
-app.route('/api/wallet', walletRouter);
-app.route('/api/events', eventsRouter);
-app.route('/api/cron', cronRouter);
-app.route('/api/proxy', proxyRouter);
-app.route('/api/stripe/webhook', stripeWebhookRouter);
-app.route('/api/context', contextRouter);
-app.route('/api/locale', localeRouter);
-app.route('/api/chat', inviteRouter);
-app.route('/api/passkey', passkeyRouter);
-app.route('/api/transactions', transactionsRouter);
-app.route('/api/projects', projectsRouter);
-app.route('/api/debug', debugRouter);
-app.route('/api/identity', identityRouter);
-app.route('/api/juice', juiceRouter);
+app.route('/auth', authRouter);
+app.route('/auth/siwe', siweRouter);
+app.route('/chat', chatRouter);
+app.route('/wallet', walletRouter);
+app.route('/events', eventsRouter);
+app.route('/cron', cronRouter);
+app.route('/proxy', proxyRouter);
+app.route('/stripe/webhook', stripeWebhookRouter);
+app.route('/context', contextRouter);
+app.route('/locale', localeRouter);
+app.route('/chat', inviteRouter);
+app.route('/passkey', passkeyRouter);
+app.route('/transactions', transactionsRouter);
+app.route('/projects', projectsRouter);
+app.route('/debug', debugRouter);
+app.route('/identity', identityRouter);
+app.route('/juice', juiceRouter);
 
 // ============================================================================
-// Static File Serving (Frontend SPA)
+// Static File Serving (disabled - frontend served separately in production)
+// For local dev, run: npm run dev (Vite) in the root directory
 // ============================================================================
-
-// Serve static files from the frontend build directory
-app.use('/*', serveStatic({ root: '../dist' }));
-
-// SPA fallback - serve index.html for any non-API route that doesn't match a static file
-app.get('*', async (c) => {
-  // Don't serve index.html for API routes
-  if (c.req.path.startsWith('/api/')) {
-    return c.notFound();
-  }
-
-  try {
-    const indexHtml = await Deno.readTextFile('../dist/index.html');
-    return c.html(indexHtml);
-  } catch {
-    return c.text('Frontend not built. Run: npm run build', 404);
-  }
-});
 
 // ============================================================================
 // Error Handling
@@ -382,7 +365,7 @@ async function handleRequest(req: Request): Promise<Response> {
   // Check if this is a WebSocket upgrade request for chat
   const upgradeHeader = req.headers.get('upgrade');
   const isWsUpgrade = upgradeHeader?.toLowerCase() === 'websocket';
-  const wsMatch = url.pathname.match(/^\/api\/chat\/([^\/]+)\/ws$/);
+  const wsMatch = url.pathname.match(/^\/chat\/([^\/]+)\/ws$/);
 
   if (isWsUpgrade && wsMatch) {
     const chatId = wsMatch[1];

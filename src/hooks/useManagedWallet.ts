@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore } from '../stores'
 import { getPasskeyWallet, getStoredCredentialId } from '../services/passkeyWallet'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 const SMART_ACCOUNT_CACHE_KEY = 'juice-smart-account-address'
 
 // Debug logging - only log once per unique message to avoid spam

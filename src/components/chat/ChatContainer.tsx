@@ -485,7 +485,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
     let smartAccountAddress: string | null = null
     try {
-      const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+      const API_BASE_URL = import.meta.env.VITE_API_URL || ''
       const response = await fetch(`${API_BASE_URL}/wallet/address`, {
         headers: {
           'Content-Type': 'application/json',

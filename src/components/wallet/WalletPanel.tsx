@@ -396,7 +396,7 @@ function EmailAuth({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =>
   const [error, setError] = useState<string | null>(null)
   const [devCode, setDevCode] = useState<string | null>(null)
 
-  const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+  const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
   const handleRequestCode = async (e: React.FormEvent) => {
     e.preventDefault()

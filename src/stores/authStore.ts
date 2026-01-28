@@ -81,7 +81,7 @@ export interface PasskeyInfo {
 // API Client
 // ============================================================================
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 async function apiRequest<T>(
   endpoint: string,
@@ -313,7 +313,7 @@ export const useAuthStore = create<AuthState>()(
           // Fetch and cache smart account address immediately after login
           // This ensures we have the address cached for offline/expired token scenarios
           try {
-            const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+            const API_BASE_URL = import.meta.env.VITE_API_URL || ''
             const response = await fetch(`${API_BASE_URL}/wallet/address`, {
               headers: {
                 'Content-Type': 'application/json',
@@ -362,7 +362,7 @@ export const useAuthStore = create<AuthState>()(
 
           // Fetch and cache smart account address immediately after signup
           try {
-            const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+            const API_BASE_URL = import.meta.env.VITE_API_URL || ''
             const response = await fetch(`${API_BASE_URL}/wallet/address`, {
               headers: {
                 'Content-Type': 'application/json',
