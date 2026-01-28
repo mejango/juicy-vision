@@ -56,6 +56,21 @@ export async function optionalAuth(c: Context, next: Next) {
   await next();
 }
 
+// Middleware that requires admin privileges
+// MUST be used AFTER requireAuth
+export async function requireAdmin(c: Context, next: Next) {
+  const user = c.get('user');
+  if (!user) {
+    return c.json({ success: false, error: 'Authentication required' }, 401);
+  }
+
+  if (!user.isAdmin) {
+    return c.json({ success: false, error: 'Admin access required' }, 403);
+  }
+
+  await next();
+}
+
 // Middleware that checks if user has specific privacy mode
 export function requirePrivacyMode(allowedModes: string[]) {
   return async (c: Context, next: Next) => {

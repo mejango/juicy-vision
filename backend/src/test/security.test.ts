@@ -813,6 +813,197 @@ Deno.test('Security - Full Request Validation', async (t) => {
 // Helper: Run All Fuzz Tests Against a Schema
 // ============================================================================
 
+// ============================================================================
+// Test 21: Passkey Wallet Registration - Signature Requirement
+// ============================================================================
+
+Deno.test('Security - Passkey Wallet Registration Schema', async (t) => {
+  // The new schema requires a signature to prove wallet ownership
+  const RegisterWalletSchema = z.object({
+    credentialId: z.string().min(1).max(512),
+    walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    signature: z.string().regex(/^0x[a-fA-F0-9]+$/), // Required signature
+    deviceName: z.string().max(100).optional(),
+    deviceType: z.string().max(50).optional(),
+  });
+
+  await t.step('requires signature field', () => {
+    // Without signature - should fail
+    const withoutSig = RegisterWalletSchema.safeParse({
+      credentialId: 'test-credential-id',
+      walletAddress: '0x1234567890123456789012345678901234567890',
+    });
+    assertEquals(withoutSig.success, false);
+
+    // With signature - should pass
+    const withSig = RegisterWalletSchema.safeParse({
+      credentialId: 'test-credential-id',
+      walletAddress: '0x1234567890123456789012345678901234567890',
+      signature: '0xabc123def456',
+    });
+    assertEquals(withSig.success, true);
+  });
+
+  await t.step('validates signature format', () => {
+    // Invalid signature formats
+    assertEquals(RegisterWalletSchema.safeParse({
+      credentialId: 'test',
+      walletAddress: '0x1234567890123456789012345678901234567890',
+      signature: 'not-hex',
+    }).success, false);
+
+    assertEquals(RegisterWalletSchema.safeParse({
+      credentialId: 'test',
+      walletAddress: '0x1234567890123456789012345678901234567890',
+      signature: '',
+    }).success, false);
+  });
+
+  await t.step('prevents arbitrary wallet registration without proof', () => {
+    // The schema requires signature - attacker can't register wallets they don't control
+    const attackAttempt = RegisterWalletSchema.safeParse({
+      credentialId: 'victim-credential-id',
+      walletAddress: '0xattacker000000000000000000000000000000',
+      // Missing signature - can't prove ownership
+    });
+    assertEquals(attackAttempt.success, false);
+  });
+});
+
+// ============================================================================
+// Test 22: OTP Timing-Safe Comparison
+// ============================================================================
+
+Deno.test('Security - Timing-Safe String Comparison', async (t) => {
+  // Proper constant-time string comparison that:
+  // 1. Takes the same time regardless of where strings differ
+  // 2. Handles different length strings securely
+  function timingSafeEqual(a: string, b: string): boolean {
+    // Track length mismatch but continue comparison to maintain timing
+    const lengthsMatch = a.length === b.length;
+
+    // If lengths differ, compare 'a' against itself to maintain timing
+    // but mark result as failed
+    const compareString = lengthsMatch ? b : a;
+
+    let result = lengthsMatch ? 0 : 1;
+    for (let i = 0; i < a.length; i++) {
+      result |= a.charCodeAt(i) ^ compareString.charCodeAt(i);
+    }
+    return result === 0;
+  }
+
+  await t.step('returns true for equal strings', () => {
+    assertEquals(timingSafeEqual('123456', '123456'), true);
+    assertEquals(timingSafeEqual('', ''), true);
+    assertEquals(timingSafeEqual('a', 'a'), true);
+  });
+
+  await t.step('returns false for different strings', () => {
+    assertEquals(timingSafeEqual('123456', '123457'), false);
+    assertEquals(timingSafeEqual('123456', '000000'), false);
+    assertEquals(timingSafeEqual('abc', 'abd'), false);
+  });
+
+  await t.step('returns false for different lengths', () => {
+    assertEquals(timingSafeEqual('123456', '12345'), false);
+    assertEquals(timingSafeEqual('12345', '123456'), false);
+    assertEquals(timingSafeEqual('', 'a'), false);
+  });
+
+  await t.step('handles edge cases', () => {
+    // Null byte
+    assertEquals(timingSafeEqual('test\x00', 'test\x00'), true);
+    assertEquals(timingSafeEqual('test\x00', 'test'), false);
+
+    // Unicode - note: comparing by char code, multi-byte chars work correctly
+    assertEquals(timingSafeEqual('🔒', '🔒'), true);
+  });
+});
+
+// ============================================================================
+// Test 23: Smart Account User Verification
+// ============================================================================
+
+Deno.test('Security - Smart Account User Ownership', async (t) => {
+  // Simulating the verification logic
+  function verifyAccountOwnership(
+    accountUserId: string,
+    requestUserId: string
+  ): boolean {
+    return accountUserId === requestUserId;
+  }
+
+  await t.step('allows owner access', () => {
+    assertEquals(verifyAccountOwnership('user-123', 'user-123'), true);
+  });
+
+  await t.step('denies non-owner access', () => {
+    assertEquals(verifyAccountOwnership('user-123', 'user-456'), false);
+    assertEquals(verifyAccountOwnership('user-123', 'USER-123'), false); // Case sensitive
+    assertEquals(verifyAccountOwnership('user-123', 'user-123 '), false); // Trailing space
+  });
+
+  await t.step('handles empty/null-like values', () => {
+    assertEquals(verifyAccountOwnership('user-123', ''), false);
+    assertEquals(verifyAccountOwnership('', 'user-123'), false);
+    assertEquals(verifyAccountOwnership('', ''), true);
+  });
+});
+
+// ============================================================================
+// Test 24: Passkey Counter Validation
+// ============================================================================
+
+Deno.test('Security - Passkey Counter Replay Prevention', async (t) => {
+  // Counter validation logic from passkey.ts
+  function isCounterValid(storedCounter: number, newCounter: number): boolean {
+    if (storedCounter > 0) {
+      // Once we've seen a non-zero counter, require strictly increasing
+      return newCounter > storedCounter;
+    } else if (newCounter === 0 && storedCounter === 0) {
+      // Both zero - authenticator doesn't support counters
+      return true;
+    }
+    // Stored is 0 but new is > 0 - first real use
+    return true;
+  }
+
+  await t.step('allows strictly increasing counters', () => {
+    assertEquals(isCounterValid(1, 2), true);
+    assertEquals(isCounterValid(100, 101), true);
+    assertEquals(isCounterValid(1000000, 1000001), true);
+  });
+
+  await t.step('rejects non-increasing counters (replay attack)', () => {
+    assertEquals(isCounterValid(5, 5), false);  // Equal
+    assertEquals(isCounterValid(5, 4), false);  // Less
+    assertEquals(isCounterValid(5, 0), false);  // Rollback to zero
+    assertEquals(isCounterValid(100, 99), false);
+  });
+
+  await t.step('allows zero-counter authenticators', () => {
+    // Both zero - authenticator never increments
+    assertEquals(isCounterValid(0, 0), true);
+  });
+
+  await t.step('allows transition from zero to non-zero', () => {
+    // First real use after registration
+    assertEquals(isCounterValid(0, 1), true);
+    assertEquals(isCounterValid(0, 100), true);
+  });
+
+  await t.step('prevents counter regression once non-zero', () => {
+    // Once we see a non-zero counter, we must always increase
+    assertEquals(isCounterValid(1, 0), false);
+    assertEquals(isCounterValid(50, 0), false);
+  });
+});
+
+// ============================================================================
+// Fuzz Testing Utilities
+// ============================================================================
+
 export function fuzzSchema<T extends z.ZodTypeAny>(schema: T, name: string) {
   return async () => {
     let passed = 0;

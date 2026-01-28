@@ -11,6 +11,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { execute, queryOne } from '../db/index.ts';
 import { verifyMessage } from 'npm:viem';
+import { getPseudoAddress } from '../utils/crypto.ts';
 
 export const siweRouter = new Hono();
 
@@ -144,7 +145,8 @@ siweRouter.post(
     // If there was an anonymous session, migrate its data to this wallet
     if (sessionId) {
       // Update any chats created by this anonymous session to be owned by the wallet
-      const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+      // Uses HMAC-SHA256 for consistent address generation across the system
+      const pseudoAddress = await getPseudoAddress(sessionId);
 
       await execute(
         `UPDATE multi_chat_members

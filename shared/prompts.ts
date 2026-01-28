@@ -1398,7 +1398,7 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
         "groupId": "909516616",
         "splits": [
           {"percent": 975000000, "projectId": 0, "beneficiary": "USER_WALLET", "preferAddToBalance": false, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"},
-          {"percent": 25000000, "projectId": 1, "beneficiary": "0x0000000000000000000000000000000000000000", "preferAddToBalance": true, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"}
+          {"percent": 25000000, "projectId": 1, "beneficiary": "USER_WALLET", "preferAddToBalance": true, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"}
         ]
       }],
       "fundAccessLimitGroups": [{
@@ -1618,12 +1618,12 @@ Revnets are autonomous tokenized treasuries with staged parameters. The REVDeplo
   "groupId": "909516616",
   "splits": [
     {"percent": 975000000, "projectId": 0, "beneficiary": "USER_WALLET", "preferAddToBalance": false, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"},
-    {"percent": 25000000, "projectId": 1, "beneficiary": "0x0000000000000000000000000000000000000000", "preferAddToBalance": true, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"}
+    {"percent": 25000000, "projectId": 1, "beneficiary": "USER_WALLET", "preferAddToBalance": true, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"}
   ]
 }]
 \`\`\`
 - First split: 97.5% to owner (projectId: 0, beneficiary: user's wallet)
-- Second split: 2.5% to NANA (projectId: 1, preferAddToBalance: true)
+- Second split: 2.5% to NANA (projectId: 1, beneficiary: user's wallet, preferAddToBalance: true) - user receives NANA tokens as the beneficiary
 - **groupId**: See JBSplitGroup in Struct Reference
 
 **Payout Limits - Set to ceil(goal ÷ 0.975) so user gets their full goal after fee:**

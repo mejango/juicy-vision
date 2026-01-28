@@ -126,8 +126,7 @@ describe('TransactionPreview', () => {
     const actionLabelPairs = [
       { action: 'pay', label: 'Pay' },
       { action: 'cashOut', label: 'Cash Out' },
-      { action: 'launchProject', label: 'Launch Project' },
-      { action: 'launch721Project', label: 'Launch Project' },
+      // launchProject/launch721Project show "Sign in" when no owner - tested separately below
       { action: 'deployRevnet', label: 'Deploy Revnet' },
       { action: 'queueRuleset', label: 'Queue Ruleset' },
       { action: 'deployERC20', label: 'Deploy Token' },
@@ -138,6 +137,18 @@ describe('TransactionPreview', () => {
         render(<TransactionPreview {...defaultProps} action={action} />)
         expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
       })
+    })
+
+    // Launch actions show "Sign in" when no owner address is provided
+    // The Sign in button is the main action button at the bottom
+    it('displays "Sign in" button for launchProject when no owner', () => {
+      render(<TransactionPreview {...defaultProps} action="launchProject" />)
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    })
+
+    it('displays "Sign in" button for launch721Project when no owner', () => {
+      render(<TransactionPreview {...defaultProps} action="launch721Project" />)
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     })
   })
 

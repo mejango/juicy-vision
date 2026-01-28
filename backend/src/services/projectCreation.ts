@@ -363,7 +363,7 @@ export async function saveRevnetStages(
     await execute(
       `INSERT INTO created_revnet_stages (
         created_project_id,
-        stage_number,
+        stage_index,
         starts_at_or_after,
         split_percent,
         initial_issuance,
@@ -371,7 +371,7 @@ export async function saveRevnetStages(
         issuance_decay_percent,
         cash_out_tax_rate
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      ON CONFLICT (created_project_id, stage_number)
+      ON CONFLICT (created_project_id, stage_index)
       DO UPDATE SET
         starts_at_or_after = EXCLUDED.starts_at_or_after,
         split_percent = EXCLUDED.split_percent,
@@ -396,7 +396,7 @@ export async function saveRevnetStages(
 interface DbRevnetStage {
   id: string;
   created_project_id: string;
-  stage_number: number;
+  stage_index: number;
   starts_at_or_after: number;
   split_percent: number;
   initial_issuance: string;
@@ -409,13 +409,13 @@ export async function getRevnetStages(createdProjectId: string): Promise<RevnetS
   const rows = await query<DbRevnetStage>(
     `SELECT * FROM created_revnet_stages
      WHERE created_project_id = $1
-     ORDER BY stage_number`,
+     ORDER BY stage_index`,
     [createdProjectId]
   );
 
   return rows.map(row => ({
     createdProjectId: row.created_project_id,
-    stageNumber: row.stage_number,
+    stageNumber: row.stage_index,
     startsAtOrAfter: row.starts_at_or_after,
     splitPercent: row.split_percent,
     initialIssuance: row.initial_issuance,

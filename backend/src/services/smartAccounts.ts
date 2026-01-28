@@ -320,6 +320,7 @@ export async function getOrCreateSmartAccount(
     };
   } catch (error) {
     // Handle race condition: if another request already inserted, fetch the existing record
+    // SECURITY: Always include userId in query to ensure we only return the correct user's account
     if (error instanceof Error && error.message.includes('duplicate key')) {
       logger.debug('Smart account already exists (race condition), fetching existing', {
         userId,
@@ -328,11 +329,22 @@ export async function getOrCreateSmartAccount(
       });
 
       const existingRow = await queryOne<DbSmartAccount>(
-        `SELECT * FROM user_smart_accounts WHERE chain_id = $1 AND address = $2`,
-        [chainId, address]
+        `SELECT * FROM user_smart_accounts WHERE user_id = $1 AND chain_id = $2`,
+        [userId, chainId]
       );
 
       if (existingRow) {
+        // SECURITY: Verify the fetched account belongs to this user
+        if (existingRow.user_id !== userId) {
+          logger.error('Smart account user mismatch', new Error('Account user ID does not match'), {
+            expectedUserId: userId,
+            actualUserId: existingRow.user_id,
+            chainId,
+            address,
+          });
+          throw new Error('Smart account ownership mismatch');
+        }
+
         return {
           id: existingRow.id,
           userId: existingRow.user_id,
@@ -1435,4 +1447,303 @@ export async function getUserExports(userId: string): Promise<ExportRequest[]> {
     userConfirmedAt: row.user_confirmed_at ? new Date(row.user_confirmed_at) : null,
     createdAt: new Date(row.created_at),
   }));
+}
+
+// ============================================================================
+// Delayed Transfers (with hold period for fraud protection)
+// ============================================================================
+
+/** Default hold period: 7 days in milliseconds */
+const TRANSFER_HOLD_MS = 7 * 24 * 60 * 60 * 1000;
+
+export interface PendingTransfer {
+  id: string;
+  userId: string;
+  chainId: number;
+  tokenAddress: string;
+  tokenSymbol: string;
+  amount: string;
+  toAddress: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  availableAt: Date;
+  createdAt: Date;
+  txHash?: string;
+}
+
+/**
+ * Request a transfer with a hold period (fraud protection).
+ * The transfer will be pending until availableAt, then can be executed.
+ *
+ * @param params Transfer parameters
+ * @param holdMs Optional hold period in ms (default: 7 days)
+ * @returns The pending transfer record
+ */
+export async function requestTransfer(params: {
+  userId: string;
+  chainId: number;
+  tokenAddress: Address;
+  tokenSymbol: string;
+  amount: bigint;
+  toAddress: Address;
+  holdMs?: number;
+}): Promise<PendingTransfer> {
+  const {
+    userId,
+    chainId,
+    tokenAddress,
+    tokenSymbol,
+    amount,
+    toAddress,
+    holdMs = TRANSFER_HOLD_MS,
+  } = params;
+
+  // Get account and verify it's managed
+  const account = await getOrCreateSmartAccount(userId, chainId);
+
+  if (account.custodyStatus !== 'managed') {
+    throw new Error('Account is not managed - use your own wallet to transfer');
+  }
+
+  // Verify balance
+  const publicClient = getPublicClient(chainId);
+  const accountAddress = account.address as Address;
+  const isNative = tokenAddress === '0x0000000000000000000000000000000000000000';
+
+  let balance: bigint;
+  if (isNative) {
+    balance = await publicClient.getBalance({ address: accountAddress });
+  } else {
+    balance = await publicClient.readContract({
+      address: tokenAddress,
+      abi: ERC20_ABI,
+      functionName: 'balanceOf',
+      args: [accountAddress],
+    });
+  }
+
+  if (balance < amount) {
+    throw new Error(`Insufficient balance: have ${balance.toString()}, need ${amount.toString()}`);
+  }
+
+  const availableAt = new Date(Date.now() + holdMs);
+
+  // Create pending transfer record
+  const [withdrawal] = await query<{
+    id: string;
+    created_at: Date;
+  }>(
+    `INSERT INTO smart_account_withdrawals
+     (smart_account_id, token_address, amount, to_address, status, transfer_type, available_at)
+     VALUES ($1, $2, $3, $4, 'pending', 'delayed', $5)
+     RETURNING id, created_at`,
+    [account.id, tokenAddress, amount.toString(), toAddress, availableAt]
+  );
+
+  logger.info('Pending transfer created', {
+    transferId: withdrawal.id,
+    userId,
+    chainId,
+    tokenAddress,
+    amount: amount.toString(),
+    toAddress,
+    availableAt,
+  });
+
+  return {
+    id: withdrawal.id,
+    userId,
+    chainId,
+    tokenAddress,
+    tokenSymbol,
+    amount: amount.toString(),
+    toAddress,
+    status: 'pending',
+    availableAt,
+    createdAt: withdrawal.created_at,
+  };
+}
+
+/**
+ * Cancel a pending transfer (only before it's executed)
+ */
+export async function cancelTransfer(
+  transferId: string,
+  userId: string
+): Promise<void> {
+  const result = await execute(
+    `UPDATE smart_account_withdrawals w
+     SET status = 'cancelled'
+     FROM user_smart_accounts a
+     WHERE w.id = $1
+       AND w.smart_account_id = a.id
+       AND a.user_id = $2
+       AND w.status = 'pending'
+       AND w.transfer_type = 'delayed'`,
+    [transferId, userId]
+  );
+
+  if (result === 0) {
+    throw new Error('Transfer not found, not owned by user, or cannot be cancelled');
+  }
+
+  logger.info('Transfer cancelled', { transferId, userId });
+}
+
+/**
+ * Get user's pending/delayed transfers
+ */
+export async function getUserPendingTransfers(userId: string): Promise<PendingTransfer[]> {
+  const rows = await query<{
+    id: string;
+    chain_id: number;
+    token_address: string;
+    amount: string;
+    to_address: string;
+    status: string;
+    available_at: Date;
+    created_at: Date;
+    tx_hash: string | null;
+  }>(
+    `SELECT w.id, a.chain_id, w.token_address, w.amount, w.to_address,
+            w.status, w.available_at, w.created_at, w.tx_hash
+     FROM smart_account_withdrawals w
+     JOIN user_smart_accounts a ON a.id = w.smart_account_id
+     WHERE a.user_id = $1 AND w.transfer_type = 'delayed'
+     ORDER BY w.created_at DESC`,
+    [userId]
+  );
+
+  return rows.map((r) => ({
+    id: r.id,
+    userId,
+    chainId: r.chain_id,
+    tokenAddress: r.token_address,
+    tokenSymbol: '', // Would need to look up or store in DB
+    amount: r.amount,
+    toAddress: r.to_address,
+    status: r.status as PendingTransfer['status'],
+    availableAt: r.available_at,
+    createdAt: r.created_at,
+    txHash: r.tx_hash ?? undefined,
+  }));
+}
+
+/**
+ * Execute transfers that have passed their hold period.
+ * Called by cron job to process ready transfers.
+ *
+ * @returns Number of transfers executed
+ */
+export async function executeReadySmartAccountTransfers(): Promise<number> {
+  // Find all pending delayed transfers that are now available
+  const readyTransfers = await query<{
+    id: string;
+    smart_account_id: string;
+    user_id: string;
+    chain_id: number;
+    account_address: string;
+    token_address: string;
+    amount: string;
+    to_address: string;
+  }>(
+    `SELECT w.id, w.smart_account_id, a.user_id, a.chain_id,
+            a.address as account_address, w.token_address, w.amount, w.to_address
+     FROM smart_account_withdrawals w
+     JOIN user_smart_accounts a ON a.id = w.smart_account_id
+     WHERE w.status = 'pending'
+       AND w.transfer_type = 'delayed'
+       AND w.available_at <= NOW()
+       AND a.custody_status = 'managed'`
+  );
+
+  if (readyTransfers.length === 0) {
+    return 0;
+  }
+
+  logger.info(`Processing ${readyTransfers.length} ready transfers`);
+
+  let executed = 0;
+
+  for (const transfer of readyTransfers) {
+    try {
+      // Mark as processing
+      await execute(
+        `UPDATE smart_account_withdrawals SET status = 'processing' WHERE id = $1`,
+        [transfer.id]
+      );
+
+      // Execute the transfer
+      const config = getConfig();
+      const systemKey = config.reservesPrivateKey as `0x${string}`;
+      const walletClient = getWalletClient(transfer.chain_id, systemKey);
+
+      const accountAddress = transfer.account_address as Address;
+      const tokenAddress = transfer.token_address as Address;
+      const toAddress = transfer.to_address as Address;
+      const amount = BigInt(transfer.amount);
+      const isNative = tokenAddress === '0x0000000000000000000000000000000000000000';
+
+      let txHash: Hash;
+
+      if (isNative) {
+        // Native ETH transfer
+        txHash = await walletClient.writeContract({
+          address: accountAddress,
+          abi: SIMPLE_ACCOUNT_ABI,
+          functionName: 'execute',
+          args: [toAddress, amount, '0x'],
+        });
+      } else {
+        // ERC20 transfer
+        const transferData = encodeFunctionData({
+          abi: ERC20_ABI,
+          functionName: 'transfer',
+          args: [toAddress, amount],
+        });
+
+        txHash = await walletClient.writeContract({
+          address: accountAddress,
+          abi: SIMPLE_ACCOUNT_ABI,
+          functionName: 'execute',
+          args: [tokenAddress, 0n, transferData],
+        });
+      }
+
+      // Wait for confirmation
+      const publicClient = getPublicClient(transfer.chain_id);
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+      // Mark as completed
+      await execute(
+        `UPDATE smart_account_withdrawals
+         SET status = 'completed', tx_hash = $1, executed_at = NOW()
+         WHERE id = $2`,
+        [txHash, transfer.id]
+      );
+
+      logger.info('Transfer executed', {
+        transferId: transfer.id,
+        txHash,
+        chainId: transfer.chain_id,
+      });
+
+      executed++;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('Transfer execution failed', {
+        transferId: transfer.id,
+        error: errorMsg,
+      });
+
+      // Mark as failed
+      await execute(
+        `UPDATE smart_account_withdrawals
+         SET status = 'failed', error_message = $1
+         WHERE id = $2`,
+        [errorMsg, transfer.id]
+      );
+    }
+  }
+
+  return executed;
 }

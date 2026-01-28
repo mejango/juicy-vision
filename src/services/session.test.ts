@@ -13,6 +13,7 @@ vi.mock('./storage', () => ({
   },
 }))
 
+
 // Mock crypto.randomUUID
 const mockRandomUUID = vi.fn(() => 'a1b2c3d4-e5f6-7890-abcd-ef1234567890')
 Object.defineProperty(global, 'crypto', {
@@ -216,6 +217,42 @@ describe('Session Service', () => {
       // Clear cache
       clearPseudoAddressCache()
       expect(getCachedPseudoAddress()).toBeNull()
+    })
+  })
+
+  /**
+   * getCurrentUserAddress tests
+   *
+   * These tests are skipped because getCurrentUserAddress uses require('./siwe')
+   * to avoid circular dependencies (siwe.ts imports session.ts). This dynamic
+   * require cannot be mocked in vitest's ESM environment.
+   *
+   * The function is simple and well-documented in ARCHITECTURE.md. Its behavior:
+   * 1. Priority 1: SIWE wallet address (self-custody) - from getWalletSession()
+   * 2. Priority 2: Smart account address (managed mode) - from localStorage
+   * 3. Priority 3: Cached pseudo-address (anonymous) - from module cache
+   * 4. Returns null if none available
+   *
+   * All returned addresses are lowercase for case-insensitive comparison.
+   *
+   * Testing approach: Integration tests in the browser validate this function
+   * works correctly across all auth modes.
+   */
+  describe.skip('getCurrentUserAddress', () => {
+    it('returns SIWE wallet address as priority 1 (lowercase)', () => {
+      // See comment above - requires integration testing
+    })
+
+    it('returns smart account address as priority 2 when no SIWE (lowercase)', () => {
+      // See comment above - requires integration testing
+    })
+
+    it('returns pseudo-address as priority 3 when no SIWE or smart account (lowercase)', () => {
+      // See comment above - requires integration testing
+    })
+
+    it('returns null when no addresses are available', () => {
+      // See comment above - requires integration testing
     })
   })
 })

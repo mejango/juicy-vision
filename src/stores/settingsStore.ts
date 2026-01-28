@@ -1,9 +1,15 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { changeLanguage } from '../i18n'
+import {
+  DEFAULT_BENDYSTRAW_ENDPOINT as ENV_BENDYSTRAW_ENDPOINT,
+  DEFAULT_RELAYR_ENDPOINT as ENV_RELAYR_ENDPOINT,
+} from '../config/environment'
 
-// Public Bendystraw endpoint - users can configure custom endpoints in settings
-const DEFAULT_BENDYSTRAW_ENDPOINT = 'https://api.bendystraw.xyz/graphql'
+// Environment-aware endpoints - uses testnet endpoints when IS_TESTNET is true
+const DEFAULT_BENDYSTRAW_ENDPOINT = ENV_BENDYSTRAW_ENDPOINT
+const DEFAULT_RELAYR_ENDPOINT = ENV_RELAYR_ENDPOINT
+
 // No default API key - users must provide their own in settings
 export const DEFAULT_THEGRAPH_API_KEY = ''
 
@@ -52,7 +58,7 @@ export const useSettingsStore = create<SettingsState>()(
       ankrApiKey: '',
       theGraphApiKey: DEFAULT_THEGRAPH_API_KEY,
       bendystrawEndpoint: DEFAULT_BENDYSTRAW_ENDPOINT,
-      relayrEndpoint: 'https://api.relayr.ba5ed.com',
+      relayrEndpoint: DEFAULT_RELAYR_ENDPOINT,
       language: 'en',
       selectedFruit: null,
       privateMode: false, // default to open (not private) - allows backend to study chats

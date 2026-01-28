@@ -31,6 +31,7 @@ export function loadConfig(): EnvConfig {
     // Server
     port: getEnvNumber('PORT', 3001),
     env: getEnv('DENO_ENV', 'development') as 'development' | 'production',
+    isTestnet: getEnv('TESTNET_MODE', 'false') === 'true',
 
     // Database
     databaseUrl: getEnv('DATABASE_URL', 'postgresql://localhost:5432/juicyvision'),
@@ -47,6 +48,7 @@ export function loadConfig(): EnvConfig {
 
     // Stripe
     stripeSecretKey: getEnv('STRIPE_SECRET_KEY', ''),
+    stripePublishableKey: getEnv('STRIPE_PUBLISHABLE_KEY', ''),
     stripeWebhookSecret: getEnv('STRIPE_WEBHOOK_SECRET', ''),
 
     // Anthropic

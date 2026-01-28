@@ -217,7 +217,7 @@ projectsRouter.get(
       const anyFailed = chains.some(ch => ch.status === 'failed');
       const anyProcessing = chains.some(ch => ch.status === 'processing');
 
-      let computedStatus = project.creation_status;
+      let computedStatus = project.creationStatus;
       if (allConfirmed && chains.length > 0) {
         computedStatus = 'completed';
       } else if (anyFailed && !anyProcessing) {
@@ -230,16 +230,16 @@ projectsRouter.get(
         success: true,
         data: {
           id: project.id,
-          projectName: project.project_name,
-          projectType: project.project_type,
+          projectName: project.projectName,
+          projectType: project.projectType,
           creationStatus: computedStatus,
           chains: chains.map(ch => ({
-            chainId: ch.chain_id,
-            projectId: ch.project_id,
+            chainId: ch.chainId,
+            projectId: ch.projectId,
             status: ch.status,
-            txHash: ch.tx_hash,
-            suckerAddress: ch.sucker_address,
-            suckerStatus: ch.sucker_status,
+            txHash: ch.txHash,
+            suckerAddress: ch.suckerAddress,
+            suckerStatus: ch.suckerStatus,
           })),
         },
       });

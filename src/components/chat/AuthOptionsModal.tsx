@@ -109,6 +109,7 @@ export default function AuthOptionsModal({
           console.log('[AuthOptionsModal] Credential not found, clearing local state and trying signup...')
           forgetPasskeyWallet()
           localStorage.removeItem('juice-smart-account-address')
+          localStorage.removeItem('juicy-identity')
 
           try {
             // Try to create a new account with a fresh passkey

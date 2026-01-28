@@ -89,9 +89,19 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
   const [addingPasskey, setAddingPasskey] = useState(false)
   const [newPasskeyName, setNewPasskeyName] = useState('')
 
-  // Juicy ID state
-  const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
-  const [identityUsername, setIdentityUsername] = useState('')
+  // Juicy ID state - initialize from localStorage cache for instant display
+  const [identity, setIdentity] = useState<JuicyIdentity | null>(() => {
+    try {
+      const cached = localStorage.getItem('juicy-identity')
+      return cached ? JSON.parse(cached) : null
+    } catch { return null }
+  })
+  const [identityUsername, setIdentityUsername] = useState(() => {
+    try {
+      const cached = localStorage.getItem('juicy-identity')
+      return cached ? JSON.parse(cached).username : ''
+    } catch { return '' }
+  })
   const [identityLoading, setIdentityLoading] = useState(false)
   const [identityError, setIdentityError] = useState<string | null>(null)
   const [identityAvailable, setIdentityAvailable] = useState<boolean | null>(null)
@@ -128,6 +138,8 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
         if (data.success && data.data) {
           setIdentity(data.data)
           setIdentityUsername(data.data.username)
+          // Cache for instant display next time
+          try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {}
           // Notify other components (like ChatInput) of the loaded identity
           window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
         }
@@ -199,6 +211,8 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
         setIdentity(data.data)
         setIdentityError(null)
         setPendingIdentity(null)
+        // Cache for instant display
+        try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {}
         // Notify other components of identity change
         window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
       } else {
@@ -218,12 +232,24 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     }
   }, [isOpen, isLoggedIn, loadPasskeys])
 
-  // Load identity when panel opens
+  // Listen for identity changes from other components (pre-populates before panel opens)
   useEffect(() => {
-    if (isOpen) {
+    const handleIdentityChange = (e: CustomEvent<JuicyIdentity>) => {
+      setIdentity(e.detail)
+      setIdentityUsername(e.detail.username)
+      // Cache for instant display next time
+      try { localStorage.setItem('juicy-identity', JSON.stringify(e.detail)) } catch {}
+    }
+    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+  }, [])
+
+  // Load identity when panel opens (in case no other component loaded it yet)
+  useEffect(() => {
+    if (isOpen && !identity) {
       loadIdentity()
     }
-  }, [isOpen, loadIdentity])
+  }, [isOpen, identity, loadIdentity])
 
   // Auto-save pending identity after sign-in
   useEffect(() => {
@@ -792,8 +818,9 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                     const currentAddress = walletSession?.address ||
                       `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
                     const defaultEmoji = getEmojiFromAddress(currentAddress)
-                    const emoji = selectedFruit || defaultEmoji
-                    const name = identityUsername || identity?.username || 'username'
+                    // Use identity emoji first (saved on server), then local selection, then default
+                    const emoji = identity?.emoji || selectedFruit || defaultEmoji
+                    const name = identityUsername || identity?.username || ''
                     return `${emoji} ${name}`
                   })()}
                 </p>
@@ -808,7 +835,9 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                     const currentAddress = walletSession?.address ||
                       `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
                     const defaultEmoji = getEmojiFromAddress(currentAddress)
-                    const isSelected = selectedFruit === fruit || (!selectedFruit && fruit === defaultEmoji)
+                    // Use identity emoji (saved on server) as source of truth, then local selection, then default
+                    const currentEmoji = identity?.emoji || selectedFruit || defaultEmoji
+                    const isSelected = fruit === currentEmoji
 
                     const handleEmojiClick = async () => {
                       const newEmoji = fruit === defaultEmoji ? null : fruit
@@ -961,7 +990,11 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
               {isLoggedIn && (
                 <div className="pt-2">
                   <button
-                    onClick={() => { logout(); onClose() }}
+                    onClick={() => {
+                      localStorage.removeItem('juicy-identity')
+                      logout()
+                      onClose()
+                    }}
                     className="text-xs text-red-400 hover:text-red-300"
                   >
                     Sign out

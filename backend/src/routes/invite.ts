@@ -84,9 +84,9 @@ async function requireWalletOrAuth(c: any, next: any) {
   const user = c.get('user');
 
   if (user) {
-    const { getCustodialAddress } = await import('../services/wallet.ts');
-    const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
-    c.set('walletSession', { address, userId: user.id } as WalletSession);
+    const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
+    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
 

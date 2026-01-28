@@ -1,46 +1,90 @@
-import { mainnet, optimism, base, arbitrum } from 'viem/chains'
+import { mainnet, optimism, base, arbitrum, sepolia, optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains'
+import { IS_TESTNET, CHAIN_IDS } from '../config/environment'
+
+// =============================================================================
+// CHAIN CONFIGURATION
+// =============================================================================
+// Environment-aware chain configuration. Uses Sepolia testnets when IS_TESTNET is true.
 
 // Viem chain configurations for RPC calls
-export const VIEM_CHAINS = {
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
-} as const
+export const VIEM_CHAINS = IS_TESTNET
+  ? {
+      [CHAIN_IDS.ethereum]: sepolia,
+      [CHAIN_IDS.optimism]: optimismSepolia,
+      [CHAIN_IDS.base]: baseSepolia,
+      [CHAIN_IDS.arbitrum]: arbitrumSepolia,
+    } as const
+  : {
+      [CHAIN_IDS.ethereum]: mainnet,
+      [CHAIN_IDS.optimism]: optimism,
+      [CHAIN_IDS.base]: base,
+      [CHAIN_IDS.arbitrum]: arbitrum,
+    } as const
 
 // RPC endpoints for each chain (public endpoints - users can configure custom RPCs in settings)
-export const RPC_ENDPOINTS: Record<number, string[]> = {
-  1: [
-    'https://ethereum.publicnode.com',
-    'https://eth.drpc.org',
-    'https://rpc.ankr.com/eth',
-  ],
-  10: [
-    'https://optimism.publicnode.com',
-    'https://mainnet.optimism.io',
-    'https://rpc.ankr.com/optimism',
-  ],
-  8453: [
-    'https://base.publicnode.com',
-    'https://mainnet.base.org',
-    'https://rpc.ankr.com/base',
-  ],
-  42161: [
-    'https://arbitrum-one.publicnode.com',
-    'https://arb1.arbitrum.io/rpc',
-    'https://rpc.ankr.com/arbitrum',
-  ],
-}
+export const RPC_ENDPOINTS: Record<number, string[]> = IS_TESTNET
+  ? {
+      [CHAIN_IDS.ethereum]: [
+        'https://rpc.sepolia.org',
+        'https://sepolia.drpc.org',
+        'https://rpc.ankr.com/eth_sepolia',
+      ],
+      [CHAIN_IDS.optimism]: [
+        'https://sepolia.optimism.io',
+        'https://optimism-sepolia.drpc.org',
+        'https://rpc.ankr.com/optimism_sepolia',
+      ],
+      [CHAIN_IDS.base]: [
+        'https://sepolia.base.org',
+        'https://base-sepolia.drpc.org',
+        'https://rpc.ankr.com/base_sepolia',
+      ],
+      [CHAIN_IDS.arbitrum]: [
+        'https://sepolia-rollup.arbitrum.io/rpc',
+        'https://arbitrum-sepolia.drpc.org',
+        'https://rpc.ankr.com/arbitrum_sepolia',
+      ],
+    }
+  : {
+      [CHAIN_IDS.ethereum]: [
+        'https://ethereum.publicnode.com',
+        'https://eth.drpc.org',
+        'https://rpc.ankr.com/eth',
+      ],
+      [CHAIN_IDS.optimism]: [
+        'https://optimism.publicnode.com',
+        'https://mainnet.optimism.io',
+        'https://rpc.ankr.com/optimism',
+      ],
+      [CHAIN_IDS.base]: [
+        'https://base.publicnode.com',
+        'https://mainnet.base.org',
+        'https://rpc.ankr.com/base',
+      ],
+      [CHAIN_IDS.arbitrum]: [
+        'https://arbitrum-one.publicnode.com',
+        'https://arb1.arbitrum.io/rpc',
+        'https://rpc.ankr.com/arbitrum',
+      ],
+    }
 
-export type SupportedChainId = keyof typeof VIEM_CHAINS
+export type SupportedChainId = (typeof CHAIN_IDS)[keyof typeof CHAIN_IDS]
 
 // USDC contract addresses per chain
-export const USDC_ADDRESSES: Record<SupportedChainId, `0x${string}`> = {
-  1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-  10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-  8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-  42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-}
+// Testnet uses test USDC tokens (may need faucet or minting)
+export const USDC_ADDRESSES: Record<SupportedChainId, `0x${string}`> = IS_TESTNET
+  ? {
+      [CHAIN_IDS.ethereum]: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia USDC
+      [CHAIN_IDS.optimism]: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // OP Sepolia USDC
+      [CHAIN_IDS.base]: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',    // Base Sepolia USDC
+      [CHAIN_IDS.arbitrum]: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', // Arb Sepolia USDC
+    }
+  : {
+      [CHAIN_IDS.ethereum]: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+      [CHAIN_IDS.optimism]: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+      [CHAIN_IDS.base]: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      [CHAIN_IDS.arbitrum]: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+    }
 
 // =============================================================================
 // JUICEBOX V5 vs V5.1 CONTRACT SEPARATION
@@ -51,6 +95,9 @@ export const USDC_ADDRESSES: Record<SupportedChainId, `0x${string}`> = {
 // - Contracts with only one version (JBTokens, JBProjects, etc.) work with both
 // - Revnets: ALWAYS use original V5 contracts (owned by REVDeployer)
 // - New non-revnet JB projects: ALWAYS use V5.1 contracts
+//
+// NOTE: JB core contracts use CREATE2 deterministic deployment, so addresses
+// are the SAME on mainnet and Sepolia testnets.
 // =============================================================================
 
 // Shared contracts - work with BOTH V5 and V5.1 projects
@@ -110,14 +157,41 @@ export const JB721_CONTRACTS = {
 // Zero address constant
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`
 
+// =============================================================================
+// SWAP TERMINAL (Chain-specific addresses)
+// =============================================================================
 // JBSwapTerminal addresses - use when paying a project with a different token than its accounting context
 // e.g., paying USDC to an ETH-denominated project (swaps USDC → ETH before paying)
-export const JB_SWAP_TERMINAL: Record<SupportedChainId, `0x${string}`> = {
-  1: '0x259385b97dfbd5576bd717dc7b25967ec8b145dd',      // Ethereum
-  10: '0x73d04584bde126242c36c2c7b219cbdec7aad774',     // Optimism
-  8453: '0x4fd73d8b285e82471f08a4ef9861d6248b832edd',   // Base
-  42161: '0x483c9b12c5bd2da73133aae30642ce0008c752ad',  // Arbitrum
-}
+// NOTE: These have DIFFERENT addresses on mainnet vs testnet
+
+export const JB_SWAP_TERMINAL: Record<SupportedChainId, `0x${string}`> = IS_TESTNET
+  ? {
+      [CHAIN_IDS.ethereum]: '0xca3f2cc5a35c0412e8147746602b76ba4ac29fc5',  // Sepolia
+      [CHAIN_IDS.optimism]: '0xc7369f75bd678e1a9a46b82e2512e84489d4d32d',  // OP Sepolia
+      [CHAIN_IDS.base]: '0xc7369f75bd678e1a9a46b82e2512e84489d4d32d',      // Base Sepolia
+      [CHAIN_IDS.arbitrum]: '0x5f820a86d63eb1b98c562728719dc1e30967c41c',  // Arb Sepolia
+    }
+  : {
+      [CHAIN_IDS.ethereum]: '0x259385b97dfbd5576bd717dc7b25967ec8b145dd',
+      [CHAIN_IDS.optimism]: '0x73d04584bde126242c36c2c7b219cbdec7aad774',
+      [CHAIN_IDS.base]: '0x4fd73d8b285e82471f08a4ef9861d6248b832edd',
+      [CHAIN_IDS.arbitrum]: '0x483c9b12c5bd2da73133aae30642ce0008c752ad',
+    }
+
+// JBSwapTerminalUSDC addresses (chain-specific, different on testnet)
+export const JB_SWAP_TERMINAL_USDC: Record<SupportedChainId, `0x${string}`> = IS_TESTNET
+  ? {
+      [CHAIN_IDS.ethereum]: '0x30aed19aeBb892Ecc9fCc5E6bC14E52b13b251b5',  // Sepolia
+      [CHAIN_IDS.optimism]: '0x7D7b1ed2B6c21bDA664f5b4B6b2Ce4063759e552',  // OP Sepolia
+      [CHAIN_IDS.base]: '0x6294Ebd426739a47776bD4dAA798b8Fa29112f73',      // Base Sepolia
+      [CHAIN_IDS.arbitrum]: '0xD7503B0F276a72df561eC96daea5e130c62fd0f6',  // Arb Sepolia
+    }
+  : {
+      [CHAIN_IDS.ethereum]: '0x642F6fF15462A5803E9b3bfa6d79F47bCd378F80',
+      [CHAIN_IDS.optimism]: '0x7bA67a138A63FF72fB5f5dbfb16E3C49CCf4a0eD',
+      [CHAIN_IDS.base]: '0x7E000Ed6fa38E19bBf9c7343103BcA377DbeE8Ab',
+      [CHAIN_IDS.arbitrum]: '0x36379B28E67B73F5ae9e3dE320cE1DBd7fd99c08',
+    }
 
 // JBSwapTerminal Registry addresses - same on all chains via CREATE2
 // Choose based on what currency the PROJECT should RECEIVE after swap:
@@ -127,34 +201,50 @@ export const JB_SWAP_TERMINAL_REGISTRY = '0x60b4f5595ee509c4c22921c7b7999f1616e6
 export const JB_SWAP_TERMINAL_USDC_REGISTRY = '0x1ce40d201cdec791de05810d17aaf501be167422' as const
 
 // =============================================================================
+// BUYBACK HOOK (Chain-specific addresses)
+// =============================================================================
+// JBBuybackHook addresses - different on each chain/testnet
+
+export const JB_BUYBACK_HOOK: Record<SupportedChainId, `0x${string}`> = IS_TESTNET
+  ? {
+      [CHAIN_IDS.ethereum]: '0xf082e3218a690ea6386506bed338f6878d21815f',  // Sepolia
+      [CHAIN_IDS.optimism]: '0x79e5ca5ebe4f110965248afad88b8e539e1aa8fd',  // OP Sepolia
+      [CHAIN_IDS.base]: '0x79e5ca5ebe4f110965248afad88b8e539e1aa8fd',      // Base Sepolia
+      [CHAIN_IDS.arbitrum]: '0xb35ab801c008a64d8f3eea0a8a6209b0d176f2df',  // Arb Sepolia
+    }
+  : {
+      [CHAIN_IDS.ethereum]: '0xd342490ec41d5982c23951253a74a1c940fe0f9b',
+      [CHAIN_IDS.optimism]: '0x318f8aa6a95cb83419985c0d797c762f5a7824f3',
+      [CHAIN_IDS.base]: '0xb6133a222315f8e9d25e7c77bac5ddeb3451d088',
+      [CHAIN_IDS.arbitrum]: '0x4ac3e20edd1d398def0dfb44d3adb9fc244f0320',
+    }
+
+// =============================================================================
 // SUCKER CONTRACTS (Cross-Chain Token Bridging)
 // =============================================================================
 // Suckers enable token bridging between chains for the same project.
 // After deploying a project on multiple chains, deploy suckers to link them.
 
-// JBSuckerRegistry - manages sucker deployments and mappings
-export const JB_SUCKER_REGISTRY = '0x696c7e9b1c821c0200b2e28496f21f09c5447766' as `0x${string}`
+// JBSuckerRegistry - manages sucker deployments and mappings (CREATE2 - same address)
+export const JB_SUCKER_REGISTRY = '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3' as `0x${string}`
 
-// Sucker deployers per bridge type
+// Sucker deployers per bridge type (CREATE2 - same addresses on mainnet and testnet)
 // Each deployer creates suckers for a specific bridge (OP Messenger, Arbitrum Gateway, etc.)
 export const SUCKER_DEPLOYERS = {
-  // BPSuckerDeployer - Deploys suckers using native OP Stack messaging (Optimism, Base)
-  BPSuckerDeployer: '0xa2e34c2f94b38ec0e394ab69ba0e3d1f84c8e5d4' as `0x${string}`,
-  // ARBSuckerDeployer - Deploys suckers using Arbitrum's gateway
-  ARBSuckerDeployer: '0x35a69642fa08e35a5c4e7f0e5c0b6e9d05b6c8d2' as `0x${string}`,
-  // CCIPSuckerDeployer - Deploys suckers using Chainlink CCIP (cross-ecosystem)
-  CCIPSuckerDeployer: '0x8b7a92fa96537fc8c5d1e4a9d5e8c7f2b6a9c3e1' as `0x${string}`,
+  // JBArbitrumSuckerDeployer
+  ARBSuckerDeployer: '0xea06bd663a1cec97b5bdec9375ab9a63695c9699' as `0x${string}`,
+  // JBOptimismSuckerDeployer
+  OPSuckerDeployer: '0x77cdb0f5eef8febd67dd6e594ff654fb12cc3057' as `0x${string}`,
+  // JBBaseSuckerDeployer
+  BaseSuckerDeployer: '0xd9f35d8dd36046f14479e6dced03733724947efd' as `0x${string}`,
 } as const
 
 // Map chains to their preferred sucker deployer
-// OP Stack chains (10, 8453) use BPSuckerDeployer
-// Arbitrum (42161) uses ARBSuckerDeployer
-// Ethereum (1) can use any deployer as it's the hub
 export const CHAIN_SUCKER_DEPLOYER: Record<SupportedChainId, `0x${string}`> = {
-  1: SUCKER_DEPLOYERS.BPSuckerDeployer,       // Ethereum - hub, supports all
-  10: SUCKER_DEPLOYERS.BPSuckerDeployer,      // Optimism - OP Stack
-  8453: SUCKER_DEPLOYERS.BPSuckerDeployer,    // Base - OP Stack
-  42161: SUCKER_DEPLOYERS.ARBSuckerDeployer,  // Arbitrum - Arbitrum Gateway
+  [CHAIN_IDS.ethereum]: SUCKER_DEPLOYERS.OPSuckerDeployer,  // Ethereum - hub, supports all
+  [CHAIN_IDS.optimism]: SUCKER_DEPLOYERS.OPSuckerDeployer,  // Optimism - OP Stack
+  [CHAIN_IDS.base]: SUCKER_DEPLOYERS.BaseSuckerDeployer,    // Base - OP Stack
+  [CHAIN_IDS.arbitrum]: SUCKER_DEPLOYERS.ARBSuckerDeployer, // Arbitrum - Arbitrum Gateway
 }
 
 // =============================================================================
@@ -162,5 +252,5 @@ export const CHAIN_SUCKER_DEPLOYER: Record<SupportedChainId, `0x${string}`> = {
 // =============================================================================
 // Deploy projects on multiple chains with a single transaction
 
-// JBOmnichainDeployer - deploys projects on all chains at once
+// JBOmnichainDeployer - deploys projects on all chains at once (CREATE2 - same address)
 export const JB_OMNICHAIN_DEPLOYER = '0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71' as `0x${string}`

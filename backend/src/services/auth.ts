@@ -9,6 +9,7 @@ interface DbUser {
   email_verified: boolean;
   privacy_mode: PrivacyMode;
   custodial_address_index: number | null;
+  is_admin: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -68,23 +69,57 @@ export async function createOtpCode(email: string): Promise<string> {
   return code;
 }
 
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ * Takes the same time regardless of where strings differ.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  // Track length mismatch but continue comparison to maintain timing
+  const lengthsMatch = a.length === b.length;
+
+  // If lengths differ, compare 'a' against itself to maintain timing
+  // but mark result as failed
+  const compareString = lengthsMatch ? b : a;
+
+  let result = lengthsMatch ? 0 : 1;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ compareString.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+/**
+ * Verify OTP code with timing-safe comparison
+ * SECURITY: Uses constant-time comparison and consistent execution paths
+ * to prevent timing attacks that could leak code validity
+ */
 export async function verifyOtpCode(email: string, code: string): Promise<boolean> {
+  // Always fetch the latest valid code for this email (if any)
+  // This ensures consistent database timing regardless of code correctness
   const otpRecord = await queryOne<DbOtpCode>(
     `SELECT * FROM otp_codes
-     WHERE email = $1 AND code = $2 AND used = FALSE AND expires_at > NOW()
+     WHERE email = $1 AND used = FALSE AND expires_at > NOW()
      ORDER BY created_at DESC
      LIMIT 1`,
-    [email.toLowerCase(), code]
+    [email.toLowerCase()]
   );
 
-  if (!otpRecord) {
-    return false;
+  // SECURITY: Use timing-safe comparison to prevent timing attacks
+  // Even if no record exists, we compare against a dummy value
+  const storedCode = otpRecord?.code || '000000';
+  const isCodeValid = timingSafeEqual(storedCode, code);
+
+  // SECURITY: Always perform the update operation to maintain consistent timing
+  // This prevents attackers from detecting valid emails based on response time
+  if (otpRecord) {
+    await execute('UPDATE otp_codes SET used = TRUE WHERE id = $1', [otpRecord.id]);
+  } else {
+    // Perform a no-op query to maintain consistent timing
+    await execute('SELECT 1');
   }
 
-  // Mark code as used
-  await execute('UPDATE otp_codes SET used = TRUE WHERE id = $1', [otpRecord.id]);
-
-  return true;
+  // Only return true if we had a valid record AND the code matched
+  return otpRecord !== null && isCodeValid;
 }
 
 // Cleanup expired OTP codes (run periodically)
@@ -154,6 +189,7 @@ export async function findOrCreateUser(email: string): Promise<User> {
       emailVerified: dbUser.email_verified,
       privacyMode: dbUser.privacy_mode,
       custodialAddressIndex: dbUser.custodial_address_index ?? undefined,
+      isAdmin: dbUser.is_admin,
       createdAt: dbUser.created_at,
       updatedAt: dbUser.updated_at,
     };
@@ -176,6 +212,7 @@ export async function findUserByEmail(email: string): Promise<User | null> {
     emailVerified: user.email_verified,
     privacyMode: user.privacy_mode,
     custodialAddressIndex: user.custodial_address_index ?? undefined,
+    isAdmin: user.is_admin,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
   };
@@ -195,6 +232,7 @@ export async function findUserById(id: string): Promise<User | null> {
     emailVerified: user.email_verified,
     privacyMode: user.privacy_mode,
     custodialAddressIndex: user.custodial_address_index ?? undefined,
+    isAdmin: user.is_admin,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
   };

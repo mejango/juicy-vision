@@ -17,12 +17,29 @@ import {
   getRevnetStages,
   type CreateProjectParams,
 } from './projectCreation.ts';
+import { execute, queryOne } from '../db/index.ts';
 
-// Test user ID
-const TEST_USER_ID = 'usr_test_project_creation_001';
+// Test user ID - must be a valid UUID format
+const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 // Track created project IDs for cleanup
 const createdProjectIds: string[] = [];
+
+// Ensure test user exists before running tests
+async function ensureTestUserExists(): Promise<void> {
+  const existing = await queryOne<{ id: string }>(
+    'SELECT id FROM users WHERE id = $1',
+    [TEST_USER_ID]
+  );
+  if (!existing) {
+    await execute(
+      `INSERT INTO users (id, email, email_verified, privacy_mode)
+       VALUES ($1, $2, true, 'open_book')
+       ON CONFLICT (id) DO NOTHING`,
+      [TEST_USER_ID, 'test-user@projectcreation.test']
+    );
+  }
+}
 
 // ============================================================================
 // Helper Functions
@@ -31,6 +48,9 @@ const createdProjectIds: string[] = [];
 async function createTestProject(
   overrides: Partial<CreateProjectParams> = {}
 ): Promise<ReturnType<typeof createProject>> {
+  // Ensure test user exists before creating projects with userId
+  await ensureTestUserExists();
+
   const project = await createProject({
     userId: TEST_USER_ID,
     projectName: `Test Project ${Date.now()}`,

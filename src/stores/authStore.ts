@@ -266,8 +266,9 @@ export const useAuthStore = create<AuthState>()(
             // Ignore logout errors
           }
         }
-        // Clear cached smart account address
+        // Clear cached smart account address and identity
         localStorage.removeItem('juice-smart-account-address')
+        localStorage.removeItem('juicy-identity')
         set({
           user: null,
           token: null,
@@ -322,6 +323,10 @@ export const useAuthStore = create<AuthState>()(
             const data = await response.json()
             if (data.success && data.data?.address) {
               localStorage.setItem('juice-smart-account-address', data.data.address)
+              // Dispatch event so ChatContainer can merge session
+              window.dispatchEvent(new CustomEvent('juice:managed-auth-success', {
+                detail: { address: data.data.address }
+              }))
             }
           } catch {
             // Non-critical, will be fetched later by useManagedWallet
@@ -337,6 +342,8 @@ export const useAuthStore = create<AuthState>()(
 
       signupWithPasskey: async () => {
         set({ isLoading: true, error: null })
+        // Clear any stale identity cache from previous account
+        localStorage.removeItem('juicy-identity')
         try {
           const result = await passkeySignup()
           set({
@@ -365,6 +372,10 @@ export const useAuthStore = create<AuthState>()(
             const data = await response.json()
             if (data.success && data.data?.address) {
               localStorage.setItem('juice-smart-account-address', data.data.address)
+              // Dispatch event so ChatContainer can merge session
+              window.dispatchEvent(new CustomEvent('juice:managed-auth-success', {
+                detail: { address: data.data.address }
+              }))
             }
           } catch {
             // Non-critical, will be fetched later by useManagedWallet

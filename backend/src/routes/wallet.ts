@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { requireAuth } from '../middleware/auth.ts';
+import { requireAuth, requireAdmin } from '../middleware/auth.ts';
+import { rateLimitByUser } from '../services/rateLimit.ts';
 import {
   getReservesBalance,
   getReservesAddress,
@@ -21,6 +22,9 @@ import {
   getExportStatus,
   getUserExports,
   checkExportBlockers,
+  requestTransfer,
+  cancelTransfer,
+  getUserPendingTransfers,
 } from '../services/smartAccounts.ts';
 import type { Address } from 'viem';
 
@@ -244,6 +248,82 @@ walletRouter.get('/withdrawals', requireAuth, async (c) => {
 });
 
 // ============================================================================
+// Delayed Transfers (with 7-day hold for fraud protection)
+// ============================================================================
+
+// POST /wallet/transfer - Request a transfer with hold period
+const TransferRequestSchema = z.object({
+  chainId: z.number(),
+  tokenAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  tokenSymbol: z.string(),
+  amount: z.string(), // BigInt as string
+  toAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+});
+
+walletRouter.post(
+  '/transfer',
+  requireAuth,
+  rateLimitByUser('walletExport'), // Reuse export rate limit for sensitive operations
+  zValidator('json', TransferRequestSchema),
+  async (c) => {
+    const user = c.get('user');
+    const body = c.req.valid('json');
+
+    try {
+      const transfer = await requestTransfer({
+        userId: user.id,
+        chainId: body.chainId,
+        tokenAddress: body.tokenAddress as Address,
+        tokenSymbol: body.tokenSymbol,
+        amount: BigInt(body.amount),
+        toAddress: body.toAddress as Address,
+      });
+
+      return c.json({
+        success: true,
+        data: transfer,
+      });
+    } catch (error) {
+      console.error('Transfer request failed:', error);
+      const message = error instanceof Error ? error.message : 'Transfer request failed';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// GET /wallet/transfers - Get user's pending transfers
+walletRouter.get('/transfers', requireAuth, async (c) => {
+  const user = c.get('user');
+
+  try {
+    const transfers = await getUserPendingTransfers(user.id);
+    return c.json({
+      success: true,
+      data: { transfers },
+    });
+  } catch (error) {
+    console.error('Failed to get transfers:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get transfers';
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
+// DELETE /wallet/transfer/:id - Cancel a pending transfer
+walletRouter.delete('/transfer/:id', requireAuth, async (c) => {
+  const user = c.get('user');
+  const transferId = c.req.param('id');
+
+  try {
+    await cancelTransfer(transferId, user.id);
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Transfer cancel failed:', error);
+    const message = error instanceof Error ? error.message : 'Transfer cancel failed';
+    return c.json({ success: false, error: message }, 400);
+  }
+});
+
+// ============================================================================
 // Export Endpoints (Transfer custody to self-custody EOA)
 // ============================================================================
 
@@ -272,6 +352,7 @@ const ExportRequestSchema = z.object({
 walletRouter.post(
   '/export',
   requireAuth,
+  rateLimitByUser('walletExport'),
   zValidator('json', ExportRequestSchema),
   async (c) => {
     const user = c.get('user');
@@ -293,10 +374,20 @@ walletRouter.post(
 );
 
 // POST /wallet/export/:id/confirm - Confirm and execute export
-walletRouter.post('/export/:id/confirm', requireAuth, async (c) => {
+walletRouter.post('/export/:id/confirm', requireAuth, rateLimitByUser('walletExportConfirm'), async (c) => {
+  const user = c.get('user');
   const exportId = c.req.param('id');
 
   try {
+    // Verify ownership
+    const exportReq = await getExportStatus(exportId);
+    if (!exportReq) {
+      return c.json({ success: false, error: 'Export not found' }, 404);
+    }
+    if (exportReq.userId !== user.id) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+
     const result = await confirmExport(exportId);
     return c.json({
       success: true,
@@ -310,10 +401,20 @@ walletRouter.post('/export/:id/confirm', requireAuth, async (c) => {
 });
 
 // POST /wallet/export/:id/retry - Retry failed chains in partial export
-walletRouter.post('/export/:id/retry', requireAuth, async (c) => {
+walletRouter.post('/export/:id/retry', requireAuth, rateLimitByUser('walletExportConfirm'), async (c) => {
+  const user = c.get('user');
   const exportId = c.req.param('id');
 
   try {
+    // Verify ownership
+    const exportReq = await getExportStatus(exportId);
+    if (!exportReq) {
+      return c.json({ success: false, error: 'Export not found' }, 404);
+    }
+    if (exportReq.userId !== user.id) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+
     const result = await retryExport(exportId);
     return c.json({
       success: true,
@@ -328,9 +429,19 @@ walletRouter.post('/export/:id/retry', requireAuth, async (c) => {
 
 // DELETE /wallet/export/:id - Cancel a pending export
 walletRouter.delete('/export/:id', requireAuth, async (c) => {
+  const user = c.get('user');
   const exportId = c.req.param('id');
 
   try {
+    // Verify ownership
+    const exportReq = await getExportStatus(exportId);
+    if (!exportReq) {
+      return c.json({ success: false, error: 'Export not found' }, 404);
+    }
+    if (exportReq.userId !== user.id) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
+    }
+
     await cancelExport(exportId);
     return c.json({ success: true });
   } catch (error) {
@@ -342,12 +453,17 @@ walletRouter.delete('/export/:id', requireAuth, async (c) => {
 
 // GET /wallet/export/:id - Get export status
 walletRouter.get('/export/:id', requireAuth, async (c) => {
+  const user = c.get('user');
   const exportId = c.req.param('id');
 
   try {
     const status = await getExportStatus(exportId);
     if (!status) {
       return c.json({ success: false, error: 'Export not found' }, 404);
+    }
+    // Verify ownership
+    if (status.userId !== user.id) {
+      return c.json({ success: false, error: 'Access denied' }, 403);
     }
     return c.json({
       success: true,
@@ -381,9 +497,7 @@ walletRouter.get('/exports', requireAuth, async (c) => {
 // Admin: Reserves Monitoring
 // ============================================================================
 
-walletRouter.get('/admin/reserves', requireAuth, async (c) => {
-  // TODO: Add admin role check
-
+walletRouter.get('/admin/reserves', requireAuth, requireAdmin, async (c) => {
   const chainIds = [1, 10, 8453, 42161];
   const address = getReservesAddress();
 

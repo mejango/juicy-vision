@@ -73,7 +73,7 @@ export function useChatScroll({
 
       // Thresholds for detecting intentional scroll direction
       const scrollDownThreshold = 5  // Small threshold to detect scroll down
-      const scrollUpThreshold = 30   // Larger threshold to show header (less sensitive)
+      const scrollUpThreshold = 12   // Threshold to show header on scroll up
 
       const isScrollingDown = scrollDelta > scrollDownThreshold
       const isGenuineScrollUp = scrollDelta < -scrollUpThreshold
@@ -201,7 +201,7 @@ export function useChatScroll({
 
       // Thresholds for detecting intentional scroll direction
       const scrollDownThreshold = 5  // Small threshold to detect scroll down
-      const scrollUpThreshold = 30   // Larger threshold to show header (less sensitive)
+      const scrollUpThreshold = 12   // Threshold to show header on scroll up
 
       const isScrollingDown = scrollDelta > scrollDownThreshold
 

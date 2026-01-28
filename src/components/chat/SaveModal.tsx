@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { signInWithWallet, hasValidWalletSession, getWalletSession } from '../../services/siwe'
 import { useEnsNameResolved } from '../../hooks/useEnsName'
+import { forgetPasskeyWallet } from '../../services/passkeyWallet'
 
 export interface AnchorPosition {
   top: number
@@ -53,7 +54,7 @@ export default function SaveModal({ isOpen, onClose, onSaved, onPasskeySuccess, 
     }
   }, [isOpen])
 
-  const { loginWithPasskey } = useAuthStore()
+  const { loginWithPasskey, signupWithPasskey } = useAuthStore()
 
   const handlePasskeyAuth = async () => {
     setIsAuthenticating(true)
@@ -76,6 +77,38 @@ export default function SaveModal({ isOpen, onClose, onSaved, onPasskeySuccess, 
           // User cancelled, no error needed
         } else if (msg.includes('not supported')) {
           setError('Touch ID not supported on this device. Try Wallet instead.')
+        } else if (msg.includes('credential not found') || msg.includes('not registered')) {
+          // Server doesn't recognize the passkey - browser has stale credential
+          // This happens when database is cleared but browser still has old passkey
+          // Try to create a new account with a new passkey
+          console.log('[SaveModal] Credential not found, clearing local state and trying signup...')
+          forgetPasskeyWallet()
+          localStorage.removeItem('juice-smart-account-address')
+          localStorage.removeItem('juicy-identity')
+
+          try {
+            // Try to create a new account with a fresh passkey
+            await signupWithPasskey()
+            onPasskeySuccess?.()
+            setSuccess(true)
+            onSaved?.()
+            setTimeout(() => {
+              onClose()
+            }, 1500)
+            return // Success - don't show error
+          } catch (signupErr) {
+            console.error('Passkey signup also failed:', signupErr)
+            if (signupErr instanceof Error) {
+              const signupMsg = signupErr.message.toLowerCase()
+              if (signupMsg.includes('cancelled') || signupMsg.includes('abort')) {
+                setError('Sign up cancelled. Try again or use Wallet.')
+              } else {
+                setError('Could not create account. Try connecting a wallet instead.')
+              }
+            } else {
+              setError('Could not create account. Try connecting a wallet instead.')
+            }
+          }
         } else {
           setError('Failed to sign in. Try another method.')
         }

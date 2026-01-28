@@ -377,13 +377,35 @@ export async function verifyAuthentication(
   // Extract counter from authenticator data (bytes 33-36, big-endian)
   const newCounter = new DataView(authenticatorData.buffer).getUint32(33, false);
 
-  // Verify counter is greater than stored (prevents replay attacks)
-  // Note: Some authenticators (especially platform authenticators) may not properly
-  // increment counters, or may send counter=0 always. We allow equal counters
-  // for compatibility, and skip check entirely if both are 0.
-  if (newCounter !== 0 && credential.counter !== 0 && newCounter < credential.counter) {
-    throw new Error('Invalid counter - possible replay attack');
+  // SECURITY: Counter verification to prevent replay attacks
+  // The counter must be strictly greater than the stored counter to ensure each
+  // authentication response is unique.
+  //
+  // Special case: Some authenticators (especially older platform authenticators)
+  // always return counter=0. We allow this ONLY if:
+  // 1. Both stored AND new counter are 0 (authenticator doesn't support counters)
+  // 2. Stored is 0 but new is non-zero (authenticator started using counters)
+  //
+  // We REJECT if:
+  // - Stored counter is non-zero but new counter is <= stored (replay or rollback)
+  // - New counter is 0 but stored counter was non-zero (suspicious regression)
+  if (credential.counter > 0) {
+    // Once we've seen a non-zero counter, we require strictly increasing counters
+    if (newCounter <= credential.counter) {
+      console.error('Passkey counter validation failed', {
+        credentialId: credential.id,
+        storedCounter: credential.counter,
+        newCounter,
+      });
+      throw new Error('Invalid counter - possible replay attack');
+    }
+  } else if (newCounter === 0 && credential.counter === 0) {
+    // Both are zero - authenticator doesn't support counters, allow
+    console.warn('Passkey authenticator does not support counters', {
+      credentialId: credential.id,
+    });
   }
+  // Otherwise: stored is 0 but new is > 0, which is fine (first real use)
 
   // In production: verify signature using stored public key
   // This requires proper COSE key parsing and crypto verification

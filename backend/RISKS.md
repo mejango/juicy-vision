@@ -46,6 +46,20 @@ This document outlines potential failure modes, security considerations, and ope
 | Balance goes negative | Overdraft | CHECK constraint on balance >= 0 |
 | Transaction isolation failure | Inconsistent state | Uses transactions for multi-step ops |
 
+### 5. Authentication
+**Risk**: Account compromise or unauthorized access.
+
+| Scenario | Impact | Mitigation |
+|----------|--------|------------|
+| OTP brute force | Account takeover | Rate limiting, 6-digit codes expire in 10min |
+| OTP interception (email) | Account takeover | Consider 2FA for high-value operations |
+| Passkey cloning | Unauthorized access | Counter tracking detects clones |
+| SIWE replay attack | Session hijacking | Nonce validation, short-lived challenges |
+| Session fixation | Account takeover | New session ID on auth, secure cookies |
+| JWT secret compromise | All sessions compromised | Rotate JWT_SECRET, invalidate all sessions |
+
+**Current state**: Multiple auth methods (Email OTP, Passkey/WebAuthn, SIWE) provide flexibility. Passkey is the most secure option. Email OTP relies on email security. SIWE relies on wallet security.
+
 ---
 
 ## Security Vulnerabilities
@@ -58,6 +72,20 @@ This document outlines potential failure modes, security considerations, and ope
 - [x] **Webhook auth**: Stripe signature verification
 - [x] **User isolation**: All queries include user_id check
 - [x] **Amount limits**: Purchase $1-$10k, Cash-out $1-$10k, Spend $1-$50k
+
+#### Authentication (Tested via Integration Tests)
+- [x] **Email OTP timing-safe comparison**: Prevents timing attacks on code verification
+- [x] **OTP code invalidation**: New codes invalidate previous codes for same email
+- [x] **OTP single-use**: Verified codes cannot be reused
+- [x] **Case-insensitive email**: Email normalization prevents duplicates
+- [x] **Session expiration**: Sessions have enforced expiry times
+- [x] **Passkey IDOR protection**: Users can only manage their own credentials
+- [x] **Passkey counter tracking**: Detects cloned authenticators
+- [x] **Passkey credential uniqueness**: credential_id is globally unique
+- [x] **SIWE nonce validation**: Prevents replay attacks
+- [x] **SIWE address normalization**: Case-insensitive address handling
+- [x] **SIWE session expiry**: 30-day session lifetime enforced
+- [x] **Anonymous session migration**: Supports linking anonymous to authenticated sessions
 
 ### Potential Concerns
 
@@ -204,6 +232,9 @@ reserves_balance < sum(pending_cash_outs) * 1.5  → CRITICAL
 failed_transactions_1h > 5                        → WARNING
 chainlink_price_age > 1800                        → WARNING
 pending_spends > 100                              → WARNING
+failed_otp_attempts_per_email_1h > 10             → WARNING (potential brute force)
+sessions_created_per_user_1h > 20                 → WARNING (potential session fixation)
+passkey_counter_resets > 0                        → CRITICAL (cloned authenticator detected)
 ```
 
 ---
@@ -232,6 +263,19 @@ pending_spends > 100                              → WARNING
 3. Resolve with Stripe
 4. Resume purchases
 
+### 4. JWT Secret Compromised
+1. Immediately rotate `JWT_SECRET` in environment
+2. All existing sessions become invalid (users must re-authenticate)
+3. Audit access logs for suspicious activity during exposure window
+4. Consider notifying affected users if suspicious access detected
+
+### 5. Account Takeover Detected
+1. Invalidate all sessions for affected user (`DELETE FROM sessions WHERE user_id = ...`)
+2. Block pending cash-outs for the user
+3. Contact user via verified email to confirm
+4. If passkey was compromised, revoke that credential
+5. Require re-verification before allowing sensitive operations
+
 ---
 
 ## Open Questions
@@ -245,6 +289,12 @@ pending_spends > 100                              → WARNING
 4. **KYC requirements?** At what threshold should we require identity verification?
 
 5. **Insurance?** Should we explore coverage for the reserves wallet?
+
+6. **2FA for high-value operations?** Should cash-outs >$500 require additional verification (passkey if email auth, or vice versa)?
+
+7. **Session revocation UI?** Should users be able to see and revoke active sessions from other devices?
+
+8. **Passkey-only accounts?** Should we allow passwordless accounts that only use passkeys (no email fallback)?
 
 ---
 

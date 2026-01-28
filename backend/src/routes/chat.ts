@@ -104,13 +104,13 @@ async function extractWalletSession(
 
   // First try JWT token validation (for managed wallets)
   const { validateSession } = await import('../services/auth.ts');
-  const { getCustodialAddress } = await import('../services/wallet.ts');
+  const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
 
   const jwtResult = await validateSession(token);
   if (jwtResult) {
-    const address = await getCustodialAddress(jwtResult.user.custodialAddressIndex ?? 0);
+    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, 1);
     return {
-      address,
+      address: smartAccount.address,
       userId: jwtResult.user.id,
     };
   }
@@ -154,10 +154,10 @@ async function requireWalletOrAuth(c: any, next: any) {
   const user = c.get('user');
 
   if (user) {
-    // User authenticated - get their custodial address
-    const { getCustodialAddress } = await import('../services/wallet.ts');
-    const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
-    c.set('walletSession', { address, userId: user.id } as WalletSession);
+    // User authenticated - get their smart account address
+    const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
+    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
 
@@ -197,10 +197,10 @@ async function optionalWalletSession(c: any, next: any) {
   const authHeader = c.req.header('Authorization');
 
   if (user) {
-    // User authenticated - get their custodial address
-    const { getCustodialAddress } = await import('../services/wallet.ts');
-    const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
-    c.set('walletSession', { address, userId: user.id } as WalletSession);
+    // User authenticated - get their smart account address
+    const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
+    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
 
@@ -585,6 +585,8 @@ chatRouter.get('/:chatId', optionalAuth, optionalWalletSession, async (c) => {
   const members = await getChatMembers(chatId);
   const onlineMembers = getOnlineMembers(chatId);
 
+  console.log(`[FetchChat] Chat ${chatId} returning ${members.length} members:`, members.map(m => ({ address: m.memberAddress, role: m.role })));
+
   return c.json({
     success: true,
     data: {
@@ -655,6 +657,7 @@ chatRouter.get(
     }
 
     const members = await getChatMembers(chatId);
+    console.log(`[Members Endpoint] Chat ${chatId} returning ${members.length} members:`, members.map(m => ({ address: m.memberAddress, role: m.role })));
     return c.json({ success: true, data: members.map(serializeMember) });
   }
 );

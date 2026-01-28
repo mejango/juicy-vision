@@ -160,6 +160,16 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
               </a>
               , secured by Ethereum, Optimism, Base, and Arbitrum.
             </p>
+            <button
+              onClick={() => onSuggestionClick('I want to create a project just like NANA')}
+              className={`mt-3 px-3 py-1.5 text-xs border transition-colors ${
+                theme === 'dark'
+                  ? 'border-gray-600 text-gray-500 hover:border-gray-500 hover:text-gray-400'
+                  : 'border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500'
+              }`}
+            >
+              Copy us
+            </button>
           </div>
         </div>
       </div>

@@ -206,10 +206,6 @@ export function formatSimpleValue(value: unknown, key?: string, chainId?: string
     return numValue === 0 ? '0% (no cut)' : `${pct}%/cycle`
   }
 
-  if ((keyLower.includes('pausepay') || keyLower.includes('allowownerminting')) && typeof value === 'boolean') {
-    return value ? 'Yes' : 'No'
-  }
-
   if (typeof value === 'boolean') return value ? 'true' : 'false'
   if (typeof value === 'number') return value.toLocaleString()
   if (typeof value !== 'string') return String(value)
@@ -236,6 +232,12 @@ export function formatSimpleValue(value: unknown, key?: string, chainId?: string
 
   // Handle large numbers (likely wei)
   if (/^\d{18,}$/.test(value) && !keyLower.includes('groupid')) {
+    // Check for uint224.max - this represents "unlimited" in JB fund access limits
+    // uint224.max = 26959946667150639794667015087019630673637144422540572481103610249215
+    const UINT224_MAX = '26959946667150639794667015087019630673637144422540572481103610249215'
+    if (value === UINT224_MAX) {
+      return `UNLIMITED_MARKER:${value}` // Special marker for UI to render with tooltip
+    }
     const eth = parseFloat(value) / 1e18
     return `${eth.toFixed(4)} ETH (${value})`
   }

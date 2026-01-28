@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
     CHECK (privacy_mode IN ('open_book', 'anonymous', 'private', 'ghost')),
   custodial_address_index INTEGER,
   passkey_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  is_admin BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -327,6 +328,9 @@ CREATE TABLE smart_account_withdrawals (
   to_address VARCHAR(42) NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
+  transfer_type VARCHAR(20) NOT NULL DEFAULT 'immediate'
+    CHECK (transfer_type IN ('immediate', 'delayed')),
+  available_at TIMESTAMPTZ,
   tx_hash VARCHAR(66),
   executed_at TIMESTAMPTZ,
   error_message TEXT,
@@ -337,6 +341,13 @@ CREATE TABLE smart_account_withdrawals (
 
 CREATE INDEX idx_withdrawals_account ON smart_account_withdrawals(smart_account_id);
 CREATE INDEX idx_withdrawals_status ON smart_account_withdrawals(status);
+CREATE INDEX idx_withdrawals_available_at ON smart_account_withdrawals(available_at)
+  WHERE status = 'pending' AND transfer_type = 'delayed';
+
+COMMENT ON COLUMN smart_account_withdrawals.available_at IS
+  'For delayed transfers, the timestamp when the transfer becomes executable';
+COMMENT ON COLUMN smart_account_withdrawals.transfer_type IS
+  'immediate: executes right away, delayed: waits for available_at (fraud protection)';
 
 -- Smart Account Exports
 CREATE TABLE smart_account_exports (

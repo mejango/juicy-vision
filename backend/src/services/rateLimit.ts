@@ -44,6 +44,18 @@ export const RATE_LIMITS = {
   authOtpRequest: { limit: 5, windowSeconds: 300 }, // 5 OTP requests/5 min
   authOtpVerify: { limit: 10, windowSeconds: 300 }, // 10 verify attempts/5 min
 
+  // Passkey endpoints - strict limits to prevent brute force
+  passkeyRegister: { limit: 10, windowSeconds: 3600 }, // 10 registrations/hour
+  passkeyAuth: { limit: 20, windowSeconds: 300 }, // 20 auth attempts/5 min
+  passkeySiwe: { limit: 20, windowSeconds: 300 }, // 20 SIWE attempts/5 min
+
+  // Export endpoints - very strict limits (sensitive operations)
+  walletExport: { limit: 5, windowSeconds: 3600 }, // 5 export requests/hour
+  walletExportConfirm: { limit: 3, windowSeconds: 3600 }, // 3 confirmations/hour
+
+  // Admin endpoints - moderate limits
+  admin: { limit: 100, windowSeconds: 60 }, // 100 admin requests/min
+
   // Proxy endpoints
   proxyRpc: { limit: 100, windowSeconds: 60 }, // 100 RPC calls/min
   proxyGraphql: { limit: 30, windowSeconds: 60 }, // 30 GraphQL queries/min

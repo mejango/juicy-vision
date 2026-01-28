@@ -120,6 +120,14 @@ stripeWebhookRouter.post('/', async (c) => {
 
   try {
     switch (event.type) {
+      // Checkout Sessions API (recommended)
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await handleCheckoutSessionCompleted(stripe, session);
+        break;
+      }
+
+      // PaymentIntents API (fallback for direct payments)
       case 'payment_intent.succeeded': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         await handlePaymentSucceeded(stripe, paymentIntent);
@@ -154,6 +162,104 @@ stripeWebhookRouter.post('/', async (c) => {
     return c.json({ received: true, error: 'Handler error logged' });
   }
 });
+
+/**
+ * Handle completed Checkout Session (Stripe's recommended flow)
+ * This is triggered when using the Checkout Sessions API
+ */
+async function handleCheckoutSessionCompleted(
+  stripe: Stripe,
+  session: Stripe.Checkout.Session
+): Promise<void> {
+  const metadata = session.metadata || {};
+
+  // Only handle Juice purchases from Checkout Sessions
+  if (metadata.type !== 'juice_purchase') {
+    logger.debug('Checkout session is not a Juice purchase, skipping', {
+      sessionId: session.id,
+    });
+    return;
+  }
+
+  if (!metadata.userId || !metadata.juiceAmount) {
+    logger.warn('Juice purchase session missing required metadata', {
+      sessionId: session.id,
+    });
+    return;
+  }
+
+  // Get the PaymentIntent to extract risk score
+  const paymentIntentId = session.payment_intent;
+  if (!paymentIntentId || typeof paymentIntentId !== 'string') {
+    logger.warn('Checkout session missing payment_intent', {
+      sessionId: session.id,
+    });
+    return;
+  }
+
+  // Fetch the payment intent with charge details
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+    expand: ['latest_charge'],
+  });
+
+  // Get risk score from charge
+  let riskScore = 50; // Default medium risk
+  let riskLevel: string | undefined;
+
+  if (typeof paymentIntent.latest_charge === 'object' && paymentIntent.latest_charge) {
+    riskScore = paymentIntent.latest_charge.outcome?.risk_score ?? 50;
+    riskLevel = paymentIntent.latest_charge.outcome?.risk_level;
+  }
+
+  const delayDays = calculateSettlementDelayDays(riskScore);
+  const fiatAmount = (session.amount_total || 0) / 100;
+
+  logger.info('Processing Juice purchase from Checkout Session', {
+    sessionId: session.id,
+    paymentIntentId,
+    userId: metadata.userId,
+    fiatAmount,
+    riskScore,
+    riskLevel,
+    delayDays,
+  });
+
+  // Create the purchase record
+  const chargeId = typeof paymentIntent.latest_charge === 'object'
+    ? paymentIntent.latest_charge?.id
+    : paymentIntent.latest_charge;
+
+  const purchaseId = await createJuicePurchase({
+    userId: metadata.userId,
+    stripePaymentIntentId: paymentIntentId,
+    stripeChargeId: chargeId,
+    fiatAmount,
+    riskScore,
+    riskLevel,
+    settlementDelayDays: delayDays,
+  });
+
+  // If low risk, credit immediately
+  if (delayDays === 0) {
+    logger.info('Low risk Juice purchase - crediting immediately', {
+      purchaseId,
+      riskScore,
+    });
+
+    try {
+      await creditJuice(metadata.userId, fiatAmount, purchaseId);
+      logger.info('Immediate Juice credit successful', {
+        purchaseId,
+        amount: fiatAmount,
+      });
+    } catch (error) {
+      // Credit failed but purchase is recorded - cron will retry
+      logger.error('Immediate Juice credit failed, will retry via cron', error as Error, {
+        purchaseId,
+      });
+    }
+  }
+}
 
 /**
  * Handle successful payment - route to appropriate handler based on type

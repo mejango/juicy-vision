@@ -94,8 +94,9 @@ export function useComponentCollaboration({
             const groupSelections = [...(selections.get(data.groupId) || [])]
 
             // Remove existing selection from this user in this group
+            // Use case-insensitive comparison (Ethereum addresses can have different casing)
             const existingIdx = groupSelections.findIndex(
-              (s) => s.address === senderAddress
+              (s) => s.address?.toLowerCase() === senderAddress?.toLowerCase()
             )
             if (existingIdx !== -1) {
               groupSelections.splice(existingIdx, 1)
@@ -122,7 +123,7 @@ export function useComponentCollaboration({
             const timeoutKey = `${senderAddress}:${data.groupId}`
 
             const existingIdx = groupTyping.findIndex(
-              (t) => t.address === senderAddress
+              (t) => t.address?.toLowerCase() === senderAddress?.toLowerCase()
             )
 
             if (data.value) {
@@ -144,7 +145,7 @@ export function useComponentCollaboration({
                 setState((s) => {
                   const newMap = new Map(s.remoteTyping)
                   const filtered = (newMap.get(data.groupId) || []).filter(
-                    (t) => t.address !== senderAddress
+                    (t) => t.address?.toLowerCase() !== senderAddress?.toLowerCase()
                   )
                   if (filtered.length > 0) {
                     newMap.set(data.groupId, filtered)
@@ -182,7 +183,7 @@ export function useComponentCollaboration({
             const hovers = new Map(prev.remoteHovers)
             const groupHovers = [...(hovers.get(data.groupId) || [])]
 
-            if (!groupHovers.some((h) => h.address === senderAddress)) {
+            if (!groupHovers.some((h) => h.address?.toLowerCase() === senderAddress?.toLowerCase())) {
               groupHovers.push({ address: senderAddress, emoji })
             }
 
@@ -195,7 +196,7 @@ export function useComponentCollaboration({
             // Remove hover indicator
             const hovers = new Map(prev.remoteHovers)
             const groupHovers = (hovers.get(data.groupId) || []).filter(
-              (h) => h.address !== senderAddress
+              (h) => h.address?.toLowerCase() !== senderAddress?.toLowerCase()
             )
 
             if (groupHovers.length > 0) {

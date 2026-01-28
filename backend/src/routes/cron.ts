@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getConfig } from '../utils/config.ts';
 import { executeReadyTransfers } from '../services/wallet.ts';
+import { executeReadySmartAccountTransfers } from '../services/smartAccounts.ts';
 import { cleanupExpiredSessions } from '../services/auth.ts';
 import { cleanupRateLimits } from '../services/claude.ts';
 import { processSettlements } from '../services/settlement.ts';
@@ -75,12 +76,16 @@ cronRouter.post('/transfers', async (c) => {
   const startTime = Date.now();
 
   try {
-    const count = await executeReadyTransfers();
+    // Execute both legacy transfers and smart account transfers
+    const legacyCount = await executeReadyTransfers();
+    const smartAccountCount = await executeReadySmartAccountTransfers();
 
     return c.json({
       success: true,
       data: {
-        executedCount: count,
+        executedCount: legacyCount + smartAccountCount,
+        legacyCount,
+        smartAccountCount,
         durationMs: Date.now() - startTime,
       },
     });
@@ -184,10 +189,11 @@ cronRouter.post('/maintenance', async (c) => {
   const startTime = Date.now();
   const results: Record<string, { success: boolean; count?: number; failed?: number; pending?: number; error?: string }> = {};
 
-  // Execute ready transfers
+  // Execute ready transfers (both legacy and smart account)
   try {
-    const transferCount = await executeReadyTransfers();
-    results.transfers = { success: true, count: transferCount };
+    const legacyCount = await executeReadyTransfers();
+    const smartAccountCount = await executeReadySmartAccountTransfers();
+    results.transfers = { success: true, count: legacyCount + smartAccountCount };
   } catch (error) {
     console.error('Transfer execution failed:', error);
     results.transfers = {

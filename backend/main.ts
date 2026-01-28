@@ -350,12 +350,12 @@ async function extractWalletSessionForWs(
 
   // Try JWT token validation
   const { validateSession } = await import('./src/services/auth.ts');
-  const { getCustodialAddress } = await import('./src/services/wallet.ts');
+  const { getOrCreateSmartAccount } = await import('./src/services/smartAccounts.ts');
 
   const jwtResult = await validateSession(sessionToken);
   if (jwtResult) {
-    const address = await getCustodialAddress(jwtResult.user.custodialAddressIndex ?? 0);
-    return { address, userId: jwtResult.user.id };
+    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, 1);
+    return { address: smartAccount.address, userId: jwtResult.user.id };
   }
 
   // Try SIWE session token

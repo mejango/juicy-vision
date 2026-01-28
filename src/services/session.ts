@@ -130,6 +130,43 @@ export function clearPseudoAddressCache(): void {
   fetchPromise = null
 }
 
+/**
+ * Get the current user's address with correct priority for identity matching.
+ *
+ * IMPORTANT: This function exists because users can have multiple addresses:
+ * 1. SIWE wallet address (self-custody users who signed in with wallet)
+ * 2. Smart account address (managed mode / Touch ID users)
+ * 3. Session pseudo-address (anonymous users)
+ *
+ * When checking if the current user matches a member address, use this function
+ * and compare case-insensitively: addr.toLowerCase() === getCurrentUserAddress().toLowerCase()
+ *
+ * For components that need reactive updates, use the useManagedWallet hook instead.
+ */
+export function getCurrentUserAddress(): string | null {
+  // Read wallet session directly to avoid circular dependency with siwe.ts
+  // (siwe.ts imports getSessionId from this file)
+  const walletSession = storage.getJSON<{ address: string; expiresAt: number }>(STORAGE_KEYS.WALLET_SESSION)
+
+  // Priority 1: SIWE wallet session (self-custody) - check expiration with 1hr buffer
+  if (walletSession?.address && walletSession.expiresAt > Date.now() + 3600000) {
+    return walletSession.address.toLowerCase()
+  }
+
+  // Priority 2: Smart account (managed mode / Touch ID)
+  const smartAccount = localStorage.getItem('juice-smart-account-address')
+  if (smartAccount) {
+    return smartAccount.toLowerCase()
+  }
+
+  // Priority 3: Session pseudo-address (anonymous)
+  if (cachedPseudoAddress) {
+    return cachedPseudoAddress.toLowerCase()
+  }
+
+  return null
+}
+
 // Pre-fetch pseudo-address on module load to populate cache early
 // This runs as soon as the module is imported, before React renders
 if (typeof window !== 'undefined') {

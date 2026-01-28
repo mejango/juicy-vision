@@ -9,7 +9,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { optionalAuth, requireAuth } from '../middleware/auth.ts';
 import { requireWalletOrAuth } from '../middleware/walletSession.ts';
-import { getCustodialAddress } from '../services/wallet.ts';
+import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
 import {
   getIdentityByAddress,
   setIdentity,
@@ -93,9 +93,9 @@ identityRouter.put(
     const body = c.req.valid('json');
 
     try {
-      // Get user's custodial address
-      const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
-      const identity = await setIdentity(address, body.emoji, body.username);
+      // Get user's smart account address (use default chain for identity)
+      const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+      const identity = await setIdentity(smartAccount.address, body.emoji, body.username);
       return c.json({
         success: true,
         data: serializeIdentity(identity),
@@ -113,8 +113,8 @@ identityRouter.delete('/me', requireAuth, async (c) => {
   const user = c.get('user')!;
 
   try {
-    const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
-    await deleteIdentity(address);
+    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    await deleteIdentity(smartAccount.address);
     return c.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete identity';
@@ -146,7 +146,8 @@ identityRouter.get('/check', optionalAuth, zValidator('query', CheckAvailability
   let excludeAddress: string | undefined;
   const user = c.get('user');
   if (user) {
-    excludeAddress = await getCustodialAddress(user.custodialAddressIndex ?? 0);
+    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    excludeAddress = smartAccount.address;
   }
 
   const available = await isIdentityAvailable(emoji, username, excludeAddress);

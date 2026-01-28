@@ -26,6 +26,26 @@ import { rateLimitByUser } from '../services/rateLimit.ts';
 export const juiceRouter = new Hono();
 
 // ============================================================================
+// Stripe Config (for frontend)
+// ============================================================================
+
+// GET /api/juice/stripe-config - Get Stripe publishable key
+juiceRouter.get('/stripe-config', async (c) => {
+  const config = getConfig();
+
+  if (!config.stripePublishableKey) {
+    return c.json({ success: false, error: 'Stripe not configured' }, 503);
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      publishableKey: config.stripePublishableKey,
+    },
+  });
+});
+
+// ============================================================================
 // Balance
 // ============================================================================
 
@@ -80,33 +100,45 @@ juiceRouter.post(
     try {
       const stripe = new Stripe(config.stripeSecretKey);
 
-      // Create PaymentIntent with Juice-specific metadata
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(amount * 100), // Convert to cents
-        currency: 'usd',
+      // Use Checkout Sessions API (Stripe's recommended approach)
+      // This provides a hosted/embeddable checkout with automatic payment method handling
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        ui_mode: 'embedded',
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: 'Juice Credits',
+                description: `${amount} Juice credits for Juicebox payments`,
+              },
+              unit_amount: Math.round(amount * 100), // Convert to cents
+            },
+            quantity: 1,
+          },
+        ],
         metadata: {
           type: 'juice_purchase',
           userId: user.id,
           juiceAmount: amount.toString(),
         },
-        // Request Radar risk assessment
-        payment_method_options: {
-          card: {
-            request_extended_authorization: 'if_available',
-          },
-        },
+        // Enable dynamic payment methods (Stripe best practice)
+        // Stripe automatically shows relevant payment methods based on user location
+        payment_method_types: undefined, // Let Stripe choose dynamically
+        return_url: `${c.req.header('origin') || 'https://juicy.vision'}/juice/purchase-complete?session_id={CHECKOUT_SESSION_ID}`,
       });
 
       return c.json({
         success: true,
         data: {
-          clientSecret: paymentIntent.client_secret,
-          paymentIntentId: paymentIntent.id,
+          clientSecret: session.client_secret,
+          sessionId: session.id,
           amount,
         },
       });
     } catch (error) {
-      console.error('Failed to create payment intent:', error);
+      console.error('Failed to create checkout session:', error);
       const message = error instanceof Error ? error.message : 'Payment creation failed';
       return c.json({ success: false, error: message }, 400);
     }

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { optionalAuth, requireAuth } from '../middleware/auth.ts';
+import { optionalAuth, requireAuth, requireAdmin } from '../middleware/auth.ts';
 import {
   createChatSession,
   updateChatSessionOutcome,
@@ -204,7 +204,7 @@ eventsRouter.post(
 // Admin: Corrections Queue
 // ============================================================================
 
-eventsRouter.get('/admin/corrections', requireAuth, async (c) => {
+eventsRouter.get('/admin/corrections', requireAuth, requireAdmin, async (c) => {
   const limit = parseInt(c.req.query('limit') ?? '50', 10);
   const offset = parseInt(c.req.query('offset') ?? '0', 10);
 
@@ -221,6 +221,7 @@ const ReviewCorrectionSchema = z.object({
 eventsRouter.post(
   '/admin/corrections/:id',
   requireAuth,
+  requireAdmin,
   zValidator('json', ReviewCorrectionSchema),
   async (c) => {
     const correctionId = c.req.param('id');
@@ -236,7 +237,7 @@ eventsRouter.post(
 // Admin: Training Data Export
 // ============================================================================
 
-eventsRouter.get('/admin/training-data', requireAuth, async (c) => {
+eventsRouter.get('/admin/training-data', requireAuth, requireAdmin, async (c) => {
   const quality = c.req.query('quality') as 'good' | 'bad' | undefined;
   const limit = parseInt(c.req.query('limit') ?? '1000', 10);
 

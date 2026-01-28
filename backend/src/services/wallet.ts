@@ -39,21 +39,8 @@ const TRANSFER_HOLD_MS = TRANSFER_HOLD_DAYS * 24 * 60 * 60 * 1000;
 // Reserves Wallet Operations
 // ============================================================================
 
-/**
- * Get address for user's managed wallet.
- * Currently returns the reserves wallet address (shared).
- * For per-user wallets, users should use Smart Accounts (ERC-4337).
- *
- * @deprecated Use smart accounts for per-user wallet addresses
- */
-export async function getCustodialAddress(_userAddressIndex: number): Promise<Address> {
-  const config = getConfig();
-  if (!config.reservesPrivateKey) {
-    throw new Error('RESERVES_PRIVATE_KEY not configured');
-  }
-  const account = privateKeyToAccount(config.reservesPrivateKey as `0x${string}`);
-  return account.address;
-}
+// NOTE: getCustodialAddress was removed - it was broken and deprecated.
+// Use getOrCreateSmartAccount from smartAccounts.ts for per-user wallet addresses.
 
 // Sign and broadcast a transaction using the reserves wallet
 export async function signAndBroadcast(
@@ -296,51 +283,9 @@ interface DbPendingTransfer {
   executed_at: Date | null;
 }
 
-export async function requestTransfer(
-  userId: string,
-  userAddressIndex: number,
-  chainId: number,
-  tokenAddress: string,
-  amount: string,
-  toAddress: string
-): Promise<PendingTransfer> {
-  // Verify user has sufficient balance
-  const custodialAddress = await getCustodialAddress(userAddressIndex);
-  const { balance, symbol } = await getTokenBalance(
-    custodialAddress,
-    chainId,
-    tokenAddress as Address
-  );
-
-  if (balance < BigInt(amount)) {
-    throw new Error('Insufficient balance');
-  }
-
-  const availableAt = new Date(Date.now() + TRANSFER_HOLD_MS);
-
-  const result = await query<DbPendingTransfer>(
-    `INSERT INTO pending_transfers
-     (user_id, chain_id, token_address, token_symbol, amount, to_address, available_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING *`,
-    [userId, chainId, tokenAddress, symbol, amount, toAddress, availableAt]
-  );
-
-  const transfer = result[0];
-  return {
-    id: transfer.id,
-    userId: transfer.user_id,
-    chainId: transfer.chain_id,
-    tokenAddress: transfer.token_address,
-    tokenSymbol: transfer.token_symbol,
-    amount: transfer.amount,
-    toAddress: transfer.to_address,
-    createdAt: transfer.created_at,
-    availableAt: transfer.available_at,
-    status: transfer.status,
-    txHash: transfer.tx_hash ?? undefined,
-  };
-}
+// NOTE: requestTransfer was removed - it used the broken getCustodialAddress function.
+// For new transfer functionality, implement using smart accounts (ERC-4337).
+// See requestWithdrawal in smartAccounts.ts for the correct pattern.
 
 export async function getUserPendingTransfers(userId: string): Promise<PendingTransfer[]> {
   const results = await query<DbPendingTransfer>(

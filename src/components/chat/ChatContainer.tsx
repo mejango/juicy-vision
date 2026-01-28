@@ -20,27 +20,12 @@ import AuthOptionsModal from './AuthOptionsModal'
 import { useAccount } from 'wagmi'
 import { type PasskeyWallet, getPasskeyWallet } from '../../services/passkeyWallet'
 import WalletPanel from '../wallet/WalletPanel'
-import { getSessionId, getCachedPseudoAddress, getSessionPseudoAddress } from '../../services/session'
+import { getSessionId, getCachedPseudoAddress, getSessionPseudoAddress, getCurrentUserAddress } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
 import { getEmojiFromAddress } from './ParticipantAvatars'
 
-// Helper to get current user's address
-// Prefers SIWE wallet address if authenticated, otherwise uses cached pseudo-address from backend
-function getCurrentUserAddress(): string {
-  // First check if user has SIWE session with real wallet address
-  const walletSession = getWalletSession()
-  if (walletSession?.address) {
-    return walletSession.address.toLowerCase()
-  }
-  // Use cached pseudo-address from backend (uses HMAC-SHA256 with server secret)
-  const cached = getCachedPseudoAddress()
-  if (cached) {
-    return cached.toLowerCase()
-  }
-  // Fallback before cache is populated - will be updated on next render
-  const sessionId = getSessionId()
-  return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
-}
+// getCurrentUserAddress is imported from session.ts - see that file for the
+// priority logic: SIWE wallet > Smart account (managed mode) > Pseudo-address
 
 
 interface ChatContainerProps {
@@ -577,14 +562,31 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     }
   }, [])
 
+  // Listen for managed auth success (Touch ID login) to merge session
+  useEffect(() => {
+    const handleManagedAuthSuccess = () => {
+      // Trigger session merge after managed passkey auth
+      handlePasskeySuccess()
+    }
+    window.addEventListener('juice:managed-auth-success', handleManagedAuthSuccess)
+    return () => {
+      window.removeEventListener('juice:managed-auth-success', handleManagedAuthSuccess)
+    }
+  }, [])
+
   // Fetch current user's Juicy ID
   useEffect(() => {
     const fetchIdentity = async () => {
       try {
         const apiUrl = import.meta.env.VITE_API_URL || ''
         const walletSession = getWalletSession()
+        const authToken = useAuthStore.getState().token
         const headers: Record<string, string> = {
           'X-Session-ID': sessionId,
+        }
+        // Include managed auth token (Touch ID)
+        if (authToken) {
+          headers['Authorization'] = `Bearer ${authToken}`
         }
         if (walletSession?.token) {
           headers['X-Wallet-Session'] = walletSession.token
@@ -1285,7 +1287,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   {/* Subtext - tight below prompt, hidden when dock is pinned */}
                   <div className={`flex items-center justify-between px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100 -mt-2 mb-3'}`}>
                     <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {t('dock.askAbout', 'See and take actions across the ecosystem.')}
+                      {t('dock.askAbout', 'Let\'s make it real.')}
                     </div>
                     <div className="flex items-center gap-2">
                       {/* Privacy toggle */}

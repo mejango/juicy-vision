@@ -16,6 +16,9 @@ export const UserSchema = z.object({
 
   // Custodial wallet
   custodialAddressIndex: z.number().int().nonnegative().optional(),
+
+  // Admin flag
+  isAdmin: z.boolean().default(false),
 });
 
 export type User = z.infer<typeof UserSchema>;
@@ -271,6 +274,7 @@ export interface EnvConfig {
   // Server
   port: number;
   env: 'development' | 'production';
+  isTestnet: boolean; // True when using Sepolia testnets
 
   // Database
   databaseUrl: string;
@@ -287,6 +291,7 @@ export interface EnvConfig {
 
   // Stripe
   stripeSecretKey: string;
+  stripePublishableKey: string;
   stripeWebhookSecret: string;
 
   // Anthropic

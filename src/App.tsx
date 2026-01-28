@@ -4,13 +4,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { wagmiConfig } from './config/wagmi'
+import { EnvironmentBadge } from './components/common/EnvironmentBadge'
 import { ChatContainer, ProtocolActivity, MascotPanel } from './components/chat'
 import ParticipantAvatars from './components/chat/ParticipantAvatars'
 import JoinChatPage from './components/JoinChatPage'
 import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import { useChatStore, useThemeStore, type ChatMember } from './stores'
-import { useTransactionExecutor } from './hooks'
+import { useTransactionExecutor, useManagedWallet } from './hooks'
 import ActionExecutor from './components/ActionExecutor'
 import { getSessionId, getSessionPseudoAddress, getCachedPseudoAddress } from './services/session'
 import { getWalletSession } from './services/siwe'
@@ -50,9 +51,12 @@ function Header({ showActions = false }: { showActions?: boolean }) {
   const navigate = useNavigate()
 
   // Get current user info for participant display
-  // Must match backend logic: SIWE session address OR session pseudo-address
-  // (wagmiAddress alone isn't verified by backend, so don't use it here)
+  // Priority order (must match backend):
+  // 1. SIWE session address (self-custody wallet)
+  // 2. Smart account address (managed mode / Touch ID)
+  // 3. Session pseudo-address (anonymous)
   const walletSession = getWalletSession()
+  const { address: smartAccountAddress, isManagedMode } = useManagedWallet()
 
   // Pseudo-address must be fetched from backend (uses HMAC-SHA256 with server secret)
   const [sessionPseudoAddress, setSessionPseudoAddress] = useState<string | null>(getCachedPseudoAddress())
@@ -64,7 +68,8 @@ function Header({ showActions = false }: { showActions?: boolean }) {
     }
   }, [sessionPseudoAddress])
 
-  const currentAddress = walletSession?.address || sessionPseudoAddress
+  // Use the correct address based on auth type
+  const currentAddress = walletSession?.address || (isManagedMode ? smartAccountAddress : null) || sessionPseudoAddress
   const { ensName } = useEnsNameResolved(walletSession?.address)
 
   // Build participants list: always ensure current user is shown
@@ -72,12 +77,12 @@ function Header({ showActions = false }: { showActions?: boolean }) {
     const serverMembers = activeChat?.members || []
 
     // Check if current user is already in the list
-    // Need to check BOTH wallet address AND session pseudo-address since user might
-    // have created/joined chat before connecting wallet
+    // Check all possible addresses: SIWE, smart account, and pseudo-address
     const currentUserInList = serverMembers.some(m => {
       const memberAddr = m.address?.toLowerCase()
       return (currentAddress && memberAddr === currentAddress.toLowerCase()) ||
-             (walletSession && sessionPseudoAddress && memberAddr === sessionPseudoAddress.toLowerCase())
+             (smartAccountAddress && memberAddr === smartAccountAddress.toLowerCase()) ||
+             (sessionPseudoAddress && memberAddr === sessionPseudoAddress.toLowerCase())
     })
 
     // If current user is not in server members, add them
@@ -99,16 +104,17 @@ function Header({ showActions = false }: { showActions?: boolean }) {
       displayName: ensName || undefined,
       joinedAt: new Date().toISOString(),
     }]
-  }, [activeChat?.members, currentAddress, sessionPseudoAddress, walletSession, ensName])
+  }, [activeChat?.members, currentAddress, smartAccountAddress, sessionPseudoAddress, ensName])
 
   // Find current user's member record for permission checking
   const currentUserMember = useMemo(() => {
     return participants.find(m => {
       const memberAddr = m.address?.toLowerCase()
       return (currentAddress && memberAddr === currentAddress.toLowerCase()) ||
-             (walletSession && sessionPseudoAddress && memberAddr === sessionPseudoAddress.toLowerCase())
+             (smartAccountAddress && memberAddr === smartAccountAddress.toLowerCase()) ||
+             (sessionPseudoAddress && memberAddr === sessionPseudoAddress.toLowerCase())
     })
-  }, [participants, currentAddress, sessionPseudoAddress, walletSession])
+  }, [participants, currentAddress, smartAccountAddress, sessionPseudoAddress])
 
   // Handle member permission updates
   const handleMemberUpdated = useCallback((updatedMember: ChatMember) => {
@@ -380,21 +386,31 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 // Project slug regex: chainSlug:projectId (e.g., eth:3, base:123)
 const PROJECT_SLUG_REGEX = /^([a-z]+):(\d+)$/i
 
-// Map chain slugs to chain IDs
+// Import chain IDs from environment config for URL routing
+import { CHAIN_IDS, IS_TESTNET } from './config/environment'
+
+// Map chain slugs to chain IDs (uses environment-aware chain IDs)
 const CHAIN_SLUG_TO_ID: Record<string, number> = {
-  eth: 1,
-  op: 10,
-  base: 8453,
-  arb: 42161,
+  eth: CHAIN_IDS.ethereum,
+  op: CHAIN_IDS.optimism,
+  base: CHAIN_IDS.base,
+  arb: CHAIN_IDS.arbitrum,
 }
 
-// Map chain IDs to display names
-const CHAIN_ID_TO_NAME: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  8453: 'Base',
-  42161: 'Arbitrum',
-}
+// Map chain IDs to display names (includes both mainnet and testnet names)
+const CHAIN_ID_TO_NAME: Record<number, string> = IS_TESTNET
+  ? {
+      [CHAIN_IDS.ethereum]: 'Sepolia',
+      [CHAIN_IDS.optimism]: 'Optimism Sepolia',
+      [CHAIN_IDS.base]: 'Base Sepolia',
+      [CHAIN_IDS.arbitrum]: 'Arbitrum Sepolia',
+    }
+  : {
+      [CHAIN_IDS.ethereum]: 'Ethereum',
+      [CHAIN_IDS.optimism]: 'Optimism',
+      [CHAIN_IDS.base]: 'Base',
+      [CHAIN_IDS.arbitrum]: 'Arbitrum',
+    }
 
 // Component to show when a chat isn't found
 function ChatNotFound() {
@@ -860,6 +876,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      <EnvironmentBadge />
       <AppProviders>
         <BrowserRouter>
           <Routes>

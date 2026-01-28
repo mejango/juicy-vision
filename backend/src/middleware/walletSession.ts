@@ -7,6 +7,7 @@
 
 import { Context, Next } from 'hono';
 import { query, queryOne } from '../db/index.ts';
+import { getPseudoAddress } from '../utils/crypto.ts';
 
 export interface WalletSession {
   address: string;
@@ -33,13 +34,13 @@ export async function extractWalletSession(
 
   // First try JWT token validation (for managed wallets)
   const { validateSession } = await import('../services/auth.ts');
-  const { getCustodialAddress } = await import('../services/wallet.ts');
+  const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
 
   const jwtResult = await validateSession(token);
   if (jwtResult) {
-    const address = await getCustodialAddress(jwtResult.user.custodialAddressIndex ?? 0);
+    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, 1);
     return {
-      address,
+      address: smartAccount.address,
       userId: jwtResult.user.id,
     };
   }
@@ -100,10 +101,10 @@ export async function requireWalletOrAuth(c: Context, next: Next) {
   const user = c.get('user');
 
   if (user) {
-    // User authenticated - get their custodial address
-    const { getCustodialAddress } = await import('../services/wallet.ts');
-    const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
-    c.set('walletSession', { address, userId: user.id } as WalletSession);
+    // User authenticated - get their smart account address
+    const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
+    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
 
@@ -121,7 +122,8 @@ export async function requireWalletOrAuth(c: Context, next: Next) {
   if (sessionId && sessionId.startsWith('ses_')) {
     // Create a pseudo-address from the session ID for anonymous users
     // This allows them to own chats and create invites
-    const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+    // Uses HMAC-SHA256 for consistent address generation across the system
+    const pseudoAddress = await getPseudoAddress(sessionId);
     c.set('walletSession', {
       address: pseudoAddress,
       sessionId,
@@ -143,9 +145,9 @@ export async function optionalWalletSession(c: Context, next: Next) {
   const authHeader = c.req.header('Authorization');
 
   if (user) {
-    const { getCustodialAddress } = await import('../services/wallet.ts');
-    const address = await getCustodialAddress(user.custodialAddressIndex ?? 0);
-    c.set('walletSession', { address, userId: user.id } as WalletSession);
+    const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
+    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
 
@@ -161,7 +163,8 @@ export async function optionalWalletSession(c: Context, next: Next) {
   // Try anonymous session
   const sessionId = c.req.header('X-Session-ID');
   if (sessionId && sessionId.startsWith('ses_')) {
-    const pseudoAddress = `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`;
+    // Uses HMAC-SHA256 for consistent address generation across the system
+    const pseudoAddress = await getPseudoAddress(sessionId);
     c.set('walletSession', {
       address: pseudoAddress,
       sessionId,

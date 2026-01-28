@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, startTransition, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useThemeStore } from '../../stores'
 import { useProjectDraftStore } from '../../stores/projectDraftStore'
 import { useManagedWallet } from '../../hooks'
@@ -80,6 +81,121 @@ const ACTION_FUNCTION_NAMES: Record<string, string> = {
   deployRevnet: 'deployFor',
   queueRuleset: 'queueRulesetsOf',
   deployERC20: 'deployERC20For',
+}
+
+// Info popover component with click-to-open and X to close
+// Uses portal to escape parent overflow:hidden containers
+function InfoPopover({
+  content,
+  isDark,
+  className = ''
+}: {
+  content: string
+  isDark: boolean
+  className?: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({})
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  // Close on click outside or scroll
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        buttonRef.current && !buttonRef.current.contains(e.target as Node) &&
+        popoverRef.current && !popoverRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false)
+      }
+    }
+    const handleScroll = () => setIsOpen(false)
+    document.addEventListener('mousedown', handleClickOutside)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [isOpen])
+
+  // Calculate position when opening
+  const handleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      const popoverWidth = 280
+      const popoverHeight = 200
+
+      // Check horizontal space - prefer right-aligned (popover to left of button)
+      const spaceLeft = rect.left
+      const spaceRight = window.innerWidth - rect.right
+
+      // Check vertical space - prefer above
+      const spaceAbove = rect.top
+      const spaceBelow = window.innerHeight - rect.bottom
+
+      const styles: React.CSSProperties = {
+        position: 'fixed',
+        zIndex: 9999,
+        width: popoverWidth,
+      }
+
+      // Vertical position
+      if (spaceAbove >= popoverHeight || spaceAbove > spaceBelow) {
+        styles.bottom = window.innerHeight - rect.top + 4
+      } else {
+        styles.top = rect.bottom + 4
+      }
+
+      // Horizontal position
+      if (spaceLeft >= popoverWidth || spaceLeft > spaceRight) {
+        styles.right = window.innerWidth - rect.right
+      } else {
+        styles.left = rect.left
+      }
+
+      setPopoverStyle(styles)
+    }
+    setIsOpen(!isOpen)
+  }
+
+  const popoverContent = isOpen ? (
+    <div
+      ref={popoverRef}
+      className={`p-3 rounded-lg shadow-lg text-xs leading-relaxed ${
+        isDark ? 'bg-gray-800 text-gray-300 border border-gray-700' : 'bg-white text-gray-600 border border-gray-200'
+      }`}
+      style={popoverStyle}
+    >
+      <button
+        onClick={(e) => { e.stopPropagation(); setIsOpen(false) }}
+        className={`absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded hover:bg-opacity-10 ${
+          isDark ? 'text-gray-400 hover:bg-white' : 'text-gray-500 hover:bg-black'
+        }`}
+      >
+        ×
+      </button>
+      <div className="pr-4 whitespace-pre-line" style={{ overflowWrap: 'break-word' }}>{content}</div>
+    </div>
+  ) : null
+
+  return (
+    <span className={`relative inline-flex ${className}`}>
+      <button
+        ref={buttonRef}
+        onClick={handleOpen}
+        className={`inline-flex items-center justify-center w-4 h-4 text-[10px] rounded-full border transition-colors ${
+          isDark
+            ? 'border-gray-500 text-gray-400 hover:border-gray-400 hover:text-gray-300'
+            : 'border-gray-400 text-gray-500 hover:border-gray-500 hover:text-gray-600'
+        }`}
+      >
+        ?
+      </button>
+      {popoverContent && createPortal(popoverContent, document.body)}
+    </span>
+  )
 }
 
 // Component to display an address with optional ENS name
@@ -607,7 +723,8 @@ function FundingBreakdown({
   isDark,
   onEdit,
   juicyFeeEnabled,
-  onToggleJuicyFee
+  onToggleJuicyFee,
+  hasEmptyFundAccessLimits
 }: {
   payoutLimit?: number;
   splits: SplitInfo[];
@@ -615,9 +732,21 @@ function FundingBreakdown({
   onEdit?: () => void;
   juicyFeeEnabled: boolean;
   onToggleJuicyFee: (enabled: boolean) => void;
+  hasEmptyFundAccessLimits?: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false)
-  const [editPayoutLimit, setEditPayoutLimit] = useState(payoutLimit ? (payoutLimit / 1000000).toString() : '')
+
+  // uint224.max for unlimited payouts
+  const UINT224_MAX = '26959946667150639794667015087019630673637144422540572481103610249215'
+  const UNLIMITED_THRESHOLD = 1e15 // $1 quadrillion - anything above this is effectively unlimited
+
+  // Check if current value is unlimited (above threshold or uint224.max)
+  const isCurrentlyUnlimited = !payoutLimit || payoutLimit >= UNLIMITED_THRESHOLD
+
+  // Initialize edit field as empty for unlimited, otherwise show the dollar amount
+  const [editPayoutLimit, setEditPayoutLimit] = useState(
+    isCurrentlyUnlimited ? '' : (payoutLimit! / 1000000).toString()
+  )
 
   const formatPercent = (p: number) => `${(p / 10000000).toFixed(1)}%`
   const formatAmount = (limit: number, percent: number) => {
@@ -638,7 +767,6 @@ function FundingBreakdown({
 
   // Check if payout limit is defined (not unlimited)
   // Unlimited is represented by very large values (type(uint224).max) or 0/undefined
-  const UNLIMITED_THRESHOLD = 1e15 // $1 quadrillion - anything above this is effectively unlimited
   const hasDefinedLimit = payoutLimit && payoutLimit > 0 && payoutLimit < UNLIMITED_THRESHOLD
 
   // Calculate effective payout limit - when Juicy is disabled, reduce the limit
@@ -664,7 +792,12 @@ function FundingBreakdown({
   }
 
   const handleSave = () => {
-    const newLimit = parseFloat(editPayoutLimit) * 1000000
+    // Empty field means unlimited - use uint224.max
+    // Otherwise convert dollars to 6 decimal fixed point (USDC decimals)
+    const newLimit = editPayoutLimit.trim() === ''
+      ? UINT224_MAX  // Unlimited
+      : (parseFloat(editPayoutLimit) * 1000000).toString()
+
     window.dispatchEvent(new CustomEvent('juice:update-funding', {
       detail: { payoutLimit: newLimit }
     }))
@@ -672,7 +805,8 @@ function FundingBreakdown({
   }
 
   const handleCancel = () => {
-    setEditPayoutLimit(payoutLimit ? (payoutLimit / 1000000).toString() : '')
+    // Reset to empty for unlimited, otherwise show the dollar amount
+    setEditPayoutLimit(isCurrentlyUnlimited ? '' : (payoutLimit! / 1000000).toString())
     setIsEditing(false)
   }
 
@@ -692,10 +826,10 @@ function FundingBreakdown({
               onChange={(e) => setEditPayoutLimit(e.target.value)}
               className={`w-full px-3 py-2 rounded border text-sm ${
                 isDark
-                  ? 'bg-white/5 border-white/10 text-white focus:border-juice-orange'
-                  : 'bg-white border-gray-300 text-gray-900 focus:border-orange-500'
+                  ? 'bg-white/5 border-white/10 text-white placeholder:text-gray-500 focus:border-juice-orange'
+                  : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-orange-500'
               } focus:outline-none`}
-              placeholder="10000"
+              placeholder="Leave blank for unlimited"
             />
           </div>
           <div className="flex gap-2 justify-end">
@@ -721,9 +855,11 @@ function FundingBreakdown({
           <div className={`flex justify-between items-center py-2 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
             <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Payout Limit</span>
             <span className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {hasDefinedLimit && effectivePayoutLimit
-                ? `$${(effectivePayoutLimit / 1000000).toLocaleString()}`
-                : 'Unlimited'}
+              {hasEmptyFundAccessLimits
+                ? 'None'
+                : hasDefinedLimit && effectivePayoutLimit
+                  ? `$${(effectivePayoutLimit / 1000000).toLocaleString()}`
+                  : 'Unlimited'}
             </span>
           </div>
 
@@ -793,23 +929,12 @@ function FundingBreakdown({
                     )}
                   </button>
                   Pay Juicy
-                  <span className="relative group">
-                    <span
-                      className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[10px] font-medium cursor-help ${
-                        isDark ? 'bg-white/10 text-gray-400 hover:bg-white/20' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-                      }`}
-                    >
-                      ?
-                    </span>
-                    {/* Tooltip */}
-                    <div className={`absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 p-2 text-xs leading-relaxed rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 ${
-                      isDark ? 'bg-gray-800 text-gray-200 border border-white/10' : 'bg-white text-gray-700 border border-gray-200'
-                    }`}>
-                      JUICY runs like a co-op and is the revenue token that powers this app. When you pay 2.5% into JUICY, you receive JUICY tokens proportional to your payment. As Juicy's balance grows over time, so does the value backing each token.
-                      <br /><br />
-                      JUICY wants skin in the game as we help your project succeed.
-                    </div>
-                  </span>
+                  <InfoPopover
+                    content="JUICY runs like a co-op and is the revenue token that powers this app. When you pay 2.5% into JUICY, you receive JUICY tokens proportional to your payment. As Juicy's balance grows over time, so does the value backing each token.
+
+JUICY wants skin in the game as we help your project succeed... and we want you to have skin in the juicy game too."
+                    isDark={isDark}
+                  />
                 </span>
                 <span>{hasDefinedLimit ? formatAmount(payoutLimit!, juicyFee.percent) : formatPercent(juicyFee.percent)}</span>
               </div>
@@ -846,6 +971,22 @@ export default function TransactionPreview({
     error: managedWalletError,
     isManagedMode
   } = useManagedWallet()
+
+  // Juicy Identity state - load from localStorage and listen for changes
+  const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(() => {
+    try {
+      const cached = localStorage.getItem('juicy-identity')
+      return cached ? JSON.parse(cached) : null
+    } catch { return null }
+  })
+
+  useEffect(() => {
+    const handleIdentityChange = (e: CustomEvent<{ emoji: string; username: string; formatted: string }>) => {
+      setIdentity(e.detail)
+    }
+    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
+  }, [])
 
   // Debug: log managed wallet state
   useEffect(() => {
@@ -903,12 +1044,14 @@ export default function TransactionPreview({
       }
 
       // Extract funding info
-      let fundingInfo: { splits: SplitInfo[]; payoutLimit?: number } | null = null
+      let fundingInfo: { splits: SplitInfo[]; payoutLimit?: number; hasEmptyFundAccessLimits?: boolean } | null = null
       const rulesets = raw?.rulesetConfigurations || raw?.launchProjectConfig?.rulesetConfigurations
       if (rulesets && Array.isArray(rulesets) && rulesets.length > 0) {
         const firstRuleset = rulesets[0]
         const splits: SplitInfo[] = []
         let payoutLimit: number | undefined
+        // Track if fundAccessLimitGroups was explicitly set to empty array (means ZERO payouts, not unlimited!)
+        let hasEmptyFundAccessLimits = false
 
         if (firstRuleset.splitGroups && Array.isArray(firstRuleset.splitGroups)) {
           for (const group of firstRuleset.splitGroups) {
@@ -925,19 +1068,24 @@ export default function TransactionPreview({
         }
 
         if (firstRuleset.fundAccessLimitGroups && Array.isArray(firstRuleset.fundAccessLimitGroups)) {
-          for (const group of firstRuleset.fundAccessLimitGroups) {
-            if (group.payoutLimits && Array.isArray(group.payoutLimits)) {
-              for (const limit of group.payoutLimits) {
-                if (limit.amount) {
-                  payoutLimit = typeof limit.amount === 'string' ? parseInt(limit.amount) : limit.amount
-                  break
+          if (firstRuleset.fundAccessLimitGroups.length === 0) {
+            // Empty array means NO payouts allowed (not unlimited!)
+            hasEmptyFundAccessLimits = true
+          } else {
+            for (const group of firstRuleset.fundAccessLimitGroups) {
+              if (group.payoutLimits && Array.isArray(group.payoutLimits)) {
+                for (const limit of group.payoutLimits) {
+                  if (limit.amount) {
+                    payoutLimit = typeof limit.amount === 'string' ? parseInt(limit.amount) : limit.amount
+                    break
+                  }
                 }
               }
             }
           }
         }
 
-        fundingInfo = { splits, payoutLimit }
+        fundingInfo = { splits, payoutLimit, hasEmptyFundAccessLimits }
       }
 
       // Check for multi-chain suckers
@@ -1156,10 +1304,14 @@ export default function TransactionPreview({
   }
 
   // Parse chain-specific configs for multi-chain deployments
+  // Check both the chainConfigs prop AND inside the parameters (AI often puts it there)
   let parsedChainConfigs: ChainOverride[] = []
   try {
     if (chainConfigs) {
       parsedChainConfigs = JSON.parse(chainConfigs)
+    } else if (effectivePreviewData?.raw?.chainConfigs && Array.isArray(effectivePreviewData.raw.chainConfigs)) {
+      // Fallback: check if chainConfigs is inside the parameters JSON
+      parsedChainConfigs = effectivePreviewData.raw.chainConfigs as ChainOverride[]
     }
   } catch {
     // Ignore parsing errors
@@ -1183,12 +1335,16 @@ export default function TransactionPreview({
 
     const raw = effectivePreviewData.raw
 
+    // Check for nested launchProjectConfig structure
+    const launchConfig = raw.launchProjectConfig as Record<string, unknown> | undefined
+
     // Get owner from params or use managed wallet address
-    const ownerFromParams = raw.owner as string | undefined
+    // Check both top-level and nested in launchProjectConfig
+    const ownerFromParams = (raw.owner as string | undefined) || (launchConfig?.owner as string | undefined)
     const owner = ownerFromParams || (isManagedMode ? managedAddress : '') || ''
 
-    // Get project URI
-    const projectUri = (raw.projectUri as string) || ''
+    // Get project URI (check both top-level and nested)
+    const projectUri = (raw.projectUri as string) || (launchConfig?.projectUri as string) || ''
 
     // Get chain IDs
     let launchChainIds: number[] = []
@@ -1200,14 +1356,16 @@ export default function TransactionPreview({
       launchChainIds = [1, 10, 8453, 42161] // Default to all supported chains
     }
 
-    // Get ruleset configurations
-    const rulesetConfigurations = (raw.rulesetConfigurations as unknown[]) || []
+    // Get ruleset configurations (check both top-level and nested in launchProjectConfig)
+    const rulesetConfigurations = (raw.rulesetConfigurations as unknown[]) ||
+      (launchConfig?.rulesetConfigurations as unknown[]) || []
 
-    // Get terminal configurations
-    const terminalConfigurations = (raw.terminalConfigurations as unknown[]) || []
+    // Get terminal configurations (check both top-level and nested in launchProjectConfig)
+    const terminalConfigurations = (raw.terminalConfigurations as unknown[]) ||
+      (launchConfig?.terminalConfigurations as unknown[]) || []
 
-    // Get memo
-    const memo = (raw.memo as string) || 'Project launch via Juicy Vision'
+    // Get memo (check both top-level and nested)
+    const memo = (raw.memo as string) || (launchConfig?.memo as string) || 'Project launch via Juicy Vision'
 
     // Get sucker deployment configuration (for atomic project+sucker deployment via JBOmnichainDeployer)
     const suckerDeploymentConfiguration = raw.suckerDeploymentConfiguration as {
@@ -1236,9 +1394,19 @@ export default function TransactionPreview({
       memo,
     })
 
+    // Check if the only issue is missing owner (user not signed in)
+    // In this case, we don't need to show scary warnings - just prompt to sign in
+    const ownerDoubts = verification.doubts.filter(d =>
+      d.field === 'owner' || d.message.toLowerCase().includes('owner')
+    )
+    const nonOwnerDoubts = verification.doubts.filter(d =>
+      d.field !== 'owner' && !d.message.toLowerCase().includes('owner')
+    )
+    const onlyOwnerIssue = ownerDoubts.length > 0 && nonOwnerDoubts.length === 0 && !owner
+
     // Filter out owner-related issues while waiting for managed wallet or if there's a wallet error
-    let filteredDoubts = (isWaitingForManagedWallet || hasWalletError)
-      ? verification.doubts.filter(d => !d.message.toLowerCase().includes('owner'))
+    let filteredDoubts = (isWaitingForManagedWallet || hasWalletError || onlyOwnerIssue)
+      ? nonOwnerDoubts
       : verification.doubts
 
     // If there's a wallet error, add a specific doubt for it
@@ -1267,6 +1435,7 @@ export default function TransactionPreview({
       hasCritical: filteredDoubts.some(d => d.severity === 'critical'),
       isWaitingForWallet: isWaitingForManagedWallet,
       hasWalletError,
+      onlyOwnerIssue, // True when user just needs to sign in
     }
   }, [action, effectivePreviewData?.raw, isManagedMode, managedAddress, managedWalletLoading, managedWalletError, parsedChainConfigs, validChainId, projectMetadata?.name])
 
@@ -1348,7 +1517,7 @@ export default function TransactionPreview({
       {/* Funding breakdown - show skeleton if expected but not loaded */}
       {(action === 'launch721Project' || action === 'launchProject') && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          {fundingInfo && (fundingInfo.payoutLimit || fundingInfo.splits.length > 0) ? (
+          {fundingInfo && (fundingInfo.payoutLimit || fundingInfo.splits.length > 0 || fundingInfo.hasEmptyFundAccessLimits) ? (
             <FundingBreakdown
               payoutLimit={fundingInfo.payoutLimit}
               splits={fundingInfo.splits}
@@ -1356,6 +1525,7 @@ export default function TransactionPreview({
               onEdit={() => window.dispatchEvent(new CustomEvent('juice:edit-section', { detail: { section: 'funding' } }))}
               juicyFeeEnabled={juicyFeeEnabled}
               onToggleJuicyFee={setJuicyFeeEnabled}
+              hasEmptyFundAccessLimits={fundingInfo.hasEmptyFundAccessLimits}
             />
           ) : (
             <FundingSkeleton isDark={isDark} />
@@ -1383,21 +1553,25 @@ export default function TransactionPreview({
               </div>
             ) : launchValidation.owner ? (
               <div className="flex items-center gap-2">
-                <span className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {launchValidation.owner.slice(0, 8)}...{launchValidation.owner.slice(-6)}
-                </span>
-                {isManagedMode && (
-                  <span className={`text-xs px-2 py-0.5 ${isDark ? 'bg-juice-cyan/20 text-juice-cyan' : 'bg-teal-100 text-teal-700'}`}>
-                    Touch ID Wallet
+                {/* Check if owner is current user */}
+                {managedAddress && launchValidation.owner.toLowerCase() === managedAddress.toLowerCase() ? (
+                  // Owner is current user - show identity or "You"
+                  <span className={`text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {identity ? identity.formatted : 'You'}
+                  </span>
+                ) : (
+                  // Owner is someone else - show address
+                  <span className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {launchValidation.owner.slice(0, 8)}...{launchValidation.owner.slice(-6)}
                   </span>
                 )}
               </div>
             ) : (
-              <div className={`text-sm ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
+              <span className={`text-sm ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
                 {isManagedMode
-                  ? 'Session expired - sign in again with Touch ID'
-                  : 'No owner address - please connect wallet'}
-              </div>
+                  ? 'Session expired'
+                  : 'No owner address - sign in below'}
+              </span>
             )}
           </div>
         </div>
@@ -1472,6 +1646,21 @@ export default function TransactionPreview({
               <div className={`flex justify-between ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
                 <span>Project</span>
                 <span className="font-mono">#{projectId}</span>
+              </div>
+            )}
+
+            {/* Owner address for launch actions */}
+            {(action === 'launchProject' || action === 'launch721Project') && launchValidation?.owner && (
+              <div className={`flex justify-between items-center ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                <span>Owner</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono">{launchValidation.owner.slice(0, 8)}...{launchValidation.owner.slice(-6)}</span>
+                  {isManagedMode && (
+                    <span className={`text-[10px] px-1.5 py-0.5 ${isDark ? 'bg-juice-cyan/20 text-juice-cyan' : 'bg-teal-100 text-teal-700'}`}>
+                      Touch ID Wallet
+                    </span>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1729,15 +1918,22 @@ export default function TransactionPreview({
             </button>
           ) : (
             <button
-              onClick={handleLaunchClick}
-              disabled={!canLaunch}
+              onClick={launchValidation?.owner ? handleLaunchClick : (e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                window.dispatchEvent(new CustomEvent('juice:open-wallet-panel', {
+                  detail: { anchorPosition: { top: rect.top, left: rect.left, width: rect.width, height: rect.height } }
+                }))
+              }}
+              disabled={launchValidation?.owner ? !canLaunch : false}
               className={`px-5 py-2 text-sm font-bold border-2 transition-colors ${
-                canLaunch
+                !launchValidation?.owner
                   ? 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
-                  : 'bg-gray-500 text-white border-gray-500 cursor-not-allowed opacity-75'
+                  : canLaunch
+                    ? 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
+                    : 'bg-gray-500 text-white border-gray-500 cursor-not-allowed opacity-75'
               }`}
             >
-              {ACTION_BUTTON_LABELS[action] || action}
+              {launchValidation?.owner ? (ACTION_BUTTON_LABELS[action] || action) : 'Sign in'}
             </button>
           )
         ) : (
@@ -1833,6 +2029,9 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
     const formattedValue = formatSimpleValue(value, name, chainId)
     const isIpfsUri = typeof value === 'string' && value.startsWith('ipfs://')
     const isAddress = typeof value === 'string' && value.startsWith('0x') && value.length === 42
+    // Check for unlimited marker (uint224.max values in fund access limits)
+    const isUnlimited = formattedValue.startsWith('UNLIMITED_MARKER:')
+    const unlimitedRawValue = isUnlimited ? formattedValue.replace('UNLIMITED_MARKER:', '') : null
 
     const handleCopy = () => {
       if (typeof value === 'string') {
@@ -1856,7 +2055,15 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
           <span className={`shrink-0 ${tooltip ? 'underline decoration-dotted cursor-help' : ''}`}>
             {displayName}
           </span>
-          {isIpfsUri ? (
+          {isUnlimited ? (
+            <span className={`font-mono text-right flex items-center gap-1 ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+              Unlimited
+              <InfoPopover
+                content={`This is the maximum value (uint224.max) which means unlimited. Raw value: ${unlimitedRawValue}`}
+                isDark={isDark}
+              />
+            </span>
+          ) : isIpfsUri ? (
             <a
               href={getIpfsGatewayUrl(value as string)}
               target="_blank"

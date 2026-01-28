@@ -68,7 +68,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme, toggleTheme } = useThemeStore()
-  const { token: authToken, _hasHydrated } = useAuthStore()
+  const { token: authToken, _hasHydrated, isAuthenticated, user: authUser } = useAuthStore()
   const { address, isConnected } = useAccount()
   const { ensName } = useEnsNameResolved(address)
   const { disconnect } = useDisconnect()
@@ -77,8 +77,16 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   const [signing, setSigning] = useState(false)
   const [signedIn, setSignedIn] = useState(() => hasValidWalletSession())
   const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
+
+  // Get effective passkey/session address - from passkeyWallet state OR from SIWE session OR from managed auth
+  // This handles cases where passkeyWallet state is null but user has valid session
+  const walletSession = getWalletSession()
+  const isManagedAuth = isAuthenticated()
+  const effectivePasskeyAddress = passkeyWallet?.address || walletSession?.address || authUser?.walletAddress
+  const hasAnyAuth = !!(passkeyWallet || walletSession || isManagedAuth)
+
   // Fetch balances for passkey wallet address
-  const { totalEth: passkeyEth, totalUsdc: passkeyUsdc, loading: passkeyBalancesLoading } = useWalletBalances(passkeyWallet?.address)
+  const { totalEth: passkeyEth, totalUsdc: passkeyUsdc, loading: passkeyBalancesLoading } = useWalletBalances(effectivePasskeyAddress)
 
   // Juicy ID state
   const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
@@ -339,6 +347,9 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     const handlePasskeyChange = () => {
       setPasskeyWallet(getPasskeyWallet())
     }
+    // Re-read on mount in case useState initializer ran before localStorage was ready
+    // This ensures state is synced even with React StrictMode or navigation edge cases
+    handlePasskeyChange()
     // Listen for connect/disconnect events
     window.addEventListener('juice:passkey-connected', handlePasskeyChange)
     window.addEventListener('juice:passkey-disconnected', handlePasskeyChange)
@@ -602,7 +613,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                   · Disconnect
                 </button>
               </>
-            ) : passkeyWallet ? (
+            ) : hasAnyAuth ? (
               <>
                 <button
                   onClick={onConnectedAsClick}
@@ -615,8 +626,8 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                   }`}
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Passkey wallet" />
-                  {getDisplayIdentity(passkeyWallet.address) ? (
-                    <>Connected as {getDisplayIdentity(passkeyWallet.address)}</>
+                  {getDisplayIdentity(effectivePasskeyAddress) ? (
+                    <>Connected as {getDisplayIdentity(effectivePasskeyAddress)}</>
                   ) : (
                     <>Connected</>
                   )}
@@ -645,6 +656,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                 <button
                   onClick={() => {
                     clearPasskeyWallet()
+                    clearWalletSession()
                     setPasskeyWallet(null)
                   }}
                   className={`ml-2 transition-colors ${
@@ -657,25 +669,40 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                 </button>
               </>
             ) : (
-              <button
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  window.dispatchEvent(new CustomEvent('juice:open-auth-modal', {
-                    detail: {
-                      anchorPosition: {
-                        top: rect.top,
-                        left: rect.left,
-                        width: rect.width,
-                        height: rect.height,
+              <>
+                <button
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    window.dispatchEvent(new CustomEvent('juice:open-auth-modal', {
+                      detail: {
+                        anchorPosition: {
+                          top: rect.top,
+                          left: rect.left,
+                          width: rect.width,
+                          height: rect.height,
+                        }
                       }
-                    }
-                  }))
-                }}
-                className="inline-flex items-center gap-1.5 transition-colors hover:text-gray-300"
-              >
-                <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50" />
-                Account not yet connected
-              </button>
+                    }))
+                  }}
+                  className="inline-flex items-center gap-1.5 transition-colors hover:text-gray-300"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50" />
+                  Sign in
+                </button>
+                {/* Set Juicy ID - available even before connecting */}
+                {!identity && (
+                  <button
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      setJuicyIdAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+                      setJuicyIdPopoverOpen(true)
+                    }}
+                    className="ml-1 transition-colors text-juice-orange/70 hover:text-juice-orange"
+                  >
+                    · Set your Juicy ID
+                  </button>
+                )}
+              </>
             )}
               </div>
               {walletInfoRightContent}

@@ -188,7 +188,7 @@
     "useIt": "Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.",
     "paragraph1": "JUICY runs like a co-op, and is the revenue token that powers this app. When you pay into Juicy, you receive JUICY revnet tokens proportional to your payment.",
     "paragraph2": "As Juicy's balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business. Fully automated by blockchains, no one's in control.",
-    "paragraph3": "We run extremely lean, but paying for LLM tokens is expensive for now. Revenue from the app mostly flows to back JUICY, guaranteed. The more value created, the more everyone benefits. We're in this together.",
+    "paragraph3": "We run extremely lean, but paying for LLM tokens is expensive for now. Revenue from the app mostly flows to back JUICY, guaranteed, and we hold JUICY just like you. The more value created, the more everyone benefits. We're in this together.",
     "poweredBy": "Uses revnets, powered by Juicebox, secured by Ethereum, Optimism, Base, and Arbitrum."
   },
   "beta": {
@@ -1106,7 +1106,7 @@
     "goingOnchain": "going onchain"
   },
   "dock": {
-    "askAbout": "See and take actions across the ecosystem."
+    "askAbout": "Let's make it real."
   },
   "materials": {
     "visionDoc": "Drop your vision doc",

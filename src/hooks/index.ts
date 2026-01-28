@@ -5,3 +5,4 @@ export { useProjectData, type UseProjectDataOptions, type UseProjectDataReturn }
 export { usePaymentForm, type UsePaymentFormOptions, type UsePaymentFormReturn } from './usePaymentForm'
 export { useManagedWallet, useIsManagedMode, executeManagedTransaction, type ManagedWalletData, type ManagedWalletBalance } from './useManagedWallet'
 export { useEnsNameResolved } from './useEnsName'
+export { useJuiceBalance, type JuiceBalance } from './useJuiceBalance'

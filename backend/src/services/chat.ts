@@ -551,6 +551,7 @@ export async function getChatMembers(chatId: string): Promise<ChatMember[]> {
      ORDER BY m.joined_at ASC`,
     [chatId]
   );
+  console.log(`[getChatMembers] Chat ${chatId}: Found ${results.length} active members:`, results.map(r => ({ address: r.member_address, role: r.role, is_active: r.is_active })));
   return results.map(dbToMember);
 }
 

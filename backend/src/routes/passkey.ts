@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { requireAuth, optionalAuth } from '../middleware/auth.ts';
+import { rateLimitMiddleware, rateLimitByUser } from '../services/rateLimit.ts';
 import {
   createRegistrationChallenge,
   createAuthenticationChallenge,
@@ -93,7 +94,7 @@ passkeyRouter.post(
 // ============================================================================
 
 // GET /passkey/signup/options - Get registration options for new user
-passkeyRouter.get('/signup/options', async (c) => {
+passkeyRouter.get('/signup/options', rateLimitMiddleware('passkeyRegister'), async (c) => {
   try {
     const options = await createSignupChallenge();
     return c.json({ success: true, data: options });
@@ -121,6 +122,7 @@ const SignupVerifySchema = z.object({
 
 passkeyRouter.post(
   '/signup/verify',
+  rateLimitMiddleware('passkeyRegister'),
   zValidator('json', SignupVerifySchema),
   async (c) => {
     const { credential, displayName } = c.req.valid('json');
@@ -176,7 +178,7 @@ const AuthOptionsSchema = z.object({
   email: z.string().email().optional(),
 });
 
-passkeyRouter.get('/authenticate/options', async (c) => {
+passkeyRouter.get('/authenticate/options', rateLimitMiddleware('passkeyAuth'), async (c) => {
   const email = c.req.query('email');
 
   try {
@@ -206,6 +208,7 @@ const AuthVerifySchema = z.object({
 
 passkeyRouter.post(
   '/authenticate/verify',
+  rateLimitMiddleware('passkeyAuth'),
   zValidator('json', AuthVerifySchema),
   async (c) => {
     const { credential } = c.req.valid('json');
@@ -313,22 +316,41 @@ passkeyRouter.patch(
 // ============================================================================
 
 import { query, queryOne, execute } from '../db/index.ts';
+import { recoverMessageAddress } from 'viem';
 
 // POST /passkey/wallet - Register a credential with its derived wallet address
+// SECURITY: Requires signature proof that the caller controls the wallet being registered
 const RegisterWalletSchema = z.object({
   credentialId: z.string().min(1).max(512),
   walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  signature: z.string().regex(/^0x[a-fA-F0-9]+$/), // Signature proving wallet ownership
   deviceName: z.string().max(100).optional(),
   deviceType: z.string().max(50).optional(),
 });
 
 passkeyRouter.post(
   '/wallet',
+  rateLimitMiddleware('passkeyRegister'),
   zValidator('json', RegisterWalletSchema),
   async (c) => {
-    const { credentialId, walletAddress, deviceName, deviceType } = c.req.valid('json');
+    const { credentialId, walletAddress, signature, deviceName, deviceType } = c.req.valid('json');
 
     try {
+      // SECURITY: Verify the caller controls this wallet by checking signature
+      // The message includes the credential ID to prevent replay attacks
+      const message = `Register passkey wallet: ${credentialId}`;
+      const recoveredAddress = await recoverMessageAddress({
+        message,
+        signature: signature as `0x${string}`,
+      });
+
+      if (recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return c.json({
+          success: false,
+          error: 'Invalid signature - wallet ownership verification failed',
+        }, 401);
+      }
+
       // Check if this credential already exists
       const existing = await queryOne<{ wallet_address: string; primary_wallet_address: string | null }>(
         'SELECT wallet_address, primary_wallet_address FROM passkey_wallets WHERE credential_id = $1',
@@ -336,7 +358,14 @@ passkeyRouter.post(
       );
 
       if (existing) {
-        // Credential already registered - return existing wallet
+        // Credential already registered - verify the wallet matches
+        if (existing.wallet_address.toLowerCase() !== walletAddress.toLowerCase()) {
+          return c.json({
+            success: false,
+            error: 'Credential already registered to a different wallet',
+          }, 409);
+        }
+
         const effectiveWallet = existing.primary_wallet_address || existing.wallet_address;
 
         // Update last_used_at
@@ -378,7 +407,8 @@ passkeyRouter.post(
 );
 
 // GET /passkey/wallet/:credentialId - Look up wallet for a credential
-passkeyRouter.get('/wallet/:credentialId', async (c) => {
+// SECURITY: Rate limited to prevent credential ID enumeration attacks
+passkeyRouter.get('/wallet/:credentialId', rateLimitMiddleware('passkeyAuth'), async (c) => {
   const credentialId = c.req.param('credentialId');
 
   try {

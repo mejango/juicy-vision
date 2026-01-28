@@ -359,7 +359,8 @@ export const useChatStore = create<ChatState>()(
           chats: state.chats.map((c) => {
             if (c.id !== chatId) return c
             const members = c.members || []
-            if (members.some((m) => m.address === member.address)) return c
+            // Case-insensitive address comparison (Ethereum addresses can have different casing)
+            if (members.some((m) => m.address?.toLowerCase() === member.address?.toLowerCase())) return c
             return { ...c, members: [...members, member] }
           }),
         })),
@@ -385,7 +386,8 @@ export const useChatStore = create<ChatState>()(
             if (c.id !== chatId) return c
             return {
               ...c,
-              members: (c.members || []).filter((m) => m.address !== address),
+              // Case-insensitive address comparison
+              members: (c.members || []).filter((m) => m.address?.toLowerCase() !== address?.toLowerCase()),
             }
           }),
         })),
@@ -403,9 +405,10 @@ export const useChatStore = create<ChatState>()(
           chats: state.chats.map((c) => {
             if (c.id !== chatId) return c
             const current = c.onlineMembers || []
+            const addressLower = address?.toLowerCase()
             const updated = isOnline
-              ? current.includes(address) ? current : [...current, address]
-              : current.filter((a) => a !== address)
+              ? current.some(a => a?.toLowerCase() === addressLower) ? current : [...current, address]
+              : current.filter((a) => a?.toLowerCase() !== addressLower)
             return { ...c, onlineMembers: updated }
           }),
         })),
