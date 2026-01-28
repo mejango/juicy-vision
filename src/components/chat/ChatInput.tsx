@@ -82,7 +82,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   // This handles cases where passkeyWallet state is null but user has valid session
   const walletSession = getWalletSession()
   const isManagedAuth = isAuthenticated()
-  const effectivePasskeyAddress = passkeyWallet?.address || walletSession?.address || authUser?.walletAddress
+  const effectivePasskeyAddress = passkeyWallet?.address || walletSession?.address
   const hasAnyAuth = !!(passkeyWallet || walletSession || isManagedAuth)
 
   // Fetch balances for passkey wallet address

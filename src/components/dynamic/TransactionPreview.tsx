@@ -1246,7 +1246,8 @@ export default function TransactionPreview({
       { percent: 975000000, projectId: 0, beneficiary: '' }, // 97.5% to owner
       { percent: 25000000, projectId: 1, beneficiary: '' },  // 2.5% to Juicy
     ],
-    payoutLimit: draftPayoutLimit * (draftPayoutCurrency === 2 ? 1000000 : 1e18)
+    payoutLimit: draftPayoutLimit * (draftPayoutCurrency === 2 ? 1000000 : 1e18),
+    hasEmptyFundAccessLimits: false
   } : null
   const fundingInfo = hasStreamedFundingData ? streamedFundingInfo : draftFundingInfo
 

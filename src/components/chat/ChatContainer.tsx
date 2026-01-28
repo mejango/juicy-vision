@@ -354,7 +354,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         const optimisticMessage: ChatMessage = {
           id: `optimistic-${Date.now()}`,
           chatId,
-          senderAddress: currentAddress,
+          senderAddress: currentAddress || '0x0000000000000000000000000000000000000000',
           role: 'user',
           content,
           isEncrypted: false,

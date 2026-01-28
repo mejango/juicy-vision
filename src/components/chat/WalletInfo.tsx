@@ -71,12 +71,12 @@ export function JuicyIdPopover({
   // Get current user's address and default emoji
   const currentAddress = useMemo(() => {
     // Priority: managed auth > SIWE session > pseudo-address
-    if (authUser?.walletAddress) return authUser.walletAddress
+    // Managed auth users get address from smart account, not directly from user object
     const walletSession = getWalletSession()
     if (walletSession?.address) return walletSession.address
     const sessionId = getSessionId()
     return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
-  }, [authUser?.walletAddress])
+  }, [authUser?.id])
   const defaultEmoji = getEmojiFromAddress(currentAddress)
   const currentEmoji = selectedFruit || defaultEmoji
 
