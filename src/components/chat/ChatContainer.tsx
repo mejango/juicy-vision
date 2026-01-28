@@ -1301,7 +1301,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                             ? 'border-juice-orange text-juice-orange'
                             : 'border-gray-500 text-gray-500 hover:border-gray-400 hover:text-gray-400'
                         }`}
-                        title={privateMode ? 'Private mode - chats won\'t be stored for study' : 'Open mode - chats help improve Juicy'}
+                        title={privateMode
+                          ? 'Incognito on: Juicy can\'t learn from your chats. AIs love examples though—sharing helps make us better. But we get it if you\'d rather not, it is a bit sci-fi.'
+                          : 'Incognito off: Your chats help train Juicy\'s AI. A bit sci-fi, sure, but it makes us smarter together. Toggle on for full privacy.'}
                       >
                         {privateMode ? t('chat.incognitoOn', 'Incognito on') : t('chat.incognitoOff', 'Incognito off')}
                       </button>
