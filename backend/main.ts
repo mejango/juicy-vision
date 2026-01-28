@@ -64,8 +64,8 @@ app.use(
       if (origin.includes('ipfs.io') || origin.includes('dweb.link')) {
         return origin;
       }
-      // Allow your production domain (update this)
-      if (origin.includes('juicyvision')) {
+      // Allow your production domain
+      if (origin.includes('juicyvision') || origin.includes('juicy.vision')) {
         return origin;
       }
       return null;
