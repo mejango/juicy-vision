@@ -100,7 +100,7 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
                     : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50'
                 }`}
               >
-                Join us so we can grow
+                Join us
               </button>
               {balanceUsd !== null && (
                 <p className={`text-xs font-mono mt-2 ${
