@@ -170,6 +170,22 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
             >
               Copy us
             </button>
+            <p className={`text-xs leading-relaxed mt-3 ${
+              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              {t('juicyExplainer.teachSkills', 'Teach the juicebox skills that Juicy is based on to your AI')}{' '}
+              <a
+                href="https://github.com/mejango/juicebox-skills"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`underline hover:no-underline ${
+                  theme === 'dark' ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
+                }`}
+              >
+                here
+              </a>
+              .
+            </p>
           </div>
         </div>
       </div>
