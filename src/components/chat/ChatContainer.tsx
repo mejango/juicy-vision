@@ -1303,7 +1303,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                         }`}
                         title={privateMode ? 'Private mode - chats won\'t be stored for study' : 'Open mode - chats help improve Juicy'}
                       >
-                        {privateMode ? t('chat.private', 'Private') : t('chat.open', 'Open')}
+                        {privateMode ? t('chat.incognitoOn', 'Incognito on') : t('chat.open', 'Open')}
                       </button>
                       <button
                         onClick={handleReport}
