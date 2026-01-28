@@ -1817,7 +1817,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   : 'border-teal-600 text-teal-600 hover:bg-teal-50'
               }`}
             >
-              {t('beta.payUs', 'Pay us so we can go faster')}
+              {t('beta.joinUs', 'Join us so we can go faster')}
             </button>
           </div>
         </div>

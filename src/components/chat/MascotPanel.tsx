@@ -45,7 +45,7 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
               : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50 bg-white/60 backdrop-blur-sm'
           }`}
         >
-          {t('ui.payUs', 'Pay us')}
+          {t('ui.joinUs', 'Join us')}
         </button>
       </div>
 
@@ -100,7 +100,7 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
                     : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50'
                 }`}
               >
-                Pay us so we can grow
+                Join us so we can grow
               </button>
               {balanceUsd !== null && (
                 <p className={`text-xs font-mono mt-2 ${
@@ -131,7 +131,7 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
                   : 'border-green-500/60 text-green-600 hover:border-green-500 hover:bg-green-50'
               }`}
             >
-              {t('ui.payUs', 'Pay us')}
+              {t('ui.joinUs', 'Join us')}
             </button>
             <p className={`text-xs leading-relaxed mt-4 pt-4 border-t ${
               theme === 'dark' ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-200'
