@@ -68,6 +68,7 @@ const project = await getProject(chainId, revProjectId)
 ### Why Same ID on All Chains?
 Revnets use CREATE2 deployment with deterministic addresses and the REVDeployer
 reserves specific project IDs. Projects 1, 2, 3 are reserved across all chains.
+Projects 1-4 are the only ones that have consistent projectIds across chains.
 
 ### Common Mistakes to Avoid
 1. **Don't ask "which chain?"** for REV/NANA - they're on ALL chains, same ID
