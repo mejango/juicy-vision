@@ -158,39 +158,31 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="flex justify-end gap-2">
           <button
             onClick={() => handlePasskeyAuth('this-device')}
             disabled={isAuthenticating}
-            className={`w-full py-2.5 px-3 border text-sm font-medium transition-all flex items-center gap-3
-              disabled:opacity-50 disabled:cursor-not-allowed ${
-              isDark
-                ? 'border-green-500/50 bg-green-500/10 text-white hover:bg-green-500/20'
-                : 'border-green-500 bg-green-50 text-gray-900 hover:bg-green-100'
+            className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+              isAuthenticating
+                ? 'border-gray-500 text-gray-500 cursor-wait'
+                : isDark
+                ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+                : 'border-green-600 text-green-600 hover:bg-green-50'
             }`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
-            </svg>
-            <span>{isAuthenticating ? 'Authenticating...' : getDeviceName()}</span>
+            {isAuthenticating ? '...' : getDeviceName()}
           </button>
 
           <button
             onClick={() => handlePasskeyAuth('another-device')}
             disabled={isAuthenticating}
-            className={`w-full py-2.5 px-3 border text-sm font-medium transition-all flex items-center gap-3
-              disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
               isDark
-                ? 'border-white/10 text-gray-300 hover:border-white/20'
-                : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+                : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
             }`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-            <span>Another device</span>
+            Another device
           </button>
         </div>
       </div>
