@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useAccount, useConnect, useDisconnect } from 'wagmi'
+import { useAccount, useDisconnect } from 'wagmi'
 import { useSettingsStore, useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 // Note: signInWithPasskey removed - use authStore.loginWithPasskey() instead for managed mode
@@ -70,8 +70,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
 
   // Wallet connection
   const { address: walletAddress, isConnected: isWalletConnected } = useAccount()
-  const { connect, connectors } = useConnect()
-  const { disconnect } = useDisconnect()
+    const { disconnect } = useDisconnect()
 
   // Email add flow state
   const [showEmailForm, setShowEmailForm] = useState(false)
@@ -791,8 +790,8 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                 ) : (
                   <button
                     onClick={() => {
-                      const injected = connectors.find(c => c.id === 'injected')
-                      if (injected) connect({ connector: injected })
+                      // Open wallet panel to show all connector options
+                      window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${
                       isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'
