@@ -15,9 +15,24 @@ export async function runMigrations() {
       return;
     }
 
-    // Schema not initialized - this shouldn't happen in Docker since postgres init runs first
-    // For local dev without Docker, we could run schema.sql here
-    console.log('Warning: Schema not initialized. Run schema.sql manually or use Docker.');
+    // Schema not initialized - apply initial schema
+    console.log('Initializing database schema...');
+
+    // Read and execute schema.sql
+    const schemaPath = new URL('./schema.sql', import.meta.url);
+    const schemaSql = await Deno.readTextFile(schemaPath);
+
+    // Filter out psql-specific commands that postgres doesn't understand
+    const cleanedSql = schemaSql
+      .split('\n')
+      .filter(line => !line.startsWith('\\'))  // Remove psql meta-commands
+      .join('\n');
+
+    await conn.queryObject(cleanedSql);
+    console.log('Database schema initialized successfully');
+  } catch (error) {
+    console.error('Migration error:', error);
+    throw error;
   } finally {
     conn.release();
   }
