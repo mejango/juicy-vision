@@ -136,9 +136,9 @@ function toRulesetConfigTuple(config: JBRulesetConfig) {
     weightCutPercent: BigInt(config.weightCutPercent),
     approvalHook: (config.approvalHook || ZERO_ADDRESS) as Address,
     metadata: {
-      reservedPercent: config.metadata.reservedPercent,
-      cashOutTaxRate: config.metadata.cashOutTaxRate,
-      baseCurrency: config.metadata.baseCurrency,
+      reservedPercent: BigInt(config.metadata.reservedPercent),
+      cashOutTaxRate: BigInt(config.metadata.cashOutTaxRate),
+      baseCurrency: BigInt(config.metadata.baseCurrency),
       pausePay: config.metadata.pausePay,
       pauseCreditTransfers: config.metadata.pauseCreditTransfers,
       allowOwnerMinting: config.metadata.allowOwnerMinting,
@@ -154,16 +154,16 @@ function toRulesetConfigTuple(config: JBRulesetConfig) {
       useDataHookForPay: config.metadata.useDataHookForPay,
       useDataHookForCashOut: config.metadata.useDataHookForCashOut,
       dataHook: (config.metadata.dataHook || ZERO_ADDRESS) as Address,
-      metadata: config.metadata.metadata,
+      metadata: BigInt(config.metadata.metadata),
     },
     splitGroups: config.splitGroups.map(sg => ({
       groupId: BigInt(sg.groupId),
       splits: sg.splits.map(s => ({
         preferAddToBalance: s.preferAddToBalance,
-        percent: s.percent,
+        percent: BigInt(s.percent),
         projectId: BigInt(s.projectId),
         beneficiary: s.beneficiary as Address,
-        lockedUntil: s.lockedUntil,
+        lockedUntil: BigInt(s.lockedUntil),
         hook: (s.hook || ZERO_ADDRESS) as Address,
       })),
     })),
@@ -172,11 +172,11 @@ function toRulesetConfigTuple(config: JBRulesetConfig) {
       token: falg.token as Address,
       payoutLimits: falg.payoutLimits.map(pl => ({
         amount: BigInt(pl.amount),
-        currency: pl.currency,
+        currency: BigInt(pl.currency),
       })),
       surplusAllowances: falg.surplusAllowances.map(sa => ({
         amount: BigInt(sa.amount),
-        currency: sa.currency,
+        currency: BigInt(sa.currency),
       })),
     })),
   }
