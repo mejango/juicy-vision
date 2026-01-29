@@ -29,7 +29,10 @@ interface AuthenticationOptions {
   timeout: number
   userVerification: string
   allowCredentials?: Array<{ type: 'public-key'; id: string; transports?: string[] }>
+  hints?: string[]
 }
+
+export type DeviceHint = 'this-device' | 'another-device' | 'any'
 
 interface PasskeyInfo {
   id: string
@@ -194,26 +197,42 @@ interface LoginResult {
   token: string
 }
 
-export async function loginWithPasskey(email?: string): Promise<LoginResult> {
+export async function loginWithPasskey(email?: string, deviceHint: DeviceHint = 'any'): Promise<LoginResult> {
   // 1. Get authentication options from server
   const options = await apiRequest<AuthenticationOptions>(
     `/passkey/authenticate/options${email ? `?email=${encodeURIComponent(email)}` : ''}`,
     { method: 'GET' }
   )
 
-  // 2. Get credential using WebAuthn API
+  // 2. Build WebAuthn options with device hints
+  const publicKeyOptions: PublicKeyCredentialRequestOptions = {
+    challenge: base64UrlToArrayBuffer(options.challenge),
+    rpId: options.rpId,
+    timeout: options.timeout,
+    userVerification: options.userVerification as UserVerificationRequirement,
+    allowCredentials: options.allowCredentials?.map((c) => ({
+      type: c.type,
+      id: base64UrlToArrayBuffer(c.id),
+      // For "this device", prefer internal transport; for "another", prefer hybrid
+      transports: deviceHint === 'this-device'
+        ? ['internal'] as AuthenticatorTransport[]
+        : deviceHint === 'another-device'
+        ? ['hybrid', 'usb', 'ble', 'nfc'] as AuthenticatorTransport[]
+        : c.transports as AuthenticatorTransport[],
+    })),
+  }
+
+  // Add hints for modern browsers (Chrome 128+)
+  // This tells the browser which UI to show first
+  if (deviceHint === 'this-device') {
+    (publicKeyOptions as any).hints = ['client-device']
+  } else if (deviceHint === 'another-device') {
+    (publicKeyOptions as any).hints = ['hybrid']
+  }
+
+  // 3. Get credential using WebAuthn API
   const credential = await navigator.credentials.get({
-    publicKey: {
-      challenge: base64UrlToArrayBuffer(options.challenge),
-      rpId: options.rpId,
-      timeout: options.timeout,
-      userVerification: options.userVerification as UserVerificationRequirement,
-      allowCredentials: options.allowCredentials?.map((c) => ({
-        type: c.type,
-        id: base64UrlToArrayBuffer(c.id),
-        transports: c.transports as AuthenticatorTransport[],
-      })),
-    },
+    publicKey: publicKeyOptions,
   }) as PublicKeyCredential | null
 
   if (!credential) {
@@ -292,13 +311,25 @@ interface SignupOptions {
   tempUserId: string
 }
 
-export async function signupWithPasskey(): Promise<LoginResult> {
+export async function signupWithPasskey(deviceHint: DeviceHint = 'this-device'): Promise<LoginResult> {
   // 1. Get signup options from server
   const options = await apiRequest<SignupOptions>('/passkey/signup/options', {
     method: 'GET',
   })
 
   // 2. Create credential using WebAuthn API
+  const authenticatorSelection: AuthenticatorSelectionCriteria = {
+    residentKey: options.authenticatorSelection.residentKey as ResidentKeyRequirement,
+    userVerification: options.authenticatorSelection.userVerification as UserVerificationRequirement,
+  }
+
+  // For "this device", force platform authenticator
+  if (deviceHint === 'this-device') {
+    authenticatorSelection.authenticatorAttachment = 'platform'
+  } else if (deviceHint === 'another-device') {
+    authenticatorSelection.authenticatorAttachment = 'cross-platform'
+  }
+
   const credential = await navigator.credentials.create({
     publicKey: {
       challenge: base64UrlToArrayBuffer(options.challenge),
@@ -311,12 +342,7 @@ export async function signupWithPasskey(): Promise<LoginResult> {
       pubKeyCredParams: options.pubKeyCredParams,
       timeout: options.timeout,
       attestation: options.attestation as AttestationConveyancePreference,
-      authenticatorSelection: {
-        residentKey: options.authenticatorSelection
-          .residentKey as ResidentKeyRequirement,
-        userVerification: options.authenticatorSelection
-          .userVerification as UserVerificationRequirement,
-      },
+      authenticatorSelection,
     },
   }) as PublicKeyCredential | null
 

@@ -136,27 +136,28 @@ export interface JBTransactionResponse {
 }
 
 // Build transaction data for JBMultiTerminal.pay()
-export async function buildPayTransaction(request: JBPayRequest): Promise<JBTransactionResponse> {
-  return fetchApi<JBTransactionResponse>('/v1/juicebox/pay', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
+// Encoded client-side using viem (no API call needed)
+import {
+  encodePayTransaction,
+  encodeCashOutTransaction,
+  encodeSendPayoutsTransaction,
+  encodeQueueRulesetTransaction,
+  encodeDeployERC20Transaction,
+  encodeSendReservesTransaction,
+} from './encoder'
+
+export function buildPayTransaction(request: JBPayRequest): JBTransactionResponse {
+  return encodePayTransaction(request)
 }
 
 // Build transaction data for JBMultiTerminal.cashOutTokensOf()
-export async function buildCashOutTransaction(request: JBCashOutRequest): Promise<JBTransactionResponse> {
-  return fetchApi<JBTransactionResponse>('/v1/juicebox/cashout', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
+export function buildCashOutTransaction(request: JBCashOutRequest): JBTransactionResponse {
+  return encodeCashOutTransaction(request)
 }
 
 // Build transaction data for JBMultiTerminal.sendPayoutsOf()
-export async function buildSendPayoutsTransaction(request: JBSendPayoutsRequest): Promise<JBTransactionResponse> {
-  return fetchApi<JBTransactionResponse>('/v1/juicebox/sendpayouts', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
+export function buildSendPayoutsTransaction(request: JBSendPayoutsRequest): JBTransactionResponse {
+  return encodeSendPayoutsTransaction(request)
 }
 
 // Submit a signed transaction
@@ -546,14 +547,45 @@ export interface JBOmnichainDistributeResponse {
 /**
  * Build omnichain distribution transactions.
  * Works for both sendPayoutsOf (payouts) and sendReservedTokensToSplitsOf (reserves).
+ * Encoded client-side using viem (no API call needed)
  */
-export async function buildOmnichainDistributeTransactions(
+export function buildOmnichainDistributeTransactions(
   request: JBOmnichainDistributeRequest
-): Promise<JBOmnichainDistributeResponse> {
-  return fetchApi<JBOmnichainDistributeResponse>('/v1/juicebox/omnichainDistribute', {
-    method: 'POST',
-    body: JSON.stringify(request),
+): JBOmnichainDistributeResponse {
+  const transactions = request.chainIds.map(chainId => {
+    const projectId = request.projectIds[chainId]
+    if (!projectId) {
+      throw new Error(`No project ID found for chain ${chainId}`)
+    }
+
+    if (request.type === 'reserves') {
+      // sendReservedTokensToSplitsOf only needs projectId
+      const txResponse = encodeSendReservesTransaction(chainId, projectId)
+      return {
+        chainId,
+        projectId,
+        txData: txResponse.txData,
+        estimatedGas: txResponse.estimatedGas,
+      }
+    } else {
+      // sendPayoutsOf needs amount/currency - for now use max uint to trigger full payout
+      const txResponse = encodeSendPayoutsTransaction({
+        chainId,
+        projectId,
+        amount: '0', // 0 = distribute full payout limit
+        currency: 1, // ETH
+        minTokensPaidOut: '0',
+      })
+      return {
+        chainId,
+        projectId,
+        txData: txResponse.txData,
+        estimatedGas: txResponse.estimatedGas,
+      }
+    }
   })
+
+  return { transactions }
 }
 
 /**
@@ -694,11 +726,9 @@ export function calculateSynchronizedStartTime(): number {
 }
 
 // Build transaction data for JBController.queueRulesetsOf()
-export async function buildQueueRulesetTransaction(request: JBQueueRulesetRequest): Promise<JBTransactionResponse> {
-  return fetchApi<JBTransactionResponse>('/v1/juicebox/queueRuleset', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
+// Encoded client-side using viem (no API call needed)
+export function buildQueueRulesetTransaction(request: JBQueueRulesetRequest): JBTransactionResponse {
+  return encodeQueueRulesetTransaction(request)
 }
 
 // ============================================================================

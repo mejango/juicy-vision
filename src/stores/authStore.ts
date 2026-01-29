@@ -8,6 +8,7 @@ import {
   deletePasskey as passkeyDelete,
   renamePasskey as passkeyRename,
   signupWithPasskey as passkeySignup,
+  type DeviceHint,
 } from '../services/passkey'
 
 // ============================================================================
@@ -142,8 +143,8 @@ interface AuthState {
 
   // Passkey actions
   passkeys: PasskeyInfo[]
-  loginWithPasskey: (email?: string) => Promise<void>
-  signupWithPasskey: () => Promise<void>
+  loginWithPasskey: (email?: string, deviceHint?: DeviceHint) => Promise<void>
+  signupWithPasskey: (deviceHint?: DeviceHint) => Promise<void>
   registerPasskey: (displayName?: string) => Promise<PasskeyInfo>
   loadPasskeys: () => Promise<void>
   deletePasskey: (id: string) => Promise<void>
@@ -292,10 +293,10 @@ export const useAuthStore = create<AuthState>()(
       },
 
       // Passkey actions
-      loginWithPasskey: async (email?: string) => {
+      loginWithPasskey: async (email?: string, deviceHint?: DeviceHint) => {
         set({ isLoading: true, error: null })
         try {
-          const result = await passkeyLogin(email)
+          const result = await passkeyLogin(email, deviceHint)
           set({
             user: {
               id: result.user.id,
@@ -340,12 +341,12 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      signupWithPasskey: async () => {
+      signupWithPasskey: async (deviceHint?: DeviceHint) => {
         set({ isLoading: true, error: null })
         // Clear any stale identity cache from previous account
         localStorage.removeItem('juicy-identity')
         try {
-          const result = await passkeySignup()
+          const result = await passkeySignup(deviceHint)
           set({
             user: {
               id: result.user.id,

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { forgetPasskeyWallet } from '../../services/passkeyWallet'
+import type { DeviceHint } from '../../services/passkey'
 
 export interface AnchorPosition {
   top: number
@@ -21,6 +22,18 @@ interface AuthOptionsModalProps {
   anchorPosition?: AnchorPosition | null
 }
 
+// Get device name for display
+function getDeviceName(): string {
+  if (typeof navigator === 'undefined') return 'This device'
+  const ua = navigator.userAgent
+  if (/Mac/i.test(ua)) return 'This Mac'
+  if (/iPhone/i.test(ua)) return 'This iPhone'
+  if (/iPad/i.test(ua)) return 'This iPad'
+  if (/Android/i.test(ua)) return 'This device'
+  if (/Windows/i.test(ua)) return 'This PC'
+  return 'This device'
+}
+
 export default function AuthOptionsModal({
   isOpen,
   onClose,
@@ -37,10 +50,12 @@ export default function AuthOptionsModal({
 
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showDeviceSelect, setShowDeviceSelect] = useState(false)
 
   // Reset state when modal closes
   const handleClose = () => {
     setError(null)
+    setShowDeviceSelect(false)
     onClose()
   }
 
@@ -85,13 +100,13 @@ export default function AuthOptionsModal({
 
   if (!isOpen) return null
 
-  const handlePasskeyAuth = async () => {
+  const handlePasskeyAuth = async (deviceHint: DeviceHint) => {
     setIsAuthenticating(true)
     setError(null)
 
     try {
       // Use managed passkey auth - creates user record and sets mode to 'managed'
-      await loginWithPasskey()
+      await loginWithPasskey(undefined, deviceHint)
       onPasskeySuccess?.()
       handleClose()
     } catch (err) {
@@ -100,6 +115,7 @@ export default function AuthOptionsModal({
         const msg = err.message.toLowerCase()
         if (msg.includes('cancelled') || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('abort')) {
           // User cancelled, no error needed
+          setShowDeviceSelect(false)
         } else if (msg.includes('not supported')) {
           setError('Touch ID not supported on this device. Try Wallet instead.')
         } else if (msg.includes('credential not found') || msg.includes('not registered')) {
@@ -113,7 +129,7 @@ export default function AuthOptionsModal({
 
           try {
             // Try to create a new account with a fresh passkey
-            await signupWithPasskey()
+            await signupWithPasskey(deviceHint)
             onPasskeySuccess?.()
             handleClose()
             return // Success - don't show error
@@ -124,6 +140,7 @@ export default function AuthOptionsModal({
               const signupMsg = signupErr.message.toLowerCase()
               if (signupMsg.includes('cancelled') || signupMsg.includes('abort')) {
                 setError('Sign up cancelled. Try again or use Wallet.')
+                setShowDeviceSelect(false)
               } else {
                 setError('Could not create account. Try connecting a wallet instead.')
               }
@@ -143,6 +160,93 @@ export default function AuthOptionsModal({
   const handleWalletClick = () => {
     handleClose()
     onWalletClick()
+  }
+
+  // Device selection view
+  if (showDeviceSelect) {
+    return createPortal(
+      <>
+        <div className="fixed inset-0 z-[49]" onMouseDown={handleClose} />
+        <div className="fixed z-50" style={popoverStyle}>
+          <div
+            className={`relative w-80 p-4 border shadow-xl ${
+              isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+            }`}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); handleClose() }}
+              className={`absolute top-3 right-3 p-1 transition-colors ${
+                isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <button
+              onClick={() => setShowDeviceSelect(false)}
+              className={`flex items-center gap-1 text-xs mb-3 ${
+                isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back
+            </button>
+
+            <p className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Where is your passkey?
+            </p>
+
+            {error && (
+              <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <button
+                onClick={() => handlePasskeyAuth('this-device')}
+                disabled={isAuthenticating}
+                className={`w-full py-2.5 px-3 border text-sm font-medium transition-all flex items-center gap-3
+                  disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isDark
+                    ? 'border-green-500/50 bg-green-500/10 text-white hover:bg-green-500/20'
+                    : 'border-green-500 bg-green-50 text-gray-900 hover:bg-green-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                </svg>
+                <span>{isAuthenticating ? 'Authenticating...' : getDeviceName()}</span>
+              </button>
+
+              <button
+                onClick={() => handlePasskeyAuth('another-device')}
+                disabled={isAuthenticating}
+                className={`w-full py-2.5 px-3 border text-sm font-medium transition-all flex items-center gap-3
+                  disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isDark
+                    ? 'border-white/10 text-gray-300 hover:border-white/20'
+                    : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                <span>Another device</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </>,
+      document.body
+    )
   }
 
   return createPortal(
@@ -191,7 +295,7 @@ export default function AuthOptionsModal({
 
         <div className="flex justify-end gap-2">
           <button
-            onClick={handlePasskeyAuth}
+            onClick={() => setShowDeviceSelect(true)}
             disabled={isAuthenticating}
             className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
               isAuthenticating
