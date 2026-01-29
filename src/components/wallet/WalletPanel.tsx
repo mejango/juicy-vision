@@ -55,12 +55,13 @@ function shortenAddress(address: string, chars = 6): string {
 }
 
 // Get device name for display
+// Note: Check iPhone/iPad BEFORE Mac because iPhone UA contains "Mac" (e.g., "like Mac OS X")
 function getDeviceName(): string {
   if (typeof navigator === 'undefined') return 'This device'
   const ua = navigator.userAgent
-  if (/Mac/i.test(ua)) return 'This Mac'
   if (/iPhone/i.test(ua)) return 'This iPhone'
   if (/iPad/i.test(ua)) return 'This iPad'
+  if (/Mac/i.test(ua)) return 'This Mac'
   if (/Android/i.test(ua)) return 'This device'
   if (/Windows/i.test(ua)) return 'This PC'
   return 'This device'
@@ -83,10 +84,33 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
     setError(null)
 
     try {
+      // Always try LOGIN first to use existing passkey
+      console.log('[WalletPanel] Trying login first to use existing passkey')
+      try {
+        await loginWithPasskey(undefined, deviceHint)
+        onPasskeySuccess()
+        return
+      } catch (loginErr) {
+        console.log('[WalletPanel] Login failed:', loginErr)
+        if (loginErr instanceof Error) {
+          const loginMsg = loginErr.message.toLowerCase()
+          if (loginMsg.includes('cancelled') || loginMsg.includes('abort') || loginMsg.includes('not allowed')) {
+            // User cancelled - don't try signup
+            setShowDeviceSelect(false)
+            return
+          }
+          if (loginMsg.includes('not supported')) {
+            setError('Touch ID not supported on this device. Try Wallet instead.')
+            return
+          }
+          // Login failed (no existing passkey found), try signup for this-device only
+        }
+      }
+
+      // For "this-device": If login failed, try creating a new passkey
       if (deviceHint === 'this-device') {
-        // For "This Mac": Try signup first to create a new passkey on this device
-        // This avoids the QR code appearing for new users
-        console.log('[WalletPanel] This device - trying signup first')
+        console.log('[WalletPanel] Login failed, trying signup to create new passkey')
+        // Clear local state before creating new account
         forgetPasskeyWallet()
         localStorage.removeItem('juice-smart-account-address')
         localStorage.removeItem('juicy-identity')
@@ -94,55 +118,22 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
         try {
           await signupWithPasskey(deviceHint)
           onPasskeySuccess()
-          return
         } catch (signupErr) {
-          console.error('Passkey signup failed, trying login:', signupErr)
+          console.error('Signup also failed:', signupErr)
           if (signupErr instanceof Error) {
             const signupMsg = signupErr.message.toLowerCase()
             if (signupMsg.includes('cancelled') || signupMsg.includes('abort') || signupMsg.includes('not allowed')) {
-              // User cancelled - don't try login
               setShowDeviceSelect(false)
-              return
-            }
-            if (signupMsg.includes('not supported')) {
+            } else if (signupMsg.includes('not supported')) {
               setError('Touch ID not supported on this device. Try Wallet instead.')
-              return
-            }
-            // Signup failed (maybe passkey already exists), try login
-          }
-        }
-
-        // Fallback to login if signup failed (e.g., passkey already registered)
-        try {
-          await loginWithPasskey(undefined, deviceHint)
-          onPasskeySuccess()
-        } catch (loginErr) {
-          console.error('Login also failed:', loginErr)
-          if (loginErr instanceof Error) {
-            const loginMsg = loginErr.message.toLowerCase()
-            if (loginMsg.includes('cancelled') || loginMsg.includes('abort') || loginMsg.includes('not allowed')) {
-              setShowDeviceSelect(false)
             } else {
-              setError('Could not sign in. Try connecting a wallet instead.')
+              setError('Could not create account. Try connecting a wallet instead.')
             }
           }
         }
       } else {
-        // For "Another device": Try login first (user likely has passkey elsewhere)
-        try {
-          await loginWithPasskey(undefined, deviceHint)
-          onPasskeySuccess()
-        } catch (err) {
-          console.error('Passkey auth failed:', err)
-          if (err instanceof Error) {
-            const msg = err.message.toLowerCase()
-            if (msg.includes('cancelled') || msg.includes('abort') || msg.includes('not allowed')) {
-              setShowDeviceSelect(false)
-            } else {
-              setError('Failed to sign in. Try another method.')
-            }
-          }
-        }
+        // For "another-device": Don't offer signup, they need to use their other device's passkey
+        setError('No passkey found. Try "This device" to create one, or connect a wallet.')
       }
     } finally {
       setIsAuthenticating(false)
