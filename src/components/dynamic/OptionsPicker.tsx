@@ -294,9 +294,9 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
     try {
       // Check if any "other" option is selected - if so, prefill prompt and focus
-      // Skip file fields since they handle their own input
+      // Skip text/textarea/file fields since they're free-form input, not option selections
       for (const g of groups) {
-        if (g.type === 'file') continue
+        if (g.type === 'file' || g.type === 'text' || g.type === 'textarea') continue
         const sel = selections[g.id]
         // Check if "other" is selected - sel can be a string or an array
         const hasOther = Array.isArray(sel)
