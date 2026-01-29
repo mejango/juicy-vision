@@ -197,7 +197,7 @@ function getSubgraphConfig(chainId: number, apiKey?: string): { url: string; use
   // If backend API is configured, use the proxy endpoint to keep API keys secure
   const backendUrl = import.meta.env.VITE_API_URL
   if (backendUrl) {
-    return { url: `${backendUrl}/api/proxy/thegraph/uniswap`, useProxy: true }
+    return { url: `${backendUrl}/proxy/thegraph/uniswap`, useProxy: true }
   }
 
   // Use The Graph's decentralized network with API key (direct access)

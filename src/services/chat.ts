@@ -717,7 +717,7 @@ class WebSocketManager {
       params.set('session', siweToken)
     }
     params.set('sessionId', sessionId)
-    const url = `${wsUrl}/api/chat/${chatId}/ws?${params.toString()}`
+    const url = `${wsUrl}/chat/${chatId}/ws?${params.toString()}`
 
     this.connection = new WebSocket(url)
 

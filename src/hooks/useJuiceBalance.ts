@@ -31,7 +31,7 @@ export function useJuiceBalance() {
     setError(null)
 
     try {
-      const res = await fetch(`${API_BASE}/api/juice/balance`, {
+      const res = await fetch(`${API_BASE}/juice/balance`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

@@ -2375,7 +2375,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
 
   // Fetch Stripe publishable key on mount
   useEffect(() => {
-    fetch(`${API_BASE}/api/juice/stripe-config`)
+    fetch(`${API_BASE}/juice/stripe-config`)
       .then(res => res.json())
       .then(data => {
         if (data.success && data.data.publishableKey) {
@@ -2418,7 +2418,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
     setError(null)
 
     try {
-      const res = await fetch(`${API_BASE}/api/juice/purchase`, {
+      const res = await fetch(`${API_BASE}/juice/purchase`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
