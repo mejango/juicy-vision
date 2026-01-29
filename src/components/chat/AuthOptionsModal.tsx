@@ -52,11 +52,13 @@ export default function AuthOptionsModal({
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDeviceSelect, setShowDeviceSelect] = useState(false)
+  const [selectedDevice, setSelectedDevice] = useState<DeviceHint | null>(null)
 
   // Reset state when modal closes
   const handleClose = () => {
     setError(null)
     setShowDeviceSelect(false)
+    setSelectedDevice(null)
     onClose()
   }
 
@@ -101,72 +103,158 @@ export default function AuthOptionsModal({
 
   if (!isOpen) return null
 
-  const handlePasskeyAuth = async (deviceHint: DeviceHint) => {
+  const handleLogin = async () => {
+    if (!selectedDevice) return
     setIsAuthenticating(true)
     setError(null)
 
     try {
-      // Always try LOGIN first to use existing passkey
-      console.log('[AuthOptionsModal] Trying login first to use existing passkey')
-      try {
-        await loginWithPasskey(undefined, deviceHint)
-        onPasskeySuccess?.()
-        handleClose()
-        return
-      } catch (loginErr) {
-        console.log('[AuthOptionsModal] Login failed:', loginErr)
-        if (loginErr instanceof Error) {
-          const loginMsg = loginErr.message.toLowerCase()
-          if (loginMsg.includes('cancelled') || loginMsg.includes('abort') || loginMsg.includes('not allowed')) {
-            // User cancelled - don't try signup
-            setShowDeviceSelect(false)
-            return
-          }
-          if (loginMsg.includes('not supported')) {
-            setError('Touch ID not supported on this device. Try Wallet instead.')
-            return
-          }
-          // Login failed (no existing passkey found), try signup for this-device only
+      console.log('[AuthOptionsModal] Logging in with existing passkey')
+      await loginWithPasskey(undefined, selectedDevice)
+      onPasskeySuccess?.()
+      handleClose()
+    } catch (err) {
+      console.error('[AuthOptionsModal] Login failed:', err)
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (msg.includes('cancelled') || msg.includes('abort') || msg.includes('not allowed')) {
+          // User cancelled - stay on login/signup screen
+          return
         }
-      }
-
-      // For "this-device": If login failed, try creating a new passkey
-      if (deviceHint === 'this-device') {
-        console.log('[AuthOptionsModal] Login failed, trying signup to create new passkey')
-        // Clear local state before creating new account
-        forgetPasskeyWallet()
-        localStorage.removeItem('juice-smart-account-address')
-        localStorage.removeItem('juicy-identity')
-
-        try {
-          await signupWithPasskey(deviceHint)
-          onPasskeySuccess?.()
-          handleClose()
-        } catch (signupErr) {
-          console.error('Signup also failed:', signupErr)
-          if (signupErr instanceof Error) {
-            const signupMsg = signupErr.message.toLowerCase()
-            if (signupMsg.includes('cancelled') || signupMsg.includes('abort') || signupMsg.includes('not allowed')) {
-              setShowDeviceSelect(false)
-            } else if (signupMsg.includes('not supported')) {
-              setError('Touch ID not supported on this device. Try Wallet instead.')
-            } else {
-              setError('Could not create account. Try connecting a wallet instead.')
-            }
-          }
+        if (msg.includes('not supported')) {
+          setError('Touch ID not supported on this device. Try Wallet instead.')
+        } else {
+          setError('No passkey found. Try Sign up to create one.')
         }
-      } else {
-        // For "another-device": Don't offer signup, they need to use their other device's passkey
-        setError('No passkey found. Try "This device" to create one, or connect a wallet.')
       }
     } finally {
       setIsAuthenticating(false)
     }
   }
 
+  const handleSignup = async () => {
+    if (!selectedDevice) return
+    setIsAuthenticating(true)
+    setError(null)
+
+    try {
+      console.log('[AuthOptionsModal] Creating new passkey account')
+      // Clear local state before creating new account
+      forgetPasskeyWallet()
+      localStorage.removeItem('juice-smart-account-address')
+      localStorage.removeItem('juicy-identity')
+
+      await signupWithPasskey(selectedDevice)
+      onPasskeySuccess?.()
+      handleClose()
+    } catch (err) {
+      console.error('[AuthOptionsModal] Signup failed:', err)
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (msg.includes('cancelled') || msg.includes('abort') || msg.includes('not allowed')) {
+          // User cancelled - stay on login/signup screen
+          return
+        }
+        if (msg.includes('not supported')) {
+          setError('Touch ID not supported on this device. Try Wallet instead.')
+        } else {
+          setError('Could not create account. Try connecting a wallet instead.')
+        }
+      }
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
+
+  const handleDeviceSelect = (device: DeviceHint) => {
+    setSelectedDevice(device)
+    setError(null)
+  }
+
   const handleWalletClick = () => {
     handleClose()
     onWalletClick()
+  }
+
+  // Login/Signup selection view (after selecting device)
+  if (selectedDevice) {
+    return createPortal(
+      <>
+        <div className="fixed inset-0 z-[49]" onMouseDown={handleClose} />
+        <div className="fixed z-50" style={popoverStyle}>
+          <div
+            className={`relative w-80 p-4 border shadow-xl ${
+              isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+            }`}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); handleClose() }}
+              className={`absolute top-3 right-3 p-1 transition-colors ${
+                isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <button
+              onClick={() => setSelectedDevice(null)}
+              className={`flex items-center gap-1 text-xs mb-3 ${
+                isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back
+            </button>
+
+            <p className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              {selectedDevice === 'this-device' ? getDeviceName() : 'Another device'}
+            </p>
+
+            {error && (
+              <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+                {error}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={handleLogin}
+                disabled={isAuthenticating}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+                  isAuthenticating
+                    ? 'border-gray-500 text-gray-500 cursor-wait'
+                    : isDark
+                    ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+                    : 'border-green-600 text-green-600 hover:bg-green-50'
+                }`}
+              >
+                {isAuthenticating ? '...' : 'Log in'}
+              </button>
+
+              {selectedDevice === 'this-device' && (
+                <button
+                  onClick={handleSignup}
+                  disabled={isAuthenticating}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+                    isDark
+                      ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+                      : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+                  }`}
+                >
+                  Sign up
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </>,
+      document.body
+    )
   }
 
   // Device selection view
@@ -216,22 +304,18 @@ export default function AuthOptionsModal({
 
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => handlePasskeyAuth('this-device')}
-                disabled={isAuthenticating}
+                onClick={() => handleDeviceSelect('this-device')}
                 className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
-                  isAuthenticating
-                    ? 'border-gray-500 text-gray-500 cursor-wait'
-                    : isDark
+                  isDark
                     ? 'border-green-500 text-green-500 hover:bg-green-500/10'
                     : 'border-green-600 text-green-600 hover:bg-green-50'
                 }`}
               >
-                {isAuthenticating ? '...' : getDeviceName()}
+                {getDeviceName()}
               </button>
 
               <button
-                onClick={() => handlePasskeyAuth('another-device')}
-                disabled={isAuthenticating}
+                onClick={() => handleDeviceSelect('another-device')}
                 className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
                   isDark
                     ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
