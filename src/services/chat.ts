@@ -708,7 +708,7 @@ class WebSocketManager {
     const token = useAuthStore.getState().token
     const siweToken = getWalletSessionToken()
     const sessionId = getSessionId()
-    const wsUrl = API_BASE_URL.replace('http', 'ws').replace('/api', '')
+    const wsUrl = API_BASE_URL.replace('http', 'ws')
 
     const params = new URLSearchParams()
     if (token) {
