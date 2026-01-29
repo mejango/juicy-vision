@@ -393,10 +393,12 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
         onSubmit(normalizedSelections as Record<string, string>)
       } else {
         // Include file attachments in the event for backend processing
+        // bypassSkipAi: form submissions should always invoke AI, even if user has "Skip AI" on
         window.dispatchEvent(new CustomEvent('juice:send-message', {
           detail: {
             message,
-            fileAttachments: Object.keys(fileAttachments).length > 0 ? fileAttachments : undefined
+            fileAttachments: Object.keys(fileAttachments).length > 0 ? fileAttachments : undefined,
+            bypassSkipAi: true
           }
         }))
       }

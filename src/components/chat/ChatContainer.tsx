@@ -313,7 +313,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assistantMessageCount, t])
 
-  const handleSend = useCallback(async (content: string, attachments?: Attachment[]) => {
+  const handleSend = useCallback(async (content: string, attachments?: Attachment[], bypassSkipAi?: boolean) => {
     // IMPORTANT: Read chatId at execution time, not from closure
     // The forceActiveChatId prop is the most reliable source (comes from URL)
     // Fall back to store only if prop is not available
@@ -385,7 +385,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
       // Invoke AI to respond - backend handles Claude API call and broadcasts response
       // Only invoke if AI is enabled for this chat (global toggle AND personal preference)
-      if (effectiveAiEnabled) {
+      // bypassSkipAi allows form submissions to always invoke AI even if user has "Skip AI" on
+      const shouldInvokeAi = bypassSkipAi ? chatAiEnabled : effectiveAiEnabled
+      if (shouldInvokeAi) {
         // Set waiting state NOW (after navigation for new chats, so state doesn't reset)
         // Uses store state so it persists across navigation
         setWaitingForAiChatId(chatId)
@@ -404,7 +406,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     } finally {
       setIsStreaming(false)
     }
-  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress, effectiveAiEnabled])
+  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress, effectiveAiEnabled, chatAiEnabled])
 
   const handleSuggestionClick = (text: string) => {
     handleSend(text)
@@ -1021,7 +1023,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     // Skip if we're topOnly (no input to handle messages)
     if (topOnly) return
 
-    const handleComponentMessage = (event: CustomEvent<{ message: string; newChat?: boolean; fileAttachments?: Record<string, string> }>) => {
+    const handleComponentMessage = (event: CustomEvent<{ message: string; newChat?: boolean; fileAttachments?: Record<string, string>; bypassSkipAi?: boolean }>) => {
       if (event.detail?.message) {
         // Convert file attachments (data URLs) to Attachment objects
         let attachments: Attachment[] | undefined
@@ -1043,14 +1045,16 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           }).filter((a): a is Attachment => a !== null)
         }
 
+        const bypassSkipAi = event.detail.bypassSkipAi ?? false
+
         if (event.detail.newChat) {
           // Navigate to root to clear active chat, then send message
           // The setTimeout ensures navigation completes before sending
           navigate('/', { replace: true })
           useChatStore.getState().setActiveChat(null)
-          setTimeout(() => handleSend(event.detail.message, attachments), 50)
+          setTimeout(() => handleSend(event.detail.message, attachments, bypassSkipAi), 50)
         } else {
-          handleSend(event.detail.message, attachments)
+          handleSend(event.detail.message, attachments, bypassSkipAi)
         }
       }
     }
