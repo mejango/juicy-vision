@@ -435,6 +435,7 @@ export const REVNET_OPERATOR_QUERY = `
 export const ACTIVITY_EVENTS_QUERY = `
   query ActivityEvents($limit: Int, $offset: Int, $orderBy: String, $orderDirection: String) {
     activityEvents(
+      where: { version: 5 }
       limit: $limit
       offset: $offset
       orderBy: $orderBy
