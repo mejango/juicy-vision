@@ -14,25 +14,30 @@ adminRouter.use('*', requireAuth);
 // GET /admin/analytics/dau - Daily Active Users for last 90 days
 // ============================================================================
 
+const DauQuerySchema = z.object({
+  includeAnonymous: z.coerce.boolean().default(false),
+});
+
 interface DauRow {
   date: Date;
   dau: number;
 }
 
-adminRouter.get('/analytics/dau', async (c) => {
+adminRouter.get('/analytics/dau', zValidator('query', DauQuerySchema), async (c) => {
+  const { includeAnonymous } = c.req.valid('query');
+
   try {
     const rows = await query<DauRow>(`
       SELECT
         DATE(created_at) as date,
-        COUNT(DISTINCT user_id)::int as dau
+        COUNT(DISTINCT COALESCE(user_id::text, id::text))::int as dau
       FROM sessions
       WHERE created_at >= NOW() - INTERVAL '90 days'
-        AND user_id IS NOT NULL
+        ${includeAnonymous ? '' : 'AND user_id IS NOT NULL'}
       GROUP BY DATE(created_at)
       ORDER BY date ASC
     `);
 
-    // Transform to array of { date: string, dau: number }
     const data = rows.map(row => ({
       date: row.date instanceof Date
         ? row.date.toISOString().split('T')[0]
@@ -47,6 +52,139 @@ adminRouter.get('/analytics/dau', async (c) => {
   } catch (error) {
     console.error('[Admin] DAU query error:', error);
     return c.json({ success: false, error: 'Failed to fetch DAU data' }, 500);
+  }
+});
+
+// ============================================================================
+// GET /admin/analytics/metrics - High-level success metrics
+// ============================================================================
+
+interface MetricRow {
+  value: number;
+}
+
+interface ConversionRow {
+  total_users: number;
+  with_passkey: number;
+}
+
+adminRouter.get('/analytics/metrics', async (c) => {
+  try {
+    // Messages sent today
+    const messagesResult = await queryOne<MetricRow>(`
+      SELECT COUNT(*)::int as value
+      FROM multi_chat_messages
+      WHERE created_at >= CURRENT_DATE
+        AND deleted_at IS NULL
+    `);
+
+    // AI responses today
+    const aiResponsesResult = await queryOne<MetricRow>(`
+      SELECT COUNT(*)::int as value
+      FROM multi_chat_messages
+      WHERE created_at >= CURRENT_DATE
+        AND deleted_at IS NULL
+        AND role = 'assistant'
+    `);
+
+    // Chats created today
+    const chatsCreatedResult = await queryOne<MetricRow>(`
+      SELECT COUNT(*)::int as value
+      FROM multi_chats
+      WHERE created_at >= CURRENT_DATE
+    `);
+
+    // Chats created this week
+    const chatsWeekResult = await queryOne<MetricRow>(`
+      SELECT COUNT(*)::int as value
+      FROM multi_chats
+      WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+    `);
+
+    // New users today (accounts created)
+    const newUsersResult = await queryOne<MetricRow>(`
+      SELECT COUNT(*)::int as value
+      FROM users
+      WHERE created_at >= CURRENT_DATE
+    `);
+
+    // New users this week
+    const newUsersWeekResult = await queryOne<MetricRow>(`
+      SELECT COUNT(*)::int as value
+      FROM users
+      WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+    `);
+
+    // Returning users (users with sessions on 2+ different days in last 7 days)
+    const returningUsersResult = await queryOne<MetricRow>(`
+      SELECT COUNT(*)::int as value
+      FROM (
+        SELECT user_id
+        FROM sessions
+        WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+          AND user_id IS NOT NULL
+        GROUP BY user_id
+        HAVING COUNT(DISTINCT DATE(created_at)) >= 2
+      ) returning_users
+    `);
+
+    // Conversion rate: users who have passkeys (signed up) vs total users
+    const conversionResult = await queryOne<ConversionRow>(`
+      SELECT
+        COUNT(*)::int as total_users,
+        COUNT(CASE WHEN EXISTS (
+          SELECT 1 FROM passkey_credentials pc WHERE pc.user_id = u.id
+        ) THEN 1 END)::int as with_passkey
+      FROM users u
+      WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+    `);
+
+    // Average messages per chat (last 7 days)
+    const avgMessagesResult = await queryOne<{ value: number }>(`
+      SELECT COALESCE(AVG(msg_count), 0)::numeric(10,1) as value
+      FROM (
+        SELECT chat_id, COUNT(*) as msg_count
+        FROM multi_chat_messages
+        WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+          AND deleted_at IS NULL
+        GROUP BY chat_id
+      ) chat_messages
+    `);
+
+    // Total active chats (with activity in last 24h)
+    const activeChatsResult = await queryOne<MetricRow>(`
+      SELECT COUNT(DISTINCT chat_id)::int as value
+      FROM multi_chat_messages
+      WHERE created_at >= NOW() - INTERVAL '24 hours'
+        AND deleted_at IS NULL
+    `);
+
+    return c.json({
+      success: true,
+      data: {
+        today: {
+          messages: messagesResult?.value || 0,
+          aiResponses: aiResponsesResult?.value || 0,
+          chatsCreated: chatsCreatedResult?.value || 0,
+          newUsers: newUsersResult?.value || 0,
+        },
+        week: {
+          chatsCreated: chatsWeekResult?.value || 0,
+          newUsers: newUsersWeekResult?.value || 0,
+          returningUsers: returningUsersResult?.value || 0,
+        },
+        engagement: {
+          avgMessagesPerChat: Number(avgMessagesResult?.value || 0),
+          activeChats24h: activeChatsResult?.value || 0,
+          passkeyConversionRate: conversionResult?.total_users
+            ? Math.round((conversionResult.with_passkey / conversionResult.total_users) * 100)
+            : 0,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('[Admin] Metrics query error:', error);
+    return c.json({ success: false, error: 'Failed to fetch metrics' }, 500);
   }
 });
 

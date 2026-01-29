@@ -1,4 +1,4 @@
-export { useDauData, type DauDataPoint } from './useDauData'
+export { useDauData, useAdminMetrics, type DauDataPoint, type AdminMetrics } from './useDauData'
 export {
   useAdminChats,
   useAdminChatDetail,

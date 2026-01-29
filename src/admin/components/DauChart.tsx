@@ -21,6 +21,11 @@ const RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: '90d', label: '90D' },
 ]
 
+interface DauChartProps {
+  includeAnonymous?: boolean
+  onToggleAnonymous?: (include: boolean) => void
+}
+
 function getRangeDays(range: TimeRange): number {
   switch (range) {
     case '7d': return 7
@@ -46,12 +51,12 @@ function formatXAxis(dateStr: string, range: TimeRange): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-export default function DauChart() {
+export default function DauChart({ includeAnonymous = false, onToggleAnonymous }: DauChartProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const [range, setRange] = useState<TimeRange>('30d')
 
-  const { data, isLoading, error } = useDauData()
+  const { data, isLoading, error } = useDauData(includeAnonymous)
 
   const filteredData = useMemo(() => {
     if (!data) return []
@@ -105,10 +110,23 @@ export default function DauChart() {
         <div className={`px-4 py-3 border-b flex items-center justify-between ${
           isDark ? 'border-zinc-700' : 'border-gray-100'
         }`}>
-          <div>
+          <div className="flex items-center gap-3">
             <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
               Daily Active Users
             </span>
+            {onToggleAnonymous && (
+              <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${
+                isDark ? 'text-gray-400' : 'text-gray-500'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={includeAnonymous}
+                  onChange={(e) => onToggleAnonymous(e.target.checked)}
+                  className="w-3 h-3 rounded"
+                />
+                Include anonymous
+              </label>
+            )}
           </div>
           <div className="flex gap-1">
             {RANGE_OPTIONS.map(opt => (
