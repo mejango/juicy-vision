@@ -430,7 +430,7 @@ describe('authStore', () => {
       const store = useAuthStore.getState()
       await store.loginWithPasskey('test@example.com')
 
-      expect(loginWithPasskey).toHaveBeenCalledWith('test@example.com')
+      expect(loginWithPasskey).toHaveBeenCalledWith('test@example.com', undefined)
     })
   })
 
