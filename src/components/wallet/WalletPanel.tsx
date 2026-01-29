@@ -82,6 +82,32 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
     setIsAuthenticating(true)
     setError(null)
 
+    // Helper to try signup after login fails
+    const trySignup = async () => {
+      console.log('[WalletPanel] Trying signup with deviceHint:', deviceHint)
+      forgetPasskeyWallet()
+      localStorage.removeItem('juice-smart-account-address')
+      localStorage.removeItem('juicy-identity')
+
+      try {
+        await signupWithPasskey(deviceHint)
+        onPasskeySuccess()
+        return true
+      } catch (signupErr) {
+        console.error('Passkey signup failed:', signupErr)
+        if (signupErr instanceof Error) {
+          const signupMsg = signupErr.message.toLowerCase()
+          if (signupMsg.includes('cancelled') || signupMsg.includes('abort') || signupMsg.includes('not allowed')) {
+            // User cancelled signup
+            setShowDeviceSelect(false)
+          } else {
+            setError('Could not create account. Try connecting a wallet instead.')
+          }
+        }
+        return false
+      }
+    }
+
     try {
       // Use managed passkey auth - creates user record and sets mode to 'managed'
       await loginWithPasskey(undefined, deviceHint)
@@ -90,41 +116,23 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
       console.error('Passkey auth failed:', err)
       if (err instanceof Error) {
         const msg = err.message.toLowerCase()
-        if (msg.includes('cancelled') || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('abort')) {
-          // User cancelled, no error needed
-          setShowDeviceSelect(false)
-        } else if (msg.includes('not supported')) {
-          setError('Touch ID not supported on this device. Try Wallet instead.')
-        } else if (msg.includes('credential not found') || msg.includes('not registered')) {
-          // Server doesn't recognize the passkey - browser has stale credential
-          // This happens when database is cleared but browser still has old passkey
-          // Try to create a new account with a new passkey
-          console.log('[WalletPanel] Credential not found, clearing local state and trying signup...')
-          forgetPasskeyWallet()
-          localStorage.removeItem('juice-smart-account-address')
-          localStorage.removeItem('juicy-identity')
 
-          try {
-            // Try to create a new account with a fresh passkey
-            await signupWithPasskey(deviceHint)
-            onPasskeySuccess()
-            return // Success - don't show error
-          } catch (signupErr) {
-            console.error('Passkey signup also failed:', signupErr)
-            if (signupErr instanceof Error) {
-              const signupMsg = signupErr.message.toLowerCase()
-              if (signupMsg.includes('cancelled') || signupMsg.includes('abort')) {
-                setError('Sign up cancelled. Try again or use Wallet.')
-                setShowDeviceSelect(false)
-              } else {
-                setError('Could not create account. Try connecting a wallet instead.')
-              }
-            } else {
-              setError('Could not create account. Try connecting a wallet instead.')
-            }
+        // For "This Mac", if login fails for any reason (no credential, not allowed, etc.),
+        // try signup to create a new passkey on this device
+        if (deviceHint === 'this-device') {
+          if (msg.includes('not supported')) {
+            setError('Touch ID not supported on this device. Try Wallet instead.')
+          } else {
+            // Try signup - this will prompt for Touch ID to create new credential
+            await trySignup()
           }
         } else {
-          setError('Failed to sign in. Try another method.')
+          // For "Another device", just show error if cancelled
+          if (msg.includes('cancelled') || msg.includes('abort') || msg.includes('not allowed')) {
+            setShowDeviceSelect(false)
+          } else {
+            setError('Failed to sign in. Try another method.')
+          }
         }
       }
     } finally {

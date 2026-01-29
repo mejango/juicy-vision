@@ -957,9 +957,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         // Already connected - show wallet panel directly for top-up/balance
         setShowWalletPanel(true)
       } else {
-        // Not connected - show auth options to connect first
-        setAuthModalContext('connect')
-        setShowAuthOptionsModal(true)
+        // Not connected - go directly to wallet selector
+        // The user already chose "Wallet" so skip the auth options modal
+        setWalletPanelInitialView('self_custody')
+        setShowWalletPanel(true)
       }
     }
     window.addEventListener('juice:open-wallet-panel', handleOpenWalletPanel as EventListener)
