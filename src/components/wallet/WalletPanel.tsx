@@ -77,7 +77,8 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
   const isDark = theme === 'dark'
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showPasskeyOptions, setShowPasskeyOptions] = useState(false)
+  const [showLoginSignup, setShowLoginSignup] = useState(false)
+  const [showDeviceSelect, setShowDeviceSelect] = useState(false)
 
   const handleLogin = async (deviceHint: 'this-device' | 'another-device') => {
     setIsAuthenticating(true)
@@ -92,7 +93,7 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
       if (err instanceof Error) {
         const msg = err.message.toLowerCase()
         if (msg.includes('cancelled') || msg.includes('abort') || msg.includes('not allowed')) {
-          // User cancelled - stay on options screen
+          // User cancelled - stay on device select screen
           return
         }
         if (msg.includes('not supported')) {
@@ -124,7 +125,7 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
       if (err instanceof Error) {
         const msg = err.message.toLowerCase()
         if (msg.includes('cancelled') || msg.includes('abort') || msg.includes('not allowed')) {
-          // User cancelled - stay on options screen
+          // User cancelled - stay on login/signup screen
           return
         }
         if (msg.includes('not supported')) {
@@ -138,12 +139,71 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
     }
   }
 
-  // Passkey options view - all options in one step
-  if (showPasskeyOptions) {
+  // Step 3: Device selection (only for login)
+  if (showDeviceSelect) {
     return (
       <div className="space-y-3">
         <button
-          onClick={() => setShowPasskeyOptions(false)}
+          onClick={() => setShowDeviceSelect(false)}
+          className={`flex items-center gap-1 text-xs ${
+            isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back
+        </button>
+
+        <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          Where is your passkey?
+        </p>
+
+        {error && (
+          <div className="p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+            {error}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={() => handleLogin('this-device')}
+            disabled={isAuthenticating}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+              isAuthenticating
+                ? 'border-gray-500 text-gray-500 cursor-wait'
+                : isDark
+                ? 'border-green-500 text-green-500 hover:bg-green-500/10'
+                : 'border-green-600 text-green-600 hover:bg-green-50'
+            }`}
+          >
+            {isAuthenticating ? '...' : getDeviceName()}
+          </button>
+
+          <button
+            onClick={() => handleLogin('another-device')}
+            disabled={isAuthenticating}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+              isAuthenticating
+                ? 'border-gray-500 text-gray-500 cursor-wait'
+                : isDark
+                ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+                : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+            }`}
+          >
+            Another device
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Step 2: Log in or Sign up
+  if (showLoginSignup) {
+    return (
+      <div className="space-y-3">
+        <button
+          onClick={() => setShowLoginSignup(false)}
           className={`flex items-center gap-1 text-xs ${
             isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
           }`}
@@ -160,9 +220,9 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
           </div>
         )}
 
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex justify-end gap-2">
           <button
-            onClick={() => handleLogin('this-device')}
+            onClick={() => { setError(null); setShowDeviceSelect(true) }}
             disabled={isAuthenticating}
             className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
               isAuthenticating
@@ -172,7 +232,7 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
                 : 'border-green-600 text-green-600 hover:bg-green-50'
             }`}
           >
-            {isAuthenticating ? '...' : `Log in from ${getDeviceName().replace('This ', '').toLowerCase()}`}
+            Log in
           </button>
 
           <button
@@ -186,21 +246,7 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
                 : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
             }`}
           >
-            Sign up
-          </button>
-
-          <button
-            onClick={() => handleLogin('another-device')}
-            disabled={isAuthenticating}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
-              isAuthenticating
-                ? 'border-gray-500 text-gray-500 cursor-wait'
-                : isDark
-                ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
-                : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
-            }`}
-          >
-            Log in from other device
+            {isAuthenticating ? '...' : 'Sign up'}
           </button>
         </div>
       </div>
@@ -221,7 +267,7 @@ function ConnectOptions({ onWalletClick, onPasskeySuccess }: {
 
       <div className="flex justify-end gap-2">
         <button
-          onClick={() => setShowPasskeyOptions(true)}
+          onClick={() => setShowLoginSignup(true)}
           disabled={isAuthenticating}
           className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
             isAuthenticating
