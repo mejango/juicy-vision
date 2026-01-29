@@ -174,6 +174,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [reportSuccess, setReportSuccess] = useState(false)
   const [showAiPausedPopover, setShowAiPausedPopover] = useState(false)
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false)
   // AI controls expanded state - shows "Skip for all" and "Skip for you" toggles
   const [aiControlsExpanded, setAiControlsExpanded] = useState(false)
   // Track when AI gives empty response - show "Continue" button
@@ -186,6 +187,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     setShowAuthOptionsModal(false)
     setShowAiPausedPopover(false)
     setShowOverflowMenu(false)
+    setShowOptionsMenu(false)
     setShowWalletPanel(false)
     setShowBetaPopover(false)
     setSettingsOpen(false)
@@ -667,6 +669,31 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     window.addEventListener('juice:dock-scroll', handleDockScrollChange as EventListener)
     return () => window.removeEventListener('juice:dock-scroll', handleDockScrollChange as EventListener)
   }, [])
+
+  // Mobile scroll detection - enable compact mode when scrolled
+  useEffect(() => {
+    const dock = dockRef.current
+    if (!dock) return
+
+    let lastScrollTop = 0
+    const handleScroll = () => {
+      const scrollTop = dock.scrollTop
+      const scrollingDown = scrollTop > lastScrollTop
+      const atTop = scrollTop <= 10
+
+      // Enable compact mode when scrolling down, disable when at top
+      if (scrollingDown && scrollTop > 50 && !dockScrollEnabled) {
+        setDockScrollEnabled(true)
+      } else if (atTop && dockScrollEnabled) {
+        setDockScrollEnabled(false)
+      }
+
+      lastScrollTop = scrollTop
+    }
+
+    dock.addEventListener('scroll', handleScroll, { passive: true })
+    return () => dock.removeEventListener('scroll', handleScroll)
+  }, [dockScrollEnabled])
 
   // Listen for empty AI responses - show "Nudge" button when Claude stops without output
   useEffect(() => {
@@ -1283,36 +1310,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       {t('dock.askAbout', 'Let\'s make it real.')}
                     </div>
                     <div className="flex items-center gap-2">
-                      {/* Privacy toggle */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setPrivateMode(!privateMode)
-                        }}
-                        className={`px-2 py-0.5 text-xs font-medium bg-transparent border transition-colors ${
-                          privateMode
-                            ? 'border-juice-orange text-juice-orange'
-                            : 'border-gray-500 text-gray-500 hover:border-gray-400 hover:text-gray-400'
-                        }`}
-                        title={privateMode
-                          ? 'Incognito on: Juicy can\'t learn from your chats. AIs love examples though—sharing helps make us better. But we get it if you\'d rather not, it is a bit sci-fi.'
-                          : 'Incognito off: Your chats help train Juicy\'s AI. A bit sci-fi, sure, but it makes us smarter together. Toggle on for full privacy.'}
-                      >
-                        {privateMode ? t('chat.incognitoOn', 'Incognito on') : t('chat.incognitoOff', 'Incognito off')}
-                      </button>
-                      <button
-                        onClick={handleReport}
-                        disabled={isReporting}
-                        className={`px-2 py-0.5 text-xs font-medium bg-transparent border transition-colors ${
-                          reportSuccess
-                            ? 'border-green-500 text-green-500'
-                            : isReporting
-                              ? 'border-gray-500 text-gray-500 cursor-wait'
-                              : 'border-gray-500 text-gray-500 hover:border-red-400 hover:text-red-400'
-                        }`}
-                      >
-                        {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
-                      </button>
+                      {/* Beta button */}
                       <button
                         ref={betaButtonRef}
                         onClick={(e) => {
@@ -1333,6 +1331,69 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       >
                         Beta
                       </button>
+                      {/* Three-dot options menu */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                          className={`p-1 transition-colors ${
+                            theme === 'dark' ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="5" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="12" cy="19" r="2" />
+                          </svg>
+                        </button>
+                        {showOptionsMenu && (
+                          <>
+                            <div className="fixed inset-0 z-[98]" onClick={() => setShowOptionsMenu(false)} />
+                            <div className={`absolute right-0 bottom-full mb-2 py-1 min-w-[160px] border shadow-lg z-[99] ${
+                              theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+                            }`}>
+                              {/* Privacy toggle */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPrivateMode(!privateMode)
+                                  setShowOptionsMenu(false)
+                                }}
+                                className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                                  theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'
+                                }`}
+                              >
+                                <span className={privateMode ? 'text-juice-orange' : theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
+                                  {privateMode ? t('chat.incognitoOn', 'Incognito on') : t('chat.incognitoOff', 'Incognito off')}
+                                </span>
+                                {privateMode && (
+                                  <svg className="w-3 h-3 text-juice-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </button>
+                              {/* Report */}
+                              <button
+                                onClick={() => {
+                                  handleReport()
+                                  setShowOptionsMenu(false)
+                                }}
+                                disabled={isReporting}
+                                className={`w-full px-3 py-2 text-left text-xs transition-colors ${
+                                  reportSuccess
+                                    ? 'text-green-500'
+                                    : isReporting
+                                      ? theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                                      : theme === 'dark'
+                                        ? 'text-gray-300 hover:bg-white/5 hover:text-red-400'
+                                        : 'text-gray-700 hover:bg-gray-50 hover:text-red-500'
+                                }`}
+                              >
+                                {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
 

@@ -598,20 +598,6 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                     · {formatUsdcBalance(totalUsdc)} USDC · {formatEthBalance(totalEth)} ETH
                   </span>
                 )}
-                <button
-                  onClick={() => {
-                    clearWalletSession()
-                    setSignedIn(false)
-                    disconnect()
-                  }}
-                  className={`ml-2 transition-colors ${
-                    theme === 'dark'
-                      ? 'text-gray-600 hover:text-gray-400'
-                      : 'text-gray-300 hover:text-gray-500'
-                  }`}
-                >
-                  · Disconnect
-                </button>
               </>
             ) : hasAnyAuth ? (
               <>
@@ -653,20 +639,6 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                     · {formatUsdcBalance(passkeyUsdc)} USDC · {formatEthBalance(passkeyEth)} ETH
                   </span>
                 )}
-                <button
-                  onClick={() => {
-                    clearPasskeyWallet()
-                    clearWalletSession()
-                    setPasskeyWallet(null)
-                  }}
-                  className={`ml-2 transition-colors ${
-                    theme === 'dark'
-                      ? 'text-gray-600 hover:text-gray-400'
-                      : 'text-gray-300 hover:text-gray-500'
-                  }`}
-                >
-                  · Disconnect
-                </button>
               </>
             ) : (
               <>

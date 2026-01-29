@@ -781,10 +781,12 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
       <div className={`h-screen overflow-hidden flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
         <TransactionExecutor />
         <ActionExecutor />
-        {/* Mobile header with activity toggle */}
-        <div className="flex-shrink-0">
-          <Header showActions={!!hasMessages} />
-        </div>
+        {/* Mobile header - only show when in chat mode (has messages) */}
+        {hasMessages && (
+          <div className="flex-shrink-0">
+            <Header showActions />
+          </div>
+        )}
         {/* Main content */}
         <div className="flex-1 overflow-hidden relative">
           {showMobileActivity ? (
