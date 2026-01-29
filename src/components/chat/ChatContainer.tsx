@@ -1278,7 +1278,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   />
 
                   {/* Subtext - tight below prompt, hidden when dock is pinned */}
-                  <div className={`flex items-center justify-between px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100 -mt-2 mb-3'}`}>
+                  <div className={`flex items-center justify-between px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-10 opacity-100 -mt-2 mb-3'}`}>
                     <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                       {t('dock.askAbout', 'Let\'s make it real.')}
                     </div>
