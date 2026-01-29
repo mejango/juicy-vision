@@ -129,6 +129,7 @@ export async function createRegistrationChallenge(userId: string): Promise<{
     timeout: 300000, // 5 minutes
     attestation: 'none', // Don't need attestation for consumer use
     authenticatorSelection: {
+      authenticatorAttachment: 'platform', // Prefer Touch ID / Face ID
       residentKey: 'preferred',
       userVerification: 'preferred',
     },
@@ -565,6 +566,7 @@ export async function createSignupChallenge(): Promise<{
     timeout: 300000,
     attestation: 'none',
     authenticatorSelection: {
+      authenticatorAttachment: 'platform', // Prefer Touch ID / Face ID
       residentKey: 'required',
       userVerification: 'preferred',
     },

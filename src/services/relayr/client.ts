@@ -344,6 +344,41 @@ export interface PrepaidBundleResponse {
   expires_at: number                // Unix timestamp when quote expires
 }
 
+// Raw relayr API types (matching relayr-ts)
+export type CallState =
+  | { state: 'Invalid' }
+  | { state: 'Pending' }
+  | { state: 'Mempool'; data: Record<string, unknown> }
+  | { state: 'Cancel'; data: Record<string, unknown> }
+  | { state: 'Resend'; data: Record<string, unknown> }
+  | { state: 'Included'; data: { block: number } }
+  | { state: 'Cancelled'; data: Record<string, unknown> }
+  | { state: 'Success'; data: Record<string, unknown> }
+  | { state: 'Reverted'; data: Record<string, unknown> }
+
+export interface RawTransactionStatus {
+  request: {
+    chain: number
+    target: string
+    data?: string | null
+    gas_limit?: string | null
+    value?: string | null
+    virtual_nonce?: number | null
+  }
+  status: CallState
+  tx_uuid: string
+}
+
+export interface RawBundleResponse {
+  bundle_uuid: string
+  created_at: string
+  expires_at?: string | null
+  payment: unknown // PaymentMethod - complex union type
+  payment_received: boolean
+  transactions: RawTransactionStatus[]
+}
+
+// Simplified types for internal use (transformed from raw API response)
 export interface BundleTransactionStatus {
   tx_uuid: string
   chain_id: number
@@ -360,6 +395,71 @@ export interface BundleStatusResponse {
   payment_received: boolean
   payment_chain_id?: number
   payment_tx_hash?: string
+}
+
+// Transform CallState to simplified status
+function mapCallStateToStatus(callState: CallState): 'pending' | 'submitted' | 'confirmed' | 'failed' {
+  switch (callState.state) {
+    case 'Invalid':
+    case 'Reverted':
+    case 'Cancelled':
+      return 'failed'
+    case 'Success':
+      return 'confirmed'
+    case 'Mempool':
+    case 'Cancel':
+    case 'Resend':
+    case 'Included':
+      return 'submitted'
+    case 'Pending':
+    default:
+      return 'pending'
+  }
+}
+
+// Derive bundle-level status from transaction statuses
+function deriveBundleStatus(
+  transactions: BundleTransactionStatus[],
+  paymentReceived: boolean
+): 'pending' | 'processing' | 'completed' | 'partial' | 'failed' {
+  if (transactions.length === 0) {
+    return paymentReceived ? 'processing' : 'pending'
+  }
+
+  const statuses = transactions.map(t => t.status)
+  const allConfirmed = statuses.every(s => s === 'confirmed')
+  const anyFailed = statuses.some(s => s === 'failed')
+  const anyPending = statuses.some(s => s === 'pending')
+  const anySubmitted = statuses.some(s => s === 'submitted')
+
+  if (allConfirmed) return 'completed'
+  if (anyFailed && statuses.some(s => s === 'confirmed')) return 'partial'
+  if (anyFailed) return 'failed'
+  if (anySubmitted || anyPending) return 'processing'
+  return paymentReceived ? 'processing' : 'pending'
+}
+
+// Transform raw API response to simplified format
+function transformBundleResponse(raw: RawBundleResponse): BundleStatusResponse {
+  const transactions: BundleTransactionStatus[] = raw.transactions.map(tx => ({
+    tx_uuid: tx.tx_uuid,
+    chain_id: tx.request.chain,
+    status: mapCallStateToStatus(tx.status),
+    // tx_hash and gas_used are in the CallState data for Success/Reverted states
+    tx_hash: 'data' in tx.status && typeof tx.status.data === 'object' && tx.status.data !== null
+      ? (tx.status.data as Record<string, unknown>).tx_hash as string | undefined
+      : undefined,
+    error: tx.status.state === 'Reverted' || tx.status.state === 'Invalid'
+      ? `Transaction ${tx.status.state.toLowerCase()}`
+      : undefined,
+  }))
+
+  return {
+    bundle_uuid: raw.bundle_uuid,
+    status: deriveBundleStatus(transactions, raw.payment_received),
+    transactions,
+    payment_received: raw.payment_received,
+  }
 }
 
 export interface BundlePaymentRequest {
@@ -385,7 +485,8 @@ export async function createPrepaidBundle(request: PrepaidBundleRequest): Promis
  * Poll this to track transaction confirmations across chains.
  */
 export async function getBundleStatus(bundleId: string): Promise<BundleStatusResponse> {
-  return fetchApi<BundleStatusResponse>(`/v1/bundle/${bundleId}/status`)
+  const raw = await fetchApi<RawBundleResponse>(`/v1/bundle/${bundleId}`)
+  return transformBundleResponse(raw)
 }
 
 /**

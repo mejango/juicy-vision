@@ -153,6 +153,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [showAuthOptionsModal, setShowAuthOptionsModal] = useState(false)
   const [authModalContext, setAuthModalContext] = useState<'save' | 'connect'>('save')
   const [showWalletPanel, setShowWalletPanel] = useState(false)
+  const [walletPanelInitialView, setWalletPanelInitialView] = useState<'select' | 'self_custody'>('select')
   const [inviteChatId, setInviteChatId] = useState<string | null>(null)
   const [inviteChatName, setInviteChatName] = useState('')
   const [isCreatingInvite, setIsCreatingInvite] = useState(false)
@@ -1714,7 +1715,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           <SaveModal
             isOpen={showSaveModal}
             onClose={() => setShowSaveModal(false)}
-            onWalletClick={() => setShowWalletPanel(true)}
+            onWalletClick={() => {
+              setWalletPanelInitialView('self_custody')
+              setShowWalletPanel(true)
+            }}
             onPasskeySuccess={handlePasskeySuccess}
             anchorPosition={saveAnchorPosition}
           />
@@ -1723,7 +1727,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           <AuthOptionsModal
             isOpen={showAuthOptionsModal}
             onClose={() => setShowAuthOptionsModal(false)}
-            onWalletClick={() => setShowWalletPanel(true)}
+            onWalletClick={() => {
+              setWalletPanelInitialView('self_custody')
+              setShowWalletPanel(true)
+            }}
             onPasskeySuccess={handlePasskeySuccess}
             title={authModalContext === 'connect' ? t('auth.connectTitle', 'Connect') : undefined}
             description={authModalContext === 'connect' ? t('auth.connectDescription', 'Choose how to connect your account.') : undefined}
@@ -1733,8 +1740,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           {/* Wallet Panel - for external wallet connection */}
           <WalletPanel
             isOpen={showWalletPanel}
-            onClose={() => setShowWalletPanel(false)}
+            onClose={() => {
+              setShowWalletPanel(false)
+              setWalletPanelInitialView('select')
+            }}
             anchorPosition={walletPanelAnchorPosition}
+            initialView={walletPanelInitialView}
           />
         </>
       )}

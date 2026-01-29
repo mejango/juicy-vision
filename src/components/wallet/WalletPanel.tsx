@@ -47,6 +47,7 @@ interface WalletPanelProps {
   onClose: () => void
   paymentContext?: PaymentContext
   anchorPosition?: AnchorPosition | null
+  initialView?: 'select' | 'self_custody'
 }
 
 function shortenAddress(address: string, chars = 6): string {
@@ -2624,7 +2625,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
   )
 }
 
-export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPosition }: WalletPanelProps) {
+export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPosition, initialView }: WalletPanelProps) {
   const { mode, logout: authLogout, isAuthenticated } = useAuthStore()
   const { address, isConnected: walletConnected } = useAccount()
 
@@ -2712,6 +2713,13 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       setInsufficientFundsInfo(null)
     }
   }, [isOpen])
+
+  // Set initial view when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setView(initialView || 'select')
+    }
+  }, [isOpen, initialView])
 
   // Handle opening settings (store previous view to go back)
   const handleOpenSettings = () => {
@@ -2910,8 +2918,8 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
           <BuyJuiceView onBack={() => setView(previousView)} />
         )}
 
-        {/* Settings gear icon - bottom left (hidden when in settings/buy_juice view) */}
-        {currentView !== 'settings' && currentView !== 'buy_juice' && (
+        {/* Settings gear icon - bottom left (only show when connected, not during connection flow) */}
+        {currentView !== 'settings' && currentView !== 'buy_juice' && currentView !== 'select' && currentView !== 'self_custody' && currentView !== 'auth_method' && currentView !== 'email_auth' && (
           <button
             onClick={handleOpenSettings}
             className={`absolute bottom-3 left-3 p-1.5 transition-colors ${

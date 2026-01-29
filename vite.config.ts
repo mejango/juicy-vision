@@ -2,8 +2,22 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
+import { execSync } from 'child_process'
+
+// Get git commit hash at build time
+const getGitHash = () => {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim()
+  } catch {
+    return 'dev'
+  }
+}
 
 export default defineConfig({
+  define: {
+    __BUILD_HASH__: JSON.stringify(getGitHash()),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     nodePolyfills({
