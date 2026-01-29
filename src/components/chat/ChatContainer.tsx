@@ -407,24 +407,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     handleSend(text)
   }
 
-  // Handle "Continue" button when AI gives empty response
+  // Handle "Nudge" button when AI gives empty response - sends "nudge" as a user message
   const handleContinue = useCallback(async () => {
-    const chatId = forceActiveChatId || useChatStore.getState().activeChatId
-    if (!chatId) return
-
     setShowContinueButton(false)
-    setWaitingForAiChatId(chatId)
-
-    try {
-      // Re-invoke AI with a "continue" prompt
-      await chatApi.invokeAi(chatId, 'Please continue.')
-    } catch (err) {
-      console.error('Failed to continue AI:', err)
-      setWaitingForAiChatId(null)
-      // Show continue button again so user can retry
-      setShowContinueButton(true)
-    }
-  }, [forceActiveChatId])
+    // Send "nudge" as a visible user message - AI understands this means to continue
+    await handleSend('nudge')
+  }, [handleSend])
 
   const handleExport = () => {
     if (messages.length === 0) return

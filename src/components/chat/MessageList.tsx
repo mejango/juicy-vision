@@ -130,7 +130,7 @@ export default function MessageList({
                     : 'border-juice-orange/60 text-juice-orange hover:border-juice-orange hover:bg-orange-50'
                 }`}
               >
-                Nudge the AI
+                Nudge
               </button>
             </div>
           </div>
