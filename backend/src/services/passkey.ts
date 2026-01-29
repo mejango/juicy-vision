@@ -145,6 +145,7 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
   timeout: number;
   userVerification: string;
   allowCredentials?: Array<{ type: 'public-key'; id: string; transports?: string[] }>;
+  hints?: string[];
 }> {
   const challenge = generateChallenge();
   const challengeB64 = base64UrlEncode(challenge);
@@ -172,7 +173,9 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
       allowCredentials = credentials.map(c => ({
         type: 'public-key' as const,
         id: c.credential_id_b64,
-        transports: c.transports || undefined,
+        // Prefer internal (platform) transport if not specified
+        // This hints the browser to try Touch ID first
+        transports: c.transports || ['internal', 'hybrid'],
       }));
     }
   }
@@ -183,6 +186,8 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
     timeout: 300000,
     userVerification: 'preferred',
     allowCredentials,
+    // Hint browser to prefer platform authenticator (Chrome 128+)
+    hints: ['client-device'],
   };
 }
 
