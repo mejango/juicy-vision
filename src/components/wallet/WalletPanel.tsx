@@ -1635,6 +1635,11 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
   const { token, isAuthenticated } = useAuthStore()
   const isLoggedIn = isAuthenticated()
 
+  // Wallet hooks for SIWE sign-in
+  const { address: walletAddress, chainId, isConnected: isWalletConnected } = useAccount()
+  const { signMessageAsync } = useSignMessage()
+  const [signingIn, setSigningIn] = useState(false)
+
   // Juicy ID state
   const [identityUsername, setIdentityUsername] = useState(() => {
     try {
@@ -1694,11 +1699,11 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
     }
   }, [getApiHeaders])
 
-  // Save identity
+  // Save identity (with SIWE sign-in if needed)
   const saveIdentity = useCallback(async () => {
-    const walletSession = getWalletSession()
+    let walletSession = getWalletSession()
     const sessionId = getSessionId()
-    const addr = walletSession?.address ||
+    const addr = walletSession?.address || walletAddress ||
       `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
     const emoji = selectedFruit || getEmojiFromAddress(addr)
 
@@ -1711,10 +1716,39 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
     setIdentityError(null)
 
     try {
+      // If wallet is connected but not signed in (no SIWE session), trigger sign-in first
+      if (isWalletConnected && walletAddress && chainId && !hasValidWalletSession()) {
+        setSigningIn(true)
+        try {
+          await signInWithWallet(
+            walletAddress,
+            chainId,
+            async (message: string) => {
+              const signature = await signMessageAsync({ message })
+              return signature
+            }
+          )
+          // Refresh wallet session after sign-in
+          walletSession = getWalletSession()
+        } catch (signInErr) {
+          setIdentityError('Sign-in cancelled or failed')
+          setIdentityLoading(false)
+          setSigningIn(false)
+          return
+        }
+        setSigningIn(false)
+      }
+
+      // Now save the identity
       const apiUrl = import.meta.env.VITE_API_URL || ''
+      const headers = getApiHeaders()
+      // Make sure to include the fresh wallet session token
+      if (walletSession?.token) {
+        headers['X-Wallet-Session'] = walletSession.token
+      }
       const res = await fetch(`${apiUrl}/identity/me`, {
         method: 'PUT',
-        headers: getApiHeaders(),
+        headers,
         body: JSON.stringify({ emoji, username: identityUsername }),
       })
       const data = await res.json()
@@ -1731,8 +1765,9 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
       setIdentityError(err instanceof Error ? err.message : 'Failed to set identity')
     } finally {
       setIdentityLoading(false)
+      setSigningIn(false)
     }
-  }, [selectedFruit, identityUsername, getApiHeaders, onBack])
+  }, [selectedFruit, identityUsername, getApiHeaders, onBack, isWalletConnected, walletAddress, chainId, signMessageAsync])
 
   // Check availability on change
   useEffect(() => {
@@ -1847,18 +1882,24 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
           </div>
           <button
             onClick={saveIdentity}
-            disabled={identityLoading || !identityUsername || identityUsername.length < 3 || identityAvailable === false}
+            disabled={identityLoading || signingIn || !identityUsername || identityUsername.length < 3 || identityAvailable === false}
             className={`px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${
               isDark
                 ? 'text-green-500 border border-green-500/30 hover:border-green-500/50'
                 : 'text-green-600 border border-green-500/40 hover:border-green-500/60'
             }`}
           >
-            {identityLoading ? '...' : identity ? 'Update' : 'Set'}
+            {signingIn ? 'Signing...' : identityLoading ? 'Saving...' : identity ? 'Update' : 'Set'}
           </button>
         </div>
         {identityError && (
           <p className="text-[10px] text-red-400 mt-1">{identityError}</p>
+        )}
+        {/* Show sign-in hint for wallet users without session */}
+        {isWalletConnected && !hasValidWalletSession() && !identityError && (
+          <p className={`text-[10px] mt-1 ${isDark ? 'text-yellow-500/70' : 'text-yellow-600/70'}`}>
+            Will request wallet signature to authenticate
+          </p>
         )}
         <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
           3-20 chars, letters/numbers/underscore

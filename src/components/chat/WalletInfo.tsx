@@ -61,6 +61,19 @@ export function JuicyIdPopover({
   const [authError, setAuthError] = useState<string | null>(null)
   const [pendingClaim, setPendingClaim] = useState(false) // Waiting for sign-in to claim name
 
+  // Store pending claim in localStorage so it survives popover closing
+  const storePendingClaim = useCallback((emoji: string, name: string) => {
+    try {
+      localStorage.setItem('juicy-pending-claim', JSON.stringify({ emoji, username: name, ts: Date.now() }))
+    } catch {}
+  }, [])
+
+  const clearPendingClaim = useCallback(() => {
+    try {
+      localStorage.removeItem('juicy-pending-claim')
+    } catch {}
+  }, [])
+
   // Identity state
   const [username, setUsername] = useState('')
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null)
@@ -168,6 +181,9 @@ export function JuicyIdPopover({
 
         // Update local selectedFruit to match
         setSelectedFruit(currentEmoji === defaultEmoji ? null : currentEmoji)
+
+        // Clear any pending claim
+        clearPendingClaim()
 
         onIdentitySet?.(data.data)
         // Dispatch event so other components can refresh their identity
@@ -479,7 +495,12 @@ export function JuicyIdPopover({
                   </button>
                 ) : (
                   <button
-                    onClick={() => { onClose(); onWalletClick() }}
+                    onClick={() => {
+                      // Store pending claim so it survives popover closing
+                      storePendingClaim(currentEmoji, username)
+                      onClose()
+                      onWalletClick()
+                    }}
                     className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
                       isDark
                         ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
@@ -557,6 +578,63 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
       window.removeEventListener('juice:passkey-connected', handlePasskeyConnected as EventListener)
       window.removeEventListener('juice:passkey-disconnected', handlePasskeyDisconnected as EventListener)
     }
+  }, [])
+
+  // Auto-complete pending Juicy ID claim after SIWE sign-in
+  useEffect(() => {
+    const handleSiweSignedIn = async () => {
+      try {
+        const pendingStr = localStorage.getItem('juicy-pending-claim')
+        if (!pendingStr) return
+
+        const pending = JSON.parse(pendingStr)
+        // Only process if less than 5 minutes old
+        if (!pending.emoji || !pending.username || Date.now() - pending.ts > 5 * 60 * 1000) {
+          localStorage.removeItem('juicy-pending-claim')
+          return
+        }
+
+        console.log('[WalletInfo] Auto-completing pending Juicy ID claim:', pending)
+
+        // Get fresh auth headers
+        const walletSession = getWalletSession()
+        const { token: freshAuthToken } = useAuthStore.getState()
+        const sessionId = getSessionId()
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'X-Session-ID': sessionId,
+        }
+        if (walletSession?.token) {
+          headers['X-Wallet-Session'] = walletSession.token
+        }
+        if (freshAuthToken) {
+          headers['Authorization'] = `Bearer ${freshAuthToken}`
+        }
+
+        const apiUrl = import.meta.env.VITE_API_URL || ''
+        const res = await fetch(`${apiUrl}/identity/me`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ emoji: pending.emoji, username: pending.username }),
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          console.log('[WalletInfo] Pending claim completed:', data.data)
+          localStorage.removeItem('juicy-pending-claim')
+          setIdentity(data.data)
+          window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
+        } else {
+          console.error('[WalletInfo] Failed to complete pending claim:', data.error)
+          localStorage.removeItem('juicy-pending-claim')
+        }
+      } catch (err) {
+        console.error('[WalletInfo] Error completing pending claim:', err)
+        localStorage.removeItem('juicy-pending-claim')
+      }
+    }
+
+    window.addEventListener('juice:siwe-signed-in', handleSiweSignedIn)
+    return () => window.removeEventListener('juice:siwe-signed-in', handleSiweSignedIn)
   }, [])
 
   // Validate session and fetch Juicy ID
