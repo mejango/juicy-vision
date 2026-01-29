@@ -11,6 +11,7 @@ import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
 import WelcomeGreeting from './WelcomeGreeting'
 import ConversationHistory from './ConversationHistory'
+import ChatHistorySidebar from './ChatHistorySidebar'
 import WalletInfo, { type JuicyIdentity } from './WalletInfo'
 import { SettingsPanel, PrivacySelector } from '../settings'
 import InviteModal from './InviteModal'
@@ -174,6 +175,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [reportSuccess, setReportSuccess] = useState(false)
   const [showAiPausedPopover, setShowAiPausedPopover] = useState(false)
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
+  const [showHistorySidebar, setShowHistorySidebar] = useState(false)
   const [showOptionsMenu, setShowOptionsMenu] = useState(false)
   // AI controls expanded state - shows "Skip for all" and "Skip for you" toggles
   const [aiControlsExpanded, setAiControlsExpanded] = useState(false)
@@ -1469,20 +1471,37 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 <div className={`flex justify-between px-6 items-center transition-opacity duration-75 ${
                   showActionBar ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}>
-                  {/* Attachments button - left aligned */}
-                  <button
-                    onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
-                    className={`p-1.5 transition-colors ${
-                      theme === 'dark'
-                        ? 'text-gray-400 hover:text-white'
-                        : 'text-gray-500 hover:text-gray-900'
-                    }`}
-                    title="Attach file"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                    </svg>
-                  </button>
+                  {/* Left side buttons */}
+                  <div className="flex items-center gap-1">
+                    {/* History sidebar toggle */}
+                    <button
+                      onClick={() => setShowHistorySidebar(true)}
+                      className={`p-1.5 transition-colors ${
+                        theme === 'dark'
+                          ? 'text-gray-400 hover:text-white'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                      title={t('chat.chatHistory', 'Chat history')}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                      </svg>
+                    </button>
+                    {/* Attachments button */}
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
+                      className={`p-1.5 transition-colors ${
+                        theme === 'dark'
+                          ? 'text-gray-400 hover:text-white'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                      title="Attach file"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                      </svg>
+                    </button>
+                  </div>
                   {/* Right side buttons */}
                   <div className="flex items-center gap-1">
                   {/* Theme toggle */}
@@ -1579,6 +1598,18 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                                 <div className={`absolute right-0 bottom-full mb-2 py-1 min-w-[140px] border shadow-lg z-[99] ${
                                   theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
                                 }`}>
+                                  {/* Chat history */}
+                                  <button
+                                    onClick={() => {
+                                      setShowHistorySidebar(true)
+                                      setShowOverflowMenu(false)
+                                    }}
+                                    className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                                      theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    {t('chat.chatHistory', 'Chat history')}
+                                  </button>
                                   {canPauseAi && (
                                     <button
                                       onClick={() => {
@@ -1943,6 +1974,13 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         </>,
         document.body
       )}
+
+      {/* Chat History Sidebar - slide-out panel for recent chats */}
+      <ChatHistorySidebar
+        isOpen={showHistorySidebar}
+        onClose={() => setShowHistorySidebar(false)}
+        currentChatId={activeChatId || undefined}
+      />
     </div>
   )
 }
