@@ -51,14 +51,12 @@ export default function AuthOptionsModal({
 
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showDeviceSelect, setShowDeviceSelect] = useState(false)
-  const [selectedDevice, setSelectedDevice] = useState<DeviceHint | null>(null)
+  const [showPasskeyOptions, setShowPasskeyOptions] = useState(false)
 
   // Reset state when modal closes
   const handleClose = () => {
     setError(null)
-    setShowDeviceSelect(false)
-    setSelectedDevice(null)
+    setShowPasskeyOptions(false)
     onClose()
   }
 
@@ -103,14 +101,13 @@ export default function AuthOptionsModal({
 
   if (!isOpen) return null
 
-  const handleLogin = async () => {
-    if (!selectedDevice) return
+  const handleLogin = async (deviceHint: DeviceHint) => {
     setIsAuthenticating(true)
     setError(null)
 
     try {
       console.log('[AuthOptionsModal] Logging in with existing passkey')
-      await loginWithPasskey(undefined, selectedDevice)
+      await loginWithPasskey(undefined, deviceHint)
       onPasskeySuccess?.()
       handleClose()
     } catch (err) {
@@ -118,7 +115,7 @@ export default function AuthOptionsModal({
       if (err instanceof Error) {
         const msg = err.message.toLowerCase()
         if (msg.includes('cancelled') || msg.includes('abort') || msg.includes('not allowed')) {
-          // User cancelled - stay on login/signup screen
+          // User cancelled - stay on options screen
           return
         }
         if (msg.includes('not supported')) {
@@ -133,7 +130,6 @@ export default function AuthOptionsModal({
   }
 
   const handleSignup = async () => {
-    if (!selectedDevice) return
     setIsAuthenticating(true)
     setError(null)
 
@@ -144,7 +140,7 @@ export default function AuthOptionsModal({
       localStorage.removeItem('juice-smart-account-address')
       localStorage.removeItem('juicy-identity')
 
-      await signupWithPasskey(selectedDevice)
+      await signupWithPasskey('this-device')
       onPasskeySuccess?.()
       handleClose()
     } catch (err) {
@@ -152,7 +148,7 @@ export default function AuthOptionsModal({
       if (err instanceof Error) {
         const msg = err.message.toLowerCase()
         if (msg.includes('cancelled') || msg.includes('abort') || msg.includes('not allowed')) {
-          // User cancelled - stay on login/signup screen
+          // User cancelled - stay on options screen
           return
         }
         if (msg.includes('not supported')) {
@@ -166,18 +162,13 @@ export default function AuthOptionsModal({
     }
   }
 
-  const handleDeviceSelect = (device: DeviceHint) => {
-    setSelectedDevice(device)
-    setError(null)
-  }
-
   const handleWalletClick = () => {
     handleClose()
     onWalletClick()
   }
 
-  // Login/Signup selection view (after selecting device)
-  if (selectedDevice) {
+  // Passkey options view - all options in one step
+  if (showPasskeyOptions) {
     return createPortal(
       <>
         <div className="fixed inset-0 z-[49]" onMouseDown={handleClose} />
@@ -200,7 +191,7 @@ export default function AuthOptionsModal({
             </button>
 
             <button
-              onClick={() => setSelectedDevice(null)}
+              onClick={() => setShowPasskeyOptions(false)}
               className={`flex items-center gap-1 text-xs mb-3 ${
                 isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
               }`}
@@ -211,19 +202,15 @@ export default function AuthOptionsModal({
               Back
             </button>
 
-            <p className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {selectedDevice === 'this-device' ? getDeviceName() : 'Another device'}
-            </p>
-
             {error && (
               <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
                 {error}
               </div>
             )}
 
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <button
-                onClick={handleLogin}
+                onClick={() => handleLogin('this-device')}
                 disabled={isAuthenticating}
                 className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
                   isAuthenticating
@@ -233,96 +220,35 @@ export default function AuthOptionsModal({
                     : 'border-green-600 text-green-600 hover:bg-green-50'
                 }`}
               >
-                {isAuthenticating ? '...' : 'Log in'}
-              </button>
-
-              {selectedDevice === 'this-device' && (
-                <button
-                  onClick={handleSignup}
-                  disabled={isAuthenticating}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
-                    isDark
-                      ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
-                      : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
-                  }`}
-                >
-                  Sign up
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </>,
-      document.body
-    )
-  }
-
-  // Device selection view
-  if (showDeviceSelect) {
-    return createPortal(
-      <>
-        <div className="fixed inset-0 z-[49]" onMouseDown={handleClose} />
-        <div className="fixed z-50" style={popoverStyle}>
-          <div
-            className={`relative w-80 p-4 border shadow-xl ${
-              isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
-            }`}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={(e) => { e.stopPropagation(); handleClose() }}
-              className={`absolute top-3 right-3 p-1 transition-colors ${
-                isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
-            <button
-              onClick={() => setShowDeviceSelect(false)}
-              className={`flex items-center gap-1 text-xs mb-3 ${
-                isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-              }`}
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back
-            </button>
-
-            <p className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Where is your passkey?
-            </p>
-
-            {error && (
-              <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
-                {error}
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => handleDeviceSelect('this-device')}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
-                  isDark
-                    ? 'border-green-500 text-green-500 hover:bg-green-500/10'
-                    : 'border-green-600 text-green-600 hover:bg-green-50'
-                }`}
-              >
-                {getDeviceName()}
+                {isAuthenticating ? '...' : `Log in from ${getDeviceName().replace('This ', '').toLowerCase()}`}
               </button>
 
               <button
-                onClick={() => handleDeviceSelect('another-device')}
+                onClick={handleSignup}
+                disabled={isAuthenticating}
                 className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
-                  isDark
+                  isAuthenticating
+                    ? 'border-gray-500 text-gray-500 cursor-wait'
+                    : isDark
                     ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
                     : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
                 }`}
               >
-                Another device
+                Sign up
+              </button>
+
+              <button
+                onClick={() => handleLogin('another-device')}
+                disabled={isAuthenticating}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
+                  isAuthenticating
+                    ? 'border-gray-500 text-gray-500 cursor-wait'
+                    : isDark
+                    ? 'border-white/30 text-gray-300 hover:border-white/50 hover:text-white'
+                    : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+                }`}
+              >
+                Log in from other device
               </button>
             </div>
           </div>
@@ -378,7 +304,7 @@ export default function AuthOptionsModal({
 
         <div className="flex justify-end gap-2">
           <button
-            onClick={() => setShowDeviceSelect(true)}
+            onClick={() => setShowPasskeyOptions(true)}
             disabled={isAuthenticating}
             className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
               isAuthenticating
