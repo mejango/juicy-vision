@@ -4,18 +4,24 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import { execSync } from 'child_process'
 
-// Get git commit hash at build time
-const getGitHash = () => {
+// Get build identifier - try git, then Railway env, then timestamp
+const getBuildId = () => {
+  // Try git first (works locally)
   try {
     return execSync('git rev-parse --short HEAD').toString().trim()
   } catch {
-    return 'dev'
+    // Railway provides commit SHA as env var
+    if (process.env.RAILWAY_GIT_COMMIT_SHA) {
+      return process.env.RAILWAY_GIT_COMMIT_SHA.slice(0, 7)
+    }
+    // Fallback to timestamp-based ID
+    return new Date().toISOString().slice(5, 16).replace(/[-T:]/g, '')
   }
 }
 
 export default defineConfig({
   define: {
-    __BUILD_HASH__: JSON.stringify(getGitHash()),
+    __BUILD_HASH__: JSON.stringify(getBuildId()),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   plugins: [
