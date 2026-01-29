@@ -379,16 +379,19 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
               {/* Pay JUICY checkbox - only show when payment > 0 */}
               {amountNum > 0 && (
                 <div className="mt-3 pt-3 border-t border-white/10">
-                  <label className={`flex items-center gap-2 cursor-pointer text-xs ${
-                    isDark ? 'text-gray-300' : 'text-gray-600'
-                  }`}>
+                  <label
+                    className={`flex items-center gap-2 cursor-pointer text-xs ${
+                      isDark ? 'text-gray-300' : 'text-gray-600'
+                    }`}
+                    title="Help us keep building"
+                  >
                     <input
                       type="checkbox"
                       checked={payUs}
                       onChange={(e) => setPayUs(e.target.checked)}
                       className="w-3.5 h-3.5 rounded border-gray-300 text-juice-orange focus:ring-juice-orange"
                     />
-                    <span>{t('note.payJuicy', 'Pay JUICY (+{{percent}}%)', { percent: JUICY_FEE_PERCENT })}</span>
+                    <span>{t('note.joinJuicy', 'Join Juicy (+{{percent}}%)', { percent: JUICY_FEE_PERCENT })}</span>
                   </label>
                   {payUs && estimatedJuicyTokens > 0 && (
                     <div className={`ml-6 mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

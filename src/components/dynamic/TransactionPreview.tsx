@@ -944,7 +944,7 @@ function FundingBreakdown({
                             ? 'border-gray-700 bg-transparent hover:border-gray-600'
                             : 'border-gray-200 bg-transparent hover:border-gray-300')
                     }`}
-                    title={juicyFeeEnabled ? "Click to remove Juicy fee" : "Click to add Juicy fee"}
+                    title={juicyFeeEnabled ? "Click to leave Juicy" : "Click to join Juicy"}
                   >
                     {juicyFeeEnabled && (
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -952,11 +952,9 @@ function FundingBreakdown({
                       </svg>
                     )}
                   </button>
-                  Pay Juicy
+                  Join Juicy
                   <InfoPopover
-                    content="JUICY runs like a co-op and is the revenue token that powers this app. When you pay 2.5% into JUICY, you receive JUICY tokens proportional to your payment. As Juicy's balance grows over time, so does the value backing each token.
-
-JUICY wants skin in the game as we help your project succeed... and we want you to have skin in the juicy game too."
+                    content="Help us keep building. JUICY runs like a co-op and is the revenue token that powers this app. When you pay 2.5% into JUICY, you receive JUICY tokens proportional to your payment. As Juicy's balance grows over time, so does the value backing each token."
                     isDark={isDark}
                   />
                 </span>

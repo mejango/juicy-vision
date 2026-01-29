@@ -130,7 +130,8 @@
     "free": "Grátis",
     "send": "Enviar nota",
     "sendWithPayment": "Enviar nota com {{amount}} {{token}}",
-    "payJuicy": "Pagar JUICY (+{{percent}}%)"
+    "payJuicy": "Junte-se ao Juicy (+{{percent}}%)",
+    "joinJuicy": "Junte-se ao Juicy (+{{percent}}%)"
   },
   "invite": {
     "title": "Convidar para {{chatName}}",

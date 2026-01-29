@@ -130,7 +130,8 @@
     "free": "免费",
     "send": "发送留言",
     "sendWithPayment": "发送留言并支付 {{amount}} {{token}}",
-    "payJuicy": "支付 JUICY (+{{percent}}%)"
+    "payJuicy": "加入 Juicy (+{{percent}}%)",
+    "joinJuicy": "加入 Juicy (+{{percent}}%)"
   },
   "invite": {
     "title": "邀请加入 {{chatName}}",
