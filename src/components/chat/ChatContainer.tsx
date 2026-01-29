@@ -1819,6 +1819,33 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         </>
       )}
 
+      {/* Wallet Panel - also render in topOnly mode so Settings can trigger it */}
+      {topOnly && (
+        <>
+          <AuthOptionsModal
+            isOpen={showAuthOptionsModal}
+            onClose={() => setShowAuthOptionsModal(false)}
+            onWalletClick={() => {
+              setWalletPanelInitialView('self_custody')
+              setShowWalletPanel(true)
+            }}
+            onPasskeySuccess={handlePasskeySuccess}
+            title={authModalContext === 'connect' ? t('auth.connectTitle', 'Connect') : undefined}
+            description={authModalContext === 'connect' ? t('auth.connectDescription', 'Choose how to connect your account.') : undefined}
+            anchorPosition={authModalAnchorPosition}
+          />
+          <WalletPanel
+            isOpen={showWalletPanel}
+            onClose={() => {
+              setShowWalletPanel(false)
+              setWalletPanelInitialView('select')
+            }}
+            anchorPosition={walletPanelAnchorPosition}
+            initialView={walletPanelInitialView}
+          />
+        </>
+      )}
+
       {/* Beta Popover - portaled to document.body to escape backdrop-filter containing block */}
       {!topOnly && showBetaPopover && betaAnchorPosition && createPortal(
         <>
