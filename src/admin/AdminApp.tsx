@@ -19,9 +19,16 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, token, _hasHydrated } = useAuthStore()
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+  const [timedOut, setTimedOut] = useState(false)
 
-  // Wait for auth store hydration
-  if (!_hasHydrated) {
+  // Fallback timeout in case hydration gets stuck
+  useEffect(() => {
+    const timer = setTimeout(() => setTimedOut(true), 1000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Wait for auth store hydration (with timeout fallback)
+  if (!_hasHydrated && !timedOut) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${
         isDark ? 'bg-zinc-950' : 'bg-gray-50'
