@@ -785,7 +785,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
           anchorPosition={juicyIdAnchorPosition}
           onWalletClick={() => {
             window.dispatchEvent(new CustomEvent('juice:open-wallet-panel', {
-              detail: { anchorPosition: juicyIdAnchorPosition }
+              detail: { anchorPosition: juicyIdAnchorPosition, skipAuthModal: true }
             }))
           }}
           onIdentitySet={(newIdentity) => setIdentity(newIdentity)}
@@ -803,7 +803,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
         anchorPosition={juicyIdAnchorPosition}
         onWalletClick={() => {
           window.dispatchEvent(new CustomEvent('juice:open-wallet-panel', {
-            detail: { anchorPosition: juicyIdAnchorPosition }
+            detail: { anchorPosition: juicyIdAnchorPosition, skipAuthModal: true }
           }))
         }}
         onIdentitySet={(newIdentity) => setIdentity(newIdentity)}

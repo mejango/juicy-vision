@@ -956,11 +956,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       if (isWalletConnected || currentPasskeyWallet || isManagedAuth) {
         // Already connected - show wallet panel directly for top-up/balance
         setShowWalletPanel(true)
-      } else {
-        // Not connected - go directly to wallet selector
-        // The user already chose "Wallet" so skip the auth options modal
+      } else if (event.detail?.skipAuthModal) {
+        // User already chose "Wallet" (e.g., from JuicyIdPopover) - skip to wallet selector
         setWalletPanelInitialView('self_custody')
         setShowWalletPanel(true)
+      } else {
+        // Not connected - show auth options to connect first
+        setAuthModalContext('connect')
+        setShowAuthOptionsModal(true)
       }
     }
     window.addEventListener('juice:open-wallet-panel', handleOpenWalletPanel as EventListener)
