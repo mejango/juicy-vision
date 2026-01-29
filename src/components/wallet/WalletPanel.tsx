@@ -2894,7 +2894,9 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       <div className="fixed z-[100]" style={popoverStyle}>
         {/* Popover */}
         <div
-          className={`relative w-80 p-4 border shadow-xl ${
+          className={`relative p-4 border shadow-xl ${
+            currentView === 'topup' ? 'w-[420px]' : 'w-80'
+          } max-h-[calc(100vh-32px)] overflow-y-auto ${
           isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
         }`}
           onMouseDown={(e) => e.stopPropagation()}
