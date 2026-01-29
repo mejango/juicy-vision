@@ -1304,7 +1304,7 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
 }
 
 // Managed account view
-function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onBuyJuice }: { onDisconnect: () => void; onTopUp: () => void; onSettings: () => void; onBuyJuice?: () => void }) {
+function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId, onBuyJuice }: { onDisconnect: () => void; onTopUp: () => void; onSettings: () => void; onSetJuicyId: () => void; onBuyJuice?: () => void }) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { user, token, passkeys, loadPasskeys, registerPasskey, deletePasskey, isPasskeyAvailable, isLoading } = useAuthStore()
@@ -1471,7 +1471,7 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onBuyJuice }: {
           {copied && <span className={`ml-2 text-xs ${isDark ? 'text-green-400' : 'text-green-600'}`}>Copied!</span>}
         </div>
         <button
-          onClick={onSettings}
+          onClick={onSetJuicyId}
           className={`text-xs ${identity ? (isDark ? 'text-white hover:text-green-400' : 'text-gray-900 hover:text-green-600') : (isDark ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-700')}`}
         >
           {identity ? identity.formatted : 'Set Juicy ID'}
@@ -1623,6 +1623,247 @@ function TopUpView({ onBack, address }: { onBack: () => void; address?: string }
           {shortenAddress(address, 8)}
         </div>
       )}
+    </div>
+  )
+}
+
+// Juicy ID view - just the emoji picker and username input
+function JuicyIdView({ onBack }: { onBack: () => void }) {
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
+  const { selectedFruit, setSelectedFruit } = useSettingsStore()
+  const { token, isAuthenticated } = useAuthStore()
+  const isLoggedIn = isAuthenticated()
+
+  // Juicy ID state
+  const [identityUsername, setIdentityUsername] = useState(() => {
+    try {
+      const cached = localStorage.getItem('juicy-identity')
+      return cached ? JSON.parse(cached).username : ''
+    } catch { return '' }
+  })
+  const [identityLoading, setIdentityLoading] = useState(false)
+  const [identityError, setIdentityError] = useState<string | null>(null)
+  const [identityAvailable, setIdentityAvailable] = useState<boolean | null>(null)
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
+  const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(() => {
+    try {
+      const cached = localStorage.getItem('juicy-identity')
+      return cached ? JSON.parse(cached) : null
+    } catch { return null }
+  })
+
+  // Get API headers
+  const getApiHeaders = useCallback(() => {
+    const sessionId = getSessionId()
+    const walletSession = getWalletSession()
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Session-ID': sessionId,
+    }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    if (walletSession?.token) {
+      headers['X-Wallet-Session'] = walletSession.token
+    }
+    return headers
+  }, [token])
+
+  // Check availability
+  const checkAvailability = useCallback(async (emoji: string, username: string) => {
+    if (!username || username.length < 3) {
+      setIdentityAvailable(null)
+      return
+    }
+    setCheckingAvailability(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+      const params = new URLSearchParams({ emoji, username })
+      const res = await fetch(`${apiUrl}/identity/check?${params}`, {
+        headers: getApiHeaders(),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setIdentityAvailable(data.data?.available ?? null)
+      }
+    } catch (err) {
+      console.error('Failed to check availability:', err)
+    } finally {
+      setCheckingAvailability(false)
+    }
+  }, [getApiHeaders])
+
+  // Save identity
+  const saveIdentity = useCallback(async () => {
+    const walletSession = getWalletSession()
+    const sessionId = getSessionId()
+    const addr = walletSession?.address ||
+      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+    const emoji = selectedFruit || getEmojiFromAddress(addr)
+
+    if (!identityUsername || identityUsername.length < 3) {
+      setIdentityError('Username must be at least 3 characters')
+      return
+    }
+
+    setIdentityLoading(true)
+    setIdentityError(null)
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${apiUrl}/identity/me`, {
+        method: 'PUT',
+        headers: getApiHeaders(),
+        body: JSON.stringify({ emoji, username: identityUsername }),
+      })
+      const data = await res.json()
+      if (data.success && data.data) {
+        setIdentity(data.data)
+        setIdentityError(null)
+        try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {}
+        window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
+        onBack() // Go back after successful save
+      } else {
+        setIdentityError(data.error || 'Failed to set identity')
+      }
+    } catch (err) {
+      setIdentityError(err instanceof Error ? err.message : 'Failed to set identity')
+    } finally {
+      setIdentityLoading(false)
+    }
+  }, [selectedFruit, identityUsername, getApiHeaders, onBack])
+
+  // Check availability on change
+  useEffect(() => {
+    const walletSession = getWalletSession()
+    const sessionId = getSessionId()
+    const addr = walletSession?.address ||
+      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+    const currentEmoji = selectedFruit || getEmojiFromAddress(addr)
+
+    // Don't check if same as current identity
+    if (identity && identityUsername === identity.username && currentEmoji === identity.emoji) {
+      setIdentityAvailable(true)
+      return
+    }
+
+    const timer = setTimeout(() => {
+      if (identityUsername.length >= 3) {
+        checkAvailability(currentEmoji, identityUsername)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [identityUsername, selectedFruit, identity, checkAvailability])
+
+  // Get current emoji and address for display
+  const walletSession = getWalletSession()
+  const sessionId = getSessionId()
+  const currentAddress = walletSession?.address ||
+    `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+  const defaultEmoji = getEmojiFromAddress(currentAddress)
+  const currentEmoji = identity?.emoji || selectedFruit || defaultEmoji
+
+  return (
+    <div className="space-y-3">
+      {/* Back button */}
+      <button
+        onClick={onBack}
+        className={`flex items-center gap-1 text-xs ${
+          isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+        }`}
+      >
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back
+      </button>
+
+      {/* Live preview */}
+      <p className={`text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+        {currentEmoji} {identityUsername || identity?.username || ''}
+      </p>
+
+      {/* Emoji picker */}
+      <div>
+        <p className={`text-[10px] mb-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>Pick a flavor</p>
+        <div className="flex flex-wrap gap-1">
+          {FRUIT_EMOJIS.map((fruit) => {
+            const isSelected = selectedFruit === fruit || (!selectedFruit && fruit === defaultEmoji)
+
+            return (
+              <button
+                key={fruit}
+                onClick={() => setSelectedFruit(fruit === defaultEmoji ? null : fruit)}
+                className={`w-7 h-7 text-base flex items-center justify-center transition-all ${
+                  isSelected
+                    ? isDark
+                      ? 'bg-white/20 ring-2 ring-green-500'
+                      : 'bg-gray-200 ring-2 ring-green-500'
+                    : isDark
+                      ? 'hover:bg-white/10'
+                      : 'hover:bg-gray-100'
+                }`}
+              >
+                {fruit}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Username input */}
+      <div>
+        <p className={`text-[10px] mb-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>Pick a name</p>
+        <div className="flex gap-2">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={identityUsername}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20)
+                setIdentityUsername(val)
+                setIdentityError(null)
+              }}
+              placeholder="username"
+              className={`w-full px-2 py-1.5 text-xs border outline-none pr-6 ${
+                isDark
+                  ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'
+                  : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-gray-300'
+              }`}
+            />
+            {/* Availability indicator */}
+            {identityUsername.length >= 3 && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">
+                {checkingAvailability ? (
+                  <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>...</span>
+                ) : identityAvailable === true ? (
+                  <span className="text-green-500">&#10003;</span>
+                ) : identityAvailable === false ? (
+                  <span className="text-red-400">&#10007;</span>
+                ) : null}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={saveIdentity}
+            disabled={identityLoading || !identityUsername || identityUsername.length < 3 || identityAvailable === false}
+            className={`px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${
+              isDark
+                ? 'text-green-500 border border-green-500/30 hover:border-green-500/50'
+                : 'text-green-600 border border-green-500/40 hover:border-green-500/60'
+            }`}
+          >
+            {identityLoading ? '...' : identity ? 'Update' : 'Set'}
+          </button>
+        </div>
+        {identityError && (
+          <p className="text-[10px] text-red-400 mt-1">{identityError}</p>
+        )}
+        <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+          3-20 chars, letters/numbers/underscore
+        </p>
+      </div>
     </div>
   )
 }
@@ -2724,7 +2965,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'auth_method' | 'email_auth' | 'wallet' | 'passkey' | 'topup' | 'settings' | 'buy_juice'>('select')
+  const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'auth_method' | 'email_auth' | 'wallet' | 'passkey' | 'topup' | 'settings' | 'buy_juice' | 'juicy_id'>('select')
   const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<InsufficientFundsInfo | null>(null)
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
   const [previousView, setPreviousView] = useState<typeof view>('select')
@@ -2827,6 +3068,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
     if (view === 'settings') return 'settings'
     if (view === 'topup') return 'topup'
     if (view === 'buy_juice') return 'buy_juice'
+    if (view === 'juicy_id') return 'juicy_id'
     if (view === 'auth_method') return 'auth_method'
     if (view === 'email_auth') return 'email_auth'
     if (isSelfCustodyConnected) return 'wallet'
@@ -2877,6 +3119,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       case 'passkey': return 'Account'
       case 'topup': return 'Add Funds'
       case 'settings': return 'Settings'
+      case 'juicy_id': return 'Set Juicy ID'
       case 'buy_juice': return 'Buy Juice Credits'
       default: return 'Connect'
     }
@@ -2969,6 +3212,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
             onDisconnect={handleDisconnect}
             onTopUp={() => setView('topup')}
             onSettings={() => setView('settings')}
+            onSetJuicyId={() => setView('juicy_id')}
             onBuyJuice={() => {
               setPreviousView(view)
               setView('buy_juice')
@@ -3005,12 +3249,16 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
           <SettingsView onBack={() => setView(previousView)} />
         )}
 
+        {currentView === 'juicy_id' && (
+          <JuicyIdView onBack={() => setView('managed')} />
+        )}
+
         {currentView === 'buy_juice' && (
           <BuyJuiceView onBack={() => setView(previousView)} />
         )}
 
         {/* Settings gear icon - bottom left (only show when connected, not during connection flow) */}
-        {currentView !== 'settings' && currentView !== 'buy_juice' && currentView !== 'select' && currentView !== 'self_custody' && currentView !== 'auth_method' && currentView !== 'email_auth' && (
+        {currentView !== 'settings' && currentView !== 'buy_juice' && currentView !== 'juicy_id' && currentView !== 'select' && currentView !== 'self_custody' && currentView !== 'auth_method' && currentView !== 'email_auth' && (
           <button
             onClick={handleOpenSettings}
             className={`absolute bottom-3 left-3 p-1.5 transition-colors ${

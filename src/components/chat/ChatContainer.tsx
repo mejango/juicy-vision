@@ -938,7 +938,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
   // Listen for wallet panel open events - show wallet panel if connected, auth options if not
   useEffect(() => {
-    const handleOpenWalletPanel = (event: CustomEvent<{ anchorPosition?: { top: number; left: number; width: number; height: number } }>) => {
+    const handleOpenWalletPanel = (event: CustomEvent<{ anchorPosition?: { top: number; left: number; width: number; height: number }; skipAuthModal?: boolean }>) => {
       // Toggle behavior: if wallet panel is already open, close it
       if (showWalletPanel) {
         setShowWalletPanel(false)
