@@ -1613,6 +1613,8 @@ Revnets are autonomous tokenized treasuries with staged parameters. The REVDeplo
 
 **When the owner keeps control and has a funding goal, configure BOTH splits and payout limits!**
 
+**Wallet placeholder:** Use \`"USER_WALLET"\` as the beneficiary address in splits - it gets automatically replaced with the user's actual wallet address at execution time. Never use a literal 0x address for the user.
+
 **Splits - Always include 2.5% platform fee:**
 \`\`\`json
 "splitGroups": [{
