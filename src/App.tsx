@@ -1,5 +1,9 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom'
+import { shouldShowAdminDashboard } from './utils/subdomain'
+
+// Lazy load admin app
+const AdminApp = lazy(() => import('./admin/AdminApp'))
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { useTranslation } from 'react-i18next'
@@ -860,7 +864,8 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   )
 }
 
-export default function App() {
+// Main chat app component (with hooks)
+function MainApp() {
   // Pre-fetch pseudo-address from backend on mount (populates cache for all components)
   useEffect(() => {
     getSessionPseudoAddress()
@@ -892,4 +897,24 @@ export default function App() {
       </AppProviders>
     </ErrorBoundary>
   )
+}
+
+export default function App() {
+  // Check for admin subdomain first (dash.juicy.vision or ?admin=true)
+  // This check happens before any hooks so it's safe
+  if (shouldShowAdminDashboard()) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={
+          <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+            <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
+          </div>
+        }>
+          <AdminApp />
+        </Suspense>
+      </ErrorBoundary>
+    )
+  }
+
+  return <MainApp />
 }

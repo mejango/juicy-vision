@@ -152,6 +152,7 @@ passkeyRouter.post(
             privacyMode: user.privacyMode,
             emailVerified: user.emailVerified,
             passkeyEnabled: true,
+            isAdmin: user.isAdmin,
           },
           token: session.token,
           passkey: {
@@ -235,6 +236,7 @@ passkeyRouter.post(
             privacyMode: user.privacyMode,
             emailVerified: user.emailVerified,
             passkeyEnabled: true,
+            isAdmin: user.isAdmin,
           },
           token: session.token,
         },

@@ -68,6 +68,7 @@ export interface ManagedUser {
   privacyMode: PrivacyMode
   hasCustodialWallet: boolean
   passkeyEnabled?: boolean
+  isAdmin?: boolean
 }
 
 export interface PasskeyInfo {
@@ -304,6 +305,7 @@ export const useAuthStore = create<AuthState>()(
               privacyMode: result.user.privacyMode as PrivacyMode,
               hasCustodialWallet: false,
               passkeyEnabled: result.user.passkeyEnabled,
+              isAdmin: result.user.isAdmin,
             },
             token: result.token,
             mode: 'managed',
@@ -354,6 +356,7 @@ export const useAuthStore = create<AuthState>()(
               privacyMode: result.user.privacyMode as PrivacyMode,
               hasCustodialWallet: false,
               passkeyEnabled: result.user.passkeyEnabled,
+              isAdmin: result.user.isAdmin,
             },
             token: result.token,
             mode: 'managed',

@@ -205,7 +205,7 @@ export default function AuthOptionsModal({
             </button>
 
             <p className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Where is your passkey?
+              Log in from where?
             </p>
 
             {error && (
@@ -284,6 +284,10 @@ export default function AuthOptionsModal({
               </svg>
               Back
             </button>
+
+            <p className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Start fresh or pick up where you left off?
+            </p>
 
             {error && (
               <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">

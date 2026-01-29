@@ -97,6 +97,7 @@ authRouter.get('/me', requireAuth, (c) => {
       privacyMode: user.privacyMode,
       emailVerified: user.emailVerified,
       hasCustodialWallet: user.custodialAddressIndex !== undefined,
+      isAdmin: user.isAdmin,
     },
   });
 });

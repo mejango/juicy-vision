@@ -193,6 +193,7 @@ interface LoginResult {
     privacyMode: string
     emailVerified: boolean
     passkeyEnabled: boolean
+    isAdmin?: boolean
   }
   token: string
 }
