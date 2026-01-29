@@ -83,6 +83,30 @@ const ACTION_FUNCTION_NAMES: Record<string, string> = {
   deployERC20: 'deployERC20For',
 }
 
+// Replace placeholder strings like USER_WALLET with actual address
+// Recursively processes objects and arrays
+function replaceWalletPlaceholders<T>(obj: T, walletAddress: string): T {
+  if (!walletAddress) return obj
+  if (typeof obj === 'string') {
+    // Replace common placeholder patterns
+    if (obj === 'USER_WALLET' || obj === 'USER_WALLET_ADDRESS') {
+      return walletAddress as T
+    }
+    return obj
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => replaceWalletPlaceholders(item, walletAddress)) as T
+  }
+  if (obj && typeof obj === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = replaceWalletPlaceholders(value, walletAddress)
+    }
+    return result as T
+  }
+  return obj
+}
+
 // Info popover component with click-to-open and X to close
 // Uses portal to escape parent overflow:hidden containers
 function InfoPopover({
@@ -1358,8 +1382,10 @@ export default function TransactionPreview({
     }
 
     // Get ruleset configurations (check both top-level and nested in launchProjectConfig)
-    const rulesetConfigurations = (raw.rulesetConfigurations as unknown[]) ||
+    // Replace USER_WALLET placeholders with the actual owner address
+    const rawRulesetConfigurations = (raw.rulesetConfigurations as unknown[]) ||
       (launchConfig?.rulesetConfigurations as unknown[]) || []
+    const rulesetConfigurations = replaceWalletPlaceholders(rawRulesetConfigurations, owner)
 
     // Get terminal configurations (check both top-level and nested in launchProjectConfig)
     const terminalConfigurations = (raw.terminalConfigurations as unknown[]) ||
