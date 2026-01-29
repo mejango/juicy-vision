@@ -159,15 +159,29 @@ export async function searchProjects(params: {
   const apiKey = config.bendystrawApiKey;
   const limit = Math.min(params.limit ?? 10, 50);
 
-  // Use Bendystraw's project search with OR filters
+  // Generate case variations for case-insensitive search
+  // Bendystraw's name_contains is case-sensitive, so we search multiple variations
+  const searchText = params.query.trim();
+  const caseVariations = [
+    searchText,
+    searchText.toLowerCase(),
+    searchText.charAt(0).toUpperCase() + searchText.slice(1).toLowerCase(), // Title case
+  ].filter((v, i, arr) => arr.indexOf(v) === i); // Deduplicate
+
+  // Build OR conditions for all case variations
+  const nameConditions = caseVariations.map(v => `{ name_contains: "${v}" }`).join(', ');
+  const descConditions = caseVariations.map(v => `{ description_contains: "${v}" }`).join(', ');
+  const tagConditions = caseVariations.map(v => `{ tags_has: "${v}" }`).join(', ');
+
+  // Use Bendystraw's project search with OR filters for multiple case variations
   const query = `
-    query SearchProjects($searchText: String!, $limit: Int!) {
+    query SearchProjects($limit: Int!) {
       projects(
         where: {
           OR: [
-            { name_contains: $searchText },
-            { description_contains: $searchText },
-            { tags_has: $searchText }
+            ${nameConditions},
+            ${descConditions},
+            ${tagConditions}
           ]
         }
         limit: $limit
@@ -199,7 +213,6 @@ export async function searchProjects(params: {
       body: JSON.stringify({
         query,
         variables: {
-          searchText: params.query,
           limit,
         },
       }),
