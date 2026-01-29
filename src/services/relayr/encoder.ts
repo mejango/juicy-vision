@@ -131,9 +131,9 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address
 function toRulesetConfigTuple(config: JBRulesetConfig) {
   return {
     mustStartAtOrAfter: BigInt(config.mustStartAtOrAfter),
-    duration: config.duration,
+    duration: BigInt(config.duration),
     weight: BigInt(config.weight),
-    weightCutPercent: config.weightCutPercent,
+    weightCutPercent: BigInt(config.weightCutPercent),
     approvalHook: (config.approvalHook || ZERO_ADDRESS) as Address,
     metadata: {
       reservedPercent: config.metadata.reservedPercent,
@@ -163,7 +163,7 @@ function toRulesetConfigTuple(config: JBRulesetConfig) {
         percent: s.percent,
         projectId: BigInt(s.projectId),
         beneficiary: s.beneficiary as Address,
-        lockedUntil: BigInt(s.lockedUntil),
+        lockedUntil: s.lockedUntil,
         hook: (s.hook || ZERO_ADDRESS) as Address,
       })),
     })),

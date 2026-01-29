@@ -1,4 +1,12 @@
 import { useSettingsStore } from '../../stores'
+import {
+  encodePayTransaction,
+  encodeCashOutTransaction,
+  encodeSendPayoutsTransaction,
+  encodeQueueRulesetTransaction,
+  encodeDeployERC20Transaction,
+  encodeSendReservesTransaction,
+} from './encoder'
 
 export interface QuoteRequest {
   fromChainId: number
@@ -137,15 +145,6 @@ export interface JBTransactionResponse {
 
 // Build transaction data for JBMultiTerminal.pay()
 // Encoded client-side using viem (no API call needed)
-import {
-  encodePayTransaction,
-  encodeCashOutTransaction,
-  encodeSendPayoutsTransaction,
-  encodeQueueRulesetTransaction,
-  encodeDeployERC20Transaction,
-  encodeSendReservesTransaction,
-} from './encoder'
-
 export function buildPayTransaction(request: JBPayRequest): JBTransactionResponse {
   return encodePayTransaction(request)
 }
@@ -758,14 +757,39 @@ export interface JBOmnichainDeployERC20Response {
 /**
  * Build omnichain ERC20 deployment transactions.
  * Uses same salt to deploy at identical address on all chains.
+ * Encoded client-side using viem (no API call needed)
  */
-export async function buildOmnichainDeployERC20Transactions(
+export function buildOmnichainDeployERC20Transactions(
   request: JBOmnichainDeployERC20Request
-): Promise<JBOmnichainDeployERC20Response> {
-  return fetchApi<JBOmnichainDeployERC20Response>('/v1/juicebox/omnichainDeployERC20', {
-    method: 'POST',
-    body: JSON.stringify(request),
+): JBOmnichainDeployERC20Response {
+  const transactions = request.chainIds.map(chainId => {
+    const projectId = request.projectIds[chainId]
+    if (!projectId) {
+      throw new Error(`No project ID found for chain ${chainId}`)
+    }
+
+    const txResponse = encodeDeployERC20Transaction(
+      chainId,
+      projectId,
+      request.tokenName,
+      request.tokenSymbol,
+      request.salt
+    )
+
+    return {
+      chainId,
+      projectId,
+      txData: txResponse.txData,
+      estimatedGas: txResponse.estimatedGas,
+    }
   })
+
+  // TODO: Calculate predicted address using CREATE2 formula
+  // For now, leave as empty - actual address comes from tx receipt
+  return {
+    transactions,
+    predictedAddress: '0x0000000000000000000000000000000000000000',
+  }
 }
 
 /**
@@ -873,14 +897,17 @@ export interface JBLaunchProjectResponse {
 /**
  * Build omnichain project launch transactions.
  * Creates a new project on each specified chain with identical configuration.
+ * TODO: Implement client-side encoding using JBOmnichainDeployer ABI
  */
-export async function buildOmnichainLaunchProjectTransactions(
-  request: JBLaunchProjectRequest
-): Promise<JBLaunchProjectResponse> {
-  return fetchApi<JBLaunchProjectResponse>('/v1/juicebox/omnichainLaunchProject', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
+export function buildOmnichainLaunchProjectTransactions(
+  _request: JBLaunchProjectRequest
+): JBLaunchProjectResponse {
+  // This requires encoding JBOmnichainDeployer.launchProjectFor() with complex struct parameters
+  // For now, throw an error indicating this needs backend support or further implementation
+  throw new Error(
+    'buildOmnichainLaunchProjectTransactions requires JBOmnichainDeployer encoding. ' +
+    'This feature needs additional implementation.'
+  )
 }
 
 /**
@@ -967,14 +994,17 @@ export interface JBDeployRevnetResponse {
 /**
  * Build omnichain revnet deployment transactions.
  * Creates a revnet on each specified chain with stage-based configuration.
+ * TODO: Implement client-side encoding using REVDeployer ABI
  */
-export async function buildOmnichainDeployRevnetTransactions(
-  request: JBDeployRevnetRequest
-): Promise<JBDeployRevnetResponse> {
-  return fetchApi<JBDeployRevnetResponse>('/v1/juicebox/omnichainDeployRevnet', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
+export function buildOmnichainDeployRevnetTransactions(
+  _request: JBDeployRevnetRequest
+): JBDeployRevnetResponse {
+  // This requires encoding REVDeployer.deployFor() with complex struct parameters
+  // For now, throw an error indicating this needs backend support or further implementation
+  throw new Error(
+    'buildOmnichainDeployRevnetTransactions requires REVDeployer encoding. ' +
+    'This feature needs additional implementation.'
+  )
 }
 
 /**
@@ -1039,14 +1069,17 @@ export interface JBDeploySuckersResponse {
 /**
  * Build omnichain sucker deployment transactions.
  * Creates suckers on each chain to enable cross-chain token bridging.
+ * TODO: Implement client-side encoding using JBSuckerRegistry ABI
  */
-export async function buildOmnichainDeploySuckersTransactions(
-  request: JBDeploySuckersRequest
-): Promise<JBDeploySuckersResponse> {
-  return fetchApi<JBDeploySuckersResponse>('/v1/juicebox/omnichainDeploySuckers', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
+export function buildOmnichainDeploySuckersTransactions(
+  _request: JBDeploySuckersRequest
+): JBDeploySuckersResponse {
+  // This requires encoding sucker deployer contracts with complex mappings
+  // For now, throw an error indicating this needs backend support or further implementation
+  throw new Error(
+    'buildOmnichainDeploySuckersTransactions requires sucker deployer encoding. ' +
+    'This feature needs additional implementation.'
+  )
 }
 
 /**
