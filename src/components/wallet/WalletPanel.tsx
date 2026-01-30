@@ -3016,7 +3016,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
     const gap = 8 // Gap between button and popover
     const margin = 16 // Minimum margin from viewport edges
     // Use wider popover for checkout view (Stripe needs more space)
-    const popoverWidth = currentView === 'buy_juice' ? 420 : 320
+    const popoverWidth = view === 'buy_juice' ? 420 : 320
 
     // Check if button is in lower half of viewport
     const isInLowerHalf = anchorPosition.top > viewportHeight / 2
@@ -3047,7 +3047,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
         right: rightPos,
       }
     }
-  }, [anchorPosition])
+  }, [anchorPosition, view])
 
   // Clear insufficient funds info when view changes away from wallet
   useEffect(() => {
