@@ -2884,24 +2884,25 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
             </div>
           )}
 
-          <button
-            onClick={startCheckout}
-            disabled={loading || !stripePromise || amount < 1}
-            className={`w-full py-2 text-xs font-bold transition-all ${
-              loading || !stripePromise || amount < 1
-                ? isDark ? 'bg-white/10 text-gray-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-green-500 text-white hover:bg-green-600'
-            }`}
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                Loading...
-              </span>
-            ) : (
-              `Buy ${amount.toLocaleString()} Credits - $${(amount * PAY_CREDITS_RATE).toFixed(2)}`
-            )}
-          </button>
+          <div className="flex justify-end">
+            <button
+              onClick={startCheckout}
+              disabled={loading || !stripePromise || amount < 1}
+              className={`px-4 py-2 text-xs font-bold transition-colors ${
+                loading || !stripePromise || amount < 1
+                  ? isDark ? 'bg-white/10 text-gray-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-green-500 text-white hover:bg-green-600'
+              }`}
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                </span>
+              ) : (
+                'Buy'
+              )}
+            </button>
+          </div>
         </div>
       )}
 
@@ -3035,15 +3036,16 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
     rightPos = Math.max(margin, rightPos)
 
     if (isInLowerHalf) {
-      // Show above the button
+      // Show above the button, but ensure it doesn't go off the top
       return {
         bottom: viewportHeight - anchorPosition.top + gap,
         right: rightPos,
+        maxHeight: anchorPosition.top - gap - margin,
       }
     } else {
       // Show below the button
       return {
-        top: anchorPosition.top + anchorPosition.height + gap,
+        top: Math.max(margin, anchorPosition.top + anchorPosition.height + gap),
         right: rightPos,
       }
     }
@@ -3153,7 +3155,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       <div className="fixed z-[100]" style={popoverStyle}>
         {/* Popover */}
         <div
-          className={`relative p-4 border shadow-xl max-h-[calc(100vh-32px)] overflow-y-auto transition-all ${
+          className={`relative p-4 border shadow-xl max-h-[calc(100vh-32px)] overflow-y-auto ${
           currentView === 'buy_juice' ? 'w-[420px]' : 'w-80'
         } ${isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'}`}
           onMouseDown={(e) => e.stopPropagation()}
