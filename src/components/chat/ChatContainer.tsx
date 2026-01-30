@@ -375,9 +375,48 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     setIsStreaming(true)
     setShowContinueButton(false) // Clear nudge button when user sends a new message
 
+    const isNewChat = !currentChatId
+
+    // For new chats: immediately show optimistic UI before any async work
+    // This makes the transition feel instant
+    let tempChatId = currentChatId
+    if (isNewChat) {
+      tempChatId = `temp-${Date.now()}`
+      const tempChat = {
+        id: tempChatId,
+        founderAddress: currentAddress || '0x0000000000000000000000000000000000000000',
+        name: 'New Chat',
+        isPublic: false,
+        isPrivate: privateMode,
+        aiBalanceWei: '0',
+        aiTotalSpentWei: '0',
+        encrypted: false,
+        encryptionVersion: 0,
+        isPinned: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messages: [],
+        members: [],
+      }
+      addChat(tempChat)
+      useChatStore.getState().setActiveChat(tempChatId)
+
+      // Add optimistic user message immediately
+      const optimisticMessage: ChatMessage = {
+        id: `optimistic-${Date.now()}`,
+        chatId: tempChatId,
+        senderAddress: currentAddress || '0x0000000000000000000000000000000000000000',
+        role: 'user',
+        content,
+        isEncrypted: false,
+        createdAt: new Date().toISOString(),
+        attachments: attachments,
+      }
+      addChatMessage(tempChatId, optimisticMessage)
+    }
+
     try {
       let chatId = currentChatId
-      const isNewChat = !chatId
 
       // Create a new shared chat if we don't have one
       if (!chatId) {
@@ -388,7 +427,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         })
         chatId = newChat.id
 
-        // Add to shared chat store and set as active
+        // Replace temp chat with real chat in store
+        useChatStore.getState().removeChat(tempChatId!)
         addChat(newChat)
         useChatStore.getState().setActiveChat(chatId)
 
@@ -396,10 +436,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         navigate(`/chat/${chatId}`, { replace: true })
       }
 
-      // Add optimistic user message for new chats (no WebSocket yet)
-      // For existing chats, the WebSocket will broadcast the real message
-      // but we still need optimistic for attachments since backend doesn't store them
-      if (isNewChat || (attachments && attachments.length > 0)) {
+      // Add optimistic user message for existing chats with attachments
+      // (new chat message was already added above)
+      if (!isNewChat && attachments && attachments.length > 0) {
         const optimisticMessage: ChatMessage = {
           id: `optimistic-${Date.now()}`,
           chatId,
@@ -1094,11 +1133,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         const bypassSkipAi = event.detail.bypassSkipAi ?? false
 
         if (event.detail.newChat) {
-          // Navigate to root to clear active chat, then send message
-          // The setTimeout ensures navigation completes before sending
-          navigate('/', { replace: true })
+          // Clear active chat and send message immediately
+          // handleSend now handles optimistic UI for instant feedback
           useChatStore.getState().setActiveChat(null)
-          setTimeout(() => handleSend(event.detail.message, attachments, bypassSkipAi), 50)
+          handleSend(event.detail.message, attachments, bypassSkipAi)
         } else {
           handleSend(event.detail.message, attachments, bypassSkipAi)
         }
