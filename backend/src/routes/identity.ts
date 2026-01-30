@@ -8,7 +8,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { optionalAuth, requireAuth } from '../middleware/auth.ts';
-import { requireWalletOrAuth } from '../middleware/walletSession.ts';
+import { requireWalletAuth, requireWalletOrAuth } from '../middleware/walletSession.ts';
 import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
 import {
   getIdentityByAddress,
@@ -86,16 +86,15 @@ const SetIdentitySchema = z.object({
 
 identityRouter.put(
   '/me',
-  requireAuth, // Must be authenticated (not anonymous)
+  requireWalletAuth, // Accepts JWT (managed) or SIWE wallet session, but NOT anonymous
   zValidator('json', SetIdentitySchema),
   async (c) => {
-    const user = c.get('user')!;
+    const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
     try {
-      // Get user's smart account address (use default chain for identity)
-      const smartAccount = await getOrCreateSmartAccount(user.id, 1);
-      const identity = await setIdentity(smartAccount.address, body.emoji, body.username);
+      // Use wallet address directly - works for both managed wallets and SIWE
+      const identity = await setIdentity(walletSession.address, body.emoji, body.username);
       return c.json({
         success: true,
         data: serializeIdentity(identity),
@@ -108,13 +107,12 @@ identityRouter.put(
 );
 
 // DELETE /identity/me - Delete current user's identity
-// Requires authentication
-identityRouter.delete('/me', requireAuth, async (c) => {
-  const user = c.get('user')!;
+// Accepts JWT (managed) or SIWE wallet session
+identityRouter.delete('/me', requireWalletAuth, async (c) => {
+  const walletSession = c.get('walletSession')!;
 
   try {
-    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
-    await deleteIdentity(smartAccount.address);
+    await deleteIdentity(walletSession.address);
     return c.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete identity';
