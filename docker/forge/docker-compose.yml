@@ -1,0 +1,81 @@
+# Forge Sandbox Docker Compose Configuration
+#
+# This configuration runs the Forge sandbox container with strict security limits.
+# Used by the backend forge service for compiling and testing user-submitted hooks.
+#
+# Usage:
+#   docker-compose up -d        # Start the base service
+#   docker-compose exec forge forge build  # Run forge commands
+#
+# For job execution, the backend service creates ephemeral containers with:
+#   docker run --rm --network none --read-only ... forge-sandbox forge build
+
+version: '3.8'
+
+services:
+  forge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: juicy-vision/forge-sandbox:latest
+
+    # Security: Run as non-root
+    user: "1000:1000"
+
+    # Security: Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Security: Process limits
+    pids_limit: 256
+
+    # Security: Read-only root filesystem with tmp for compilation
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,noexec,nosuid
+      - /home/forge/.cache:size=256m
+
+    # Security: No network access by default (override for fork tests)
+    network_mode: none
+
+    # Security: Drop all capabilities
+    cap_drop:
+      - ALL
+
+    # Security: No new privileges
+    security_opt:
+      - no-new-privileges:true
+
+    # Mount workspace (read-only from host perspective)
+    volumes:
+      - ./workspace:/workspace:rw
+
+    # Default command
+    command: ["forge", "--version"]
+
+  # RPC Proxy service for fork tests
+  # This provides rate-limited, method-filtered access to chain RPCs
+  rpc-proxy:
+    image: nginx:alpine
+    ports:
+      - "8545:80"
+    volumes:
+      - ./nginx-rpc-proxy.conf:/etc/nginx/nginx.conf:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: 'true'

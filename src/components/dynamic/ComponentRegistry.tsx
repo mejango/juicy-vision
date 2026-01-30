@@ -36,6 +36,13 @@ const LandingPagePreview = lazy(() => import('./LandingPagePreview'))
 const SuccessVisualization = lazy(() => import('./SuccessVisualization'))
 const InteractionsSheet = lazy(() => import('./InteractionsSheet'))
 
+// Hook development components
+const HookCodeViewer = lazy(() => import('./HookCodeViewer'))
+const HookProjectEditor = lazy(() => import('./HookProjectEditor'))
+const HookTestRunner = lazy(() => import('./HookTestRunner'))
+const HookSecurityReport = lazy(() => import('./HookSecurityReport'))
+const HookDeployment = lazy(() => import('./HookDeployment'))
+
 // Chart components
 const BalanceChart = lazy(() => import('./charts').then(m => ({ default: m.BalanceChart })))
 const HoldersChart = lazy(() => import('./charts').then(m => ({ default: m.HoldersChart })))
@@ -257,6 +264,49 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
       timeframe: p.timeframe,
       growthRate: p.growthRate,
       avgContribution: p.avgContribution,
+    }),
+  },
+
+  // Hook Development
+  'hook-code-viewer': {
+    component: HookCodeViewer,
+    mapProps: (p) => ({
+      filename: p.filename,
+      code: p.code,
+      explanation: p.explanation,
+      language: p.language,
+    }),
+  },
+  'hook-project-editor': {
+    component: HookProjectEditor,
+    mapProps: (p) => ({
+      projectId: p.projectId,
+      hookType: p.hookType,
+      files: p.files,
+      readOnly: p.readOnly === 'true' || p.readOnly === true,
+    }),
+  },
+  'hook-test-runner': {
+    component: HookTestRunner,
+    mapProps: (p) => ({
+      projectId: p.projectId,
+      forkConfig: p.forkConfig,
+      autoRun: p.autoRun === 'true' || p.autoRun === true,
+    }),
+  },
+  'hook-security-report': {
+    component: HookSecurityReport,
+    mapProps: (p) => ({
+      projectId: p.projectId,
+      autoRun: p.autoRun === 'true' || p.autoRun === true,
+    }),
+  },
+  'hook-deployment': {
+    component: HookDeployment,
+    mapProps: (p) => ({
+      projectId: p.projectId,
+      chainIds: p.chainIds,
+      constructorArgs: p.constructorArgs,
     }),
   },
 }

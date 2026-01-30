@@ -23,6 +23,7 @@ import { debugRouter, logDebugEvent } from './src/routes/debug.ts';
 import { identityRouter } from './src/routes/identity.ts';
 import { juiceRouter } from './src/routes/juice.ts';
 import { adminRouter } from './src/routes/admin.ts';
+import { hooksRouter } from './src/routes/hooks.ts';
 import { getConfig, validateConfigForAuth, validateConfigForEncryption, validateConfigForReserves } from './src/utils/config.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
@@ -34,9 +35,21 @@ import {
   processCashOuts as processJuiceCashOuts,
 } from './src/services/juice.ts';
 import { runMigrations } from './src/db/migrate.ts';
+import { recoverOrphanedJobs } from './src/services/forge.ts';
 
 // Run migrations before starting the server
 await runMigrations();
+
+// Recover any forge jobs that were running when we crashed
+// Uses 2-min grace period to avoid killing jobs from quick restarts
+try {
+  const recovered = await recoverOrphanedJobs();
+  if (recovered > 0) {
+    console.log(`[Startup] Recovered ${recovered} orphaned forge jobs from previous run`);
+  }
+} catch (error) {
+  console.error('[Startup] Failed to recover orphaned jobs:', error);
+}
 
 // Validate critical config in production
 const bootConfig = getConfig();
@@ -137,6 +150,7 @@ app.route('/debug', debugRouter);
 app.route('/identity', identityRouter);
 app.route('/juice', juiceRouter);
 app.route('/admin', adminRouter);
+app.route('/hooks', hooksRouter);
 
 // ============================================================================
 // Static File Serving (disabled - frontend served separately in production)

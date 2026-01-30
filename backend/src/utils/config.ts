@@ -66,6 +66,10 @@ export function loadConfig(): EnvConfig {
     ipfsApiUrl: getEnv('IPFS_API_URL', 'https://api.pinata.cloud'),
     ipfsApiKey: getEnv('IPFS_API_KEY', ''),
     ipfsApiSecret: getEnv('IPFS_API_SECRET', ''),
+
+    // Forge (Hook Development)
+    forgeDockerEnabled: getEnv('FORGE_DOCKER_ENABLED', 'false') === 'true',
+    semgrepEnabled: getEnv('SEMGREP_ENABLED', 'false') === 'true',
   };
 }
 

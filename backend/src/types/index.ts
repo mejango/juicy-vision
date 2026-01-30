@@ -309,4 +309,8 @@ export interface EnvConfig {
   ipfsApiUrl?: string;        // Pinata API URL
   ipfsApiKey?: string;        // Pinata API key
   ipfsApiSecret?: string;     // Pinata API secret
+
+  // Forge (Hook Development)
+  forgeDockerEnabled?: boolean;  // Enable Docker-based forge execution
+  semgrepEnabled?: boolean;      // Enable Semgrep security analysis
 }

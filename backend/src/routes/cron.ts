@@ -10,6 +10,7 @@ import {
   processSpends as processJuiceSpends,
   processCashOuts as processJuiceCashOuts,
 } from '../services/juice.ts';
+import { cleanupExpiredJobs, cancelStaleJobs } from '../services/forge.ts';
 
 export const cronRouter = new Hono();
 
@@ -294,6 +295,22 @@ cronRouter.post('/maintenance', async (c) => {
     };
   }
 
+  // Cleanup expired forge jobs
+  try {
+    const expiredCount = await cleanupExpiredJobs();
+    const staleCount = await cancelStaleJobs();
+    results.forgeJobs = {
+      success: true,
+      count: expiredCount + staleCount,
+    };
+  } catch (error) {
+    console.error('Forge job cleanup failed:', error);
+    results.forgeJobs = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+
   const allSuccess = Object.values(results).every((r) => r.success);
 
   return c.json(
@@ -388,6 +405,40 @@ cronRouter.post('/juice/cash-outs', async (c) => {
     });
   } catch (error) {
     console.error('Cron Juice cash out processing failed:', error);
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        durationMs: Date.now() - startTime,
+      },
+      500
+    );
+  }
+});
+
+// ============================================================================
+// Forge System Cron Endpoints
+// ============================================================================
+
+// Cleanup expired and stale forge jobs
+cronRouter.post('/forge/cleanup', async (c) => {
+  const startTime = Date.now();
+
+  try {
+    const expiredCount = await cleanupExpiredJobs();
+    const staleCount = await cancelStaleJobs();
+
+    return c.json({
+      success: true,
+      data: {
+        expired: expiredCount,
+        stale: staleCount,
+        total: expiredCount + staleCount,
+        durationMs: Date.now() - startTime,
+      },
+    });
+  } catch (error) {
+    console.error('Cron Forge cleanup failed:', error);
     return c.json(
       {
         success: false,
