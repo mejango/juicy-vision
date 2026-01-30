@@ -1589,203 +1589,6 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }:
   )
 }
 
-// Top up view - choose between Pay Credits or Crypto onramps
-function TopUpView({ onBack, address, onBuyCredits }: { onBack: () => void; address?: string; onBuyCredits?: () => void }) {
-  const { theme } = useThemeStore()
-  const isDark = theme === 'dark'
-  const [showOnramps, setShowOnramps] = useState(false)
-
-  const [copied, setCopied] = useState(false)
-
-  const copyAddress = () => {
-    if (address) {
-      navigator.clipboard.writeText(address)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
-
-  const onrampLinks = [
-    {
-      name: 'Coinbase',
-      description: 'Buy with bank, card, or Apple Pay',
-      url: 'https://www.coinbase.com/price/usd-coin',
-    },
-    {
-      name: 'MoonPay',
-      description: 'Credit card, bank transfer, Apple Pay',
-      url: 'https://www.moonpay.com/buy/usdc',
-    },
-    {
-      name: 'Transak',
-      description: 'Bank transfer, card, UPI, PIX',
-      url: 'https://global.transak.com/?defaultCryptoCurrency=USDC',
-    },
-  ]
-
-  // Show onramp provider list
-  if (showOnramps) {
-    return (
-      <div className="space-y-3">
-        <button
-          onClick={() => setShowOnramps(false)}
-          className={`flex items-center gap-1 text-xs ${
-            isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-          }`}
-        >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back
-        </button>
-
-        <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-          Buy USDC or ETH directly to your wallet using these services.
-        </p>
-
-        <div className="space-y-2">
-          {onrampLinks.map((link) => (
-            <a
-              key={link.name}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`w-full py-2.5 px-3 border flex items-center justify-between transition-all block ${
-                isDark
-                  ? 'border-white/10 hover:border-juice-cyan/50 hover:bg-juice-cyan/5'
-                  : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50'
-              }`}
-            >
-              <div>
-                <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {link.name}
-                </div>
-                <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {link.description}
-                </div>
-              </div>
-              <svg className={`w-4 h-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
-          ))}
-        </div>
-
-        {address && (
-          <div className={`mt-2 p-2 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
-            <div className={`text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              Your wallet address (copy and paste when prompted)
-            </div>
-            <div className="flex items-center gap-2">
-              <code className={`flex-1 text-[11px] font-mono truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                {address}
-              </code>
-              <button
-                onClick={copyAddress}
-                className={`px-2 py-1 text-[10px] font-medium transition-colors ${
-                  copied
-                    ? 'bg-green-500/20 text-green-400'
-                    : isDark
-                      ? 'bg-white/10 text-gray-300 hover:bg-white/20'
-                      : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                }`}
-              >
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // Main selection view
-  return (
-    <div className="space-y-3">
-      <button
-        onClick={onBack}
-        className={`flex items-center gap-1 text-xs ${
-          isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-        }`}
-      >
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        Back
-      </button>
-
-      <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-        Choose how to fund your account
-      </p>
-
-      {/* Pay Credits option */}
-      <button
-        onClick={onBuyCredits}
-        className={`w-full p-3 border text-left transition-all ${
-          isDark
-            ? 'border-white/10 hover:border-juice-orange/50 hover:bg-juice-orange/5'
-            : 'border-gray-200 hover:border-orange-400 hover:bg-orange-50'
-        }`}
-      >
-        <div className="flex items-start gap-3">
-          <div className={`w-8 h-8 flex items-center justify-center text-lg ${
-            isDark ? 'bg-juice-orange/20' : 'bg-orange-100'
-          }`}>
-            💳
-          </div>
-          <div className="flex-1">
-            <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Pay Credits
-            </div>
-            <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              Buy with credit card · $1.05 per credit
-            </div>
-            <div className={`text-[10px] mt-1 ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
-              Instant · Pay any Juicebox project
-            </div>
-          </div>
-          <svg className={`w-4 h-4 mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </div>
-      </button>
-
-      {/* Crypto onramp option */}
-      <button
-        onClick={() => setShowOnramps(true)}
-        className={`w-full p-3 border text-left transition-all ${
-          isDark
-            ? 'border-white/10 hover:border-juice-cyan/50 hover:bg-juice-cyan/5'
-            : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50'
-        }`}
-      >
-        <div className="flex items-start gap-3">
-          <div className={`w-8 h-8 flex items-center justify-center text-lg ${
-            isDark ? 'bg-juice-cyan/20' : 'bg-blue-100'
-          }`}>
-            🪙
-          </div>
-          <div className="flex-1">
-            <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Buy Crypto
-            </div>
-            <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              USDC or ETH via Coinbase, MoonPay, etc.
-            </div>
-            <div className={`text-[10px] mt-1 ${isDark ? 'text-juice-cyan' : 'text-blue-600'}`}>
-              Direct to wallet · Use anywhere
-            </div>
-          </div>
-          <svg className={`w-4 h-4 mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </div>
-      </button>
-    </div>
-  )
-}
-
 // Juicy ID view - just the emoji picker and username input
 function JuicyIdView({ onBack }: { onBack: () => void }) {
   const { theme } = useThemeStore()
@@ -3180,7 +2983,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'auth_method' | 'email_auth' | 'wallet' | 'passkey' | 'topup' | 'settings' | 'buy_juice' | 'juicy_id'>('select')
+  const [view, setView] = useState<'select' | 'self_custody' | 'managed' | 'auth_method' | 'email_auth' | 'wallet' | 'passkey' | 'settings' | 'buy_juice' | 'juicy_id'>('select')
   const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<InsufficientFundsInfo | null>(null)
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
   const [previousView, setPreviousView] = useState<typeof view>('select')
@@ -3247,7 +3050,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
 
   // Clear insufficient funds info when view changes away from wallet
   useEffect(() => {
-    if (view !== 'wallet' && view !== 'topup') {
+    if (view !== 'wallet' && view !== 'buy_juice') {
       setInsufficientFundsInfo(null)
     }
   }, [view])
@@ -3281,7 +3084,6 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
 
   const currentView = (() => {
     if (view === 'settings') return 'settings'
-    if (view === 'topup') return 'topup'
     if (view === 'buy_juice') return 'buy_juice'
     if (view === 'juicy_id') return 'juicy_id'
     if (view === 'auth_method') return 'auth_method'
@@ -3320,7 +3122,6 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
             return `You don't have ${insufficientFundsInfo.amount} ${insufficientFundsInfo.token} on ${insufficientFundsInfo.chainName}`
           }
           return 'Confirm Payment'
-        case 'topup': return 'Fund Account'
         default: break
       }
     }
@@ -3332,7 +3133,6 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       case 'managed': return 'Account'
       case 'wallet': return 'Account'
       case 'passkey': return 'Account'
-      case 'topup': return 'Fund Account'
       case 'settings': return 'Settings'
       case 'juicy_id': return 'Set Juicy ID'
       case 'buy_juice': return 'Buy Pay Credits'
@@ -3423,7 +3223,10 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
         {currentView === 'managed' && isManagedConnected && (
           <ManagedAccountView
             onDisconnect={handleDisconnect}
-            onTopUp={() => setView('topup')}
+            onTopUp={() => {
+              setPreviousView('managed')
+              setView('buy_juice')
+            }}
             onSettings={() => setView('settings')}
             onSetJuicyId={() => setView('juicy_id')}
           />
@@ -3431,7 +3234,10 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
 
         {currentView === 'wallet' && isSelfCustodyConnected && (
           <SelfCustodyWalletView
-            onTopUp={() => setView('topup')}
+            onTopUp={() => {
+              setPreviousView('wallet')
+              setView('buy_juice')
+            }}
             onDisconnect={handleDisconnect}
             paymentContext={paymentContext}
             onInsufficientFundsChange={setInsufficientFundsInfo}
@@ -3442,19 +3248,11 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
         {currentView === 'passkey' && passkeyWallet && (
           <PasskeyWalletView
             wallet={passkeyWallet}
-            onTopUp={() => setView('topup')}
-            onDisconnect={handleDisconnect}
-          />
-        )}
-
-        {currentView === 'topup' && (
-          <TopUpView
-            onBack={() => setView(isSelfCustodyConnected ? 'wallet' : isPasskeyConnected ? 'passkey' : 'managed')}
-            address={passkeyWallet?.address || address}
-            onBuyCredits={() => {
-              setPreviousView('topup')
+            onTopUp={() => {
+              setPreviousView('passkey')
               setView('buy_juice')
             }}
+            onDisconnect={handleDisconnect}
           />
         )}
 
