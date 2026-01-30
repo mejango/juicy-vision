@@ -216,6 +216,14 @@ export default function MessageBubble({
     return members.find(m => m.address?.toLowerCase() === message.senderAddress?.toLowerCase())
   }, [members, message.senderAddress])
 
+  // Get cached identity emoji for current user (prevents flicker when members not loaded)
+  const cachedIdentityEmoji = useMemo(() => {
+    try {
+      const cached = localStorage.getItem('juicy-identity')
+      return cached ? JSON.parse(cached).emoji : null
+    } catch { return null }
+  }, [])
+
   // Continue button disabled - AI responses with components are complete
   // The looksIncomplete heuristic was too aggressive and caused sporadic button appearances
   const showContinue = false
@@ -357,7 +365,13 @@ export default function MessageBubble({
               </div>
             ) : (
               <div className="shrink-0 pt-0.5 text-lg leading-none">
-                {getEmojiForUser(message.senderAddress, currentUserAddress, selectedFruit, undefined)}
+                {/* Use cached identity emoji for current user when member data not loaded */}
+                {getEmojiForUser(
+                  message.senderAddress,
+                  currentUserAddress,
+                  selectedFruit,
+                  message.senderAddress?.toLowerCase() === currentUserAddress?.toLowerCase() ? cachedIdentityEmoji : undefined
+                )}
               </div>
             )}
 
