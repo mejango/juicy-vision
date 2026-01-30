@@ -116,27 +116,27 @@ app.get('/health', (c) => {
 });
 
 // ============================================================================
-// API Routes (with /api prefix for local development)
+// API Routes
 // ============================================================================
 
-app.route('/api/auth', authRouter);
-app.route('/api/auth/siwe', siweRouter);
-app.route('/api/chat', chatRouter);
-app.route('/api/wallet', walletRouter);
-app.route('/api/events', eventsRouter);
-app.route('/api/cron', cronRouter);
-app.route('/api/proxy', proxyRouter);
-app.route('/api/stripe/webhook', stripeWebhookRouter);
-app.route('/api/context', contextRouter);
-app.route('/api/locale', localeRouter);
-app.route('/api/chat', inviteRouter);
-app.route('/api/passkey', passkeyRouter);
-app.route('/api/transactions', transactionsRouter);
-app.route('/api/projects', projectsRouter);
-app.route('/api/debug', debugRouter);
-app.route('/api/identity', identityRouter);
-app.route('/api/juice', juiceRouter);
-app.route('/api/admin', adminRouter);
+app.route('/auth', authRouter);
+app.route('/auth/siwe', siweRouter);
+app.route('/chat', chatRouter);
+app.route('/wallet', walletRouter);
+app.route('/events', eventsRouter);
+app.route('/cron', cronRouter);
+app.route('/proxy', proxyRouter);
+app.route('/stripe/webhook', stripeWebhookRouter);
+app.route('/context', contextRouter);
+app.route('/locale', localeRouter);
+app.route('/chat', inviteRouter);
+app.route('/passkey', passkeyRouter);
+app.route('/transactions', transactionsRouter);
+app.route('/projects', projectsRouter);
+app.route('/debug', debugRouter);
+app.route('/identity', identityRouter);
+app.route('/juice', juiceRouter);
+app.route('/admin', adminRouter);
 
 // ============================================================================
 // Static File Serving (disabled - frontend served separately in production)
