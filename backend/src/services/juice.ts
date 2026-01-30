@@ -222,11 +222,12 @@ export async function creditJuice(
       [userId]
     );
 
-    // Credit the balance
+    // Credit the balance and update activity timestamp
     await exec(
       `UPDATE juice_balances
        SET balance = balance + $1,
            lifetime_purchased = lifetime_purchased + $1,
+           last_activity_at = NOW(),
            updated_at = NOW()
        WHERE user_id = $2`,
       [amount, userId]
@@ -303,6 +304,8 @@ export async function createPurchase(params: {
   stripePaymentIntentId: string;
   stripeChargeId?: string;
   fiatAmount: number;
+  juiceAmount?: number; // If provided, use this; otherwise calculate from fiatAmount
+  creditRate?: number; // Credit rate at time of purchase
   riskScore?: number;
   riskLevel?: string;
   settlementDelayDays: number;
@@ -310,12 +313,15 @@ export async function createPurchase(params: {
   const clearsAt = new Date();
   clearsAt.setDate(clearsAt.getDate() + params.settlementDelayDays);
 
+  // Use provided juiceAmount or fall back to fiatAmount (1:1 for legacy)
+  const juiceAmount = params.juiceAmount ?? params.fiatAmount;
+
   const [row] = await query<{ id: string }>(
     `INSERT INTO juice_purchases (
       user_id, stripe_payment_intent_id, stripe_charge_id,
       radar_risk_score, radar_risk_level,
-      fiat_amount, juice_amount, status, settlement_delay_days, clears_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      fiat_amount, juice_amount, credit_rate, status, settlement_delay_days, clears_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     RETURNING id`,
     [
       params.userId,
@@ -324,7 +330,8 @@ export async function createPurchase(params: {
       params.riskScore ?? null,
       params.riskLevel || null,
       params.fiatAmount,
-      params.fiatAmount, // 1:1 ratio
+      juiceAmount,
+      params.creditRate ?? null,
       params.settlementDelayDays === 0 ? 'clearing' : 'clearing',
       params.settlementDelayDays,
       clearsAt,
@@ -335,6 +342,8 @@ export async function createPurchase(params: {
     purchaseId: row.id,
     userId: params.userId,
     fiatAmount: params.fiatAmount,
+    juiceAmount,
+    creditRate: params.creditRate,
     settlementDelayDays: params.settlementDelayDays,
     clearsAt: clearsAt.toISOString(),
   });
@@ -435,11 +444,12 @@ export async function spendJuice(params: {
   const chainId = params.chainId || DEFAULT_OPERATING_CHAIN;
 
   return await transaction(async (q, exec) => {
-    // Deduct from balance first
+    // Deduct from balance first and update activity timestamp
     const debitCount = await exec(
       `UPDATE juice_balances
        SET balance = balance - $1,
            lifetime_spent = lifetime_spent + $1,
+           last_activity_at = NOW(),
            updated_at = NOW()
        WHERE user_id = $2
        AND balance >= $1`,
@@ -533,11 +543,12 @@ export async function initiateCashOut(params: {
   availableAt.setHours(availableAt.getHours() + CASH_OUT_DELAY_HOURS);
 
   return await transaction(async (q, exec) => {
-    // Deduct from balance first
+    // Deduct from balance first and update activity timestamp
     const debitCount = await exec(
       `UPDATE juice_balances
        SET balance = balance - $1,
            lifetime_cashed_out = lifetime_cashed_out + $1,
+           last_activity_at = NOW(),
            updated_at = NOW()
        WHERE user_id = $2
        AND balance >= $1`,
@@ -978,6 +989,9 @@ export async function processSpends(): Promise<{
 /**
  * Process pending cash outs (send crypto to users)
  */
+// Credit expiration period (6 months)
+const CREDIT_EXPIRATION_MONTHS = 6;
+
 export async function processCashOuts(): Promise<{
   processed: number;
   failed: number;
@@ -1131,4 +1145,99 @@ export async function processCashOuts(): Promise<{
     failed,
     pending: parseInt(count),
   };
+}
+
+/**
+ * Process expired credits (users inactive for 6+ months)
+ * Credits are zeroed and recorded for tracking.
+ * Future: Send expired credits to JUICY revnet as beneficiary.
+ */
+export async function processExpiredCredits(): Promise<{
+  expired: number;
+  totalAmount: number;
+  failed: number;
+}> {
+  const expirationDate = new Date();
+  expirationDate.setMonth(expirationDate.getMonth() - CREDIT_EXPIRATION_MONTHS);
+
+  // Find users with positive balance and last activity older than expiration period
+  // Use row locking to prevent race conditions
+  const expiredBalances = await query<{
+    user_id: string;
+    balance: string;
+    last_activity_at: string;
+  }>(
+    `SELECT user_id, balance, last_activity_at
+     FROM juice_balances
+     WHERE balance > 0
+     AND last_activity_at < $1
+     LIMIT 100
+     FOR UPDATE SKIP LOCKED`,
+    [expirationDate.toISOString()]
+  );
+
+  let expired = 0;
+  let totalAmount = 0;
+  let failed = 0;
+
+  for (const balance of expiredBalances) {
+    try {
+      const amount = parseFloat(balance.balance);
+
+      await transaction(async (q, exec) => {
+        // Record the expiration
+        await exec(
+          `INSERT INTO credit_expirations (user_id, amount, last_activity_at)
+           VALUES ($1, $2, $3)`,
+          [balance.user_id, amount, balance.last_activity_at]
+        );
+
+        // Zero the balance
+        await exec(
+          `UPDATE juice_balances
+           SET balance = 0,
+               updated_at = NOW()
+           WHERE user_id = $1`,
+          [balance.user_id]
+        );
+      });
+
+      logger.info('Credits expired', {
+        userId: balance.user_id,
+        amount,
+        lastActivityAt: balance.last_activity_at,
+      });
+
+      expired++;
+      totalAmount += amount;
+    } catch (error) {
+      logger.error('Failed to expire credits', error as Error, {
+        userId: balance.user_id,
+      });
+      failed++;
+    }
+  }
+
+  if (expired > 0) {
+    logger.info('Credit expiration batch complete', {
+      expired,
+      totalAmount,
+      failed,
+    });
+  }
+
+  return { expired, totalAmount, failed };
+}
+
+/**
+ * Update last activity timestamp for a user
+ * Called when user performs any balance-affecting action
+ */
+export async function updateLastActivity(userId: string): Promise<void> {
+  await execute(
+    `UPDATE juice_balances
+     SET last_activity_at = NOW()
+     WHERE user_id = $1`,
+    [userId]
+  );
 }

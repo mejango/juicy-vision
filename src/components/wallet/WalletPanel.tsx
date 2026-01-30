@@ -1595,27 +1595,31 @@ function TopUpView({ onBack, address, onBuyCredits }: { onBack: () => void; addr
   const isDark = theme === 'dark'
   const [showOnramps, setShowOnramps] = useState(false)
 
+  const [copied, setCopied] = useState(false)
+
+  const copyAddress = () => {
+    if (address) {
+      navigator.clipboard.writeText(address)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
   const onrampLinks = [
     {
       name: 'Coinbase',
       description: 'Buy with bank, card, or Apple Pay',
-      url: address
-        ? `https://pay.coinbase.com/buy/select-asset?addresses={"${address}":["ethereum","base","optimism","arbitrum"]}&presetFiatAmount=50`
-        : 'https://pay.coinbase.com',
+      url: 'https://www.coinbase.com/price/usd-coin',
     },
     {
       name: 'MoonPay',
       description: 'Credit card, bank transfer, Apple Pay',
-      url: address
-        ? `https://www.moonpay.com/buy?defaultCurrencyCode=usdc_base&walletAddress=${address}`
-        : 'https://www.moonpay.com',
+      url: 'https://www.moonpay.com/buy/usdc',
     },
     {
       name: 'Transak',
       description: 'Bank transfer, card, UPI, PIX',
-      url: address
-        ? `https://global.transak.com/?cryptoCurrencyCode=USDC&network=base&walletAddress=${address}`
-        : 'https://global.transak.com',
+      url: 'https://global.transak.com/?defaultCryptoCurrency=USDC',
     },
   ]
 
@@ -1669,8 +1673,27 @@ function TopUpView({ onBack, address, onBuyCredits }: { onBack: () => void; addr
         </div>
 
         {address && (
-          <div className={`text-[10px] text-center ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-            Funds will be sent to {shortenAddress(address, 6)}
+          <div className={`mt-2 p-2 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
+            <div className={`text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              Your wallet address (copy and paste when prompted)
+            </div>
+            <div className="flex items-center gap-2">
+              <code className={`flex-1 text-[11px] font-mono truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                {address}
+              </code>
+              <button
+                onClick={copyAddress}
+                className={`px-2 py-1 text-[10px] font-medium transition-colors ${
+                  copied
+                    ? 'bg-green-500/20 text-green-400'
+                    : isDark
+                      ? 'bg-white/10 text-gray-300 hover:bg-white/20'
+                      : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                }`}
+              >
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -2988,7 +3011,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
                 Rate
               </span>
               <span className={`text-xs font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                $1.01 per Pay Credit
+                $1.05 per Pay Credit
               </span>
             </div>
           </div>
@@ -3001,10 +3024,10 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
                 onClick={() => handleAmountSelect(preset)}
                 className={`py-2 px-2 text-xs font-medium transition-all border ${
                   amount === preset && !customAmount
-                    ? 'bg-juice-orange text-black border-juice-orange'
+                    ? 'bg-green-500 text-white border-green-500'
                     : isDark
-                      ? 'bg-transparent border-white/10 text-gray-300 hover:border-white/30'
-                      : 'bg-transparent border-gray-200 text-gray-700 hover:border-gray-400'
+                      ? 'bg-transparent border-green-500/50 text-green-400 hover:border-green-500'
+                      : 'bg-transparent border-green-500 text-green-600 hover:border-green-600'
                 }`}
               >
                 {preset}
@@ -3064,7 +3087,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
             className={`w-full py-2 text-xs font-bold transition-all ${
               loading || !stripePromise || amount < 1
                 ? isDark ? 'bg-white/10 text-gray-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-juice-orange text-black hover:bg-juice-orange/90'
+                : 'bg-green-500 text-white hover:bg-green-600'
             }`}
           >
             {loading ? (
@@ -3112,7 +3135,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
           </div>
           <button
             onClick={onBack}
-            className="w-full py-2 text-xs font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-all"
+            className="w-full py-2 text-xs font-bold bg-green-500 text-white hover:bg-green-600 transition-all"
           >
             Done
           </button>
@@ -3137,7 +3160,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
           </div>
           <button
             onClick={() => setStep('amount')}
-            className="w-full py-2 text-xs font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-all"
+            className="w-full py-2 text-xs font-bold bg-green-500 text-white hover:bg-green-600 transition-all"
           >
             Try Again
           </button>

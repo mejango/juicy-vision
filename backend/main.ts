@@ -23,6 +23,7 @@ import { debugRouter, logDebugEvent } from './src/routes/debug.ts';
 import { identityRouter } from './src/routes/identity.ts';
 import { juiceRouter } from './src/routes/juice.ts';
 import { adminRouter } from './src/routes/admin.ts';
+import { subscriptionRouter } from './src/routes/subscription.ts';
 import { getConfig, validateConfigForAuth, validateConfigForEncryption, validateConfigForReserves } from './src/utils/config.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
@@ -116,27 +117,28 @@ app.get('/health', (c) => {
 });
 
 // ============================================================================
-// API Routes (no /api prefix - use api.domain.com subdomain instead)
+// API Routes (with /api prefix for local development)
 // ============================================================================
 
-app.route('/auth', authRouter);
-app.route('/auth/siwe', siweRouter);
-app.route('/chat', chatRouter);
-app.route('/wallet', walletRouter);
-app.route('/events', eventsRouter);
-app.route('/cron', cronRouter);
-app.route('/proxy', proxyRouter);
-app.route('/stripe/webhook', stripeWebhookRouter);
-app.route('/context', contextRouter);
-app.route('/locale', localeRouter);
-app.route('/chat', inviteRouter);
-app.route('/passkey', passkeyRouter);
-app.route('/transactions', transactionsRouter);
-app.route('/projects', projectsRouter);
-app.route('/debug', debugRouter);
-app.route('/identity', identityRouter);
-app.route('/juice', juiceRouter);
-app.route('/admin', adminRouter);
+app.route('/api/auth', authRouter);
+app.route('/api/auth/siwe', siweRouter);
+app.route('/api/chat', chatRouter);
+app.route('/api/wallet', walletRouter);
+app.route('/api/events', eventsRouter);
+app.route('/api/cron', cronRouter);
+app.route('/api/proxy', proxyRouter);
+app.route('/api/stripe/webhook', stripeWebhookRouter);
+app.route('/api/context', contextRouter);
+app.route('/api/locale', localeRouter);
+app.route('/api/chat', inviteRouter);
+app.route('/api/passkey', passkeyRouter);
+app.route('/api/transactions', transactionsRouter);
+app.route('/api/projects', projectsRouter);
+app.route('/api/debug', debugRouter);
+app.route('/api/identity', identityRouter);
+app.route('/api/juice', juiceRouter);
+app.route('/api/admin', adminRouter);
+app.route('/api/subscription', subscriptionRouter);
 
 // ============================================================================
 // Static File Serving (disabled - frontend served separately in production)
@@ -367,7 +369,7 @@ async function handleRequest(req: Request): Promise<Response> {
   // Check if this is a WebSocket upgrade request for chat
   const upgradeHeader = req.headers.get('upgrade');
   const isWsUpgrade = upgradeHeader?.toLowerCase() === 'websocket';
-  const wsMatch = url.pathname.match(/^\/chat\/([^\/]+)\/ws$/);
+  const wsMatch = url.pathname.match(/^\/api\/chat\/([^\/]+)\/ws$/);
 
   if (isWsUpgrade && wsMatch) {
     const chatId = wsMatch[1];
