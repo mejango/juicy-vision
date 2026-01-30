@@ -118,11 +118,6 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
             <p className="text-xs leading-relaxed mt-3">
               {t('juicyExplainer.paragraph2')}
             </p>
-            <p className={`text-xs leading-relaxed mt-3 ${
-              theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
-            }`}>
-              {t('juicyExplainer.paragraph3')}
-            </p>
             <button
               onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}
               className={`mt-4 px-3 py-1.5 text-sm border transition-colors ${

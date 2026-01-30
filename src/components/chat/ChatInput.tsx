@@ -9,37 +9,7 @@ import { getEmojiFromAddress } from './ParticipantAvatars'
 import { JuicyIdPopover, type JuicyIdentity, type AnchorPosition } from './WalletInfo'
 import type { Attachment } from '../../stores'
 
-const INITIAL_PLACEHOLDER = "What's your juicy vision?"
-
-const PLACEHOLDER_PHRASES = [
-  // Questions & prompts
-  'What project are you curious about?',
-  'Any treasury moves on your mind?',
-  'Which revnet catches your eye?',
-  'Got a project ID to explore?',
-  'Wanna check some token economics?',
-  // Playful juice theme
-  'Fresh squeeze incoming...',
-  'Pour another thought...',
-  'Extra pulp welcome...',
-  'Got more juice?',
-  'Keep it flowing...',
-  'What else is brewing?',
-  // Action-oriented
-  'Ready to pay a project?',
-  'Need to cash out some tokens?',
-  'Looking for payout splits?',
-  'Checking on a treasury?',
-  // Casual vibes
-  "What's next?",
-  "I'm listening...",
-  'Hit me with it...',
-  'Go on...',
-  'Tell me more...',
-]
-
-// Interval for cycling placeholder (in ms)
-const PLACEHOLDER_CYCLE_INTERVAL = 4000
+const DEFAULT_PLACEHOLDER = 'Type a message...'
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: Attachment[]) => void
@@ -59,10 +29,6 @@ const generateId = () => Math.random().toString(36).substring(2, 15)
 
 export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick, walletInfoRightContent, onConnectedAsClick }: ChatInputProps) {
   const [input, setInput] = useState('')
-  const [isFirstLoad, setIsFirstLoad] = useState(true)
-  const [placeholderIndex, setPlaceholderIndex] = useState(() =>
-    Math.floor(Math.random() * PLACEHOLDER_PHRASES.length)
-  )
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [passkeyWallet, setPasskeyWallet] = useState(() => getPasskeyWallet())
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -141,29 +107,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     return null // Don't show emoji - will show "Set your Juicy ID" prompt instead
   }
 
-  const currentPlaceholder = placeholder || (isFirstLoad ? INITIAL_PLACEHOLDER : PLACEHOLDER_PHRASES[placeholderIndex])
-
-  // Pick a new random placeholder (different from current)
-  const rotatePlaceholder = () => {
-    setPlaceholderIndex(prev => {
-      let next = Math.floor(Math.random() * PLACEHOLDER_PHRASES.length)
-      while (next === prev && PLACEHOLDER_PHRASES.length > 1) {
-        next = Math.floor(Math.random() * PLACEHOLDER_PHRASES.length)
-      }
-      return next
-    })
-  }
-
-  // Auto-cycle placeholder when input is empty and not first load
-  useEffect(() => {
-    if (isFirstLoad || input.trim() || disabled) return
-
-    const interval = setInterval(() => {
-      rotatePlaceholder()
-    }, PLACEHOLDER_CYCLE_INTERVAL)
-
-    return () => clearInterval(interval)
-  }, [isFirstLoad, input, disabled])
+  const currentPlaceholder = placeholder || DEFAULT_PLACEHOLDER
 
   // Handle file selection
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
@@ -322,7 +266,6 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     const handlePrefill = (event: CustomEvent<{ text: string; focus?: boolean }>) => {
       if (event.detail?.text) {
         setInput(event.detail.text)
-        setIsFirstLoad(false)
         if (event.detail.focus && textareaRef.current) {
           textareaRef.current.focus()
           // Move cursor to end of text
@@ -430,8 +373,6 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       onSend(trimmed, attachments.length > 0 ? attachments : undefined)
       setInput('')
       setAttachments([])
-      setIsFirstLoad(false)
-      rotatePlaceholder()
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto'
       }
