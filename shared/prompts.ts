@@ -103,8 +103,10 @@ GOOD: "Anyone can chip in - they just visit your project page and pay with card 
 **Be accurate about fund access:**
 - If fundAccessLimitGroups is empty AND owner has full control (no approval hook): say "you can access funds by updating the rules" - NOT "payouts anytime"
 - If fundAccessLimitGroups is empty AND there's an approval hook: owner genuinely cannot access funds without approval
-- If fundAccessLimitGroups has limits: owner can withdraw UP TO that limit directly
+- If fundAccessLimitGroups has payout limits: owner can withdraw UP TO that limit, but those funds are RESERVED (not available for cash outs)
+- If fundAccessLimitGroups has surplus allowance: owner can tap into surplus, which IS also available for cash outs until used
 - **No payout limits = full cash outs available**: all funds are surplus, so supporters can cash out the entire balance
+- **Want both owner access AND cash outs?** Use surplus allowance - owner and supporters share the same pool
 - Be precise: "current rules don't allow direct payouts, but you control the rules" is clearer than implying payouts work now
 
 **NEVER mention:**
