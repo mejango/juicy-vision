@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, startTransition, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useProjectDraftStore } from '../../stores/projectDraftStore'
 import { useManagedWallet } from '../../hooks'
+import { getWalletSession } from '../../services/siwe'
 import { useOmnichainLaunchProject } from '../../hooks/relayr'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { decodeEncodedIPFSUri, encodeIpfsUri } from '../../utils/ipfs'
@@ -994,6 +996,14 @@ export default function TransactionPreview({
     isManagedMode
   } = useManagedWallet()
 
+  // External wallet connection (wagmi + SIWE)
+  const { address: connectedAddress } = useAccount()
+  const siweSession = getWalletSession()
+  const externalWalletAddress = connectedAddress || siweSession?.address
+
+  // Effective user address - prefer managed, then external wallet
+  const effectiveUserAddress = managedAddress || externalWalletAddress || ''
+
   // Juicy Identity state - load from localStorage and listen for changes
   const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(() => {
     try {
@@ -1361,10 +1371,10 @@ export default function TransactionPreview({
     // Check for nested launchProjectConfig structure
     const launchConfig = raw.launchProjectConfig as Record<string, unknown> | undefined
 
-    // Get owner from params or use managed wallet address
+    // Get owner from params or use connected wallet address
     // Check both top-level and nested in launchProjectConfig
     const ownerFromParams = (raw.owner as string | undefined) || (launchConfig?.owner as string | undefined)
-    const owner = ownerFromParams || (isManagedMode ? managedAddress : '') || ''
+    const owner = ownerFromParams || effectiveUserAddress
 
     // Get project URI (check both top-level and nested)
     const projectUri = (raw.projectUri as string) || (launchConfig?.projectUri as string) || ''
@@ -1462,7 +1472,7 @@ export default function TransactionPreview({
       hasWalletError,
       onlyOwnerIssue, // True when user just needs to sign in
     }
-  }, [action, effectivePreviewData?.raw, isManagedMode, managedAddress, managedWalletLoading, managedWalletError, parsedChainConfigs, validChainId, projectMetadata?.name])
+  }, [action, effectivePreviewData?.raw, effectiveUserAddress, isManagedMode, managedAddress, managedWalletLoading, managedWalletError, parsedChainConfigs, validChainId, projectMetadata?.name])
 
   // Handle launch button click
   const handleLaunchClick = useCallback(async () => {
