@@ -27,8 +27,17 @@ interface ChatInputProps {
 
 const generateId = () => Math.random().toString(36).substring(2, 15)
 
+const DRAFT_STORAGE_KEY = 'juicy-input-draft'
+
 export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick, walletInfoRightContent, onConnectedAsClick }: ChatInputProps) {
-  const [input, setInput] = useState('')
+  // Initialize from localStorage to preserve draft on refresh
+  const [input, setInput] = useState(() => {
+    try {
+      return localStorage.getItem(DRAFT_STORAGE_KEY) || ''
+    } catch {
+      return ''
+    }
+  })
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [passkeyWallet, setPasskeyWallet] = useState(() => getPasskeyWallet())
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -243,6 +252,19 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   // Max 5 lines then scroll (line-height ~24px, so ~120px max)
   const maxHeight = 120
   const minHeight = 48
+
+  // Save draft to localStorage on change (debounced by React's batching)
+  useEffect(() => {
+    try {
+      if (input) {
+        localStorage.setItem(DRAFT_STORAGE_KEY, input)
+      } else {
+        localStorage.removeItem(DRAFT_STORAGE_KEY)
+      }
+    } catch {
+      // localStorage may be unavailable
+    }
+  }, [input])
 
   useEffect(() => {
     if (textareaRef.current) {
