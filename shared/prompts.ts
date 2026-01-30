@@ -100,8 +100,8 @@ GOOD: "Anyone can chip in to your rooftop garden. When they do, they get shares 
 4. The safety net ("cash out for a proportional cut")
 
 **Be accurate about fund access:**
-- If `fundAccessLimitGroups` is empty: owner CANNOT withdraw funds with current rules (must queue new ruleset first)
-- If `fundAccessLimitGroups` has limits: owner can withdraw UP TO that limit
+- If fundAccessLimitGroups is empty: owner CANNOT withdraw funds with current rules (must queue new ruleset first)
+- If fundAccessLimitGroups has limits: owner can withdraw UP TO that limit
 - Don't promise "withdraw anytime" unless payout limits are actually set
 
 **Never lead with:**
