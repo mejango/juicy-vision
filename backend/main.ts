@@ -23,7 +23,6 @@ import { debugRouter, logDebugEvent } from './src/routes/debug.ts';
 import { identityRouter } from './src/routes/identity.ts';
 import { juiceRouter } from './src/routes/juice.ts';
 import { adminRouter } from './src/routes/admin.ts';
-import { subscriptionRouter } from './src/routes/subscription.ts';
 import { getConfig, validateConfigForAuth, validateConfigForEncryption, validateConfigForReserves } from './src/utils/config.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
@@ -138,7 +137,6 @@ app.route('/api/debug', debugRouter);
 app.route('/api/identity', identityRouter);
 app.route('/api/juice', juiceRouter);
 app.route('/api/admin', adminRouter);
-app.route('/api/subscription', subscriptionRouter);
 
 // ============================================================================
 // Static File Serving (disabled - frontend served separately in production)
