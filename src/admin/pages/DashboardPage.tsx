@@ -84,7 +84,7 @@ export default function DashboardPage() {
             isDark={isDark}
           />
           <MetricCard
-            label="New Users"
+            label="Unique Visitors"
             value={metrics?.today.newUsers || 0}
             isDark={isDark}
           />
@@ -103,7 +103,7 @@ export default function DashboardPage() {
             isDark={isDark}
           />
           <MetricCard
-            label="New Users"
+            label="Unique Visitors"
             value={metrics?.week.newUsers || 0}
             isDark={isDark}
           />

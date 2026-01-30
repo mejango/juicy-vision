@@ -101,17 +101,18 @@ adminRouter.get('/analytics/metrics', async (c) => {
       WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
     `);
 
-    // New users today (accounts created)
+    // Unique visitors today (distinct addresses that created chats)
+    // This includes both anonymous session users and registered users
     const newUsersResult = await queryOne<MetricRow>(`
-      SELECT COUNT(*)::int as value
-      FROM users
+      SELECT COUNT(DISTINCT founder_address)::int as value
+      FROM multi_chats
       WHERE created_at >= CURRENT_DATE
     `);
 
-    // New users this week
+    // Unique visitors this week
     const newUsersWeekResult = await queryOne<MetricRow>(`
-      SELECT COUNT(*)::int as value
-      FROM users
+      SELECT COUNT(DISTINCT founder_address)::int as value
+      FROM multi_chats
       WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
     `);
 
