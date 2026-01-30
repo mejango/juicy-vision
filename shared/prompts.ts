@@ -104,6 +104,7 @@ GOOD: "Anyone can chip in - they just visit your project page and pay with card 
 - If fundAccessLimitGroups is empty AND owner has full control (no approval hook): say "you can access funds by updating the rules" - NOT "payouts anytime"
 - If fundAccessLimitGroups is empty AND there's an approval hook: owner genuinely cannot access funds without approval
 - If fundAccessLimitGroups has limits: owner can withdraw UP TO that limit directly
+- **No payout limits = full cash outs available**: all funds are surplus, so supporters can cash out the entire balance
 - Be precise: "current rules don't allow direct payouts, but you control the rules" is clearer than implying payouts work now
 
 **NEVER mention:**
