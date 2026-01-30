@@ -373,6 +373,56 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     }
   }, [])
 
+  // Listen for files dropped anywhere on the page (dispatched from ChatContainer)
+  useEffect(() => {
+    const handleFilesDropped = (e: CustomEvent<{ files: File[] }>) => {
+      if (e.detail?.files?.length > 0) {
+        processFiles(e.detail.files)
+      }
+    }
+    window.addEventListener('juice:files-dropped', handleFilesDropped as EventListener)
+    return () => {
+      window.removeEventListener('juice:files-dropped', handleFilesDropped as EventListener)
+    }
+  }, [])
+
+  // Document-level paste handler - works even when textarea isn't focused
+  useEffect(() => {
+    const handleDocumentPaste = (e: Event) => {
+      // Skip if paste is already handled by textarea (it's focused)
+      if (document.activeElement === textareaRef.current) return
+
+      const clipboardEvent = e as globalThis.ClipboardEvent
+      const items = clipboardEvent.clipboardData?.items
+      if (!items) return
+
+      const imageItems: File[] = []
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile()
+          if (file) {
+            const ext = item.type.split('/')[1] || 'png'
+            const namedFile = new File([file], `pasted-image-${Date.now()}.${ext}`, { type: item.type })
+            imageItems.push(namedFile)
+          }
+        }
+      }
+
+      if (imageItems.length > 0) {
+        e.preventDefault()
+        processFiles(imageItems)
+        // Focus the textarea so user can type a message with the attachment
+        textareaRef.current?.focus()
+      }
+    }
+
+    document.addEventListener('paste', handleDocumentPaste)
+    return () => {
+      document.removeEventListener('paste', handleDocumentPaste)
+    }
+  }, [])
+
   const handleSend = () => {
     const trimmed = input.trim()
     const hasContent = trimmed || attachments.length > 0

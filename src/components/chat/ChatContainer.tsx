@@ -183,6 +183,48 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [aiControlsExpanded, setAiControlsExpanded] = useState(false)
   // Track when AI gives empty response - show "Continue" button
   const [showContinueButton, setShowContinueButton] = useState(false)
+  // Page-level drag state for file drop zone
+  const [isPageDragging, setIsPageDragging] = useState(false)
+  const dragCounterRef = useRef(0)
+
+  // Page-level drag handlers for file attachments
+  const handlePageDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current++
+    if (e.dataTransfer?.types?.includes('Files')) {
+      setIsPageDragging(true)
+    }
+  }, [])
+
+  const handlePageDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current--
+    if (dragCounterRef.current === 0) {
+      setIsPageDragging(false)
+    }
+  }, [])
+
+  const handlePageDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handlePageDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsPageDragging(false)
+    dragCounterRef.current = 0
+
+    const files = e.dataTransfer?.files
+    if (files && files.length > 0) {
+      // Dispatch event to ChatInput with the dropped files
+      window.dispatchEvent(new CustomEvent('juice:files-dropped', {
+        detail: { files: Array.from(files) }
+      }))
+    }
+  }, [])
 
   // Close all popovers - call before opening a new one
   const closeAllPopovers = useCallback(() => {
@@ -1148,7 +1190,31 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   }, [closeAllPopovers])
 
   return (
-    <div className="flex h-full overflow-hidden relative">
+    <div
+      className="flex h-full overflow-hidden relative"
+      onDragEnter={handlePageDragEnter}
+      onDragLeave={handlePageDragLeave}
+      onDragOver={handlePageDragOver}
+      onDrop={handlePageDrop}
+    >
+      {/* Page-level drop overlay - only show when ChatInput is present (not in topOnly mode) */}
+      {isPageDragging && !topOnly && (
+        <div className={`absolute inset-0 z-50 flex items-center justify-center pointer-events-none ${
+          theme === 'dark' ? 'bg-juice-dark/90' : 'bg-white/90'
+        }`}>
+          <div className={`flex flex-col items-center gap-3 p-8 border-2 border-dashed ${
+            theme === 'dark' ? 'border-juice-cyan text-juice-cyan' : 'border-juice-cyan text-juice-cyan'
+          }`}>
+            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <span className="text-lg font-medium">Drop files here to attach</span>
+            <span className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              Images, PDFs, and documents supported
+            </span>
+          </div>
+        </div>
+      )}
       {/* Main content area - chips, mascot, messages, input */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
         {/* Error banner */}
