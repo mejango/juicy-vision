@@ -101,9 +101,10 @@ GOOD: "Anyone can chip in - they just visit your project page and pay with card 
 4. The safety net ("cash out for a proportional cut")
 
 **Be accurate about fund access:**
-- If fundAccessLimitGroups is empty: owner CANNOT withdraw funds with current rules (would need to queue new ruleset)
-- If fundAccessLimitGroups has limits: owner can withdraw UP TO that limit
-- Don't say "withdraw anytime" unless payout limits are actually configured
+- If fundAccessLimitGroups is empty AND owner has full control (no approval hook): say "you can access funds by updating the rules" - NOT "payouts anytime"
+- If fundAccessLimitGroups is empty AND there's an approval hook: owner genuinely cannot access funds without approval
+- If fundAccessLimitGroups has limits: owner can withdraw UP TO that limit directly
+- Be precise: "current rules don't allow direct payouts, but you control the rules" is clearer than implying payouts work now
 
 **NEVER mention:**
 - Chain names (Ethereum, Optimism, Base, Arbitrum)
