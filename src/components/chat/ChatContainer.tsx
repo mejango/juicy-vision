@@ -1444,7 +1444,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                     hideWalletInfo={true}
                     compact={true}
                     placeholder={placeholder}
-                    chatId={activeChatId}
+                    chatId={activeChatId || undefined}
                   />
 
                   {/* Subtext - tight below prompt, hidden when dock is pinned */}
@@ -1710,7 +1710,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       placeholder={isChatMode ? t('activeChat.typeMessage', 'Type any message...') : placeholder}
                       showDockButtons={!isChatMode}
                       onSettingsClick={() => setSettingsOpen(true)}
-                      chatId={activeChatId}
+                      chatId={activeChatId || undefined}
                       onConnectedAsClick={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect()
                         closeAllPopovers()
