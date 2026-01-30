@@ -9,7 +9,7 @@ import { getEmojiFromAddress } from './ParticipantAvatars'
 import { JuicyIdPopover, type JuicyIdentity, type AnchorPosition } from './WalletInfo'
 import type { Attachment } from '../../stores'
 
-const DEFAULT_PLACEHOLDER = 'Type a message...'
+const DEFAULT_PLACEHOLDER = 'Type any message...'
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: Attachment[]) => void

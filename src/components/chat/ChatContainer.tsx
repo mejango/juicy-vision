@@ -1706,7 +1706,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       hideBorder={true}
                       hideWalletInfo={false}
                       compact={true}
-                      placeholder={isChatMode ? t('activeChat.typeMessage', 'Type a message...') : placeholder}
+                      placeholder={isChatMode ? t('activeChat.typeMessage', 'Type any message...') : placeholder}
                       showDockButtons={!isChatMode}
                       onSettingsClick={() => setSettingsOpen(true)}
                       onConnectedAsClick={(e) => {

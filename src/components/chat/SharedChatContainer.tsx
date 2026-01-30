@@ -491,7 +491,7 @@ export default function SharedChatContainer() {
               handleTyping()
             }}
             onKeyDown={handleKeyDown}
-            placeholder={t('chat.typeMessage', 'Type a message...')}
+            placeholder={t('chat.typeMessage', 'Type any message...')}
             rows={1}
             className={`flex-1 px-4 py-2.5 rounded-xl border resize-none transition-colors ${
               theme === 'dark'
