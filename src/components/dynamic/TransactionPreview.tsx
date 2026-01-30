@@ -1059,7 +1059,20 @@ export default function TransactionPreview({
   const previewData = useMemo(() => {
     if (_isTruncated === 'true') return null
     try {
-      const raw = JSON.parse(parameters || '{}')
+      // Clean up malformed JSON from AI (e.g., embedded JS expressions like ' + Math.floor(...) + ')
+      let cleanedParams = parameters || '{}'
+      // Fix mustStartAtOrAfter with embedded JS expression - use current time + 5 minutes
+      cleanedParams = cleanedParams.replace(
+        /"mustStartAtOrAfter":\s*'\s*\+\s*Math\.floor\([^)]+\)\s*\+\s*'/g,
+        `"mustStartAtOrAfter": ${Math.floor(Date.now() / 1000 + 300)}`
+      )
+      // Also handle variations with different whitespace/quote styles
+      cleanedParams = cleanedParams.replace(
+        /"mustStartAtOrAfter":\s*["']\s*\+[^,}]+\+\s*["']/g,
+        `"mustStartAtOrAfter": ${Math.floor(Date.now() / 1000 + 300)}`
+      )
+
+      const raw = JSON.parse(cleanedParams)
 
       // Extract project metadata
       const projectMetadata = raw?.projectMetadata as Record<string, unknown> | null
@@ -1124,7 +1137,8 @@ export default function TransactionPreview({
       const hasMultiChainSuckers = raw?.suckerDeploymentConfiguration?.deployerConfigurations?.length > 0
 
       return { raw, projectMetadata, tiersInfo, fundingInfo, hasMultiChainSuckers, isValid: true }
-    } catch {
+    } catch (err) {
+      console.error('[TransactionPreview] Failed to parse parameters:', err, parameters?.slice(0, 200))
       return null
     }
   }, [parameters, _isTruncated])
