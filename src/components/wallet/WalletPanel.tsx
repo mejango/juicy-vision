@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { useThemeStore, useAuthStore, useSettingsStore } from '../../stores'
@@ -1353,6 +1354,7 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
 // Managed account view
 function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }: { onDisconnect: () => void; onTopUp: () => void; onSettings: () => void; onSetJuicyId: () => void }) {
   const { theme } = useThemeStore()
+  const { t } = useTranslation()
   const isDark = theme === 'dark'
   const { user, token, passkeys, loadPasskeys, registerPasskey, deletePasskey, isPasskeyAvailable, isLoading } = useAuthStore()
   const { address, balances, loading } = useManagedWallet()
@@ -1535,7 +1537,7 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }:
           <div className={`divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
             {/* Pay Credits - fiat payment balance */}
             <div className="px-3 py-2 flex justify-between items-center text-xs">
-              <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Pay Credits</span>
+              <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{t('wallet.payCredits', 'Pay Credits')}</span>
               <span className={isDark ? 'text-white' : 'text-gray-900'}>
                 {juiceLoading ? '...' : (juiceBalance?.balance ?? 0).toLocaleString()}
               </span>
@@ -1572,7 +1574,7 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }:
             isDark ? 'text-gray-500 hover:text-red-400' : 'text-gray-400 hover:text-red-500'
           }`}
         >
-          Sign Out
+          {t('wallet.signOut', 'Sign Out')}
         </button>
         <button
           onClick={onTopUp}
@@ -1582,7 +1584,7 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }:
               : 'bg-green-500 text-white hover:bg-green-600'
           }`}
         >
-          Top Up
+          {t('wallet.topUp', 'Top Up')}
         </button>
       </div>
     </div>
@@ -2977,6 +2979,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
 export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPosition, initialView }: WalletPanelProps) {
   const { mode, logout: authLogout, isAuthenticated } = useAuthStore()
   const { address, isConnected: walletConnected } = useAccount()
+  const { t } = useTranslation()
 
   // Self-custody users are "signed in" if they have a valid SIWE session
   const isSelfCustodySignedIn = hasValidWalletSession()
@@ -3129,17 +3132,17 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       }
     }
     switch (currentView) {
-      case 'select': return 'Connect'
-      case 'self_custody': return 'Connect Wallet'
-      case 'auth_method': return 'Sign In'
-      case 'email_auth': return 'Email Sign In'
-      case 'managed': return 'Account'
-      case 'wallet': return 'Account'
-      case 'passkey': return 'Account'
-      case 'settings': return 'Settings'
-      case 'juicy_id': return 'Set Juicy ID'
-      case 'buy_juice': return 'Buy Pay Credits'
-      default: return 'Connect'
+      case 'select': return t('wallet.connect', 'Connect')
+      case 'self_custody': return t('wallet.connectWallet', 'Connect Wallet')
+      case 'auth_method': return t('wallet.signIn', 'Sign In')
+      case 'email_auth': return t('wallet.emailSignIn', 'Email Sign In')
+      case 'managed': return t('wallet.account', 'Account')
+      case 'wallet': return t('wallet.account', 'Account')
+      case 'passkey': return t('wallet.account', 'Account')
+      case 'settings': return t('wallet.settings', 'Settings')
+      case 'juicy_id': return t('wallet.setJuicyId', 'Set Juicy ID')
+      case 'buy_juice': return t('wallet.buyPayCredits', 'Buy Pay Credits')
+      default: return t('wallet.connect', 'Connect')
     }
   }
 

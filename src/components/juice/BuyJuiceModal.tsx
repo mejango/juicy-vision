@@ -14,6 +14,7 @@ import {
   EmbeddedCheckoutProvider,
   EmbeddedCheckout,
 } from '@stripe/react-stripe-js'
+import { useTranslation } from 'react-i18next'
 import { useThemeStore, useAuthStore } from '../../stores'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
@@ -33,6 +34,7 @@ const PRESET_AMOUNTS = [10, 25, 50, 100]
 export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceModalProps) {
   const { theme } = useThemeStore()
   const { token } = useAuthStore()
+  const { t } = useTranslation()
   const isDark = theme === 'dark'
 
   const [step, setStep] = useState<PurchaseStep>('amount')
@@ -149,10 +151,10 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
         {/* Header */}
         <div className={`px-4 py-3 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
           <h2 className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {step === 'amount' && 'Buy Pay Credits'}
-            {step === 'checkout' && 'Complete Payment'}
-            {step === 'success' && 'Purchase Complete'}
-            {step === 'error' && 'Purchase Failed'}
+            {step === 'amount' && t('wallet.buyPayCredits', 'Buy Pay Credits')}
+            {step === 'checkout' && t('wallet.completePayment', 'Complete Payment')}
+            {step === 'success' && t('wallet.purchaseComplete', 'Purchase Complete')}
+            {step === 'error' && t('wallet.purchaseFailed', 'Purchase Failed')}
           </h2>
           <button
             onClick={onClose}
@@ -172,17 +174,17 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
           {step === 'amount' && (
             <div className="space-y-4">
               <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Pay Credits let you pay Juicebox projects with your credit card.
+                {t('wallet.payCreditsDescription', 'Pay Credits let you pay Juicebox projects with your credit card.')}
               </p>
 
               {/* Flat rate display */}
               <div className={`px-3 py-2 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
                 <div className="flex justify-between items-center">
                   <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Rate
+                    {t('wallet.rate', 'Rate')}
                   </span>
                   <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    $1.01 per Pay Credit
+                    $1.01 {t('wallet.perPayCredit', 'per Pay Credit')}
                   </span>
                 </div>
               </div>
@@ -209,7 +211,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
               {/* Custom credit amount */}
               <div>
                 <label className={`block text-xs mb-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Or enter custom amount
+                  {t('wallet.orEnterCustomAmount', 'Or enter custom amount')}
                 </label>
                 <div className="relative">
                   <input
@@ -219,7 +221,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
                     step={1}
                     value={customAmount}
                     onChange={handleCustomAmountChange}
-                    placeholder="Credits"
+                    placeholder={t('wallet.credits', 'Credits')}
                     className={`w-full px-3 py-2 text-sm font-mono ${
                       isDark
                         ? 'bg-white/5 border-white/10 text-white placeholder-gray-500'
@@ -228,20 +230,20 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
                   />
                 </div>
                 <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  1 - 10,000 credits per purchase
+                  {t('wallet.creditsPerPurchase', '1 - 10,000 credits per purchase')}
                 </p>
               </div>
 
               {/* Summary */}
               <div className={`px-3 py-2 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
                 <div className="flex justify-between items-center mb-1">
-                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>You'll receive</span>
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{t('wallet.youllReceive', "You'll receive")}</span>
                   <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {amount.toLocaleString()} Pay Credits
+                    {amount.toLocaleString()} {t('wallet.payCredits', 'Pay Credits')}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Total cost</span>
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{t('wallet.totalCost', 'Total cost')}</span>
                   <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     ${(amount * PAY_CREDITS_RATE).toFixed(2)}
                   </span>
@@ -266,10 +268,10 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
                     <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    Loading...
+                    {t('wallet.loading', 'Loading...')}
                   </span>
                 ) : (
-                  `Buy ${amount.toLocaleString()} Credits - $${(amount * PAY_CREDITS_RATE).toFixed(2)}`
+                  `${t('wallet.buy', 'Buy')} ${amount.toLocaleString()} ${t('wallet.credits', 'Credits')} - $${(amount * PAY_CREDITS_RATE).toFixed(2)}`
                 )}
               </button>
             </div>
@@ -300,17 +302,17 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
               </div>
               <div>
                 <h3 className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {amount} Pay Credits purchased
+                  {amount} {t('wallet.payCredits', 'Pay Credits')} {t('wallet.purchased', 'purchased')}
                 </h3>
                 <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Credits available once payment is verified.
+                  {t('wallet.creditsAvailableAfterVerification', 'Credits available once payment is verified.')}
                 </p>
               </div>
               <button
                 onClick={onClose}
                 className="w-full py-2 text-sm font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-all"
               >
-                Done
+                {t('wallet.done', 'Done')}
               </button>
             </div>
           )}
@@ -325,17 +327,17 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
               </div>
               <div>
                 <h3 className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Payment Failed
+                  {t('wallet.paymentFailed', 'Payment Failed')}
                 </h3>
                 <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {error || 'Something went wrong. Please try again.'}
+                  {error || t('wallet.paymentFailedDescription', 'Something went wrong. Please try again.')}
                 </p>
               </div>
               <button
                 onClick={() => setStep('amount')}
                 className="w-full py-2 text-sm font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-all"
               >
-                Try Again
+                {t('wallet.tryAgain', 'Try Again')}
               </button>
             </div>
           )}

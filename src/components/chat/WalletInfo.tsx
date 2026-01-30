@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useDisconnect, useChainId, useSignMessage } from 'wagmi'
+import { useTranslation } from 'react-i18next'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
 import { hasValidWalletSession, getWalletSession, clearWalletSession, signInWithWallet } from '../../services/siwe'
@@ -534,6 +535,7 @@ interface WalletInfoProps {
 
 export default function WalletInfo({ inline }: WalletInfoProps = {}) {
   const { theme } = useThemeStore()
+  const { t } = useTranslation()
   const { address, isConnected } = useAccount()
   const { ensName } = useEnsNameResolved(address)
   const { disconnect } = useDisconnect()
@@ -772,11 +774,11 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
             )}
             {getDisplayIdentity() ? (
               <>
-                <span className="mr-1">Connected as</span>
+                <span className="mr-1">{t('ui.connectedAs', 'Connected as')}</span>
                 <span>{getDisplayIdentity()}</span>
               </>
             ) : (
-              <span>Connected</span>
+              <span>{t('ui.connected', 'Connected')}</span>
             )}
           </button>
           {/* Set Juicy ID prompt - when connected but no identity */}
@@ -793,7 +795,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
                   : 'text-juice-orange/80 hover:text-juice-orange'
               }`}
             >
-              · Set your Juicy ID
+              · {t('wallet.setJuicyId', 'Set your Juicy ID')}
             </button>
           )}
           {/* Balances */}
@@ -829,7 +831,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
             }`}
           >
             <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50 mr-1.5 shrink-0" />
-            <span>Sign in</span>
+            <span>{t('wallet.signIn', 'Sign in')}</span>
           </button>
           {/* Set Juicy ID - available even before connecting */}
           {!identity && (
@@ -845,7 +847,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
                   : 'text-juice-orange/80 hover:text-juice-orange'
               }`}
             >
-              · Set your Juicy ID
+              · {t('wallet.setJuicyId', 'Set your Juicy ID')}
             </button>
           )}
         </>
