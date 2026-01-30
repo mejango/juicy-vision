@@ -415,10 +415,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         addChat(newChat)
         useChatStore.getState().setActiveChat(chatId)
 
-        // Clear pending state now that we have a real chat
-        setPendingNewChat(false)
-
-        // Navigate to the chat URL
+        // Navigate to the chat URL (keep pending state until message is added)
         navigate(`/chat/${chatId}`, { replace: true })
       }
 
@@ -451,6 +448,11 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       // This handles cases where WebSocket is reconnecting or temporarily disconnected
       // The store will dedupe if WebSocket also delivers it
       addChatMessage(chatId, savedMessage)
+
+      // Clear pending state now that the real message is in the chat
+      if (isNewChat) {
+        setPendingNewChat(false)
+      }
 
       // Invoke AI to respond - backend handles Claude API call and broadcasts response
       // Only invoke if AI is enabled for this chat (global toggle AND personal preference)
