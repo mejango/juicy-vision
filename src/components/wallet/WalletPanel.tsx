@@ -1351,7 +1351,7 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
 }
 
 // Managed account view
-function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId, onBuyJuice }: { onDisconnect: () => void; onTopUp: () => void; onSettings: () => void; onSetJuicyId: () => void; onBuyJuice?: () => void }) {
+function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }: { onDisconnect: () => void; onTopUp: () => void; onSettings: () => void; onSetJuicyId: () => void }) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { user, token, passkeys, loadPasskeys, registerPasskey, deletePasskey, isPasskeyAvailable, isLoading } = useAuthStore()
@@ -1536,23 +1536,9 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId, o
             {/* Pay Credits - fiat payment balance */}
             <div className="px-3 py-2 flex justify-between items-center text-xs">
               <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Pay Credits</span>
-              <div className="flex items-center gap-2">
-                <span className={isDark ? 'text-white' : 'text-gray-900'}>
-                  {juiceLoading ? '...' : (juiceBalance?.balance ?? 0).toLocaleString()}
-                </span>
-                {onBuyJuice && (
-                  <button
-                    onClick={onBuyJuice}
-                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ${
-                      isDark
-                        ? 'bg-juice-orange/20 text-juice-orange hover:bg-juice-orange/30'
-                        : 'bg-orange-100 text-orange-600 hover:bg-orange-200'
-                    }`}
-                  >
-                    +
-                  </button>
-                )}
-              </div>
+              <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                {juiceLoading ? '...' : (juiceBalance?.balance ?? 0).toLocaleString()}
+              </span>
             </div>
             {/* USDC - aggregate across all chains */}
             <div className="px-3 py-2 flex justify-between text-xs">
@@ -3343,9 +3329,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       <div className="fixed z-[100]" style={popoverStyle}>
         {/* Popover */}
         <div
-          className={`relative p-4 border shadow-xl ${
-            currentView === 'topup' ? 'w-[420px]' : 'w-80'
-          } max-h-[calc(100vh-32px)] overflow-y-auto ${
+          className={`relative p-4 border shadow-xl w-80 max-h-[calc(100vh-32px)] overflow-y-auto ${
           isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
         }`}
           onMouseDown={(e) => e.stopPropagation()}
@@ -3419,10 +3403,6 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
             onTopUp={() => setView('topup')}
             onSettings={() => setView('settings')}
             onSetJuicyId={() => setView('juicy_id')}
-            onBuyJuice={() => {
-              setPreviousView(view)
-              setView('buy_juice')
-            }}
           />
         )}
 
