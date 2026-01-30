@@ -15,25 +15,11 @@ import JoinChatPage from './components/JoinChatPage'
 import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import { useChatStore, useThemeStore, type ChatMember } from './stores'
-import { useTransactionExecutor, useManagedWallet } from './hooks'
+import { useTransactionExecutor, useManagedWallet, useIsMobile } from './hooks'
 import ActionExecutor from './components/ActionExecutor'
 import { getSessionId, getSessionPseudoAddress, getCachedPseudoAddress } from './services/session'
 import { getWalletSession } from './services/siwe'
 import { useEnsNameResolved } from './hooks'
-
-// Hook for detecting mobile viewport
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false)
-
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768)
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
-
-  return isMobile
-}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -608,6 +594,7 @@ function TransactionExecutor() {
 
 // Welcome layout with simplified dock pinning
 // Scroll down (pull up) pins dock to top with animation, scroll up returns to original position
+// Disabled on mobile for a cleaner experience
 function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: string; theme: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
@@ -616,6 +603,7 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
   const isPinnedRef = useRef(false)
   const waitingForNewGestureRef = useRef(false)
   const gestureEndTimerRef = useRef<number | null>(null)
+  const isMobile = useIsMobile()
 
   // Check if there's conversation history to scroll through
   const { chats } = useChatStore()
@@ -626,7 +614,11 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
     hasContentRef.current = chats.length > 0
   }, [chats.length])
 
+  // Dock scroll effect - disabled on mobile
   useEffect(() => {
+    // Skip dock scroll on mobile
+    if (isMobile) return
+
     const container = containerRef.current
     const dockContent = dockContentRef.current
     if (!container || !dockContent) return
@@ -702,7 +694,7 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
       if (gestureEndTimerRef.current) clearTimeout(gestureEndTimerRef.current)
       window.__dockScrollLocked = false
     }
-  }, [])
+  }, [isMobile])
 
   return (
     <div

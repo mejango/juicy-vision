@@ -6,3 +6,4 @@ export { usePaymentForm, type UsePaymentFormOptions, type UsePaymentFormReturn }
 export { useManagedWallet, useIsManagedMode, executeManagedTransaction, type ManagedWalletData, type ManagedWalletBalance } from './useManagedWallet'
 export { useEnsNameResolved } from './useEnsName'
 export { useJuiceBalance, type JuiceBalance } from './useJuiceBalance'
+export { useIsMobile } from './useIsMobile'

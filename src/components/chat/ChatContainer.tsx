@@ -10,7 +10,6 @@ import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
 import WelcomeGreeting from './WelcomeGreeting'
-import ConversationHistory from './ConversationHistory'
 import ChatHistorySidebar from './ChatHistorySidebar'
 import WalletInfo, { type JuicyIdentity } from './WalletInfo'
 import { SettingsPanel, PrivacySelector } from '../settings'
@@ -1403,25 +1402,41 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                     </div>
                   </div>
 
-                  {/* Material upload hints - below subtext, hidden when dock is pinned */}
-                  <div className={`flex gap-2 px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100 mb-2'}`}>
-                    {[
-                      { key: 'visionDoc', label: t('materials.visionDoc', 'Drop your vision doc') },
-                      { key: 'masterPlan', label: t('materials.masterPlan', 'Show your master plan') },
-                      { key: 'screenshot', label: t('materials.screenshot', 'Paste a screenshot') },
-                    ].map((item) => (
+                  {/* Action buttons row - below subtext, hidden when dock is pinned */}
+                  <div className={`flex items-center justify-between px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100 mb-2'}`}>
+                    {/* Left side: history sidebar and attachment */}
+                    <div className="flex items-center gap-1">
+                      {/* History sidebar toggle */}
                       <button
-                        key={item.key}
-                        onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
-                        className={`py-1.5 px-2.5 text-xs border border-dashed transition-colors cursor-pointer ${
+                        onClick={() => setShowHistorySidebar(true)}
+                        className={`p-1.5 transition-colors ${
                           theme === 'dark'
-                            ? 'border-white/15 text-gray-500 hover:border-white/25 hover:text-gray-400'
-                            : 'border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500'
+                            ? 'text-gray-400 hover:text-white'
+                            : 'text-gray-500 hover:text-gray-900'
                         }`}
+                        title={t('chat.chatHistory', 'Chat history')}
                       >
-                        {item.label}
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                        </svg>
                       </button>
-                    ))}
+                      {/* Attachments button */}
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
+                        className={`p-1.5 transition-colors ${
+                          theme === 'dark'
+                            ? 'text-gray-400 hover:text-white'
+                            : 'text-gray-500 hover:text-gray-900'
+                        }`}
+                        title="Attach file"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                      </button>
+                    </div>
+                    {/* Empty right side for layout balance */}
+                    <div />
                   </div>
 
                 </div>
@@ -1429,11 +1444,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 {/* Wallet info - hidden when dock is pinned (compact mode) */}
                 <div className={`overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-16 opacity-100'}`}>
                   <WalletInfo />
-                </div>
-
-                {/* Conversation history */}
-                <div className="pt-6 pb-8">
-                  <ConversationHistory />
                 </div>
               </div>
             )}
