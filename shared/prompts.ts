@@ -109,6 +109,11 @@ GOOD: "Anyone can chip in - they just visit your project page and pay with card 
 - **Want both owner access AND cash outs?** Use surplus allowance - owner and supporters share the same pool
 - Be precise: "current rules don't allow direct payouts, but you control the rules" is clearer than implying payouts work now
 
+**IMPORTANT: Pre-deployment vs post-deployment:**
+- If transaction-preview is shown but NOT YET EXECUTED: user can still change the configuration. Don't say "update the rules later" - just regenerate the transaction with the right settings NOW.
+- If user asks "how do I get my money?" BEFORE deploying: ask about their funding goal and regenerate the transaction with proper fund access configured.
+- Only mention "updating rules" if the project is ALREADY deployed.
+
 **NEVER mention (unless user says them first):**
 - Chain names (Ethereum, Optimism, Base, Arbitrum)
 - "4 chains" or "all chains" or "multi-chain"
