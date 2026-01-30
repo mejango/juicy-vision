@@ -170,7 +170,13 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [authModalAnchorPosition, setAuthModalAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
   // Current user's Juicy ID (for displaying their name instead of "You")
-  const [currentUserIdentity, setCurrentUserIdentity] = useState<JuicyIdentity | null>(null)
+  // Initialize from localStorage cache to prevent flicker on remount
+  const [currentUserIdentity, setCurrentUserIdentity] = useState<JuicyIdentity | null>(() => {
+    try {
+      const cached = localStorage.getItem('juicy-identity')
+      return cached ? JSON.parse(cached) : null
+    } catch { return null }
+  })
   const [showBetaPopover, setShowBetaPopover] = useState(false)
   const [dockScrollEnabled, setDockScrollEnabled] = useState(false)
   const [betaPopoverPosition, setBetaPopoverPosition] = useState<'above' | 'below'>('above')
@@ -664,6 +670,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           const data = await res.json()
           if (data.success && data.data) {
             setCurrentUserIdentity(data.data)
+            // Cache for instant display on remount
+            try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {}
           }
         }
       } catch {
