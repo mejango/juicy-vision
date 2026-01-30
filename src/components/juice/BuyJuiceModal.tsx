@@ -1,8 +1,10 @@
 /**
- * Buy Juice Modal - Stripe Checkout Integration
+ * Buy Pay Credits Modal - Stripe Checkout Integration
  *
  * Uses Stripe's Embedded Checkout (recommended approach) to let users
- * purchase Juice credits with fiat currency.
+ * purchase Pay Credits with fiat currency.
+ *
+ * Flat rate: $1.01 per Pay Credit
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -15,6 +17,7 @@ import {
 import { useThemeStore, useAuthStore } from '../../stores'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
+const PAY_CREDITS_RATE = 1.01 // Flat rate: $1.01 per Pay Credit
 
 interface BuyJuiceModalProps {
   isOpen: boolean
@@ -24,7 +27,7 @@ interface BuyJuiceModalProps {
 
 type PurchaseStep = 'amount' | 'checkout' | 'success' | 'error'
 
-// Preset amounts for quick selection
+// Preset credit amounts for quick selection
 const PRESET_AMOUNTS = [10, 25, 50, 100]
 
 export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceModalProps) {
@@ -33,7 +36,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
   const isDark = theme === 'dark'
 
   const [step, setStep] = useState<PurchaseStep>('amount')
-  const [amount, setAmount] = useState<number>(25)
+  const [amount, setAmount] = useState<number>(25) // Credits amount
   const [customAmount, setCustomAmount] = useState<string>('')
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null)
@@ -85,7 +88,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
 
   const startCheckout = useCallback(async () => {
     if (!token) {
-      setError('Please sign in to purchase Juice')
+      setError('Please sign in to purchase Pay Credits')
       return
     }
 
@@ -146,7 +149,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
         {/* Header */}
         <div className={`px-4 py-3 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
           <h2 className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {step === 'amount' && 'Buy Juice Credits'}
+            {step === 'amount' && 'Buy Pay Credits'}
             {step === 'checkout' && 'Complete Payment'}
             {step === 'success' && 'Purchase Complete'}
             {step === 'error' && 'Purchase Failed'}
@@ -169,10 +172,22 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
           {step === 'amount' && (
             <div className="space-y-4">
               <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Juice credits let you pay Juicebox projects with your credit card. 1 Juice = $1 USD.
+                Pay Credits let you pay Juicebox projects with your credit card.
               </p>
 
-              {/* Preset amounts */}
+              {/* Flat rate display */}
+              <div className={`px-3 py-2 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
+                <div className="flex justify-between items-center">
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Rate
+                  </span>
+                  <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    $1.01 per Pay Credit
+                  </span>
+                </div>
+              </div>
+
+              {/* Preset credit amounts */}
               <div className="grid grid-cols-4 gap-2">
                 {PRESET_AMOUNTS.map(preset => (
                   <button
@@ -186,20 +201,17 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
                           : 'bg-transparent border-gray-200 text-gray-700 hover:border-gray-400'
                     }`}
                   >
-                    ${preset}
+                    {preset}
                   </button>
                 ))}
               </div>
 
-              {/* Custom amount */}
+              {/* Custom credit amount */}
               <div>
                 <label className={`block text-xs mb-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   Or enter custom amount
                 </label>
                 <div className="relative">
-                  <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    $
-                  </span>
                   <input
                     type="number"
                     min={1}
@@ -207,8 +219,8 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
                     step={1}
                     value={customAmount}
                     onChange={handleCustomAmountChange}
-                    placeholder="Custom amount"
-                    className={`w-full pl-7 pr-3 py-2 text-sm font-mono ${
+                    placeholder="Credits"
+                    className={`w-full px-3 py-2 text-sm font-mono ${
                       isDark
                         ? 'bg-white/5 border-white/10 text-white placeholder-gray-500'
                         : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
@@ -216,16 +228,22 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
                   />
                 </div>
                 <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  $1 - $10,000 per purchase
+                  1 - 10,000 credits per purchase
                 </p>
               </div>
 
               {/* Summary */}
               <div className={`px-3 py-2 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center mb-1">
                   <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>You'll receive</span>
                   <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {amount.toLocaleString()} Juice
+                    {amount.toLocaleString()} Pay Credits
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Total cost</span>
+                  <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    ${(amount * PAY_CREDITS_RATE).toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -251,7 +269,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
                     Loading...
                   </span>
                 ) : (
-                  `Continue to Payment - $${amount.toLocaleString()}`
+                  `Buy ${amount.toLocaleString()} Credits - $${(amount * PAY_CREDITS_RATE).toFixed(2)}`
                 )}
               </button>
             </div>
@@ -282,7 +300,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
               </div>
               <div>
                 <h3 className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {amount} Juice credits purchased
+                  {amount} Pay Credits purchased
                 </h3>
                 <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   Credits available once payment is verified.

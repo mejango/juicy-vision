@@ -72,6 +72,7 @@ import { query, queryOne, execute } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
 import { getPseudoAddress, verifyWalletSignature, parseSessionMergeMessage, isTimestampValid } from '../utils/crypto.ts';
 import { rateLimitMiddleware, rateLimitByWallet } from '../services/rateLimit.ts';
+// Rate limiting removed - AI is free for everyone
 
 const chatRouter = new Hono();
 
@@ -1182,6 +1183,8 @@ chatRouter.post(
       if (!canInvokePermission) {
         return c.json({ success: false, error: 'You do not have permission to invoke AI in this chat' }, 403);
       }
+
+      // AI is free for everyone - no rate limiting
 
       // Build optimized context with summaries, state, and token budgeting
       const { buildOptimizedContext, formatContextForClaude, logContextUsage } = await import('../services/contextManager.ts');

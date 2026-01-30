@@ -23,6 +23,9 @@ import {
 } from '../services/juice.ts';
 import { rateLimitByUser } from '../services/rateLimit.ts';
 
+// Flat rate for Pay Credits: $1.01 per credit
+const PAY_CREDITS_RATE = 1.01;
+
 export const juiceRouter = new Hono();
 
 // ============================================================================
@@ -41,6 +44,21 @@ juiceRouter.get('/stripe-config', async (c) => {
     success: true,
     data: {
       publishableKey: config.stripePublishableKey,
+    },
+  });
+});
+
+// ============================================================================
+// Credit Rate
+// ============================================================================
+
+// GET /api/juice/rate - Get flat Pay Credits rate ($1.01)
+juiceRouter.get('/rate', requireAuth, async (c) => {
+  return c.json({
+    success: true,
+    data: {
+      rate: PAY_CREDITS_RATE,
+      description: `1 Pay Credit = $${PAY_CREDITS_RATE.toFixed(2)}`,
     },
   });
 });
@@ -100,6 +118,9 @@ juiceRouter.post(
     try {
       const stripe = new Stripe(config.stripeSecretKey);
 
+      // Flat rate: $1.01 per Pay Credit
+      const fiatAmountCents = Math.round(amount * PAY_CREDITS_RATE * 100);
+
       // Use Checkout Sessions API (Stripe's recommended approach)
       // This provides a hosted/embeddable checkout with automatic payment method handling
       const session = await stripe.checkout.sessions.create({
@@ -110,23 +131,25 @@ juiceRouter.post(
             price_data: {
               currency: 'usd',
               product_data: {
-                name: 'Juice Credits',
-                description: `${amount} Juice credits for Juicebox payments`,
+                name: 'Pay Credits',
+                description: `${amount} Pay Credits for Juicebox payments`,
               },
-              unit_amount: Math.round(amount * 100), // Convert to cents
+              unit_amount: fiatAmountCents,
             },
             quantity: 1,
           },
         ],
         metadata: {
-          type: 'juice_purchase',
+          type: 'pay_credits_purchase',
           userId: user.id,
-          juiceAmount: amount.toString(),
+          creditsAmount: amount.toString(),
+          fiatAmount: (fiatAmountCents / 100).toFixed(2),
+          creditRate: PAY_CREDITS_RATE.toString(),
         },
         // Enable dynamic payment methods (Stripe best practice)
         // Stripe automatically shows relevant payment methods based on user location
         payment_method_types: undefined, // Let Stripe choose dynamically
-        return_url: `${c.req.header('origin') || 'https://juicy.vision'}/juice/purchase-complete?session_id={CHECKOUT_SESSION_ID}`,
+        return_url: `${c.req.header('origin') || 'https://juicy.vision'}/pay-credits/purchase-complete?session_id={CHECKOUT_SESSION_ID}`,
       });
 
       return c.json({
@@ -134,7 +157,9 @@ juiceRouter.post(
         data: {
           clientSecret: session.client_secret,
           sessionId: session.id,
-          amount,
+          creditsAmount: amount,
+          fiatAmount: fiatAmountCents / 100,
+          creditRate: PAY_CREDITS_RATE,
         },
       });
     } catch (error) {

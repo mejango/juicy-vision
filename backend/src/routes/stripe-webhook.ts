@@ -14,6 +14,15 @@ import {
   markPurchaseDisputed as markJuicePurchaseDisputed,
   markPurchaseRefunded as markJuicePurchaseRefunded,
 } from '../services/juice.ts';
+import {
+  getPlanByStripePriceId,
+  upsertSubscription,
+  updateSubscriptionStatus,
+  cancelSubscription,
+  getSubscriptionByStripeId,
+  getSubscriptionByStripeCustomerId,
+} from '../services/subscription.ts';
+import { queryOne } from '../db/index.ts';
 
 export const stripeWebhookRouter = new Hono();
 
@@ -146,6 +155,31 @@ stripeWebhookRouter.post('/', async (c) => {
         break;
       }
 
+      // Subscription events
+      case 'customer.subscription.created': {
+        const subscription = event.data.object as Stripe.Subscription;
+        await handleSubscriptionCreated(subscription);
+        break;
+      }
+
+      case 'customer.subscription.updated': {
+        const subscription = event.data.object as Stripe.Subscription;
+        await handleSubscriptionUpdated(subscription);
+        break;
+      }
+
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object as Stripe.Subscription;
+        await handleSubscriptionDeleted(subscription);
+        break;
+      }
+
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object as Stripe.Invoice;
+        await handleInvoicePaymentFailed(invoice);
+        break;
+      }
+
       default:
         logger.debug('Unhandled webhook event type', { type: event.type });
     }
@@ -173,16 +207,19 @@ async function handleCheckoutSessionCompleted(
 ): Promise<void> {
   const metadata = session.metadata || {};
 
-  // Only handle Juice purchases from Checkout Sessions
-  if (metadata.type !== 'juice_purchase') {
-    logger.debug('Checkout session is not a Juice purchase, skipping', {
+  // Only handle Pay Credits purchases from Checkout Sessions
+  // Support both old 'juice_purchase' and new 'pay_credits_purchase' types
+  if (metadata.type !== 'juice_purchase' && metadata.type !== 'pay_credits_purchase') {
+    logger.debug('Checkout session is not a Pay Credits purchase, skipping', {
       sessionId: session.id,
     });
     return;
   }
 
-  if (!metadata.userId || !metadata.juiceAmount) {
-    logger.warn('Juice purchase session missing required metadata', {
+  // Support both old 'juiceAmount' and new 'creditsAmount' fields
+  const creditsAmountStr = metadata.creditsAmount || metadata.juiceAmount;
+  if (!metadata.userId || !creditsAmountStr) {
+    logger.warn('Pay Credits purchase session missing required metadata', {
       sessionId: session.id,
     });
     return;
@@ -214,11 +251,17 @@ async function handleCheckoutSessionCompleted(
   const delayDays = calculateSettlementDelayDays(riskScore);
   const fiatAmount = (session.amount_total || 0) / 100;
 
-  logger.info('Processing Juice purchase from Checkout Session', {
+  // Get credits amount and credit rate from metadata
+  const creditsAmount = creditsAmountStr ? parseFloat(creditsAmountStr) : fiatAmount;
+  const creditRate = metadata.creditRate ? parseFloat(metadata.creditRate) : undefined;
+
+  logger.info('Processing Pay Credits purchase from Checkout Session', {
     sessionId: session.id,
     paymentIntentId,
     userId: metadata.userId,
     fiatAmount,
+    creditsAmount,
+    creditRate,
     riskScore,
     riskLevel,
     delayDays,
@@ -234,6 +277,8 @@ async function handleCheckoutSessionCompleted(
     stripePaymentIntentId: paymentIntentId,
     stripeChargeId: chargeId,
     fiatAmount,
+    juiceAmount: creditsAmount,
+    creditRate,
     riskScore,
     riskLevel,
     settlementDelayDays: delayDays,
@@ -241,20 +286,20 @@ async function handleCheckoutSessionCompleted(
 
   // If low risk, credit immediately
   if (delayDays === 0) {
-    logger.info('Low risk Juice purchase - crediting immediately', {
+    logger.info('Low risk Pay Credits purchase - crediting immediately', {
       purchaseId,
       riskScore,
     });
 
     try {
-      await creditJuice(metadata.userId, fiatAmount, purchaseId);
-      logger.info('Immediate Juice credit successful', {
+      await creditJuice(metadata.userId, creditsAmount, purchaseId);
+      logger.info('Immediate Pay Credits credit successful', {
         purchaseId,
-        amount: fiatAmount,
+        amount: creditsAmount,
       });
     } catch (error) {
       // Credit failed but purchase is recorded - cron will retry
-      logger.error('Immediate Juice credit failed, will retry via cron', error as Error, {
+      logger.error('Immediate Pay Credits credit failed, will retry via cron', error as Error, {
         purchaseId,
       });
     }
@@ -270,9 +315,9 @@ async function handlePaymentSucceeded(
 ): Promise<void> {
   const metadata = paymentIntent.metadata;
 
-  // Check if this is a Juice purchase
-  if (metadata.type === 'juice_purchase') {
-    await handleJuicePurchaseSucceeded(stripe, paymentIntent);
+  // Check if this is a Pay Credits purchase (support both old and new type names)
+  if (metadata.type === 'juice_purchase' || metadata.type === 'pay_credits_purchase') {
+    await handlePayCreditsPurchaseSucceeded(stripe, paymentIntent);
     return;
   }
 
@@ -281,16 +326,18 @@ async function handlePaymentSucceeded(
 }
 
 /**
- * Handle successful Juice purchase - credit after risk-based delay
+ * Handle successful Pay Credits purchase - credit after risk-based delay
  */
-async function handleJuicePurchaseSucceeded(
+async function handlePayCreditsPurchaseSucceeded(
   stripe: Stripe,
   paymentIntent: Stripe.PaymentIntent
 ): Promise<void> {
   const metadata = paymentIntent.metadata;
 
-  if (!metadata.userId || !metadata.juiceAmount) {
-    logger.warn('Juice purchase missing required metadata', {
+  // Support both old 'juiceAmount' and new 'creditsAmount' fields
+  const creditsAmountStr = metadata.creditsAmount || metadata.juiceAmount;
+  if (!metadata.userId || !creditsAmountStr) {
+    logger.warn('Pay Credits purchase missing required metadata', {
       paymentIntentId: paymentIntent.id,
     });
     return;
@@ -317,10 +364,16 @@ async function handleJuicePurchaseSucceeded(
   const delayDays = calculateSettlementDelayDays(riskScore);
   const fiatAmount = paymentIntent.amount / 100;
 
-  logger.info('Processing Juice purchase', {
+  // Get credits amount and credit rate from metadata
+  const creditsAmount = parseFloat(creditsAmountStr);
+  const creditRate = metadata.creditRate ? parseFloat(metadata.creditRate) : undefined;
+
+  logger.info('Processing Pay Credits purchase', {
     paymentIntentId: paymentIntent.id,
     userId: metadata.userId,
     fiatAmount,
+    creditsAmount,
+    creditRate,
     riskScore,
     riskLevel,
     delayDays,
@@ -334,6 +387,8 @@ async function handleJuicePurchaseSucceeded(
       ? paymentIntent.latest_charge
       : paymentIntent.latest_charge?.id,
     fiatAmount,
+    juiceAmount: creditsAmount,
+    creditRate,
     riskScore,
     riskLevel,
     settlementDelayDays: delayDays,
@@ -341,20 +396,20 @@ async function handleJuicePurchaseSucceeded(
 
   // If low risk, credit immediately
   if (delayDays === 0) {
-    logger.info('Low risk Juice purchase - crediting immediately', {
+    logger.info('Low risk Pay Credits purchase - crediting immediately', {
       purchaseId,
       riskScore,
     });
 
     try {
-      await creditJuice(metadata.userId, fiatAmount, purchaseId);
-      logger.info('Immediate Juice credit successful', {
+      await creditJuice(metadata.userId, creditsAmount, purchaseId);
+      logger.info('Immediate Pay Credits credit successful', {
         purchaseId,
-        amount: fiatAmount,
+        amount: creditsAmount,
       });
     } catch (error) {
       // Credit failed but purchase is recorded - cron will retry
-      logger.error('Immediate Juice credit failed, will retry via cron', error as Error, {
+      logger.error('Immediate Pay Credits credit failed, will retry via cron', error as Error, {
         purchaseId,
       });
     }
@@ -513,5 +568,185 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
         chargeId: charge.id,
       });
     }
+  }
+}
+
+// ============================================================================
+// Subscription Handlers
+// ============================================================================
+
+/**
+ * Handle new subscription creation
+ */
+async function handleSubscriptionCreated(subscription: Stripe.Subscription): Promise<void> {
+  const metadata = subscription.metadata || {};
+  const userId = metadata.userId;
+
+  if (!userId) {
+    logger.warn('Subscription missing userId in metadata', {
+      subscriptionId: subscription.id,
+    });
+    return;
+  }
+
+  // Get the price ID from subscription items
+  const priceId = subscription.items.data[0]?.price?.id;
+  if (!priceId) {
+    logger.warn('Subscription missing price ID', {
+      subscriptionId: subscription.id,
+    });
+    return;
+  }
+
+  // Find the plan by price ID
+  const plan = await getPlanByStripePriceId(priceId);
+  if (!plan) {
+    logger.warn('No plan found for price ID', {
+      subscriptionId: subscription.id,
+      priceId,
+    });
+    return;
+  }
+
+  // Determine billing interval
+  const interval = subscription.items.data[0]?.price?.recurring?.interval;
+  const billingInterval = interval === 'year' ? 'yearly' : 'monthly';
+
+  // Create/update subscription record
+  await upsertSubscription({
+    userId,
+    planId: plan.id,
+    stripeSubscriptionId: subscription.id,
+    stripeCustomerId: typeof subscription.customer === 'string'
+      ? subscription.customer
+      : subscription.customer.id,
+    billingInterval,
+    status: subscription.status,
+    currentPeriodStart: new Date(subscription.current_period_start * 1000),
+    currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+  });
+
+  logger.info('Subscription created', {
+    subscriptionId: subscription.id,
+    userId,
+    planName: plan.name,
+    billingInterval,
+  });
+}
+
+/**
+ * Handle subscription updates (plan changes, cancellation scheduled, etc.)
+ */
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
+  const existingSubscription = await getSubscriptionByStripeId(subscription.id);
+
+  if (!existingSubscription) {
+    // Subscription not in our DB - might be created outside our system
+    // Try to create it from metadata
+    const metadata = subscription.metadata || {};
+    if (metadata.userId) {
+      await handleSubscriptionCreated(subscription);
+    } else {
+      logger.warn('Subscription update for unknown subscription', {
+        subscriptionId: subscription.id,
+      });
+    }
+    return;
+  }
+
+  // Check if plan changed
+  const priceId = subscription.items.data[0]?.price?.id;
+  if (priceId) {
+    const newPlan = await getPlanByStripePriceId(priceId);
+    if (newPlan && newPlan.id !== existingSubscription.planId) {
+      // Plan changed - update subscription
+      const interval = subscription.items.data[0]?.price?.recurring?.interval;
+      const billingInterval = interval === 'year' ? 'yearly' : 'monthly';
+
+      await upsertSubscription({
+        userId: existingSubscription.userId,
+        planId: newPlan.id,
+        stripeSubscriptionId: subscription.id,
+        stripeCustomerId: typeof subscription.customer === 'string'
+          ? subscription.customer
+          : subscription.customer.id,
+        billingInterval,
+        status: subscription.status,
+        currentPeriodStart: new Date(subscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      });
+
+      logger.info('Subscription plan changed', {
+        subscriptionId: subscription.id,
+        userId: existingSubscription.userId,
+        oldPlanId: existingSubscription.planId,
+        newPlanId: newPlan.id,
+      });
+      return;
+    }
+  }
+
+  // Update status and cancel_at_period_end
+  await updateSubscriptionStatus(
+    subscription.id,
+    subscription.status,
+    subscription.cancel_at_period_end
+  );
+
+  logger.info('Subscription updated', {
+    subscriptionId: subscription.id,
+    status: subscription.status,
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+  });
+}
+
+/**
+ * Handle subscription deletion (canceled after period end or immediate)
+ */
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Promise<void> {
+  const success = await cancelSubscription(subscription.id);
+
+  if (success) {
+    logger.info('Subscription deleted', {
+      subscriptionId: subscription.id,
+    });
+  } else {
+    logger.warn('Subscription deletion - subscription not found in DB', {
+      subscriptionId: subscription.id,
+    });
+  }
+}
+
+/**
+ * Handle failed invoice payment
+ */
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
+  // Only handle subscription invoices
+  if (!invoice.subscription) {
+    return;
+  }
+
+  const subscriptionId = typeof invoice.subscription === 'string'
+    ? invoice.subscription
+    : invoice.subscription.id;
+
+  // Update subscription status to past_due
+  const success = await updateSubscriptionStatus(subscriptionId, 'past_due');
+
+  if (success) {
+    logger.warn('Invoice payment failed - subscription marked as past_due', {
+      subscriptionId,
+      invoiceId: invoice.id,
+      amountDue: invoice.amount_due,
+    });
+
+    // TODO: Could send notification email to user here
+  } else {
+    logger.warn('Invoice payment failed - subscription not found in DB', {
+      subscriptionId,
+      invoiceId: invoice.id,
+    });
   }
 }

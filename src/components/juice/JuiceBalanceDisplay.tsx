@@ -65,9 +65,9 @@ export default function JuiceBalanceDisplay({ compact = false }: JuiceBalanceDis
       <div className={`p-4 rounded-xl ${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">🧃</span>
+            <span className="text-2xl">💳</span>
             <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Juice Credits
+              Pay Credits
             </span>
           </div>
           <button
@@ -83,7 +83,7 @@ export default function JuiceBalanceDisplay({ compact = false }: JuiceBalanceDis
             {balance?.balance?.toLocaleString() ?? 0}
           </span>
           <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Juice
+            credits
           </span>
         </div>
 
