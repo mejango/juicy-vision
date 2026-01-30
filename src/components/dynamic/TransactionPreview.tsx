@@ -1020,6 +1020,25 @@ export default function TransactionPreview({
     return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
   }, [])
 
+  // Owner ENS name resolution
+  const [ownerEns, setOwnerEns] = useState<string | null>(null)
+
+  // Resolve owner ENS when address is available
+  useEffect(() => {
+    const owner = effectiveUserAddress
+    if (!owner || !/^0x[a-fA-F0-9]{40}$/.test(owner)) {
+      setOwnerEns(null)
+      return
+    }
+    let cancelled = false
+    resolveEnsName(owner).then(name => {
+      if (!cancelled && name) {
+        setOwnerEns(name)
+      }
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [effectiveUserAddress])
+
   // Debug: log managed wallet state
   useEffect(() => {
     if (action === 'launchProject' || action === 'launch721Project') {
@@ -1059,17 +1078,24 @@ export default function TransactionPreview({
   const previewData = useMemo(() => {
     if (_isTruncated === 'true') return null
     try {
-      // Clean up malformed JSON from AI (e.g., embedded JS expressions like ' + Math.floor(...) + ')
+      // Clean up malformed JSON from AI (e.g., embedded JS expressions)
       let cleanedParams = parameters || '{}'
-      // Fix mustStartAtOrAfter with embedded JS expression - use current time + 5 minutes
+      const futureTimestamp = Math.floor(Date.now() / 1000 + 300)
+
+      // Pattern 1: Template literal style '${Math.floor(Date.now()/1000) + 300}'
+      cleanedParams = cleanedParams.replace(
+        /"mustStartAtOrAfter":\s*'\$\{[^}]+\}'/g,
+        `"mustStartAtOrAfter": ${futureTimestamp}`
+      )
+      // Pattern 2: Concatenation style ' + Math.floor(...) + '
       cleanedParams = cleanedParams.replace(
         /"mustStartAtOrAfter":\s*'\s*\+\s*Math\.floor\([^)]+\)\s*\+\s*'/g,
-        `"mustStartAtOrAfter": ${Math.floor(Date.now() / 1000 + 300)}`
+        `"mustStartAtOrAfter": ${futureTimestamp}`
       )
-      // Also handle variations with different whitespace/quote styles
+      // Pattern 3: Other concatenation variations
       cleanedParams = cleanedParams.replace(
         /"mustStartAtOrAfter":\s*["']\s*\+[^,}]+\+\s*["']/g,
-        `"mustStartAtOrAfter": ${Math.floor(Date.now() / 1000 + 300)}`
+        `"mustStartAtOrAfter": ${futureTimestamp}`
       )
 
       const raw = JSON.parse(cleanedParams)
@@ -1602,16 +1628,16 @@ export default function TransactionPreview({
               </div>
             ) : launchValidation.owner ? (
               <div className="flex items-center gap-2">
-                {/* Check if owner is current user */}
-                {managedAddress && launchValidation.owner.toLowerCase() === managedAddress.toLowerCase() ? (
-                  // Owner is current user - show identity or "You"
+                {/* Check if owner is current user (managed wallet or external wallet) */}
+                {effectiveUserAddress && launchValidation.owner.toLowerCase() === effectiveUserAddress.toLowerCase() ? (
+                  // Owner is current user - show identity, ENS, or "You"
                   <span className={`text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {identity ? identity.formatted : 'You'}
+                    {identity ? identity.formatted : ownerEns || 'You'}
                   </span>
                 ) : (
-                  // Owner is someone else - show address
-                  <span className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {launchValidation.owner.slice(0, 8)}...{launchValidation.owner.slice(-6)}
+                  // Owner is someone else - show ENS or truncated address
+                  <span className={`${ownerEns ? 'text-sm' : 'font-mono text-sm'} ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {ownerEns || `${launchValidation.owner.slice(0, 8)}...${launchValidation.owner.slice(-6)}`}
                   </span>
                 )}
               </div>
@@ -1703,7 +1729,9 @@ export default function TransactionPreview({
               <div className={`flex justify-between items-center ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
                 <span>Owner</span>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono">{launchValidation.owner.slice(0, 8)}...{launchValidation.owner.slice(-6)}</span>
+                  <span className={ownerEns ? '' : 'font-mono'}>
+                    {ownerEns || `${launchValidation.owner.slice(0, 8)}...${launchValidation.owner.slice(-6)}`}
+                  </span>
                   {isManagedMode && (
                     <span className={`text-[10px] px-1.5 py-0.5 ${isDark ? 'bg-juice-cyan/20 text-juice-cyan' : 'bg-teal-100 text-teal-700'}`}>
                       Touch ID Wallet
