@@ -177,13 +177,13 @@ app.notFound((c) => {
 });
 
 // ============================================================================
-// Background Jobs (Development fallback - use /api/cron endpoints in production)
+// Background Jobs (Development fallback - use /cron endpoints in production)
 // ============================================================================
 
 const config = getConfig();
 
 // In development, run background jobs via setInterval
-// In production on GCP, use Cloud Scheduler to call /api/cron endpoints
+// In production on GCP, use Cloud Scheduler to call /cron endpoints
 if (config.env === 'development') {
   console.log('Starting development background jobs...');
 
@@ -276,43 +276,43 @@ console.log(`
 ║  Port: ${port.toString().padEnd(49)}║
 ║                                                           ║
 ║  Auth & User:                                             ║
-║    POST /api/auth/register    - Register new user         ║
-║    POST /api/auth/login       - Login                     ║
-║    GET  /api/auth/me          - Get current user          ║
+║    POST /auth/register    - Register new user         ║
+║    POST /auth/login       - Login                     ║
+║    GET  /auth/me          - Get current user          ║
 ║                                                           ║
 ║  Passkey (WebAuthn):                                      ║
-║    GET  /api/passkey/register/options - Registration opts ║
-║    POST /api/passkey/register/verify  - Complete register ║
-║    GET  /api/passkey/authenticate/options - Auth options  ║
-║    POST /api/passkey/authenticate/verify  - Complete auth ║
+║    GET  /passkey/register/options - Registration opts ║
+║    POST /passkey/register/verify  - Complete register ║
+║    GET  /passkey/authenticate/options - Auth options  ║
+║    POST /passkey/authenticate/verify  - Complete auth ║
 ║                                                           ║
 ║  Chat:                                                    ║
-║    POST /api/chat             - Create chat               ║
-║    GET  /api/chat             - List user's chats         ║
-║    GET  /api/chat/:id         - Get chat details          ║
-║    POST /api/chat/:id/messages - Send message             ║
-║    GET  /api/chat/:id/ws      - WebSocket connection      ║
-║    POST /api/chat/:id/ai/invoke - Invoke AI response      ║
+║    POST /chat             - Create chat               ║
+║    GET  /chat             - List user's chats         ║
+║    GET  /chat/:id         - Get chat details          ║
+║    POST /chat/:id/messages - Send message             ║
+║    GET  /chat/:id/ws      - WebSocket connection      ║
+║    POST /chat/:id/ai/invoke - Invoke AI response      ║
 ║                                                           ║
 ║  Wallet:                                                  ║
-║    GET  /api/wallet/address   - Get custodial address     ║
-║    GET  /api/wallet/balances  - Get token balances        ║
-║    POST /api/wallet/transfer  - Request transfer          ║
+║    GET  /wallet/address   - Get custodial address     ║
+║    GET  /wallet/balances  - Get token balances        ║
+║    POST /wallet/transfer  - Request transfer          ║
 ║                                                           ║
 ║  Juice (Stored Value):                                    ║
-║    GET  /api/juice/balance    - Get Juice balance         ║
-║    POST /api/juice/purchase   - Buy Juice with fiat       ║
-║    POST /api/juice/spend      - Pay a project with Juice  ║
-║    POST /api/juice/cash-out   - Convert Juice to crypto   ║
-║    GET  /api/juice/transactions - Transaction history     ║
+║    GET  /juice/balance    - Get Juice balance         ║
+║    POST /juice/purchase   - Buy Juice with fiat       ║
+║    POST /juice/spend      - Pay a project with Juice  ║
+║    POST /juice/cash-out   - Convert Juice to crypto   ║
+║    GET  /juice/transactions - Transaction history     ║
 ║                                                           ║
 ║  Proxy Endpoints:                                         ║
-║    POST /api/proxy/bendystraw - Bendystraw GraphQL        ║
-║    POST /api/proxy/rpc/:chain - JSON-RPC proxy            ║
+║    POST /proxy/bendystraw - Bendystraw GraphQL        ║
+║    POST /proxy/rpc/:chain - JSON-RPC proxy            ║
 ║                                                           ║
 ║  Debug (Development Only):                                ║
-║    GET  /api/debug           - Debug dashboard            ║
-║    GET  /api/debug/stream    - Real-time event stream     ║
+║    GET  /debug           - Debug dashboard            ║
+║    GET  /debug/stream    - Real-time event stream     ║
 ╚═══════════════════════════════════════════════════════════╝
 `);
 
@@ -367,7 +367,7 @@ async function handleRequest(req: Request): Promise<Response> {
   // Check if this is a WebSocket upgrade request for chat
   const upgradeHeader = req.headers.get('upgrade');
   const isWsUpgrade = upgradeHeader?.toLowerCase() === 'websocket';
-  const wsMatch = url.pathname.match(/^\/api\/chat\/([^\/]+)\/ws$/);
+  const wsMatch = url.pathname.match(/^\/chat\/([^\/]+)\/ws$/);
 
   if (isWsUpgrade && wsMatch) {
     const chatId = wsMatch[1];
