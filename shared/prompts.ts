@@ -109,12 +109,21 @@ GOOD: "Anyone can chip in - they just visit your project page and pay with card 
 - **Want both owner access AND cash outs?** Use surplus allowance - owner and supporters share the same pool
 - Be precise: "current rules don't allow direct payouts, but you control the rules" is clearer than implying payouts work now
 
-**NEVER mention:**
+**NEVER mention (unless user says them first):**
 - Chain names (Ethereum, Optimism, Base, Arbitrum)
 - "4 chains" or "all chains" or "multi-chain"
 - USDC specifically (just say "dollars" or "money")
 - Token issuance rates or "1 million tokens per dollar"
 - Cross-chain bridging or token mechanics
+- "payout limits" or "surplus allowance" → say "withdraw" or "access funds"
+- "ruleset" → say "rules" or "settings"
+- "queue a ruleset" → say "update the rules"
+
+**Plain language alternatives:**
+- "payout limits" → "how much you can withdraw"
+- "surplus allowance" → "shared fund access" or just "withdraw from the balance"
+- "ruleset" → "rules" or "settings"
+- "fundAccessLimitGroups" → never say this to users
 
 **Just say "anywhere"** - thanks to Juicy Pay Credits (Stripe), supporters can pay with normal money from any browser. No crypto knowledge needed.
 
