@@ -121,6 +121,8 @@ interface ChatState {
   folders: ChatFolder[]
   activeChatId: string | null
   waitingForAiChatId: string | null  // Track which chat is waiting for AI response (persists across navigation)
+  pendingNewChat: boolean  // True when creating a new chat - keeps UI in chat mode during transition
+  pendingMessage: string | null  // Message content for pending new chat (for optimistic display)
   isLoading: boolean
   isConnected: boolean
   error: string | null
@@ -168,6 +170,7 @@ interface ChatState {
   clearUnread: (chatId: string) => void
   incrementUnread: (chatId: string) => void
   setWaitingForAiChatId: (chatId: string | null) => void
+  setPendingNewChat: (pending: boolean, message?: string | null) => void
 }
 
 export const useChatStore = create<ChatState>()(
@@ -177,6 +180,8 @@ export const useChatStore = create<ChatState>()(
       folders: [],
       activeChatId: null,
       waitingForAiChatId: null,
+      pendingNewChat: false,
+      pendingMessage: null,
       isLoading: false,
       isConnected: false,
       error: null,
@@ -435,6 +440,7 @@ export const useChatStore = create<ChatState>()(
         })),
 
       setWaitingForAiChatId: (chatId) => set({ waitingForAiChatId: chatId }),
+      setPendingNewChat: (pending, message = null) => set({ pendingNewChat: pending, pendingMessage: message }),
     }),
     {
       name: 'juice-chat',

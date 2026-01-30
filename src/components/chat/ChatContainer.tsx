@@ -67,6 +67,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     updateChat,
     removeChat,
     setActiveChat,
+    setPendingNewChat,
+    pendingNewChat,
+    pendingMessage,
   } = useChatStore()
 
   // Use forceActiveChatId (from URL) over store value to prevent race conditions
@@ -267,7 +270,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     dockRef,
     stickyPromptRef,
     messagesScrollRef,
-    hasMessages: chatMessages.length > 0,
+    hasMessages: chatMessages.length > 0 || pendingNewChat,
   })
 
   // Popover positioning on scroll
@@ -286,7 +289,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
   // Convert chat messages to display format with sender info
   const displayMessages: Message[] = useMemo(() => {
-    return chatMessages.map(msg => {
+    const messages = chatMessages.map(msg => {
       const sender = members.find(m => m.address === msg.senderAddress)
       const isCurrentUser = msg.senderAddress === currentAddress
 
@@ -325,7 +328,21 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         needsJuicyId: msg.role === 'user' && isCurrentUser ? needsJuicyId : undefined,
       } as Message
     })
-  }, [chatMessages, members, currentAddress, currentUserIdentity])
+
+    // Show pending message while creating new chat (instant feedback)
+    if (pendingNewChat && pendingMessage && messages.length === 0) {
+      messages.push({
+        id: 'pending-message',
+        role: 'user',
+        content: pendingMessage,
+        senderName: currentUserIdentity?.username,
+        senderAddress: currentAddress,
+        createdAt: new Date().toISOString(),
+      } as Message)
+    }
+
+    return messages
+  }, [chatMessages, members, currentAddress, currentUserIdentity, pendingNewChat, pendingMessage])
 
   // Use display messages for everything
   const messages = displayMessages
@@ -377,42 +394,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
     const isNewChat = !currentChatId
 
-    // For new chats: immediately show optimistic UI before any async work
-    // This makes the transition feel instant
-    let tempChatId = currentChatId
+    // For new chats: set pending state immediately to keep UI in chat mode
+    // This prevents flickering between welcome and chat views during API call
     if (isNewChat) {
-      tempChatId = `temp-${Date.now()}`
-      const tempChat = {
-        id: tempChatId,
-        founderAddress: currentAddress || '0x0000000000000000000000000000000000000000',
-        name: 'New Chat',
-        isPublic: false,
-        isPrivate: privateMode,
-        aiBalanceWei: '0',
-        aiTotalSpentWei: '0',
-        encrypted: false,
-        encryptionVersion: 0,
-        isPinned: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        messages: [],
-        members: [],
-      }
-      addChat(tempChat)
-      useChatStore.getState().setActiveChat(tempChatId)
-
-      // Add optimistic user message immediately
-      const optimisticMessage: ChatMessage = {
-        id: `optimistic-${Date.now()}`,
-        chatId: tempChatId,
-        senderAddress: currentAddress || '0x0000000000000000000000000000000000000000',
-        role: 'user',
-        content,
-        isEncrypted: false,
-        createdAt: new Date().toISOString(),
-        attachments: attachments,
-      }
-      addChatMessage(tempChatId, optimisticMessage)
+      setPendingNewChat(true, content)
     }
 
     try {
@@ -427,18 +412,18 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         })
         chatId = newChat.id
 
-        // Replace temp chat with real chat in store
-        useChatStore.getState().removeChat(tempChatId!)
         addChat(newChat)
         useChatStore.getState().setActiveChat(chatId)
+
+        // Clear pending state now that we have a real chat
+        setPendingNewChat(false)
 
         // Navigate to the chat URL
         navigate(`/chat/${chatId}`, { replace: true })
       }
 
       // Add optimistic user message for existing chats with attachments
-      // (new chat message was already added above)
-      if (!isNewChat && attachments && attachments.length > 0) {
+      if (attachments && attachments.length > 0) {
         const optimisticMessage: ChatMessage = {
           id: `optimistic-${Date.now()}`,
           chatId,
@@ -454,7 +439,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
       // Send the user's message through the shared chat API
       // This will broadcast via WebSocket to all connected clients
-      // For new chats, the real message will replace the optimistic one
       const attachmentData = attachments?.map(a => ({
         type: a.type,
         name: a.name,
@@ -488,10 +472,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       console.error('Failed to send message:', err)
       setError(err instanceof Error ? err.message : 'Failed to send message')
       setWaitingForAiChatId(null)
+      // Clear pending state on error
+      if (isNewChat) {
+        setPendingNewChat(false)
+      }
     } finally {
       setIsStreaming(false)
     }
-  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress, effectiveAiEnabled, chatAiEnabled])
+  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress, effectiveAiEnabled, chatAiEnabled, setPendingNewChat, privateMode])
 
   const handleSuggestionClick = (text: string) => {
     handleSend(text)
@@ -1268,7 +1256,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           </div>
         )}
 
-        {messages.length === 0 && !isWaitingForAi ? (
+        {messages.length === 0 && !isWaitingForAi && !pendingNewChat ? (
           <>
             {/* Welcome screen (recommendations) - fills full area, extends behind dock */}
             {(topOnly || (!topOnly && !bottomOnly)) && (
@@ -1589,7 +1577,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 <MessageList
                   messages={messages}
                   members={members}
-                  isWaitingForResponse={isWaitingForAi}
+                  isWaitingForResponse={isWaitingForAi || pendingNewChat}
                   chatId={activeChatId || undefined}
                   currentUserMember={currentUserMember}
                   onlineMembers={onlineMembers}
@@ -1599,7 +1587,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   scrollContainerRef={messagesScrollRef}
                 />
                 {/* Bottom padding - larger when waiting for AI or streaming to create space for response */}
-                <div className={(isWaitingForAi || hasStreamingMessage) ? "h-[70vh]" : "h-[14.44vh]"} />
+                <div className={(isWaitingForAi || pendingNewChat || hasStreamingMessage) ? "h-[70vh]" : "h-[14.44vh]"} />
               </div>
             )}
 
