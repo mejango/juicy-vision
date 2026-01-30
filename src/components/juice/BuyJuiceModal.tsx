@@ -17,7 +17,7 @@ import {
 import { useThemeStore, useAuthStore } from '../../stores'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
-const PAY_CREDITS_RATE = 1.01 // Flat rate: $1.01 per Pay Credit
+const PAY_CREDITS_RATE = 1.05 // Flat rate: $1.05 per Pay Credit
 
 interface BuyJuiceModalProps {
   isOpen: boolean

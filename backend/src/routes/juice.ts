@@ -23,8 +23,8 @@ import {
 } from '../services/juice.ts';
 import { rateLimitByUser } from '../services/rateLimit.ts';
 
-// Flat rate for Pay Credits: $1.01 per credit
-const PAY_CREDITS_RATE = 1.01;
+// Flat rate for Pay Credits: $1.05 per credit
+const PAY_CREDITS_RATE = 1.05;
 
 export const juiceRouter = new Hono();
 

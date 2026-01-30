@@ -1603,32 +1603,95 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId, o
   )
 }
 
-// Top up view
-function TopUpView({ onBack, address }: { onBack: () => void; address?: string }) {
+// Top up view - choose between Pay Credits or Crypto onramps
+function TopUpView({ onBack, address, onBuyCredits }: { onBack: () => void; address?: string; onBuyCredits?: () => void }) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+  const [showOnramps, setShowOnramps] = useState(false)
 
   const onrampLinks = [
     {
       name: 'Coinbase',
+      description: 'Buy with bank, card, or Apple Pay',
       url: address
         ? `https://pay.coinbase.com/buy/select-asset?addresses={"${address}":["ethereum","base","optimism","arbitrum"]}&presetFiatAmount=50`
         : 'https://pay.coinbase.com',
     },
     {
       name: 'MoonPay',
+      description: 'Credit card, bank transfer, Apple Pay',
       url: address
-        ? `https://www.moonpay.com/buy?defaultCurrencyCode=eth&walletAddress=${address}`
+        ? `https://www.moonpay.com/buy?defaultCurrencyCode=usdc_base&walletAddress=${address}`
         : 'https://www.moonpay.com',
     },
     {
       name: 'Transak',
+      description: 'Bank transfer, card, UPI, PIX',
       url: address
-        ? `https://global.transak.com/?cryptoCurrencyCode=ETH&walletAddress=${address}`
+        ? `https://global.transak.com/?cryptoCurrencyCode=USDC&network=base&walletAddress=${address}`
         : 'https://global.transak.com',
     },
   ]
 
+  // Show onramp provider list
+  if (showOnramps) {
+    return (
+      <div className="space-y-3">
+        <button
+          onClick={() => setShowOnramps(false)}
+          className={`flex items-center gap-1 text-xs ${
+            isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back
+        </button>
+
+        <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          Buy USDC or ETH directly to your wallet using these services.
+        </p>
+
+        <div className="space-y-2">
+          {onrampLinks.map((link) => (
+            <a
+              key={link.name}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`w-full py-2.5 px-3 border flex items-center justify-between transition-all block ${
+                isDark
+                  ? 'border-white/10 hover:border-juice-cyan/50 hover:bg-juice-cyan/5'
+                  : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50'
+              }`}
+            >
+              <div>
+                <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {link.name}
+                </div>
+                <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  {link.description}
+                </div>
+              </div>
+              <svg className={`w-4 h-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          ))}
+        </div>
+
+        {address && (
+          <div className={`text-[10px] text-center ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+            Funds will be sent to {shortenAddress(address, 6)}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Main selection view
   return (
     <div className="space-y-3">
       <button
@@ -1643,33 +1706,73 @@ function TopUpView({ onBack, address }: { onBack: () => void; address?: string }
         Back
       </button>
 
-      <div className="space-y-2">
-        {onrampLinks.map((link) => (
-          <a
-            key={link.name}
-            href={link.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`w-full py-2 px-3 border flex items-center justify-between text-sm transition-all block ${
-              isDark
-                ? 'border-white/10 text-white hover:border-green-500/50 hover:bg-green-500/10'
-                : 'border-gray-200 text-gray-900 hover:border-green-500 hover:bg-green-50'
-            }`}
-          >
-            <span>{link.name}</span>
-            <svg className="w-4 h-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-          </a>
-        ))}
-      </div>
+      <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+        Choose how to fund your account
+      </p>
 
-      {address && (
-        <div className={`text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          {shortenAddress(address, 8)}
+      {/* Pay Credits option */}
+      <button
+        onClick={onBuyCredits}
+        className={`w-full p-3 border text-left transition-all ${
+          isDark
+            ? 'border-white/10 hover:border-juice-orange/50 hover:bg-juice-orange/5'
+            : 'border-gray-200 hover:border-orange-400 hover:bg-orange-50'
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <div className={`w-8 h-8 flex items-center justify-center text-lg ${
+            isDark ? 'bg-juice-orange/20' : 'bg-orange-100'
+          }`}>
+            💳
+          </div>
+          <div className="flex-1">
+            <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Pay Credits
+            </div>
+            <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              Buy with credit card · $1.05 per credit
+            </div>
+            <div className={`text-[10px] mt-1 ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
+              Instant · Pay any Juicebox project
+            </div>
+          </div>
+          <svg className={`w-4 h-4 mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
         </div>
-      )}
+      </button>
+
+      {/* Crypto onramp option */}
+      <button
+        onClick={() => setShowOnramps(true)}
+        className={`w-full p-3 border text-left transition-all ${
+          isDark
+            ? 'border-white/10 hover:border-juice-cyan/50 hover:bg-juice-cyan/5'
+            : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50'
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <div className={`w-8 h-8 flex items-center justify-center text-lg ${
+            isDark ? 'bg-juice-cyan/20' : 'bg-blue-100'
+          }`}>
+            🪙
+          </div>
+          <div className="flex-1">
+            <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Buy Crypto
+            </div>
+            <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              USDC or ETH via Coinbase, MoonPay, etc.
+            </div>
+            <div className={`text-[10px] mt-1 ${isDark ? 'text-juice-cyan' : 'text-blue-600'}`}>
+              Direct to wallet · Use anywhere
+            </div>
+          </div>
+          <svg className={`w-4 h-4 mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </button>
     </div>
   )
 }
@@ -2778,7 +2881,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
 // Buy Pay Credits view - inline with back button
 const PRESET_AMOUNTS = [10, 25, 50, 100]
 const API_BASE = import.meta.env.VITE_API_URL || ''
-const PAY_CREDITS_RATE = 1.01 // Flat rate: $1.01 per Pay Credit
+const PAY_CREDITS_RATE = 1.05 // Flat rate: $1.05 per Pay Credit
 
 function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: () => void }) {
   const { theme } = useThemeStore()
@@ -3208,7 +3311,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
             return `You don't have ${insufficientFundsInfo.amount} ${insufficientFundsInfo.token} on ${insufficientFundsInfo.chainName}`
           }
           return 'Confirm Payment'
-        case 'topup': return 'Add Funds'
+        case 'topup': return 'Fund Account'
         default: break
       }
     }
@@ -3220,7 +3323,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       case 'managed': return 'Account'
       case 'wallet': return 'Account'
       case 'passkey': return 'Account'
-      case 'topup': return 'Add Funds'
+      case 'topup': return 'Fund Account'
       case 'settings': return 'Settings'
       case 'juicy_id': return 'Set Juicy ID'
       case 'buy_juice': return 'Buy Pay Credits'
@@ -3343,8 +3446,12 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
 
         {currentView === 'topup' && (
           <TopUpView
-            onBack={() => setView(isSelfCustodyConnected ? 'wallet' : isPasskeyConnected ? 'passkey' : 'select')}
+            onBack={() => setView(isSelfCustodyConnected ? 'wallet' : isPasskeyConnected ? 'passkey' : 'managed')}
             address={passkeyWallet?.address || address}
+            onBuyCredits={() => {
+              setPreviousView('topup')
+              setView('buy_juice')
+            }}
           />
         )}
 
