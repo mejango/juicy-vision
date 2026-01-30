@@ -2907,7 +2907,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
 
       {/* Checkout Step */}
       {step === 'checkout' && stripePromise && clientSecret && (
-        <div className="min-h-[300px] -mx-4 -mb-4">
+        <div className="-mx-4 -mb-4 -mt-2">
           <EmbeddedCheckoutProvider
             stripe={stripePromise}
             options={{
@@ -3015,7 +3015,8 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
     const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
     const gap = 8 // Gap between button and popover
     const margin = 16 // Minimum margin from viewport edges
-    const popoverWidth = 320 // w-80 = 20rem = 320px
+    // Use wider popover for checkout view (Stripe needs more space)
+    const popoverWidth = currentView === 'buy_juice' ? 420 : 320
 
     // Check if button is in lower half of viewport
     const isInLowerHalf = anchorPosition.top > viewportHeight / 2
@@ -3152,9 +3153,9 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       <div className="fixed z-[100]" style={popoverStyle}>
         {/* Popover */}
         <div
-          className={`relative p-4 border shadow-xl w-80 max-h-[calc(100vh-32px)] overflow-y-auto ${
-          isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
-        }`}
+          className={`relative p-4 border shadow-xl max-h-[calc(100vh-32px)] overflow-y-auto transition-all ${
+          currentView === 'buy_juice' ? 'w-[420px]' : 'w-80'
+        } ${isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'}`}
           onMouseDown={(e) => e.stopPropagation()}
         >
         {/* Close button */}
