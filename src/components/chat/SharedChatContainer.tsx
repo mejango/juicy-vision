@@ -493,6 +493,7 @@ export default function SharedChatContainer() {
             onKeyDown={handleKeyDown}
             placeholder={t('chat.typeMessage', 'Type any message...')}
             rows={1}
+            enterKeyHint="send"
             className={`flex-1 px-4 py-2.5 rounded-xl border resize-none transition-colors ${
               theme === 'dark'
                 ? 'bg-white/5 border-white/10 text-white placeholder-gray-500 focus:border-juice-orange'

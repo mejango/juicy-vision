@@ -502,6 +502,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           disabled={disabled}
           rows={1}
           autoFocus
+          enterKeyHint="send"
           className={`flex-1 border-2 border-juice-cyan px-4 pt-[11px] pb-[15px] focus:outline-none focus:border-[3px] focus:px-[15px] focus:pt-[10px] focus:pb-[14px] resize-none font-semibold leading-tight overflow-y-hidden hide-scrollbar ${
             theme === 'dark'
               ? 'bg-white/5 text-white placeholder-white/70'
