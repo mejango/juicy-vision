@@ -23,21 +23,34 @@ interface ChatInputProps {
   onSettingsClick?: () => void
   walletInfoRightContent?: React.ReactNode
   onConnectedAsClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
+  chatId?: string // Unique per chat for draft caching
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15)
 
-const DRAFT_STORAGE_KEY = 'juicy-input-draft'
+const getDraftKey = (chatId?: string) => `juicy-input-draft-${chatId || 'home'}`
 
-export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick, walletInfoRightContent, onConnectedAsClick }: ChatInputProps) {
+export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick, walletInfoRightContent, onConnectedAsClick, chatId }: ChatInputProps) {
+  const draftKey = getDraftKey(chatId)
+
   // Initialize from localStorage to preserve draft on refresh
   const [input, setInput] = useState(() => {
     try {
-      return localStorage.getItem(DRAFT_STORAGE_KEY) || ''
+      return localStorage.getItem(draftKey) || ''
     } catch {
       return ''
     }
   })
+
+  // Reset input when chatId changes (switching between chats)
+  useEffect(() => {
+    try {
+      setInput(localStorage.getItem(draftKey) || '')
+    } catch {
+      setInput('')
+    }
+  }, [draftKey])
+
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [passkeyWallet, setPasskeyWallet] = useState(() => getPasskeyWallet())
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -257,14 +270,14 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   useEffect(() => {
     try {
       if (input) {
-        localStorage.setItem(DRAFT_STORAGE_KEY, input)
+        localStorage.setItem(draftKey, input)
       } else {
-        localStorage.removeItem(DRAFT_STORAGE_KEY)
+        localStorage.removeItem(draftKey)
       }
     } catch {
       // localStorage may be unavailable
     }
-  }, [input])
+  }, [input, draftKey])
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -395,6 +408,10 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       onSend(trimmed, attachments.length > 0 ? attachments : undefined)
       setInput('')
       setAttachments([])
+      // Explicitly clear draft cache on send
+      try {
+        localStorage.removeItem(draftKey)
+      } catch {}
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto'
       }
