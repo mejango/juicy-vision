@@ -5,7 +5,7 @@ export interface QueryError {
   timestamp: number
   queryName: string
   query: string
-  variables: Record<string, unknown>
+  variables: object
   error: string
   errorDetails?: unknown
 }

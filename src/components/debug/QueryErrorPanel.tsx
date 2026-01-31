@@ -91,7 +91,7 @@ export function QueryErrorPanel() {
                   </pre>
                 </div>
 
-                {err.errorDetails && (
+                {err.errorDetails != null && (
                   <div>
                     <div className={`text-xs font-medium mb-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>
                       Error Details:
@@ -99,9 +99,9 @@ export function QueryErrorPanel() {
                     <pre className={`text-xs p-2 rounded overflow-auto max-h-32 ${
                       isDark ? 'bg-black/30 text-red-200' : 'bg-white text-red-900'
                     }`}>
-                      {typeof err.errorDetails === 'string'
+                      {String(typeof err.errorDetails === 'string'
                         ? err.errorDetails
-                        : JSON.stringify(err.errorDetails, null, 2)}
+                        : JSON.stringify(err.errorDetails, null, 2))}
                     </pre>
                   </div>
                 )}
