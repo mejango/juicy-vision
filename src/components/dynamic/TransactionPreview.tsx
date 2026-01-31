@@ -911,13 +911,16 @@ function FundingBreakdown({
             )}
 
             {/* Show other explicit splits (excluding Juicy fee and owner) */}
-            {displaySplits.filter(s => s !== ownerSplit).map((split, i) => (
+            {displaySplits.filter(s =>
+              // Exclude owner split by comparing properties (more robust than reference equality)
+              !(s.projectId === 0 && ownerSplit && s.percent === ownerSplit.percent && s.beneficiary === ownerSplit.beneficiary)
+            ).map((split, i) => (
               <div key={i} className="flex justify-between items-center">
                 <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>
                   {split.projectId > 0 ? (
                     <span>Project #{split.projectId}</span>
                   ) : (
-                    <span>Owner</span>
+                    <span>Recipient</span>
                   )}
                 </span>
                 <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -1119,25 +1122,13 @@ export default function TransactionPreview({
       const rulesets = raw?.rulesetConfigurations || raw?.launchProjectConfig?.rulesetConfigurations
       if (rulesets && Array.isArray(rulesets) && rulesets.length > 0) {
         const firstRuleset = rulesets[0]
-        const splits: SplitInfo[] = []
+        let splits: SplitInfo[] = []
         let payoutLimit: number | undefined
+        let payoutLimitGroupId: string | undefined
         // Track if fundAccessLimitGroups was explicitly set to empty array (means ZERO payouts, not unlimited!)
         let hasEmptyFundAccessLimits = false
 
-        if (firstRuleset.splitGroups && Array.isArray(firstRuleset.splitGroups)) {
-          for (const group of firstRuleset.splitGroups) {
-            if (group.splits && Array.isArray(group.splits)) {
-              for (const split of group.splits) {
-                splits.push({
-                  percent: split.percent || 0,
-                  projectId: split.projectId || 0,
-                  beneficiary: split.beneficiary || ''
-                })
-              }
-            }
-          }
-        }
-
+        // First, find the payout limit and its currency/groupId
         if (firstRuleset.fundAccessLimitGroups && Array.isArray(firstRuleset.fundAccessLimitGroups)) {
           if (firstRuleset.fundAccessLimitGroups.length === 0) {
             // Empty array means NO payouts allowed (not unlimited!)
@@ -1148,11 +1139,36 @@ export default function TransactionPreview({
                 for (const limit of group.payoutLimits) {
                   if (limit.amount) {
                     payoutLimit = typeof limit.amount === 'string' ? parseInt(limit.amount) : limit.amount
+                    // The currency field matches the splitGroup's groupId for the same token
+                    payoutLimitGroupId = limit.currency?.toString()
                     break
                   }
                 }
               }
+              if (payoutLimit) break
             }
+          }
+        }
+
+        // Then extract splits - only from the group matching the payout limit's currency
+        if (firstRuleset.splitGroups && Array.isArray(firstRuleset.splitGroups)) {
+          for (const group of firstRuleset.splitGroups) {
+            // Only include splits from the group that matches the payout limit's currency
+            // If no payout limit groupId, include all splits (fallback for edge cases)
+            if (payoutLimitGroupId && group.groupId?.toString() !== payoutLimitGroupId) {
+              continue
+            }
+            if (group.splits && Array.isArray(group.splits)) {
+              for (const split of group.splits) {
+                splits.push({
+                  percent: split.percent || 0,
+                  projectId: split.projectId || 0,
+                  beneficiary: split.beneficiary || ''
+                })
+              }
+            }
+            // If we found a matching group, stop looking
+            if (payoutLimitGroupId) break
           }
         }
 
@@ -1570,7 +1586,7 @@ export default function TransactionPreview({
           <ProjectMetadataPreview
             metadata={projectMetadata}
             isDark={isDark}
-            onEdit={() => window.dispatchEvent(new CustomEvent('juice:edit-section', { detail: { section: 'metadata' } }))}
+            onEdit={() => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: 'I want to edit the project details' } }))}
           />
         </div>
       )}
@@ -1583,7 +1599,7 @@ export default function TransactionPreview({
             currency={tiersInfo?.currency || 2}
             decimals={tiersInfo?.decimals || 6}
             isDark={isDark}
-            onEdit={() => window.dispatchEvent(new CustomEvent('juice:edit-section', { detail: { section: 'tiers' } }))}
+            onEdit={() => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: 'I want to edit the reward tiers' } }))}
             isLoading={!tiersInfo || tiersInfo.tiers.length === 0}
           />
         </div>
@@ -1597,7 +1613,7 @@ export default function TransactionPreview({
               payoutLimit={fundingInfo.payoutLimit}
               splits={fundingInfo.splits}
               isDark={isDark}
-              onEdit={() => window.dispatchEvent(new CustomEvent('juice:edit-section', { detail: { section: 'funding' } }))}
+              onEdit={() => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: 'I want to edit the payout distribution' } }))}
               juicyFeeEnabled={juicyFeeEnabled}
               onToggleJuicyFee={setJuicyFeeEnabled}
               hasEmptyFundAccessLimits={fundingInfo.hasEmptyFundAccessLimits}

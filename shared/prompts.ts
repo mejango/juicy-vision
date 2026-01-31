@@ -491,7 +491,20 @@ Fans can create on behalf of creators (like GoFundMe):
 ]}]' submitLabel="Continue" />
 \`\`\`
 
-This becomes the **reservedPercent** in the ruleset (supporter % = reserved %). Higher reserved % = more tokens go to supporters instead of payers.
+This becomes the **reservedPercent** in the ruleset. The reserved % goes to the PROJECT (owner/reserved recipients), NOT supporters. For "X% revenue share to supporters":
+- 10% to supporters = 10% reservedPercent (project keeps 10%, supporters own 90% of tokens)
+- 30% to supporters = **NOT a reservedPercent setting** - this means supporters own 100% of their tokens
+
+**IMPORTANT: When user says "X% revenue share to supporters", ASK FOR CLARIFICATION:**
+- "When you say 10% revenue share, do you mean supporters collectively own 10% of the project, or that you (the project) keep 10% and supporters get the rest?"
+
+Revenue sharing through tokens works like this:
+1. Supporter pays → gets project tokens
+2. reservedPercent = % of minted tokens that go to reserved recipients (owner), NOT supporters
+3. Supporters can cash out tokens for their proportional share of treasury
+
+So if user wants "project keeps 10%, supporters get 90%": reservedPercent = 100000000 (10%)
+If user wants "supporters get 10% stake": this is unusual - they might mean something else, ASK!
 
 ### Tiered Rewards / NFT Tiers (when user picks "perks")
 
@@ -1320,8 +1333,14 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 \`\`\`
 
 **JBSplitGroup:** \`{ groupId: uint256, splits: JBSplit[] }\`
-- groupId for payouts = payout token's currency code (e.g., 909516616 for Ethereum USDC)
-- groupId for reserved tokens = 1 (JBSplitGroupIds.RESERVED_TOKENS)
+- groupId for USDC payouts = USDC currency code (909516616 on Ethereum)
+- groupId for ETH payouts = 1 (native token currency)
+- groupId for reserved token distribution = 1 (JBSplitGroupIds.RESERVED_TOKENS) - but only use if distributing reserved tokens to multiple recipients
+
+**⚠️ DO NOT confuse payout splits with reserved token splits!**
+- Payout splits: distribute withdrawn funds to recipients
+- Reserved token splits: distribute minted reserved tokens (rarely needed)
+- If user only accepts USDC: only include USDC split group (909516616), NOT groupId "1"
 
 **JBSplit:** \`{ percent: uint32 (of 1B), projectId: uint64, beneficiary: address, preferAddToBalance: bool, lockedUntil: uint48, hook: address }\`
 
@@ -1580,8 +1599,11 @@ This is a simpler project without NFT tiers. Supporters get tokens (shares) that
       "metadata": 0
     },
     "splitGroups": [{
-      "groupId": "1",
-      "splits": []
+      "groupId": "909516616",
+      "splits": [
+        {"percent": 975000000, "projectId": 0, "beneficiary": "USER_WALLET", "preferAddToBalance": false, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"},
+        {"percent": 25000000, "projectId": 1, "beneficiary": "USER_WALLET", "preferAddToBalance": true, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"}
+      ]
     }],
     "fundAccessLimitGroups": [{
       "terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c",
@@ -1602,18 +1624,20 @@ This is a simpler project without NFT tiers. Supporters get tokens (shares) that
 
 **Key settings for revenue-backed ownership:**
 - action = "launchProject" (NOT launch721Project - no NFT tiers)
-- **reservedPercent** = supporter % × 10^9 (e.g., 30% = 300000000, 50% = 500000000, 70% = 700000000)
-- **splitGroups** = empty splits (no payout distribution - all revenue stays in balance)
+- **reservedPercent** = project's cut × 10^7 (10% project cut = 100000000, supporters get 90% of tokens)
+- **splitGroups** = USDC split (97.5% owner + 2.5% Juicy) for payout distribution, OR empty if no payouts planned
 - **fundAccessLimitGroups** = set payout limit to goal so owner can withdraw if needed
 - **cashOutTaxRate** = 0 for easy cash outs, or increase for token holder protection
 
-**reservedPercent values:**
-| Supporter % | reservedPercent value |
-|-------------|----------------------|
-| 20% | 200000000 |
-| 30% | 300000000 |
-| 50% | 500000000 |
-| 70% | 700000000 |
+**⚠️ IMPORTANT: reservedPercent is what PROJECT KEEPS, not what supporters get!**
+| Project's Cut | Supporters Get | reservedPercent |
+|---------------|----------------|-----------------|
+| 10% | 90% of tokens | 100000000 |
+| 20% | 80% of tokens | 200000000 |
+| 30% | 70% of tokens | 300000000 |
+| 50% | 50% of tokens | 500000000 |
+
+If user says "10% revenue share to supporters", ASK: do you mean project keeps 10% (supporters get 90%), or supporters get 10%?
 
 ### Complete deployRevnet Example (USER CHOSE AUTONOMOUS)
 
@@ -1723,6 +1747,13 @@ Revnets are autonomous tokenized treasuries with staged parameters. The REVDeplo
 - First split: 97.5% to owner (projectId: 0, beneficiary: user's wallet)
 - Second split: 2.5% to NANA (projectId: 1, beneficiary: user's wallet, preferAddToBalance: true) - user receives NANA tokens as the beneficiary
 - **groupId**: See JBSplitGroup in Struct Reference
+
+**⚠️ CRITICAL: Only add split groups for tokens the project actually accepts!**
+- If user only accepts USDC (default): ONLY include the USDC split group (groupId: 909516616)
+- If user explicitly asks for ETH payments: add ETH split group (groupId: 1) with SAME structure (97.5% owner + 2.5% Juicy)
+- NEVER add an ETH split group if user didn't mention ETH payments
+- NEVER use "revenue share percentage" as a split percent - that goes in reservedPercent, not splits
+- Payout splits ALWAYS sum to 100% (975000000 + 25000000 = 1000000000)
 
 **Payout Limits - Set to ceil(goal ÷ 0.975) so user gets their full goal after fee:**
 \`\`\`json

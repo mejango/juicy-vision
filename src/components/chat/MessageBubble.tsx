@@ -84,6 +84,23 @@ function DownloadPopover({
   )
 }
 
+// Check if response contains an error message
+function hasErrorMessage(content: string): boolean {
+  if (!content) return false
+  const trimmed = content.trim()
+  // Check for known error patterns
+  return (
+    trimmed.includes('Something went wrong') ||
+    trimmed.includes('Please try again') ||
+    trimmed.includes('Connection lost') ||
+    // Only match if it's a short message that's mostly an error
+    (trimmed.length < 200 && (
+      trimmed.includes('temporarily unavailable') ||
+      trimmed.includes('service limit')
+    ))
+  )
+}
+
 // Check if response appears to be cut off or incomplete
 function looksIncomplete(content: string): boolean {
   if (!content || content.length < 30) return false
@@ -228,9 +245,18 @@ export default function MessageBubble({
   // The looksIncomplete heuristic was too aggressive and caused sporadic button appearances
   const showContinue = false
 
+  // Show retry button for error messages (only on last assistant message)
+  const showRetry = isLastAssistant && !isUser && hasErrorMessage(message.content)
+
   const handleContinue = () => {
     window.dispatchEvent(new CustomEvent('juice:send-message', {
       detail: { message: 'Please continue where you left off.' }
+    }))
+  }
+
+  const handleRetry = () => {
+    window.dispatchEvent(new CustomEvent('juice:send-message', {
+      detail: { message: 'go on' }
     }))
   }
 
@@ -500,6 +526,20 @@ export default function MessageBubble({
               }`}
             >
               Continue
+            </button>
+          )}
+
+          {/* Retry button for error messages */}
+          {showRetry && (
+            <button
+              onClick={handleRetry}
+              className={`mt-4 px-4 py-2 text-sm transition-colors ${
+                isDark
+                  ? 'text-green-400/80 border border-green-400/30 hover:text-green-400 hover:border-green-400/50 hover:bg-green-400/5'
+                  : 'text-green-600 border border-green-500/40 hover:border-green-500/60 hover:bg-green-500/5'
+              }`}
+            >
+              Try again
             </button>
           )}
             </div>
