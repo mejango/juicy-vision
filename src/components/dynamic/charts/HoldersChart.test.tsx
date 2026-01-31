@@ -49,23 +49,24 @@ const mockParticipants = {
   participants: [
     {
       address: '0x1234567890abcdef1234567890abcdef12345678',
-      balance: '50000000000000000000000', // 50k tokens
+      balance: 50000000000000000000000n, // 50k tokens
       percentage: 50,
       chains: [1, 10],
     },
     {
       address: '0xabcdef1234567890abcdef1234567890abcdef12',
-      balance: '30000000000000000000000', // 30k tokens
+      balance: 30000000000000000000000n, // 30k tokens
       percentage: 30,
       chains: [1],
     },
     {
       address: '0x9876543210fedcba9876543210fedcba98765432',
-      balance: '15000000000000000000000', // 15k tokens
+      balance: 15000000000000000000000n, // 15k tokens
       percentage: 15,
       chains: [8453],
     },
   ],
+  totalSupply: 100000000000000000000000n, // 100k tokens
 }
 
 describe('HoldersChart', () => {
@@ -101,6 +102,7 @@ describe('HoldersChart', () => {
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue({
         participants: [],
+        totalSupply: 0n,
       })
 
       render(<HoldersChart projectId="1" />)
