@@ -766,10 +766,8 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
 
   // Handle project clicks from activity feed
   const handleActivityProjectClick = (query: string) => {
-    // If there's an active chat with messages, start a new chat
-    // Otherwise, send to the current (empty) chat context
-    const newChat = hasMessages
-    window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: query, newChat } }))
+    // Always start a new chat when clicking activity items
+    window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: query, newChat: true } }))
     if (isMobile) setShowMobileActivity(false) // Close activity on mobile after click
   }
 
