@@ -4,7 +4,7 @@ import { getWalletClient } from 'wagmi/actions'
 import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, encodeAbiParameters, erc20Abi, type Hex, type Address, type Chain } from 'viem'
 import { ethers } from 'ethers'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
-import { useTransactionStore } from '../stores'
+import { useTransactionStore, useAuthStore } from '../stores'
 import { wagmiConfig } from '../config/wagmi'
 import { USDC_ADDRESSES, type SupportedChainId } from '../constants'
 import { getPaymentTerminal } from '../utils'
@@ -13,6 +13,8 @@ import {
   updateTransactionRecord,
   type TransactionReceipt,
 } from '../api/transactions'
+
+const API_BASE = import.meta.env.VITE_API_URL || ''
 
 // Native token address for ETH payments
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
@@ -236,6 +238,7 @@ export function useTransactionExecutor() {
   const { address, isConnected } = useAccount()
   const { switchChainAsync } = useSwitchChain()
   const { updateTransaction } = useTransactionStore()
+  const { token: authToken } = useAuthStore()
 
   const buildPayCallData = useCallback((
     projectId: number,
@@ -261,7 +264,80 @@ export function useTransactionExecutor() {
   }, [])
 
   const executePayTransaction = useCallback(async (detail: PayEventDetail) => {
-    const { txId, projectId, chainId, amount, memo, token } = detail
+    const { txId, projectId, chainId, amount, memo, token, payUs, feeAmount, juicyProjectId } = detail
+
+    // Handle PAY_CREDITS payments via API
+    if (token === 'PAY_CREDITS') {
+      updateTransaction(txId, { stage: 'queueing' })
+
+      if (!authToken) {
+        updateTransaction(txId, { status: 'failed', error: 'Not authenticated' })
+        return
+      }
+
+      const beneficiary = address || '0x0000000000000000000000000000000000000000'
+
+      try {
+        // Create spend for the main project payment
+        const res = await fetch(`${API_BASE}/juice/spend`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            amount: parseFloat(amount),
+            projectId: parseInt(projectId),
+            chainId,
+            beneficiaryAddress: beneficiary,
+            memo: memo || undefined,
+          }),
+        })
+
+        const data = await res.json()
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to queue payment')
+        }
+
+        // If payUs is enabled, create a second spend for the JUICY fee
+        if (payUs && parseFloat(feeAmount) > 0) {
+          const feeRes = await fetch(`${API_BASE}/juice/spend`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({
+              amount: parseFloat(feeAmount),
+              projectId: juicyProjectId,
+              chainId,
+              beneficiaryAddress: beneficiary,
+              memo: 'Juicy fee',
+            }),
+          })
+
+          const feeData = await feeRes.json()
+
+          if (!feeData.success) {
+            // Main payment succeeded but fee failed - still mark as queued
+            console.error('Fee payment failed:', feeData.error)
+          }
+        }
+
+        // Payment successfully queued
+        updateTransaction(txId, {
+          status: 'queued',
+          stage: undefined,
+          spendId: data.data.spendId,
+        })
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        updateTransaction(txId, { status: 'failed', error: errorMessage.slice(0, 100) })
+      }
+      return
+    }
+
     const isUsdc = token === 'USDC'
 
     // Start with checking stage
@@ -530,7 +606,7 @@ export function useTransactionExecutor() {
         }).catch(() => {})
       }
     }
-  }, [switchChainAsync, updateTransaction, buildPayCallData])
+  }, [switchChainAsync, updateTransaction, buildPayCallData, authToken, address])
 
   // Listen for pay events
   useEffect(() => {

@@ -5,6 +5,8 @@ import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroup
 import { resolveIpfsUri, fetchIpfsMetadata, type IpfsProjectMetadata } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore, type PaymentStage, type TransactionStatus } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, CHAINS, type SupportedChainId } from '../../constants'
+import { useJuiceBalance } from '../../hooks/useJuiceBalance'
+import BuyJuiceModal from '../juice/BuyJuiceModal'
 
 // Parse HTML/markdown description to clean text with line breaks
 function parseDescription(html: string): string[] {
@@ -43,7 +45,10 @@ const ALL_CHAINS: Array<{ chainId: number; projectId: number }> = [
 const TOKENS = [
   { symbol: 'ETH', name: 'Ether' },
   { symbol: 'USDC', name: 'USD Coin' },
+  { symbol: 'PAY_CREDITS', name: 'Pay Credits' },
 ]
+
+export type PaymentToken = 'ETH' | 'USDC' | 'PAY_CREDITS'
 
 // Stage labels for payment progress
 const STAGE_LABELS: Record<PaymentStage, string> = {
@@ -53,6 +58,7 @@ const STAGE_LABELS: Record<PaymentStage, string> = {
   signing: 'Sign permit in wallet...',
   submitting: 'Confirm transaction...',
   confirming: 'Waiting for confirmation...',
+  queueing: 'Queuing payment...',
 }
 
 // Payment progress indicator component
@@ -98,6 +104,25 @@ function PaymentProgress({
             View on explorer
           </a>
         )}
+      </div>
+    )
+  }
+
+  // Queued state - show success for Pay Credits payments
+  if (status === 'queued') {
+    return (
+      <div className={`mt-2 p-2 text-sm ${
+        isDark ? 'bg-green-500/10' : 'bg-green-50'
+      }`}>
+        <div className={`flex items-center gap-2 ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span>Payment queued!</span>
+        </div>
+        <p className={`text-xs mt-1 ml-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          Your Pay Credits have been deducted. The on-chain payment will be processed shortly.
+        </p>
       </div>
     )
   }
@@ -191,9 +216,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   const [memo, setMemo] = useState('')
   const [paying, setPaying] = useState(false)
   const [selectedChainId, setSelectedChainId] = useState(initialChainId)
-  const [selectedToken, setSelectedToken] = useState('USDC')
+  const [selectedToken, setSelectedToken] = useState<PaymentToken>('USDC')
   const [chainDropdownOpen, setChainDropdownOpen] = useState(false)
   const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false)
+  const [showBuyJuiceModal, setShowBuyJuiceModal] = useState(false)
   // Connected chains with their project IDs (may differ per chain)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
   // Current issuance rate for token calculation
@@ -231,6 +257,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
 
   // wagmi hooks
   const { address, isConnected } = useAccount()
+
+  // Pay Credits balance
+  const { balance: juiceBalance, refetch: refetchJuiceBalance } = useJuiceBalance()
 
   const openWalletPanel = () => {
     window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
@@ -386,6 +415,35 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
     fetchWalletBalances()
   }, [fetchWalletBalances])
 
+  // Smart token default: select token with highest USD value
+  useEffect(() => {
+    if (balanceLoading || ethPriceLoading || !ethPrice) return
+
+    const ethBalanceUsd = walletEthBalance
+      ? parseFloat(formatEther(walletEthBalance)) * ethPrice
+      : 0
+    const usdcBalanceUsd = walletUsdcBalance
+      ? Number(walletUsdcBalance) / 1e6
+      : 0
+    const payCreditsUsd = juiceBalance?.balance ?? 0
+
+    // Find the token with the highest USD value
+    const balances: Array<{ token: PaymentToken; usd: number }> = [
+      { token: 'ETH', usd: ethBalanceUsd },
+      { token: 'USDC', usd: usdcBalanceUsd },
+      { token: 'PAY_CREDITS', usd: payCreditsUsd },
+    ]
+
+    const best = balances.reduce((a, b) => (b.usd > a.usd ? b : a))
+
+    // Only auto-select if user has some balance and hasn't manually changed
+    if (best.usd > 0) {
+      setSelectedToken(best.token)
+    }
+  // Only run once when all balances are loaded
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!balanceLoading && !ethPriceLoading && ethPrice !== null])
+
   // Check if cross-currency conversion is needed (requires ETH price)
   const projectCurrency = suckerBalance?.currency ?? 1 // 1=ETH, 2=USD
   const needsCrossConversion = (projectCurrency === 2 && selectedToken === 'ETH') ||
@@ -481,10 +539,16 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
       if (ethBalanceNum < minGasEth) {
         return { sufficient: false, reason: 'insufficient_gas', needed: minGasEth, have: ethBalanceNum }
       }
+    } else if (selectedToken === 'PAY_CREDITS') {
+      // Need Pay Credits balance
+      const juiceBalanceNum = juiceBalance?.balance ?? 0
+      if (juiceBalanceNum < total) {
+        return { sufficient: false, reason: 'insufficient_pay_credits', needed: total, have: juiceBalanceNum }
+      }
     }
 
     return { sufficient: true }
-  }, [amount, feeAmount, selectedToken, walletEthBalance, walletUsdcBalance, balanceLoading])
+  }, [amount, feeAmount, selectedToken, walletEthBalance, walletUsdcBalance, balanceLoading, juiceBalance])
 
   // Handle payment status updates (clear form on success, reset paying on cancel)
   useEffect(() => {
@@ -495,6 +559,14 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
       setPaying(false)
       // Keep activePaymentId visible for 5 seconds so user can see confirmation and access explorer link
       setTimeout(() => setActivePaymentId(null), 5000)
+    } else if (activePayment?.status === 'queued') {
+      // Pay Credits payment queued - clear form, refetch balance, show success
+      setAmount('')
+      setMemo('')
+      setPaying(false)
+      refetchJuiceBalance()
+      // Keep activePaymentId visible for 5 seconds so user can see queued message
+      setTimeout(() => setActivePaymentId(null), 5000)
     } else if (activePayment?.status === 'submitted') {
       // Payment submitted but not yet confirmed - reset paying state but keep form values
       // and keep showing progress until confirmation
@@ -503,7 +575,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
       // Payment cancelled/failed - keep form values, just reset paying state
       setPaying(false)
     }
-  }, [activePayment?.status])
+  }, [activePayment?.status, refetchJuiceBalance])
 
   if (loading) {
     return (
@@ -601,7 +673,51 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   const handlePay = async () => {
     if (!amount || parseFloat(amount) <= 0) return
 
-    // Step 1: Check if wallet is connected
+    // For PAY_CREDITS, check if user has sufficient balance first
+    if (selectedToken === 'PAY_CREDITS') {
+      const balanceCheck = checkSufficientBalance()
+      if (!balanceCheck.sufficient) {
+        if (balanceCheck.reason === 'insufficient_pay_credits') {
+          // Open BuyJuiceModal to purchase more credits
+          setShowBuyJuiceModal(true)
+          return
+        }
+        return
+      }
+
+      // Proceed with Pay Credits payment via API
+      setPaying(true)
+      const txId = addTransaction({
+        type: 'pay',
+        projectId: currentProjectId,
+        chainId: parseInt(selectedChainId),
+        amount,
+        token: selectedToken,
+        status: 'pending',
+        stage: 'queueing',
+      })
+
+      // Track this payment for UI updates
+      setActivePaymentId(txId)
+
+      window.dispatchEvent(new CustomEvent('juice:pay-project', {
+        detail: {
+          txId,
+          projectId: currentProjectId,
+          chainId: parseInt(selectedChainId),
+          amount,
+          token: selectedToken,
+          memo,
+          payUs,
+          feeAmount: feeAmount.toString(),
+          juicyProjectId: JUICY_PROJECT_ID,
+          totalAmount: totalAmount.toString(),
+        }
+      }))
+      return
+    }
+
+    // Step 1: Check if wallet is connected (for ETH/USDC)
     if (!isConnected) {
       openWalletPanel()
       return
@@ -860,20 +976,20 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
                   isDark ? 'border-white/10 text-white hover:bg-white/5' : 'border-gray-200 text-gray-900 hover:bg-gray-50'
                 }`}
               >
-                <span>{selectedToken}</span>
+                <span>{selectedToken === 'PAY_CREDITS' ? 'Credits' : selectedToken}</span>
                 <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
               {tokenDropdownOpen && (
-                <div className={`absolute top-full right-0 mt-1 py-1  shadow-lg z-10 min-w-[100px] ${
+                <div className={`absolute top-full right-0 mt-1 py-1  shadow-lg z-10 min-w-[140px] ${
                   isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
                 }`}>
                   {TOKENS.map(token => (
                     <button
                       key={token.symbol}
                       onClick={() => {
-                        setSelectedToken(token.symbol)
+                        setSelectedToken(token.symbol as PaymentToken)
                         setTokenDropdownOpen(false)
                       }}
                       className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
@@ -882,7 +998,14 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
                           : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
                       }`}
                     >
-                      {token.symbol}
+                      <span className="flex justify-between items-center gap-2">
+                        <span>{token.symbol === 'PAY_CREDITS' ? 'Pay Credits' : token.symbol}</span>
+                        {token.symbol === 'PAY_CREDITS' && juiceBalance && (
+                          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                            ${juiceBalance.balance.toFixed(2)}
+                          </span>
+                        )}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -931,7 +1054,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
 
         {/* Quick amount options */}
         <div className="flex gap-2 mt-2">
-          {(selectedToken === 'USDC' ? ['10', '25', '50', '100'] : ['0.01', '0.05', '0.1', '0.5']).map(val => (
+          {(selectedToken === 'USDC' || selectedToken === 'PAY_CREDITS' ? ['10', '25', '50', '100'] : ['0.01', '0.05', '0.1', '0.5']).map(val => (
             <button
               key={val}
               onClick={() => setAmount(val)}
@@ -945,6 +1068,21 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
             </button>
           ))}
         </div>
+
+        {/* Pay Credits balance indicator */}
+        {selectedToken === 'PAY_CREDITS' && juiceBalance && (
+          <div className={`mt-2 text-xs flex items-center gap-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <span>Balance: ${juiceBalance.balance.toFixed(2)}</span>
+            {juiceBalance.balance < totalAmount && (
+              <button
+                onClick={() => setShowBuyJuiceModal(true)}
+                className={`underline ${isDark ? 'text-juice-cyan hover:text-juice-cyan/80' : 'text-cyan-600 hover:text-cyan-700'}`}
+              >
+                Buy more
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Token preview */}
         {amountNum > 0 && expectedTokens !== null && (
@@ -992,7 +1130,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
         </label>
         {payUs && amountNum > 0 && estimatedJuicyTokens > 0 && (
           <div className={`ml-6 mt-1 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            {feeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {selectedToken} → ~{estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} $JUICY
+            {selectedToken === 'PAY_CREDITS' ? '$' : ''}{feeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {selectedToken === 'PAY_CREDITS' ? '' : selectedToken} → ~{estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} $JUICY
           </div>
         )}
       </div>
@@ -1016,6 +1154,16 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
         </details>
       )}
       </div>
+
+      {/* BuyJuiceModal for purchasing Pay Credits */}
+      <BuyJuiceModal
+        isOpen={showBuyJuiceModal}
+        onClose={() => setShowBuyJuiceModal(false)}
+        onSuccess={() => {
+          refetchJuiceBalance()
+          setShowBuyJuiceModal(false)
+        }}
+      />
     </div>
   )
 }

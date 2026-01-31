@@ -9,8 +9,9 @@ export type PaymentStage =
   | 'signing'       // Waiting for Permit2 signature
   | 'submitting'    // Sending the pay transaction
   | 'confirming'    // Waiting for transaction to be mined
+  | 'queueing'      // Queuing Pay Credits payment for admin processing
 
-export type TransactionStatus = 'pending' | 'submitted' | 'confirmed' | 'failed' | 'cancelled'
+export type TransactionStatus = 'pending' | 'submitted' | 'confirmed' | 'failed' | 'cancelled' | 'queued'
 
 export type TransactionType =
   | 'pay'
@@ -42,6 +43,8 @@ export interface Transaction {
   // NFT minting fields
   tierId?: number
   quantity?: number
+  // Pay Credits spend ID (for queued payments)
+  spendId?: string
   // Receipt data from blockchain
   receipt?: {
     blockNumber: number

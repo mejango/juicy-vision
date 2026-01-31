@@ -1241,3 +1241,193 @@ export async function updateLastActivity(userId: string): Promise<void> {
     [userId]
   );
 }
+
+// ============================================================================
+// Admin Operations
+// ============================================================================
+
+/**
+ * Process a single spend by ID (admin-triggered)
+ * This is the manual version of the cron job's batch processing.
+ */
+export async function processSingleSpend(spendId: string): Promise<{
+  spendId: string;
+  status: 'completed' | 'failed';
+  txHash?: string;
+  error?: string;
+}> {
+  const config = getConfig();
+  const privateKey = config.reservesPrivateKey as `0x${string}`;
+
+  if (!privateKey) {
+    throw new Error('RESERVES_PRIVATE_KEY not configured');
+  }
+
+  // Get the spend record with row locking
+  const [spend] = await query<{
+    id: string;
+    user_id: string;
+    project_id: number;
+    chain_id: number;
+    beneficiary_address: string;
+    memo: string | null;
+    juice_amount: string;
+    status: string;
+    retry_count: number;
+  }>(
+    `SELECT id, user_id, project_id, chain_id, beneficiary_address,
+            memo, juice_amount, status, retry_count
+     FROM juice_spends
+     WHERE id = $1
+     FOR UPDATE`,
+    [spendId]
+  );
+
+  if (!spend) {
+    throw new Error('Spend not found');
+  }
+
+  if (spend.status === 'completed') {
+    throw new Error('Spend already completed');
+  }
+
+  if (spend.status === 'refunded') {
+    throw new Error('Spend was refunded');
+  }
+
+  try {
+    // Mark as executing
+    await execute(
+      `UPDATE juice_spends SET status = 'executing', updated_at = NOW()
+       WHERE id = $1`,
+      [spend.id]
+    );
+
+    // Get ETH/USD rate
+    const ethUsdRate = await getEthUsdRate();
+    const amountUsd = parseFloat(spend.juice_amount);
+    const amountEth = amountUsd / ethUsdRate;
+    const amountWei = BigInt(Math.floor(amountEth * 1e18));
+
+    logger.info('Processing single spend', {
+      spendId: spend.id,
+      amountUsd,
+      ethUsdRate,
+      amountEth: formatEther(amountWei),
+    });
+
+    // Execute on-chain payment
+    const chainConfig = CHAINS[spend.chain_id];
+    if (!chainConfig) {
+      throw new Error(`Unsupported chain: ${spend.chain_id}`);
+    }
+
+    const account = privateKeyToAccount(privateKey);
+    const walletClient = createWalletClient({
+      account,
+      chain: chainConfig.chain,
+      transport: http(chainConfig.rpcUrl),
+    });
+
+    const publicClient = createPublicClient({
+      chain: chainConfig.chain,
+      transport: http(chainConfig.rpcUrl),
+    });
+
+    const txHash = await walletClient.writeContract({
+      address: JB_MULTI_TERMINAL,
+      abi: TERMINAL_ABI,
+      functionName: 'pay',
+      args: [
+        BigInt(spend.project_id),
+        NATIVE_TOKEN,
+        amountWei,
+        spend.beneficiary_address as `0x${string}`,
+        0n, // minReturnedTokens
+        spend.memo || `Juice payment: $${amountUsd}`,
+        '0x',
+      ],
+      value: amountWei,
+    });
+
+    // Wait for confirmation
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    // TODO: Parse logs to get tokens received
+    const tokensReceived = '0';
+
+    // Mark as completed
+    await execute(
+      `UPDATE juice_spends SET
+        status = 'completed',
+        tx_hash = $1,
+        crypto_amount = $2,
+        eth_usd_rate = $3,
+        tokens_received = $4,
+        updated_at = NOW()
+       WHERE id = $5`,
+      [txHash, amountWei.toString(), ethUsdRate, tokensReceived, spend.id]
+    );
+
+    logger.info('Single spend completed', {
+      spendId: spend.id,
+      txHash,
+      projectId: spend.project_id,
+    });
+
+    return {
+      spendId: spend.id,
+      status: 'completed',
+      txHash,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Check if we've hit max retries
+    if (spend.retry_count + 1 >= MAX_RETRIES) {
+      // Refund the Juice
+      await refundJuice(spend.user_id, parseFloat(spend.juice_amount), 'spend');
+
+      await execute(
+        `UPDATE juice_spends SET
+          status = 'failed',
+          error_message = $1,
+          retry_count = retry_count + 1,
+          last_retry_at = NOW(),
+          updated_at = NOW()
+         WHERE id = $2`,
+        [errorMessage, spend.id]
+      );
+
+      logger.error('Single spend failed permanently', error as Error, {
+        spendId: spend.id,
+        retryCount: spend.retry_count + 1,
+      });
+
+      return {
+        spendId: spend.id,
+        status: 'failed',
+        error: `Failed after ${spend.retry_count + 1} attempts: ${errorMessage}`,
+      };
+    } else {
+      // Reset to pending for retry
+      await execute(
+        `UPDATE juice_spends SET
+          status = 'pending',
+          error_message = $1,
+          retry_count = retry_count + 1,
+          last_retry_at = NOW(),
+          updated_at = NOW()
+         WHERE id = $2`,
+        [errorMessage, spend.id]
+      );
+
+      logger.error('Single spend failed, will retry', error as Error, {
+        spendId: spend.id,
+        retryCount: spend.retry_count + 1,
+      });
+
+      throw new Error(`Spend failed (attempt ${spend.retry_count + 1}/${MAX_RETRIES}): ${errorMessage}`);
+    }
+  }
+}

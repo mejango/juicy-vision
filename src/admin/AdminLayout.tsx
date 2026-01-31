@@ -1,10 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useThemeStore, useAuthStore } from '../stores'
+import { useAdminJuiceStats } from './hooks'
 
 export default function AdminLayout() {
   const { theme, setTheme } = useThemeStore()
   const { user, logout } = useAuthStore()
   const isDark = theme === 'dark'
+  const { data: juiceStats } = useAdminJuiceStats()
+  const pendingCount = juiceStats?.pending.count || 0
 
   const navLinkClasses = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
@@ -53,6 +56,17 @@ export default function AdminLayout() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
             Chats
+          </NavLink>
+          <NavLink to="/queued-payments" className={navLinkClasses}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Payments
+            {pendingCount > 0 && (
+              <span className="ml-auto px-1.5 py-0.5 text-xs font-medium bg-juice-orange text-juice-dark rounded-full">
+                {pendingCount}
+              </span>
+            )}
           </NavLink>
         </nav>
 

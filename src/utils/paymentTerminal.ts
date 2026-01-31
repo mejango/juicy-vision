@@ -95,8 +95,9 @@ export function isNativeToken(address: Address): boolean {
 /**
  * Gets the token address for a payment token symbol
  */
-export function getPaymentTokenAddress(token: 'ETH' | 'USDC', chainId: number): Address {
-  if (token === 'ETH') {
+export function getPaymentTokenAddress(token: 'ETH' | 'USDC' | 'PAY_CREDITS', chainId: number): Address {
+  if (token === 'ETH' || token === 'PAY_CREDITS') {
+    // PAY_CREDITS payments are handled via backend API, use native token as fallback
     return NATIVE_TOKEN
   }
   return USDC_ADDRESSES[chainId as SupportedChainId] || NATIVE_TOKEN

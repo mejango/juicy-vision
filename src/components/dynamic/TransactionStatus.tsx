@@ -30,6 +30,11 @@ const statusConfig: Record<TxStatus, { color: string; icon: string; label: strin
     icon: 'M6 18L18 6M6 6l12 12',
     label: 'Cancelled',
   },
+  queued: {
+    color: 'text-green-400',
+    icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
+    label: 'Queued',
+  },
 }
 
 export default function TransactionStatus({ txId }: TransactionStatusProps) {

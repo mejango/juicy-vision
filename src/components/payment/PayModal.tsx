@@ -51,11 +51,11 @@ interface PayModalProps {
   juicyProjectId: number
   estimatedTokens?: number
   estimatedJuicyTokens?: number
-  /** Token symbol for display - 'ETH' or 'USDC'. Defaults to 'ETH' */
-  token?: 'ETH' | 'USDC'
+  /** Token symbol for display - 'ETH', 'USDC', or 'PAY_CREDITS'. Defaults to 'ETH' */
+  token?: 'ETH' | 'USDC' | 'PAY_CREDITS'
 }
 
-type PaymentStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
+type PaymentStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed' | 'queued'
 
 export default function PayModal({
   isOpen,
