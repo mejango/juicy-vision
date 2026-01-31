@@ -100,7 +100,7 @@ export function buildAdjustTiersTransaction(params: {
     chainId: params.chainId,
     to: params.hookAddress,
     data,
-    value: '0',
+    value: '0x0',
   }
 }
 
@@ -182,7 +182,7 @@ export function buildSetMetadataTransaction(params: {
     chainId: params.chainId,
     to: params.hookAddress,
     data,
-    value: '0',
+    value: '0x0',
   }
 }
 
@@ -249,7 +249,7 @@ export function buildSetDiscountPercentOfTransaction(params: {
     chainId: params.chainId,
     to: params.hookAddress,
     data,
-    value: '0',
+    value: '0x0',
   }
 }
 
@@ -291,7 +291,7 @@ export function buildSetDiscountPercentsOfTransaction(params: {
     chainId: params.chainId,
     to: params.hookAddress,
     data,
-    value: '0',
+    value: '0x0',
   }
 }
 
@@ -354,7 +354,7 @@ export function buildMintPendingReservesForTransaction(params: {
     chainId: params.chainId,
     to: params.hookAddress,
     data,
-    value: '0',
+    value: '0x0',
   }
 }
 
@@ -419,7 +419,7 @@ export function buildMintForTransaction(params: {
     chainId: params.chainId,
     to: params.hookAddress,
     data,
-    value: '0',
+    value: '0x0',
   }
 }
 

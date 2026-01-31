@@ -245,7 +245,7 @@ export function encodeCashOutTransaction(request: JBCashOutRequest): JBTransacti
     txData: {
       to: JB_MULTI_TERMINAL_ADDRESS,
       data,
-      value: '0',
+      value: '0x0',
       chainId: request.chainId,
     },
     estimatedGas: '300000',
@@ -273,7 +273,7 @@ export function encodeSendPayoutsTransaction(request: JBSendPayoutsRequest): JBT
     txData: {
       to: JB_MULTI_TERMINAL_ADDRESS,
       data,
-      value: '0',
+      value: '0x0',
       chainId: request.chainId,
     },
     estimatedGas: '400000',
@@ -301,7 +301,7 @@ export function encodeQueueRulesetTransaction(request: JBQueueRulesetRequest): J
     txData: {
       to: JB_CONTROLLER_ADDRESS,
       data,
-      value: '0',
+      value: '0x0',
       chainId: request.chainId,
     },
     estimatedGas: '500000',
@@ -334,7 +334,7 @@ export function encodeDeployERC20Transaction(
     txData: {
       to: JB_CONTROLLER_ADDRESS,
       data,
-      value: '0',
+      value: '0x0',
       chainId,
     },
     estimatedGas: '300000',
@@ -359,7 +359,7 @@ export function encodeSendReservesTransaction(
     txData: {
       to: JB_CONTROLLER_ADDRESS,
       data,
-      value: '0',
+      value: '0x0',
       chainId,
     },
     estimatedGas: '400000',
@@ -500,7 +500,7 @@ export function encodeLaunchProjectTransaction(
     txData: {
       to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
       data,
-      value: '0',
+      value: '0x0',
       chainId,
     },
     estimatedGas: '2000000', // Complex deployment needs more gas
@@ -593,7 +593,7 @@ export function encodeDeployRevnetTransaction(
     txData: {
       to: REV_DEPLOYER_ADDRESS,
       data,
-      value: '0',
+      value: '0x0',
       chainId,
     },
     estimatedGas: '3000000', // Revnet deployment is complex
@@ -634,7 +634,7 @@ export function encodeDeploySuckersTransaction(
     txData: {
       to: JB_SUCKER_REGISTRY_ADDRESS,
       data,
-      value: '0',
+      value: '0x0',
       chainId,
     },
     estimatedGas: '1500000',

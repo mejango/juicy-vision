@@ -204,7 +204,7 @@ export function buildLaunchProjectTransaction(params: {
     chainId: params.chainId,
     to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
     data,
-    value: '0',
+    value: '0x0',
   }
 }
 
@@ -417,7 +417,7 @@ export function buildLaunch721RulesetsTransaction(params: {
     chainId: params.chainId,
     to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
     data,
-    value: '0',
+    value: '0x0',
   }
 }
 
@@ -497,7 +497,7 @@ export function buildQueueRulesetsTransaction(params: {
     chainId: params.chainId,
     to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
     data,
-    value: '0',
+    value: '0x0',
   }
 }
 
@@ -585,7 +585,7 @@ export function buildQueue721RulesetsTransaction(params: {
     chainId: params.chainId,
     to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
     data,
-    value: '0',
+    value: '0x0',
   }
 }
 
