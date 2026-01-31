@@ -1,6 +1,8 @@
 // Chain and contract constants
 export * from './chains'
 
+import { IS_TESTNET, CHAIN_IDS, SUPPORTED_CHAIN_IDS } from '../config/environment'
+
 // =============================================================================
 // WebSocket Configuration
 // =============================================================================
@@ -77,7 +79,7 @@ export const IPFS_FALLBACK_GATEWAY = 'https://ipfs.io/ipfs/'
 export const ACTIVITY_PAGE_SIZE = PAGINATION.ACTIVITY_PAGE_SIZE
 export const ACTIVITY_POLL_INTERVAL = 30000 // 30 seconds
 
-// Comprehensive chain configurations - use this instead of defining CHAIN_INFO in components
+// Comprehensive chain configurations - environment aware (testnet/mainnet)
 export const CHAINS: Record<number, {
   name: string        // Full name: "Ethereum", "Optimism"
   shortName: string   // Short display: "ETH", "OP"
@@ -85,52 +87,86 @@ export const CHAINS: Record<number, {
   color: string       // Brand color
   explorer: string    // Block explorer base URL
   explorerTx: string  // Transaction URL prefix
-}> = {
-  1: {
-    name: 'Ethereum',
-    shortName: 'ETH',
-    slug: 'eth',
-    color: '#627EEA',
-    explorer: 'https://etherscan.io',
-    explorerTx: 'https://etherscan.io/tx/',
-  },
-  10: {
-    name: 'Optimism',
-    shortName: 'OP',
-    slug: 'op',
-    color: '#FF0420',
-    explorer: 'https://optimistic.etherscan.io',
-    explorerTx: 'https://optimistic.etherscan.io/tx/',
-  },
-  8453: {
-    name: 'Base',
-    shortName: 'BASE',
-    slug: 'base',
-    color: '#0052FF',
-    explorer: 'https://basescan.org',
-    explorerTx: 'https://basescan.org/tx/',
-  },
-  42161: {
-    name: 'Arbitrum',
-    shortName: 'ARB',
-    slug: 'arb',
-    color: '#28A0F0',
-    explorer: 'https://arbiscan.io',
-    explorerTx: 'https://arbiscan.io/tx/',
-  },
-}
+}> = IS_TESTNET
+  ? {
+      // Sepolia testnets
+      [CHAIN_IDS.ethereum]: {
+        name: 'Sepolia',
+        shortName: 'SEP',
+        slug: 'sep',
+        color: '#627EEA',
+        explorer: 'https://sepolia.etherscan.io',
+        explorerTx: 'https://sepolia.etherscan.io/tx/',
+      },
+      [CHAIN_IDS.optimism]: {
+        name: 'OP Sepolia',
+        shortName: 'OP-SEP',
+        slug: 'op-sep',
+        color: '#FF0420',
+        explorer: 'https://sepolia-optimism.etherscan.io',
+        explorerTx: 'https://sepolia-optimism.etherscan.io/tx/',
+      },
+      [CHAIN_IDS.base]: {
+        name: 'Base Sepolia',
+        shortName: 'BASE-SEP',
+        slug: 'base-sep',
+        color: '#0052FF',
+        explorer: 'https://sepolia.basescan.org',
+        explorerTx: 'https://sepolia.basescan.org/tx/',
+      },
+      [CHAIN_IDS.arbitrum]: {
+        name: 'Arb Sepolia',
+        shortName: 'ARB-SEP',
+        slug: 'arb-sep',
+        color: '#28A0F0',
+        explorer: 'https://sepolia.arbiscan.io',
+        explorerTx: 'https://sepolia.arbiscan.io/tx/',
+      },
+    }
+  : {
+      // Mainnets
+      [CHAIN_IDS.ethereum]: {
+        name: 'Ethereum',
+        shortName: 'ETH',
+        slug: 'eth',
+        color: '#627EEA',
+        explorer: 'https://etherscan.io',
+        explorerTx: 'https://etherscan.io/tx/',
+      },
+      [CHAIN_IDS.optimism]: {
+        name: 'Optimism',
+        shortName: 'OP',
+        slug: 'op',
+        color: '#FF0420',
+        explorer: 'https://optimistic.etherscan.io',
+        explorerTx: 'https://optimistic.etherscan.io/tx/',
+      },
+      [CHAIN_IDS.base]: {
+        name: 'Base',
+        shortName: 'BASE',
+        slug: 'base',
+        color: '#0052FF',
+        explorer: 'https://basescan.org',
+        explorerTx: 'https://basescan.org/tx/',
+      },
+      [CHAIN_IDS.arbitrum]: {
+        name: 'Arbitrum',
+        shortName: 'ARB',
+        slug: 'arb',
+        color: '#28A0F0',
+        explorer: 'https://arbiscan.io',
+        explorerTx: 'https://arbiscan.io/tx/',
+      },
+    }
 
-// All supported chain IDs as array (useful for iteration)
-export const ALL_CHAIN_IDS = [1, 10, 8453, 42161] as const
+// All supported chain IDs as array (environment-aware)
+export const ALL_CHAIN_IDS = SUPPORTED_CHAIN_IDS
 export type SupportedChainIdType = typeof ALL_CHAIN_IDS[number]
 
-// Explorer transaction URLs (convenience export derived from CHAINS)
-export const EXPLORER_URLS: Record<number, string> = {
-  1: CHAINS[1].explorerTx,
-  10: CHAINS[10].explorerTx,
-  8453: CHAINS[8453].explorerTx,
-  42161: CHAINS[42161].explorerTx,
-}
+// Explorer transaction URLs (derived from environment-aware CHAINS)
+export const EXPLORER_URLS: Record<number, string> = Object.fromEntries(
+  ALL_CHAIN_IDS.map(chainId => [chainId, CHAINS[chainId].explorerTx])
+)
 
 // Currency configurations
 export const CURRENCIES = {
