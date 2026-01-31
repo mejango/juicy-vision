@@ -201,6 +201,7 @@ export function useOmnichainDeploySuckers(
           value: tx.txData.value,
           virtual_nonce: index,
         })),
+        perform_simulation: true,
         virtual_nonce_mode: 'MultiChain',
       })
 
