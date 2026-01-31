@@ -1,4 +1,5 @@
 import { useSettingsStore } from '../../stores'
+import { RELAYR_API_KEY } from '../../config/environment'
 import {
   encodePayTransaction,
   encodeCashOutTransaction,
@@ -56,7 +57,8 @@ function getEndpoint(): string {
 }
 
 function getApiKey(): string {
-  return useSettingsStore.getState().relayrApiKey
+  // Settings store overrides env variable (allows user customization)
+  return useSettingsStore.getState().relayrApiKey || RELAYR_API_KEY
 }
 
 async function fetchApi<T>(
