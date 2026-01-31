@@ -55,15 +55,21 @@ function getEndpoint(): string {
   return useSettingsStore.getState().relayrEndpoint
 }
 
+function getApiKey(): string {
+  return useSettingsStore.getState().relayrApiKey
+}
+
 async function fetchApi<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const endpoint = getEndpoint()
+  const apiKey = getApiKey()
   const response = await fetch(`${endpoint}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(apiKey ? { 'x-api-key': apiKey } : {}),
       ...options.headers,
     },
   })

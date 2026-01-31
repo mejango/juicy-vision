@@ -37,11 +37,13 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     pinataJwt,
     ankrApiKey,
     theGraphApiKey,
+    relayrApiKey,
     selectedFruit,
     setClaudeApiKey,
     setPinataJwt,
     setAnkrApiKey,
     setTheGraphApiKey,
+    setRelayrApiKey,
     setSelectedFruit,
     clearSettings,
   } = useSettingsStore()
@@ -50,6 +52,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
   const [localPinataJwt, setLocalPinataJwt] = useState(pinataJwt)
   const [localAnkrKey, setLocalAnkrKey] = useState(ankrApiKey)
   const [localTheGraphKey, setLocalTheGraphKey] = useState(theGraphApiKey)
+  const [localRelayrKey, setLocalRelayrKey] = useState(relayrApiKey)
   const [activeTab, setActiveTab] = useState<'account' | 'api'>('account')
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -305,6 +308,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     setPinataJwt(localPinataJwt)
     setAnkrApiKey(localAnkrKey)
     setTheGraphApiKey(localTheGraphKey)
+    setRelayrApiKey(localRelayrKey)
     onClose()
   }
 
@@ -313,6 +317,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     setLocalPinataJwt('')
     setLocalAnkrKey('')
     setLocalTheGraphKey('')
+    setLocalRelayrKey('')
     clearSettings()
   }
 
@@ -408,7 +413,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
 
   if (!isOpen) return null
 
-  const hasCustomKeys = localClaudeKey || localPinataJwt || localAnkrKey || localTheGraphKey
+  const hasCustomKeys = localClaudeKey || localPinataJwt || localAnkrKey || localTheGraphKey || localRelayrKey
 
   return createPortal(
     <>
@@ -1072,6 +1077,24 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                   value={localTheGraphKey}
                   onChange={(e) => setLocalTheGraphKey(e.target.value)}
                   placeholder="For price history"
+                  className={`w-full mt-1 px-2 py-1.5 text-xs border outline-none ${
+                    isDark
+                      ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'
+                      : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-gray-300'
+                  }`}
+                />
+              </div>
+
+              {/* Relayr API Key */}
+              <div>
+                <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Relayr API Key
+                </label>
+                <input
+                  type="password"
+                  value={localRelayrKey}
+                  onChange={(e) => setLocalRelayrKey(e.target.value)}
+                  placeholder="For gas-sponsored transactions"
                   className={`w-full mt-1 px-2 py-1.5 text-xs border outline-none ${
                     isDark
                       ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'

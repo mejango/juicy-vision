@@ -28,6 +28,7 @@ interface SettingsState {
   pinataJwt: string
   ankrApiKey: string
   theGraphApiKey: string
+  relayrApiKey: string
   bendystrawEndpoint: string
   relayrEndpoint: string
   language: Language
@@ -39,6 +40,7 @@ interface SettingsState {
   setPinataJwt: (jwt: string) => void
   setAnkrApiKey: (key: string) => void
   setTheGraphApiKey: (key: string) => void
+  setRelayrApiKey: (key: string) => void
   setBendystrawEndpoint: (endpoint: string) => void
   setRelayrEndpoint: (endpoint: string) => void
   setLanguage: (lang: Language) => void
@@ -57,6 +59,7 @@ export const useSettingsStore = create<SettingsState>()(
       pinataJwt: '',
       ankrApiKey: '',
       theGraphApiKey: DEFAULT_THEGRAPH_API_KEY,
+      relayrApiKey: '',
       bendystrawEndpoint: DEFAULT_BENDYSTRAW_ENDPOINT,
       relayrEndpoint: DEFAULT_RELAYR_ENDPOINT,
       language: 'en',
@@ -68,6 +71,7 @@ export const useSettingsStore = create<SettingsState>()(
       setPinataJwt: (jwt) => set({ pinataJwt: jwt }),
       setAnkrApiKey: (key) => set({ ankrApiKey: key }),
       setTheGraphApiKey: (key) => set({ theGraphApiKey: key }),
+      setRelayrApiKey: (key) => set({ relayrApiKey: key }),
       setBendystrawEndpoint: (endpoint) => set({ bendystrawEndpoint: endpoint }),
       setRelayrEndpoint: (endpoint) => set({ relayrEndpoint: endpoint }),
       setLanguage: (lang) => {
@@ -83,6 +87,7 @@ export const useSettingsStore = create<SettingsState>()(
         pinataJwt: '',
         ankrApiKey: '',
         theGraphApiKey: '',
+        relayrApiKey: '',
       }),
 
       isConfigured: () => {
@@ -97,7 +102,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'juice-settings',
-      version: 9,
+      version: 10,
       onRehydrateStorage: () => (state) => {
         // Sync i18n with persisted language on app start
         if (state?.language) {
@@ -148,6 +153,13 @@ export const useSettingsStore = create<SettingsState>()(
           state = {
             ...state,
             privateMode: false,
+          }
+        }
+        if (version < 10) {
+          // Migration: add relayrApiKey
+          state = {
+            ...state,
+            relayrApiKey: '',
           }
         }
         return state
