@@ -878,7 +878,7 @@ function FundingBreakdown({
       ) : (
         <>
           {/* Payout limit header - show prominently */}
-          <div className={`flex justify-between items-center py-2 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <div className={`flex justify-between items-center py-2 ${hasEmptyFundAccessLimits ? '' : `border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}`}>
             <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Payout Limit</span>
             <span className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {hasEmptyFundAccessLimits
@@ -889,6 +889,8 @@ function FundingBreakdown({
             </span>
           </div>
 
+          {/* Only show splits when there's a payout limit - splits don't matter without one */}
+          {!hasEmptyFundAccessLimits && (
           <div className="space-y-2">
             {/* Show implied owner share first (when not explicitly split) */}
             {hasImpliedOwner && (
@@ -967,6 +969,7 @@ function FundingBreakdown({
               </div>
             )}
           </div>
+          )}
         </>
       )}
     </div>
