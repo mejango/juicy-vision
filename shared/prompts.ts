@@ -1872,12 +1872,22 @@ Include chainConfigs for per-chain overrides. **Each chain's JBMultiTerminal MUS
 
 **Format:**
 \`\`\`json
-{"name": "Name", "description": "Desc", "tagline": "Short", "tags": ["tag"], "infoUri": "https://...", "logoUri": "ipfs://..."}
+{"name": "Name", "description": "Desc", "tagline": "Short tagline", "tags": ["tag1", "tag2", "tag3"], "infoUri": "https://...", "logoUri": "ipfs://..."}
 \`\`\`
+
+**⚠️ ALWAYS include AI-generated tags!** Tags help with project discovery and search. Generate 3-8 relevant tags based on:
+- Project category (farm, art, music, tech, community, dao, etc.)
+- Industry/sector (agriculture, food, education, etc.)
+- Location if mentioned (sicily, europe, etc.)
+- Key offerings (olive-oil, workshops, nfts, etc.)
+- Fundraising type (crowdfund, revnet, membership, etc.)
+
+**Example tags for a farm project:**
+\`"tags": ["farm", "agriculture", "community", "sicily", "olive-oil", "sustainable", "food", "crowdfund"]\`
 
 **Workflow:**
 1. Logo URL → silently pin image first
-2. Construct metadata
+2. Construct metadata WITH generated tags
 3. pin_to_ipfs
 4. Use URI as projectUri
 5. NEVER mention IPFS to user
