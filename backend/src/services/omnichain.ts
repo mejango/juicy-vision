@@ -136,7 +136,7 @@ interface CrossChainBalance {
 // ============================================================================
 
 /**
- * Get detailed project data including balance, supply, ruleset info
+ * Get detailed project data including balance, supply, cash out tax rate
  */
 export async function getProjectData(params: {
   projectId: number;
@@ -151,33 +151,13 @@ export async function getProjectData(params: {
   totalSupply: string;
   formattedTotalSupply: string;
   cashOutTaxRate: number | null;
-  currentRuleset: {
-    cycleNumber: number;
-    start: string;
-    duration: number;
-    weight: string;
-    decayPercent: number;
-    approvalHook: string;
-    metadata: {
-      reservedPercent: number;
-      cashOutTaxRate: number;
-      baseCurrency: number;
-      pausePay: boolean;
-      pauseCashOut: boolean;
-      allowOwnerMinting: boolean;
-      allowTerminalMigration: boolean;
-      allowControllerMigration: boolean;
-      holdFees: boolean;
-      useTotalSurplusForCashOuts: boolean;
-      useDataHookForPay: boolean;
-      useDataHookForCashOut: boolean;
-    } | null;
-  } | null;
+  cashOutTaxRatePercent: string | null;
 }> {
   const config = getConfig();
   const apiKey = config.bendystrawApiKey;
   const chainId = params.chainId ?? 1;
 
+  // Query project data and current cash out tax rate
   const query = `
     query GetProjectData($projectId: Int!, $chainId: Int!) {
       project(projectId: $projectId, chainId: $chainId) {
@@ -186,15 +166,19 @@ export async function getProjectData(params: {
         name
         balance
         tokenSymbol
-        totalTokenSupply
-        currentRuleset {
-          cycleNumber
+        tokenSupply
+      }
+      cashOutTaxSnapshots(
+        where: { projectId: $projectId, chainId: $chainId }
+        orderBy: "start"
+        orderDirection: "desc"
+        limit: 1
+      ) {
+        items {
+          cashOutTax
           start
           duration
-          weight
-          decayPercent
-          approvalHook
-          metadata
+          rulesetId
         }
       }
     }
@@ -238,31 +222,15 @@ export async function getProjectData(params: {
     const formattedBalance = formatEther(balanceWei);
 
     // Parse total supply (in wei)
-    const supplyWei = BigInt(project.totalTokenSupply ?? '0');
+    const supplyWei = BigInt(project.tokenSupply ?? '0');
     const formattedTotalSupply = formatEther(supplyWei);
 
-    // Parse metadata for cash out tax rate
-    let cashOutTaxRate: number | null = null;
-    let parsedMetadata = null;
-
-    if (project.currentRuleset?.metadata) {
-      try {
-        // Metadata is stored as a JSON string in Bendystraw
-        parsedMetadata = typeof project.currentRuleset.metadata === 'string'
-          ? JSON.parse(project.currentRuleset.metadata)
-          : project.currentRuleset.metadata;
-
-        // cashOutTaxRate is in basis points (0-10000)
-        if (parsedMetadata.cashOutTaxRate !== undefined) {
-          cashOutTaxRate = parsedMetadata.cashOutTaxRate;
-        }
-      } catch {
-        logger.warn('Failed to parse ruleset metadata', {
-          projectId: params.projectId,
-          metadata: project.currentRuleset.metadata,
-        });
-      }
-    }
+    // Get cash out tax rate from snapshot (in basis points: 0-10000)
+    const taxSnapshot = data.data?.cashOutTaxSnapshots?.items?.[0];
+    const cashOutTaxRate = taxSnapshot?.cashOutTax ?? null;
+    const cashOutTaxRatePercent = cashOutTaxRate !== null
+      ? `${(cashOutTaxRate / 100).toFixed(2)}%`
+      : null;
 
     return {
       projectId: project.projectId,
@@ -271,18 +239,10 @@ export async function getProjectData(params: {
       balance: project.balance ?? '0',
       formattedBalance: `${formattedBalance} ETH`,
       tokenSymbol: project.tokenSymbol,
-      totalSupply: project.totalTokenSupply ?? '0',
+      totalSupply: project.tokenSupply ?? '0',
       formattedTotalSupply: `${formattedTotalSupply} ${project.tokenSymbol ?? 'tokens'}`,
       cashOutTaxRate,
-      currentRuleset: project.currentRuleset ? {
-        cycleNumber: project.currentRuleset.cycleNumber,
-        start: project.currentRuleset.start,
-        duration: project.currentRuleset.duration,
-        weight: project.currentRuleset.weight,
-        decayPercent: project.currentRuleset.decayPercent,
-        approvalHook: project.currentRuleset.approvalHook,
-        metadata: parsedMetadata,
-      } : null,
+      cashOutTaxRatePercent,
     };
   } catch (error) {
     logger.error('Failed to get project data', error as Error, {
