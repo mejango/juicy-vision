@@ -1645,6 +1645,8 @@ If user says "10% revenue share to supporters", ASK: do you mean project keeps 1
 
 Revnets are autonomous tokenized treasuries with staged parameters. The REVDeployer contract owns the project - no human can change the rules. Token issuance decays over time (load-based), rewarding early supporters.
 
+**⚠️ If user already configured NFT tiers (perks), use action="deploy721Revnet" to preserve them!** REVDeployer has a 721 deployer function that combines revnet economics with NFT tiers.
+
 \`\`\`json
 {
   "revnetId": "0",
@@ -1659,7 +1661,7 @@ Revnets are autonomous tokenized treasuries with staged parameters. The REVDeplo
     "splitOperator": "USER_WALLET_ADDRESS",
     "stageConfigurations": [
       {
-        "startsAtOrAfter": 0,
+        "startsAtOrAfter": "CALCULATE",
         "splitPercent": 300000000,
         "initialIssuance": "1000000000000000000000000",
         "issuanceDecayFrequency": 604800,
@@ -1668,7 +1670,9 @@ Revnets are autonomous tokenized treasuries with staged parameters. The REVDeplo
         "extraMetadata": 0
       }
     ],
-    "loanSources": [],
+    "loanSources": [
+      {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c"}
+    ],
     "loans": [],
     "allowCrosschainSuckerExtension": true
   },
@@ -1678,28 +1682,65 @@ Revnets are autonomous tokenized treasuries with staged parameters. The REVDeplo
       "accountingContextsToAccept": [
         {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "decimals": 6, "currency": 909516616}
       ]
-    }
+    },
+    {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
   ],
   "buybackHookConfiguration": {
-    "hook": "0x0000000000000000000000000000000000000000",
-    "pools": []
+    "hook": "0x7EAE9bDC1ed31f07cE9F2Df74AC0D6826bF59E50",
+    "pools": [
+      {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "fee": 10000, "twapWindow": 60, "twapSlippageTolerance": 50000000}
+    ]
   },
   "suckerDeploymentConfiguration": {
-    "deployerConfigurations": [],
+    "deployerConfigurations": [
+      {"deployer": "0x34B40205B249e5733CF93d86B7C9783b015dD3e7", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "remoteToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "minBridgeAmount": "10000000000000000"}]},
+      {"deployer": "0xdE901EbaFC70d545F9D43034308C136Ce8c94A5C", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "remoteToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "minBridgeAmount": "10000000000000000"}]},
+      {"deployer": "0x9d4858cc9d3552507EEAbce722787AfEf64C615e", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "remoteToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "minBridgeAmount": "10000000000000000"}]}
+    ],
     "salt": "0x0000000000000000000000000000000000000000000000000000000000000001"
   }
 }
 \`\`\`
 
 **Key revnet parameters:**
-- action = "deployRevnet"
-- contract = "REV_BASIC_DEPLOYER"
+- action = "deployRevnet" (or "deploy721Revnet" if user has NFT tiers)
+- contract = "REV_BASIC_DEPLOYER" (or "REV_721_DEPLOYER" for NFT tiers)
+- **startsAtOrAfter** = Math.floor(Date.now()/1000) + 300 (same as other projects!)
 - **splitPercent** = operator % × 10^9 (e.g., 30% to operator = 300000000, supporters get remaining 70%)
 - **splitOperator** = address that receives the operator split (creator's wallet)
 - **initialIssuance** = starting tokens per payment unit (e.g., 1M tokens per dollar = "1000000000000000000000000")
 - **issuanceDecayFrequency** = seconds between decay (604800 = 1 week)
 - **issuanceDecayPercent** = % decay each period × 10^9 (50000000 = 5% decay per week)
 - **cashOutTaxRate** = tax on cash outs × 10^9 (200000000 = 20% tax)
+
+**⚠️ CRITICAL: Revnets need proper configuration for loans and buyback:**
+
+**loanSources** - Required for loan functionality. Specify which tokens can be borrowed:
+\`\`\`json
+"loanSources": [
+  {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c"}
+]
+\`\`\`
+
+**buybackHookConfiguration** - Enables automatic token buybacks when payments come in:
+\`\`\`json
+"buybackHookConfiguration": {
+  "hook": "0x7EAE9bDC1ed31f07cE9F2Df74AC0D6826bF59E50",
+  "pools": [
+    {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "fee": 10000, "twapWindow": 60, "twapSlippageTolerance": 50000000}
+  ]
+}
+\`\`\`
+
+**terminalConfigurations** - Must include BOTH JBMultiTerminal AND swap terminal registry:
+\`\`\`json
+"terminalConfigurations": [
+  {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [
+    {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "decimals": 6, "currency": 909516616}
+  ]},
+  {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
+]
+\`\`\`
 
 **Stage configurations explain the token economics:**
 - Stage 1 might have high operator split (you're building)
