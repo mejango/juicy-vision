@@ -72,6 +72,7 @@ export default function TopProjects({
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -163,7 +164,7 @@ export default function TopProjects({
     }
 
     loadProjects()
-  }, [limit, orderBy])
+  }, [limit, orderBy, retryCount])
 
   const handleProjectClick = (project: Project) => {
     const message = `Tell me about ${project.name} (project ${project.projectId} on chain ${project.chainId})`
@@ -194,7 +195,19 @@ export default function TopProjects({
       <div className={`rounded-lg border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-red-500/30' : 'bg-white border-red-200'
       }`}>
-        <p className="text-red-400 text-sm">{error}</p>
+        <div className="flex items-center justify-between">
+          <p className="text-red-400 text-sm">Failed to load top-projects</p>
+          <button
+            onClick={() => setRetryCount(c => c + 1)}
+            className={`text-xs px-2 py-1 rounded transition-colors ${
+              isDark
+                ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            Retry
+          </button>
+        </div>
       </div>
     )
   }
