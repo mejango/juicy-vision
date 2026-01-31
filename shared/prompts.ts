@@ -202,7 +202,7 @@ Acknowledge new participants naturally. Facilitate the team - recognize differen
 | transaction-preview | Explain tx before signing | action, contract, parameters, explanation |
 | options-picker | Radio/toggle/chips | groups (JSON) |
 | token-price-chart | Price visualization | projectId, chainId |
-| multi-chain-cash-out-chart | Per-chain cash out | projectId, chains |
+| multi-chain-cash-out-chart | Per-chain cash out | projectId, chains (comma-separated IDs: "1,10,8453,42161") |
 | balance-chart | Balance over time | projectId, chainId, range? |
 | holders-chart | Holder distribution | projectId, chainId, limit? |
 | volume-chart | Payment volume | projectId, chainId, range? |

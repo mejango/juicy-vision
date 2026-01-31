@@ -224,6 +224,54 @@
   @apply mb-1;
 }
 
+/* Table styling - shared */
+.prose-juice table {
+  @apply w-full border-collapse my-4 text-sm;
+}
+
+.prose-juice th,
+.prose-juice td {
+  @apply px-3 py-2 text-left;
+}
+
+.prose-juice th {
+  @apply font-semibold;
+}
+
+/* Table styling - Dark mode */
+.dark .prose-juice table {
+  @apply border border-white/10;
+}
+
+.dark .prose-juice th {
+  @apply bg-white/5 border-b border-white/10 text-gray-200;
+}
+
+.dark .prose-juice td {
+  @apply border-b border-white/5;
+}
+
+.dark .prose-juice tr:hover {
+  @apply bg-white/5;
+}
+
+/* Table styling - Light mode */
+.light .prose-juice table {
+  @apply border border-gray-200;
+}
+
+.light .prose-juice th {
+  @apply bg-gray-50 border-b border-gray-200 text-gray-700;
+}
+
+.light .prose-juice td {
+  @apply border-b border-gray-100;
+}
+
+.light .prose-juice tr:hover {
+  @apply bg-gray-50;
+}
+
 /* Highlighted text styling - Dark mode */
 .dark .prose-juice mark {
   background: linear-gradient(135deg, rgba(245, 166, 35, 0.25) 0%, rgba(236, 72, 153, 0.25) 100%);
