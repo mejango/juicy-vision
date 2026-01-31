@@ -9,6 +9,7 @@ import { WagmiProvider } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { wagmiConfig } from './config/wagmi'
 import { EnvironmentBadge } from './components/common/EnvironmentBadge'
+import { QueryErrorPanel } from './components/debug/QueryErrorPanel'
 import { ChatContainer, ProtocolActivity, MascotPanel } from './components/chat'
 import ParticipantAvatars from './components/chat/ParticipantAvatars'
 import JoinChatPage from './components/JoinChatPage'
@@ -877,6 +878,7 @@ function MainApp() {
   return (
     <ErrorBoundary>
       <EnvironmentBadge />
+      <QueryErrorPanel />
       <AppProviders>
         <BrowserRouter>
           <Routes>

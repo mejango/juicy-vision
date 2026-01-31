@@ -1,6 +1,6 @@
 import { GraphQLClient, RequestDocument, Variables } from 'graphql-request'
 import { createPublicClient, http } from 'viem'
-import { useSettingsStore } from '../../stores'
+import { useSettingsStore, useDebugStore } from '../../stores'
 import { VIEM_CHAINS, ZERO_ADDRESS, REV_DEPLOYER, JB_CONTRACTS, JB_CONTRACTS_V5, RPC_ENDPOINTS, USDC_ADDRESSES, type SupportedChainId } from '../../constants'
 import { createCache, CACHE_DURATIONS, bendystrawCircuit, rpcCircuit } from '../../utils'
 import {
@@ -117,23 +117,48 @@ function getClient(): GraphQLClient {
 /**
  * Execute a GraphQL request through the Bendystraw circuit breaker
  * If the circuit is open, throws an error that callers can handle gracefully
+ * Errors are logged to the debug store for UI visibility
  */
 async function safeRequest<T>(
   document: RequestDocument,
   variables?: Variables
 ): Promise<T> {
   const client = getClient()
+  const queryString = typeof document === 'string' ? document : String(document)
+
   const result = await bendystrawCircuit.call(async () => {
     return client.request<T>(document, variables)
   })
 
   if (result.status === 'circuit_open') {
     const retrySeconds = Math.ceil((result.retryAfter || 0) / 1000)
-    throw new Error(`Bendystraw API temporarily unavailable. Retry in ${retrySeconds}s`)
+    const errorMsg = `Bendystraw API temporarily unavailable. Retry in ${retrySeconds}s`
+
+    // Log to debug store for UI visibility
+    useDebugStore.getState().addQueryError({
+      queryName: '',
+      query: queryString,
+      variables: variables || {},
+      error: errorMsg,
+      errorDetails: { status: 'circuit_open', retryAfter: result.retryAfter },
+    })
+
+    throw new Error(errorMsg)
   }
 
   if (result.status === 'failure') {
-    throw result.error || new Error('Bendystraw request failed')
+    const errorMsg = result.error?.message || 'Bendystraw request failed'
+
+    // Log to debug store for UI visibility
+    useDebugStore.getState().addQueryError({
+      queryName: '',
+      query: queryString,
+      variables: variables || {},
+      error: errorMsg,
+      errorDetails: result.error,
+    })
+
+    throw result.error || new Error(errorMsg)
   }
 
   return result.data as T
@@ -735,22 +760,25 @@ export async function fetchProjectWithRuleset(
 
     // Fetch ruleset from on-chain via the project's controller
     // Important: Projects can have different controllers, so we must look up via JBDirectory
-    // ALSO: Revnets use V5 contracts, non-Revnets use V5.1 contracts
+    // The controller address is the ONLY authoritative way to determine which contract version to use
     let currentRuleset: ProjectRuleset | null = null
     const publicClient = getPublicClient(chainId)
     if (publicClient) {
       try {
-        // Determine if project is a Revnet to use correct JBRulesets version
-        const projectIsRevnet = isRevnet(data.project.owner)
-        const rulesetsContract = projectIsRevnet ? JB_CONTRACTS_V5.JBRulesets : JB_CONTRACTS.JBRulesets
-
         // Get the controller address for this project from JBDirectory
+        // This is the authoritative source for determining contract version
         const controllerAddress = await publicClient.readContract({
           address: JB_CONTRACTS.JBDirectory,
           abi: JB_DIRECTORY_ABI,
           functionName: 'controllerOf',
           args: [BigInt(projectId)],
         })
+
+        // Determine JBRulesets contract based on controller version, not ownership
+        // V5 JBController: 0x27da30646502e2f642be5281322ae8c394f7668a → V5 JBRulesets
+        // V5.1 JBController: 0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1 → V5.1 JBRulesets
+        const isV5Controller = controllerAddress?.toLowerCase() === JB_CONTRACTS_V5.JBController.toLowerCase()
+        const rulesetsContract = isV5Controller ? JB_CONTRACTS_V5.JBRulesets : JB_CONTRACTS.JBRulesets
 
         if (controllerAddress && controllerAddress !== ZERO_ADDRESS) {
           // Call the controller's currentRulesetOf - returns both ruleset AND decoded metadata
