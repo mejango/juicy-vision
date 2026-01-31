@@ -141,9 +141,11 @@ interface CrossChainBalance {
 export async function getProjectData(params: {
   projectId: number;
   chainId?: number;
+  version?: number;
 }): Promise<{
   projectId: number;
   chainId: number;
+  version: number;
   name: string | null;
   balance: string;
   formattedBalance: string;
@@ -156,20 +158,30 @@ export async function getProjectData(params: {
   const config = getConfig();
   const apiKey = config.bendystrawApiKey;
   const chainId = params.chainId ?? 1;
+  const version = params.version ?? 5; // Default to V5
 
   // Query project data and current cash out tax rate
+  // Note: project() uses Float! types, but where clauses use Int
   const query = `
-    query GetProjectData($projectId: Int!, $chainId: Int!) {
-      project(projectId: $projectId, chainId: $chainId) {
+    query GetProjectData(
+      $projectIdFloat: Float!,
+      $chainIdFloat: Float!,
+      $versionFloat: Float!,
+      $projectIdInt: Int!,
+      $chainIdInt: Int!,
+      $versionInt: Int!
+    ) {
+      project(projectId: $projectIdFloat, chainId: $chainIdFloat, version: $versionFloat) {
         projectId
         chainId
+        version
         name
         balance
         tokenSymbol
         tokenSupply
       }
       cashOutTaxSnapshots(
-        where: { projectId: $projectId, chainId: $chainId }
+        where: { projectId: $projectIdInt, chainId: $chainIdInt, version: $versionInt }
         orderBy: "start"
         orderDirection: "desc"
         limit: 1
@@ -194,8 +206,12 @@ export async function getProjectData(params: {
       body: JSON.stringify({
         query,
         variables: {
-          projectId: params.projectId,
-          chainId,
+          projectIdFloat: params.projectId,
+          chainIdFloat: chainId,
+          versionFloat: version,
+          projectIdInt: params.projectId,
+          chainIdInt: chainId,
+          versionInt: version,
         },
       }),
     });
@@ -235,6 +251,7 @@ export async function getProjectData(params: {
     return {
       projectId: project.projectId,
       chainId: project.chainId,
+      version: project.version,
       name: project.name,
       balance: project.balance ?? '0',
       formattedBalance: `${formattedBalance} ETH`,
@@ -996,6 +1013,7 @@ export async function handleOmnichainTool(
       return getProjectData({
         projectId: input.projectId as number,
         chainId: input.chainId as number | undefined,
+        version: input.version as number | undefined,
       });
 
     case 'search_projects':

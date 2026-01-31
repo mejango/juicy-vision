@@ -250,7 +250,7 @@ export const OMNICHAIN_TOOLS = [
   {
     name: 'get_project_data',
     description:
-      'Get detailed project data including balance, token total supply, cash out tax rate, and current ruleset. USE THIS when users ask for specific project values like "what is project X\'s balance?" or "what is the cash out rate for project Y?"',
+      'Get detailed project data including balance, token total supply, and cash out tax rate. USE THIS when users ask for specific project values like "what is project X\'s balance?" or "what is the cash out rate for project Y?"',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -261,6 +261,10 @@ export const OMNICHAIN_TOOLS = [
         chainId: {
           type: 'number',
           description: 'The chain ID (1=Ethereum, 10=Optimism, 8453=Base, 42161=Arbitrum). Default: 1',
+        },
+        version: {
+          type: 'number',
+          description: 'Protocol version (4 or 5). Default: 5. Use 4 for older V4 projects.',
         },
       },
       required: ['projectId'],
