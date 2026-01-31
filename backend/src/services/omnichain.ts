@@ -152,8 +152,11 @@ export async function getProjectData(params: {
   tokenSymbol: string | null;
   totalSupply: string;
   formattedTotalSupply: string;
-  cashOutTaxRate: number | null;
-  cashOutTaxRatePercent: string | null;
+  // Cash out tax rate is a BONDING CURVE parameter (0-1), NOT a simple percentage
+  // 0 = linear redemption (full proportional share)
+  // 1 = quadratic curve (harsh penalty for larger redemptions)
+  cashOutTaxRate: number | null;       // Raw value in basis points (0-10000)
+  cashOutTaxRateDecimal: number | null; // Converted to 0-1 scale
 }> {
   const config = getConfig();
   const apiKey = config.bendystrawApiKey;
@@ -242,10 +245,14 @@ export async function getProjectData(params: {
     const formattedTotalSupply = formatEther(supplyWei);
 
     // Get cash out tax rate from snapshot (in basis points: 0-10000)
+    // This is a BONDING CURVE parameter, NOT a simple percentage tax.
+    // r=0 means linear redemption (full proportional share)
+    // r=1 means quadratic curve (harsh penalty for larger redemptions)
     const taxSnapshot = data.data?.cashOutTaxSnapshots?.items?.[0];
     const cashOutTaxRate = taxSnapshot?.cashOutTax ?? null;
-    const cashOutTaxRatePercent = cashOutTaxRate !== null
-      ? `${(cashOutTaxRate / 100).toFixed(2)}%`
+    // Convert to 0-1 scale for clarity (e.g., 1000 basis points = 0.1)
+    const cashOutTaxRateDecimal = cashOutTaxRate !== null
+      ? cashOutTaxRate / 10000
       : null;
 
     return {
@@ -259,7 +266,7 @@ export async function getProjectData(params: {
       totalSupply: project.tokenSupply ?? '0',
       formattedTotalSupply: `${formattedTotalSupply} ${project.tokenSymbol ?? 'tokens'}`,
       cashOutTaxRate,
-      cashOutTaxRatePercent,
+      cashOutTaxRateDecimal,
     };
   } catch (error) {
     logger.error('Failed to get project data', error as Error, {

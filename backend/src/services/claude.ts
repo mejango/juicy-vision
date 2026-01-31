@@ -555,17 +555,21 @@ export async function* streamMessageWithTools(
     let textContent = '';
     const toolCalls: ToolCall[] = [];
     let stopReason = 'end_turn';
+    let isFirstTextChunkThisTurn = true;
 
     // Stream Claude's response for this turn
     for await (const event of streamMessage(userId, { ...request, messages }, userApiKey)) {
       if (event.type === 'text') {
         const textChunk = event.data as string;
         textContent += textChunk;
-        // Add space between text blocks if needed (when previous content ends without whitespace)
-        if (fullResponseContent && !fullResponseContent.match(/[\s\n]$/) && !textChunk.match(/^[\s\n]/)) {
+        // Add space between API turns if needed (only at start of new turn, not between streaming tokens)
+        // This fixes "you.Let me try" where previous turn ended without space before this turn starts
+        if (isFirstTextChunkThisTurn && fullResponseContent &&
+            !fullResponseContent.match(/[\s\n]$/) && !textChunk.match(/^[\s\n]/)) {
           fullResponseContent += ' ';
           yield { type: 'text', data: ' ' }; // Yield space to client
         }
+        isFirstTextChunkThisTurn = false;
         fullResponseContent += textChunk;
         yield event; // Pass through text tokens
       } else if (event.type === 'tool_use') {
