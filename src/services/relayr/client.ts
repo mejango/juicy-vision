@@ -306,11 +306,12 @@ export async function sponsoredOmnichainQueue(
   const omnichainResponse = await buildOmnichainQueueRulesetTransactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: omnichainResponse.transactions.map(tx => ({
+    transactions: omnichainResponse.transactions.map((tx, index) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
+      virtual_nonce: index,
     })),
     virtual_nonce_mode: 'MultiChain', // Ensure proper ordering across chains
   })
@@ -627,11 +628,12 @@ export async function sponsoredOmnichainDistribute(
   const distributeResponse = await buildOmnichainDistributeTransactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: distributeResponse.transactions.map(tx => ({
+    transactions: distributeResponse.transactions.map((tx, index) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
+      virtual_nonce: index,
     })),
     virtual_nonce_mode: 'MultiChain',
   })
@@ -836,11 +838,12 @@ export async function sponsoredOmnichainDeployERC20(
   const deployResponse = await buildOmnichainDeployERC20Transactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: deployResponse.transactions.map(tx => ({
+    transactions: deployResponse.transactions.map((tx, index) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
+      virtual_nonce: index,
     })),
     virtual_nonce_mode: 'MultiChain',
   })
@@ -946,11 +949,12 @@ export async function sponsoredOmnichainLaunchProject(
   const launchResponse = await buildOmnichainLaunchProjectTransactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: launchResponse.transactions.map(tx => ({
+    transactions: launchResponse.transactions.map((tx, index) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
+      virtual_nonce: index,
     })),
     virtual_nonce_mode: 'MultiChain',
   })
@@ -1073,11 +1077,12 @@ export async function sponsoredOmnichainDeployRevnet(
   const deployResponse = await buildOmnichainDeployRevnetTransactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: deployResponse.transactions.map(tx => ({
+    transactions: deployResponse.transactions.map((tx, index) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
+      virtual_nonce: index,
     })),
     virtual_nonce_mode: 'MultiChain',
   })
@@ -1186,11 +1191,12 @@ export async function sponsoredOmnichainDeploySuckers(
   const deployResponse = await buildOmnichainDeploySuckersTransactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: deployResponse.transactions.map(tx => ({
+    transactions: deployResponse.transactions.map((tx, index) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
+      virtual_nonce: index,
     })),
     virtual_nonce_mode: 'MultiChain',
   })
