@@ -61,6 +61,21 @@ export default function MessageList({
     return () => container.removeEventListener('scroll', handleScroll)
   }, [scrollContainerRef, checkIfNearBottom])
 
+  // Scroll to bottom on initial chat load
+  const initialScrollDoneRef = useRef<string | null>(null)
+  useEffect(() => {
+    // Only scroll once per chat - when messages first load
+    if (messages.length > 0 && initialScrollDoneRef.current !== chatId) {
+      initialScrollDoneRef.current = chatId ?? null
+      // Use instant scroll on initial load (no animation)
+      bottomRef.current?.scrollIntoView({ behavior: 'instant' })
+    }
+    // Reset when chat changes so we scroll again for new chat
+    if (chatId && initialScrollDoneRef.current && initialScrollDoneRef.current !== chatId) {
+      initialScrollDoneRef.current = null
+    }
+  }, [chatId, messages.length])
+
 
   // Auto-scroll when a new assistant message is added (if user was near bottom)
   useEffect(() => {

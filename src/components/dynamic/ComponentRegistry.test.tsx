@@ -170,36 +170,6 @@ describe('ComponentRegistry', () => {
     vi.clearAllMocks()
   })
 
-  describe('connect-wallet component', () => {
-    it('renders ConnectWalletButton for connect-wallet type', async () => {
-      const component: ParsedComponent = {
-        type: 'connect-wallet',
-        props: {},
-        raw: '<juice-component type="connect-wallet" />',
-      }
-
-      render(<ComponentRegistry component={component} />)
-
-      await waitFor(() => {
-        expect(screen.getByTestId('connect-wallet')).toBeInTheDocument()
-      })
-    })
-
-    it('renders ConnectWalletButton for connect-account type', async () => {
-      const component: ParsedComponent = {
-        type: 'connect-account',
-        props: {},
-        raw: '<juice-component type="connect-account" />',
-      }
-
-      render(<ComponentRegistry component={component} />)
-
-      await waitFor(() => {
-        expect(screen.getByTestId('connect-wallet')).toBeInTheDocument()
-      })
-    })
-  })
-
   describe('project-card component', () => {
     it('renders ProjectCard with projectId', async () => {
       const component: ParsedComponent = {

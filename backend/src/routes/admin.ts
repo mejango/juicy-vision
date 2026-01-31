@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { requireAuth, requireAdmin } from '../middleware/auth.ts';
 import { query, queryOne } from '../db/index.ts';
+import { processSingleSpend } from '../services/juice.ts';
 
 const adminRouter = new Hono();
 
@@ -386,6 +387,190 @@ adminRouter.get('/chats/:chatId', zValidator('query', ChatMessagesQuerySchema), 
   } catch (error) {
     console.error('[Admin] Chat detail query error:', error);
     return c.json({ success: false, error: 'Failed to fetch chat details' }, 500);
+  }
+});
+
+// ============================================================================
+// GET /admin/juice/pending-spends - Paginated pending juice spends
+// ============================================================================
+
+const PendingSpendsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  status: z.enum(['pending', 'executing', 'completed', 'failed', 'refunded']).optional(),
+});
+
+interface SpendRow {
+  id: string;
+  user_id: string;
+  user_email: string | null;
+  project_id: number;
+  chain_id: number;
+  beneficiary_address: string;
+  memo: string | null;
+  juice_amount: string;
+  crypto_amount: string | null;
+  eth_usd_rate: string | null;
+  status: string;
+  tx_hash: string | null;
+  tokens_received: string | null;
+  error_message: string | null;
+  retry_count: number;
+  last_retry_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface SpendCountRow {
+  count: number;
+}
+
+adminRouter.get('/juice/pending-spends', zValidator('query', PendingSpendsQuerySchema), async (c) => {
+  const { page, limit, status } = c.req.valid('query');
+  const offset = (page - 1) * limit;
+
+  try {
+    // Default to pending if no status filter
+    const statusFilter = status || 'pending';
+
+    // Get total count
+    const countResult = await queryOne<SpendCountRow>(`
+      SELECT COUNT(*)::int as count
+      FROM juice_spends
+      WHERE status = $1
+    `, [statusFilter]);
+    const total = countResult?.count || 0;
+
+    // Get paginated spends with user info
+    const rows = await query<SpendRow>(`
+      SELECT
+        js.id, js.user_id, u.email as user_email,
+        js.project_id, js.chain_id, js.beneficiary_address, js.memo,
+        js.juice_amount, js.crypto_amount, js.eth_usd_rate,
+        js.status, js.tx_hash, js.tokens_received, js.error_message,
+        js.retry_count, js.last_retry_at, js.created_at, js.updated_at
+      FROM juice_spends js
+      LEFT JOIN users u ON u.id = js.user_id
+      WHERE js.status = $1
+      ORDER BY js.created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [statusFilter, limit, offset]);
+
+    const spends = rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      userEmail: row.user_email,
+      projectId: row.project_id,
+      chainId: row.chain_id,
+      beneficiaryAddress: row.beneficiary_address,
+      memo: row.memo,
+      juiceAmount: parseFloat(row.juice_amount),
+      cryptoAmount: row.crypto_amount,
+      ethUsdRate: row.eth_usd_rate ? parseFloat(row.eth_usd_rate) : null,
+      status: row.status,
+      txHash: row.tx_hash,
+      tokensReceived: row.tokens_received,
+      errorMessage: row.error_message,
+      retryCount: row.retry_count,
+      lastRetryAt: row.last_retry_at instanceof Date ? row.last_retry_at.toISOString() : row.last_retry_at,
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    }));
+
+    return c.json({
+      success: true,
+      data: {
+        spends,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+    });
+  } catch (error) {
+    console.error('[Admin] Pending spends query error:', error);
+    return c.json({ success: false, error: 'Failed to fetch pending spends' }, 500);
+  }
+});
+
+// ============================================================================
+// POST /admin/juice/spends/:id/process - Process a single spend on-chain
+// ============================================================================
+
+adminRouter.post('/juice/spends/:id/process', async (c) => {
+  const spendId = c.req.param('id');
+
+  try {
+    const result = await processSingleSpend(spendId);
+
+    return c.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('[Admin] Process spend error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to process spend';
+    return c.json({ success: false, error: errorMessage }, 500);
+  }
+});
+
+// ============================================================================
+// GET /admin/juice/stats - Dashboard stats for juice system
+// ============================================================================
+
+interface JuiceStatsRow {
+  pending_count: number;
+  pending_total_usd: string;
+  executing_count: number;
+  today_completed_count: number;
+  today_completed_usd: string;
+  week_completed_count: number;
+  week_completed_usd: string;
+  failed_count: number;
+}
+
+adminRouter.get('/juice/stats', async (c) => {
+  try {
+    const stats = await queryOne<JuiceStatsRow>(`
+      SELECT
+        (SELECT COUNT(*)::int FROM juice_spends WHERE status = 'pending') as pending_count,
+        (SELECT COALESCE(SUM(juice_amount), 0) FROM juice_spends WHERE status = 'pending') as pending_total_usd,
+        (SELECT COUNT(*)::int FROM juice_spends WHERE status = 'executing') as executing_count,
+        (SELECT COUNT(*)::int FROM juice_spends WHERE status = 'completed' AND created_at >= CURRENT_DATE) as today_completed_count,
+        (SELECT COALESCE(SUM(juice_amount), 0) FROM juice_spends WHERE status = 'completed' AND created_at >= CURRENT_DATE) as today_completed_usd,
+        (SELECT COUNT(*)::int FROM juice_spends WHERE status = 'completed' AND created_at >= CURRENT_DATE - INTERVAL '7 days') as week_completed_count,
+        (SELECT COALESCE(SUM(juice_amount), 0) FROM juice_spends WHERE status = 'completed' AND created_at >= CURRENT_DATE - INTERVAL '7 days') as week_completed_usd,
+        (SELECT COUNT(*)::int FROM juice_spends WHERE status = 'failed') as failed_count
+    `);
+
+    return c.json({
+      success: true,
+      data: {
+        pending: {
+          count: stats?.pending_count || 0,
+          totalUsd: parseFloat(stats?.pending_total_usd || '0'),
+        },
+        executing: {
+          count: stats?.executing_count || 0,
+        },
+        today: {
+          completedCount: stats?.today_completed_count || 0,
+          completedUsd: parseFloat(stats?.today_completed_usd || '0'),
+        },
+        week: {
+          completedCount: stats?.week_completed_count || 0,
+          completedUsd: parseFloat(stats?.week_completed_usd || '0'),
+        },
+        failed: {
+          count: stats?.failed_count || 0,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('[Admin] Juice stats query error:', error);
+    return c.json({ success: false, error: 'Failed to fetch juice stats' }, 500);
   }
 });
 

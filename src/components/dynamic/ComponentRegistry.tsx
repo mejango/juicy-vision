@@ -68,10 +68,6 @@ const parseIntProp = (value: unknown): number | undefined =>
   value ? parseInt(String(value), 10) : undefined
 
 const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
-  // Wallet
-  'connect-wallet': { component: ConnectWalletButton },
-  'connect-account': { component: ConnectWalletButton },
-
   // Project Cards
   'project-card': {
     component: ProjectCard,

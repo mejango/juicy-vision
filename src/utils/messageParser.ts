@@ -278,8 +278,6 @@ export function stripComponents(content: string): string {
         return `[Ruleset schedule view]`
       case 'cash-out-form':
         return `[Cash out form]`
-      case 'connect-account':
-        return `[Connect wallet button]`
       case 'top-projects':
         return `[Top projects list]`
       case 'nft-gallery':
