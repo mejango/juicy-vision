@@ -16,7 +16,7 @@ dist/
 .env.*.local
 .env.bak
 *.env.bak
-# .env.staging - now committed for Railway builds
+.env.staging
 
 # Editor directories
 .idea/
