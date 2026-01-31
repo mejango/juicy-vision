@@ -1118,9 +1118,13 @@ pay()/addToBalanceOf()
 
 ### Version Rules
 
-**V5 and V5.1 NEVER mix.** V5.1 project = V5.1 terminal. V5 revnet = V5 terminal.
+**V5.0 and V5.1 NEVER mix.** V5.1 project = V5.1 terminal. V5.0 project = V5.0 terminal.
 
-**Determine version:** Owner === REVDeployer → Revnet → V5. Otherwise → V5.1.
+**Determine version:** Query JBDirectory.controllerOf(projectId):
+- Returns 0x27da30646502e2f642be5281322ae8c394f7668a → V5.0
+- Returns 0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1 → V5.1
+
+Note: Owner === REVDeployer means revnet (always V5.0), but some non-revnet projects also use V5.0.
 
 ### Shared Contracts (Both Versions)
 
@@ -1144,6 +1148,7 @@ pay()/addToBalanceOf()
 | JBRulesets5_1 | 0xd4257005ca8d27bbe11f356453b0e4692414b056 |
 | JBTerminalStore5_1 | 0x82239c5a21f0e09573942caa41c580fa36e27071 |
 | JBOmnichainDeployer5_1 | 0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71 |
+| JB721TiersHookDeployer5_1 | 0x7e6e7db5081c59f2df3c83b54eb0c4d029e9898e |
 
 ### V5 Contracts (Revnets)
 
@@ -1153,6 +1158,7 @@ pay()/addToBalanceOf()
 | JBMultiTerminal | 0x2db6d704058e552defe415753465df8df0361846 |
 | JBRulesets | 0x6292281d69c3593fcf6ea074e5797341476ab428 |
 | REVDeployer | 0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d |
+| JB721TiersHookDeployer | 0x7e4f7bfeab74bbae3eb12a62f2298bf2be16fc93 |
 
 ### Swap Terminals
 
