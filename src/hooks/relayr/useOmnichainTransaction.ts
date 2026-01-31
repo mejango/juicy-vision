@@ -175,9 +175,13 @@ export function useOmnichainTransaction(
           throw new Error('One of rulesetConfig, distributeConfig, or deployERC20Config is required')
         }
 
+        // When using MultiChain mode, each transaction needs a virtual_nonce
         const bundleResponse = await createBalanceBundle({
           app_id: RELAYR_APP_ID,
-          transactions,
+          transactions: transactions.map((tx, index) => ({
+            ...tx,
+            virtual_nonce: index,
+          })),
           virtual_nonce_mode: 'MultiChain',
         })
 
