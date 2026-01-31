@@ -90,6 +90,7 @@ export default function MultiChainCashOutChart({
   const [aggregatedMoments, setAggregatedMoments] = useState<SuckerGroupMoment[]>([])
   const [taxSnapshots, setTaxSnapshots] = useState<CashOutTaxSnapshot[]>([])
   const [perChainMoments, setPerChainMoments] = useState<Map<number, ProjectMoment[]>>(new Map())
+  const [perChainCurrentBalances, setPerChainCurrentBalances] = useState<Map<number, bigint>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [projectStart, setProjectStart] = useState<number>(0)
@@ -152,6 +153,20 @@ export default function MultiChainCashOutChart({
 
         setPerChainMoments(momentsMap)
 
+        // Fallback: if all per-chain moments are empty, use current balances from balanceInfo
+        const hasAnyMoments = Array.from(momentsMap.values()).some(m => m.length > 0)
+        if (!hasAnyMoments && balanceInfo.projectBalances.length > 0) {
+          const currentBalances = new Map<number, bigint>()
+
+          for (const pb of balanceInfo.projectBalances) {
+            if (pb.balance && pb.balance !== '0') {
+              currentBalances.set(pb.chainId, BigInt(pb.balance))
+            }
+          }
+
+          setPerChainCurrentBalances(currentBalances)
+        }
+
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data')
       } finally {
@@ -173,20 +188,25 @@ export default function MultiChainCashOutChart({
     const dataByDay = new Map<number, ChainDataPoint>()
     const toDayBoundary = (ts: number) => Math.floor(ts / DAY_SECONDS) * DAY_SECONDS
 
-    // Build per-chain balance lookup from projectMoments
+    // Check if we have historical per-chain data
+    const hasHistoricalData = Array.from(perChainMoments.values()).some(m => m.length > 0)
+
+    // Build per-chain balance lookup from projectMoments (if available)
     const chainBalancesByDay = new Map<number, Map<number, bigint>>() // chainId -> (dayTs -> balance)
 
-    chainIds.forEach(cid => {
-      const moments = perChainMoments.get(cid) || []
-      const balanceByDay = new Map<number, bigint>()
+    if (hasHistoricalData) {
+      chainIds.forEach(cid => {
+        const moments = perChainMoments.get(cid) || []
+        const balanceByDay = new Map<number, bigint>()
 
-      for (const moment of moments) {
-        const dayTs = toDayBoundary(moment.timestamp)
-        balanceByDay.set(dayTs, BigInt(moment.balance || '0'))
-      }
+        for (const moment of moments) {
+          const dayTs = toDayBoundary(moment.timestamp)
+          balanceByDay.set(dayTs, BigInt(moment.balance || '0'))
+        }
 
-      chainBalancesByDay.set(cid, balanceByDay)
-    })
+        chainBalancesByDay.set(cid, balanceByDay)
+      })
+    }
 
     // Get total supply from aggregated moments and calculate per-chain cash out values
     for (const moment of aggregatedMoments) {
@@ -194,13 +214,13 @@ export default function MultiChainCashOutChart({
       if (dayTs < rangeStart) continue
 
       const totalSupply = BigInt(moment.tokenSupply)
+      const totalBalance = BigInt(moment.balance)
       const taxRate = findApplicableTaxRate(moment.timestamp, taxSnapshots)
 
       // Create data point for this day
       const point: ChainDataPoint = dataByDay.get(dayTs) || { timestamp: dayTs }
 
       // Calculate COMBINED cash out value from aggregated data
-      const totalBalance = BigInt(moment.balance)
       if (totalSupply > 0n && totalBalance > 0n) {
         const combinedCashOut = calculateCashOutValue(totalBalance, totalSupply, taxRate, projectDecimals)
         if (combinedCashOut > 0) {
@@ -208,30 +228,54 @@ export default function MultiChainCashOutChart({
         }
       }
 
-      // For each chain, calculate its cash out value based on its balance from projectMoments
-      chainIds.forEach(cid => {
-        const balanceByDay = chainBalancesByDay.get(cid)
-        if (!balanceByDay) return
+      // For each chain, calculate its cash out value
+      if (hasHistoricalData) {
+        // Use historical per-chain balances from projectMoments
+        chainIds.forEach(cid => {
+          const balanceByDay = chainBalancesByDay.get(cid)
+          if (!balanceByDay) return
 
-        // Find the closest balance on or before this day
-        let chainBalance = 0n
-        const sortedDays = Array.from(balanceByDay.keys()).sort((a, b) => a - b)
-        for (const d of sortedDays) {
-          if (d <= dayTs) {
-            chainBalance = balanceByDay.get(d) || 0n
-          } else {
-            break
+          // Find the closest balance on or before this day
+          let chainBalance = 0n
+          const sortedDays = Array.from(balanceByDay.keys()).sort((a, b) => a - b)
+          for (const d of sortedDays) {
+            if (d <= dayTs) {
+              chainBalance = balanceByDay.get(d) || 0n
+            } else {
+              break
+            }
           }
-        }
 
-        // Calculate cash out value for this chain
-        if (totalSupply > 0n && chainBalance > 0n) {
-          const cashOutValue = calculateCashOutValue(chainBalance, totalSupply, taxRate, projectDecimals)
-          if (cashOutValue > 0) {
-            point[`cashOut_${cid}`] = cashOutValue
+          // Calculate cash out value for this chain
+          if (totalSupply > 0n && chainBalance > 0n) {
+            const cashOutValue = calculateCashOutValue(chainBalance, totalSupply, taxRate, projectDecimals)
+            if (cashOutValue > 0) {
+              point[`cashOut_${cid}`] = cashOutValue
+            }
           }
-        }
-      })
+        })
+      } else if (perChainCurrentBalances.size > 0 && totalBalance > 0n) {
+        // Fallback: estimate per-chain values by projecting current balance ratios historically
+        // This assumes the relative distribution across chains has been roughly constant
+        chainIds.forEach(cid => {
+          const currentChainBalance = perChainCurrentBalances.get(cid)
+          if (!currentChainBalance || currentChainBalance === 0n) return
+
+          // Calculate this chain's proportion of total balance
+          const totalCurrentBalance = Array.from(perChainCurrentBalances.values()).reduce((a, b) => a + b, 0n)
+          if (totalCurrentBalance === 0n) return
+
+          // Apply the same ratio to the historical total balance
+          const historicalChainBalance = (totalBalance * currentChainBalance) / totalCurrentBalance
+
+          if (totalSupply > 0n && historicalChainBalance > 0n) {
+            const cashOutValue = calculateCashOutValue(historicalChainBalance, totalSupply, taxRate, projectDecimals)
+            if (cashOutValue > 0) {
+              point[`cashOut_${cid}`] = cashOutValue
+            }
+          }
+        })
+      }
 
       dataByDay.set(dayTs, point)
     }
@@ -254,7 +298,7 @@ export default function MultiChainCashOutChart({
     }
 
     return sortedData
-  }, [aggregatedMoments, taxSnapshots, perChainMoments, chainIds, range, projectStart, projectDecimals])
+  }, [aggregatedMoments, taxSnapshots, perChainMoments, perChainCurrentBalances, chainIds, range, projectStart, projectDecimals])
 
   // Currency symbol for display (ETH or USDC)
   const currencySymbol = projectCurrency === 2 ? 'USDC' : 'ETH'
