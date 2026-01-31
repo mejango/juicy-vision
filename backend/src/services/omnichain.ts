@@ -136,6 +136,164 @@ interface CrossChainBalance {
 // ============================================================================
 
 /**
+ * Get detailed project data including balance, supply, ruleset info
+ */
+export async function getProjectData(params: {
+  projectId: number;
+  chainId?: number;
+}): Promise<{
+  projectId: number;
+  chainId: number;
+  name: string | null;
+  balance: string;
+  formattedBalance: string;
+  tokenSymbol: string | null;
+  totalSupply: string;
+  formattedTotalSupply: string;
+  cashOutTaxRate: number | null;
+  currentRuleset: {
+    cycleNumber: number;
+    start: string;
+    duration: number;
+    weight: string;
+    decayPercent: number;
+    approvalHook: string;
+    metadata: {
+      reservedPercent: number;
+      cashOutTaxRate: number;
+      baseCurrency: number;
+      pausePay: boolean;
+      pauseCashOut: boolean;
+      allowOwnerMinting: boolean;
+      allowTerminalMigration: boolean;
+      allowControllerMigration: boolean;
+      holdFees: boolean;
+      useTotalSurplusForCashOuts: boolean;
+      useDataHookForPay: boolean;
+      useDataHookForCashOut: boolean;
+    } | null;
+  } | null;
+}> {
+  const config = getConfig();
+  const apiKey = config.bendystrawApiKey;
+  const chainId = params.chainId ?? 1;
+
+  const query = `
+    query GetProjectData($projectId: Int!, $chainId: Int!) {
+      project(projectId: $projectId, chainId: $chainId) {
+        projectId
+        chainId
+        name
+        balance
+        tokenSymbol
+        totalTokenSupply
+        currentRuleset {
+          cycleNumber
+          start
+          duration
+          weight
+          decayPercent
+          approvalHook
+          metadata
+        }
+      }
+    }
+  `;
+
+  try {
+    const response = await fetchWithTimeout(BENDYSTRAW_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          projectId: params.projectId,
+          chainId,
+        },
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('Bendystraw GraphQL error', new Error(data.errors[0]?.message), {
+        projectId: params.projectId,
+        chainId,
+        errors: data.errors,
+      });
+      throw new Error(data.errors[0]?.message || 'GraphQL query failed');
+    }
+
+    const project = data.data?.project;
+
+    if (!project) {
+      throw new Error(`Project ${params.projectId} not found on chain ${chainId}`);
+    }
+
+    // Parse balance (in wei)
+    const balanceWei = BigInt(project.balance ?? '0');
+    const formattedBalance = formatEther(balanceWei);
+
+    // Parse total supply (in wei)
+    const supplyWei = BigInt(project.totalTokenSupply ?? '0');
+    const formattedTotalSupply = formatEther(supplyWei);
+
+    // Parse metadata for cash out tax rate
+    let cashOutTaxRate: number | null = null;
+    let parsedMetadata = null;
+
+    if (project.currentRuleset?.metadata) {
+      try {
+        // Metadata is stored as a JSON string in Bendystraw
+        parsedMetadata = typeof project.currentRuleset.metadata === 'string'
+          ? JSON.parse(project.currentRuleset.metadata)
+          : project.currentRuleset.metadata;
+
+        // cashOutTaxRate is in basis points (0-10000)
+        if (parsedMetadata.cashOutTaxRate !== undefined) {
+          cashOutTaxRate = parsedMetadata.cashOutTaxRate;
+        }
+      } catch {
+        logger.warn('Failed to parse ruleset metadata', {
+          projectId: params.projectId,
+          metadata: project.currentRuleset.metadata,
+        });
+      }
+    }
+
+    return {
+      projectId: project.projectId,
+      chainId: project.chainId,
+      name: project.name,
+      balance: project.balance ?? '0',
+      formattedBalance: `${formattedBalance} ETH`,
+      tokenSymbol: project.tokenSymbol,
+      totalSupply: project.totalTokenSupply ?? '0',
+      formattedTotalSupply: `${formattedTotalSupply} ${project.tokenSymbol ?? 'tokens'}`,
+      cashOutTaxRate,
+      currentRuleset: project.currentRuleset ? {
+        cycleNumber: project.currentRuleset.cycleNumber,
+        start: project.currentRuleset.start,
+        duration: project.currentRuleset.duration,
+        weight: project.currentRuleset.weight,
+        decayPercent: project.currentRuleset.decayPercent,
+        approvalHook: project.currentRuleset.approvalHook,
+        metadata: parsedMetadata,
+      } : null,
+    };
+  } catch (error) {
+    logger.error('Failed to get project data', error as Error, {
+      projectId: params.projectId,
+      chainId,
+    });
+    throw error;
+  }
+}
+
+/**
  * Search for projects by name, description, or tags
  */
 export async function searchProjects(params: {
@@ -874,6 +1032,12 @@ export async function handleOmnichainTool(
   input: Record<string, unknown>
 ): Promise<unknown> {
   switch (toolName) {
+    case 'get_project_data':
+      return getProjectData({
+        projectId: input.projectId as number,
+        chainId: input.chainId as number | undefined,
+      });
+
     case 'search_projects':
       return searchProjects({
         query: input.query as string,

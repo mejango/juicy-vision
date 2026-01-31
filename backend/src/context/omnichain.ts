@@ -246,6 +246,26 @@ export const OMNICHAIN_TOOLS = [
       required: [],
     },
   },
+  // === Project Data ===
+  {
+    name: 'get_project_data',
+    description:
+      'Get detailed project data including balance, token total supply, cash out tax rate, and current ruleset. USE THIS when users ask for specific project values like "what is project X\'s balance?" or "what is the cash out rate for project Y?"',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        projectId: {
+          type: 'number',
+          description: 'The Juicebox project ID',
+        },
+        chainId: {
+          type: 'number',
+          description: 'The chain ID (1=Ethereum, 10=Optimism, 8453=Base, 42161=Arbitrum). Default: 1',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
   // === Project Search ===
   {
     name: 'search_projects',

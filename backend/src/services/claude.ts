@@ -311,6 +311,10 @@ export async function sendMessage(
 
   for (const block of response.content) {
     if (block.type === 'text') {
+      // Add space between text blocks if needed (when previous content ends without whitespace)
+      if (textContent && !textContent.match(/[\s\n]$/) && !block.text.match(/^[\s\n]/)) {
+        textContent += ' ';
+      }
       textContent += block.text;
     } else if (block.type === 'tool_use') {
       toolCalls.push({
@@ -555,8 +559,14 @@ export async function* streamMessageWithTools(
     // Stream Claude's response for this turn
     for await (const event of streamMessage(userId, { ...request, messages }, userApiKey)) {
       if (event.type === 'text') {
-        textContent += event.data as string;
-        fullResponseContent += event.data as string;
+        const textChunk = event.data as string;
+        textContent += textChunk;
+        // Add space between text blocks if needed (when previous content ends without whitespace)
+        if (fullResponseContent && !fullResponseContent.match(/[\s\n]$/) && !textChunk.match(/^[\s\n]/)) {
+          fullResponseContent += ' ';
+          yield { type: 'text', data: ' ' }; // Yield space to client
+        }
+        fullResponseContent += textChunk;
         yield event; // Pass through text tokens
       } else if (event.type === 'tool_use') {
         const toolCall = event.data as ToolCall;
