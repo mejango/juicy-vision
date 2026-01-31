@@ -14,11 +14,11 @@ import {
   fetchSuckerGroupMoments,
   fetchSuckerGroupBalance,
   fetchCashOutTaxSnapshots,
-  fetchPayEventsHistory,
-  fetchCashOutEventsHistory,
+  fetchProjectMoments,
   calculateFloorPrice,
   type SuckerGroupMoment,
   type CashOutTaxSnapshot,
+  type ProjectMoment,
 } from '../../../services/bendystraw'
 import {
   TimeRange,
@@ -89,8 +89,7 @@ export default function MultiChainCashOutChart({
   const [range, setRange] = useState<TimeRange>(initialRange)
   const [aggregatedMoments, setAggregatedMoments] = useState<SuckerGroupMoment[]>([])
   const [taxSnapshots, setTaxSnapshots] = useState<CashOutTaxSnapshot[]>([])
-  const [perChainPayEvents, setPerChainPayEvents] = useState<Map<number, Array<{ timestamp: number; amount: string }>>>(new Map())
-  const [perChainCashOutEvents, setPerChainCashOutEvents] = useState<Map<number, Array<{ timestamp: number; amount: string }>>>(new Map())
+  const [perChainMoments, setPerChainMoments] = useState<Map<number, ProjectMoment[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [projectStart, setProjectStart] = useState<number>(0)
@@ -138,34 +137,20 @@ export default function MultiChainCashOutChart({
           setProjectStart(moments[0].timestamp)
         }
 
-        // Fetch per-chain pay and cash out events to derive per-chain balances over time
-        const payEventsMap = new Map<number, Array<{ timestamp: number; amount: string }>>()
-        const cashOutEventsMap = new Map<number, Array<{ timestamp: number; amount: string }>>()
+        // Fetch per-chain historical balance snapshots (more reliable than deriving from events)
+        const momentsMap = new Map<number, ProjectMoment[]>()
 
         await Promise.all(chainIds.map(async (cid) => {
           try {
-            const [payEvents, cashOutEvents] = await Promise.all([
-              fetchPayEventsHistory(projectId, cid),
-              fetchCashOutEventsHistory(projectId, cid),
-            ])
-
-            payEventsMap.set(cid, payEvents.map(e => ({
-              timestamp: e.timestamp,
-              amount: e.amount
-            })))
-            cashOutEventsMap.set(cid, cashOutEvents.map(e => ({
-              timestamp: e.timestamp,
-              amount: e.reclaimAmount
-            })))
+            const chainMoments = await fetchProjectMoments(projectId, cid)
+            momentsMap.set(cid, chainMoments)
           } catch (err) {
-            console.warn(`Failed to fetch events for chain ${cid}:`, err)
-            payEventsMap.set(cid, [])
-            cashOutEventsMap.set(cid, [])
+            console.warn(`Failed to fetch moments for chain ${cid}:`, err)
+            momentsMap.set(cid, [])
           }
         }))
 
-        setPerChainPayEvents(payEventsMap)
-        setPerChainCashOutEvents(cashOutEventsMap)
+        setPerChainMoments(momentsMap)
 
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data')
@@ -177,8 +162,7 @@ export default function MultiChainCashOutChart({
     loadData()
   }, [projectId, chainId, chainIds])
 
-  // Compute per-chain cash out values over time
-  // This reconstructs per-chain balances from pay/cashout events
+  // Compute per-chain cash out values over time using historical balance snapshots
   const chartData = useMemo(() => {
     if (aggregatedMoments.length === 0) return []
 
@@ -189,43 +173,22 @@ export default function MultiChainCashOutChart({
     const dataByDay = new Map<number, ChainDataPoint>()
     const toDayBoundary = (ts: number) => Math.floor(ts / DAY_SECONDS) * DAY_SECONDS
 
-    // For each chain, calculate running balance from events
-    const chainBalances = new Map<number, Map<number, bigint>>() // chainId -> (dayTs -> balance)
+    // Build per-chain balance lookup from projectMoments
+    const chainBalancesByDay = new Map<number, Map<number, bigint>>() // chainId -> (dayTs -> balance)
 
-    // Sort events by timestamp for each chain
     chainIds.forEach(cid => {
-      const payEvents = perChainPayEvents.get(cid) || []
-      const cashOutEvents = perChainCashOutEvents.get(cid) || []
-
-      // Combine and sort all events
-      const allEvents = [
-        ...payEvents.map(e => ({ ...e, type: 'pay' as const })),
-        ...cashOutEvents.map(e => ({ ...e, type: 'cashOut' as const })),
-      ].sort((a, b) => a.timestamp - b.timestamp)
-
-      // Build running balance
-      let runningBalance = 0n
+      const moments = perChainMoments.get(cid) || []
       const balanceByDay = new Map<number, bigint>()
 
-      for (const event of allEvents) {
-        const dayTs = toDayBoundary(event.timestamp)
-        const amount = BigInt(event.amount || '0')
-
-        if (event.type === 'pay') {
-          runningBalance += amount
-        } else {
-          runningBalance -= amount
-          if (runningBalance < 0n) runningBalance = 0n
-        }
-
-        balanceByDay.set(dayTs, runningBalance)
+      for (const moment of moments) {
+        const dayTs = toDayBoundary(moment.timestamp)
+        balanceByDay.set(dayTs, BigInt(moment.balance || '0'))
       }
 
-      chainBalances.set(cid, balanceByDay)
+      chainBalancesByDay.set(cid, balanceByDay)
     })
 
-    // Get total supply from aggregated moments (same for all chains in a sucker group)
-    // and calculate per-chain cash out values
+    // Get total supply from aggregated moments and calculate per-chain cash out values
     for (const moment of aggregatedMoments) {
       const dayTs = toDayBoundary(moment.timestamp)
       if (dayTs < rangeStart) continue
@@ -245,9 +208,9 @@ export default function MultiChainCashOutChart({
         }
       }
 
-      // For each chain, calculate its cash out value based on its balance
+      // For each chain, calculate its cash out value based on its balance from projectMoments
       chainIds.forEach(cid => {
-        const balanceByDay = chainBalances.get(cid)
+        const balanceByDay = chainBalancesByDay.get(cid)
         if (!balanceByDay) return
 
         // Find the closest balance on or before this day
@@ -262,8 +225,6 @@ export default function MultiChainCashOutChart({
         }
 
         // Calculate cash out value for this chain
-        // Each chain has its own balance but shares the total supply and tax rate
-        // This gives the cash out value per token IF all tokens were on this chain
         if (totalSupply > 0n && chainBalance > 0n) {
           const cashOutValue = calculateCashOutValue(chainBalance, totalSupply, taxRate, projectDecimals)
           if (cashOutValue > 0) {
@@ -293,7 +254,7 @@ export default function MultiChainCashOutChart({
     }
 
     return sortedData
-  }, [aggregatedMoments, taxSnapshots, perChainPayEvents, perChainCashOutEvents, chainIds, range, projectStart, projectDecimals])
+  }, [aggregatedMoments, taxSnapshots, perChainMoments, chainIds, range, projectStart, projectDecimals])
 
   // Currency symbol for display (ETH or USDC)
   const currencySymbol = projectCurrency === 2 ? 'USDC' : 'ETH'

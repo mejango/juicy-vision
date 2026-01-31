@@ -22,6 +22,7 @@ import {
   SUCKER_GROUP_MOMENTS_QUERY,
   PAY_EVENTS_HISTORY_QUERY,
   CASH_OUT_EVENTS_HISTORY_QUERY,
+  PROJECT_MOMENTS_QUERY,
   REVNET_OPERATOR_QUERY,
 } from './queries'
 
@@ -2709,4 +2710,46 @@ export async function fetchAggregatedParticipants(
   }
 
   return { participants: [], totalSupply: 0n }
+}
+
+// Historical per-chain balance snapshot
+export interface ProjectMoment {
+  timestamp: number
+  block: number
+  balance: string
+  volume: string
+  volumeUsd: string
+}
+
+// Fetch historical per-chain balance snapshots
+export async function fetchProjectMoments(
+  projectId: string,
+  chainId: number,
+  version: number = 5,
+  limit: number = 1000
+): Promise<ProjectMoment[]> {
+  const client = getClient()
+
+  type ProjectMomentsResponse = {
+    projectMoments: {
+      items: ProjectMoment[]
+    }
+  }
+
+  try {
+    const data: ProjectMomentsResponse = await client.request<ProjectMomentsResponse>(
+      PROJECT_MOMENTS_QUERY,
+      {
+        projectId: parseInt(projectId),
+        chainId,
+        version,
+        limit,
+      }
+    )
+
+    return data.projectMoments?.items ?? []
+  } catch (err) {
+    console.error('Failed to fetch project moments:', err)
+    return []
+  }
 }

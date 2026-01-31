@@ -408,6 +408,26 @@ export const CASH_OUT_EVENTS_HISTORY_QUERY = `
   }
 `
 
+// Query to get historical per-chain balance snapshots
+export const PROJECT_MOMENTS_QUERY = `
+  query ProjectMoments($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int) {
+    projectMoments(
+      where: { projectId: $projectId, chainId: $chainId, version: $version }
+      limit: $limit
+      orderBy: "timestamp"
+      orderDirection: "asc"
+    ) {
+      items {
+        timestamp
+        block
+        balance
+        volume
+        volumeUsd
+      }
+    }
+  }
+`
+
 // Query to get Revnet operator via permission holders
 // The operator is the address with isRevnetOperator=true and account=REV_DEPLOYER
 export const REVNET_OPERATOR_QUERY = `
