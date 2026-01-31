@@ -3,6 +3,18 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import TransactionPreview from './TransactionPreview'
 import { useThemeStore } from '../../stores'
 
+// Mock wagmi hooks
+vi.mock('wagmi', () => ({
+  useAccount: () => ({
+    address: undefined,
+    isConnected: false,
+    isConnecting: false,
+    isDisconnected: true,
+  }),
+  useConfig: () => ({}),
+  useChainId: () => 1,
+}))
+
 // Mock the stores and hooks that TransactionPreview depends on
 // useProjectDraftStore is a zustand hook that uses selectors
 vi.mock('../../stores/projectDraftStore', () => ({
