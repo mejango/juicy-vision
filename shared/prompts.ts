@@ -503,8 +503,12 @@ Revenue sharing through tokens works like this:
 2. reservedPercent = % of minted tokens that go to reserved recipients (owner), NOT supporters
 3. Supporters can cash out tokens for their proportional share of treasury
 
-So if user wants "project keeps 10%, supporters get 90%": reservedPercent = 100000000 (10%)
+So if user wants "project keeps 10%, supporters get 90%": reservedPercent = 1000 (10%)
 If user wants "supporters get 10% stake": this is unusual - they might mean something else, ASK!
+
+**⚠️ reservedPercent and cashOutTaxRate are uint16 (max 65535)! Scale is 10000 = 100%:**
+- 10% = 1000, 20% = 2000, 30% = 3000, 50% = 5000, 100% = 10000
+- DO NOT use 10^9 scale for these fields (that's for splits only)
 
 ### Tiered Rewards / NFT Tiers (when user picks "perks")
 
@@ -1578,7 +1582,7 @@ This is a simpler project without NFT tiers. Supporters get tokens (shares) that
     "weightCutPercent": 0,
     "approvalHook": "0x0000000000000000000000000000000000000000",
     "metadata": {
-      "reservedPercent": 300000000,
+      "reservedPercent": 3000,
       "cashOutTaxRate": 0,
       "baseCurrency": 2,
       "pausePay": false,
@@ -1624,18 +1628,18 @@ This is a simpler project without NFT tiers. Supporters get tokens (shares) that
 
 **Key settings for revenue-backed ownership:**
 - action = "launchProject" (NOT launch721Project - no NFT tiers)
-- **reservedPercent** = project's cut × 10^7 (10% project cut = 100000000, supporters get 90% of tokens)
+- **reservedPercent** = project's cut × 100 (10% project cut = 1000, supporters get 90% of tokens)
 - **splitGroups** = USDC split (97.5% owner + 2.5% Juicy) for payout distribution, OR empty if no payouts planned
 - **fundAccessLimitGroups** = set payout limit to goal so owner can withdraw if needed
-- **cashOutTaxRate** = 0 for easy cash outs, or increase for token holder protection
+- **cashOutTaxRate** = 0 for easy cash outs, or increase for token holder protection (scale: 10000 = 100%)
 
-**⚠️ IMPORTANT: reservedPercent is what PROJECT KEEPS, not what supporters get!**
+**⚠️ IMPORTANT: reservedPercent and cashOutTaxRate are uint16! Scale is 10000 = 100%:**
 | Project's Cut | Supporters Get | reservedPercent |
 |---------------|----------------|-----------------|
-| 10% | 90% of tokens | 100000000 |
-| 20% | 80% of tokens | 200000000 |
-| 30% | 70% of tokens | 300000000 |
-| 50% | 50% of tokens | 500000000 |
+| 10% | 90% of tokens | 1000 |
+| 20% | 80% of tokens | 2000 |
+| 30% | 70% of tokens | 3000 |
+| 50% | 50% of tokens | 5000 |
 
 If user says "10% revenue share to supporters", ASK: do you mean project keeps 10% (supporters get 90%), or supporters get 10%?
 
