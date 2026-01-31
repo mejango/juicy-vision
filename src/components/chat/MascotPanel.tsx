@@ -85,7 +85,7 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
               <p className={`text-sm leading-relaxed font-medium ${
                 theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
               }`}>
-                {t('juicyExplainer.intro', "Juicy is the people's funding platform.")}
+                {t('juicyExplainer.intro', "Juicy is the open funding platform.")}
               </p>
               <p className={`text-sm leading-relaxed mt-3 ${
                 theme === 'dark' ? 'text-gray-200' : 'text-gray-700'

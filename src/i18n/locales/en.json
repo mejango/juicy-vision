@@ -185,10 +185,10 @@
   },
   "mascot": {
     "tagline": "Fund Your Thing Your Way",
-    "description": "Juicy is the people's funding platform. Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together."
+    "description": "Juicy is the open funding platform. Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together."
   },
   "juicyExplainer": {
-    "intro": "Juicy is the people's funding platform.",
+    "intro": "Juicy is the open funding platform.",
     "useIt": "Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.",
     "paragraph1": "JUICY runs like a co-op, and is the revenue token that powers this app. When you pay into Juicy, you receive JUICY revnet tokens proportional to your payment.",
     "paragraph2": "As Juicy's balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business. Fully automated by blockchains, no one's in control.",
@@ -197,7 +197,7 @@
   },
   "beta": {
     "title": "What's to come",
-    "tagline": "Juicy is the people's funding platform.",
+    "tagline": "Juicy is the open funding platform.",
     "whatWeAreBuilding": "Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.",
     "whyBeta": "We're still working out the kinks. Expect bugs.",
     "whenNotBeta": "We'll drop the beta tag when it just works.",

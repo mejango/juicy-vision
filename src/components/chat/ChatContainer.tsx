@@ -2056,7 +2056,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
           }`}>
-            {t('beta.tagline', "Juicy is the people's funding platform.")}
+            {t('beta.tagline', "Juicy is the open funding platform.")}
           </p>
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
