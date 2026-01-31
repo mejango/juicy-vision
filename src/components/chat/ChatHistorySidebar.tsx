@@ -171,8 +171,8 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     onClose()
   }
 
-  // Sort chats: pinned first, then by updatedAt
-  const sortedChats = [...chats].sort((a, b) => {
+  // Sort chats: pinned first, then by updatedAt (filter out null/undefined)
+  const sortedChats = [...chats].filter(Boolean).sort((a, b) => {
     if (a.isPinned && !b.isPinned) return -1
     if (!a.isPinned && b.isPinned) return 1
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
