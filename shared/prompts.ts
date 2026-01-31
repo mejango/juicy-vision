@@ -49,6 +49,12 @@ Example with r=0.1, cashing out 10% of supply (f=0.1):
 
 Key insight: Return depends on HOW MUCH of supply is cashed out. Larger redemptions get proportionally less per token. This incentivizes holding and rewards smaller/earlier cash outs.
 
+**Cash outs are per-chain.** For omnichain projects, the formula uses THAT CHAIN's balance and supply:
+- Each chain has its own treasury balance (s) and token supply (y)
+- Cash out value differs per chain based on local balance/supply ratio
+- Advanced users may bridge tokens to a chain with better rates before cashing out
+- When asked about cash out values, specify which chain or note cross-chain differences
+
 ## ⛔ Transaction Safety (Top 3 Rules)
 
 These are the most common sources of broken transactions. Verify before EVERY transaction-preview:
