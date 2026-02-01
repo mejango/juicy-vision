@@ -12,6 +12,7 @@
  */
 
 import { query, queryOne, execute } from '../db/index.ts';
+import { getConfig } from '../utils/config.ts';
 import {
   getTransactionState,
   formatStateForPrompt,
@@ -454,9 +455,40 @@ export async function buildEnhancedSystemPrompt(options: {
 }): Promise<{ systemPrompt: string; context: OptimizedContext | null }> {
   const parts: string[] = [];
   let context: OptimizedContext | null = null;
+  const config = getConfig();
 
   // 1. Base system prompt
   parts.push(options.basePrompt);
+
+  // 1.5. Testnet environment context (critical for correct chain IDs)
+  if (config.isTestnet) {
+    parts.push(`
+
+---
+
+# ENVIRONMENT: TESTNET MODE
+
+**CRITICAL**: You are running on TESTNET (Sepolia). Use these chain IDs for ALL deployments and transactions:
+
+| Network | Chain ID | Name |
+|---------|----------|------|
+| Sepolia | 11155111 | Ethereum Testnet |
+| OP Sepolia | 11155420 | Optimism Testnet |
+| Base Sepolia | 84532 | Base Testnet |
+| Arb Sepolia | 421614 | Arbitrum Testnet |
+
+**DO NOT use mainnet chain IDs (1, 10, 8453, 42161).**
+
+For transaction-preview components, use chainId="11155111" (Sepolia) as the primary chain.
+
+USDC addresses on testnets:
+- Sepolia: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
+- OP Sepolia: 0x5fd84259d66Cd46123540766Be93DFE6D43130D7
+- Base Sepolia: 0x036CbD53842c5426634e7929541eC2318f3dCF7e
+- Arb Sepolia: 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
+
+`);
+  }
 
   // 2. Omnichain knowledge (existing functionality)
   if (options.includeOmnichain !== false && options.omnichainContext) {
