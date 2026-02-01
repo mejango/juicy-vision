@@ -204,7 +204,7 @@ export function useOmnichainLaunchProject(
           ...tx,
         })),
         perform_simulation: true,
-        virtual_nonce_mode: 'Disabled',
+        virtual_nonce_mode: 'Disabled' as const,
       }
       console.log('=== RELAYR BUNDLE REQUEST ===')
       console.log('Full request:', JSON.stringify(bundleRequest, null, 2))
