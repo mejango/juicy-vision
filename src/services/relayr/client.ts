@@ -249,13 +249,19 @@ export async function createBalanceBundle(request: BalanceBundleRequest): Promis
   console.log('=======================')
 
   if (!response.ok) {
-    let error: { message?: string } = { message: 'Request failed' }
+    let error: { message?: string; reason?: string; error?: string; details?: unknown } = { message: 'Request failed' }
     try {
       error = JSON.parse(responseText)
+      // Log full error details for debugging
+      console.error('=== RELAYR ERROR DETAILS ===')
+      console.error('Full error object:', JSON.stringify(error, null, 2))
+      if (error.reason) console.error('Revert reason:', error.reason)
+      if (error.details) console.error('Error details:', JSON.stringify(error.details, null, 2))
+      console.error('============================')
     } catch {
       // Keep default error
     }
-    throw new Error(error.message || `HTTP ${response.status}`)
+    throw new Error(error.reason || error.error || error.message || `HTTP ${response.status}`)
   }
 
   return JSON.parse(responseText)

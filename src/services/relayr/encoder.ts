@@ -483,16 +483,29 @@ export function encodeLaunchProjectTransaction(
 
   // Log the exact args being encoded
   console.log('\n=== ENCODER: launchProjectFor ARGS ===')
-  console.log(JSON.stringify({
-    chainId,
-    owner: request.owner,
-    projectUri: request.projectUri,
-    rulesets: rulesetConfigs,
-    terminals: terminalConfigs,
-    memo: request.memo,
-    suckerConfig,
-    controller: JB_CONTROLLER_ADDRESS,
-  }, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))
+  console.log('Chain ID:', chainId)
+  console.log('Owner:', request.owner)
+  console.log('Project URI:', request.projectUri)
+  console.log('Controller:', JB_CONTROLLER_ADDRESS)
+  console.log('Memo:', request.memo || '(empty)')
+  console.log('')
+  console.log('Terminal Configurations:')
+  terminalConfigs.forEach((tc, i) => {
+    console.log(`  [${i}] ${tc.terminal}`)
+    console.log(`      Accounting contexts: ${tc.accountingContextsToAccept.length}`)
+    tc.accountingContextsToAccept.forEach((ctx, j) => {
+      console.log(`        [${j}] token=${ctx.token} decimals=${ctx.decimals} currency=${ctx.currency}`)
+    })
+  })
+  console.log('')
+  console.log('Ruleset Configurations:', rulesetConfigs.length)
+  rulesetConfigs.forEach((rc, i) => {
+    console.log(`  [${i}] weight=${rc.weight} duration=${rc.duration} splitGroups=${rc.splitGroups.length}`)
+  })
+  console.log('')
+  console.log('Sucker Config:')
+  console.log(`  deployerConfigurations: ${suckerConfig.deployerConfigurations.length}`)
+  console.log(`  salt: ${suckerConfig.salt}`)
   console.log('======================================\n')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
