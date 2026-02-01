@@ -27,6 +27,11 @@ import {
 } from '../../utils/technicalDetails'
 import { CHAINS, EXPLORER_URLS, ALL_CHAIN_IDS } from '../../constants'
 import type { JBRulesetConfig, JBTerminalConfig } from '../../services/relayr'
+import {
+  parseSuckerDeployerConfig,
+  createSalt,
+  shouldConfigureSuckers,
+} from '../../utils/suckerConfig'
 
 interface ChainOverride {
   chainId: string
@@ -1539,7 +1544,8 @@ export default function TransactionPreview({
     const memo = (raw.memo as string) || (launchConfig?.memo as string) || 'Project launch via Juicy Vision'
 
     // Get sucker deployment configuration (for atomic project+sucker deployment via JBOmnichainDeployer)
-    const suckerDeploymentConfiguration = raw.suckerDeploymentConfiguration as {
+    // If not provided by AI and deploying to multiple chains, auto-generate it
+    let suckerDeploymentConfiguration = raw.suckerDeploymentConfiguration as {
       deployerConfigurations: Array<{
         deployer: string
         mappings: Array<{
@@ -1551,6 +1557,35 @@ export default function TransactionPreview({
       }>
       salt: string
     } | undefined
+
+    // Auto-generate sucker config for multi-chain deployments
+    // This mirrors what buildOmnichainLaunchTransactions does at launch time
+    if (!suckerDeploymentConfiguration && shouldConfigureSuckers(launchChainIds)) {
+      // Generate a shared salt and show config for the first chain as example
+      const sharedSalt = createSalt()
+      const firstChainId = launchChainIds[0]
+      const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, { salt: sharedSalt })
+
+      suckerDeploymentConfiguration = {
+        deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
+          deployer: dc.deployer,
+          mappings: dc.mappings.map(m => ({
+            localToken: m.localToken,
+            remoteToken: m.remoteToken,
+            minGas: m.minGas,
+            minBridgeAmount: m.minBridgeAmount.toString(),
+          })),
+        })),
+        salt: generatedConfig.salt,
+      }
+
+      console.log(`[TransactionPreview] Auto-generated sucker config for ${launchChainIds.length} chains:`, {
+        chainIds: launchChainIds,
+        exampleChain: firstChainId,
+        deployerCount: suckerDeploymentConfiguration.deployerConfigurations.length,
+        salt: suckerDeploymentConfiguration.salt,
+      })
+    }
 
     // Validate - but skip validation if we're in managed mode and still loading the wallet
     const isWaitingForManagedWallet = isManagedMode && !managedAddress && managedWalletLoading
