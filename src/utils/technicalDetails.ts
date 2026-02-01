@@ -1,18 +1,26 @@
 // Shared utilities for technical details display in transaction modals
+import { IS_TESTNET, CHAIN_IDS } from '../config/environment'
 
-// Chain name mapping
-export const CHAIN_NAMES: Record<string, string> = {
-  '1': 'Ethereum',
-  '10': 'Optimism',
-  '8453': 'Base',
-  '42161': 'Arbitrum',
-}
+// Chain name mapping (environment-aware)
+export const CHAIN_NAMES: Record<string, string> = IS_TESTNET
+  ? {
+      [String(CHAIN_IDS.ethereum)]: 'Sepolia',
+      [String(CHAIN_IDS.optimism)]: 'OP Sepolia',
+      [String(CHAIN_IDS.base)]: 'Base Sepolia',
+      [String(CHAIN_IDS.arbitrum)]: 'Arb Sepolia',
+    }
+  : {
+      [String(CHAIN_IDS.ethereum)]: 'Ethereum',
+      [String(CHAIN_IDS.optimism)]: 'Optimism',
+      [String(CHAIN_IDS.base)]: 'Base',
+      [String(CHAIN_IDS.arbitrum)]: 'Arbitrum',
+    }
 
 export const CHAIN_COLORS: Record<string, string> = {
-  '1': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  '10': 'bg-red-500/20 text-red-300 border-red-500/30',
-  '8453': 'bg-blue-400/20 text-blue-200 border-blue-400/30',
-  '42161': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+  [String(CHAIN_IDS.ethereum)]: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  [String(CHAIN_IDS.optimism)]: 'bg-red-500/20 text-red-300 border-red-500/30',
+  [String(CHAIN_IDS.base)]: 'bg-blue-400/20 text-blue-200 border-blue-400/30',
+  [String(CHAIN_IDS.arbitrum)]: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
 }
 
 // Known JB ecosystem addresses (same on all chains)
