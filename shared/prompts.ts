@@ -1184,8 +1184,8 @@ Note: Owner === REVDeployer means revnet (always V5.0), but some non-revnet proj
 
 | Registry | Address | Use |
 |----------|---------|-----|
-| JBSwapTerminalUSDCRegistry | 0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe | USDC projects |
-| JBSwapTerminalRegistry | 0xde1d0fed5380fc6c9bdcae65329dbad7a96cde0a | ETH projects |
+| JBSwapTerminalUSDCRegistry | 0x1ce40d201cdec791de05810d17aaf501be167422 | USDC projects |
+| JBSwapTerminalRegistry | 0x60b4f5595ee509c4c22921c7b7999f1616e6a4f6 | ETH projects |
 
 ### USDC by Chain
 
@@ -1280,8 +1280,8 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 
 | User wants | JBMultiTerminal accountingContextsToAccept | Swap Terminal Registry |
 |------------|-------------------------------------------|------------------------|
-| USDC (default) | USDC token + decimals 6 + currency code | JBSwapTerminalUSDCRegistry (0x3f75...6dbe) |
-| Native token | NATIVE_TOKEN + decimals 18 + currency 61166 | JBSwapTerminalRegistry (0xde1d...cde0a) |
+| USDC (default) | USDC token + decimals 6 + currency code | JBSwapTerminalUSDCRegistry (0x1ce4...1422) |
+| Native token | NATIVE_TOKEN + decimals 18 + currency 61166 | JBSwapTerminalRegistry (0x60b4...6a4f6) |
 
 **USDC example (default):**
 \`\`\`json
@@ -1427,7 +1427,7 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
     {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [
       {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "decimals": 6, "currency": 909516616}
     ]},
-    {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
+    {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
   ],
   "suckerDeploymentConfiguration": {
     "deployerConfigurations": [/* One per target chain */],
@@ -1438,7 +1438,7 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 
 **If user explicitly requests native token payments instead:**
 - Change JBMultiTerminal accountingContextsToAccept to: \`[{"token": "0x000000000000000000000000000000000000EEEe", "decimals": 18, "currency": 61166}]\`
-- Use JBSwapTerminalRegistry (0xde1d0fed5380fc6c9bdcae65329dbad7a96cde0a) instead of JBSwapTerminalUSDCRegistry
+- Use JBSwapTerminalRegistry (0x60b4f5595ee509c4c22921c7b7999f1616e6a4f6) instead of JBSwapTerminalUSDCRegistry
 - Change baseCurrency to 1 in metadata
 
 ### Complete launch721Project Example (USER CHOSE PERKS)
@@ -1532,7 +1532,7 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
       {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [
         {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "decimals": 6, "currency": 909516616}
       ]},
-      {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
+      {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
     ],
     "memo": ""
   },
@@ -1621,7 +1621,7 @@ This is a simpler project without NFT tiers. Supporters get tokens (shares) that
     {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [
       {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "decimals": 6, "currency": 909516616}
     ]},
-    {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
+    {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
   ],
   "memo": ""
 }
@@ -1688,7 +1688,7 @@ Revnets are autonomous tokenized treasuries with staged parameters. The REVDeplo
         {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "decimals": 6, "currency": 909516616}
       ]
     },
-    {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
+    {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
   ],
   "buybackHookConfiguration": {
     "hook": "0x7EAE9bDC1ed31f07cE9F2Df74AC0D6826bF59E50",
@@ -1743,7 +1743,7 @@ Revnets are autonomous tokenized treasuries with staged parameters. The REVDeplo
   {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [
     {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "decimals": 6, "currency": 909516616}
   ]},
-  {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
+  {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
 ]
 \`\`\`
 
@@ -1839,7 +1839,7 @@ Include chainConfigs for per-chain overrides. **Each chain's JBMultiTerminal MUS
     {"chainId": "1", "label": "Ethereum", "overrides": {
       "terminalConfigurations": [
         {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [{"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "decimals": 6, "currency": 909516616}]},
-        {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
+        {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
       ],
       "suckerDeploymentConfiguration": {"deployerConfigurations": [
         {"deployer": "0x34B40205B249e5733CF93d86B7C9783b015dD3e7", "mappings": [{"localToken": "0x...EEEe", "remoteToken": "0x...EEEe", "minGas": 200000, "minBridgeAmount": 10000000000000000}]},
@@ -1850,19 +1850,19 @@ Include chainConfigs for per-chain overrides. **Each chain's JBMultiTerminal MUS
     {"chainId": "10", "label": "Optimism", "overrides": {
       "terminalConfigurations": [
         {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [{"token": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", "decimals": 6, "currency": 3530704773}]},
-        {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
+        {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
       ]
     }},
     {"chainId": "8453", "label": "Base", "overrides": {
       "terminalConfigurations": [
         {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [{"token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "decimals": 6, "currency": 3169378579}]},
-        {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
+        {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
       ]
     }},
     {"chainId": "42161", "label": "Arbitrum", "overrides": {
       "terminalConfigurations": [
         {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [{"token": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", "decimals": 6, "currency": 1156540465}]},
-        {"terminal": "0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe", "accountingContextsToAccept": []}
+        {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
       ]
     }}
   ]

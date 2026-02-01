@@ -496,24 +496,51 @@ export async function buildEnhancedSystemPrompt(options: {
 
 # ENVIRONMENT: TESTNET MODE
 
-**CRITICAL**: You are running on TESTNET (Sepolia). Use these chain IDs for ALL deployments and transactions:
+**CRITICAL**: You are running on TESTNET. Deploy to ALL 4 testnet chains using chainConfigs:
 
-| Network | Chain ID | Name |
-|---------|----------|------|
-| Sepolia | 11155111 | Ethereum Testnet |
-| OP Sepolia | 11155420 | Optimism Testnet |
-| Base Sepolia | 84532 | Base Testnet |
-| Arb Sepolia | 421614 | Arbitrum Testnet |
+| Network | Chain ID | USDC Address |
+|---------|----------|--------------|
+| Sepolia | 11155111 | 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238 |
+| OP Sepolia | 11155420 | 0x5fd84259d66Cd46123540766Be93DFE6D43130D7 |
+| Base Sepolia | 84532 | 0x036CbD53842c5426634e7929541eC2318f3dCF7e |
+| Arb Sepolia | 421614 | 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d |
 
 **DO NOT use mainnet chain IDs (1, 10, 8453, 42161).**
 
-For transaction-preview components, use chainId="11155111" (Sepolia) as the primary chain.
+**For launchProject/launch721Project, ALWAYS include chainConfigs with ALL 4 testnet chains:**
 
-USDC addresses on testnets:
-- Sepolia: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
-- OP Sepolia: 0x5fd84259d66Cd46123540766Be93DFE6D43130D7
-- Base Sepolia: 0x036CbD53842c5426634e7929541eC2318f3dCF7e
-- Arb Sepolia: 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
+\`\`\`json
+"chainConfigs": [
+  {"chainId": "11155111", "label": "Sepolia", "overrides": {
+    "terminalConfigurations": [
+      {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [{"token": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", "decimals": 6, "currency": 909516616}]},
+      {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
+    ]
+  }},
+  {"chainId": "11155420", "label": "OP Sepolia", "overrides": {
+    "terminalConfigurations": [
+      {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [{"token": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7", "decimals": 6, "currency": 3530704773}]},
+      {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
+    ]
+  }},
+  {"chainId": "84532", "label": "Base Sepolia", "overrides": {
+    "terminalConfigurations": [
+      {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [{"token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e", "decimals": 6, "currency": 3169378579}]},
+      {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
+    ]
+  }},
+  {"chainId": "421614", "label": "Arb Sepolia", "overrides": {
+    "terminalConfigurations": [
+      {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [{"token": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d", "decimals": 6, "currency": 1156540465}]},
+      {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
+    ]
+  }}
+]
+\`\`\`
+
+**Terminal addresses (same on mainnet and testnet via CREATE2):**
+- JBMultiTerminal5_1: 0x52869db3d61dde1e391967f2ce5039ad0ecd371c
+- JBSwapTerminalUSDCRegistry: 0x1ce40d201cdec791de05810d17aaf501be167422
 
 `);
   }
