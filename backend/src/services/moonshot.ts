@@ -12,8 +12,8 @@ import { SYSTEM_PROMPT } from '@shared/prompts.ts';
 import { recordToolUsage, recordInvocation } from './aiMetrics.ts';
 import type { ChatMessage, ToolDefinition, ClaudeRequest, ClaudeResponse, ToolCall, ToolResult } from './claude.ts';
 
-// Moonshot API base URL
-const MOONSHOT_API_URL = 'https://api.moonshot.cn/v1';
+// Moonshot API base URL (global endpoint - .cn is China only)
+const MOONSHOT_API_URL = 'https://api.moonshot.ai/v1';
 
 // ============================================================================
 // Rate Limiting (Simple in-memory implementation)
