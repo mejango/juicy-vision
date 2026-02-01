@@ -6,6 +6,12 @@
 import { encodeFunctionData } from 'viem'
 import { JB_OMNICHAIN_DEPLOYER_ABI, JB_OMNICHAIN_DEPLOYER_ADDRESS } from '../constants/abis'
 import { JB_CONTRACTS_5_1 } from '../constants/chains'
+import {
+  parseSuckerDeployerConfig,
+  createSalt,
+  shouldConfigureSuckers,
+  type JBSuckerDeploymentConfig as SuckerConfig,
+} from '../utils/suckerConfig'
 import type {
   JBRulesetConfig,
   JBTerminalConfig,
@@ -224,6 +230,10 @@ export function buildLaunchProjectTransaction(params: {
 /**
  * Build transactions for launching a project on multiple chains.
  * Each chain gets its own transaction targeting JBOmnichainDeployer.
+ *
+ * IMPORTANT: For multi-chain deployments, each chain needs DIFFERENT sucker
+ * deployer configurations (connecting to the other chains). This function
+ * auto-generates per-chain sucker configs when deploying to multiple chains.
  */
 export function buildOmnichainLaunchTransactions(params: {
   chainIds: number[]
@@ -232,7 +242,7 @@ export function buildOmnichainLaunchTransactions(params: {
   rulesetConfigurations: JBRulesetConfig[]
   terminalConfigurations: JBTerminalConfig[]
   memo: string
-  suckerDeploymentConfiguration: JBSuckerDeploymentConfig
+  suckerDeploymentConfiguration?: JBSuckerDeploymentConfig
   controller?: `0x${string}`
 }): Array<{
   chainId: number
@@ -241,6 +251,10 @@ export function buildOmnichainLaunchTransactions(params: {
   value: string
 }> {
   const controller = params.controller || DEFAULT_CONTROLLER
+  const { chainIds } = params
+
+  // Generate a shared salt for all chains (ensures deterministic sucker addresses)
+  const sharedSalt = (params.suckerDeploymentConfiguration?.salt as `0x${string}` | undefined) || createSalt()
 
   // Log decoded params in readable JSON format
   const debugParams = {
@@ -251,7 +265,8 @@ export function buildOmnichainLaunchTransactions(params: {
     controller,
     rulesetConfigurations: params.rulesetConfigurations,
     terminalConfigurations: params.terminalConfigurations,
-    suckerDeploymentConfiguration: params.suckerDeploymentConfiguration,
+    sharedSalt,
+    autoGeneratingSuckers: shouldConfigureSuckers(chainIds) && !params.suckerDeploymentConfiguration,
   }
 
   console.log('\n=== OMNICHAIN DEPLOYER PARAMS ===')
@@ -259,8 +274,44 @@ export function buildOmnichainLaunchTransactions(params: {
   console.log('=================================\n')
 
   const transactions = params.chainIds.map(chainId => {
+    // Generate per-chain sucker configuration
+    // Each chain needs deployers for the OTHER chains in the deployment
+    let suckerConfig: JBSuckerDeploymentConfig
+
+    if (params.suckerDeploymentConfiguration) {
+      // Use provided config (for single-chain or custom configurations)
+      suckerConfig = params.suckerDeploymentConfiguration
+    } else if (shouldConfigureSuckers(chainIds)) {
+      // Auto-generate sucker config for this chain connecting to other chains
+      const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, { salt: sharedSalt })
+      suckerConfig = {
+        deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
+          deployer: dc.deployer,
+          mappings: dc.mappings.map(m => ({
+            localToken: m.localToken,
+            remoteToken: m.remoteToken,
+            minGas: m.minGas,
+            minBridgeAmount: m.minBridgeAmount.toString(),
+          })),
+        })),
+        salt: generatedConfig.salt,
+      }
+
+      console.log(`Chain ${chainId}: Auto-generated sucker config with ${suckerConfig.deployerConfigurations.length} deployer(s)`)
+      suckerConfig.deployerConfigurations.forEach((dc, i) => {
+        console.log(`  [${i}] deployer=${dc.deployer}, mappings=${dc.mappings.length}`)
+      })
+    } else {
+      // Single chain deployment - no suckers needed
+      suckerConfig = {
+        deployerConfigurations: [],
+        salt: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      }
+    }
+
     const tx = buildLaunchProjectTransaction({
       ...params,
+      suckerDeploymentConfiguration: suckerConfig,
       controller,
       chainId,
     })

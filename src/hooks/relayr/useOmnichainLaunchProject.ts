@@ -147,9 +147,15 @@ export function useOmnichainLaunchProject(
       let transactions: Array<{ chain: number; target: string; data: string; value: string }>
       let predictedIds: Record<number, number> = {}
 
-      if (suckerDeploymentConfiguration) {
+      // For multi-chain deployments, ALWAYS use JBOmnichainDeployer with auto-generated suckers.
+      // This ensures cross-chain token bridging is set up correctly.
+      // For single-chain, we can use either path (no suckers needed).
+      const useOmnichainDeployer = chainIds.length > 1 || suckerDeploymentConfiguration
+
+      if (useOmnichainDeployer) {
         // Use JBOmnichainDeployer.launchProjectFor() - encode calldata locally
         // This creates projects AND deploys suckers atomically
+        // Note: buildOmnichainLaunchTransactions auto-generates per-chain sucker configs
         const txs = buildOmnichainLaunchTransactions({
           chainIds,
           owner: projectOwner as `0x${string}`,
@@ -157,7 +163,7 @@ export function useOmnichainLaunchProject(
           rulesetConfigurations,
           terminalConfigurations,
           memo,
-          suckerDeploymentConfiguration,
+          suckerDeploymentConfiguration, // Optional - will be auto-generated if not provided
         })
 
         transactions = txs.map(tx => ({
@@ -173,7 +179,7 @@ export function useOmnichainLaunchProject(
           predictedIds[chainId] = 0 // Will be updated from tx receipt
         })
       } else {
-        // Use API endpoint for backward compatibility (JBController.launchProjectFor)
+        // Single-chain deployment - use API endpoint (JBController.launchProjectFor)
         const launchRequest: JBLaunchProjectRequest = {
           chainIds,
           owner: projectOwner,
