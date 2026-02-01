@@ -1561,7 +1561,9 @@ export default function TransactionPreview({
     // Auto-generate sucker config for multi-chain deployments
     // This mirrors what buildOmnichainLaunchTransactions does at launch time
     // Note: Use a fixed preview salt - actual salt is generated at launch time
-    if (!suckerDeploymentConfiguration && shouldConfigureSuckers(launchChainIds)) {
+    // Also auto-generate if the AI provided an empty config (deployerConfigurations: [])
+    const hasEmptyConfig = !suckerDeploymentConfiguration?.deployerConfigurations?.length
+    if (hasEmptyConfig && shouldConfigureSuckers(launchChainIds)) {
       const previewSalt = '0x0000000000000000000000000000000000000000000000000000000000000001' as `0x${string}`
       const firstChainId = launchChainIds[0]
       const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, { salt: previewSalt })

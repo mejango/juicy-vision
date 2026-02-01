@@ -279,9 +279,12 @@ export function buildOmnichainLaunchTransactions(params: {
     // Each chain needs deployers for the OTHER chains in the deployment
     let suckerConfig: JBSuckerDeploymentConfig
 
-    if (params.suckerDeploymentConfiguration) {
-      // Use provided config (for single-chain or custom configurations)
-      suckerConfig = params.suckerDeploymentConfiguration
+    // Check if we have a non-empty provided config
+    const hasProvidedConfig = (params.suckerDeploymentConfiguration?.deployerConfigurations?.length ?? 0) > 0
+
+    if (hasProvidedConfig) {
+      // Use provided config (for custom configurations)
+      suckerConfig = params.suckerDeploymentConfiguration!
     } else if (shouldConfigureSuckers(chainIds)) {
       // Auto-generate sucker config for this chain connecting to other chains
       const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, { salt: sharedSalt })

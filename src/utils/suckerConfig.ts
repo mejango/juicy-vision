@@ -2,8 +2,7 @@
  * Sucker deployment configuration for multi-chain JB projects.
  * Suckers enable cross-chain token bridging between the same project on different chains.
  *
- * Based on juice-sdk-core implementation:
- * https://github.com/jbx-protocol/juice-sdk-v5/blob/main/packages/core/src/utils/deploy.ts
+ * Addresses from: https://docs.juicebox.money/dev/v5/addresses/
  */
 
 import { toHex, toBytes, parseEther } from 'viem'
@@ -26,96 +25,72 @@ const CHAIN_IDS = {
   arbitrumSepolia: 421614,
 } as const
 
-// CCIP Sucker Deployer addresses by chain
-// From juice-sdk-core/dist/esm/generated/juicebox.js
-const jbccipSuckerDeployerAddress: Record<number, `0x${string}`> = {
-  1: '0x34B40205B249e5733CF93d86B7C9783b015dD3e7',
-  10: '0x34B40205B249e5733CF93d86B7C9783b015dD3e7',
-  8453: '0xdE901EbaFC70d545F9D43034308C136Ce8c94A5C',
-  42161: '0x9d4858cc9d3552507EEAbce722787AfEf64C615e',
-  84532: '0xdE901EbaFC70d545F9D43034308C136Ce8c94A5C',
-  421614: '0x9d4858cc9d3552507EEAbce722787AfEf64C615e',
-  11155111: '0x34B40205B249e5733CF93d86B7C9783b015dD3e7',
-  11155420: '0x34B40205B249e5733CF93d86B7C9783b015dD3e7',
+/**
+ * CCIP Sucker Deployer addresses - organized by chain PAIR.
+ * Each deployer handles bridging between a specific pair of chains.
+ * The same deployer address is used on both chains in the pair.
+ *
+ * From juice-docs: https://docs.juicebox.money/dev/v5/addresses/
+ */
+
+// Sepolia Testnet Deployers (same address on both sides of each pair)
+const SEPOLIA_DEPLOYERS = {
+  // Ethereum Sepolia <-> Optimism Sepolia
+  ETH_OP: '0x172ad9b3df724ee0422ea85b7799a3f7ca761816' as `0x${string}`,
+  // Ethereum Sepolia <-> Arbitrum Sepolia
+  ETH_ARB: '0xf816d238aef247f86cc73593961cb8fb55ca4bcf' as `0x${string}`,
+  // Ethereum Sepolia <-> Base Sepolia
+  ETH_BASE: '0x195b4dce646eba3c3e9ae56708558b1a96f88814' as `0x${string}`,
+  // Optimism Sepolia <-> Arbitrum Sepolia
+  OP_ARB: '0xaa0dbdf6354dd238d289c359c74f998ddec8bcd1' as `0x${string}`,
+  // Optimism Sepolia <-> Base Sepolia
+  OP_BASE: '0x58683931b146697d094c660aec1f4a8f564a3d7d' as `0x${string}`,
+  // Arbitrum Sepolia <-> Base Sepolia
+  ARB_BASE: '0xc295a8926f1ed0a6e3b6cbdb1d28b9d6b388c8a7' as `0x${string}`,
 }
 
-const jbccipSuckerDeployer_1Address: Record<number, `0x${string}`> = {
-  1: '0xdE901EbaFC70d545F9D43034308C136Ce8c94A5C',
-  10: '0x39132eA75B9eaE5CBfF7BA1997C804302a7fF413',
-  8453: '0xb825F2f6995966eB6dD772a8707D4A547028Ac26',
-  42161: '0x39132eA75B9eaE5CBfF7BA1997C804302a7fF413',
-  84532: '0xb825F2f6995966eB6dD772a8707D4A547028Ac26',
-  421614: '0x39132eA75B9eaE5CBfF7BA1997C804302a7fF413',
-  11155111: '0xdE901EbaFC70d545F9D43034308C136Ce8c94A5C',
-  11155420: '0x39132eA75B9eaE5CBfF7BA1997C804302a7fF413',
-}
-
-const jbccipSuckerDeployer_2Address: Record<number, `0x${string}`> = {
-  1: '0x9d4858cc9d3552507EEAbce722787AfEf64C615e',
-  10: '0xb825F2f6995966eB6dD772a8707D4A547028Ac26',
-  8453: '0x3D7Fb0aa325aD5D2349274f9eF33D4424135d963',
-  42161: '0x3D7Fb0aa325aD5D2349274f9eF33D4424135d963',
-  84532: '0x3D7Fb0aa325aD5D2349274f9eF33D4424135d963',
-  421614: '0x3D7Fb0aa325aD5D2349274f9eF33D4424135d963',
-  11155111: '0x9d4858cc9d3552507EEAbce722787AfEf64C615e',
-  11155420: '0xb825F2f6995966eB6dD772a8707D4A547028Ac26',
-}
+// TODO: Add mainnet deployer addresses when available
+// const MAINNET_DEPLOYERS = {
+//   ETH_OP: '0x...',
+//   ETH_ARB: '0x...',
+//   ETH_BASE: '0x...',
+//   OP_ARB: '0x...',
+//   OP_BASE: '0x...',
+//   ARB_BASE: '0x...',
+// }
 
 /**
  * CCIP Sucker Deployer addresses mapping.
  * Structure: CCIP_SUCKER_DEPLOYER_ADDRESSES[targetChainId][remoteChainId] = deployerAddress
  *
- * Each chain pair uses a specific deployer contract based on the CCIP lane configuration.
+ * Each chain pair uses the SAME deployer contract address on both chains.
  */
 export const CCIP_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${string}`>> = {
-  // Sepolia -> other testnets
+  // Ethereum Sepolia -> other testnets
   [CHAIN_IDS.sepolia]: {
-    [CHAIN_IDS.optimismSepolia]: jbccipSuckerDeployerAddress[CHAIN_IDS.sepolia],
-    [CHAIN_IDS.baseSepolia]: jbccipSuckerDeployer_1Address[CHAIN_IDS.sepolia],
-    [CHAIN_IDS.arbitrumSepolia]: jbccipSuckerDeployer_2Address[CHAIN_IDS.sepolia],
+    [CHAIN_IDS.optimismSepolia]: SEPOLIA_DEPLOYERS.ETH_OP,
+    [CHAIN_IDS.arbitrumSepolia]: SEPOLIA_DEPLOYERS.ETH_ARB,
+    [CHAIN_IDS.baseSepolia]: SEPOLIA_DEPLOYERS.ETH_BASE,
   },
-  // Mainnet -> other mainnets
-  [CHAIN_IDS.mainnet]: {
-    [CHAIN_IDS.optimism]: jbccipSuckerDeployerAddress[CHAIN_IDS.mainnet],
-    [CHAIN_IDS.base]: jbccipSuckerDeployer_1Address[CHAIN_IDS.mainnet],
-    [CHAIN_IDS.arbitrum]: jbccipSuckerDeployer_2Address[CHAIN_IDS.mainnet],
+  // Optimism Sepolia -> other testnets
+  [CHAIN_IDS.optimismSepolia]: {
+    [CHAIN_IDS.sepolia]: SEPOLIA_DEPLOYERS.ETH_OP,
+    [CHAIN_IDS.arbitrumSepolia]: SEPOLIA_DEPLOYERS.OP_ARB,
+    [CHAIN_IDS.baseSepolia]: SEPOLIA_DEPLOYERS.OP_BASE,
   },
   // Arbitrum Sepolia -> other testnets
   [CHAIN_IDS.arbitrumSepolia]: {
-    [CHAIN_IDS.sepolia]: jbccipSuckerDeployerAddress[CHAIN_IDS.arbitrumSepolia],
-    [CHAIN_IDS.optimismSepolia]: jbccipSuckerDeployer_1Address[CHAIN_IDS.arbitrumSepolia],
-    [CHAIN_IDS.baseSepolia]: jbccipSuckerDeployer_2Address[CHAIN_IDS.arbitrumSepolia],
-  },
-  // Arbitrum -> other mainnets
-  [CHAIN_IDS.arbitrum]: {
-    [CHAIN_IDS.mainnet]: jbccipSuckerDeployerAddress[CHAIN_IDS.arbitrum],
-    [CHAIN_IDS.optimism]: jbccipSuckerDeployer_1Address[CHAIN_IDS.arbitrum],
-    [CHAIN_IDS.base]: jbccipSuckerDeployer_2Address[CHAIN_IDS.arbitrum],
-  },
-  // OP Sepolia -> other testnets
-  [CHAIN_IDS.optimismSepolia]: {
-    [CHAIN_IDS.sepolia]: jbccipSuckerDeployerAddress[CHAIN_IDS.optimismSepolia],
-    [CHAIN_IDS.arbitrumSepolia]: jbccipSuckerDeployer_1Address[CHAIN_IDS.optimismSepolia],
-    [CHAIN_IDS.baseSepolia]: jbccipSuckerDeployer_2Address[CHAIN_IDS.optimismSepolia],
-  },
-  // Optimism -> other mainnets
-  [CHAIN_IDS.optimism]: {
-    [CHAIN_IDS.mainnet]: jbccipSuckerDeployerAddress[CHAIN_IDS.optimism],
-    [CHAIN_IDS.arbitrum]: jbccipSuckerDeployer_1Address[CHAIN_IDS.optimism],
-    [CHAIN_IDS.base]: jbccipSuckerDeployer_2Address[CHAIN_IDS.optimism],
+    [CHAIN_IDS.sepolia]: SEPOLIA_DEPLOYERS.ETH_ARB,
+    [CHAIN_IDS.optimismSepolia]: SEPOLIA_DEPLOYERS.OP_ARB,
+    [CHAIN_IDS.baseSepolia]: SEPOLIA_DEPLOYERS.ARB_BASE,
   },
   // Base Sepolia -> other testnets
   [CHAIN_IDS.baseSepolia]: {
-    [CHAIN_IDS.sepolia]: jbccipSuckerDeployerAddress[CHAIN_IDS.baseSepolia],
-    [CHAIN_IDS.optimismSepolia]: jbccipSuckerDeployer_1Address[CHAIN_IDS.baseSepolia],
-    [CHAIN_IDS.arbitrumSepolia]: jbccipSuckerDeployer_2Address[CHAIN_IDS.baseSepolia],
+    [CHAIN_IDS.sepolia]: SEPOLIA_DEPLOYERS.ETH_BASE,
+    [CHAIN_IDS.optimismSepolia]: SEPOLIA_DEPLOYERS.OP_BASE,
+    [CHAIN_IDS.arbitrumSepolia]: SEPOLIA_DEPLOYERS.ARB_BASE,
   },
-  // Base -> other mainnets
-  [CHAIN_IDS.base]: {
-    [CHAIN_IDS.mainnet]: jbccipSuckerDeployerAddress[CHAIN_IDS.base],
-    [CHAIN_IDS.optimism]: jbccipSuckerDeployer_1Address[CHAIN_IDS.base],
-    [CHAIN_IDS.arbitrum]: jbccipSuckerDeployer_2Address[CHAIN_IDS.base],
-  },
+  // TODO: Add mainnet mappings when addresses are available
 }
 
 /**
