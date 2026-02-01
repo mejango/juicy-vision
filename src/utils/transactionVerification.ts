@@ -656,6 +656,18 @@ export function verifyLaunchProjectParams(params: {
       field: 'terminalConfigurations',
       message: 'At least one terminal configuration is required',
     })
+  } else {
+    // Check for terminals with empty accounting contexts
+    const emptyContextTerminals = params.terminalConfigurations.filter(
+      (tc: { accountingContextsToAccept?: unknown[] }) =>
+        !tc.accountingContextsToAccept || tc.accountingContextsToAccept.length === 0
+    )
+    if (emptyContextTerminals.length > 0) {
+      warnings.push(
+        `${emptyContextTerminals.length} terminal(s) have empty accountingContextsToAccept - ` +
+        `this may cause simulation failures if the terminal requires accounting contexts`
+      )
+    }
   }
 
   const verifiedParams: Record<string, unknown> = {
