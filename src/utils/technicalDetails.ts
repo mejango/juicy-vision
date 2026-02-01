@@ -162,20 +162,20 @@ export function formatSimpleValue(value: unknown, key?: string, chainId?: string
   }
 
   // Currency field (JBAccountingContext uses uint32 currency codes)
-  // Currency = uint32(uint160(tokenAddress)), so USDC currencies differ per chain
+  // Currency codes are derived from token addresses but we hardcode known values
   if (keyLower === 'currency' && numValue !== null) {
     // ETH native token currency is constant
     if (numValue === 61166) {
       return `${numValue} (ETH)`
     }
-    // Check if it's a USDC-derived currency (varies per chain)
-    // Calculate uint32(uint160(addr)) for all known USDC addresses
-    const usdcCurrencies = Object.values(USDC_ADDRESSES).map(addr => {
-      // uint32(uint160(addr)) = last 4 bytes as uint32
-      const addrLower = addr.toLowerCase().replace('0x', '')
-      const last8Hex = addrLower.slice(-8)
-      return parseInt(last8Hex, 16)
-    })
+    // Known USDC currency codes by chain (varies per chain!)
+    const usdcCurrencies = [
+      909516616,   // Ethereum mainnet / Sepolia
+      3530704773,  // OP Sepolia
+      3169378579,  // Base Sepolia
+      1156540465,  // Arb Sepolia
+      // Add mainnet values if different
+    ]
     if (usdcCurrencies.includes(numValue)) {
       return `${numValue} (USDC, chain-specific)`
     }
