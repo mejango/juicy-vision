@@ -658,9 +658,9 @@ export function verifyLaunchProjectParams(params: {
     })
   } else {
     // Check for terminals with empty accounting contexts
-    const emptyContextTerminals = params.terminalConfigurations.filter(
-      (tc: { accountingContextsToAccept?: unknown[] }) =>
-        !tc.accountingContextsToAccept || tc.accountingContextsToAccept.length === 0
+    const terminalConfigs = params.terminalConfigurations as Array<{ accountingContextsToAccept?: unknown[] }>
+    const emptyContextTerminals = terminalConfigs.filter(
+      tc => !tc.accountingContextsToAccept || tc.accountingContextsToAccept.length === 0
     )
     if (emptyContextTerminals.length > 0) {
       warnings.push(
