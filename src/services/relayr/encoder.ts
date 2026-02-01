@@ -469,8 +469,8 @@ export function encodeLaunchProjectTransaction(
           deployer: dc.deployer as Address,
           mappings: dc.mappings.map(m => ({
             localToken: m.localToken as Address,
-            remoteToken: m.remoteToken as Address,
             minGas: m.minGas,
+            remoteToken: m.remoteToken as Address,
             minBridgeAmount: BigInt(m.minBridgeAmount),
           })),
         })),
@@ -480,6 +480,20 @@ export function encodeLaunchProjectTransaction(
         deployerConfigurations: [],
         salt: '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex,
       }
+
+  // Log the exact args being encoded
+  console.log('\n=== ENCODER: launchProjectFor ARGS ===')
+  console.log(JSON.stringify({
+    chainId,
+    owner: request.owner,
+    projectUri: request.projectUri,
+    rulesets: rulesetConfigs,
+    terminals: terminalConfigs,
+    memo: request.memo,
+    suckerConfig,
+    controller: JB_CONTROLLER_ADDRESS,
+  }, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))
+  console.log('======================================\n')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = encodeFunctionData({
@@ -495,6 +509,9 @@ export function encodeLaunchProjectTransaction(
       JB_CONTROLLER_ADDRESS, // controller
     ],
   })
+
+  const selector = data.slice(0, 10)
+  console.log(`Chain ${chainId}: encoded selector=${selector}`)
 
   return {
     txData: {
