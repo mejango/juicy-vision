@@ -1,7 +1,7 @@
 // JBController ABI - Version 5.1
-// Contract Address: 0x8C32BbA37A7C42b3A1FA25e2Eaf4D6539c481a16
+// Contract Address: 0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1
 
-export const JB_CONTROLLER_ADDRESS = '0x8C32BbA37A7C42b3A1FA25e2Eaf4D6539c481a16' as const
+export const JB_CONTROLLER_ADDRESS = '0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1' as const
 
 export const JB_CONTROLLER_ABI = [
   {

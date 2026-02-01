@@ -2227,7 +2227,7 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
         title={tooltip ? `${tooltip}\n\nRaw: ${rawValue}` : undefined}
       >
         <div className="flex justify-between gap-4">
-          <span className={`shrink-0 ${tooltip ? 'underline decoration-dotted cursor-help' : ''}`}>
+          <span className="shrink-0">
             {displayName}
           </span>
           {isUnlimited ? (

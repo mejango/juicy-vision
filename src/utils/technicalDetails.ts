@@ -64,8 +64,6 @@ export const JB_ADDRESSES: Record<string, string> = {
   '0x000000000000000000000000000000000000eeee': 'NATIVE_TOKEN (ETH)',
   // Zero address
   '0x0000000000000000000000000000000000000000': 'None',
-  // JBController for single-chain deploy
-  '0x8c32bba37a7c42b3a1fa25e2eaf4d6539c481a16': 'JBController',
 }
 
 // Chain-aware token addresses (different per chain)

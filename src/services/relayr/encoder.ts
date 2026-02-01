@@ -166,10 +166,10 @@ function toRulesetConfigTuple(config: JBRulesetConfig): any {
     splitGroups: config.splitGroups.map(sg => ({
       groupId: BigInt(sg.groupId),
       splits: sg.splits.map(s => ({
-        preferAddToBalance: s.preferAddToBalance,
         percent: s.percent,
         projectId: BigInt(s.projectId),
         beneficiary: s.beneficiary as Address,
+        preferAddToBalance: s.preferAddToBalance,
         lockedUntil: s.lockedUntil,
         hook: (s.hook || ZERO_ADDRESS) as Address,
       })),
