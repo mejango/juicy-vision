@@ -93,6 +93,15 @@ export const CCIP_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${
   // TODO: Add mainnet mappings when addresses are available
 }
 
+// Debug: Log the deployer addresses at module load time
+console.log('[suckerConfig] CCIP_SUCKER_DEPLOYER_ADDRESSES loaded:', {
+  targetChains: Object.keys(CCIP_SUCKER_DEPLOYER_ADDRESSES).map(Number),
+  sepoliaRemotes: CCIP_SUCKER_DEPLOYER_ADDRESSES[11155111] ? Object.keys(CCIP_SUCKER_DEPLOYER_ADDRESSES[11155111]).map(Number) : 'NOT DEFINED',
+  sepoliaToOptimism: CCIP_SUCKER_DEPLOYER_ADDRESSES[11155111]?.[11155420],
+  sepoliaToBase: CCIP_SUCKER_DEPLOYER_ADDRESSES[11155111]?.[84532],
+  sepoliaToArbitrum: CCIP_SUCKER_DEPLOYER_ADDRESSES[11155111]?.[421614],
+})
+
 /**
  * Generate a random salt for deterministic sucker deployment.
  * The same salt should be used across all chains in a multi-chain deployment
@@ -151,10 +160,22 @@ export function parseSuckerDeployerConfig(
   // Get all chains except the target chain
   const remoteChainIds = allChainIds.filter(chainId => chainId !== targetChainId)
 
+  // Debug: Log the lookup details
+  console.log('[parseSuckerDeployerConfig] Lookup details:', {
+    targetChainId,
+    allChainIds,
+    remoteChainIds,
+    availableTargetChains: Object.keys(CCIP_SUCKER_DEPLOYER_ADDRESSES).map(Number),
+    targetChainEntry: CCIP_SUCKER_DEPLOYER_ADDRESSES[targetChainId],
+    targetChainEntryKeys: CCIP_SUCKER_DEPLOYER_ADDRESSES[targetChainId] ? Object.keys(CCIP_SUCKER_DEPLOYER_ADDRESSES[targetChainId]).map(Number) : [],
+  })
+
   // Build deployer configurations for each remote chain
   const deployerConfigurations: JBSuckerDeployerConfig[] = remoteChainIds
     .map((remoteChainId): JBSuckerDeployerConfig | null => {
       const deployer = CCIP_SUCKER_DEPLOYER_ADDRESSES[targetChainId]?.[remoteChainId]
+
+      console.log(`[parseSuckerDeployerConfig] Lookup ${targetChainId} -> ${remoteChainId}:`, deployer || 'NOT FOUND')
 
       if (!deployer) {
         console.warn(`No CCIP sucker deployer found for ${targetChainId} -> ${remoteChainId}`)

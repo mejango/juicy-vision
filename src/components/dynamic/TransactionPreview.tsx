@@ -1573,6 +1573,14 @@ export default function TransactionPreview({
     if (hasEmptyConfig && shouldConfigureSuckers(launchChainIds)) {
       const previewSalt = '0x0000000000000000000000000000000000000000000000000000000000000001' as `0x${string}`
       const firstChainId = launchChainIds[0]
+      console.log('[TransactionPreview] About to call parseSuckerDeployerConfig with:', {
+        firstChainId,
+        launchChainIds,
+        salt: previewSalt,
+        typeof_firstChainId: typeof firstChainId,
+        typeof_launchChainIds: typeof launchChainIds,
+        launchChainIds_types: launchChainIds.map(id => typeof id),
+      })
       const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, { salt: previewSalt })
 
       console.log('[TransactionPreview] Generated sucker config:', {
