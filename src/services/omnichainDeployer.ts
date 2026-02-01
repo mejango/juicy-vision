@@ -165,18 +165,33 @@ export function encodeLaunchProjectFor(params: {
     salt: suckerDeploymentConfiguration.salt as `0x${string}`,
   }
 
+  // Log the exact args being passed to encodeFunctionData
+  const args = [
+    owner,
+    projectUri,
+    formattedRulesets,
+    formattedTerminals,
+    memo,
+    formattedSuckerConfig,
+    controller,
+  ]
+
+  console.log('\n=== ENCODE ARGS (JSON) ===')
+  console.log(JSON.stringify({
+    owner: args[0],
+    projectUri: args[1],
+    rulesets: args[2],
+    terminals: args[3],
+    memo: args[4],
+    suckerConfig: args[5],
+    controller: args[6],
+  }, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))
+  console.log('==========================\n')
+
   return encodeFunctionData({
     abi: JB_OMNICHAIN_DEPLOYER_ABI,
     functionName: 'launchProjectFor',
-    args: [
-      owner,
-      projectUri,
-      formattedRulesets,
-      formattedTerminals,
-      memo,
-      formattedSuckerConfig,
-      controller,
-    ],
+    args,
   })
 }
 
@@ -227,26 +242,39 @@ export function buildOmnichainLaunchTransactions(params: {
   data: `0x${string}`
   value: string
 }> {
-  // Log decoded params before ABI encoding
-  console.log('=== OMNICHAIN DEPLOYER PARAMS (DECODED) ===')
-  console.log('Owner:', params.owner)
-  console.log('Project URI:', params.projectUri)
-  console.log('Memo:', params.memo)
-  console.log('Chain IDs:', params.chainIds)
-  console.log('Controller:', params.controller || DEFAULT_CONTROLLER)
-  console.log('Ruleset Configurations:', JSON.stringify(params.rulesetConfigurations, (_, v) =>
-    typeof v === 'bigint' ? v.toString() : v, 2))
-  console.log('Terminal Configurations:', JSON.stringify(params.terminalConfigurations, null, 2))
-  console.log('Sucker Deployment Config:', JSON.stringify(params.suckerDeploymentConfiguration, (_, v) =>
-    typeof v === 'bigint' ? v.toString() : v, 2))
-  console.log('==========================================')
+  const controller = params.controller || DEFAULT_CONTROLLER
 
-  return params.chainIds.map(chainId =>
-    buildLaunchProjectTransaction({
+  // Log decoded params in readable JSON format
+  const debugParams = {
+    owner: params.owner,
+    projectUri: params.projectUri,
+    memo: params.memo,
+    chainIds: params.chainIds,
+    controller,
+    rulesetConfigurations: params.rulesetConfigurations,
+    terminalConfigurations: params.terminalConfigurations,
+    suckerDeploymentConfiguration: params.suckerDeploymentConfiguration,
+  }
+
+  console.log('\n=== OMNICHAIN DEPLOYER PARAMS ===')
+  console.log(JSON.stringify(debugParams, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))
+  console.log('=================================\n')
+
+  const transactions = params.chainIds.map(chainId => {
+    const tx = buildLaunchProjectTransaction({
       ...params,
+      controller,
       chainId,
     })
-  )
+
+    // Log each transaction's calldata with function selector
+    const selector = tx.data.slice(0, 10)
+    console.log(`Chain ${chainId}: selector=${selector}, to=${tx.to}`)
+
+    return tx
+  })
+
+  return transactions
 }
 
 // Launch rulesets config for launch721RulesetsFor
