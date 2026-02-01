@@ -29,7 +29,6 @@ import { CHAINS, EXPLORER_URLS, ALL_CHAIN_IDS } from '../../constants'
 import type { JBRulesetConfig, JBTerminalConfig } from '../../services/relayr'
 import {
   parseSuckerDeployerConfig,
-  createSalt,
   shouldConfigureSuckers,
 } from '../../utils/suckerConfig'
 
@@ -1561,11 +1560,11 @@ export default function TransactionPreview({
 
     // Auto-generate sucker config for multi-chain deployments
     // This mirrors what buildOmnichainLaunchTransactions does at launch time
+    // Note: Use a fixed preview salt - actual salt is generated at launch time
     if (!suckerDeploymentConfiguration && shouldConfigureSuckers(launchChainIds)) {
-      // Generate a shared salt and show config for the first chain as example
-      const sharedSalt = createSalt()
+      const previewSalt = '0x0000000000000000000000000000000000000000000000000000000000000001' as `0x${string}`
       const firstChainId = launchChainIds[0]
-      const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, { salt: sharedSalt })
+      const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, { salt: previewSalt })
 
       suckerDeploymentConfiguration = {
         deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
@@ -1577,15 +1576,8 @@ export default function TransactionPreview({
             minBridgeAmount: m.minBridgeAmount.toString(),
           })),
         })),
-        salt: generatedConfig.salt,
+        salt: '(generated at launch)',
       }
-
-      console.log(`[TransactionPreview] Auto-generated sucker config for ${launchChainIds.length} chains:`, {
-        chainIds: launchChainIds,
-        exampleChain: firstChainId,
-        deployerCount: suckerDeploymentConfiguration.deployerConfigurations.length,
-        salt: suckerDeploymentConfiguration.salt,
-      })
     }
 
     // Validate - but skip validation if we're in managed mode and still loading the wallet
