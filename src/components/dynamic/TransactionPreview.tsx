@@ -1126,18 +1126,6 @@ export default function TransactionPreview({
     return () => { cancelled = true }
   }, [effectiveUserAddress])
 
-  // Debug: log managed wallet state
-  useEffect(() => {
-    if (action === 'launchProject' || action === 'launch721Project') {
-      console.log('Managed wallet debug:', {
-        isManagedMode,
-        managedAddress,
-        managedWalletLoading,
-        managedWalletError,
-      })
-    }
-  }, [action, isManagedMode, managedAddress, managedWalletLoading, managedWalletError])
-
   // Omnichain launch hook - only used for launchProject action
   const {
     launch,
@@ -1563,31 +1551,11 @@ export default function TransactionPreview({
     // Note: Use a fixed preview salt - actual salt is generated at launch time
     // Also auto-generate if the AI provided an empty config (deployerConfigurations: [])
     const hasEmptyConfig = !suckerDeploymentConfiguration?.deployerConfigurations?.length
-    console.log('[TransactionPreview] Sucker config check:', {
-      hasEmptyConfig,
-      launchChainIds,
-      shouldConfigure: shouldConfigureSuckers(launchChainIds),
-      existingConfig: suckerDeploymentConfiguration,
-    })
 
     if (hasEmptyConfig && shouldConfigureSuckers(launchChainIds)) {
       const previewSalt = '0x0000000000000000000000000000000000000000000000000000000000000001' as `0x${string}`
       const firstChainId = launchChainIds[0]
-      console.log('[TransactionPreview] About to call parseSuckerDeployerConfig with:', {
-        firstChainId,
-        launchChainIds,
-        salt: previewSalt,
-        typeof_firstChainId: typeof firstChainId,
-        typeof_launchChainIds: typeof launchChainIds,
-        launchChainIds_types: launchChainIds.map(id => typeof id),
-      })
       const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, { salt: previewSalt })
-
-      console.log('[TransactionPreview] Generated sucker config:', {
-        firstChainId,
-        deployerCount: generatedConfig.deployerConfigurations.length,
-        deployers: generatedConfig.deployerConfigurations.map(dc => dc.deployer),
-      })
 
       if (generatedConfig.deployerConfigurations.length > 0) {
         suckerDeploymentConfiguration = {
@@ -1920,7 +1888,7 @@ export default function TransactionPreview({
                     <ParamRow key="owner" name="owner" value={launchValidation.owner} isDark={isDark} chainId={chainId} />
                   )}
                   {Object.entries(parsedParams)
-                    .filter(([key]) => key !== 'chainConfigs' && key !== 'projectMetadata' && key !== 'suckerDeploymentConfiguration') // Hide fields shown separately
+                    .filter(([key]) => !['chainConfigs', 'projectMetadata', 'suckerDeploymentConfiguration', 'raw', 'launchProjectConfig'].includes(key)) // Hide fields shown separately
                     .map(([key, value]) => (
                     <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
                   ))}
