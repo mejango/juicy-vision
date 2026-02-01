@@ -1276,6 +1276,12 @@ export default function TransactionPreview({
     return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
   }
 
+  // Stable random salt for preview - generated once per component mount
+  const previewSaltRef = useRef<`0x${string}` | null>(null)
+  if (!previewSaltRef.current) {
+    previewSaltRef.current = generateRandomSalt() as `0x${string}`
+  }
+
   // Helper to transform parameters before display/execution
   // - Updates mustStartAtOrAfter to 5 minutes from now
   // - Randomizes salt values
@@ -1553,9 +1559,8 @@ export default function TransactionPreview({
     const hasEmptyConfig = !suckerDeploymentConfiguration?.deployerConfigurations?.length
 
     if (hasEmptyConfig && shouldConfigureSuckers(launchChainIds)) {
-      const previewSalt = '0x0000000000000000000000000000000000000000000000000000000000000001' as `0x${string}`
       const firstChainId = launchChainIds[0]
-      const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, { salt: previewSalt })
+      const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, { salt: previewSaltRef.current! })
 
       if (generatedConfig.deployerConfigurations.length > 0) {
         suckerDeploymentConfiguration = {
@@ -1568,7 +1573,7 @@ export default function TransactionPreview({
               minBridgeAmount: m.minBridgeAmount.toString(),
             })),
           })),
-          salt: previewSalt, // Must be valid bytes32, not a display string
+          salt: previewSaltRef.current!, // Must be valid bytes32, not a display string
         }
       }
     }
