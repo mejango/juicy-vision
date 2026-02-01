@@ -48,9 +48,9 @@ export const JB_ADDRESSES: Record<string, string> = {
   // Hooks and extensions
   '0xfe9c4f3e5c27ffd8ee523c6ca388aaa95692c25d': 'JBBuybackHook',
   '0x0c02e48e55f4451a499e48a53595de55c40f3574': 'JBSwapTerminal',
-  // Swap terminal registries
-  '0x3f75f7e52ed15c2850b0a6a49c234d5221576dbe': 'JBSwapTerminalUSDCRegistry',
-  '0xde1d0fed5380fc6c9bdcae65329dbad7a96cde0a': 'JBSwapTerminalRegistry',
+  // Swap terminal registries (CREATE2 - same on all chains)
+  '0x1ce40d201cdec791de05810d17aaf501be167422': 'JBSwapTerminalUSDCRegistry',
+  '0x60b4f5595ee509c4c22921c7b7999f1616e6a4f6': 'JBSwapTerminalRegistry',
   // Suckers
   '0x696c7e794fe2a7c2e3b7da4ae91733345fc1bf68': 'JBSuckerRegistry',
   // CCIP Sucker Deployers (cross-chain)
