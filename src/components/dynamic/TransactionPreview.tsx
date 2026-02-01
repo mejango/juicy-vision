@@ -1912,16 +1912,16 @@ export default function TransactionPreview({
                     <ParamRow key="owner" name="owner" value={launchValidation.owner} isDark={isDark} chainId={chainId} />
                   )}
                   {Object.entries(parsedParams)
-                    .filter(([key]) => key !== 'chainConfigs' && key !== 'projectMetadata') // Hide redundant fields
+                    .filter(([key]) => key !== 'chainConfigs' && key !== 'projectMetadata' && key !== 'suckerDeploymentConfiguration') // Hide fields shown separately
                     .map(([key, value]) => (
                     <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
                   ))}
-                  {/* For launch actions, show suckerDeploymentConfiguration (even if defaulted to empty) */}
-                  {(action === 'launchProject' || action === 'launch721Project') && !parsedParams?.suckerDeploymentConfiguration && (
+                  {/* For launch actions, show suckerDeploymentConfiguration from launchValidation (auto-generated if needed) */}
+                  {(action === 'launchProject' || action === 'launch721Project') && (
                     <ParamRow
                       key="suckerDeploymentConfiguration"
                       name="suckerDeploymentConfiguration"
-                      value={{
+                      value={launchValidation?.suckerDeploymentConfiguration || {
                         deployerConfigurations: [],
                         salt: '0x0000000000000000000000000000000000000000000000000000000000000000'
                       }}
