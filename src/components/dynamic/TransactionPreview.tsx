@@ -1521,13 +1521,14 @@ export default function TransactionPreview({
     const projectUri = (raw.projectUri as string) || (launchConfig?.projectUri as string) || ''
 
     // Get chain IDs
+    // For launch actions, default to ALL chains (omnichain) unless chainConfigs specifies otherwise
+    // A single chainId prop is ignored for launch - we always go multi-chain
     let launchChainIds: number[] = []
     if (parsedChainConfigs.length > 0) {
       launchChainIds = parsedChainConfigs.map(c => Number(c.chainId))
-    } else if (validChainId) {
-      launchChainIds = [Number(validChainId)]
     } else {
-      launchChainIds = [...ALL_CHAIN_IDS] // Default to all supported chains (environment-aware)
+      // Default to all supported chains for omnichain deployment
+      launchChainIds = [...ALL_CHAIN_IDS]
     }
 
     // Get ruleset configurations (check both top-level and nested in launchProjectConfig)
