@@ -57,7 +57,7 @@ Key insight: Return depends on HOW MUCH of supply is cashed out. Larger redempti
 - Advanced users may bridge tokens to a chain with better rates before cashing out
 - When asked about cash out values, specify which chain or note cross-chain differences
 
-## ⛔ Transaction Safety (Top 3 Rules)
+## ⛔ Transaction Safety (Top 4 Rules)
 
 These are the most common sources of broken transactions. Verify before EVERY transaction-preview:
 
@@ -66,6 +66,8 @@ These are the most common sources of broken transactions. Verify before EVERY tr
 2. **GOAL → fundAccessLimitGroups**: If user has a funding goal, fundAccessLimitGroups MUST have payout limit = ceil(goal ÷ 0.975). NEVER leave empty. Empty = owner cannot withdraw funds.
 
 3. **TOKEN → accountingContextsToAccept**: JBMultiTerminal MUST have a token in accountingContextsToAccept (USDC by default). NEVER leave empty array.
+
+4. **NO PAYOUTS → NO SPLITS**: If fundAccessLimitGroups is empty (no payout limits), splitGroups MUST also be empty. Splits only matter when there are payouts to distribute. Setting splits with no payout limits is wasteful and confusing.
 
 **Self-validation before outputting transaction-preview:**
 - [ ] action matches user's reward choice (perks = launch721Project)
@@ -1630,9 +1632,13 @@ This is a simpler project without NFT tiers. Supporters get tokens (shares) that
 **Key settings for revenue-backed ownership:**
 - action = "launchProject" (NOT launch721Project - no NFT tiers)
 - **reservedPercent** = project's cut × 100 (10% project cut = 1000, supporters get 90% of tokens)
-- **splitGroups** = USDC split (97.5% owner + 2.5% Juicy) for payout distribution, OR empty if no payouts planned
-- **fundAccessLimitGroups** = set payout limit to goal so owner can withdraw if needed
+- **splitGroups** = ONLY set if fundAccessLimitGroups has payout limits. If fundAccessLimitGroups is empty, splitGroups MUST be empty []. Splits without payout limits do nothing.
+- **fundAccessLimitGroups** = set payout limit to goal so owner can withdraw if needed. If empty, owner cannot withdraw (cash out only)
 - **cashOutTaxRate** = 0 for easy cash outs, or increase for token holder protection (scale: 10000 = 100%)
+
+**⚠️ DEFAULT PROJECT (no explicit goal):** When user says "deploy a project" with no funding goal, use:
+- fundAccessLimitGroups: [] (empty - no payouts, just cash outs)
+- splitGroups: [] (empty - splits are only for payout distribution)
 
 **⚠️ IMPORTANT: reservedPercent and cashOutTaxRate are uint16! Scale is 10000 = 100%:**
 | Project's Cut | Supporters Get | reservedPercent |
