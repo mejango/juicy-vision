@@ -1563,22 +1563,37 @@ export default function TransactionPreview({
     // Note: Use a fixed preview salt - actual salt is generated at launch time
     // Also auto-generate if the AI provided an empty config (deployerConfigurations: [])
     const hasEmptyConfig = !suckerDeploymentConfiguration?.deployerConfigurations?.length
+    console.log('[TransactionPreview] Sucker config check:', {
+      hasEmptyConfig,
+      launchChainIds,
+      shouldConfigure: shouldConfigureSuckers(launchChainIds),
+      existingConfig: suckerDeploymentConfiguration,
+    })
+
     if (hasEmptyConfig && shouldConfigureSuckers(launchChainIds)) {
       const previewSalt = '0x0000000000000000000000000000000000000000000000000000000000000001' as `0x${string}`
       const firstChainId = launchChainIds[0]
       const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, { salt: previewSalt })
 
-      suckerDeploymentConfiguration = {
-        deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
-          deployer: dc.deployer,
-          mappings: dc.mappings.map(m => ({
-            localToken: m.localToken,
-            remoteToken: m.remoteToken,
-            minGas: m.minGas,
-            minBridgeAmount: m.minBridgeAmount.toString(),
+      console.log('[TransactionPreview] Generated sucker config:', {
+        firstChainId,
+        deployerCount: generatedConfig.deployerConfigurations.length,
+        deployers: generatedConfig.deployerConfigurations.map(dc => dc.deployer),
+      })
+
+      if (generatedConfig.deployerConfigurations.length > 0) {
+        suckerDeploymentConfiguration = {
+          deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
+            deployer: dc.deployer,
+            mappings: dc.mappings.map(m => ({
+              localToken: m.localToken,
+              remoteToken: m.remoteToken,
+              minGas: m.minGas,
+              minBridgeAmount: m.minBridgeAmount.toString(),
+            })),
           })),
-        })),
-        salt: '(generated at launch)',
+          salt: previewSalt, // Must be valid bytes32, not a display string
+        }
       }
     }
 
