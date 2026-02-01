@@ -1871,6 +1871,19 @@ export default function TransactionPreview({
                     .map(([key, value]) => (
                     <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
                   ))}
+                  {/* For launch actions, show suckerDeploymentConfiguration (even if defaulted to empty) */}
+                  {(action === 'launchProject' || action === 'launch721Project') && !parsedParams?.suckerDeploymentConfiguration && (
+                    <ParamRow
+                      key="suckerDeploymentConfiguration"
+                      name="suckerDeploymentConfiguration"
+                      value={{
+                        deployerConfigurations: [],
+                        salt: '0x0000000000000000000000000000000000000000000000000000000000000000'
+                      }}
+                      isDark={isDark}
+                      chainId={chainId}
+                    />
+                  )}
                   {/* For launch actions, show controller last (default value) */}
                   {(action === 'launchProject' || action === 'launch721Project') && (
                     <ParamRow key="controller" name="controller" value="0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1" isDark={isDark} chainId={chainId} />
