@@ -162,13 +162,24 @@ export function formatSimpleValue(value: unknown, key?: string, chainId?: string
   }
 
   // Currency field (JBAccountingContext uses uint32 currency codes)
+  // Currency = uint32(uint160(tokenAddress)), so USDC currencies differ per chain
   if (keyLower === 'currency' && numValue !== null) {
-    const currencyLabels: Record<number, string> = {
-      61166: 'ETH',
-      909516616: 'USDC',
+    // ETH native token currency is constant
+    if (numValue === 61166) {
+      return `${numValue} (ETH)`
     }
-    const label = currencyLabels[numValue]
-    return label ? `${numValue} (${label})` : String(numValue)
+    // Check if it's a USDC-derived currency (varies per chain)
+    // Calculate uint32(uint160(addr)) for all known USDC addresses
+    const usdcCurrencies = Object.values(USDC_ADDRESSES).map(addr => {
+      // uint32(uint160(addr)) = last 4 bytes as uint32
+      const addrLower = addr.toLowerCase().replace('0x', '')
+      const last8Hex = addrLower.slice(-8)
+      return parseInt(last8Hex, 16)
+    })
+    if (usdcCurrencies.includes(numValue)) {
+      return `${numValue} (USDC, chain-specific)`
+    }
+    return String(numValue)
   }
 
   // Weight has 18 decimals - convert to human readable

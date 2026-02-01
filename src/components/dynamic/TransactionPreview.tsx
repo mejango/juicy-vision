@@ -317,9 +317,11 @@ function AddressDisplay({ address, chainId, isDark }: { address: string; chainId
           <div className={`font-semibold mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
             USDC addresses by chain:
           </div>
-          {Object.entries(USDC_ADDRESSES).map(([cid, addr]) => (
+          {Object.entries(USDC_ADDRESSES)
+            .filter(([cid]) => CHAIN_NAMES[cid]) // Only show current environment's chains
+            .map(([cid, addr]) => (
             <div key={cid} className="flex gap-2 py-0.5">
-              <span className={`font-medium w-16 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className={`font-medium w-24 text-right ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 {CHAIN_NAMES[cid]}:
               </span>
               <span
