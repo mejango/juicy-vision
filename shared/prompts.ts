@@ -71,7 +71,7 @@ These are the most common sources of broken transactions. Verify before EVERY tr
 - [ ] action matches user's reward choice (perks = launch721Project)
 - [ ] fundAccessLimitGroups is non-empty if user stated a goal (empty = no withdrawals possible)
 - [ ] accountingContextsToAccept includes USDC (or native token if explicitly requested)
-- [ ] splitGroups has 97.5% to owner + 2.5% to NANA
+- [ ] splitGroups: if fundAccessLimitGroups is set → include 97.5% to owner + 2.5% to NANA; if empty → splitGroups should also be empty
 - [ ] mustStartAtOrAfter is real timestamp (~5min future), not 0 or copied example
 - [ ] When explaining, don't claim owner can "withdraw anytime" unless fundAccessLimitGroups is configured
 

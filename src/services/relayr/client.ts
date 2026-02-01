@@ -225,10 +225,40 @@ export interface BalanceUsageRecord {
  * Users don't need native tokens - organization pays from pooled balance.
  */
 export async function createBalanceBundle(request: BalanceBundleRequest): Promise<BalanceBundleResponse> {
-  return fetchApi<BalanceBundleResponse>('/v1/bundle/balance', {
+  const endpoint = getEndpoint()
+  const apiKey = getApiKey()
+  const url = `${endpoint}/v1/bundle/balance`
+  const body = JSON.stringify(request)
+
+  console.log('=== RELAYR API CALL ===')
+  console.log('URL:', url)
+  console.log('Body:', body)
+
+  const response = await fetch(url, {
     method: 'POST',
-    body: JSON.stringify(request),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { 'x-api-key': apiKey } : {}),
+    },
+    body,
   })
+
+  const responseText = await response.text()
+  console.log('Response status:', response.status)
+  console.log('Response body:', responseText)
+  console.log('=======================')
+
+  if (!response.ok) {
+    let error: { message?: string } = { message: 'Request failed' }
+    try {
+      error = JSON.parse(responseText)
+    } catch {
+      // Keep default error
+    }
+    throw new Error(error.message || `HTTP ${response.status}`)
+  }
+
+  return JSON.parse(responseText)
 }
 
 /**

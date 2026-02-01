@@ -197,15 +197,30 @@ export function useOmnichainLaunchProject(
       // Store predicted project IDs
       setPredictedProjectIds(predictedIds)
 
-      // Create balance-sponsored bundle (admin pays gas)
-      const bundleResponse = await createBalanceBundle({
+      // Debug: Log the exact request being sent to Relayr
+      const bundleRequest = {
         app_id: RELAYR_APP_ID,
         transactions: transactions.map(tx => ({
           ...tx,
         })),
         perform_simulation: true,
         virtual_nonce_mode: 'Disabled',
+      }
+      console.log('=== RELAYR BUNDLE REQUEST ===')
+      console.log('Full request:', JSON.stringify(bundleRequest, null, 2))
+      console.log('Chain IDs:', chainIds)
+      console.log('Predicted Project IDs:', predictedIds)
+      console.log('Transactions:')
+      transactions.forEach((tx, i) => {
+        console.log(`  [${i}] Chain ${tx.chain}:`)
+        console.log(`      Target: ${tx.target}`)
+        console.log(`      Value: ${tx.value}`)
+        console.log(`      Data: ${tx.data}`)
       })
+      console.log('=============================')
+
+      // Create balance-sponsored bundle (admin pays gas)
+      const bundleResponse = await createBalanceBundle(bundleRequest)
 
       // Initialize bundle state with predicted project IDs
       bundle._initializeBundle(
