@@ -10,6 +10,8 @@ import {
   signupWithPasskey as passkeySignup,
   type DeviceHint,
 } from '../services/passkey'
+import { forgetPasskeyWallet } from '../services/passkeyWallet'
+import { clearWalletSession } from '../services/siwe'
 
 // ============================================================================
 // Types
@@ -268,7 +270,10 @@ export const useAuthStore = create<AuthState>()(
             // Ignore logout errors
           }
         }
-        // Clear cached smart account address and identity
+        // Clear ALL auth state - passkey wallet, SIWE session, and cached data
+        // This ensures signing out truly signs out of everything
+        forgetPasskeyWallet() // Clears juice-passkey-wallet AND juice-passkey-credential
+        clearWalletSession() // Clears SIWE session
         localStorage.removeItem('juice-smart-account-address')
         localStorage.removeItem('juicy-identity')
         set({
@@ -278,6 +283,8 @@ export const useAuthStore = create<AuthState>()(
           currentSessionId: null,
           passkeys: [],
         })
+        // Dispatch event so UI components can update
+        window.dispatchEvent(new CustomEvent('juice:passkey-disconnected'))
       },
 
       refreshUser: async () => {

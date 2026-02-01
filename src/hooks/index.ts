@@ -7,3 +7,4 @@ export { useManagedWallet, useIsManagedMode, executeManagedTransaction, type Man
 export { useEnsNameResolved } from './useEnsName'
 export { useJuiceBalance, type JuiceBalance } from './useJuiceBalance'
 export { useIsMobile } from './useIsMobile'
+export { useAccountLinking, type AccountLinkingState, type LinkedAddress } from './useAccountLinking'

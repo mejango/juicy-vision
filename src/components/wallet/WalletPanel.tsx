@@ -17,6 +17,7 @@ import { getPasskeyWallet, clearPasskeyWallet, forgetPasskeyWallet, type Passkey
 import { FRUIT_EMOJIS, getEmojiFromAddress } from '../chat/ParticipantAvatars'
 import { getSessionId } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
+import { AccountLinkingBanner, LinkedAccountsInfo } from './AccountLinkingBanner'
 
 export interface AnchorPosition {
   top: number
@@ -884,6 +885,9 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
 
   return (
     <div className="space-y-3">
+      {/* Account Linking Banner - shown when user has both wallet and managed account */}
+      <AccountLinkingBanner />
+
       {/* Address row */}
       <div className="flex items-center justify-between">
         <div className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -3084,7 +3088,9 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
   // Determine current state
   // Use isAuthenticated() which internally checks mode === 'managed' && token && user
   // This avoids stale state issues from zustand hydration timing
-  const isSelfCustodyConnected = mode === 'self_custody' && walletConnected
+  // Connected wallet takes priority over managed mode when both are present
+  // (user's connected wallet is their primary identity)
+  const hasConnectedWallet = walletConnected && !!address
   const isManagedConnected = isAuthenticated()
   const isPasskeyConnected = !!passkeyWallet
 
@@ -3094,7 +3100,8 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
     if (view === 'juicy_id') return 'juicy_id'
     if (view === 'auth_method') return 'auth_method'
     if (view === 'email_auth') return 'email_auth'
-    if (isSelfCustodyConnected) return 'wallet'
+    // Connected wallet always takes priority - it's the user's primary identity
+    if (hasConnectedWallet) return 'wallet'
     if (isManagedConnected) return 'managed'
     if (isPasskeyConnected) return 'passkey'
     return view
@@ -3238,7 +3245,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
           />
         )}
 
-        {currentView === 'wallet' && isSelfCustodyConnected && (
+        {currentView === 'wallet' && hasConnectedWallet && (
           <SelfCustodyWalletView
             onTopUp={() => {
               setPreviousView('wallet')

@@ -97,8 +97,10 @@ export function useManagedWallet(): ManagedWalletData & { isManagedMode: boolean
   const hasPasskeyWallet = !!passkeyWallet?.address
   const hasStoredCredential = !!getStoredCredentialId()
 
-  // User is in "managed mode" if authenticated via managed mode (passkey, email, etc.)
-  const isManagedMode = hasPasskeyWallet || hasStoredCredential || (mode === 'managed' && !!token && !!user)
+  // User is in "managed mode" ONLY if actually authenticated (has valid token)
+  // Having passkey data in localStorage alone doesn't mean they're authenticated
+  // The presence of passkey wallet + token indicates a valid managed session
+  const isManagedMode = (mode === 'managed' && !!token && !!user) || (hasPasskeyWallet && !!token)
 
   log('Hook state:', { mode, isManagedMode, hasPasskeyWallet, hasStoredCredential, hasToken: !!token, hasUser: !!user })
 
@@ -231,11 +233,11 @@ export async function executeManagedTransaction(
 
 /**
  * Helper to check if user is in managed mode and authenticated
- * Also checks for passkey wallet (Touch ID users) or stored credential
+ * Requires actual authentication (valid token), not just localStorage data
  */
 export function useIsManagedMode(): boolean {
   const { mode, token, user } = useAuthStore()
   const passkeyWallet = getPasskeyWallet()
-  const hasStoredCredential = !!getStoredCredentialId()
-  return !!passkeyWallet?.address || hasStoredCredential || (mode === 'managed' && !!token && !!user)
+  // Only consider managed mode if actually authenticated
+  return (mode === 'managed' && !!token && !!user) || (!!passkeyWallet?.address && !!token)
 }

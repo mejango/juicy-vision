@@ -980,10 +980,12 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                 {/* Address - subtle, small, full */}
                 <p className={`text-[10px] font-mono mt-3 pt-2 border-t break-all ${isDark ? 'text-gray-600 border-white/5' : 'text-gray-400 border-gray-100'}`}>
                   {(() => {
-                    // Priority: managed smart account > wallet session > session-based pseudo-address
-                    if (managedAddress) return managedAddress
+                    // Priority: connected wallet > wallet session > managed smart account > session-based pseudo-address
+                    // Connected wallet is the user's primary identity
+                    if (walletAddress) return walletAddress
                     const walletSession = getWalletSession()
                     if (walletSession?.address) return walletSession.address
+                    if (managedAddress) return managedAddress
                     const sessionId = getSessionId()
                     return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
                   })()}

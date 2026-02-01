@@ -12,6 +12,7 @@ import { requireWalletAuth, requireWalletOrAuth } from '../middleware/walletSess
 import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
 import {
   getIdentityByAddress,
+  getIdentityByAddressResolved,
   setIdentity,
   deleteIdentity,
   resolveIdentity,
@@ -21,6 +22,17 @@ import {
   isIdentityAvailable,
   VALID_EMOJIS,
 } from '../services/identity.ts';
+import {
+  linkAddress,
+  unlinkAddress,
+  getLinkedAddresses,
+  getPrimaryAddress,
+  canBeLinkTarget,
+  canBePrimary,
+  getAllUserAddresses,
+  getLinkHistory,
+  type LinkedAddress,
+} from '../services/linkedAddresses.ts';
 
 export const identityRouter = new Hono();
 
@@ -57,14 +69,23 @@ function serializeHistoryEntry(entry: Awaited<ReturnType<typeof getIdentityHisto
 // Routes
 // ============================================================================
 
-// GET /identity/me - Get current user's identity
+// GET /identity/me - Get current user's identity (resolves linked addresses)
 identityRouter.get('/me', optionalAuth, requireWalletOrAuth, async (c) => {
   const walletSession = c.get('walletSession')!;
-  const identity = await getIdentityByAddress(walletSession.address);
+  // Use resolved lookup to get identity from linked primary if applicable
+  const identity = await getIdentityByAddressResolved(walletSession.address);
+
+  // Also get linked address info
+  const primaryAddress = await getPrimaryAddress(walletSession.address);
 
   return c.json({
     success: true,
     data: serializeIdentity(identity),
+    meta: {
+      // If this address is linked to a primary, include that info
+      isLinked: !!primaryAddress,
+      primaryAddress: primaryAddress || undefined,
+    },
   });
 });
 
@@ -200,14 +221,22 @@ identityRouter.get('/resolve/:identity', async (c) => {
   });
 });
 
-// GET /identity/address/:address - Get identity for an address
+// GET /identity/address/:address - Get identity for an address (resolves links)
 identityRouter.get('/address/:address', async (c) => {
   const address = c.req.param('address');
-  const identity = await getIdentityByAddress(address);
+  // Use resolved lookup to get identity from linked primary if applicable
+  const identity = await getIdentityByAddressResolved(address);
+
+  // Include link info
+  const primaryAddress = await getPrimaryAddress(address);
 
   return c.json({
     success: true,
     data: serializeIdentity(identity),
+    meta: {
+      isLinked: !!primaryAddress,
+      primaryAddress: primaryAddress || undefined,
+    },
   });
 });
 
@@ -243,5 +272,122 @@ identityRouter.get('/emojis', async (c) => {
   return c.json({
     success: true,
     data: VALID_EMOJIS,
+  });
+});
+
+// ============================================================================
+// Account Linking Routes
+// ============================================================================
+
+function serializeLinkedAddress(link: LinkedAddress) {
+  return {
+    id: link.id,
+    primaryAddress: link.primaryAddress,
+    linkedAddress: link.linkedAddress,
+    linkType: link.linkType,
+    createdAt: link.createdAt.toISOString(),
+  };
+}
+
+// GET /identity/linked - Get all linked addresses for current user
+identityRouter.get('/linked', requireWalletAuth, async (c) => {
+  const walletSession = c.get('walletSession')!;
+
+  const { primaryAddress, linkedAddresses } = await getAllUserAddresses(walletSession.address);
+  const primaryIdentity = await getIdentityByAddress(primaryAddress);
+
+  return c.json({
+    success: true,
+    data: {
+      primaryAddress,
+      primaryIdentity: serializeIdentity(primaryIdentity),
+      linkedAddresses: linkedAddresses.map(serializeLinkedAddress),
+      // Is the current address the primary or a linked one?
+      currentAddressIsPrimary: walletSession.address.toLowerCase() === primaryAddress.toLowerCase(),
+    },
+  });
+});
+
+// POST /identity/link - Link another address to current user's identity
+const LinkAddressSchema = z.object({
+  linkedAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Ethereum address'),
+  linkType: z.enum(['manual', 'smart_account', 'passkey', 'wallet']).optional().default('manual'),
+});
+
+identityRouter.post('/link', requireWalletAuth, zValidator('json', LinkAddressSchema), async (c) => {
+  const walletSession = c.get('walletSession')!;
+  const body = c.req.valid('json');
+
+  // Current user's address becomes the primary
+  const result = await linkAddress(
+    walletSession.address, // primary
+    body.linkedAddress, // linked
+    body.linkType,
+    walletSession.address // performed by
+  );
+
+  if (!result.success) {
+    return c.json({ success: false, error: result.error }, 400);
+  }
+
+  return c.json({
+    success: true,
+    data: serializeLinkedAddress(result.link!),
+  });
+});
+
+// DELETE /identity/link/:address - Unlink an address
+identityRouter.delete('/link/:address', requireWalletAuth, async (c) => {
+  const walletSession = c.get('walletSession')!;
+  const addressToUnlink = c.req.param('address');
+
+  const success = await unlinkAddress(addressToUnlink, walletSession.address);
+
+  if (!success) {
+    return c.json(
+      { success: false, error: 'Unable to unlink. Address not found or unauthorized.' },
+      400
+    );
+  }
+
+  return c.json({ success: true });
+});
+
+// GET /identity/link/check/:address - Check if an address can be linked
+identityRouter.get('/link/check/:address', async (c) => {
+  const address = c.req.param('address');
+
+  const canLink = await canBeLinkTarget(address);
+  const canPrimary = await canBePrimary(address);
+
+  return c.json({
+    success: true,
+    data: {
+      address,
+      canBeLinkTarget: canLink.canLink,
+      canBeLinkTargetReason: canLink.reason,
+      canBePrimary: canPrimary.canBePrimary,
+      canBePrimaryReason: canPrimary.reason,
+    },
+  });
+});
+
+// GET /identity/link/history - Get link history for current user
+identityRouter.get('/link/history', requireWalletAuth, async (c) => {
+  const walletSession = c.get('walletSession')!;
+
+  const history = await getLinkHistory(walletSession.address);
+
+  return c.json({
+    success: true,
+    data: history.map((h) => ({
+      id: h.id,
+      primaryAddress: h.primaryAddress,
+      linkedAddress: h.linkedAddress,
+      linkType: h.linkType,
+      action: h.action,
+      performedAt: h.performedAt.toISOString(),
+      performedBy: h.performedBy,
+    })),
   });
 });

@@ -11,6 +11,20 @@ import { updateUserEmoji } from './chat.ts';
 import { broadcastMemberUpdate } from './websocket.ts';
 
 // ============================================================================
+// Linked Addresses Resolution (imported lazily to avoid circular dependency)
+// ============================================================================
+
+// Cache the linked addresses module to avoid repeated dynamic imports
+let linkedAddressesModule: { getPrimaryAddress: (address: string) => Promise<string | null> } | null = null;
+
+async function getLinkedAddressesModule() {
+  if (!linkedAddressesModule) {
+    linkedAddressesModule = await import('./linkedAddresses.ts');
+  }
+  return linkedAddressesModule;
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -120,7 +134,8 @@ function dbToHistoryEntry(db: DbJuicyIdentityHistory): JuicyIdentityHistory {
 }
 
 /**
- * Get identity by address
+ * Get identity by address (raw - does not resolve linked addresses)
+ * Use getIdentityByAddressResolved for linked address resolution
  */
 export async function getIdentityByAddress(address: string): Promise<JuicyIdentity | null> {
   const db = await queryOne<DbJuicyIdentity>(
@@ -128,6 +143,33 @@ export async function getIdentityByAddress(address: string): Promise<JuicyIdenti
     [address]
   );
   return db ? dbToIdentity(db) : null;
+}
+
+/**
+ * Get identity by address, resolving linked addresses.
+ * If the address is linked to another address, returns that address's identity.
+ */
+export async function getIdentityByAddressResolved(address: string): Promise<JuicyIdentity | null> {
+  // First try direct lookup
+  const directIdentity = await getIdentityByAddress(address);
+  if (directIdentity) {
+    return directIdentity;
+  }
+
+  // If no direct identity, check if this address is linked to another
+  try {
+    const linkedModule = await getLinkedAddressesModule();
+    const primaryAddress = await linkedModule.getPrimaryAddress(address);
+
+    if (primaryAddress) {
+      // Return the primary address's identity
+      return await getIdentityByAddress(primaryAddress);
+    }
+  } catch {
+    // If linked addresses module fails, fall back to no identity
+  }
+
+  return null;
 }
 
 /**
