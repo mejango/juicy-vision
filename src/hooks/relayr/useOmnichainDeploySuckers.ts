@@ -191,18 +191,16 @@ export function useOmnichainDeploySuckers(
       setSuckerGroupId(deployResponse.suckerGroupId)
 
       // Create balance-sponsored bundle (admin pays gas)
-      // When using MultiChain mode, each transaction needs a virtual_nonce
       const bundleResponse = await createBalanceBundle({
         app_id: RELAYR_APP_ID,
-        transactions: deployResponse.transactions.map((tx, index) => ({
+        transactions: deployResponse.transactions.map(tx => ({
           chain: tx.txData.chainId,
           target: tx.txData.to,
           data: tx.txData.data,
           value: tx.txData.value,
-          virtual_nonce: index,
         })),
         perform_simulation: true,
-        virtual_nonce_mode: 'MultiChain',
+        virtual_nonce_mode: 'Disabled',
       })
 
       // Initialize bundle state

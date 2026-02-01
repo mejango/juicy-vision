@@ -198,15 +198,13 @@ export function useOmnichainLaunchProject(
       setPredictedProjectIds(predictedIds)
 
       // Create balance-sponsored bundle (admin pays gas)
-      // When using MultiChain mode, each transaction needs a virtual_nonce
       const bundleResponse = await createBalanceBundle({
         app_id: RELAYR_APP_ID,
-        transactions: transactions.map((tx, index) => ({
+        transactions: transactions.map(tx => ({
           ...tx,
-          virtual_nonce: index,
         })),
         perform_simulation: true,
-        virtual_nonce_mode: 'MultiChain',
+        virtual_nonce_mode: 'Disabled',
       })
 
       // Initialize bundle state with predicted project IDs

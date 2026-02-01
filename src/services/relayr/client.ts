@@ -311,9 +311,8 @@ export async function sponsoredOmnichainQueue(
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
-      virtual_nonce: index,
     })),
-    virtual_nonce_mode: 'MultiChain', // Ensure proper ordering across chains
+    virtual_nonce_mode: 'Disabled', // Ensure proper ordering across chains
   })
   return {
     bundleId: bundle.bundle_uuid,
@@ -633,9 +632,8 @@ export async function sponsoredOmnichainDistribute(
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
-      virtual_nonce: index,
     })),
-    virtual_nonce_mode: 'MultiChain',
+    virtual_nonce_mode: 'Disabled',
   })
   return {
     bundleId: bundle.bundle_uuid,
@@ -843,9 +841,8 @@ export async function sponsoredOmnichainDeployERC20(
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
-      virtual_nonce: index,
     })),
-    virtual_nonce_mode: 'MultiChain',
+    virtual_nonce_mode: 'Disabled',
   })
   return {
     bundleId: bundle.bundle_uuid,
@@ -954,9 +951,8 @@ export async function sponsoredOmnichainLaunchProject(
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
-      virtual_nonce: index,
     })),
-    virtual_nonce_mode: 'MultiChain',
+    virtual_nonce_mode: 'Disabled',
   })
   return {
     bundleId: bundle.bundle_uuid,
@@ -1082,9 +1078,8 @@ export async function sponsoredOmnichainDeployRevnet(
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
-      virtual_nonce: index,
     })),
-    virtual_nonce_mode: 'MultiChain',
+    virtual_nonce_mode: 'Disabled',
   })
   return {
     bundleId: bundle.bundle_uuid,
@@ -1196,9 +1191,8 @@ export async function sponsoredOmnichainDeploySuckers(
       target: tx.txData.to,
       data: tx.txData.data,
       value: tx.txData.value,
-      virtual_nonce: index,
     })),
-    virtual_nonce_mode: 'MultiChain',
+    virtual_nonce_mode: 'Disabled',
   })
   return {
     bundleId: bundle.bundle_uuid,

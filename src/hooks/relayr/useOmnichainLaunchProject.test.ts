@@ -221,7 +221,7 @@ describe('useOmnichainLaunchProject', () => {
           { chain: 1, target: '0xcontroller1', data: '0x111', value: '0' },
           { chain: 10, target: '0xcontroller10', data: '0x222', value: '0' },
         ],
-        virtual_nonce_mode: 'MultiChain',
+        virtual_nonce_mode: 'Disabled',
       })
     })
 
