@@ -172,14 +172,15 @@ export function encodeLaunchProjectFor(params: {
   }
 
   // Log the exact args being passed to encodeFunctionData
+  // Use contract parameter names for clarity
   console.log('\n=== ENCODE ARGS (JSON) ===')
   console.log(JSON.stringify({
     owner,
     projectUri,
-    rulesets: formattedRulesets,
-    terminals: formattedTerminals,
+    rulesetConfigurations: formattedRulesets,
+    terminalConfigurations: formattedTerminals,
     memo,
-    suckerConfig: formattedSuckerConfig,
+    suckerDeploymentConfiguration: formattedSuckerConfig,
     controller,
   }, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))
   console.log('==========================\n')
