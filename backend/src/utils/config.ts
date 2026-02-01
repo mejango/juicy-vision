@@ -51,8 +51,15 @@ export function loadConfig(): EnvConfig {
     stripePublishableKey: getEnv('STRIPE_PUBLISHABLE_KEY', ''),
     stripeWebhookSecret: getEnv('STRIPE_WEBHOOK_SECRET', ''),
 
+    // AI Provider
+    aiProvider: getEnv('AI_PROVIDER', 'anthropic') as 'anthropic' | 'moonshot',
+
     // Anthropic
     anthropicApiKey: getEnv('ANTHROPIC_API_KEY', ''),
+
+    // Moonshot (Kimi)
+    moonshotApiKey: getEnv('MOONSHOT_API_KEY', ''),
+    moonshotModel: getEnv('MOONSHOT_MODEL', 'moonshot-v1-32k'),
 
     // Reserves wallet
     reservesPrivateKey: getEnv('RESERVES_PRIVATE_KEY', ''),

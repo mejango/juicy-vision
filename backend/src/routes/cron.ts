@@ -3,7 +3,7 @@ import { getConfig } from '../utils/config.ts';
 import { executeReadyTransfers } from '../services/wallet.ts';
 import { executeReadySmartAccountTransfers } from '../services/smartAccounts.ts';
 import { cleanupExpiredSessions } from '../services/auth.ts';
-import { cleanupRateLimits } from '../services/claude.ts';
+import { cleanupRateLimits } from '../services/aiProvider.ts';
 import { processSettlements } from '../services/settlement.ts';
 import {
   processCredits as processJuiceCredits,

@@ -294,8 +294,15 @@ export interface EnvConfig {
   stripePublishableKey: string;
   stripeWebhookSecret: string;
 
+  // AI Provider
+  aiProvider: 'anthropic' | 'moonshot';
+
   // Anthropic
   anthropicApiKey: string;
+
+  // Moonshot (Kimi)
+  moonshotApiKey: string;
+  moonshotModel: string;
 
   // Reserves wallet (for fiat-to-crypto)
   reservesPrivateKey: string; // Hot wallet for executing payments

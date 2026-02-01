@@ -1188,7 +1188,7 @@ chatRouter.post(
 
       // Build optimized context with summaries, state, and token budgeting
       const { buildOptimizedContext, formatContextForClaude, logContextUsage } = await import('../services/contextManager.ts');
-      const { buildEnhancedPrompt } = await import('../services/claude.ts');
+      const { buildEnhancedPrompt } = await import('../services/aiProvider.ts');
 
       const optimizedContext = await buildOptimizedContext(chatId, walletSession.userId);
       const chatHistory = formatContextForClaude(optimizedContext);
@@ -1274,7 +1274,7 @@ chatRouter.post(
       }
 
       // Import services
-      const { streamMessageWithTools } = await import('../services/claude.ts');
+      const { streamMessageWithTools } = await import('../services/aiProvider.ts');
       const { importMessage } = await import('../services/chat.ts');
       const { streamAiToken, broadcastChatMessage } = await import('../services/websocket.ts');
 
