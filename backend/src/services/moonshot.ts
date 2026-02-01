@@ -343,6 +343,16 @@ export async function* streamMessage(
     body.temperature = request.temperature;
   }
 
+  console.log('[Moonshot] Request:', JSON.stringify({
+    model: body.model,
+    messageCount: messages.length,
+    toolCount: (body.tools as unknown[])?.length ?? 0,
+    maxTokens: body.max_tokens,
+    firstMessage: messages[0]?.content?.slice(0, 200),
+    lastUserMessage: messages.filter(m => m.role === 'user').pop()?.content?.slice(0, 200),
+  }));
+
+  console.log('[Moonshot] Calling API...');
   const response = await fetch(`${MOONSHOT_API_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -352,42 +362,64 @@ export async function* streamMessage(
     body: JSON.stringify(body),
   });
 
+  console.log('[Moonshot] Response status:', response.status);
+
   if (!response.ok) {
     const error = await response.text();
+    console.error('[Moonshot] Error response:', error);
     throw new Error(`Moonshot API error: ${response.status} ${error}`);
   }
 
   const reader = response.body?.getReader();
   if (!reader) {
+    console.error('[Moonshot] No response body from API');
     throw new Error('No response body');
   }
+
+  console.log('[Moonshot] Got response reader, starting stream...');
 
   const decoder = new TextDecoder();
   let buffer = '';
   let inputTokens = 0;
   let outputTokens = 0;
+  let chunkCount = 0;
+  let totalTextReceived = '';
 
   // Track tool calls being built
   const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      console.log('[Moonshot] Stream done. Total chunks:', chunkCount, 'Total text length:', totalTextReceived.length);
+      break;
+    }
 
-    buffer += decoder.decode(value, { stream: true });
+    const rawChunk = decoder.decode(value, { stream: true });
+    buffer += rawChunk;
+    chunkCount++;
+
+    if (chunkCount <= 3) {
+      console.log(`[Moonshot] Chunk ${chunkCount}:`, rawChunk.slice(0, 500));
+    }
+
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
 
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
       const data = line.slice(6).trim();
-      if (data === '[DONE]') continue;
+      if (data === '[DONE]') {
+        console.log('[Moonshot] Received [DONE] marker');
+        continue;
+      }
 
       try {
         const parsed = JSON.parse(data);
         const delta = parsed.choices?.[0]?.delta;
 
         if (delta?.content) {
+          totalTextReceived += delta.content;
           yield { type: 'text', data: delta.content };
         }
 
@@ -410,8 +442,8 @@ export async function* streamMessage(
           inputTokens = parsed.usage.prompt_tokens ?? 0;
           outputTokens = parsed.usage.completion_tokens ?? 0;
         }
-      } catch {
-        // Invalid JSON, skip
+      } catch (e) {
+        console.error('[Moonshot] Failed to parse chunk:', data.slice(0, 200), 'Error:', e);
       }
     }
   }
@@ -434,6 +466,8 @@ export async function* streamMessage(
     recordUsage(userId, inputTokens + outputTokens);
   }
 
+  console.log('[Moonshot] streamMessage complete. Tokens:', { inputTokens, outputTokens }, 'ToolCalls:', toolCalls.size);
+
   yield {
     type: 'usage',
     data: { inputTokens, outputTokens, stopReason: toolCalls.size > 0 ? 'tool_use' : 'end_turn' },
@@ -447,6 +481,9 @@ export async function* streamMessageWithTools(
   userApiKey?: string,
   maxIterations = 10
 ): AsyncGenerator<{ type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }> {
+  console.log('[Moonshot] streamMessageWithTools called for user:', userId);
+  console.log('[Moonshot] Message count:', request.messages.length, 'Max iterations:', maxIterations);
+
   const messages: ChatMessage[] = [...request.messages];
 
   const invocationStart = Date.now();
