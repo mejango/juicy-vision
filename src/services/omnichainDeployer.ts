@@ -119,10 +119,10 @@ export function encodeLaunchProjectFor(params: {
     splitGroups: ruleset.splitGroups.map(group => ({
       groupId: BigInt(group.groupId),
       splits: group.splits.map(split => ({
-        preferAddToBalance: split.preferAddToBalance,
         percent: split.percent,
         projectId: BigInt(split.projectId),
         beneficiary: split.beneficiary as `0x${string}`,
+        preferAddToBalance: split.preferAddToBalance,
         lockedUntil: split.lockedUntil,
         hook: split.hook as `0x${string}`,
       })),
@@ -305,10 +305,10 @@ function formatRulesetConfigurations(rulesetConfigurations: JBRulesetConfig[]) {
     splitGroups: ruleset.splitGroups.map(group => ({
       groupId: BigInt(group.groupId),
       splits: group.splits.map(split => ({
-        preferAddToBalance: split.preferAddToBalance,
         percent: split.percent,
         projectId: BigInt(split.projectId),
         beneficiary: split.beneficiary as `0x${string}`,
+        preferAddToBalance: split.preferAddToBalance,
         lockedUntil: split.lockedUntil,
         hook: split.hook as `0x${string}`,
       })),
