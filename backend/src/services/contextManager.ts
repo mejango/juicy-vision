@@ -457,8 +457,36 @@ export async function buildEnhancedSystemPrompt(options: {
   let context: OptimizedContext | null = null;
   const config = getConfig();
 
-  // 1. Base system prompt
-  parts.push(options.basePrompt);
+  // 1. Base system prompt (transformed for testnet if needed)
+  let basePrompt = options.basePrompt;
+  if (config.isTestnet) {
+    // Replace mainnet chain IDs with testnet equivalents in the base prompt
+    basePrompt = basePrompt
+      // Replace chainId="1" instruction
+      .replace(/chainId="1"/g, 'chainId="11155111"')
+      .replace(/chainId='1'/g, "chainId='11155111'")
+      // Replace chain ID references in examples
+      .replace(/"value":"1","label":"Ethereum"/g, '"value":"11155111","label":"Sepolia"')
+      .replace(/"value":"10","label":"Optimism"/g, '"value":"11155420","label":"OP Sepolia"')
+      .replace(/"value":"8453","label":"Base"/g, '"value":"84532","label":"Base Sepolia"')
+      .replace(/"value":"42161","label":"Arbitrum"/g, '"value":"421614","label":"Arb Sepolia"')
+      // Replace chainId in JSON examples
+      .replace(/"chainId":\s*"1"/g, '"chainId": "11155111"')
+      .replace(/"chainId":\s*"10"/g, '"chainId": "11155420"')
+      .replace(/"chainId":\s*"8453"/g, '"chainId": "84532"')
+      .replace(/"chainId":\s*"42161"/g, '"chainId": "421614"')
+      // Replace numeric chain IDs
+      .replace(/"chainId":\s*1([,}\s])/g, '"chainId": 11155111$1')
+      .replace(/"chainId":\s*10([,}\s])/g, '"chainId": 11155420$1')
+      .replace(/"chainId":\s*8453([,}\s])/g, '"chainId": 84532$1')
+      .replace(/"chainId":\s*42161([,}\s])/g, '"chainId": 421614$1')
+      // Replace mainnet USDC addresses with testnet USDC
+      .replace(/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/gi, '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238') // ETH USDC -> Sepolia
+      .replace(/0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85/gi, '0x5fd84259d66Cd46123540766Be93DFE6D43130D7') // OP USDC -> OP Sepolia
+      .replace(/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913/gi, '0x036CbD53842c5426634e7929541eC2318f3dCF7e') // Base USDC -> Base Sepolia
+      .replace(/0xaf88d065e77c8cC2239327C5EDb3A432268e5831/gi, '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d'); // Arb USDC -> Arb Sepolia
+  }
+  parts.push(basePrompt);
 
   // 1.5. Testnet environment context (critical for correct chain IDs)
   if (config.isTestnet) {
