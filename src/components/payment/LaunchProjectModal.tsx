@@ -11,13 +11,6 @@ import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyLaunchProjectParams } from '../../utils/transactionVerification'
 
-const CHAIN_NAMES: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  8453: 'Base',
-  42161: 'Arbitrum',
-}
-
 interface LaunchProjectModalProps {
   isOpen: boolean
   onClose: () => void
@@ -340,7 +333,7 @@ export default function LaunchProjectModal({
                 isDark={isDark}
                 allChains={chainIds.map(cid => ({
                   chainId: cid,
-                  chainName: CHAIN_NAMES[cid] || `Chain ${cid}`,
+                  chainName: CHAINS[cid]?.name || `Chain ${cid}`,
                 }))}
               />
             </>

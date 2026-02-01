@@ -9,6 +9,7 @@ import {
   type DeployERC20Params,
   NATIVE_TOKEN,
 } from '../constants/abis'
+import { ALL_CHAIN_IDS } from '../constants'
 
 // Types
 export interface TransactionDoubt {
@@ -618,7 +619,7 @@ export function verifyLaunchProjectParams(params: {
   }
 
   // Validate chain IDs
-  const supportedChains = [1, 10, 8453, 42161]
+  const supportedChains = ALL_CHAIN_IDS
   params.chainIds?.forEach(chainId => {
     if (!supportedChains.includes(chainId)) {
       doubts.push({
@@ -717,7 +718,7 @@ export function verifyDeployRevnetParams(params: {
   }
 
   // Validate chain IDs
-  const supportedChains = [1, 10, 8453, 42161]
+  const supportedChains = ALL_CHAIN_IDS
   params.chainIds?.forEach(chainId => {
     if (!supportedChains.includes(chainId)) {
       doubts.push({

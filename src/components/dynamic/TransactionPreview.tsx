@@ -22,7 +22,7 @@ import {
   isUsdcAddress,
   USDC_ADDRESSES,
 } from '../../utils/technicalDetails'
-import { CHAINS, EXPLORER_URLS } from '../../constants'
+import { CHAINS, EXPLORER_URLS, ALL_CHAIN_IDS } from '../../constants'
 import type { JBRulesetConfig, JBTerminalConfig } from '../../services/relayr'
 
 interface ChainOverride {
@@ -1445,7 +1445,7 @@ export default function TransactionPreview({
     } else if (validChainId) {
       launchChainIds = [Number(validChainId)]
     } else {
-      launchChainIds = [1, 10, 8453, 42161] // Default to all supported chains
+      launchChainIds = [...ALL_CHAIN_IDS] // Default to all supported chains (environment-aware)
     }
 
     // Get ruleset configurations (check both top-level and nested in launchProjectConfig)

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { ALL_CHAIN_IDS } from '../constants'
 
 // Supported actions that we handle
 export type ExecuteAction = 'launchProject' | 'queueRuleset' | 'deployERC20' | 'distribute'
@@ -53,9 +54,9 @@ export function useActionExecutor() {
         chainIds = [Number(chainId)]
       }
 
-      // Default to supported chains if none specified
+      // Default to supported chains if none specified (environment-aware)
       if (chainIds.length === 0) {
-        chainIds = [1, 10, 8453, 42161] // mainnet, optimism, base, arbitrum
+        chainIds = [...ALL_CHAIN_IDS]
       }
 
       // Extract owner address

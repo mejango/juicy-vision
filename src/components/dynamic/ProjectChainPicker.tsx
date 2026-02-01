@@ -3,6 +3,7 @@ import { fetchProject, fetchConnectedChains, type Project } from '../../services
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { useThemeStore } from '../../stores'
+import { CHAINS, ALL_CHAIN_IDS } from '../../constants'
 
 interface ProjectChainPickerProps {
   projectId: string
@@ -17,14 +18,7 @@ interface ProjectOption {
   primaryChainId: number  // The chain to use when selected
 }
 
-const CHAIN_INFO: Record<number, { name: string; slug: string }> = {
-  1: { name: 'Ethereum', slug: 'eth' },
-  10: { name: 'Optimism', slug: 'op' },
-  8453: { name: 'Base', slug: 'base' },
-  42161: { name: 'Arbitrum', slug: 'arb' },
-}
-
-const ALL_CHAIN_IDS = [1, 10, 8453, 42161]
+// Use environment-aware chain info from constants
 
 export default function ProjectChainPicker({ projectId }: ProjectChainPickerProps) {
   const [options, setOptions] = useState<ProjectOption[]>([])
@@ -151,7 +145,7 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
     if (!selected) return
 
     // Send message with the selection
-    const chainNames = selected.chainIds.map(id => CHAIN_INFO[id]?.name).filter(Boolean).join(' + ')
+    const chainNames = selected.chainIds.map(id => CHAINS[id]?.name).filter(Boolean).join(' + ')
     const message = `Show me ${selected.name} on ${chainNames} (chainId: ${selected.primaryChainId})`
 
     window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message } }))
@@ -189,7 +183,7 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
   if (options.length === 1) {
     // Only one option - auto-select it
     const option = options[0]
-    const chainNames = option.chainIds.map(id => CHAIN_INFO[id]?.name).filter(Boolean).join(' + ')
+    const chainNames = option.chainIds.map(id => CHAINS[id]?.name).filter(Boolean).join(' + ')
 
     return (
       <div className={`inline-block border overflow-hidden ${
@@ -242,7 +236,7 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
       <div className="p-3">
         <div className="space-y-2">
           {options.map((option, index) => {
-            const chainNames = option.chainIds.map(id => CHAIN_INFO[id]?.name).filter(Boolean).join(' + ')
+            const chainNames = option.chainIds.map(id => CHAINS[id]?.name).filter(Boolean).join(' + ')
             const isSelected = index === selectedIndex
 
             return (
