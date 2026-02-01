@@ -658,3 +658,4 @@ export function encodeDeploySuckersTransaction(
     description: `Deploy suckers for project ${projectId}`,
   }
 }
+
