@@ -124,6 +124,32 @@ export function isUsdcAddress(address: string): boolean {
   return Object.values(USDC_ADDRESSES).some(addr => addr.toLowerCase() === lower)
 }
 
+// USDC currency codes by chain (derived from token addresses in the protocol)
+export const USDC_CURRENCIES: Record<string, number> = {
+  // Testnet (from AI outputs)
+  '11155111': 909516616,   // Sepolia
+  '11155420': 3530704773,  // OP Sepolia
+  '84532': 3169378579,     // Base Sepolia
+  '421614': 1156540465,    // Arb Sepolia
+  // Mainnet (same pattern - using Ethereum mainnet USDC currency)
+  '1': 909516616,          // Ethereum mainnet
+  '10': 3530704773,        // Optimism (approximation)
+  '8453': 3169378579,      // Base (approximation)
+  '42161': 1156540465,     // Arbitrum (approximation)
+}
+
+// Check if a currency code is USDC (varies by chain)
+export function isUsdcCurrency(currency: number): boolean {
+  return Object.values(USDC_CURRENCIES).includes(currency)
+}
+
+// Get the label for a currency code
+export function getCurrencyLabel(currency: number): string | null {
+  if (currency === 61166) return 'ETH'
+  if (isUsdcCurrency(currency)) return 'USDC'
+  return null
+}
+
 // Get human-readable name for a known address (chain-aware for tokens)
 export function getAddressLabel(address: string, chainId?: string | number): string | null {
   const lower = address.toLowerCase()

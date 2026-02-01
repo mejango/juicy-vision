@@ -20,7 +20,10 @@ import {
   getArrayItemLabel,
   getParamTooltip,
   isUsdcAddress,
+  isUsdcCurrency,
+  getCurrencyLabel,
   USDC_ADDRESSES,
+  USDC_CURRENCIES,
 } from '../../utils/technicalDetails'
 import { CHAINS, EXPLORER_URLS, ALL_CHAIN_IDS } from '../../constants'
 import type { JBRulesetConfig, JBTerminalConfig } from '../../services/relayr'
@@ -330,6 +333,78 @@ function AddressDisplay({ address, chainId, isDark }: { address: string; chainId
                 title="Click to copy"
               >
                 {addr}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
+// Component to display a currency code with chain-specific dropdown for USDC
+function CurrencyDisplay({ currency, isDark }: { currency: number; isDark: boolean }) {
+  const [showChainCurrencies, setShowChainCurrencies] = useState(false)
+
+  const label = getCurrencyLabel(currency)
+  const isChainSpecific = isUsdcCurrency(currency)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(currency.toString())
+  }
+
+  const handleBadgeClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setShowChainCurrencies(!showChainCurrencies)
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 flex-wrap relative">
+      <span
+        className="font-mono cursor-pointer hover:underline"
+        onClick={handleCopy}
+        title="Click to copy"
+      >
+        {currency}
+        {label && (
+          <span className={isChainSpecific ? (isDark ? ' text-yellow-400' : ' text-yellow-600') : (isDark ? ' text-gray-400' : ' text-gray-500')}>
+            {' '}({label})
+          </span>
+        )}
+      </span>
+      {/* Chain-specific badge - clickable to show all currencies */}
+      {isChainSpecific && (
+        <button
+          onClick={handleBadgeClick}
+          className={`text-[9px] px-1 py-0.5 rounded cursor-pointer hover:opacity-80 ${
+            isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+          }`}
+          title="Click to see currency codes per chain"
+        >
+          chain-specific {showChainCurrencies ? '▲' : '▼'}
+        </button>
+      )}
+      {/* Expanded chain currencies dropdown */}
+      {isChainSpecific && showChainCurrencies && (
+        <div className={`absolute top-full right-0 mt-1 z-10 p-2 rounded border text-[10px] whitespace-nowrap ${
+          isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200 shadow-lg'
+        }`}>
+          <div className={`font-semibold mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+            USDC currency codes by chain:
+          </div>
+          {Object.entries(USDC_CURRENCIES)
+            .filter(([cid]) => CHAIN_NAMES[cid]) // Only show current environment's chains
+            .map(([cid, curr]) => (
+            <div key={cid} className="flex gap-2 py-0.5">
+              <span className={`font-medium w-24 text-right ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {CHAIN_NAMES[cid]}:
+              </span>
+              <span
+                className="font-mono cursor-pointer hover:underline"
+                onClick={() => navigator.clipboard.writeText(curr.toString())}
+                title="Click to copy"
+              >
+                {curr}
               </span>
             </div>
           ))}
@@ -2127,6 +2202,8 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
     const formattedValue = formatSimpleValue(value, name, chainId)
     const isIpfsUri = typeof value === 'string' && value.startsWith('ipfs://')
     const isAddress = typeof value === 'string' && value.startsWith('0x') && value.length === 42
+    // Check if this is a currency field with a numeric USDC value
+    const isCurrencyField = name.toLowerCase() === 'currency' && typeof value === 'number' && isUsdcCurrency(value)
     // Check for unlimited marker (uint224.max values in fund access limits)
     const isUnlimited = formattedValue.startsWith('UNLIMITED_MARKER:')
     const unlimitedRawValue = isUnlimited ? formattedValue.replace('UNLIMITED_MARKER:', '') : null
@@ -2176,6 +2253,10 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
           ) : isAddress ? (
             <span className="text-right break-all">
               <AddressDisplay address={value as string} chainId={chainId} isDark={isDark} />
+            </span>
+          ) : isCurrencyField ? (
+            <span className="text-right break-all">
+              <CurrencyDisplay currency={value as number} isDark={isDark} />
             </span>
           ) : (
             <span
