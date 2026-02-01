@@ -67,13 +67,13 @@ These are the most common sources of broken transactions. Verify before EVERY tr
 
 3. **TOKEN → accountingContextsToAccept**: JBMultiTerminal MUST have a token in accountingContextsToAccept (USDC by default). NEVER leave empty array.
 
-4. **NO PAYOUTS → NO SPLITS**: If fundAccessLimitGroups is empty (no payout limits), splitGroups MUST also be empty. Splits only matter when there are payouts to distribute. Setting splits with no payout limits is wasteful and confusing.
+4. **NO PAYOUTS + NO RESERVED → NO SPLITS**: Splits are for: (1) payout distribution when fundAccessLimitGroups is set, (2) reserved token distribution when reservedPercent > 0. If BOTH fundAccessLimitGroups is empty AND reservedPercent is 0, splitGroups MUST be empty.
 
 **Self-validation before outputting transaction-preview:**
 - [ ] action matches user's reward choice (perks = launch721Project)
 - [ ] fundAccessLimitGroups is non-empty if user stated a goal (empty = no withdrawals possible)
 - [ ] accountingContextsToAccept includes USDC (or native token if explicitly requested)
-- [ ] splitGroups: if fundAccessLimitGroups is set → include 97.5% to owner + 2.5% to NANA; if empty → splitGroups should also be empty
+- [ ] splitGroups: only include if fundAccessLimitGroups is set OR reservedPercent > 0; if both are zero/empty → splitGroups must be empty
 - [ ] mustStartAtOrAfter is real timestamp (~5min future), not 0 or copied example
 - [ ] When explaining, don't claim owner can "withdraw anytime" unless fundAccessLimitGroups is configured
 
@@ -1632,13 +1632,13 @@ This is a simpler project without NFT tiers. Supporters get tokens (shares) that
 **Key settings for revenue-backed ownership:**
 - action = "launchProject" (NOT launch721Project - no NFT tiers)
 - **reservedPercent** = project's cut × 100 (10% project cut = 1000, supporters get 90% of tokens)
-- **splitGroups** = ONLY set if fundAccessLimitGroups has payout limits. If fundAccessLimitGroups is empty, splitGroups MUST be empty []. Splits without payout limits do nothing.
+- **splitGroups** = ONLY set if fundAccessLimitGroups has payout limits OR reservedPercent > 0. If both are empty/zero, splitGroups MUST be empty [].
 - **fundAccessLimitGroups** = set payout limit to goal so owner can withdraw if needed. If empty, owner cannot withdraw (cash out only)
 - **cashOutTaxRate** = 0 for easy cash outs, or increase for token holder protection (scale: 10000 = 100%)
 
 **⚠️ DEFAULT PROJECT (no explicit goal):** When user says "deploy a project" with no funding goal, use:
 - fundAccessLimitGroups: [] (empty - no payouts, just cash outs)
-- splitGroups: [] (empty - splits are only for payout distribution)
+- splitGroups: [] (empty - no payouts AND no reserved tokens, so no splits needed)
 
 **⚠️ IMPORTANT: reservedPercent and cashOutTaxRate are uint16! Scale is 10000 = 100%:**
 | Project's Cut | Supporters Get | reservedPercent |
