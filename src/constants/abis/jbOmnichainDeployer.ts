@@ -124,8 +124,8 @@ export const JB_OMNICHAIN_DEPLOYER_ABI = [
                 type: 'tuple[]',
                 components: [
                   { name: 'localToken', type: 'address' },
-                  { name: 'remoteToken', type: 'address' },
                   { name: 'minGas', type: 'uint32' },
+                  { name: 'remoteToken', type: 'address' },
                   { name: 'minBridgeAmount', type: 'uint256' },
                 ],
               },
@@ -136,7 +136,10 @@ export const JB_OMNICHAIN_DEPLOYER_ABI = [
       },
       { name: 'controller', type: 'address' },
     ],
-    outputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'suckers', type: 'address[]' },
+    ],
   },
   // launch721RulesetsFor - Launches rulesets with 721 tiers hook
   // https://github.com/Bananapus/nana-omnichain-deployers-v5/blob/main/src/JBOmnichainDeployer.sol#L341

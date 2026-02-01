@@ -157,8 +157,8 @@ export function encodeLaunchProjectFor(params: {
       deployer: config.deployer as `0x${string}`,
       mappings: config.mappings.map(mapping => ({
         localToken: mapping.localToken as `0x${string}`,
-        remoteToken: mapping.remoteToken as `0x${string}`,
         minGas: mapping.minGas,
+        remoteToken: mapping.remoteToken as `0x${string}`,
         minBridgeAmount: BigInt(mapping.minBridgeAmount),
       })),
     })),
