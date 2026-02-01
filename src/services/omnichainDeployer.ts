@@ -227,6 +227,20 @@ export function buildOmnichainLaunchTransactions(params: {
   data: `0x${string}`
   value: string
 }> {
+  // Log decoded params before ABI encoding
+  console.log('=== OMNICHAIN DEPLOYER PARAMS (DECODED) ===')
+  console.log('Owner:', params.owner)
+  console.log('Project URI:', params.projectUri)
+  console.log('Memo:', params.memo)
+  console.log('Chain IDs:', params.chainIds)
+  console.log('Controller:', params.controller || DEFAULT_CONTROLLER)
+  console.log('Ruleset Configurations:', JSON.stringify(params.rulesetConfigurations, (_, v) =>
+    typeof v === 'bigint' ? v.toString() : v, 2))
+  console.log('Terminal Configurations:', JSON.stringify(params.terminalConfigurations, null, 2))
+  console.log('Sucker Deployment Config:', JSON.stringify(params.suckerDeploymentConfiguration, (_, v) =>
+    typeof v === 'bigint' ? v.toString() : v, 2))
+  console.log('==========================================')
+
   return params.chainIds.map(chainId =>
     buildLaunchProjectTransaction({
       ...params,
