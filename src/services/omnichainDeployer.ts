@@ -166,32 +166,30 @@ export function encodeLaunchProjectFor(params: {
   }
 
   // Log the exact args being passed to encodeFunctionData
-  const args = [
-    owner,
-    projectUri,
-    formattedRulesets,
-    formattedTerminals,
-    memo,
-    formattedSuckerConfig,
-    controller,
-  ]
-
   console.log('\n=== ENCODE ARGS (JSON) ===')
   console.log(JSON.stringify({
-    owner: args[0],
-    projectUri: args[1],
-    rulesets: args[2],
-    terminals: args[3],
-    memo: args[4],
-    suckerConfig: args[5],
-    controller: args[6],
+    owner,
+    projectUri,
+    rulesets: formattedRulesets,
+    terminals: formattedTerminals,
+    memo,
+    suckerConfig: formattedSuckerConfig,
+    controller,
   }, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))
   console.log('==========================\n')
 
   return encodeFunctionData({
     abi: JB_OMNICHAIN_DEPLOYER_ABI,
     functionName: 'launchProjectFor',
-    args,
+    args: [
+      owner,
+      projectUri,
+      formattedRulesets,
+      formattedTerminals,
+      memo,
+      formattedSuckerConfig,
+      controller,
+    ],
   })
 }
 
