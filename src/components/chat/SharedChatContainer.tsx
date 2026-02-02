@@ -158,6 +158,28 @@ export default function SharedChatContainer() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Listen for juice:send-message events from components (e.g., post-launch follow-up)
+  useEffect(() => {
+    const handleComponentMessage = async (event: CustomEvent<{ message: string; bypassSkipAi?: boolean }>) => {
+      if (!activeChatId) return
+      const { message } = event.detail
+
+      try {
+        // Send as user message
+        await chatApi.sendMessage(activeChatId, message)
+        // Invoke AI to respond
+        await chatApi.invokeAi(activeChatId, message)
+      } catch (err) {
+        console.error('Failed to handle component message:', err)
+      }
+    }
+
+    window.addEventListener('juice:send-message', handleComponentMessage as EventListener)
+    return () => {
+      window.removeEventListener('juice:send-message', handleComponentMessage as EventListener)
+    }
+  }, [activeChatId])
+
   // Send typing indicator with debounce
   const handleTyping = useCallback(() => {
     if (!activeChatId) return

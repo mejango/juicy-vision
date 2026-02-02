@@ -2388,12 +2388,9 @@ export default function TransactionPreview({
           {/* Success state with shareable links */}
           {effectiveIsComplete && Object.keys(effectiveProjectIds).length > 0 && (
             <div className="space-y-4">
-              <div className={`-mx-4 px-4 py-4 text-center border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
-                <p className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <div className={`-mx-4 px-4 py-3 text-center border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
+                <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   Project Created!
-                </p>
-                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Share your project link to start accepting payments
                 </p>
               </div>
 
