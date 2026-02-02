@@ -483,7 +483,13 @@ export default function SharedChatContainer() {
           theme === 'dark' ? 'border-white/10' : 'border-gray-200'
         }`}
       >
-        <div className="flex items-end gap-2">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleSend()
+          }}
+          className="flex items-end gap-2"
+        >
           <textarea
             value={inputValue}
             onChange={(e) => {
@@ -507,7 +513,7 @@ export default function SharedChatContainer() {
             }}
           />
           <button
-            onClick={handleSend}
+            type="submit"
             disabled={!inputValue.trim() || isSending}
             className={`p-2.5 rounded-xl transition-colors ${
               inputValue.trim() && !isSending
@@ -526,7 +532,7 @@ export default function SharedChatContainer() {
               />
             </svg>
           </button>
-        </div>
+        </form>
       </div>
     </div>
   )

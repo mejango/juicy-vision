@@ -9,6 +9,8 @@ import {
   JB_CONTRACTS_5_1,
   JB_SWAP_TERMINAL,
   JB_SWAP_TERMINAL_USDC,
+  JB_SWAP_TERMINAL_REGISTRY,
+  JB_SWAP_TERMINAL_USDC_REGISTRY,
   CHAIN_SUCKER_DEPLOYER,
   type SupportedChainId,
   ZERO_ADDRESS,
@@ -69,6 +71,11 @@ function getKnownTerminalAddresses(chainId: number): Set<string> {
   // JBSwapTerminal variants - chain-specific addresses
   if (JB_SWAP_TERMINAL[cid]) addresses.add(JB_SWAP_TERMINAL[cid].toLowerCase())
   if (JB_SWAP_TERMINAL_USDC[cid]) addresses.add(JB_SWAP_TERMINAL_USDC[cid].toLowerCase())
+
+  // JBSwapTerminal registries - same address on all chains via CREATE2
+  // Used for omnichain projects to configure swap terminals
+  addresses.add(JB_SWAP_TERMINAL_REGISTRY.toLowerCase())
+  addresses.add(JB_SWAP_TERMINAL_USDC_REGISTRY.toLowerCase())
 
   return addresses
 }

@@ -518,7 +518,11 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
         </div>
       )}
 
-      <div
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          handleSend()
+        }}
         className={`relative flex gap-3 items-start transition-all ${
           isDragging
             ? theme === 'dark'
@@ -561,7 +565,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
             </span>
           </div>
         )}
-      </div>
+      </form>
 
       {/* Wallet status display */}
       {!hideWalletInfo && (
