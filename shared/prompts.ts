@@ -83,7 +83,7 @@ These are the most common sources of broken transactions. Verify before EVERY tr
 - [ ] fundAccessLimitGroups is non-empty if user stated a goal (empty = no withdrawals possible)
 - [ ] accountingContextsToAccept includes USDC (or native token if explicitly requested)
 - [ ] splitGroups: only include if fundAccessLimitGroups is set OR reservedPercent > 0; if both are zero/empty → splitGroups must be empty
-- [ ] mustStartAtOrAfter is a real computed timestamp integer (~5min future), NOT 0, NOT a formula like "Math.floor(...)", NOT a template
+- [ ] mustStartAtOrAfter is an integer (any value works - frontend auto-sets to 5min from click time)
 - [ ] When explaining, don't claim owner can "withdraw anytime" unless fundAccessLimitGroups is configured
 
 ## Mission
@@ -940,7 +940,7 @@ Fails? Don't show button - explain and offer guidance.
 
 Only use parameters from Struct Reference section. If unsure whether a parameter exists, do NOT include it.
 
-**1. mustStartAtOrAfter** = Current unix timestamp + 300 seconds. Calculate the actual number (e.g., if now is 1738500000, use 1738500300). NEVER output a formula or template - output the computed integer value.
+**1. mustStartAtOrAfter** = Use any integer (e.g., 0 or 1). The frontend automatically sets this to 5 minutes from when the user clicks "Launch Project". You don't need to calculate the actual timestamp.
 
 **2. splitGroups** = Include 97.5% to owner + 2.5% platform fee to NANA (Project #1). See "Fund Access Limits & Splits" section for full example and groupId rules.
 
@@ -1138,7 +1138,7 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 **Example default project rulesetConfigurations:**
 \`\`\`json
 "rulesetConfigurations": [{
-  "mustStartAtOrAfter": 1738500300,
+  "mustStartAtOrAfter": 0,
   "duration": 0,
   "weight": "1000000000000000000000000",
   "weightCutPercent": 0,
@@ -1155,7 +1155,7 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
   "fundAccessLimitGroups": []
 }]
 \`\`\`
-Note: Replace 1738500300 with actual current timestamp + 300 at generation time.
+Note: mustStartAtOrAfter is automatically set to 5 minutes from click time by the frontend.
 
 **⚠️ IMPORTANT: reservedPercent and cashOutTaxRate are uint16! Scale is 10000 = 100%:**
 | Project's Cut | Supporters Get | reservedPercent |

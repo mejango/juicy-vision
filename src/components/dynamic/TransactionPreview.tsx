@@ -119,6 +119,28 @@ function replaceWalletPlaceholders<T>(obj: T, walletAddress: string): T {
   return obj
 }
 
+// Update mustStartAtOrAfter timestamps to 5 minutes from NOW
+// This ensures timestamps are always fresh at execution time, not stale from preview generation
+function updateTimestampsForLaunch<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj
+  if (Array.isArray(obj)) {
+    return obj.map(updateTimestampsForLaunch) as T
+  }
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      if (key.toLowerCase() === 'muststartatOrafter'.toLowerCase()) {
+        // Always set to 5 minutes from NOW
+        result[key] = Math.floor(Date.now() / 1000) + 300
+      } else {
+        result[key] = updateTimestampsForLaunch(value)
+      }
+    }
+    return result as T
+  }
+  return obj
+}
+
 // Info popover component with click-to-open and X to close
 // Uses portal to escape parent overflow:hidden containers
 function InfoPopover({
@@ -1782,10 +1804,13 @@ export default function TransactionPreview({
     }
 
     // Get ruleset configurations (check both top-level and nested in launchProjectConfig)
-    // Replace USER_WALLET placeholders with the actual owner address
+    // 1. Replace USER_WALLET placeholders with the actual owner address
+    // 2. Update mustStartAtOrAfter to 5 minutes from NOW (at launch time, not preview generation time)
     const rawRulesetConfigurations = (raw.rulesetConfigurations as unknown[]) ||
       (launchConfig?.rulesetConfigurations as unknown[]) || []
-    const rulesetConfigurations = replaceWalletPlaceholders(rawRulesetConfigurations, owner)
+    const withWalletPlaceholders = replaceWalletPlaceholders(rawRulesetConfigurations, owner)
+    // Apply timestamp updates so mustStartAtOrAfter is always fresh at click time
+    const rulesetConfigurations = updateTimestampsForLaunch(withWalletPlaceholders)
 
     // Get terminal configurations (check both top-level and nested in launchProjectConfig)
     const terminalConfigurations = (raw.terminalConfigurations as unknown[]) ||
