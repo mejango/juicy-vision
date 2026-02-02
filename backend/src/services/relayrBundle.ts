@@ -205,12 +205,15 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
       client: publicClient,
     });
 
-    const nonce = await forwarderContract.read.nonces([owner as Address]);
+    // Use system account as the ERC-2771 signer (not user's address)
+    // The project owner is encoded in the transaction calldata, not the meta-tx sender
+    const signerAddress = systemAccount.address;
+    const nonce = await forwarderContract.read.nonces([signerAddress]);
     const deadline = Math.floor(Date.now() / 1000) + ERC2771_DEADLINE_DURATION_SECONDS;
 
     // Build the ForwardRequest message
     const messageData = {
-      from: owner as Address,
+      from: signerAddress,
       to: tx.target as Address,
       value: BigInt(tx.value || '0'),
       gas: BigInt(2000000), // Conservative gas estimate
@@ -234,7 +237,8 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
 
     logger.debug('Signed ERC-2771 forward request', {
       chainId: tx.chainId,
-      from: owner,
+      signer: signerAddress,
+      projectOwner: owner,
       to: tx.target,
       nonce: nonce.toString(),
     });
