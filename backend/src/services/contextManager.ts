@@ -27,6 +27,15 @@ import {
 } from './summarization.ts';
 import { getContextForSystemPrompt } from './userContext.ts';
 import type { ChatMessage } from './claude.ts';
+import {
+  BASE_PROMPT,
+  DATA_QUERY_CONTEXT,
+  HOOK_DEVELOPER_CONTEXT,
+  TRANSACTION_CONTEXT,
+  EXAMPLE_INTERACTIONS,
+  INTENT_HINTS,
+  MODULE_TOKENS,
+} from '@shared/prompts.ts';
 
 // ============================================================================
 // Types
@@ -65,6 +74,12 @@ export interface OptimizedContext {
     attachmentCount: number;
     budgetExceeded: boolean;
     triggeredSummarization: boolean;
+    // Modular prompt info (when using intent detection)
+    modularPrompt?: {
+      estimatedTokens: number;
+      modulesLoaded: string[];
+      reasons: string[];
+    };
   };
 }
 
@@ -95,6 +110,196 @@ export const TOKEN_BUDGET = {
   // Remainder goes to recent messages
   // recentMessages = total - fixed - variable = ~33500
 };
+
+// ============================================================================
+// Intent Detection for Modular Prompts
+// ============================================================================
+
+export interface DetectedIntents {
+  needsDataQuery: boolean;
+  needsHookDeveloper: boolean;
+  needsTransaction: boolean;
+  // Reason for each module being included (for debugging/logging)
+  reasons: string[];
+}
+
+/**
+ * Analyze conversation + user/project context to detect which modules are needed
+ *
+ * Uses multiple signals:
+ * 1. Keywords in recent messages (INTENT_HINTS)
+ * 2. User's project design phase (from transactionState)
+ * 3. User's experience level (from userContext)
+ * 4. Active project being discussed
+ */
+export async function detectIntentsWithContext(
+  messages: ChatMessage[],
+  transactionState?: ChatTransactionState | null,
+  userJargonLevel?: string
+): Promise<DetectedIntents> {
+  const reasons: string[] = [];
+
+  // Combine recent messages for keyword analysis (last 5 user messages)
+  const recentUserMessages = messages
+    .filter(m => m.role === 'user')
+    .slice(-5)
+    .map(m => typeof m.content === 'string' ? m.content.toLowerCase() : '')
+    .join(' ');
+
+  const checkHints = (hints: string[]): boolean =>
+    hints.some(hint => recentUserMessages.includes(hint.toLowerCase()));
+
+  // 1. Keyword-based detection
+  let needsDataQuery = checkHints(INTENT_HINTS.dataQuery);
+  let needsHookDeveloper = checkHints(INTENT_HINTS.hookDeveloper);
+  let needsTransaction = checkHints(INTENT_HINTS.transaction);
+
+  if (needsDataQuery) reasons.push('keywords: data query');
+  if (needsHookDeveloper) reasons.push('keywords: hook developer');
+  if (needsTransaction) reasons.push('keywords: transaction');
+
+  // 2. Transaction state signals
+  if (transactionState) {
+    // If user is in configuration/review/ready phase, they need transaction context
+    if (['configuration', 'review', 'ready'].includes(transactionState.designPhase)) {
+      if (!needsTransaction) {
+        needsTransaction = true;
+        reasons.push(`design phase: ${transactionState.designPhase}`);
+      }
+    }
+
+    // If they have tiers defined, they're doing NFT work
+    if (transactionState.tiers && transactionState.tiers.length > 0) {
+      if (!needsTransaction) {
+        needsTransaction = true;
+        reasons.push('has NFT tiers defined');
+      }
+    }
+
+    // If they have pending questions about configuration
+    if (transactionState.pendingQuestions?.some(q =>
+      /ruleset|split|payout|terminal|chain/i.test(q)
+    )) {
+      if (!needsTransaction) {
+        needsTransaction = true;
+        reasons.push('pending config questions');
+      }
+    }
+  }
+
+  // 3. User jargon level signals
+  if (userJargonLevel === 'advanced') {
+    // Advanced users asking technical questions likely need hook context
+    if (recentUserMessages.includes('contract') ||
+        recentUserMessages.includes('solidity') ||
+        recentUserMessages.includes('implement')) {
+      if (!needsHookDeveloper) {
+        needsHookDeveloper = true;
+        reasons.push('advanced user + technical keywords');
+      }
+    }
+  }
+
+  // 4. Fallback: if nothing detected and conversation is short, include transaction
+  // (most users are here to create/manage projects)
+  if (!needsDataQuery && !needsHookDeveloper && !needsTransaction) {
+    if (messages.length <= 4) {
+      // New conversation - include transaction context by default
+      needsTransaction = true;
+      reasons.push('new conversation default');
+    }
+  }
+
+  return {
+    needsDataQuery,
+    needsHookDeveloper,
+    needsTransaction,
+    reasons,
+  };
+}
+
+/**
+ * Simpler sync version for cases without user/project context
+ */
+export function detectIntents(messages: ChatMessage[]): DetectedIntents {
+  const reasons: string[] = [];
+
+  const recentUserMessages = messages
+    .filter(m => m.role === 'user')
+    .slice(-5)
+    .map(m => typeof m.content === 'string' ? m.content.toLowerCase() : '')
+    .join(' ');
+
+  const checkHints = (hints: string[]): boolean =>
+    hints.some(hint => recentUserMessages.includes(hint.toLowerCase()));
+
+  const needsDataQuery = checkHints(INTENT_HINTS.dataQuery);
+  const needsHookDeveloper = checkHints(INTENT_HINTS.hookDeveloper);
+  let needsTransaction = checkHints(INTENT_HINTS.transaction);
+
+  if (needsDataQuery) reasons.push('keywords: data query');
+  if (needsHookDeveloper) reasons.push('keywords: hook developer');
+  if (needsTransaction) reasons.push('keywords: transaction');
+
+  // Default: include transaction for new conversations
+  if (!needsDataQuery && !needsHookDeveloper && !needsTransaction && messages.length <= 4) {
+    needsTransaction = true;
+    reasons.push('new conversation default');
+  }
+
+  return { needsDataQuery, needsHookDeveloper, needsTransaction, reasons };
+}
+
+/**
+ * Build modular system prompt based on detected intents
+ * Returns BASE_PROMPT + only the modules needed for this conversation
+ */
+export function buildModularPrompt(intents: DetectedIntents): string {
+  const parts: string[] = [BASE_PROMPT];
+
+  // Add context modules based on detected intents
+  if (intents.needsDataQuery) {
+    parts.push(DATA_QUERY_CONTEXT);
+  }
+
+  if (intents.needsHookDeveloper) {
+    parts.push(HOOK_DEVELOPER_CONTEXT);
+  }
+
+  if (intents.needsTransaction) {
+    parts.push(TRANSACTION_CONTEXT);
+  }
+
+  // Always include examples for few-shot learning (small cost)
+  parts.push(EXAMPLE_INTERACTIONS);
+
+  return parts.join('\n\n');
+}
+
+/**
+ * Estimate token count for the modular prompt
+ */
+export function estimateModularPromptTokens(intents: DetectedIntents): number {
+  let tokens = MODULE_TOKENS.BASE_PROMPT + MODULE_TOKENS.EXAMPLE_INTERACTIONS;
+
+  if (intents.needsDataQuery) tokens += MODULE_TOKENS.DATA_QUERY_CONTEXT;
+  if (intents.needsHookDeveloper) tokens += MODULE_TOKENS.HOOK_DEVELOPER_CONTEXT;
+  if (intents.needsTransaction) tokens += MODULE_TOKENS.TRANSACTION_CONTEXT;
+
+  return tokens;
+}
+
+/**
+ * Get list of module names loaded for given intents
+ */
+export function getLoadedModules(intents: DetectedIntents): string[] {
+  const modules = ['BASE_PROMPT'];
+  if (intents.needsDataQuery) modules.push('DATA_QUERY_CONTEXT');
+  if (intents.needsHookDeveloper) modules.push('HOOK_DEVELOPER_CONTEXT');
+  if (intents.needsTransaction) modules.push('TRANSACTION_CONTEXT');
+  modules.push('EXAMPLE_INTERACTIONS');
+  return modules;
+}
 
 // ============================================================================
 // Core Context Building
@@ -445,20 +650,53 @@ export async function logContextUsage(
 
 /**
  * Build complete system prompt with all context layers
+ *
+ * Supports two modes:
+ * 1. Legacy: Pass basePrompt directly (uses full prompt)
+ * 2. Modular: Pass messages array for intent detection (saves tokens)
  */
 export async function buildEnhancedSystemPrompt(options: {
-  basePrompt: string;
+  basePrompt?: string;  // Legacy: use this prompt directly
+  messages?: ChatMessage[];  // Modular: detect intent and build minimal prompt
   chatId?: string;
   userId?: string;
   includeOmnichain?: boolean;
   omnichainContext?: string;
-}): Promise<{ systemPrompt: string; context: OptimizedContext | null }> {
+}): Promise<{ systemPrompt: string; context: OptimizedContext | null; intents?: DetectedIntents }> {
   const parts: string[] = [];
   let context: OptimizedContext | null = null;
+  let detectedIntents: DetectedIntents | undefined;
   const config = getConfig();
 
-  // 1. Base system prompt (transformed for testnet if needed)
-  let basePrompt = options.basePrompt;
+  // 1. Build base prompt - modular if messages provided, otherwise use legacy
+  let basePrompt: string;
+  if (options.messages && options.messages.length > 0) {
+    // Modular mode: detect intents using full context
+    // If we have a chatId, use context-aware detection
+    if (options.chatId) {
+      const transactionState = await getTransactionState(options.chatId);
+      // Get user jargon level if we have userId
+      let jargonLevel: string | undefined;
+      if (options.userId) {
+        const userCtx = await getContextForSystemPrompt(options.userId);
+        // Extract jargon level from context markdown
+        const levelMatch = userCtx.match(/Jargon level: (\w+)/);
+        jargonLevel = levelMatch ? levelMatch[1] : undefined;
+      }
+      detectedIntents = await detectIntentsWithContext(
+        options.messages,
+        transactionState,
+        jargonLevel
+      );
+    } else {
+      // No chat context, use simple keyword detection
+      detectedIntents = detectIntents(options.messages);
+    }
+    basePrompt = buildModularPrompt(detectedIntents);
+  } else {
+    // Legacy mode: use provided prompt or import full SYSTEM_PROMPT
+    basePrompt = options.basePrompt || BASE_PROMPT;
+  }
   if (config.isTestnet) {
     // Replace mainnet chain IDs with testnet equivalents in the base prompt
     basePrompt = basePrompt
@@ -581,11 +819,21 @@ export async function buildEnhancedSystemPrompt(options: {
       parts.push('\n\n---\n\n');
       parts.push(formatAttachmentSummariesForPrompt(context.attachmentSummaries));
     }
+
+    // 8. Add modular prompt info to context metadata
+    if (detectedIntents && context) {
+      context.metadata.modularPrompt = {
+        estimatedTokens: estimateModularPromptTokens(detectedIntents),
+        modulesLoaded: getLoadedModules(detectedIntents),
+        reasons: detectedIntents.reasons,
+      };
+    }
   }
 
   return {
     systemPrompt: parts.join(''),
     context,
+    intents: detectedIntents,
   };
 }
 

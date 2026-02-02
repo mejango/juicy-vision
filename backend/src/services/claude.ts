@@ -177,14 +177,35 @@ function buildSystemPrompt(customSystem?: string, includeOmnichain = true): stri
 /**
  * Build enhanced system prompt with context management
  * Use this for chat-aware AI invocations
+ *
+ * If messages are provided, uses intent detection for modular prompt loading.
+ * This saves tokens by only including relevant context modules.
  */
 export async function buildEnhancedPrompt(options: {
   customSystem?: string;
+  messages?: ChatMessage[];  // Pass messages for intent detection (saves tokens)
   chatId?: string;
   userId?: string;
   includeOmnichain?: boolean;
-}): Promise<{ systemPrompt: string; context: import('./contextManager.ts').OptimizedContext | null }> {
+}): Promise<{
+  systemPrompt: string;
+  context: import('./contextManager.ts').OptimizedContext | null;
+  intents?: import('./contextManager.ts').DetectedIntents;
+}> {
   const builder = await getBuildEnhancedSystemPrompt();
+
+  // If messages provided and no custom system, use modular mode
+  if (options.messages && !options.customSystem) {
+    return builder({
+      messages: options.messages,
+      chatId: options.chatId,
+      userId: options.userId,
+      includeOmnichain: options.includeOmnichain,
+      omnichainContext: OMNICHAIN_CONTEXT,
+    });
+  }
+
+  // Legacy mode: use full prompt
   return builder({
     basePrompt: options.customSystem || SYSTEM_PROMPT,
     chatId: options.chatId,
