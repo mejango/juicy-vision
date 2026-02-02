@@ -1452,13 +1452,14 @@ export default function TransactionPreview({
 
     // Small delay to let the success UI render first
     setTimeout(() => {
+      console.log('[TransactionPreview] Dispatching post-launch follow-up for project', primaryProjectId)
       window.dispatchEvent(new CustomEvent('juice:send-message', {
         detail: {
           message: `[SYSTEM: Project #${primaryProjectId} created on ${chainData?.name || 'chain'}. Show project-card for projectId=${primaryProjectId} chainId=${primaryChainId}. After showing the card, invite user to be the first to put $5 into their project, and mention you can show other info about their project like activity, treasury balance, etc.]`,
           bypassSkipAi: true,
         }
       }))
-    }, 500)
+    }, 1000)
   }, [action, isComplete, createdProjectIds])
 
   // Get draft data collected from forms - use as fallback while transaction JSON streams
@@ -2337,7 +2338,7 @@ export default function TransactionPreview({
           {isLaunching && (
             <div className={`-mx-4 px-4 py-4 flex items-center gap-4 border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
               <div className="relative">
-                <div className={`animate-spin w-10 h-10 border-3 ${isDark ? 'border-green-500' : 'border-green-600'} border-t-transparent rounded-full`} />
+                <div className={`animate-spin w-10 h-10 border-4 ${isDark ? 'border-green-500' : 'border-green-600'} border-t-transparent rounded-full`} />
               </div>
               <div>
                 <p className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>

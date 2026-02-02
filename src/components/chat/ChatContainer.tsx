@@ -1116,6 +1116,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     if (topOnly) return
 
     const handleComponentMessage = (event: CustomEvent<{ message: string; newChat?: boolean; fileAttachments?: Record<string, string>; bypassSkipAi?: boolean }>) => {
+      console.log('[ChatContainer] Received juice:send-message event', event.detail)
       if (event.detail?.message) {
         // Convert file attachments (data URLs) to Attachment objects
         let attachments: Attachment[] | undefined
