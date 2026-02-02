@@ -1430,6 +1430,7 @@ export default function TransactionPreview({
     persistedTxHashes,
     reset: resetLaunch,
   } = useOmnichainLaunchProject({
+    deploymentKey: messageId, // Scope localStorage by messageId to prevent state bleeding
     onSuccess: (bundleId, txHashes) => {
       console.log('Projects launched:', bundleId, txHashes)
     },
