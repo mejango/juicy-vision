@@ -648,6 +648,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     }
   }, [])
 
+  // Close auth modal when user becomes authenticated
+  // This handles cases where the modal doesn't close properly after signup/login
+  const isAuth = isAuthenticated()
+  useEffect(() => {
+    if (isAuth && showAuthOptionsModal) {
+      setShowAuthOptionsModal(false)
+    }
+  }, [isAuth, showAuthOptionsModal])
+
   // Fetch current user's Juicy ID
   useEffect(() => {
     const fetchIdentity = async () => {
