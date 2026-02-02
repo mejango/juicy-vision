@@ -114,8 +114,9 @@ const FORWARD_REQUEST_TYPES = {
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60;
 
 // Relayr API configuration
-const RELAYR_API_URL = 'https://api.relayr.network';
-const RELAYR_APP_ID = process.env.RELAYR_APP_ID || 'juicy-vision';
+// Defaults to staging; set RELAYR_API_URL for production (https://api.relayr.ba5ed.com)
+const RELAYR_API_URL = process.env.RELAYR_API_URL || 'https://relayr-api-staging.up.railway.app';
+const RELAYR_APP_ID = process.env.RELAYR_APP_ID || '43a6827c-3407-43c1-89c6-deeb8994696d';
 
 // ============================================================================
 // Types
