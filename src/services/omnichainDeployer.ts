@@ -564,6 +564,9 @@ export function buildLaunch721RulesetsTransaction(params: {
 
 /**
  * Build transactions for launching 721 rulesets on multiple chains.
+ *
+ * For ERC20-based projects (e.g., USDC), pass chainConfigs with per-chain
+ * terminal configurations to ensure correct token addresses on each chain.
  */
 export function buildOmnichainLaunch721RulesetsTransactions(params: {
   chainIds: number[]
@@ -572,18 +575,35 @@ export function buildOmnichainLaunch721RulesetsTransactions(params: {
   launchRulesetsConfig: JBLaunchRulesetsConfig
   controller?: `0x${string}`
   salt?: `0x${string}`
+  chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs
 }): Array<{
   chainId: number
   to: `0x${string}`
   data: `0x${string}`
   value: string
 }> {
-  return params.chainIds.map(chainId =>
-    buildLaunch721RulesetsTransaction({
+  const { chainConfigs = [] } = params
+
+  // Build a map of chainId -> terminal configurations from chainConfigs
+  const chainConfigMap = new Map<number, ChainConfigOverride>()
+  for (const cfg of chainConfigs) {
+    chainConfigMap.set(cfg.chainId, cfg)
+  }
+
+  return params.chainIds.map(chainId => {
+    // Get per-chain terminal configurations (use override if available)
+    const chainConfig = chainConfigMap.get(chainId)
+    const terminalConfigurations = chainConfig?.terminalConfigurations ?? params.launchRulesetsConfig.terminalConfigurations
+
+    return buildLaunch721RulesetsTransaction({
       ...params,
       chainId,
+      launchRulesetsConfig: {
+        ...params.launchRulesetsConfig,
+        terminalConfigurations,  // Use per-chain terminal configs
+      },
     })
-  )
+  })
 }
 
 /**

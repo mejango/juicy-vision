@@ -30,6 +30,20 @@ vi.mock('../../services/relayr', () => ({
   getBundleStatus: (...args: unknown[]) => mockGetBundleStatus(...args),
 }))
 
+// Mock omnichainDeployer service (used for multi-chain deployments)
+const mockBuildOmnichainLaunchTransactions = vi.fn()
+
+vi.mock('../../services/omnichainDeployer', () => ({
+  buildOmnichainLaunchTransactions: (...args: unknown[]) => mockBuildOmnichainLaunchTransactions(...args),
+}))
+
+// Mock bendystraw service (for project ID extraction from receipts)
+const mockGetProjectIdsFromReceipts = vi.fn()
+
+vi.mock('../../services/bendystraw', () => ({
+  getProjectIdsFromReceipts: (...args: unknown[]) => mockGetProjectIdsFromReceipts(...args),
+}))
+
 // Mock useRelayrBundle
 const mockBundleState: {
   bundleId: string | null
@@ -85,6 +99,17 @@ describe('useOmnichainLaunchProject', () => {
     mockBundleState.status = 'idle'
     mockBundleState.chainStates = []
     mockBundleState.error = null
+
+    // Default mock for omnichain deployer (multi-chain path)
+    mockBuildOmnichainLaunchTransactions.mockReturnValue([
+      { chainId: 1, to: '0xomnichain', data: '0x111', value: '0' },
+      { chainId: 10, to: '0xomnichain', data: '0x222', value: '0' },
+      { chainId: 8453, to: '0xomnichain', data: '0x333', value: '0' },
+      { chainId: 42161, to: '0xomnichain', data: '0x444', value: '0' },
+    ])
+
+    // Default mock for project ID extraction
+    mockGetProjectIdsFromReceipts.mockResolvedValue({})
   })
 
   const defaultParams: OmnichainLaunchProjectParams = {
@@ -146,13 +171,7 @@ describe('useOmnichainLaunchProject', () => {
 
   describe('launch function', () => {
     it('calls setCreating when launch is called', async () => {
-      mockBuildOmnichainLaunchProjectTransactions.mockResolvedValue({
-        transactions: [
-          { txData: { chainId: 1, to: '0xcontroller', data: '0x123', value: '0' } },
-        ],
-        predictedProjectIds: { 1: 100 },
-      })
-
+      // Multi-chain uses buildOmnichainLaunchTransactions (already mocked in beforeEach)
       mockCreateBalanceBundle.mockResolvedValue({
         bundle_uuid: 'test-bundle-id',
       })
@@ -166,14 +185,8 @@ describe('useOmnichainLaunchProject', () => {
       expect(mockSetCreating).toHaveBeenCalled()
     })
 
-    it('builds transactions with correct parameters', async () => {
-      mockBuildOmnichainLaunchProjectTransactions.mockResolvedValue({
-        transactions: [
-          { txData: { chainId: 1, to: '0xcontroller', data: '0x123', value: '0' } },
-        ],
-        predictedProjectIds: { 1: 100, 10: 101, 8453: 102, 42161: 103 },
-      })
-
+    it('builds transactions with correct parameters for multi-chain deployment', async () => {
+      // Multi-chain deployments use buildOmnichainLaunchTransactions from omnichainDeployer
       mockCreateBalanceBundle.mockResolvedValue({
         bundle_uuid: 'test-bundle-id',
       })
@@ -184,55 +197,92 @@ describe('useOmnichainLaunchProject', () => {
         await result.current.launch(defaultParams)
       })
 
-      expect(mockBuildOmnichainLaunchProjectTransactions).toHaveBeenCalledWith({
+      // For multi-chain (>1 chain), uses omnichain deployer
+      expect(mockBuildOmnichainLaunchTransactions).toHaveBeenCalledWith({
         chainIds: defaultParams.chainIds,
         owner: defaultParams.owner,
         projectUri: defaultParams.projectUri,
         rulesetConfigurations: defaultParams.rulesetConfigurations,
         terminalConfigurations: defaultParams.terminalConfigurations,
         memo: defaultParams.memo,
+        suckerDeploymentConfiguration: undefined,
+        chainConfigs: undefined,
       })
+      // Should NOT call the API-based builder for multi-chain
+      expect(mockBuildOmnichainLaunchProjectTransactions).not.toHaveBeenCalled()
     })
 
-    it('creates balance bundle with correct parameters', async () => {
-      const mockTxs = [
-        { txData: { chainId: 1, to: '0xcontroller1', data: '0x111', value: '0' } },
-        { txData: { chainId: 10, to: '0xcontroller10', data: '0x222', value: '0' } },
-      ]
-
+    it('builds transactions with API for single-chain deployment', async () => {
+      // Single-chain deployments use API endpoint
       mockBuildOmnichainLaunchProjectTransactions.mockResolvedValue({
-        transactions: mockTxs,
-        predictedProjectIds: { 1: 100, 10: 101 },
+        transactions: [
+          { txData: { chainId: 1, to: '0xcontroller', data: '0x123', value: '0' } },
+        ],
+        predictedProjectIds: { 1: 100 },
       })
 
       mockCreateBalanceBundle.mockResolvedValue({
         bundle_uuid: 'test-bundle-id',
       })
 
+      const singleChainParams = {
+        ...defaultParams,
+        chainIds: [1], // Single chain - uses API path
+      }
+
       const { result } = renderHook(() => useOmnichainLaunchProject())
 
       await act(async () => {
-        await result.current.launch(defaultParams)
+        await result.current.launch(singleChainParams)
+      })
+
+      expect(mockBuildOmnichainLaunchProjectTransactions).toHaveBeenCalledWith({
+        chainIds: [1],
+        owner: singleChainParams.owner,
+        projectUri: singleChainParams.projectUri,
+        rulesetConfigurations: singleChainParams.rulesetConfigurations,
+        terminalConfigurations: singleChainParams.terminalConfigurations,
+        memo: singleChainParams.memo,
+      })
+      // Should NOT call the omnichain deployer for single-chain
+      expect(mockBuildOmnichainLaunchTransactions).not.toHaveBeenCalled()
+    })
+
+    it('creates balance bundle with correct parameters', async () => {
+      // Multi-chain uses buildOmnichainLaunchTransactions which returns array directly
+      mockBuildOmnichainLaunchTransactions.mockReturnValue([
+        { chainId: 1, to: '0xomnichain1', data: '0x111', value: '0' },
+        { chainId: 10, to: '0xomnichain10', data: '0x222', value: '0' },
+      ])
+
+      mockCreateBalanceBundle.mockResolvedValue({
+        bundle_uuid: 'test-bundle-id',
+      })
+
+      const twoChainParams = {
+        ...defaultParams,
+        chainIds: [1, 10],
+      }
+
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch(twoChainParams)
       })
 
       expect(mockCreateBalanceBundle).toHaveBeenCalledWith({
         app_id: expect.any(String),
         transactions: [
-          { chain: 1, target: '0xcontroller1', data: '0x111', value: '0' },
-          { chain: 10, target: '0xcontroller10', data: '0x222', value: '0' },
+          { chain: 1, target: '0xomnichain1', data: '0x111', value: '0' },
+          { chain: 10, target: '0xomnichain10', data: '0x222', value: '0' },
         ],
+        perform_simulation: true,
         virtual_nonce_mode: 'Disabled',
       })
     })
 
-    it('initializes bundle and sets processing', async () => {
-      mockBuildOmnichainLaunchProjectTransactions.mockResolvedValue({
-        transactions: [
-          { txData: { chainId: 1, to: '0xcontroller', data: '0x123', value: '0' } },
-        ],
-        predictedProjectIds: { 1: 100, 10: 101, 8453: 102, 42161: 103 },
-      })
-
+    it('initializes bundle and sets processing for multi-chain', async () => {
+      // Multi-chain deployments set predictedIds to 0 (extracted from receipts after completion)
       mockCreateBalanceBundle.mockResolvedValue({
         bundle_uuid: 'test-bundle-123',
       })
@@ -243,14 +293,48 @@ describe('useOmnichainLaunchProject', () => {
         await result.current.launch(defaultParams)
       })
 
+      // Multi-chain sets all predicted IDs to 0 initially
       expect(mockInitializeBundle).toHaveBeenCalledWith(
         'test-bundle-123',
         defaultParams.chainIds,
-        { 1: 100, 10: 101, 8453: 102, 42161: 103 },
+        { 1: 0, 10: 0, 8453: 0, 42161: 0 },
         []
       )
 
       expect(mockSetProcessing).toHaveBeenCalledWith('sponsored')
+    })
+
+    it('initializes bundle with predicted IDs for single-chain', async () => {
+      // Single-chain deployments get predicted IDs from API
+      mockBuildOmnichainLaunchProjectTransactions.mockResolvedValue({
+        transactions: [
+          { txData: { chainId: 1, to: '0xcontroller', data: '0x123', value: '0' } },
+        ],
+        predictedProjectIds: { 1: 100 },
+      })
+
+      mockCreateBalanceBundle.mockResolvedValue({
+        bundle_uuid: 'test-bundle-single',
+      })
+
+      const singleChainParams = {
+        ...defaultParams,
+        chainIds: [1],
+      }
+
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch(singleChainParams)
+      })
+
+      // Single-chain uses predicted IDs from API
+      expect(mockInitializeBundle).toHaveBeenCalledWith(
+        'test-bundle-single',
+        [1],
+        { 1: 100 },
+        []
+      )
     })
 
     it('sets error when no owner specified', async () => {
@@ -266,8 +350,11 @@ describe('useOmnichainLaunchProject', () => {
       expect(mockSetError).toHaveBeenCalledWith('No owner address specified')
     })
 
-    it('sets error on build failure', async () => {
-      mockBuildOmnichainLaunchProjectTransactions.mockRejectedValue(new Error('Build failed'))
+    it('sets error on build failure for multi-chain', async () => {
+      // Multi-chain uses buildOmnichainLaunchTransactions which throws synchronously
+      mockBuildOmnichainLaunchTransactions.mockImplementation(() => {
+        throw new Error('Build failed')
+      })
 
       const { result } = renderHook(() => useOmnichainLaunchProject())
 
@@ -278,14 +365,26 @@ describe('useOmnichainLaunchProject', () => {
       expect(mockSetError).toHaveBeenCalledWith('Build failed')
     })
 
-    it('sets error on bundle creation failure', async () => {
-      mockBuildOmnichainLaunchProjectTransactions.mockResolvedValue({
-        transactions: [
-          { txData: { chainId: 1, to: '0xcontroller', data: '0x123', value: '0' } },
-        ],
-        predictedProjectIds: { 1: 100 },
+    it('sets error on build failure for single-chain', async () => {
+      // Single-chain uses API which rejects asynchronously
+      mockBuildOmnichainLaunchProjectTransactions.mockRejectedValue(new Error('API build failed'))
+
+      const singleChainParams = {
+        ...defaultParams,
+        chainIds: [1],
+      }
+
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch(singleChainParams)
       })
 
+      expect(mockSetError).toHaveBeenCalledWith('API build failed')
+    })
+
+    it('sets error on bundle creation failure', async () => {
+      // Multi-chain path - buildOmnichainLaunchTransactions succeeds but createBalanceBundle fails
       mockCreateBalanceBundle.mockRejectedValue(new Error('Bundle creation failed'))
 
       const { result } = renderHook(() => useOmnichainLaunchProject())
@@ -301,7 +400,10 @@ describe('useOmnichainLaunchProject', () => {
   describe('callbacks', () => {
     it('calls onError when build fails', async () => {
       const onError = vi.fn()
-      mockBuildOmnichainLaunchProjectTransactions.mockRejectedValue(new Error('Build failed'))
+      // Multi-chain uses buildOmnichainLaunchTransactions which throws synchronously
+      mockBuildOmnichainLaunchTransactions.mockImplementation(() => {
+        throw new Error('Build failed')
+      })
 
       const { result } = renderHook(() => useOmnichainLaunchProject({ onError }))
 

@@ -5,10 +5,11 @@ description: |
   Use when: (1) USDC-based project sends same token address to all chains despite each chain
   having different USDC addresses, (2) sucker configs use NATIVE_TOKEN instead of ERC20
   addresses, (3) contract reverts at SUCKER_REGISTRY.deploySuckersFor(), (4) terminal
-  configurations don't reflect per-chain token addresses. Covers JBOmnichainDeployer,
-  sucker token mappings, and per-chain terminal configuration overrides.
+  configurations don't reflect per-chain token addresses, (5) deploying revnets or 721
+  tier projects with ERC20 tokens. Covers JBOmnichainDeployer, REVDeployer, sucker token
+  mappings, and per-chain terminal configuration overrides.
 author: Claude Code
-version: 1.0.0
+version: 1.1.0
 date: 2026-02-01
 ---
 
@@ -154,6 +155,48 @@ The system will:
 1. Use correct USDC address per chain in terminal configurations
 2. Generate sucker mappings pairing USDC addresses across chains
 
+## Critical Gotcha: Preview vs Launch Data Separation
+
+**IMPORTANT**: Preview-generated sucker configs are for DISPLAY ONLY.
+
+The preview component may generate sucker configs for the first chain to show in the UI.
+If this config is passed to the launch function, `buildOmnichainLaunchTransactions` will
+see non-empty `deployerConfigurations` and use that SAME config for ALL chains!
+
+**Wrong pattern:**
+```typescript
+// Preview generates config for first chain
+const suckerConfig = parseSuckerDeployerConfig(firstChainId, allChainIds, opts)
+
+// DON'T pass this to launch!
+await launch({ suckerDeploymentConfiguration: suckerConfig })  // BUG!
+```
+
+**Correct pattern:**
+```typescript
+// Preview generates config for display only
+const previewConfig = parseSuckerDeployerConfig(firstChainId, allChainIds, opts)
+// Show previewConfig in UI...
+
+// DON'T pass suckerDeploymentConfiguration - let buildOmnichainLaunchTransactions
+// auto-generate correct per-chain configs
+await launch({ chainConfigs })  // No suckerDeploymentConfiguration!
+```
+
+## Extracting Project IDs After Deployment
+
+After deployment, extract project IDs from transaction receipts:
+
+```typescript
+async function getProjectIdFromReceipt(chainId: number, txHash: `0x${string}`): Promise<number | null> {
+  const receipt = await publicClient.getTransactionReceipt({ hash: txHash })
+  // Project ID is in first log's first indexed parameter (topics[1])
+  // topics[0] is event signature, topics[1] is first indexed param
+  const projectIdHex = receipt.logs[0]?.topics[1]
+  return projectIdHex ? Number(BigInt(projectIdHex)) : null
+}
+```
+
 ## Notes
 
 - JBTokenMapping Solidity struct order: `localToken, minGas, remoteToken, minBridgeAmount`
@@ -161,6 +204,64 @@ The system will:
 - Salt must be shared across all chains for deterministic sucker addresses
 - Currency values differ per chain even for the same token (USDC)
 - Terminal addresses may be the same across chains (JBMultiTerminal), but token addresses differ
+- Sucker deployers are organized by chain PAIR, not per-chain. E.g., ETH↔OP deployer handles both directions.
+- For testnets use short names: SEP, OPSEP, BASESEP, ARBSEP
+
+## Applying to Revnets and 721 Deployments
+
+The same patterns apply to revnet and NFT tier deployments:
+
+### Revnets with ERC20 Tokens
+
+```typescript
+// useOmnichainDeployRevnet now accepts chainConfigs and terminalConfigurations
+await deploy({
+  chainIds: [11155111, 11155420, 84532],
+  stageConfigurations: [{ ... }],
+  splitOperator: '0x...',
+  name: 'My Revnet',
+  tagline: 'USDC-based revnet',
+  terminalConfigurations: [{ ... }],  // Default terminals
+  chainConfigs: [                      // Per-chain overrides
+    { chainId: 11155111, terminalConfigurations: [{ token: SEPOLIA_USDC, ... }] },
+    { chainId: 11155420, terminalConfigurations: [{ token: OP_SEP_USDC, ... }] },
+    { chainId: 84532, terminalConfigurations: [{ token: BASE_SEP_USDC, ... }] },
+  ],
+  // DON'T pass suckerDeploymentConfiguration - auto-generated per-chain
+})
+```
+
+### 721 Tier Deployments
+
+```typescript
+// buildOmnichainLaunch721RulesetsTransactions supports chainConfigs
+const transactions = buildOmnichainLaunch721RulesetsTransactions({
+  chainIds: [11155111, 11155420],
+  projectId: 123,
+  deployTiersHookConfig: { ... },
+  launchRulesetsConfig: { ... },
+  chainConfigs: [  // Per-chain terminal overrides
+    { chainId: 11155111, terminalConfigurations: [{ token: SEPOLIA_USDC, ... }] },
+    { chainId: 11155420, terminalConfigurations: [{ token: OP_SEP_USDC, ... }] },
+  ],
+})
+```
+
+### Sucker Deployments
+
+The `buildOmnichainDeploySuckersTransactions` function now auto-generates correct
+chain-pair specific deployers instead of using the same deployer for all chains:
+
+```typescript
+// Auto-generates correct deployers for each chain pair
+const transactions = buildOmnichainDeploySuckersTransactions({
+  chainIds: [11155111, 11155420, 84532],
+  projectIds: { 11155111: 1, 11155420: 2, 84532: 3 },
+  salt: '0x...',
+  tokenMappings: [{ ... }],
+  // Don't need deployerOverrides - auto-determined from chain pairs
+})
+```
 
 ## Related Skills
 - jb-permit2-metadata: For Permit2 gasless ERC20 payments

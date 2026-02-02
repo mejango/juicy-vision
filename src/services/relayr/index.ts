@@ -77,6 +77,7 @@ export {
   // Revnet deployment types
   type REVStageConfig,
   type REVSuckerDeploymentConfig,
+  type REVChainConfigOverride,
   type JBDeployRevnetRequest,
   type JBDeployRevnetResponse,
   // Sucker deployment types

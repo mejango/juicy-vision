@@ -8,7 +8,10 @@ import {
   type JBDeployRevnetRequest,
   type REVStageConfig,
   type REVSuckerDeploymentConfig,
+  type REVChainConfigOverride,
+  type JBTerminalConfig,
 } from '../../services/relayr'
+import { getProjectIdsFromReceipts } from '../../services/bendystraw'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
@@ -22,6 +25,8 @@ export interface OmnichainDeployRevnetParams {
   splitOperator: string                 // Address that receives operator split
   name: string
   tagline: string
+  terminalConfigurations?: JBTerminalConfig[]  // Default terminal configs (ETH if not specified)
+  chainConfigs?: REVChainConfigOverride[]      // Per-chain overrides for ERC20 tokens
   suckerDeploymentConfiguration?: REVSuckerDeploymentConfig
   initialTokenReceivers?: Array<{
     beneficiary: string
@@ -122,7 +127,7 @@ export function useOmnichainDeployRevnet(
     }
   }, [statusData, bundle])
 
-  // Call onSuccess when complete
+  // Call onSuccess when complete and extract actual project IDs from receipts
   useEffect(() => {
     if (bundleState.status === 'completed' && bundleState.bundleId) {
       const txHashes: Record<number, string> = {}
@@ -131,8 +136,23 @@ export function useOmnichainDeployRevnet(
           txHashes[cs.chainId] = cs.txHash
         }
       })
-      setConfirmedProjectIds(predictedProjectIds)
-      onSuccess?.(bundleState.bundleId, txHashes)
+
+      // Extract actual project IDs from transaction receipts
+      // This is more reliable than predictions, especially for omnichain deployments
+      getProjectIdsFromReceipts(txHashes).then(extractedIds => {
+        if (Object.keys(extractedIds).length > 0) {
+          console.log('Extracted revnet project IDs from receipts:', extractedIds)
+          setConfirmedProjectIds(extractedIds)
+        } else {
+          // Fallback to predicted IDs if extraction fails
+          setConfirmedProjectIds(predictedProjectIds)
+        }
+        onSuccess?.(bundleState.bundleId!, txHashes)
+      }).catch(err => {
+        console.error('Failed to extract revnet project IDs:', err)
+        setConfirmedProjectIds(predictedProjectIds)
+        onSuccess?.(bundleState.bundleId!, txHashes)
+      })
     }
   }, [bundleState.status, bundleState.bundleId, bundleState.chainStates, predictedProjectIds, onSuccess])
 
@@ -146,6 +166,13 @@ export function useOmnichainDeployRevnet(
   /**
    * Deploy revnet on all specified chains.
    * Uses balance-sponsored bundle - admin pays all gas.
+   *
+   * For ERC20-based revnets (e.g., USDC), pass chainConfigs with per-chain
+   * terminal configurations to ensure correct token addresses on each chain.
+   *
+   * IMPORTANT: Do NOT pass suckerDeploymentConfiguration from preview UI.
+   * Let buildOmnichainDeployRevnetTransactions auto-generate correct per-chain
+   * sucker configs. Preview-generated configs will be the same for all chains!
    */
   const deploy = useCallback(async (params: OmnichainDeployRevnetParams) => {
     const {
@@ -154,6 +181,8 @@ export function useOmnichainDeployRevnet(
       splitOperator,
       name,
       tagline,
+      terminalConfigurations,
+      chainConfigs,
       suckerDeploymentConfiguration,
       initialTokenReceivers,
     } = params
@@ -172,6 +201,8 @@ export function useOmnichainDeployRevnet(
       const salt = generateRevnetSalt(name, operator)
 
       // Build revnet deployment request
+      // Note: buildOmnichainDeployRevnetTransactions will auto-generate per-chain
+      // sucker configs if suckerDeploymentConfiguration is not provided
       const deployRequest: JBDeployRevnetRequest = {
         chainIds,
         stageConfigurations,
@@ -181,6 +212,8 @@ export function useOmnichainDeployRevnet(
           tagline,
           salt,
         },
+        terminalConfigurations,
+        chainConfigs,
         suckerDeploymentConfiguration,
         initialTokenReceivers,
       }

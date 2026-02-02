@@ -188,6 +188,7 @@ describe('useOmnichainDeploySuckers', () => {
           { chain: 1, target: '0xsuckerregistry1', data: '0x111', value: '0' },
           { chain: 10, target: '0xsuckerregistry10', data: '0x222', value: '0' },
         ],
+        perform_simulation: true,
         virtual_nonce_mode: 'Disabled',
       })
     })

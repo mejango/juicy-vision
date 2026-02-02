@@ -1027,6 +1027,13 @@ export interface REVSuckerDeploymentConfig {
   salt: string                          // bytes32 for deterministic addresses
 }
 
+// Per-chain configuration overrides for revnet deployments
+// Allows different terminal configurations per chain (e.g., different USDC addresses)
+export interface REVChainConfigOverride {
+  chainId: number
+  terminalConfigurations?: JBTerminalConfig[]
+}
+
 export interface JBDeployRevnetRequest {
   chainIds: number[]
   stageConfigurations: REVStageConfig[]
@@ -1036,6 +1043,8 @@ export interface JBDeployRevnetRequest {
     tagline: string
     salt: string                        // bytes32 for CREATE2
   }
+  terminalConfigurations?: JBTerminalConfig[]  // Default terminal configs (ETH if not specified)
+  chainConfigs?: REVChainConfigOverride[]      // Per-chain overrides for ERC20 tokens
   suckerDeploymentConfiguration?: REVSuckerDeploymentConfig
   initialTokenReceivers?: Array<{
     beneficiary: string
@@ -1057,12 +1066,23 @@ export interface JBDeployRevnetResponse {
  * Build omnichain revnet deployment transactions.
  * Creates a revnet on each specified chain with stage-based configuration.
  * Encoded client-side using viem (no API call needed)
+ *
+ * IMPORTANT: For multi-chain deployments, each chain needs DIFFERENT sucker
+ * deployer configurations (connecting to the other chains). This function
+ * auto-generates per-chain sucker configs when deploying to multiple chains.
+ *
+ * For ERC20-based revnets (e.g., USDC), pass chainConfigs with per-chain
+ * terminal configurations to ensure correct token addresses on each chain.
  */
 export function buildOmnichainDeployRevnetTransactions(
   request: JBDeployRevnetRequest
 ): JBDeployRevnetResponse {
+  // Import sucker config utilities dynamically to avoid circular deps
+  const { parseSuckerDeployerConfig, createSalt, shouldConfigureSuckers } =
+    require('../../utils/suckerConfig')
+
   // Default terminal configuration for ETH
-  const defaultTerminalConfig = [{
+  const defaultTerminalConfig: JBTerminalConfig[] = request.terminalConfigurations || [{
     terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c', // JBMultiTerminal
     accountingContextsToAccept: [{
       token: '0x000000000000000000000000000000000000EEEe', // Native ETH
@@ -1071,14 +1091,83 @@ export function buildOmnichainDeployRevnetTransactions(
     }],
   }]
 
+  const { chainIds, chainConfigs = [] } = request
+
+  // Generate a shared salt for all chains (ensures deterministic sucker addresses)
+  const sharedSalt = request.suckerDeploymentConfiguration?.salt || createSalt()
+
+  // Build a map of chainId -> terminal configurations from chainConfigs
+  const chainConfigMap = new Map<number, REVChainConfigOverride>()
+  for (const cfg of chainConfigs) {
+    chainConfigMap.set(cfg.chainId, cfg)
+  }
+
+  // Extract per-chain token addresses from terminal configurations for sucker config
+  // This enables proper ERC20 bridging (e.g., USDC on each chain)
+  const tokenAddresses: Record<number, string> = {}
+  for (const chainId of chainIds) {
+    const chainConfig = chainConfigMap.get(chainId)
+    const terminalConfigs = chainConfig?.terminalConfigurations ?? defaultTerminalConfig
+    // Look for the first non-native token in terminal configs
+    for (const terminal of terminalConfigs) {
+      for (const ctx of terminal.accountingContextsToAccept) {
+        // Skip native token (0xEEEe...) - we want ERC20 tokens
+        if (ctx.token && ctx.token.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
+          tokenAddresses[chainId] = ctx.token
+          break
+        }
+      }
+      if (tokenAddresses[chainId]) break
+    }
+  }
+
   const transactions = request.chainIds.map((chainId, index) => {
     const revnetId = index + 1 // Placeholder - actual ID from chain state
+
+    // Get per-chain terminal configurations (use override if available)
+    const chainConfig = chainConfigMap.get(chainId)
+    const terminalConfigurations = chainConfig?.terminalConfigurations ?? defaultTerminalConfig
+
+    // Generate per-chain sucker configuration
+    // Each chain needs deployers for the OTHER chains in the deployment
+    let suckerConfig: REVSuckerDeploymentConfig | undefined
+
+    // Check if we have a non-empty provided config
+    const hasProvidedConfig = (request.suckerDeploymentConfiguration?.deployerConfigurations?.length ?? 0) > 0
+
+    if (hasProvidedConfig) {
+      // Use provided config (for custom configurations)
+      suckerConfig = request.suckerDeploymentConfiguration
+    } else if (shouldConfigureSuckers(chainIds)) {
+      // Auto-generate sucker config for this chain connecting to other chains
+      // Pass token addresses for ERC20-based projects
+      const hasTokenAddresses = Object.keys(tokenAddresses).length > 0
+      const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, {
+        salt: sharedSalt,
+        tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
+      })
+      suckerConfig = {
+        deployerConfigurations: generatedConfig.deployerConfigurations.map((dc: { deployer: string; mappings: Array<{ localToken: string; minGas: number; remoteToken: string; minBridgeAmount: bigint }> }) => ({
+          deployer: dc.deployer,
+          mappings: dc.mappings.map((m: { localToken: string; minGas: number; remoteToken: string; minBridgeAmount: bigint }) => ({
+            // Order must match Solidity JBTokenMapping: localToken, minGas, remoteToken, minBridgeAmount
+            localToken: m.localToken,
+            minGas: m.minGas,
+            remoteToken: m.remoteToken,
+            minBridgeAmount: m.minBridgeAmount.toString(),
+          })),
+        })),
+        salt: generatedConfig.salt,
+      }
+    }
+
     const txResponse = encodeDeployRevnetTransaction(
       chainId,
       revnetId,
-      request,
-      defaultTerminalConfig
+      { ...request, suckerDeploymentConfiguration: suckerConfig },
+      terminalConfigurations
     )
+
     return {
       chainId,
       txData: txResponse.txData,
@@ -1086,10 +1175,11 @@ export function buildOmnichainDeployRevnetTransactions(
     }
   })
 
-  // Predicted project IDs would need on-chain query - return placeholders
+  // Predicted project IDs would need on-chain query - return 0 for multi-chain
+  // Actual IDs will be extracted from transaction receipts after completion
   const predictedProjectIds: Record<number, number> = {}
-  request.chainIds.forEach((chainId, index) => {
-    predictedProjectIds[chainId] = index + 1 // Placeholder
+  request.chainIds.forEach((chainId) => {
+    predictedProjectIds[chainId] = 0 // Will be updated from tx receipt
   })
 
   return {
@@ -1162,12 +1252,29 @@ export interface JBDeploySuckersResponse {
  * Build omnichain sucker deployment transactions.
  * Creates suckers on each chain to enable cross-chain token bridging.
  * Encoded client-side using viem (no API call needed)
+ *
+ * IMPORTANT: Each chain needs DIFFERENT sucker deployer configurations
+ * connecting to the OTHER chains. Sucker deployers are organized by chain PAIR,
+ * not per-chain (e.g., ETH↔OP deployer handles both directions).
  */
 export function buildOmnichainDeploySuckersTransactions(
   request: JBDeploySuckersRequest
 ): JBDeploySuckersResponse {
-  // Default sucker deployer addresses (BPSuckerDeployer on each chain)
-  const DEFAULT_SUCKER_DEPLOYER = '0x6c54f4e2d49c31b8d1d1eb8fa8a8fca83f29e90c'
+  // Import sucker config utilities dynamically to avoid circular deps
+  const { parseSuckerDeployerConfig, shouldConfigureSuckers } =
+    require('../../utils/suckerConfig')
+
+  // Build per-chain token addresses from tokenMappings (use local token for the chain)
+  const tokenAddresses: Record<number, string> = {}
+  if (request.tokenMappings.length > 0) {
+    const localToken = request.tokenMappings[0].localToken
+    // If it's not native token, apply it to all chains (simplified assumption)
+    if (localToken.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
+      request.chainIds.forEach(chainId => {
+        tokenAddresses[chainId] = localToken
+      })
+    }
+  }
 
   const transactions = request.chainIds.map(chainId => {
     const projectId = request.projectIds[chainId]
@@ -1175,14 +1282,36 @@ export function buildOmnichainDeploySuckersTransactions(
       throw new Error(`No project ID found for chain ${chainId}`)
     }
 
-    // Get deployer override or use default
-    const deployer = request.deployerOverrides?.[chainId] || DEFAULT_SUCKER_DEPLOYER
+    let configurations: Array<{ deployer: string; mappings: SuckerTokenMapping[] }>
 
-    // Build configurations from token mappings
-    const configurations = [{
-      deployer,
-      mappings: request.tokenMappings,
-    }]
+    // Check if deployer overrides are provided (manual configuration)
+    if (request.deployerOverrides && Object.keys(request.deployerOverrides).length > 0) {
+      // Use provided deployer with original token mappings
+      const deployer = request.deployerOverrides[chainId] || request.deployerOverrides[request.chainIds[0]]
+      configurations = [{
+        deployer,
+        mappings: request.tokenMappings,
+      }]
+    } else if (shouldConfigureSuckers(request.chainIds)) {
+      // Auto-generate per-chain sucker config with correct deployers for each chain pair
+      const hasTokenAddresses = Object.keys(tokenAddresses).length > 0
+      const generatedConfig = parseSuckerDeployerConfig(chainId, request.chainIds, {
+        salt: request.salt,
+        tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
+      })
+      configurations = generatedConfig.deployerConfigurations.map((dc: { deployer: string; mappings: Array<{ localToken: string; minGas: number; remoteToken: string; minBridgeAmount: bigint }> }) => ({
+        deployer: dc.deployer,
+        mappings: dc.mappings.map((m: { localToken: string; minGas: number; remoteToken: string; minBridgeAmount: bigint }) => ({
+          localToken: m.localToken,
+          minGas: m.minGas,
+          remoteToken: m.remoteToken,
+          minBridgeAmount: m.minBridgeAmount.toString(),
+        })),
+      }))
+    } else {
+      // Single chain - no sucker deployment needed
+      configurations = []
+    }
 
     const txResponse = encodeDeploySuckersTransaction(
       chainId,
