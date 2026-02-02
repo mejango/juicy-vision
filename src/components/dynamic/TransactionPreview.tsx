@@ -2385,31 +2385,6 @@ export default function TransactionPreview({
       {/* Launch progress section - shown when launching */}
       {(action === 'launchProject' || action === 'launch721Project') && (isLaunching || effectiveIsComplete || hasError) && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          {/* Simplified overall status */}
-          {isLaunching && !effectiveIsComplete && (
-            <div className={`-mx-4 px-4 py-4 flex items-center gap-4 border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
-              <div className="relative">
-                <div className={`animate-spin w-10 h-10 border-4 ${isDark ? 'border-green-500' : 'border-green-600'} border-t-transparent rounded-full`} />
-              </div>
-              <div>
-                <p className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {isSigning
-                    ? `Sign for ${signingChainId ? CHAINS[signingChainId]?.shortName || `Chain ${signingChainId}` : 'deployment'}...`
-                    : bundleState.status === 'creating'
-                      ? 'Preparing deployment...'
-                      : 'Deploying your project'}
-                </p>
-                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {isSigning
-                    ? isManagedMode
-                      ? 'Use Touch ID / Face ID to sign for each chain'
-                      : 'Your wallet will prompt you to sign for each chain'
-                    : 'This usually takes about a minute'}
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* Success state with shareable links */}
           {effectiveIsComplete && Object.keys(effectiveProjectIds).length > 0 && (
             <div className="space-y-4">
