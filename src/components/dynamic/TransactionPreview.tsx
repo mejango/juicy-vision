@@ -50,6 +50,7 @@ interface TransactionPreviewProps {
   explanation: string
   chainConfigs?: string // JSON string of ChainOverride[] for multi-chain deployments
   _isTruncated?: string // Flag set by parser when component was truncated mid-stream
+  _isStreaming?: boolean // True if parent message is still actively streaming
 }
 
 const ACTION_ICONS: Record<string, string> = {
@@ -1343,6 +1344,7 @@ export default function TransactionPreview({
   explanation,
   chainConfigs,
   _isTruncated,
+  _isStreaming,
 }: TransactionPreviewProps) {
   const [expanded, setExpanded] = useState(false)
   const [technicalDetailsReady, setTechnicalDetailsReady] = useState(false)
@@ -1732,9 +1734,38 @@ export default function TransactionPreview({
   } : null
   const fundingInfo = hasStreamedFundingData ? streamedFundingInfo : draftFundingInfo
 
-  // If component is still being streamed (truncated) AND we don't have valid data yet, show shimmer
-  // Once we have valid data, we keep showing it even during prop transitions
+  // If component is still being streamed (truncated) AND we don't have valid data yet:
+  // - If still actively streaming (_isStreaming === true), show shimmer/loading state
+  // - If streaming has stopped (_isStreaming === false), show error state
+  // This handles 502/timeout errors where the stream dies without completing
   if (_isTruncated === 'true' && !lastValidPreviewData.current) {
+    // Streaming stopped but we never got valid data - show error
+    if (_isStreaming === false) {
+      return (
+        <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
+          isDark
+            ? 'bg-juice-dark-lighter border-white/10'
+            : 'bg-white border-gray-200'
+        }`}>
+          <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">⚠️</span>
+              <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                Response Interrupted
+              </span>
+            </div>
+          </div>
+          <div className="px-4 py-3">
+            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              The response was interrupted before the transaction details could be generated.
+              This can happen due to network issues or server timeouts.
+              Please try asking again.
+            </p>
+          </div>
+        </div>
+      )
+    }
+    // Still streaming - show shimmer
     return (
       <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
         isDark

@@ -324,6 +324,7 @@ interface ComponentRegistryProps {
   chatId?: string
   messageId?: string
   userResponse?: string // The user's response to this component (if submitted)
+  messageIsStreaming?: boolean // Whether the parent message is still being streamed
 }
 
 function LazyWrapper({
@@ -618,8 +619,8 @@ function renderOptionsPicker(
   )
 }
 
-export default function ComponentRegistry({ component, chatId, messageId, userResponse }: ComponentRegistryProps) {
-  const { type, props, isStreaming } = component
+export default function ComponentRegistry({ component, chatId, messageId, userResponse, messageIsStreaming }: ComponentRegistryProps) {
+  const { type, props, isStreaming: componentIsStreaming } = component
 
   // Handle loading state
   if (type === '_loading') {
@@ -636,7 +637,7 @@ export default function ComponentRegistry({ component, chatId, messageId, userRe
 
   // Handle special case: options-picker needs custom parsing logic
   if (type === 'options-picker') {
-    return renderOptionsPicker(props, isStreaming, chatId, messageId, userResponse)
+    return renderOptionsPicker(props, componentIsStreaming, chatId, messageId, userResponse)
   }
 
   // Look up component in registry
@@ -653,9 +654,17 @@ export default function ComponentRegistry({ component, chatId, messageId, userRe
   const Component = config.component
   const mappedProps = config.mapProps ? config.mapProps(props) : props
 
+  // Pass isStreaming to components that support it (e.g., transaction-preview)
+  // Use messageIsStreaming (from parent message) for the most accurate streaming status
+  // This handles cases where the component was parsed as streaming but the message has since stopped
+  // (e.g., due to 502 errors or network interruptions)
+  const propsWithStreaming = type === 'transaction-preview'
+    ? { ...mappedProps, _isStreaming: messageIsStreaming ?? componentIsStreaming }
+    : mappedProps
+
   return (
     <LazyWrapper type={type} fallback={config.fallback}>
-      <Component {...mappedProps} />
+      <Component {...propsWithStreaming} />
     </LazyWrapper>
   )
 }
