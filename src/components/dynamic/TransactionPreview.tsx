@@ -1956,10 +1956,12 @@ export default function TransactionPreview({
       rulesetConfigurations,
       terminalConfigurations,
       memo,
-      suckerDeploymentConfiguration,
       chainConfigs,
     } = launchValidation
 
+    // Note: DON'T pass suckerDeploymentConfiguration here!
+    // The preview generates it only for display (first chain only).
+    // Let buildOmnichainLaunchTransactions auto-generate per-chain configs.
     await launch({
       chainIds,
       owner,
@@ -1967,7 +1969,6 @@ export default function TransactionPreview({
       rulesetConfigurations: rulesetConfigurations as JBRulesetConfig[],
       terminalConfigurations: terminalConfigurations as JBTerminalConfig[],
       memo,
-      suckerDeploymentConfiguration,
       chainConfigs, // Per-chain terminal overrides (different USDC addresses, etc.)
     })
   }, [launchValidation, issuesAcknowledged, launch])
