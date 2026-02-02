@@ -49,6 +49,38 @@ const SEPOLIA_DEPLOYERS = {
   ARB_BASE: '0xc295a8926f1ed0a6e3b6cbdb1d28b9d6b388c8a7' as `0x${string}`,
 }
 
+/**
+ * Human-readable labels for sucker deployer addresses.
+ * Maps deployer address -> { label, chainPair: [chainIdA, chainIdB] }
+ */
+export const SUCKER_DEPLOYER_LABELS: Record<string, { label: string; chainPair: [number, number] }> = {
+  // Testnets
+  [SEPOLIA_DEPLOYERS.ETH_OP.toLowerCase()]: { label: 'ETH ↔ OP', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.optimismSepolia] },
+  [SEPOLIA_DEPLOYERS.ETH_ARB.toLowerCase()]: { label: 'ETH ↔ ARB', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.arbitrumSepolia] },
+  [SEPOLIA_DEPLOYERS.ETH_BASE.toLowerCase()]: { label: 'ETH ↔ BASE', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.baseSepolia] },
+  [SEPOLIA_DEPLOYERS.OP_ARB.toLowerCase()]: { label: 'OP ↔ ARB', chainPair: [CHAIN_IDS.optimismSepolia, CHAIN_IDS.arbitrumSepolia] },
+  [SEPOLIA_DEPLOYERS.OP_BASE.toLowerCase()]: { label: 'OP ↔ BASE', chainPair: [CHAIN_IDS.optimismSepolia, CHAIN_IDS.baseSepolia] },
+  [SEPOLIA_DEPLOYERS.ARB_BASE.toLowerCase()]: { label: 'ARB ↔ BASE', chainPair: [CHAIN_IDS.arbitrumSepolia, CHAIN_IDS.baseSepolia] },
+}
+
+/**
+ * Get all deployer configs for a multi-chain deployment.
+ * Returns a map of chainId -> deployerConfigs[] for that chain.
+ */
+export function getAllChainSuckerConfigs(
+  allChainIds: number[],
+  opts: ParseSuckerDeployerConfigOptions & { salt?: `0x${string}` } = {}
+): Record<number, JBSuckerDeploymentConfig> {
+  const result: Record<number, JBSuckerDeploymentConfig> = {}
+  const sharedSalt = opts.salt ?? createSalt()
+
+  for (const chainId of allChainIds) {
+    result[chainId] = parseSuckerDeployerConfig(chainId, allChainIds, { ...opts, salt: sharedSalt })
+  }
+
+  return result
+}
+
 // TODO: Add mainnet deployer addresses when available
 // const MAINNET_DEPLOYERS = {
 //   ETH_OP: '0x...',

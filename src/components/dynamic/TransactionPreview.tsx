@@ -30,6 +30,9 @@ import type { JBRulesetConfig, JBTerminalConfig } from '../../services/relayr'
 import {
   parseSuckerDeployerConfig,
   shouldConfigureSuckers,
+  getAllChainSuckerConfigs,
+  SUCKER_DEPLOYER_LABELS,
+  CCIP_SUCKER_DEPLOYER_ADDRESSES,
 } from '../../utils/suckerConfig'
 
 interface ChainOverride {
@@ -418,6 +421,129 @@ function CurrencyDisplay({ currency, isDark }: { currency: number; isDark: boole
   )
 }
 
+// Component to display a sucker deployer address with chain-pair specific dropdown
+function SuckerDeployerDisplay({
+  address,
+  targetChainId,
+  allChainIds,
+  isDark
+}: {
+  address: string;
+  targetChainId: number;
+  allChainIds: number[];
+  isDark: boolean
+}) {
+  const [showChainDeployers, setShowChainDeployers] = useState(false)
+
+  const deployerInfo = SUCKER_DEPLOYER_LABELS[address.toLowerCase()]
+  const label = deployerInfo?.label || 'CCIP Deployer'
+  const truncated = truncateAddress(address)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(address)
+  }
+
+  const handleBadgeClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setShowChainDeployers(!showChainDeployers)
+  }
+
+  // Get all deployer addresses that will be used for this deployment
+  const getDeployersByChain = () => {
+    const result: { chainId: number; chainName: string; deployers: { remoteChain: string; address: string; label: string }[] }[] = []
+
+    for (const chainId of allChainIds) {
+      const remoteChains = allChainIds.filter(c => c !== chainId)
+      const deployers: { remoteChain: string; address: string; label: string }[] = []
+
+      for (const remoteChainId of remoteChains) {
+        const deployerAddr = CCIP_SUCKER_DEPLOYER_ADDRESSES[chainId]?.[remoteChainId]
+        if (deployerAddr) {
+          const info = SUCKER_DEPLOYER_LABELS[deployerAddr.toLowerCase()]
+          deployers.push({
+            remoteChain: CHAIN_NAMES[remoteChainId.toString()] || `Chain ${remoteChainId}`,
+            address: deployerAddr,
+            label: info?.label || 'CCIP',
+          })
+        }
+      }
+
+      result.push({
+        chainId,
+        chainName: CHAIN_NAMES[chainId.toString()] || `Chain ${chainId}`,
+        deployers,
+      })
+    }
+
+    return result
+  }
+
+  const deployersByChain = getDeployersByChain()
+
+  return (
+    <span className="inline-flex items-center gap-1 flex-wrap relative">
+      <span
+        className="font-mono cursor-pointer hover:underline inline-flex items-center gap-1"
+        onClick={handleCopy}
+        title={`Click to copy: ${address}`}
+      >
+        <span className={isDark ? 'text-purple-400' : 'text-purple-600'}>
+          {label}
+        </span>
+        <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>
+          ({truncated})
+        </span>
+      </span>
+      {/* Chain-specific badge - clickable to show all deployers per chain */}
+      {allChainIds.length > 1 && (
+        <button
+          onClick={handleBadgeClick}
+          className={`text-[9px] px-1 py-0.5 rounded cursor-pointer hover:opacity-80 ${
+            isDark ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-700'
+          }`}
+          title="Click to see deployers per chain"
+        >
+          chain-specific {showChainDeployers ? '▲' : '▼'}
+        </button>
+      )}
+      {/* Expanded chain deployers dropdown */}
+      {showChainDeployers && (
+        <div className={`absolute top-full right-0 mt-1 z-10 p-2 rounded border text-[10px] max-h-80 overflow-auto ${
+          isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200 shadow-lg'
+        }`} style={{ minWidth: '320px' }}>
+          <div className={`font-semibold mb-2 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+            Sucker deployers by chain:
+          </div>
+          {deployersByChain.map(({ chainId, chainName, deployers }) => (
+            <div key={chainId} className={`mb-2 pb-2 border-b last:border-0 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+              <div className={`font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                On {chainName}:
+              </div>
+              {deployers.map((d, i) => (
+                <div key={i} className="flex gap-2 py-0.5 pl-2">
+                  <span className={`font-medium w-20 text-right ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    → {d.remoteChain}:
+                  </span>
+                  <span
+                    className={`font-mono cursor-pointer hover:underline ${isDark ? 'text-purple-400' : 'text-purple-600'}`}
+                    onClick={() => navigator.clipboard.writeText(d.address)}
+                    title="Click to copy"
+                  >
+                    {d.label}
+                  </span>
+                  <span className={`font-mono ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    ({truncateAddress(d.address)})
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
 // Deep merge two objects, with source overriding target
 function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
   const result = { ...target }
@@ -436,6 +562,135 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
     }
   }
   return result
+}
+
+// Component to display sucker deployment configuration with per-chain deployers
+function SuckerConfigSection({
+  allChainIds,
+  tokenAddresses,
+  salt,
+  isDark
+}: {
+  allChainIds: number[];
+  tokenAddresses?: Record<number, `0x${string}`>;
+  salt: string;
+  isDark: boolean
+}) {
+  const [expanded, setExpanded] = useState(true)
+  const [selectedChain, setSelectedChain] = useState<number>(allChainIds[0])
+
+  // Generate all chain configs
+  const allConfigs = useMemo(() => {
+    return getAllChainSuckerConfigs(allChainIds, { tokenAddresses, salt: salt as `0x${string}` })
+  }, [allChainIds, tokenAddresses, salt])
+
+  const selectedConfig = allConfigs[selectedChain]
+  const deployerCount = selectedConfig?.deployerConfigurations.length || 0
+
+  return (
+    <div className="py-0.5">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={`flex items-center gap-1.5 w-full text-left py-0.5 ${isDark ? 'text-gray-300 hover:text-gray-200' : 'text-gray-600 hover:text-gray-700'}`}
+      >
+        <svg
+          className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="font-medium">Sucker Deployment Configuration</span>
+        <span className={`ml-auto text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          2 fields
+        </span>
+      </button>
+
+      {expanded && (
+        <div className={`mt-0.5 space-y-1 border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
+          {/* Chain selector - shows that configs vary per chain */}
+          <div className={`flex items-center gap-2 py-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <span className="shrink-0">Deployer Configurations</span>
+            <div className="flex items-center gap-1 ml-auto">
+              <select
+                value={selectedChain}
+                onChange={(e) => setSelectedChain(Number(e.target.value))}
+                className={`text-xs px-2 py-0.5 rounded border ${
+                  isDark
+                    ? 'bg-purple-500/20 border-purple-500/30 text-purple-300'
+                    : 'bg-purple-50 border-purple-200 text-purple-700'
+                }`}
+              >
+                {allChainIds.map(chainId => (
+                  <option key={chainId} value={chainId}>
+                    {CHAIN_NAMES[chainId.toString()] || `Chain ${chainId}`}
+                  </option>
+                ))}
+              </select>
+              <span className={`text-[9px] px-1 py-0.5 rounded ${
+                isDark ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-700'
+              }`}>
+                chain-specific
+              </span>
+            </div>
+          </div>
+
+          {/* Deployer configs for selected chain */}
+          <div className={`border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
+            <div className={`text-xs py-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              {deployerCount} deployer{deployerCount !== 1 ? 's' : ''} (one per remote chain)
+            </div>
+            {selectedConfig?.deployerConfigurations.map((dc, idx) => {
+              const deployerInfo = SUCKER_DEPLOYER_LABELS[dc.deployer.toLowerCase()]
+              const remoteChainId = deployerInfo?.chainPair.find(c => c !== selectedChain)
+              const remoteChainName = remoteChainId ? (CHAIN_NAMES[remoteChainId.toString()] || `Chain ${remoteChainId}`) : 'Remote'
+
+              return (
+                <div key={idx} className={`py-1 ${idx > 0 ? 'border-t ' + (isDark ? 'border-gray-700' : 'border-gray-200') : ''}`}>
+                  <div className={`flex justify-between gap-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <span>→ {remoteChainName}</span>
+                    <span
+                      className={`font-mono text-xs cursor-pointer hover:underline ${isDark ? 'text-purple-400' : 'text-purple-600'}`}
+                      onClick={() => navigator.clipboard.writeText(dc.deployer)}
+                      title={`Click to copy: ${dc.deployer}`}
+                    >
+                      {deployerInfo?.label || 'CCIP'} ({truncateAddress(dc.deployer)})
+                    </span>
+                  </div>
+                  {/* Token mapping */}
+                  {dc.mappings.map((m, mIdx) => (
+                    <div key={mIdx} className={`ml-4 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      <div className="flex justify-between">
+                        <span>Local Token</span>
+                        <span className="font-mono">{truncateAddress(m.localToken)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Remote Token</span>
+                        <span className="font-mono">{truncateAddress(m.remoteToken)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Salt */}
+          <div className={`flex justify-between gap-4 py-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <span>Salt</span>
+            <span
+              className="font-mono text-right break-all cursor-pointer hover:underline"
+              onClick={() => navigator.clipboard.writeText(salt)}
+              title="Click to copy"
+            >
+              {truncateAddress(salt)}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // Section header with optional edit button
@@ -1650,6 +1905,25 @@ export default function TransactionPreview({
       terminalConfigurations: cfg.overrides?.terminalConfigurations as JBTerminalConfig[] | undefined,
     })).filter(cfg => cfg.terminalConfigurations)
 
+    // Extract per-chain token addresses for sucker config display
+    // This shows which ERC20 tokens will be bridged between chains
+    const extractedTokenAddresses: Record<number, `0x${string}`> = {}
+    for (const cid of launchChainIds) {
+      const chainConfig = parsedChainConfigs.find(c => Number(c.chainId) === cid)
+      const chainTerminalConfigs = (chainConfig?.overrides?.terminalConfigurations as JBTerminalConfig[] | undefined) ?? (terminalConfigurations as JBTerminalConfig[])
+
+      for (const terminal of chainTerminalConfigs) {
+        for (const ctx of terminal.accountingContextsToAccept) {
+          const tokenAddr = ctx.token as string
+          if (tokenAddr && tokenAddr.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
+            extractedTokenAddresses[cid] = tokenAddr as `0x${string}`
+            break
+          }
+        }
+        if (extractedTokenAddresses[cid]) break
+      }
+    }
+
     return {
       owner,
       projectUri,
@@ -1659,6 +1933,7 @@ export default function TransactionPreview({
       memo,
       suckerDeploymentConfiguration,
       chainConfigs: chainConfigOverrides.length > 0 ? chainConfigOverrides : undefined,
+      tokenAddresses: Object.keys(extractedTokenAddresses).length > 0 ? extractedTokenAddresses : undefined,
       projectName: (projectMetadata?.name as string) || 'New Project',
       doubts: filteredDoubts,
       hasIssues: filteredDoubts.length > 0,
@@ -1932,17 +2207,13 @@ export default function TransactionPreview({
                     .map(([key, value]) => (
                     <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
                   ))}
-                  {/* For launch actions, show suckerDeploymentConfiguration from launchValidation (auto-generated if needed) */}
-                  {(action === 'launchProject' || action === 'launch721Project') && (
-                    <ParamRow
-                      key="suckerDeploymentConfiguration"
-                      name="suckerDeploymentConfiguration"
-                      value={launchValidation?.suckerDeploymentConfiguration || {
-                        deployerConfigurations: [],
-                        salt: '0x0000000000000000000000000000000000000000000000000000000000000000'
-                      }}
+                  {/* For launch actions, show suckerDeploymentConfiguration with chain-specific deployers */}
+                  {(action === 'launchProject' || action === 'launch721Project') && launchValidation?.chainIds && launchValidation.chainIds.length > 1 && (
+                    <SuckerConfigSection
+                      allChainIds={launchValidation.chainIds}
+                      tokenAddresses={launchValidation.tokenAddresses}
+                      salt={launchValidation.suckerDeploymentConfiguration?.salt || '0x0000000000000000000000000000000000000000000000000000000000000000'}
                       isDark={isDark}
-                      chainId={chainId}
                     />
                   )}
                   {/* For launch actions, show controller last (default value) */}
