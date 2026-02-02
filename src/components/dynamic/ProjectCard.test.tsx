@@ -44,6 +44,25 @@ vi.mock('../../utils/ipfs', () => ({
   fetchIpfsMetadata: vi.fn().mockResolvedValue(null),
 }))
 
+// Mock hooks
+vi.mock('../../hooks/useWalletBalances', () => ({
+  useWalletBalances: vi.fn(() => ({
+    totalEth: 0n,
+    totalUsdc: 0n,
+    perChain: [],
+    loading: false,
+  })),
+  formatEthBalance: vi.fn((val) => '0'),
+  formatUsdcBalance: vi.fn((val) => '0'),
+}))
+
+vi.mock('../../hooks', () => ({
+  useManagedWallet: vi.fn(() => ({
+    address: '0x1234567890123456789012345678901234567890',
+    isLoading: false,
+  })),
+}))
+
 // Get mocked wagmi
 import { useAccount } from 'wagmi'
 const mockedUseAccount = useAccount as Mock

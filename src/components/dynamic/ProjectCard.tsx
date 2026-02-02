@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroupBalance, fetchOwnersCount, fetchEthPrice, fetchProjectTokenSymbol, fetchProjectWithRuleset, type Project, type ConnectedChain, type IssuanceRate, type SuckerGroupBalance } from '../../services/bendystraw'
@@ -6,6 +7,8 @@ import { resolveIpfsUri, fetchIpfsMetadata, type IpfsProjectMetadata } from '../
 import { useThemeStore, useTransactionStore, type PaymentStage, type TransactionStatus } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, CHAINS, type SupportedChainId } from '../../constants'
 import { useJuiceBalance } from '../../hooks/useJuiceBalance'
+import { useWalletBalances } from '../../hooks/useWalletBalances'
+import { useManagedWallet } from '../../hooks'
 import BuyJuiceModal from '../juice/BuyJuiceModal'
 
 // Parse HTML/markdown description to clean text with line breaks
@@ -260,6 +263,17 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
 
   // Pay Credits balance
   const { balance: juiceBalance, refetch: refetchJuiceBalance } = useJuiceBalance()
+
+  // Cross-chain wallet balances for zero-state detection
+  const { totalEth: crossChainEth, totalUsdc: crossChainUsdc, loading: crossChainLoading } = useWalletBalances()
+
+  // Managed wallet for deposit address
+  const { address: managedAddress } = useManagedWallet()
+
+  // Funding options popover state (shown when user has zero balance)
+  const [showFundingOptions, setShowFundingOptions] = useState(false)
+  const [fundingOptionsAnchor, setFundingOptionsAnchor] = useState<{ top: number; left: number } | null>(null)
+  const [copiedAddress, setCopiedAddress] = useState(false)
 
   const openWalletPanel = () => {
     window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
@@ -670,8 +684,27 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
     ? formatUsd(suckerBalance.totalBalance, suckerBalance.currency, suckerBalance.decimals)
     : null
 
-  const handlePay = async () => {
+  const handlePay = async (event?: React.MouseEvent<HTMLButtonElement>) => {
     if (!amount || parseFloat(amount) <= 0) return
+
+    // Zero-state check: if user has no funds anywhere, show funding options
+    const hasPayCredits = (juiceBalance?.balance ?? 0) > 0
+    const hasEth = crossChainEth > 0n
+    const hasUsdc = crossChainUsdc > 0n
+    const hasAnyFunds = hasPayCredits || hasEth || hasUsdc
+
+    if (!hasAnyFunds && !crossChainLoading) {
+      // Show funding options popover
+      if (event?.currentTarget) {
+        const rect = event.currentTarget.getBoundingClientRect()
+        setFundingOptionsAnchor({
+          top: rect.top,
+          left: rect.left + rect.width / 2,
+        })
+      }
+      setShowFundingOptions(true)
+      return
+    }
 
     // For PAY_CREDITS, check if user has sufficient balance first
     if (selectedToken === 'PAY_CREDITS') {
@@ -1013,7 +1046,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
             </div>
           </div>
           <button
-            onClick={handlePay}
+            onClick={(e) => handlePay(e)}
             disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked
@@ -1164,6 +1197,138 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
           setShowBuyJuiceModal(false)
         }}
       />
+
+      {/* Funding Options Popover - shown when user has zero balance */}
+      {showFundingOptions && fundingOptionsAnchor && createPortal(
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-[99]"
+            onClick={() => setShowFundingOptions(false)}
+          />
+          {/* Popover */}
+          <div
+            className={`fixed z-[100] w-80 p-4 border shadow-xl ${
+              isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+            }`}
+            style={{
+              top: fundingOptionsAnchor.top - 8,
+              left: fundingOptionsAnchor.left,
+              transform: 'translate(-50%, -100%)',
+            }}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setShowFundingOptions(false)}
+              className={`absolute top-3 right-3 p-1 transition-colors ${
+                isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <h3 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              How would you like to pay?
+            </h3>
+            <p className={`text-xs mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              You don't have any funds yet. Choose how to add some.
+            </p>
+
+            <div className="space-y-2">
+              {/* Credit Card option */}
+              <button
+                onClick={() => {
+                  setShowFundingOptions(false)
+                  setShowBuyJuiceModal(true)
+                }}
+                className={`w-full p-3 text-left transition-colors border ${
+                  isDark
+                    ? 'border-white/20 hover:border-juice-cyan hover:bg-juice-cyan/10'
+                    : 'border-gray-200 hover:border-cyan-500 hover:bg-cyan-50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      Credit Card
+                    </div>
+                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                      3% fee · 3 day delay
+                    </div>
+                  </div>
+                  <svg className={`w-4 h-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
+
+              {/* Crypto option */}
+              <div
+                className={`w-full p-3 text-left border ${
+                  isDark ? 'border-white/20' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      ETH or USDC
+                    </div>
+                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Free · Instant
+                    </div>
+                  </div>
+                </div>
+                {managedAddress ? (
+                  <div className="mt-2">
+                    <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      Send to your wallet on any chain:
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(managedAddress)
+                        setCopiedAddress(true)
+                        setTimeout(() => setCopiedAddress(false), 2000)
+                      }}
+                      className={`w-full p-2 font-mono text-xs text-left transition-colors ${
+                        isDark
+                          ? 'bg-white/5 hover:bg-white/10 text-gray-300'
+                          : 'bg-gray-50 hover:bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="truncate">{managedAddress}</span>
+                        <span className={`ml-2 text-xs ${copiedAddress ? 'text-green-500' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                          {copiedAddress ? '✓' : 'Copy'}
+                        </span>
+                      </div>
+                    </button>
+                    <div className={`text-xs mt-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      Works on Ethereum, Base, Optimism, Arbitrum
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setShowFundingOptions(false)
+                      openWalletPanel()
+                    }}
+                    className={`w-full mt-2 p-2 text-xs font-medium transition-colors border ${
+                      isDark
+                        ? 'border-juice-cyan text-juice-cyan hover:bg-juice-cyan/10'
+                        : 'border-cyan-600 text-cyan-600 hover:bg-cyan-50'
+                    }`}
+                  >
+                    Connect to get your deposit address
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
     </div>
   )
 }
