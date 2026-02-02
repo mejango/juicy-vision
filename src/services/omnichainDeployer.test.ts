@@ -136,7 +136,7 @@ describe('omnichainDeployer', () => {
       const rulesetWithSplits: JBRulesetConfig = {
         ...sampleRulesetConfig,
         splitGroups: [{
-          groupId: 1,
+          groupId: '1',  // string for uint256
           splits: [{
             percent: 500000000, // 50%
             projectId: 0,
