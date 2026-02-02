@@ -204,6 +204,160 @@ User                    Juicy Vision              Blockchain
 | Wallet Session | `wallet_sessions` table | 30 days | Self-custody users (SIWE) |
 | Anonymous Session | In-memory | Ephemeral | Pre-auth interactions |
 
+### Owner Choice (Dual-Auth Users)
+
+When a user has **both** a connected wallet AND passkey authentication, they can choose which identity to use as project owner:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    OWNER CHOICE UI                               │
+│             (appears when both auth methods present)             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Option 1: Connected Wallet                              │   │
+│  │  Address: 0x1234...5678 (susy.eth)                       │   │
+│  │  Signing: User signs with wallet (MetaMask, etc.)        │   │
+│  │  Owner: Their EOA                                        │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Option 2: Smart Account                                 │   │
+│  │  Address: 0xabcd...efgh (managed)                        │   │
+│  │  Signing: Server signs on their behalf                   │   │
+│  │  Owner: Their Smart Account                              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation:**
+- `LaunchProjectModal.tsx` detects when `hasBothOptions` is true
+- User must explicitly choose before proceeding
+- Choice sets `forceSelfCustody: true` for wallet mode
+- Choice resets when modal reopens
+
+---
+
+## Transaction Signing Architecture
+
+All omnichain transactions are submitted through [Relayr](https://relayr.network/) for cross-chain bundling. The signing method depends on authentication mode.
+
+### ERC-2771 Meta-Transactions
+
+Both modes use ERC-2771 meta-transactions via a TrustedForwarder:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   ERC-2771 FLOW                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Original Transaction                                            │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  to: JBOmnichainDeployer                                 │   │
+│  │  data: launchProjectFor(...)                             │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│                              ▼ (wrap)                           │
+│  ForwardRequest (signed)                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  from: signer address                                    │   │
+│  │  to: JBOmnichainDeployer                                 │   │
+│  │  data: launchProjectFor(...)                             │   │
+│  │  nonce: forwarder nonce                                  │   │
+│  │  deadline: 48 hours                                      │   │
+│  │  signature: EIP-712 typed data signature                 │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│                              ▼ (execute)                        │
+│  TrustedForwarder.execute()                                      │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  to: 0xc29d6995...acbb566 (same on all chains)           │   │
+│  │  data: execute(ForwardRequest)                           │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Signing Modes
+
+#### 1. Managed Mode (Server Signing)
+
+User authenticates with passkey → server holds their PRF-derived signing key → no signature prompts.
+
+```
+User                    Frontend                  Backend                  Relayr
+  │                        │                         │                        │
+  │── Click "Create" ─────►│                         │                        │
+  │                        │── POST /wallet/bundle ─►│                        │
+  │                        │   (transactions)        │                        │
+  │                        │                         │── Sign ERC-2771       │
+  │                        │                         │   (stored key)         │
+  │                        │                         │── POST /bundle ───────►│
+  │                        │                         │◄── bundle_uuid ────────│
+  │                        │◄── { bundleId } ────────│                        │
+  │◄── "Processing..." ────│                         │                        │
+```
+
+**Key storage:**
+- User's signing key is derived from WebAuthn PRF extension during login
+- Stored encrypted (AES-GCM) in `user_keypairs` table
+- Never leaves the server except for signing operations
+
+#### 2. Self-Custody Mode (Wallet Signing)
+
+User connects wallet → signs each transaction with wallet → no server key storage.
+
+```
+User                    Frontend                  Wallet                   Relayr
+  │                        │                         │                        │
+  │── Click "Create" ─────►│                         │                        │
+  │                        │── Read nonce (chain 1) ─►│                        │
+  │                        │── Sign request ─────────►│                        │
+  │◄── Confirm signature ──│◄────────────────────────│                        │
+  │                        │── Read nonce (chain 2) ─►│                        │
+  │                        │── Sign request ─────────►│                        │
+  │◄── Confirm signature ──│◄────────────────────────│                        │
+  │                        │   ... (per chain)       │                        │
+  │                        │── POST /bundle ─────────────────────────────────►│
+  │                        │◄── bundle_uuid ──────────────────────────────────│
+  │◄── "Processing..." ────│                         │                        │
+```
+
+**Signature prompts:**
+- One signature required per chain
+- Shows EIP-712 typed data in wallet
+- 48-hour deadline for replay protection
+
+### Transaction Structure
+
+```typescript
+// useOmnichainLaunchProject parameters
+interface OmnichainLaunchProjectParams {
+  chainIds: number[]                    // Chains to deploy on
+  owner: string                         // Project owner address
+  projectUri: string                    // IPFS CID for metadata
+  rulesetConfigurations: JBRulesetConfig[]
+  terminalConfigurations: JBTerminalConfig[]
+  memo: string
+  suckerDeploymentConfiguration?: JBSuckerDeploymentConfig  // Cross-chain bridging
+  chainConfigs?: ChainConfigOverride[]  // Per-chain overrides
+  forceSelfCustody?: boolean            // Force wallet signing in managed mode
+}
+```
+
+### forceSelfCustody Parameter
+
+The `forceSelfCustody` parameter overrides the default signing behavior:
+
+| Condition | forceSelfCustody | Signing Method |
+|-----------|------------------|----------------|
+| Managed mode | false/undefined | Server signing |
+| Managed mode | true | Wallet signing |
+| Self-custody mode | any | Wallet signing |
+
+**Use case:** When a managed user also has a wallet connected and wants to use their EOA as project owner instead of their Smart Account.
+
 ---
 
 ## Juice System (Stored Value)

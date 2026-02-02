@@ -3,20 +3,63 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { useOmnichainLaunchProject, type OmnichainLaunchProjectParams } from './useOmnichainLaunchProject'
 import type { BundleStatus } from './types'
 
-// Mock stores
-vi.mock('../../stores', () => ({
-  useAuthStore: vi.fn(() => ({
-    mode: 'self_custody',
-    isAuthenticated: () => true,
+// Mock wagmi hooks
+const mockSignTypedDataAsync = vi.fn()
+
+vi.mock('wagmi', () => ({
+  useAccount: vi.fn(() => ({
+    address: '0xWalletUser12345678901234567890123456789',
+    isConnected: true,
+  })),
+  useConfig: vi.fn(() => ({
+    getClient: vi.fn(() => ({
+      // Minimal public client mock
+      request: vi.fn(),
+    })),
+  })),
+  useSignTypedData: vi.fn(() => ({
+    signTypedDataAsync: mockSignTypedDataAsync,
   })),
 }))
 
-// Mock managed wallet hook
+// Mock viem's getContract for ERC-2771 nonce reads
+const mockForwarderNonce = vi.fn()
+
+vi.mock('viem', async (importOriginal) => {
+  const original = await importOriginal() as object
+  return {
+    ...original,
+    getContract: vi.fn(() => ({
+      read: {
+        nonces: mockForwarderNonce,
+      },
+    })),
+    encodeFunctionData: vi.fn(() => '0xmockedEncodedData'),
+  }
+})
+
+// Mock stores - configurable for testing different auth modes
+let mockAuthStoreState = {
+  mode: 'self_custody' as 'managed' | 'self_custody',
+  isAuthenticated: () => true,
+}
+
+vi.mock('../../stores', () => ({
+  useAuthStore: vi.fn(() => mockAuthStoreState),
+}))
+
+// Mock managed wallet hook - configurable for testing
+let mockManagedWalletState = {
+  address: '0xmanagedaddress123456789012345678901234',
+  isLoading: false,
+  isManagedMode: false,
+}
+
+const mockCreateManagedRelayrBundle = vi.fn()
+
 vi.mock('../useManagedWallet', () => ({
-  useManagedWallet: vi.fn(() => ({
-    address: '0xmanagedaddress123456789012345678901234',
-    isLoading: false,
-  })),
+  useManagedWallet: vi.fn(() => mockManagedWalletState),
+  createManagedRelayrBundle: (...args: unknown[]) => mockCreateManagedRelayrBundle(...args),
 }))
 
 // Mock relayr services
@@ -100,6 +143,19 @@ describe('useOmnichainLaunchProject', () => {
     mockBundleState.chainStates = []
     mockBundleState.error = null
 
+    // Reset auth store state
+    mockAuthStoreState = {
+      mode: 'self_custody',
+      isAuthenticated: () => true,
+    }
+
+    // Reset managed wallet state - default to non-managed mode
+    mockManagedWalletState = {
+      address: '0xmanagedaddress123456789012345678901234',
+      isLoading: false,
+      isManagedMode: false,
+    }
+
     // Default mock for omnichain deployer (multi-chain path)
     mockBuildOmnichainLaunchTransactions.mockReturnValue([
       { chainId: 1, to: '0xomnichain', data: '0x111', value: '0' },
@@ -110,6 +166,13 @@ describe('useOmnichainLaunchProject', () => {
 
     // Default mock for project ID extraction
     mockGetProjectIdsFromReceipts.mockResolvedValue({})
+
+    // Reset server signing mock
+    mockCreateManagedRelayrBundle.mockReset()
+
+    // Reset ERC-2771 signing mocks
+    mockForwarderNonce.mockResolvedValue(BigInt(0))
+    mockSignTypedDataAsync.mockResolvedValue('0xmockedSignature123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890')
   })
 
   const defaultParams: OmnichainLaunchProjectParams = {
@@ -248,7 +311,7 @@ describe('useOmnichainLaunchProject', () => {
       expect(mockBuildOmnichainLaunchTransactions).not.toHaveBeenCalled()
     })
 
-    it('creates balance bundle with correct parameters', async () => {
+    it('creates balance bundle with ERC-2771 wrapped transactions in self-custody mode', async () => {
       // Multi-chain uses buildOmnichainLaunchTransactions which returns array directly
       mockBuildOmnichainLaunchTransactions.mockReturnValue([
         { chainId: 1, to: '0xomnichain1', data: '0x111', value: '0' },
@@ -270,15 +333,20 @@ describe('useOmnichainLaunchProject', () => {
         await result.current.launch(twoChainParams)
       })
 
+      // In self-custody mode, transactions are wrapped via TrustedForwarder (ERC-2771)
+      // The target becomes the forwarder address, and data is the encoded execute() call
       expect(mockCreateBalanceBundle).toHaveBeenCalledWith({
         app_id: expect.any(String),
         transactions: [
-          { chain: 1, target: '0xomnichain1', data: '0x111', value: '0' },
-          { chain: 10, target: '0xomnichain10', data: '0x222', value: '0' },
+          { chain: 1, target: '0xc29d6995ab3b0df4650ad643adeac55e7acbb566', data: expect.any(String), value: '0' },
+          { chain: 10, target: '0xc29d6995ab3b0df4650ad643adeac55e7acbb566', data: expect.any(String), value: '0' },
         ],
         perform_simulation: true,
         virtual_nonce_mode: 'Disabled',
       })
+
+      // Verify signing was called for each chain
+      expect(mockSignTypedDataAsync).toHaveBeenCalledTimes(2)
     })
 
     it('initializes bundle and sets processing for multi-chain', async () => {
@@ -466,6 +534,331 @@ describe('useOmnichainLaunchProject', () => {
       const { result } = renderHook(() => useOmnichainLaunchProject())
 
       expect(result.current.hasError).toBe(true)
+    })
+  })
+
+  describe('managed mode (server signing)', () => {
+    beforeEach(() => {
+      // Set up managed mode
+      mockManagedWalletState = {
+        address: '0xSmartAccount123456789012345678901234567',
+        isLoading: false,
+        isManagedMode: true,
+      }
+
+      // Mock successful server signing
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'server-signed-bundle-123',
+      })
+    })
+
+    it('uses server signing when in managed mode', async () => {
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch({
+          ...defaultParams,
+          owner: '0xSmartAccount123456789012345678901234567',
+        })
+      })
+
+      // Should call server signing endpoint, not client-side createBalanceBundle
+      expect(mockCreateManagedRelayrBundle).toHaveBeenCalled()
+      expect(mockCreateBalanceBundle).not.toHaveBeenCalled()
+    })
+
+    it('uses managed address as owner when owner param is empty', async () => {
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch({
+          ...defaultParams,
+          owner: '', // Empty - should use managed address
+        })
+      })
+
+      // Should use managed address
+      expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
+        expect.any(Array),
+        '0xSmartAccount123456789012345678901234567'
+      )
+    })
+
+    it('passes correct transaction format to server', async () => {
+      mockBuildOmnichainLaunchTransactions.mockReturnValue([
+        { chainId: 1, to: '0xDeployer1', data: '0xabc', value: '100' },
+        { chainId: 10, to: '0xDeployer2', data: '0xdef', value: '0' },
+      ])
+
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch({
+          ...defaultParams,
+          chainIds: [1, 10],
+        })
+      })
+
+      expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
+        [
+          { chainId: 1, target: '0xDeployer1', data: '0xabc', value: '100' },
+          { chainId: 10, target: '0xDeployer2', data: '0xdef', value: '0' },
+        ],
+        expect.any(String)
+      )
+    })
+
+    it('handles server signing errors gracefully', async () => {
+      const onError = vi.fn()
+      mockCreateManagedRelayrBundle.mockRejectedValue(new Error('Server signing failed'))
+
+      const { result } = renderHook(() => useOmnichainLaunchProject({ onError }))
+
+      await act(async () => {
+        await result.current.launch(defaultParams)
+      })
+
+      expect(mockSetError).toHaveBeenCalledWith('Server signing failed')
+      expect(onError).toHaveBeenCalledWith(expect.any(Error))
+    })
+  })
+
+  describe('forceSelfCustody parameter', () => {
+    beforeEach(() => {
+      // Set up managed mode (normally would use server signing)
+      mockManagedWalletState = {
+        address: '0xSmartAccount123456789012345678901234567',
+        isLoading: false,
+        isManagedMode: true,
+      }
+
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'server-bundle',
+      })
+
+      mockCreateBalanceBundle.mockResolvedValue({
+        bundle_uuid: 'client-bundle',
+      })
+    })
+
+    it('uses server signing by default in managed mode', async () => {
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch({
+          ...defaultParams,
+          forceSelfCustody: false, // Explicit false (or omitted)
+        })
+      })
+
+      expect(mockCreateManagedRelayrBundle).toHaveBeenCalled()
+      expect(mockCreateBalanceBundle).not.toHaveBeenCalled()
+    })
+
+    it('forces client-side signing when forceSelfCustody is true', async () => {
+      // Note: This test verifies the branch is taken, but the actual ERC-2771 signing
+      // requires wagmi hooks which are complex to mock. We verify it attempts client signing.
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      // The hook will try to do client-side signing, which requires wallet connection
+      // Since wagmi is not mocked to provide signing, this will fail at the signing step
+      // But we can verify it didn't use server signing
+      await act(async () => {
+        try {
+          await result.current.launch({
+            ...defaultParams,
+            forceSelfCustody: true,
+          })
+        } catch {
+          // Expected - wagmi signing not mocked
+        }
+      })
+
+      // Should NOT have called server signing
+      expect(mockCreateManagedRelayrBundle).not.toHaveBeenCalled()
+    })
+
+    it('uses specified owner address even with forceSelfCustody', async () => {
+      const walletAddress = '0xWalletAddress12345678901234567890123456'
+
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        try {
+          await result.current.launch({
+            ...defaultParams,
+            owner: walletAddress,
+            forceSelfCustody: true,
+          })
+        } catch {
+          // Expected - wagmi signing not mocked
+        }
+      })
+
+      // Should NOT fall back to managed address
+      expect(mockCreateManagedRelayrBundle).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('owner address resolution', () => {
+    it('uses explicit owner when provided', async () => {
+      mockCreateBalanceBundle.mockResolvedValue({ bundle_uuid: 'test-123' })
+
+      const explicitOwner = '0xExplicitOwner123456789012345678901234'
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch({
+          ...defaultParams,
+          owner: explicitOwner,
+        })
+      })
+
+      // Verify the explicit owner was passed to transaction builder
+      expect(mockBuildOmnichainLaunchTransactions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owner: explicitOwner,
+        })
+      )
+    })
+
+    it('uses managed address when owner is empty in managed mode', async () => {
+      mockManagedWalletState = {
+        address: '0xManagedFallback1234567890123456789012',
+        isLoading: false,
+        isManagedMode: true,
+      }
+      mockCreateManagedRelayrBundle.mockResolvedValue({ bundleId: 'test-123' })
+
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch({
+          ...defaultParams,
+          owner: '',
+        })
+      })
+
+      // Should use managed address as fallback
+      expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
+        expect.any(Array),
+        '0xManagedFallback1234567890123456789012'
+      )
+    })
+
+    it('sets error when no owner and not in managed mode', async () => {
+      // Not in managed mode, no address available
+      mockManagedWalletState = {
+        address: undefined as unknown as string,
+        isLoading: false,
+        isManagedMode: false,
+      }
+
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch({
+          ...defaultParams,
+          owner: '',
+        })
+      })
+
+      expect(mockSetError).toHaveBeenCalledWith('No owner address specified')
+    })
+  })
+
+  describe('ERC-2771 transaction structure', () => {
+    it('wraps omnichain transactions through TrustedForwarder in self-custody mode', async () => {
+      mockCreateBalanceBundle.mockResolvedValue({ bundle_uuid: 'test-123' })
+
+      // Multi-chain returns direct transactions (not wrapped in txData)
+      mockBuildOmnichainLaunchTransactions.mockReturnValue([
+        { chainId: 1, to: '0xOmnichainDeployer', data: '0xlaunchData1', value: '0' },
+        { chainId: 10, to: '0xOmnichainDeployer', data: '0xlaunchData2', value: '0' },
+      ])
+
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch({
+          ...defaultParams,
+          chainIds: [1, 10],
+        })
+      })
+
+      // In self-custody mode, transactions are wrapped via ERC-2771 TrustedForwarder
+      // The forwarder address is the same on all chains
+      const TRUSTED_FORWARDER = '0xc29d6995ab3b0df4650ad643adeac55e7acbb566'
+
+      expect(mockCreateBalanceBundle).toHaveBeenCalledWith({
+        app_id: expect.any(String),
+        transactions: [
+          { chain: 1, target: TRUSTED_FORWARDER, data: expect.any(String), value: '0' },
+          { chain: 10, target: TRUSTED_FORWARDER, data: expect.any(String), value: '0' },
+        ],
+        perform_simulation: true,
+        virtual_nonce_mode: 'Disabled',
+      })
+
+      // Each transaction requires a wallet signature
+      expect(mockSignTypedDataAsync).toHaveBeenCalledTimes(2)
+    })
+
+    it('passes suckerDeploymentConfiguration to omnichain builder', async () => {
+      mockCreateBalanceBundle.mockResolvedValue({ bundle_uuid: 'test-123' })
+
+      const suckerConfig = {
+        salt: '0x1234',
+        deployerConfigurations: [],
+      }
+
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch({
+          ...defaultParams,
+          suckerDeploymentConfiguration: suckerConfig,
+        })
+      })
+
+      expect(mockBuildOmnichainLaunchTransactions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          suckerDeploymentConfiguration: suckerConfig,
+        })
+      )
+    })
+
+    it('passes chainConfigs overrides to omnichain builder', async () => {
+      mockCreateBalanceBundle.mockResolvedValue({ bundle_uuid: 'test-123' })
+
+      const chainConfigs = [
+        { chainId: 1, terminalConfigurations: [] },
+        { chainId: 10, terminalConfigurations: [] },
+      ]
+
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      await act(async () => {
+        await result.current.launch({
+          ...defaultParams,
+          chainConfigs,
+        })
+      })
+
+      expect(mockBuildOmnichainLaunchTransactions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chainConfigs,
+        })
+      )
+    })
+  })
+
+  describe('signing state tracking', () => {
+    it('exposes isSigning and signingChainId in return value', () => {
+      const { result } = renderHook(() => useOmnichainLaunchProject())
+
+      expect(result.current.isSigning).toBe(false)
+      expect(result.current.signingChainId).toBeNull()
     })
   })
 })

@@ -97,8 +97,10 @@ ANKR_API_KEY=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 
-# Gas Sponsorship
-RELAYR_API_KEY=
+# Gas Sponsorship (Relayr)
+RELAYR_API_URL=https://relayr-api-staging.up.railway.app  # or production URL
+RELAYR_APP_ID=juicy-vision
+RELAYR_API_KEY=                                           # Required for balance bundles
 
 # Storage
 PINATA_JWT=
