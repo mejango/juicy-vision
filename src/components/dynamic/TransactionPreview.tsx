@@ -2268,7 +2268,7 @@ export default function TransactionPreview({
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           {/* Simplified overall status */}
           {isLaunching && (
-            <div className={`p-4 flex items-center gap-4 border ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
+            <div className={`-mx-4 px-4 py-4 flex items-center gap-4 border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
               <div className="relative">
                 <div className={`animate-spin w-10 h-10 border-3 ${isDark ? 'border-green-500' : 'border-green-600'} border-t-transparent rounded-full`} />
               </div>
@@ -2286,7 +2286,7 @@ export default function TransactionPreview({
           {/* Success state with shareable links */}
           {isComplete && Object.keys(createdProjectIds).length > 0 && (
             <div className="space-y-4">
-              <div className={`p-4 text-center border ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
+              <div className={`-mx-4 px-4 py-4 text-center border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
                 <p className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   Project Created!
                 </p>
