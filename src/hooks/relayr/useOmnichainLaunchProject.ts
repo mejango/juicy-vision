@@ -9,7 +9,7 @@ import {
   type JBTerminalConfig,
   type JBSuckerDeploymentConfig,
 } from '../../services/relayr'
-import { buildOmnichainLaunchTransactions } from '../../services/omnichainDeployer'
+import { buildOmnichainLaunchTransactions, type ChainConfigOverride } from '../../services/omnichainDeployer'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
@@ -22,9 +22,10 @@ export interface OmnichainLaunchProjectParams {
   owner: string
   projectUri: string                    // IPFS CID for project metadata
   rulesetConfigurations: JBRulesetConfig[]
-  terminalConfigurations: JBTerminalConfig[]
+  terminalConfigurations: JBTerminalConfig[]  // Default terminal configs
   memo: string
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig  // Optional: deploy suckers atomically
+  chainConfigs?: ChainConfigOverride[]  // Per-chain overrides (e.g., different USDC addresses)
 }
 
 export interface UseOmnichainLaunchProjectReturn {
@@ -132,6 +133,7 @@ export function useOmnichainLaunchProject(
       terminalConfigurations,
       memo,
       suckerDeploymentConfiguration,
+      chainConfigs,
     } = params
 
     // For managed mode, use managed wallet as owner if not specified
@@ -156,6 +158,7 @@ export function useOmnichainLaunchProject(
         // Use JBOmnichainDeployer.launchProjectFor() - encode calldata locally
         // This creates projects AND deploys suckers atomically
         // Note: buildOmnichainLaunchTransactions auto-generates per-chain sucker configs
+        // and applies per-chain terminal configuration overrides
         const txs = buildOmnichainLaunchTransactions({
           chainIds,
           owner: projectOwner as `0x${string}`,
@@ -164,6 +167,7 @@ export function useOmnichainLaunchProject(
           terminalConfigurations,
           memo,
           suckerDeploymentConfiguration, // Optional - will be auto-generated if not provided
+          chainConfigs, // Per-chain overrides for terminal configs
         })
 
         transactions = txs.map(tx => ({

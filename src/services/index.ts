@@ -24,6 +24,7 @@ export {
   type JBDeployTiersHookConfig,
   type JBLaunchRulesetsConfig,
   type JBQueueRulesetsConfig,
+  type ChainConfigOverride,
 } from './omnichainDeployer'
 export {
   // Tier adjustment functions

@@ -229,22 +229,35 @@ export function buildLaunchProjectTransaction(params: {
 }
 
 /**
+ * Per-chain configuration overrides.
+ * Allows different terminal configurations per chain (e.g., different USDC addresses).
+ */
+export interface ChainConfigOverride {
+  chainId: number
+  terminalConfigurations?: JBTerminalConfig[]
+}
+
+/**
  * Build transactions for launching a project on multiple chains.
  * Each chain gets its own transaction targeting JBOmnichainDeployer.
  *
  * IMPORTANT: For multi-chain deployments, each chain needs DIFFERENT sucker
  * deployer configurations (connecting to the other chains). This function
  * auto-generates per-chain sucker configs when deploying to multiple chains.
+ *
+ * For ERC20-based projects (e.g., USDC), pass chainConfigs with per-chain
+ * terminal configurations to ensure correct token addresses on each chain.
  */
 export function buildOmnichainLaunchTransactions(params: {
   chainIds: number[]
   owner: `0x${string}`
   projectUri: string
   rulesetConfigurations: JBRulesetConfig[]
-  terminalConfigurations: JBTerminalConfig[]
+  terminalConfigurations: JBTerminalConfig[]  // Default terminal configs (used if no chain override)
   memo: string
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig
   controller?: `0x${string}`
+  chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs
 }): Array<{
   chainId: number
   to: `0x${string}`
@@ -252,10 +265,35 @@ export function buildOmnichainLaunchTransactions(params: {
   value: string
 }> {
   const controller = params.controller || DEFAULT_CONTROLLER
-  const { chainIds } = params
+  const { chainIds, chainConfigs = [] } = params
 
   // Generate a shared salt for all chains (ensures deterministic sucker addresses)
   const sharedSalt = (params.suckerDeploymentConfiguration?.salt as `0x${string}` | undefined) || createSalt()
+
+  // Build a map of chainId -> terminal configurations from chainConfigs
+  const chainConfigMap = new Map<number, ChainConfigOverride>()
+  for (const cfg of chainConfigs) {
+    chainConfigMap.set(cfg.chainId, cfg)
+  }
+
+  // Extract per-chain token addresses from terminal configurations for sucker config
+  // This enables proper ERC20 bridging (e.g., USDC on each chain)
+  const tokenAddresses: Record<number, `0x${string}`> = {}
+  for (const chainId of chainIds) {
+    const chainConfig = chainConfigMap.get(chainId)
+    const terminalConfigs = chainConfig?.terminalConfigurations ?? params.terminalConfigurations
+    // Look for the first non-native token in terminal configs
+    for (const terminal of terminalConfigs) {
+      for (const ctx of terminal.accountingContextsToAccept) {
+        // Skip native token (0xEEEe...) - we want ERC20 tokens
+        if (ctx.token && ctx.token.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
+          tokenAddresses[chainId] = ctx.token as `0x${string}`
+          break
+        }
+      }
+      if (tokenAddresses[chainId]) break
+    }
+  }
 
   // Log decoded params in readable JSON format
   const debugParams = {
@@ -266,6 +304,8 @@ export function buildOmnichainLaunchTransactions(params: {
     controller,
     rulesetConfigurations: params.rulesetConfigurations,
     terminalConfigurations: params.terminalConfigurations,
+    chainConfigs: params.chainConfigs,
+    tokenAddresses,
     sharedSalt,
     autoGeneratingSuckers: shouldConfigureSuckers(chainIds) && !params.suckerDeploymentConfiguration,
   }
@@ -275,6 +315,10 @@ export function buildOmnichainLaunchTransactions(params: {
   console.log('=================================\n')
 
   const transactions = params.chainIds.map(chainId => {
+    // Get per-chain terminal configurations (use override if available)
+    const chainConfig = chainConfigMap.get(chainId)
+    const terminalConfigurations = chainConfig?.terminalConfigurations ?? params.terminalConfigurations
+
     // Generate per-chain sucker configuration
     // Each chain needs deployers for the OTHER chains in the deployment
     let suckerConfig: JBSuckerDeploymentConfig
@@ -287,7 +331,12 @@ export function buildOmnichainLaunchTransactions(params: {
       suckerConfig = params.suckerDeploymentConfiguration!
     } else if (shouldConfigureSuckers(chainIds)) {
       // Auto-generate sucker config for this chain connecting to other chains
-      const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, { salt: sharedSalt })
+      // Pass token addresses for ERC20-based projects
+      const hasTokenAddresses = Object.keys(tokenAddresses).length > 0
+      const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, {
+        salt: sharedSalt,
+        tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
+      })
       suckerConfig = {
         deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
           deployer: dc.deployer,
@@ -311,6 +360,7 @@ export function buildOmnichainLaunchTransactions(params: {
 
     const tx = buildLaunchProjectTransaction({
       ...params,
+      terminalConfigurations,  // Use per-chain terminal configs
       suckerDeploymentConfiguration: suckerConfig,
       controller,
       chainId,
@@ -318,7 +368,7 @@ export function buildOmnichainLaunchTransactions(params: {
 
     // Log each transaction's calldata with function selector
     const selector = tx.data.slice(0, 10)
-    console.log(`Chain ${chainId}: selector=${selector}, to=${tx.to}`)
+    console.log(`Chain ${chainId}: selector=${selector}, to=${tx.to}, terminalConfigs=${JSON.stringify(terminalConfigurations.map(t => t.accountingContextsToAccept.map(c => c.token)))}`)
 
     return tx
   })

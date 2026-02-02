@@ -123,6 +123,12 @@ export interface JBSuckerDeploymentConfig {
 
 export interface ParseSuckerDeployerConfigOptions {
   minBridgeAmount?: bigint
+  /**
+   * Per-chain token addresses for bridging.
+   * Maps chainId -> token address. Required for ERC20 (e.g., USDC) projects.
+   * If not provided, defaults to NATIVE_TOKEN for all chains.
+   */
+  tokenAddresses?: Record<number, `0x${string}`>
 }
 
 /**
@@ -151,6 +157,10 @@ export function parseSuckerDeployerConfig(
   // Get all chains except the target chain
   const remoteChainIds = allChainIds.filter(chainId => chainId !== targetChainId)
 
+  // Determine local token for this chain
+  // Use provided token address if available, otherwise NATIVE_TOKEN
+  const localToken = opts.tokenAddresses?.[targetChainId] ?? NATIVE_TOKEN as `0x${string}`
+
   // Build deployer configurations for each remote chain
   const deployerConfigurations: JBSuckerDeployerConfig[] = remoteChainIds
     .map((remoteChainId): JBSuckerDeployerConfig | null => {
@@ -161,13 +171,17 @@ export function parseSuckerDeployerConfig(
         return null
       }
 
+      // Determine remote token for the target chain
+      // Use provided token address if available, otherwise NATIVE_TOKEN
+      const remoteToken = opts.tokenAddresses?.[remoteChainId] ?? NATIVE_TOKEN as `0x${string}`
+
       return {
         deployer,
         mappings: [
           {
-            localToken: NATIVE_TOKEN as `0x${string}`,
+            localToken,
             minGas: 200_000,
-            remoteToken: NATIVE_TOKEN as `0x${string}`,
+            remoteToken,
             minBridgeAmount: opts.minBridgeAmount ?? DEFAULT_MIN_BRIDGE_AMOUNT,
           },
         ],
@@ -194,8 +208,18 @@ export function shouldConfigureSuckers(chainIds: number[]): boolean {
  * Uses the same salt across all chains for deterministic addresses.
  *
  * @param chainIds - All chains in the deployment
- * @param opts - Optional configuration
+ * @param opts - Optional configuration including per-chain token addresses
  * @returns Map of chainId to sucker deployment config
+ *
+ * @example
+ * // USDC-based project - pass per-chain USDC addresses
+ * const usdcAddresses = {
+ *   11155111: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia
+ *   11155420: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // OP Sepolia
+ *   84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',    // Base Sepolia
+ *   421614: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',   // Arb Sepolia
+ * }
+ * const configs = generateOmnichainSuckerConfigs(chainIds, { tokenAddresses: usdcAddresses })
  */
 export function generateOmnichainSuckerConfigs(
   chainIds: number[],

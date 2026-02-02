@@ -1618,6 +1618,12 @@ export default function TransactionPreview({
       ]
     }
 
+    // Convert parsedChainConfigs to the format expected by buildOmnichainLaunchTransactions
+    const chainConfigOverrides = parsedChainConfigs.map(cfg => ({
+      chainId: Number(cfg.chainId),
+      terminalConfigurations: cfg.overrides?.terminalConfigurations as JBTerminalConfig[] | undefined,
+    })).filter(cfg => cfg.terminalConfigurations)
+
     return {
       owner,
       projectUri,
@@ -1626,6 +1632,7 @@ export default function TransactionPreview({
       terminalConfigurations,
       memo,
       suckerDeploymentConfiguration,
+      chainConfigs: chainConfigOverrides.length > 0 ? chainConfigOverrides : undefined,
       projectName: (projectMetadata?.name as string) || 'New Project',
       doubts: filteredDoubts,
       hasIssues: filteredDoubts.length > 0,
@@ -1649,6 +1656,7 @@ export default function TransactionPreview({
       terminalConfigurations,
       memo,
       suckerDeploymentConfiguration,
+      chainConfigs,
     } = launchValidation
 
     await launch({
@@ -1659,6 +1667,7 @@ export default function TransactionPreview({
       terminalConfigurations: terminalConfigurations as JBTerminalConfig[],
       memo,
       suckerDeploymentConfiguration,
+      chainConfigs, // Per-chain terminal overrides (different USDC addresses, etc.)
     })
   }, [launchValidation, issuesAcknowledged, launch])
 
