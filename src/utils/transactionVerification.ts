@@ -647,6 +647,48 @@ export function verifyLaunchProjectParams(params: {
       field: 'rulesetConfigurations',
       message: 'At least one ruleset configuration is required',
     })
+  } else {
+    // Validate addresses within ruleset configurations
+    type FundAccessLimitGroup = { terminal?: string; token?: string }
+    type SplitGroup = { splits?: Array<{ beneficiary?: string }> }
+    type RulesetConfig = { fundAccessLimitGroups?: FundAccessLimitGroup[]; splitGroups?: SplitGroup[] }
+
+    const rulesetConfigs = params.rulesetConfigurations as RulesetConfig[]
+    rulesetConfigs.forEach((rc, rcIdx) => {
+      // Validate fund access limit groups
+      rc.fundAccessLimitGroups?.forEach((fg, fgIdx) => {
+        if (fg.terminal && !isValidAddress(fg.terminal)) {
+          doubts.push({
+            severity: 'critical',
+            field: `rulesetConfigurations[${rcIdx}].fundAccessLimitGroups[${fgIdx}].terminal`,
+            message: `Invalid terminal address: "${fg.terminal}"`,
+            technicalNote: 'Terminal address must be a valid 40-character hex address (42 with 0x prefix)',
+          })
+        }
+        if (fg.token && !isValidAddress(fg.token)) {
+          doubts.push({
+            severity: 'critical',
+            field: `rulesetConfigurations[${rcIdx}].fundAccessLimitGroups[${fgIdx}].token`,
+            message: `Invalid token address: "${fg.token}"`,
+            technicalNote: 'Token address must be a valid 40-character hex address (42 with 0x prefix)',
+          })
+        }
+      })
+
+      // Validate split beneficiary addresses
+      rc.splitGroups?.forEach((sg, sgIdx) => {
+        sg.splits?.forEach((split, splitIdx) => {
+          if (split.beneficiary && !isValidAddress(split.beneficiary)) {
+            doubts.push({
+              severity: 'critical',
+              field: `rulesetConfigurations[${rcIdx}].splitGroups[${sgIdx}].splits[${splitIdx}].beneficiary`,
+              message: `Invalid beneficiary address: "${split.beneficiary}"`,
+              technicalNote: 'Beneficiary address must be a valid 40-character hex address (42 with 0x prefix)',
+            })
+          }
+        })
+      })
+    })
   }
 
   // Validate terminal configurations exist
@@ -657,8 +699,36 @@ export function verifyLaunchProjectParams(params: {
       message: 'At least one terminal configuration is required',
     })
   } else {
+    // Validate each terminal configuration
+    const terminalConfigs = params.terminalConfigurations as Array<{ terminal?: string; accountingContextsToAccept?: unknown[] }>
+    terminalConfigs.forEach((tc, idx) => {
+      // Validate terminal address format
+      if (tc.terminal && !isValidAddress(tc.terminal)) {
+        doubts.push({
+          severity: 'critical',
+          field: `terminalConfigurations[${idx}].terminal`,
+          message: `Invalid terminal address: "${tc.terminal}"`,
+          technicalNote: 'Terminal address must be a valid 40-character hex address (42 with 0x prefix)',
+        })
+      }
+
+      // Validate token addresses in accounting contexts
+      if (tc.accountingContextsToAccept) {
+        const contexts = tc.accountingContextsToAccept as Array<{ token?: string }>
+        contexts.forEach((ctx, ctxIdx) => {
+          if (ctx.token && !isValidAddress(ctx.token)) {
+            doubts.push({
+              severity: 'critical',
+              field: `terminalConfigurations[${idx}].accountingContextsToAccept[${ctxIdx}].token`,
+              message: `Invalid token address: "${ctx.token}"`,
+              technicalNote: 'Token address must be a valid 40-character hex address (42 with 0x prefix)',
+            })
+          }
+        })
+      }
+    })
+
     // Check for terminals with empty accounting contexts
-    const terminalConfigs = params.terminalConfigurations as Array<{ accountingContextsToAccept?: unknown[] }>
     const emptyContextTerminals = terminalConfigs.filter(
       tc => !tc.accountingContextsToAccept || tc.accountingContextsToAccept.length === 0
     )
