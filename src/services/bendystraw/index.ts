@@ -1,6 +1,8 @@
 export {
   fetchProject,
   fetchProjects,
+  getProjectIdFromReceipt,
+  getProjectIdsFromReceipts,
   fetchParticipants,
   searchProjects,
   semanticSearchProjects,

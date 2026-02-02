@@ -9,6 +9,7 @@ import {
   type JBTerminalConfig,
   type JBSuckerDeploymentConfig,
 } from '../../services/relayr'
+import { getProjectIdsFromReceipts } from '../../services/bendystraw'
 import { buildOmnichainLaunchTransactions, type ChainConfigOverride } from '../../services/omnichainDeployer'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
@@ -98,7 +99,7 @@ export function useOmnichainLaunchProject(
     }
   }, [statusData, bundle])
 
-  // Call onSuccess when complete and update confirmed project IDs
+  // Call onSuccess when complete and extract actual project IDs from receipts
   useEffect(() => {
     if (bundleState.status === 'completed' && bundleState.bundleId) {
       const txHashes: Record<number, string> = {}
@@ -107,9 +108,23 @@ export function useOmnichainLaunchProject(
           txHashes[cs.chainId] = cs.txHash
         }
       })
-      // Use predicted project IDs as confirmed (they should match)
-      setConfirmedProjectIds(predictedProjectIds)
-      onSuccess?.(bundleState.bundleId, txHashes)
+
+      // Extract actual project IDs from transaction receipts
+      // This is more reliable than predictions, especially for omnichain deployments
+      getProjectIdsFromReceipts(txHashes).then(extractedIds => {
+        if (Object.keys(extractedIds).length > 0) {
+          console.log('Extracted project IDs from receipts:', extractedIds)
+          setConfirmedProjectIds(extractedIds)
+        } else {
+          // Fallback to predicted IDs if extraction fails
+          setConfirmedProjectIds(predictedProjectIds)
+        }
+        onSuccess?.(bundleState.bundleId!, txHashes)
+      }).catch(err => {
+        console.error('Failed to extract project IDs:', err)
+        setConfirmedProjectIds(predictedProjectIds)
+        onSuccess?.(bundleState.bundleId!, txHashes)
+      })
     }
   }, [bundleState.status, bundleState.bundleId, bundleState.chainStates, predictedProjectIds, onSuccess])
 

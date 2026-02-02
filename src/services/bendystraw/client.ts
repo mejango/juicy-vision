@@ -198,6 +198,54 @@ function getPublicClient(chainId: number) {
   })
 }
 
+/**
+ * Extract project ID from a transaction receipt.
+ * The project ID is emitted as the first indexed parameter in the first log (topics[1]).
+ * This works for LaunchProject events from JBController and JBOmnichainDeployer.
+ */
+export async function getProjectIdFromReceipt(
+  chainId: number,
+  txHash: `0x${string}`
+): Promise<number | null> {
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) return null
+
+  try {
+    const receipt = await publicClient.getTransactionReceipt({ hash: txHash })
+    // Project ID is in the first log's first indexed parameter (topics[1])
+    // topics[0] is the event signature, topics[1] is the first indexed param
+    const projectIdHex = receipt.logs[0]?.topics[1]
+    if (projectIdHex) {
+      return Number(BigInt(projectIdHex))
+    }
+    return null
+  } catch (error) {
+    console.error(`Failed to get project ID from receipt ${txHash} on chain ${chainId}:`, error)
+    return null
+  }
+}
+
+/**
+ * Extract project IDs from multiple transaction receipts across chains.
+ */
+export async function getProjectIdsFromReceipts(
+  txHashes: Record<number, string>
+): Promise<Record<number, number>> {
+  const result: Record<number, number> = {}
+
+  await Promise.all(
+    Object.entries(txHashes).map(async ([chainIdStr, txHash]) => {
+      const chainId = Number(chainIdStr)
+      const projectId = await getProjectIdFromReceipt(chainId, txHash as `0x${string}`)
+      if (projectId !== null) {
+        result[chainId] = projectId
+      }
+    })
+  )
+
+  return result
+}
+
 export async function fetchProject(projectId: string, chainId: number = 1, version: number = 5): Promise<Project> {
   const data = await safeRequest<{ project: Project & { metadata: ProjectMetadata | string } }>(
     PROJECT_QUERY,
