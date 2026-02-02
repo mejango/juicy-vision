@@ -117,6 +117,7 @@ const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60;
 // Defaults to staging; set RELAYR_API_URL for production (https://api.relayr.ba5ed.com)
 const RELAYR_API_URL = process.env.RELAYR_API_URL || 'https://relayr-api-staging.up.railway.app';
 const RELAYR_APP_ID = process.env.RELAYR_APP_ID || '43a6827c-3407-43c1-89c6-deeb8994696d';
+const RELAYR_API_KEY = process.env.RELAYR_API_KEY || '';
 
 // ============================================================================
 // Types
@@ -268,6 +269,7 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(RELAYR_API_KEY ? { 'x-api-key': RELAYR_API_KEY } : {}),
     },
     body: JSON.stringify(bundleRequest),
   });
