@@ -1327,6 +1327,8 @@ export default function TransactionPreview({
   const [juicyFeeEnabled, setJuicyFeeEnabled] = useState(true)
   const [showRawJson, setShowRawJson] = useState(false)
   const [issuesAcknowledged, setIssuesAcknowledged] = useState(false)
+  const [showDeploymentDetails, setShowDeploymentDetails] = useState(false)
+  const [copiedLink, setCopiedLink] = useState<string | null>(null)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -2239,124 +2241,170 @@ export default function TransactionPreview({
       {/* Launch progress section - shown when launching */}
       {(action === 'launchProject' || action === 'launch721Project') && (isLaunching || isComplete || hasError) && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          {/* Chain status */}
-          <div className="space-y-2 mb-3">
-            {launchValidation?.chainIds.map((cid) => {
-              const chain = CHAINS[cid]
-              const chainState = bundleState.chainStates.find(cs => cs.chainId === cid)
-              const createdProjectId = createdProjectIds[cid]
-
-              return (
-                <div
-                  key={cid}
-                  className={`p-2 flex items-center justify-between ${
-                    isDark ? 'bg-white/5' : 'bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: chain?.color || '#888' }}
-                    />
-                    <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {chain?.name || `Chain ${cid}`}
-                    </span>
-                    {createdProjectId && (
-                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        #{createdProjectId}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!chainState && (
-                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Waiting...
-                      </span>
-                    )}
-                    {chainState?.status === 'pending' && (
-                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Pending
-                      </span>
-                    )}
-                    {chainState?.status === 'submitted' && (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin w-3 h-3 border-2 border-juice-orange border-t-transparent rounded-full" />
-                        <span className={`text-xs ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
-                          Creating...
-                        </span>
-                      </div>
-                    )}
-                    {chainState?.status === 'confirmed' && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-500">✓</span>
-                        {chainState.txHash && EXPLORER_URLS[cid] && (
-                          <a
-                            href={`${EXPLORER_URLS[cid]}${chainState.txHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-juice-cyan hover:underline"
-                          >
-                            View
-                          </a>
-                        )}
-                      </div>
-                    )}
-                    {chainState?.status === 'failed' && (
-                      <span className="text-xs text-red-400">
-                        Failed
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Processing indicator */}
+          {/* Simplified overall status */}
           {isLaunching && (
-            <div className={`p-3 flex items-center gap-3 ${isDark ? 'bg-juice-orange/10' : 'bg-orange-50'}`}>
-              <div className="animate-spin w-5 h-5 border-2 border-juice-orange border-t-transparent rounded-full" />
+            <div className={`p-4 flex items-center gap-4 ${isDark ? 'bg-juice-orange/10' : 'bg-orange-50'}`}>
+              <div className="relative">
+                <div className="animate-spin w-10 h-10 border-3 border-juice-orange border-t-transparent rounded-full" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-lg">🚀</span>
+                </div>
+              </div>
               <div>
-                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {bundleState.status === 'creating' ? 'Creating bundle...' : 'Creating projects...'}
+                <p className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {bundleState.status === 'creating' ? 'Preparing deployment...' : 'Deploying your project'}
                 </p>
                 <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Relayr is deploying on all chains
+                  This usually takes about a minute
                 </p>
               </div>
             </div>
           )}
 
-          {/* Error details */}
-          {hasError && bundleState.error && (
-            <div className={`p-3 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
-              <span className={`text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-                {bundleState.error}
-              </span>
+          {/* Success state with shareable links */}
+          {isComplete && Object.keys(createdProjectIds).length > 0 && (
+            <div className="space-y-4">
+              <div className={`p-4 text-center ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
+                <div className="text-4xl mb-2">🎉</div>
+                <p className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  Project Created!
+                </p>
+                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Share your project link to start accepting payments
+                </p>
+              </div>
+
+              {/* Shareable links - show primary chain's link prominently */}
+              <div className="space-y-2">
+                {Object.entries(createdProjectIds)
+                  .filter(([, projectId]) => projectId && projectId > 0)
+                  .map(([chainIdStr, projectIdNum], index) => {
+                    const chainData = CHAINS[Number(chainIdStr)]
+                    const projectUrl = `juicy.vision/${chainData?.slug || 'eth'}:${projectIdNum}`
+                    const fullUrl = `https://${projectUrl}`
+                    const isCopied = copiedLink === projectUrl
+
+                    return (
+                      <button
+                        key={chainIdStr}
+                        onClick={() => {
+                          navigator.clipboard.writeText(fullUrl)
+                          setCopiedLink(projectUrl)
+                          setTimeout(() => setCopiedLink(null), 2000)
+                        }}
+                        className={`w-full p-3 flex items-center justify-between transition-colors ${
+                          index === 0
+                            ? isDark
+                              ? 'bg-juice-cyan/20 hover:bg-juice-cyan/30 border border-juice-cyan/30'
+                              : 'bg-cyan-50 hover:bg-cyan-100 border border-cyan-200'
+                            : isDark
+                              ? 'bg-white/5 hover:bg-white/10'
+                              : 'bg-gray-50 hover:bg-gray-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: chainData?.color || '#888' }}
+                          />
+                          <span className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                            {projectUrl}
+                          </span>
+                        </div>
+                        <span className={`text-xs font-medium ${
+                          isCopied
+                            ? 'text-green-500'
+                            : isDark ? 'text-gray-400' : 'text-gray-500'
+                        }`}>
+                          {isCopied ? '✓ Copied!' : 'Copy'}
+                        </span>
+                      </button>
+                    )
+                  })}
+              </div>
             </div>
           )}
 
-          {/* Success summary */}
-          {isComplete && Object.keys(createdProjectIds).length > 0 && (
-            <div className={`p-3 ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
-              <div className={`text-xs font-medium mb-2 ${isDark ? 'text-green-400' : 'text-green-700'}`}>
-                Projects Created Successfully
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {Object.entries(createdProjectIds).map(([chainIdStr, projectIdNum]) => (
-                  <div key={chainIdStr} className="flex items-center gap-2">
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: CHAINS[Number(chainIdStr)]?.color || '#888' }}
-                    />
-                    <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                      {CHAINS[Number(chainIdStr)]?.shortName}: #{projectIdNum}
-                    </span>
-                  </div>
-                ))}
-              </div>
+          {/* Error state */}
+          {hasError && bundleState.error && (
+            <div className={`p-4 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
+              <div className="text-2xl mb-2">❌</div>
+              <p className={`font-medium ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+                Deployment failed
+              </p>
+              <p className={`text-sm mt-1 ${isDark ? 'text-red-400/80' : 'text-red-500'}`}>
+                {bundleState.error}
+              </p>
             </div>
           )}
+
+          {/* Technical details dropdown */}
+          <div className="mt-3">
+            <button
+              onClick={() => setShowDeploymentDetails(!showDeploymentDetails)}
+              className={`flex items-center gap-2 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+            >
+              <span className={`transform transition-transform ${showDeploymentDetails ? 'rotate-90' : ''}`}>›</span>
+              {showDeploymentDetails ? 'Hide' : 'Show'} technical details
+            </button>
+
+            {showDeploymentDetails && (
+              <div className="mt-2 space-y-1">
+                {launchValidation?.chainIds.map((cid) => {
+                  const chain = CHAINS[cid]
+                  const chainState = bundleState.chainStates.find(cs => cs.chainId === cid)
+                  const createdProjectId = createdProjectIds[cid]
+
+                  return (
+                    <div
+                      key={cid}
+                      className={`p-2 flex items-center justify-between text-xs ${
+                        isDark ? 'bg-white/5' : 'bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: chain?.color || '#888' }}
+                        />
+                        <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>
+                          {chain?.shortName || `Chain ${cid}`}
+                        </span>
+                        {createdProjectId > 0 && (
+                          <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>
+                            #{createdProjectId}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!chainState && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Waiting</span>}
+                        {chainState?.status === 'pending' && <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Pending</span>}
+                        {chainState?.status === 'submitted' && (
+                          <span className="text-juice-orange">Creating...</span>
+                        )}
+                        {chainState?.status === 'confirmed' && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-green-500">✓</span>
+                            {chainState.txHash && EXPLORER_URLS[cid] && (
+                              <a
+                                href={`${EXPLORER_URLS[cid]}${chainState.txHash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-juice-cyan hover:underline"
+                              >
+                                tx
+                              </a>
+                            )}
+                          </div>
+                        )}
+                        {chainState?.status === 'failed' && <span className="text-red-400">Failed</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
