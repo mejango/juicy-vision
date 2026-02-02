@@ -92,6 +92,7 @@ export default function LaunchProjectModal({
     createdProjectIds,
     reset,
   } = useOmnichainLaunchProject({
+    deploymentKey: projectUri, // Scope localStorage by projectUri to prevent state bleeding
     onSuccess: (bundleId, txHashes) => {
       console.log('Projects launched:', bundleId, txHashes)
     },
