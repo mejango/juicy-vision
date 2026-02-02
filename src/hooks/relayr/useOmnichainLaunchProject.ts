@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAccount, useConfig, useSignTypedData } from 'wagmi'
 import { encodeFunctionData, getContract, type Address, type Hex } from 'viem'
-import { useManagedWallet } from '../useManagedWallet'
-import { getPasskeyAccount } from '../../services/passkeyWallet'
+import { useManagedWallet, createManagedRelayrBundle } from '../useManagedWallet'
 import {
   createBalanceBundle,
   buildOmnichainLaunchProjectTransactions,
@@ -262,99 +261,23 @@ export function useOmnichainLaunchProject(
       let bundleId: string
 
       if (isManagedMode) {
-        // === MANAGED MODE: Client-side passkey signing ===
-        // One Touch ID / Face ID prompt to get account, then sign all chains
-        console.log('=== MANAGED MODE: Passkey signing ===')
-        console.log(`Signing ${transactions.length} transaction(s) with passkey for chains: ${chainIds.join(', ')}`)
+        // === MANAGED MODE: Server-side ERC-2771 signing ===
+        // User's signing key was stored at login - no prompts needed
+        // Server handles all signing and bundle creation
+        console.log('=== MANAGED MODE: Server-side signing ===')
+        console.log(`Submitting ${transactions.length} transaction(s) to server for chains: ${chainIds.join(', ')}`)
 
-        setIsSigning(true)
-        const wrappedTransactions: Array<{ chain: number; target: string; data: string; value: string }> = []
+        const serverTransactions = transactions.map(tx => ({
+          chainId: tx.chain,
+          target: tx.target,
+          data: tx.data,
+          value: tx.value,
+        }))
 
-        // Get passkey account once (one Touch ID / Face ID prompt)
-        const passkeyAccount = await getPasskeyAccount()
-        const signerAddress = passkeyAccount.address
-        console.log('Passkey account:', signerAddress)
+        const result = await createManagedRelayrBundle(serverTransactions, projectOwner)
+        bundleId = result.bundleId
 
-        for (const tx of transactions) {
-          setSigningChainId(tx.chain)
-          console.log(`Signing ForwardRequest for chain ${tx.chain}...`)
-
-          // Get public client for this chain
-          const publicClient = config.getClient({ chainId: tx.chain })
-
-          // Get signer's nonce from the TrustedForwarder
-          const forwarderContract = getContract({
-            address: ERC2771_FORWARDER_ADDRESS,
-            abi: ERC2771_FORWARDER_ABI,
-            client: publicClient,
-          })
-
-          const nonce = await forwarderContract.read.nonces([signerAddress as Address])
-          const deadline = Math.floor(Date.now() / 1000) + ERC2771_DEADLINE_DURATION_SECONDS
-
-          // Build the ForwardRequest message
-          // Note: from = passkey address (signer), projectOwner is in the tx calldata
-          const messageData = {
-            from: signerAddress as Address,
-            to: tx.target as Address,
-            value: BigInt(tx.value || '0'),
-            gas: BigInt(2000000), // Conservative gas estimate
-            nonce,
-            deadline,
-            data: tx.data as Hex,
-          }
-
-          // Sign with passkey (no prompt - already have account)
-          const signature = await passkeyAccount.signTypedData({
-            domain: {
-              name: 'Juicebox',
-              chainId: tx.chain,
-              verifyingContract: ERC2771_FORWARDER_ADDRESS,
-              version: '1',
-            },
-            primaryType: 'ForwardRequest' as const,
-            types: FORWARD_REQUEST_TYPES,
-            message: messageData,
-          })
-          console.log(`Signature obtained for chain ${tx.chain}`)
-
-          // Encode the execute() call with the signed request
-          const executeData = encodeFunctionData({
-            abi: ERC2771_FORWARDER_ABI,
-            functionName: 'execute',
-            args: [{
-              from: messageData.from,
-              to: messageData.to,
-              value: messageData.value,
-              gas: messageData.gas,
-              deadline: messageData.deadline,
-              data: messageData.data,
-              signature,
-            }],
-          })
-
-          wrappedTransactions.push({
-            chain: tx.chain,
-            target: ERC2771_FORWARDER_ADDRESS,
-            data: executeData,
-            value: tx.value,
-          })
-        }
-
-        setIsSigning(false)
-        setSigningChainId(null)
-        console.log('=== PASSKEY SIGNING COMPLETE ===')
-
-        // Create balance-sponsored bundle (admin pays gas)
-        const bundleRequest = {
-          app_id: RELAYR_APP_ID,
-          transactions: wrappedTransactions,
-          perform_simulation: true,
-          virtual_nonce_mode: 'Disabled' as const,
-        }
-
-        const bundleResponse = await createBalanceBundle(bundleRequest)
-        bundleId = bundleResponse.bundle_uuid
+        console.log('Server created bundle:', bundleId)
       } else {
         // === SELF-CUSTODY MODE: Client-side ERC-2771 signing ===
         // User signs with their wallet (MetaMask, etc.) for each chain

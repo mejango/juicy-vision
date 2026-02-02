@@ -13,7 +13,7 @@ import {
   type Address,
   type Hex,
 } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
 import {
   mainnet,
   optimism,
@@ -26,6 +26,7 @@ import {
 } from 'viem/chains';
 import { getConfig } from '../utils/config.ts';
 import { logger } from '../utils/logger.ts';
+import { getSigningKey } from './encryption.ts';
 
 // ============================================================================
 // Chain Configuration
@@ -172,13 +173,23 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     throw new Error('RELAYR_API_KEY not configured');
   }
 
-  // Get the system signing key
-  const systemKey = config.reservesPrivateKey as `0x${string}`;
-  if (!systemKey) {
-    throw new Error('RESERVES_PRIVATE_KEY not configured');
-  }
+  // Get signing account: prefer user's stored signing key, fall back to reserves
+  let signingAccount: PrivateKeyAccount;
+  const userSigningKey = await getSigningKey(userId);
 
-  const systemAccount = privateKeyToAccount(systemKey);
+  if (userSigningKey) {
+    // Use the user's passkey-derived signing key
+    signingAccount = privateKeyToAccount(userSigningKey);
+    logger.info('Using user signing key', { userId, signer: signingAccount.address });
+  } else {
+    // Fall back to reserves key (for backwards compatibility)
+    const reservesKey = config.reservesPrivateKey as `0x${string}`;
+    if (!reservesKey) {
+      throw new Error('No signing key available: user has no stored key and RESERVES_PRIVATE_KEY not configured');
+    }
+    signingAccount = privateKeyToAccount(reservesKey);
+    logger.info('Using reserves signing key (no user key stored)', { userId, signer: signingAccount.address });
+  }
 
   logger.info('Creating Relayr bundle', {
     userId,
@@ -207,7 +218,7 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
 
     // Use system account as the ERC-2771 signer (not user's address)
     // The project owner is encoded in the transaction calldata, not the meta-tx sender
-    const signerAddress = systemAccount.address;
+    const signerAddress = signingAccount.address;
     const nonce = await forwarderContract.read.nonces([signerAddress]);
     const deadline = Math.floor(Date.now() / 1000) + ERC2771_DEADLINE_DURATION_SECONDS;
 
@@ -223,7 +234,7 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     };
 
     // Sign the EIP-712 typed data
-    const signature = await systemAccount.signTypedData({
+    const signature = await signingAccount.signTypedData({
       domain: {
         name: 'Juicebox',
         chainId: tx.chainId,

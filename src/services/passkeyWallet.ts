@@ -164,6 +164,38 @@ async function createSiweSession(
 }
 
 /**
+ * Store the signing key on the server for gasless transaction signing.
+ * Called after SIWE session is created (authenticated context).
+ * Server stores the key encrypted and can use it to sign ERC-2771 requests.
+ */
+async function storeSigningKeyOnServer(privateKey: `0x${string}`): Promise<void> {
+  // Get auth token from localStorage (set by SIWE auth)
+  const token = localStorage.getItem('juice-auth-token')
+  if (!token) {
+    console.warn('No auth token, skipping signing key storage')
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/wallet/signing-key`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ signingKey: privateKey }),
+    })
+
+    if (!response.ok) {
+      console.warn('Failed to store signing key:', response.status)
+    }
+  } catch (error) {
+    // Non-fatal - user can still sign locally
+    console.warn('Failed to store signing key on server:', error)
+  }
+}
+
+/**
  * Derive a private key from PRF output using HKDF
  */
 async function derivePrivateKey(prfOutput: ArrayBuffer): Promise<`0x${string}`> {
@@ -273,6 +305,9 @@ export async function createPasskeyWallet(): Promise<PasskeyWallet> {
   // Sign for the effective address (which may be a linked primary wallet)
   await createSiweSession(account, effectiveAddress !== account.address ? effectiveAddress : undefined)
 
+  // Store signing key on server for gasless transaction signing
+  await storeSigningKeyOnServer(privateKey)
+
   // Now store wallet and dispatch event (after SIWE session exists)
   storePasskeyWallet(wallet)
 
@@ -341,6 +376,9 @@ export async function authenticatePasskeyWallet(credentialId?: string): Promise<
   // This ensures WalletInfo's validation sees the session when it checks
   // Sign for the effective address (which may be a linked primary wallet)
   await createSiweSession(account, effectiveAddress !== account.address ? effectiveAddress : undefined)
+
+  // Store signing key on server for gasless transaction signing
+  await storeSigningKeyOnServer(privateKey)
 
   // Now store wallet and dispatch event (after SIWE session exists)
   storePasskeyWallet(wallet)

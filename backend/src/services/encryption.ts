@@ -510,6 +510,72 @@ export async function decryptMessage(
 }
 
 // ============================================================================
+// Ethereum Signing Key Storage (for passkey wallets)
+// ============================================================================
+
+const SIGNING_KEY_ALGORITHM = 'secp256k1';
+
+/**
+ * Store an Ethereum signing key for a user (passkey wallet).
+ * Key is encrypted server-side for gasless transaction signing.
+ */
+export async function storeSigningKey(userId: string, signingKey: string): Promise<void> {
+  // Remove 0x prefix if present and convert to base64 for consistent storage
+  const keyHex = signingKey.replace(/^0x/, '');
+  const keyBytes = new Uint8Array(keyHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  const keyBase64 = toBase64(keyBytes);
+
+  const encryptedKey = await encryptPrivateKey(keyBase64);
+
+  // Revoke any existing signing keys for this user
+  await execute(
+    `UPDATE user_keypairs SET is_active = FALSE, revoked_at = NOW()
+     WHERE user_id = $1 AND algorithm = $2 AND is_active = TRUE`,
+    [userId, SIGNING_KEY_ALGORITHM]
+  );
+
+  // Store new signing key (public_key stores the address derived from the key)
+  const { privateKeyToAccount } = await import('viem/accounts');
+  const account = privateKeyToAccount(signingKey as `0x${string}`);
+
+  await execute(
+    `INSERT INTO user_keypairs (user_id, public_key, encrypted_private_key, algorithm)
+     VALUES ($1, $2, $3, $4)`,
+    [userId, account.address, encryptedKey, SIGNING_KEY_ALGORITHM]
+  );
+}
+
+/**
+ * Get the decrypted Ethereum signing key for a user.
+ * Returns the key as a hex string with 0x prefix.
+ */
+export async function getSigningKey(userId: string): Promise<`0x${string}` | null> {
+  const keypair = await queryOne<DbUserKeypair>(
+    `SELECT * FROM user_keypairs WHERE user_id = $1 AND algorithm = $2 AND is_active = TRUE`,
+    [userId, SIGNING_KEY_ALGORITHM]
+  );
+
+  if (!keypair) return null;
+
+  const keyBase64 = await decryptPrivateKey(keypair.encrypted_private_key);
+  const keyBytes = fromBase64(keyBase64);
+  const keyHex = Array.from(keyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return `0x${keyHex}`;
+}
+
+/**
+ * Check if a user has a signing key stored
+ */
+export async function hasSigningKey(userId: string): Promise<boolean> {
+  const keypair = await queryOne<{ id: string }>(
+    `SELECT id FROM user_keypairs WHERE user_id = $1 AND algorithm = $2 AND is_active = TRUE`,
+    [userId, SIGNING_KEY_ALGORITHM]
+  );
+  return !!keypair;
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 

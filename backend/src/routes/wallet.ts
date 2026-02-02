@@ -191,6 +191,40 @@ walletRouter.post(
 );
 
 // ============================================================================
+// Signing Key Storage (for passkey wallets - gasless signing)
+// ============================================================================
+
+import { storeSigningKey, getSigningKey } from '../services/encryption.ts';
+
+// POST /wallet/signing-key - Store the user's signing key for server-side signing
+const SigningKeySchema = z.object({
+  signingKey: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+});
+
+walletRouter.post(
+  '/signing-key',
+  requireAuth,
+  zValidator('json', SigningKeySchema),
+  async (c) => {
+    const user = c.get('user');
+    const body = c.req.valid('json');
+
+    try {
+      await storeSigningKey(user.id, body.signingKey);
+
+      return c.json({
+        success: true,
+        data: { stored: true },
+      });
+    } catch (error) {
+      console.error('Failed to store signing key:', error);
+      const message = error instanceof Error ? error.message : 'Failed to store signing key';
+      return c.json({ success: false, error: message }, 500);
+    }
+  }
+);
+
+// ============================================================================
 // Relayr Bundle (Server-side ERC-2771 signing for omnichain deployments)
 // ============================================================================
 
