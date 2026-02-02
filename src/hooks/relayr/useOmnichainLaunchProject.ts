@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useManagedWallet } from '../useManagedWallet'
 import {
   createBalanceBundle,
@@ -62,6 +62,14 @@ export function useOmnichainLaunchProject(
 ): UseOmnichainLaunchProjectReturn {
   const { onSuccess, onError } = options
 
+  // Use refs for callbacks to avoid infinite loops when callbacks change
+  const onSuccessRef = useRef(onSuccess)
+  const onErrorRef = useRef(onError)
+  useEffect(() => {
+    onSuccessRef.current = onSuccess
+    onErrorRef.current = onError
+  })
+
   // Get wallet address - works for both passkey (Touch ID) and managed mode users
   const { address: managedAddress, isManagedMode } = useManagedWallet()
 
@@ -100,8 +108,11 @@ export function useOmnichainLaunchProject(
   }, [statusData, bundle])
 
   // Call onSuccess when complete and extract actual project IDs from receipts
+  // Use ref to track if we've already processed this completion to avoid duplicate calls
+  const hasProcessedCompletionRef = useRef(false)
   useEffect(() => {
-    if (bundleState.status === 'completed' && bundleState.bundleId) {
+    if (bundleState.status === 'completed' && bundleState.bundleId && !hasProcessedCompletionRef.current) {
+      hasProcessedCompletionRef.current = true
       const txHashes: Record<number, string> = {}
       bundleState.chainStates.forEach(cs => {
         if (cs.txHash) {
@@ -119,21 +130,25 @@ export function useOmnichainLaunchProject(
           // Fallback to predicted IDs if extraction fails
           setConfirmedProjectIds(predictedProjectIds)
         }
-        onSuccess?.(bundleState.bundleId!, txHashes)
+        onSuccessRef.current?.(bundleState.bundleId!, txHashes)
       }).catch(err => {
         console.error('Failed to extract project IDs:', err)
         setConfirmedProjectIds(predictedProjectIds)
-        onSuccess?.(bundleState.bundleId!, txHashes)
+        onSuccessRef.current?.(bundleState.bundleId!, txHashes)
       })
     }
-  }, [bundleState.status, bundleState.bundleId, bundleState.chainStates, predictedProjectIds, onSuccess])
+    // Reset flag when bundle resets
+    if (bundleState.status === 'idle') {
+      hasProcessedCompletionRef.current = false
+    }
+  }, [bundleState.status, bundleState.bundleId, bundleState.chainStates, predictedProjectIds])
 
   // Call onError when failed
   useEffect(() => {
     if (bundleState.status === 'failed' && bundleState.error) {
-      onError?.(new Error(bundleState.error))
+      onErrorRef.current?.(new Error(bundleState.error))
     }
-  }, [bundleState.status, bundleState.error, onError])
+  }, [bundleState.status, bundleState.error])
 
   /**
    * Launch projects on all specified chains.
@@ -260,9 +275,9 @@ export function useOmnichainLaunchProject(
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to launch project'
       bundle._setError(errorMessage)
-      onError?.(err instanceof Error ? err : new Error(errorMessage))
+      onErrorRef.current?.(err instanceof Error ? err : new Error(errorMessage))
     }
-  }, [isManagedMode, managedAddress, bundle, onError])
+  }, [isManagedMode, managedAddress, bundle])
 
   const reset = useCallback(() => {
     resetBundle()

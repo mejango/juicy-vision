@@ -198,9 +198,13 @@ function getPublicClient(chainId: number) {
   })
 }
 
+// LaunchProject(uint256 indexed projectId, uint256 indexed rulesetId, string memo, address caller)
+// keccak256("LaunchProject(uint256,uint256,string,address)")
+const LAUNCH_PROJECT_EVENT_TOPIC = '0xf3e6948ba8b32d557363ea08470121c47c0127659aed09320812174d373afef2'
+
 /**
  * Extract project ID from a transaction receipt.
- * The project ID is emitted as the first indexed parameter in the first log (topics[1]).
+ * Searches all logs for the LaunchProject event, which has projectId as the first indexed param.
  * This works for LaunchProject events from JBController and JBOmnichainDeployer.
  */
 export async function getProjectIdFromReceipt(
@@ -212,12 +216,31 @@ export async function getProjectIdFromReceipt(
 
   try {
     const receipt = await publicClient.getTransactionReceipt({ hash: txHash })
-    // Project ID is in the first log's first indexed parameter (topics[1])
-    // topics[0] is the event signature, topics[1] is the first indexed param
-    const projectIdHex = receipt.logs[0]?.topics[1]
-    if (projectIdHex) {
-      return Number(BigInt(projectIdHex))
+
+    // Search all logs for the LaunchProject event
+    for (const log of receipt.logs) {
+      // Check if this is a LaunchProject event (by topic signature)
+      if (log.topics[0]?.toLowerCase() === LAUNCH_PROJECT_EVENT_TOPIC.toLowerCase()) {
+        const projectIdHex = log.topics[1]
+        if (projectIdHex) {
+          return Number(BigInt(projectIdHex))
+        }
+      }
     }
+
+    // Fallback: Look for any log with a reasonable project ID in topics[1]
+    // This handles cases where the event signature might differ
+    for (const log of receipt.logs) {
+      const projectIdHex = log.topics[1]
+      if (projectIdHex) {
+        const projectId = Number(BigInt(projectIdHex))
+        // Project IDs are typically small numbers (< 100000)
+        if (projectId > 0 && projectId < 100000) {
+          return projectId
+        }
+      }
+    }
+
     return null
   } catch (error) {
     console.error(`Failed to get project ID from receipt ${txHash} on chain ${chainId}:`, error)

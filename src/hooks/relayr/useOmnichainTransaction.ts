@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useAccount, useWalletClient } from 'wagmi'
 import { useAuthStore } from '../../stores'
 import { useManagedWallet } from '../useManagedWallet'
@@ -46,6 +46,18 @@ export function useOmnichainTransaction(
 ): UseOmnichainTransactionReturn {
   const { onSuccess, onError, onPaymentRequired } = options
 
+  // Use refs for callbacks to avoid infinite loops when callbacks change
+  const onSuccessRef = useRef(onSuccess)
+  const onErrorRef = useRef(onError)
+  const onPaymentRequiredRef = useRef(onPaymentRequired)
+
+  // Keep refs updated
+  useEffect(() => {
+    onSuccessRef.current = onSuccess
+    onErrorRef.current = onError
+    onPaymentRequiredRef.current = onPaymentRequired
+  })
+
   // Auth state
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
@@ -86,25 +98,37 @@ export function useOmnichainTransaction(
     }
   }, [statusData, updateFromStatus])
 
-  // Call onSuccess when complete
+  // Call onSuccess when complete (use ref to avoid infinite loops)
+  const hasCalledSuccessRef = useRef(false)
   useEffect(() => {
-    if (bundleState.status === 'completed' && bundleState.bundleId) {
+    if (bundleState.status === 'completed' && bundleState.bundleId && !hasCalledSuccessRef.current) {
+      hasCalledSuccessRef.current = true
       const txHashes: Record<number, string> = {}
       bundleState.chainStates.forEach(cs => {
         if (cs.txHash) {
           txHashes[cs.chainId] = cs.txHash
         }
       })
-      onSuccess?.(bundleState.bundleId, txHashes)
+      onSuccessRef.current?.(bundleState.bundleId, txHashes)
     }
-  }, [bundleState.status, bundleState.bundleId, bundleState.chainStates, onSuccess])
+    // Reset flag when bundle resets
+    if (bundleState.status === 'idle') {
+      hasCalledSuccessRef.current = false
+    }
+  }, [bundleState.status, bundleState.bundleId, bundleState.chainStates])
 
-  // Call onError when failed or expired
+  // Call onError when failed or expired (use ref to avoid infinite loops)
+  const hasCalledErrorRef = useRef(false)
   useEffect(() => {
-    if ((bundleState.status === 'failed' || bundleState.status === 'expired') && bundleState.error) {
-      onError?.(new Error(bundleState.error))
+    if ((bundleState.status === 'failed' || bundleState.status === 'expired') && bundleState.error && !hasCalledErrorRef.current) {
+      hasCalledErrorRef.current = true
+      onErrorRef.current?.(new Error(bundleState.error))
     }
-  }, [bundleState.status, bundleState.error, onError])
+    // Reset flag when bundle resets
+    if (bundleState.status === 'idle') {
+      hasCalledErrorRef.current = false
+    }
+  }, [bundleState.status, bundleState.error])
 
   /**
    * Execute omnichain transactions.
@@ -265,12 +289,12 @@ export function useOmnichainTransaction(
         )
 
         // Notify about payment options
-        onPaymentRequired?.(bundleResponse.payment_options)
+        onPaymentRequiredRef.current?.(bundleResponse.payment_options)
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create bundle'
       bundle._setError(errorMessage)
-      onError?.(err instanceof Error ? err : new Error(errorMessage))
+      onErrorRef.current?.(err instanceof Error ? err : new Error(errorMessage))
     }
   }, [
     isManagedMode,
@@ -278,8 +302,6 @@ export function useOmnichainTransaction(
     address,
     walletClient,
     bundle,
-    onPaymentRequired,
-    onError,
   ])
 
   /**
@@ -303,9 +325,9 @@ export function useOmnichainTransaction(
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to submit payment'
       bundle._setError(errorMessage)
-      onError?.(err instanceof Error ? err : new Error(errorMessage))
+      onErrorRef.current?.(err instanceof Error ? err : new Error(errorMessage))
     }
-  }, [bundleState.bundleId, bundleState.selectedPaymentChain, bundle, onError])
+  }, [bundleState.bundleId, bundleState.selectedPaymentChain, bundle])
 
   const isExecuting = bundleState.status === 'creating' ||
     bundleState.status === 'awaiting_payment' ||
