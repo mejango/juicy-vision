@@ -2243,12 +2243,9 @@ export default function TransactionPreview({
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           {/* Simplified overall status */}
           {isLaunching && (
-            <div className={`p-4 flex items-center gap-4 ${isDark ? 'bg-juice-orange/10' : 'bg-orange-50'}`}>
+            <div className={`p-4 flex items-center gap-4 border ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
               <div className="relative">
-                <div className="animate-spin w-10 h-10 border-3 border-juice-orange border-t-transparent rounded-full" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-lg">🚀</span>
-                </div>
+                <div className={`animate-spin w-10 h-10 border-3 ${isDark ? 'border-green-500' : 'border-green-600'} border-t-transparent rounded-full`} />
               </div>
               <div>
                 <p className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -2264,8 +2261,7 @@ export default function TransactionPreview({
           {/* Success state with shareable links */}
           {isComplete && Object.keys(createdProjectIds).length > 0 && (
             <div className="space-y-4">
-              <div className={`p-4 text-center ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
-                <div className="text-4xl mb-2">🎉</div>
+              <div className={`p-4 text-center border ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
                 <p className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   Project Created!
                 </p>
@@ -2456,24 +2452,14 @@ export default function TransactionPreview({
         </div>
       )}
 
-      {/* Action button */}
+      {/* Action button - hide entire section when complete with project IDs */}
+      {!((action === 'launchProject' || action === 'launch721Project') && isComplete && Object.keys(createdProjectIds).length > 0) && (
       <div className={`px-4 py-3 border-t flex justify-end ${
         isDark ? 'border-white/10' : 'border-gray-200'
       }`}>
         {(action === 'launchProject' || action === 'launch721Project') ? (
           // Direct launch execution for launch actions
-          isComplete ? (
-            <button
-              onClick={() => resetLaunch()}
-              className={`px-5 py-2 text-sm font-bold border-2 ${
-                isDark
-                  ? 'bg-white/10 text-white border-white/20 hover:bg-white/20'
-                  : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
-              } transition-colors`}
-            >
-              Done
-            </button>
-          ) : isLaunching ? (
+          isLaunching ? (
             <button
               disabled
               className="px-5 py-2 text-sm font-bold border-2 bg-gray-500 text-white border-gray-500 cursor-not-allowed opacity-75"
@@ -2553,6 +2539,7 @@ export default function TransactionPreview({
           </button>
         )}
       </div>
+      )}
 
     </div>
   )
