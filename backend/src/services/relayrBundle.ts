@@ -1,0 +1,272 @@
+/**
+ * Relayr Bundle Service
+ *
+ * Creates Relayr bundles with ERC-2771 signed forward requests.
+ * Enables server-side signing for managed wallet users.
+ */
+
+import {
+  createPublicClient,
+  encodeFunctionData,
+  http,
+  getContract,
+  type Address,
+  type Hex,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { mainnet, optimism, arbitrum, base } from 'viem/chains';
+import { getConfig } from '../utils/config.ts';
+import { logger } from '../utils/logger.ts';
+
+// ============================================================================
+// Chain Configuration
+// ============================================================================
+
+const CHAINS = {
+  1: mainnet,
+  10: optimism,
+  8453: base,
+  42161: arbitrum,
+} as const;
+
+const RPC_URLS: Record<number, string> = {
+  1: 'https://cloudflare-eth.com',
+  10: 'https://mainnet.optimism.io',
+  8453: 'https://mainnet.base.org',
+  42161: 'https://arb1.arbitrum.io/rpc',
+};
+
+// ============================================================================
+// ERC-2771 Forwarder Configuration
+// ============================================================================
+
+// TrustedForwarder address (same on all chains)
+const ERC2771_FORWARDER_ADDRESS = '0xc29d6995ab3b0df4650ad643adeac55e7acbb566' as const;
+
+// Minimal ABI for ERC2771Forwarder
+const ERC2771_FORWARDER_ABI = [
+  {
+    inputs: [{ internalType: 'address', name: 'owner', type: 'address' }],
+    name: 'nonces',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      {
+        components: [
+          { internalType: 'address', name: 'from', type: 'address' },
+          { internalType: 'address', name: 'to', type: 'address' },
+          { internalType: 'uint256', name: 'value', type: 'uint256' },
+          { internalType: 'uint256', name: 'gas', type: 'uint256' },
+          { internalType: 'uint48', name: 'deadline', type: 'uint48' },
+          { internalType: 'bytes', name: 'data', type: 'bytes' },
+          { internalType: 'bytes', name: 'signature', type: 'bytes' },
+        ],
+        internalType: 'struct ERC2771Forwarder.ForwardRequestData',
+        name: 'request',
+        type: 'tuple',
+      },
+    ],
+    name: 'execute',
+    outputs: [],
+    stateMutability: 'payable',
+    type: 'function',
+  },
+] as const;
+
+// EIP-712 typed data types for ForwardRequest signing
+const FORWARD_REQUEST_TYPES = {
+  ForwardRequest: [
+    { name: 'from', type: 'address' },
+    { name: 'to', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'gas', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' },
+    { name: 'deadline', type: 'uint48' },
+    { name: 'data', type: 'bytes' },
+  ],
+} as const;
+
+// 48 hours deadline for signatures
+const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60;
+
+// Relayr API configuration
+const RELAYR_API_URL = 'https://api.relayr.network';
+const RELAYR_APP_ID = process.env.RELAYR_APP_ID || 'juicy-vision';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface RelayrTransaction {
+  chainId: number;
+  target: string;
+  data: string;
+  value: string;
+}
+
+export interface CreateBundleParams {
+  userId: string;
+  transactions: RelayrTransaction[];
+  owner: string;
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function getPublicClient(chainId: number) {
+  const chain = CHAINS[chainId as keyof typeof CHAINS];
+  if (!chain) throw new Error(`Unsupported chain: ${chainId}`);
+
+  return createPublicClient({
+    chain,
+    transport: http(RPC_URLS[chainId]),
+  });
+}
+
+// ============================================================================
+// Main Function
+// ============================================================================
+
+/**
+ * Create a Relayr bundle with ERC-2771 signed transactions.
+ * Server signs on behalf of the user's smart account.
+ */
+export async function createRelayrBundle(params: CreateBundleParams): Promise<{ bundleId: string }> {
+  const { userId, transactions, owner } = params;
+  const config = getConfig();
+
+  // Get the system signing key
+  const systemKey = config.reservesPrivateKey as `0x${string}`;
+  if (!systemKey) {
+    throw new Error('RESERVES_PRIVATE_KEY not configured');
+  }
+
+  const systemAccount = privateKeyToAccount(systemKey);
+
+  logger.info('Creating Relayr bundle', {
+    userId,
+    owner,
+    chainCount: transactions.length,
+    chains: transactions.map(tx => tx.chainId),
+  });
+
+  // Sign ERC-2771 forward requests for each transaction
+  const wrappedTransactions: Array<{
+    chain: number;
+    target: string;
+    data: string;
+    value: string;
+  }> = [];
+
+  for (const tx of transactions) {
+    const publicClient = getPublicClient(tx.chainId);
+
+    // Get nonce from TrustedForwarder
+    const forwarderContract = getContract({
+      address: ERC2771_FORWARDER_ADDRESS,
+      abi: ERC2771_FORWARDER_ABI,
+      client: publicClient,
+    });
+
+    const nonce = await forwarderContract.read.nonces([owner as Address]);
+    const deadline = Math.floor(Date.now() / 1000) + ERC2771_DEADLINE_DURATION_SECONDS;
+
+    // Build the ForwardRequest message
+    const messageData = {
+      from: owner as Address,
+      to: tx.target as Address,
+      value: BigInt(tx.value || '0'),
+      gas: BigInt(2000000), // Conservative gas estimate
+      nonce,
+      deadline,
+      data: tx.data as Hex,
+    };
+
+    // Sign the EIP-712 typed data
+    const signature = await systemAccount.signTypedData({
+      domain: {
+        name: 'Juicebox',
+        chainId: tx.chainId,
+        verifyingContract: ERC2771_FORWARDER_ADDRESS,
+        version: '1',
+      },
+      primaryType: 'ForwardRequest',
+      types: FORWARD_REQUEST_TYPES,
+      message: messageData,
+    });
+
+    logger.debug('Signed ERC-2771 forward request', {
+      chainId: tx.chainId,
+      from: owner,
+      to: tx.target,
+      nonce: nonce.toString(),
+    });
+
+    // Encode the execute() call with the signed request
+    const executeData = encodeFunctionData({
+      abi: ERC2771_FORWARDER_ABI,
+      functionName: 'execute',
+      args: [{
+        from: messageData.from,
+        to: messageData.to,
+        value: messageData.value,
+        gas: messageData.gas,
+        deadline: messageData.deadline,
+        data: messageData.data,
+        signature,
+      }],
+    });
+
+    wrappedTransactions.push({
+      chain: tx.chainId,
+      target: ERC2771_FORWARDER_ADDRESS,
+      data: executeData,
+      value: tx.value,
+    });
+  }
+
+  // Create Relayr bundle
+  const bundleRequest = {
+    app_id: RELAYR_APP_ID,
+    transactions: wrappedTransactions,
+    perform_simulation: true,
+    virtual_nonce_mode: 'Disabled',
+  };
+
+  logger.info('Submitting bundle to Relayr', {
+    userId,
+    transactionCount: wrappedTransactions.length,
+  });
+
+  const response = await fetch(`${RELAYR_API_URL}/v1/bundle/balance`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(bundleRequest),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error('Relayr bundle creation failed', new Error(errorText), {
+      status: response.status,
+      userId,
+    });
+    throw new Error(`Relayr API error: ${response.status} - ${errorText}`);
+  }
+
+  const bundleResponse = await response.json();
+  const bundleId = bundleResponse.bundle_uuid;
+
+  logger.info('Relayr bundle created', {
+    userId,
+    bundleId,
+    chains: transactions.map(tx => tx.chainId),
+  });
+
+  return { bundleId };
+}

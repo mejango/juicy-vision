@@ -26,6 +26,7 @@ import {
   cancelTransfer,
   getUserPendingTransfers,
 } from '../services/smartAccounts.ts';
+import { createRelayrBundle } from '../services/relayrBundle.ts';
 import type { Address } from 'viem';
 
 const walletRouter = new Hono();
@@ -184,6 +185,50 @@ walletRouter.post(
     } catch (error) {
       console.error('Transaction execution failed:', error);
       const message = error instanceof Error ? error.message : 'Transaction failed';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// ============================================================================
+// Relayr Bundle (Server-side ERC-2771 signing for omnichain deployments)
+// ============================================================================
+
+// POST /wallet/relayr-bundle - Create a Relayr bundle with server-signed transactions
+const RelayrBundleSchema = z.object({
+  transactions: z.array(z.object({
+    chainId: z.number(),
+    target: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    data: z.string().regex(/^0x[a-fA-F0-9]*$/),
+    value: z.string(),
+  })),
+  owner: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+});
+
+walletRouter.post(
+  '/relayr-bundle',
+  requireAuth,
+  zValidator('json', RelayrBundleSchema),
+  async (c) => {
+    const user = c.get('user');
+    const body = c.req.valid('json');
+
+    try {
+      const result = await createRelayrBundle({
+        userId: user.id,
+        transactions: body.transactions,
+        owner: body.owner,
+      });
+
+      return c.json({
+        success: true,
+        data: {
+          bundleId: result.bundleId,
+        },
+      });
+    } catch (error) {
+      console.error('Relayr bundle creation failed:', error);
+      const message = error instanceof Error ? error.message : 'Bundle creation failed';
       return c.json({ success: false, error: message }, 400);
     }
   }
