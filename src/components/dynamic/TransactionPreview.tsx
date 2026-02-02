@@ -1559,8 +1559,34 @@ export default function TransactionPreview({
     const hasEmptyConfig = !suckerDeploymentConfiguration?.deployerConfigurations?.length
 
     if (hasEmptyConfig && shouldConfigureSuckers(launchChainIds)) {
+      // Extract per-chain token addresses from terminal configurations
+      // This enables proper ERC20 bridging (e.g., USDC on each chain)
+      const tokenAddresses: Record<number, `0x${string}`> = {}
+      for (const chainId of launchChainIds) {
+        // Check for per-chain override first
+        const chainConfig = parsedChainConfigs.find(c => Number(c.chainId) === chainId)
+        const chainTerminalConfigs = (chainConfig?.overrides?.terminalConfigurations as JBTerminalConfig[] | undefined) ?? terminalConfigurations
+
+        // Look for the first non-native ERC20 token
+        for (const terminal of (chainTerminalConfigs as JBTerminalConfig[])) {
+          for (const ctx of terminal.accountingContextsToAccept) {
+            const tokenAddr = ctx.token as string
+            // Skip native token (0xEEEe...) - we want ERC20 tokens
+            if (tokenAddr && tokenAddr.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
+              tokenAddresses[chainId] = tokenAddr as `0x${string}`
+              break
+            }
+          }
+          if (tokenAddresses[chainId]) break
+        }
+      }
+
+      const hasTokenAddresses = Object.keys(tokenAddresses).length > 0
       const firstChainId = launchChainIds[0]
-      const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, { salt: previewSaltRef.current! })
+      const generatedConfig = parseSuckerDeployerConfig(firstChainId, launchChainIds, {
+        salt: previewSaltRef.current!,
+        tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
+      })
 
       if (generatedConfig.deployerConfigurations.length > 0) {
         suckerDeploymentConfiguration = {
