@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useThemeStore } from '../../stores'
 import { useProjectDraftStore } from '../../stores/projectDraftStore'
 import { useComponentCollaboration } from '../../hooks/useComponentCollaboration'
+import { RemoteCursors } from '../collaboration/RemoteCursors'
 
 interface Option {
   value: string
@@ -79,14 +80,35 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     remoteSelections,
     remoteTyping,
     remoteHovers,
+    remoteCursors,
     sendSelection,
     sendTyping,
     sendHover,
+    sendCursor,
   } = useComponentCollaboration({
     chatId,
     messageId,
     enabled: collaborationEnabled,
   })
+
+  // Container ref for cursor tracking
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Handle cursor movement
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!collaborationEnabled || hasSubmitted) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = (e.clientX - rect.left) / rect.width
+    const y = (e.clientY - rect.top) / rect.height
+    sendCursor('_picker', x, y)
+  }, [collaborationEnabled, hasSubmitted, sendCursor])
+
+  // Handle cursor leaving component
+  const handleMouseLeave = useCallback(() => {
+    if (!collaborationEnabled) return
+    // Send out-of-bounds cursor to signal hide
+    sendCursor('_picker', -1, -1)
+  }, [collaborationEnabled, sendCursor])
 
   // Parse userResponse to restore selections (format: "GroupLabel: Value, GroupLabel2: Value2. Note: memo")
   const parseUserResponse = (response: string): Record<string, string | string[]> => {
@@ -415,9 +437,16 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     : 0
 
   return (
-    <div className={`border overflow-hidden inline-block w-full max-w-xl ${
-      isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
-    }`}>
+    <div
+      ref={containerRef}
+      className={`relative border overflow-hidden inline-block w-full max-w-xl ${
+        isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
+      }`}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* Remote cursors overlay */}
+      {collaborationEnabled && <RemoteCursors cursors={remoteCursors.get('_picker')} />}
       <div className="p-4 space-y-4">
         {groups.map(group => (
           <div key={group.id} className="space-y-1.5">

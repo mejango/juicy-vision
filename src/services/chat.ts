@@ -542,8 +542,11 @@ export interface WsMessage {
 export interface ComponentInteractionData {
   messageId: string
   groupId: string
-  action: 'select' | 'typing' | 'hover' | 'hover_end'
+  action: 'select' | 'typing' | 'hover' | 'hover_end' | 'cursor'
   value?: string
+  // Cursor position (relative to component bounds, 0-1 normalized)
+  x?: number
+  y?: number
 }
 
 export type WsMessageHandler = (message: WsMessage) => void

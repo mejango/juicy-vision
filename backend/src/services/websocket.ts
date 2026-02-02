@@ -45,8 +45,10 @@ export interface WsMessage {
 export interface ComponentInteractionData {
   messageId: string; // Message containing the component
   groupId: string; // Option group ID
-  action: 'select' | 'typing' | 'hover' | 'hover_end';
+  action: 'select' | 'typing' | 'hover' | 'hover_end' | 'cursor';
   value?: string; // Selected option value or partial typed text
+  x?: number; // Cursor x position (0-1 normalized)
+  y?: number; // Cursor y position (0-1 normalized)
 }
 
 export interface PresenceUpdate {

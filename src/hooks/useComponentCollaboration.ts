@@ -34,6 +34,13 @@ export interface RemoteHover {
   emoji: string
 }
 
+export interface RemoteCursor {
+  address: string
+  emoji: string
+  x: number // 0-1 normalized position
+  y: number // 0-1 normalized position
+}
+
 interface CollaborationState {
   // Map of groupId -> array of remote selections
   remoteSelections: Map<string, RemoteSelection[]>
@@ -41,6 +48,8 @@ interface CollaborationState {
   remoteTyping: Map<string, RemoteTyping[]>
   // Map of groupId -> array of users hovering
   remoteHovers: Map<string, RemoteHover[]>
+  // Map of groupId -> array of remote cursors
+  remoteCursors: Map<string, RemoteCursor[]>
 }
 
 interface UseComponentCollaborationOptions {
@@ -50,6 +59,8 @@ interface UseComponentCollaborationOptions {
 }
 
 const TYPING_TIMEOUT = 2000 // How long to show typing indicator after last keystroke
+const CURSOR_TIMEOUT = 2000 // How long to show cursor after last movement
+const CURSOR_THROTTLE = 50 // Minimum ms between cursor position updates
 
 export function useComponentCollaboration({
   chatId,
@@ -60,10 +71,13 @@ export function useComponentCollaboration({
     remoteSelections: new Map(),
     remoteTyping: new Map(),
     remoteHovers: new Map(),
+    remoteCursors: new Map(),
   })
 
   // Track typing timeouts per user+groupId
   const typingTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  // Track cursor timeouts per user+groupId
+  const cursorTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   // Listen for incoming component interactions
   useEffect(() => {
@@ -208,6 +222,53 @@ export function useComponentCollaboration({
             newState.remoteHovers = hovers
             break
           }
+
+          case 'cursor': {
+            // Update cursor position
+            if (data.x === undefined || data.y === undefined) break
+
+            const cursors = new Map(prev.remoteCursors)
+            const groupCursors = [...(cursors.get(data.groupId) || [])]
+            const timeoutKey = `${senderAddress}:${data.groupId}`
+
+            const existingIdx = groupCursors.findIndex(
+              (c) => c.address?.toLowerCase() === senderAddress?.toLowerCase()
+            )
+
+            if (existingIdx !== -1) {
+              groupCursors[existingIdx] = { address: senderAddress, emoji, x: data.x, y: data.y }
+            } else {
+              groupCursors.push({ address: senderAddress, emoji, x: data.x, y: data.y })
+            }
+
+            // Clear existing timeout for this user+group
+            const existingTimeout = cursorTimeouts.current.get(timeoutKey)
+            if (existingTimeout) {
+              clearTimeout(existingTimeout)
+            }
+
+            // Set timeout to remove cursor after inactivity
+            const timeout = setTimeout(() => {
+              setState((s) => {
+                const newMap = new Map(s.remoteCursors)
+                const filtered = (newMap.get(data.groupId) || []).filter(
+                  (c) => c.address?.toLowerCase() !== senderAddress?.toLowerCase()
+                )
+                if (filtered.length > 0) {
+                  newMap.set(data.groupId, filtered)
+                } else {
+                  newMap.delete(data.groupId)
+                }
+                return { ...s, remoteCursors: newMap }
+              })
+              cursorTimeouts.current.delete(timeoutKey)
+            }, CURSOR_TIMEOUT)
+            cursorTimeouts.current.set(timeoutKey, timeout)
+
+            cursors.set(data.groupId, groupCursors)
+            newState.remoteCursors = cursors
+            break
+          }
         }
 
         return newState
@@ -219,6 +280,9 @@ export function useComponentCollaboration({
       // Clear all typing timeouts
       typingTimeouts.current.forEach((timeout) => clearTimeout(timeout))
       typingTimeouts.current.clear()
+      // Clear all cursor timeouts
+      cursorTimeouts.current.forEach((timeout) => clearTimeout(timeout))
+      cursorTimeouts.current.clear()
     }
   }, [chatId, messageId, enabled])
 
@@ -288,6 +352,33 @@ export function useComponentCollaboration({
     [chatId, messageId, enabled]
   )
 
+  // Track last cursor send time per groupId for throttling
+  const lastCursorSendTime = useRef<Map<string, number>>(new Map())
+
+  // Send cursor position (throttled)
+  const sendCursor = useCallback(
+    (groupId: string, x: number, y: number) => {
+      if (!chatId || !messageId || !enabled) return
+
+      const now = Date.now()
+      const lastSend = lastCursorSendTime.current.get(groupId) || 0
+
+      // Throttle: only send if enough time has passed
+      if (now - lastSend < CURSOR_THROTTLE) return
+
+      lastCursorSendTime.current.set(groupId, now)
+
+      sendComponentInteraction({
+        messageId,
+        groupId,
+        action: 'cursor',
+        x,
+        y,
+      })
+    },
+    [chatId, messageId, enabled]
+  )
+
   // Cleanup on unmount - clear all debounce timers
   useEffect(() => {
     return () => {
@@ -300,8 +391,10 @@ export function useComponentCollaboration({
     remoteSelections: state.remoteSelections,
     remoteTyping: state.remoteTyping,
     remoteHovers: state.remoteHovers,
+    remoteCursors: state.remoteCursors,
     sendSelection,
     sendTyping,
     sendHover,
+    sendCursor,
   }
 }
