@@ -44,9 +44,29 @@ export default function LaunchProjectModal({
   const { isConnected, address: connectedAddress } = useAccount()
   const { address: managedAddress } = useManagedWallet()
 
-  // Determine the effective owner: Smart Account for managed mode, connected wallet for self-custody
-  // This ensures the project is owned by the user's actual address, not a placeholder from the AI
+  // Check if user has both options available
+  const hasBothOptions = !!(isManagedMode && managedAddress && isConnected && connectedAddress)
+
+  // Track user's choice when both options are available
+  // null = no choice made yet (will show choice UI)
+  // 'managed' = use smart account + server signing
+  // 'wallet' = use connected wallet + wallet signing
+  const [ownerChoice, setOwnerChoice] = useState<'managed' | 'wallet' | null>(null)
+
+  // Reset choice when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setOwnerChoice(null)
+    }
+  }, [isOpen])
+
+  // Determine the effective owner based on choice or defaults
   const effectiveOwner = useMemo(() => {
+    // If user made an explicit choice
+    if (hasBothOptions && ownerChoice) {
+      return ownerChoice === 'managed' ? managedAddress : connectedAddress
+    }
+    // Default behavior when only one option
     if (isManagedMode && managedAddress) {
       return managedAddress
     }
@@ -55,7 +75,10 @@ export default function LaunchProjectModal({
     }
     // Fallback to prop value (may be empty or from AI output)
     return owner
-  }, [isManagedMode, managedAddress, isConnected, connectedAddress, owner])
+  }, [hasBothOptions, ownerChoice, isManagedMode, managedAddress, isConnected, connectedAddress, owner])
+
+  // Determine if we should force self-custody mode (wallet signing)
+  const forceSelfCustody = hasBothOptions && ownerChoice === 'wallet'
 
   const [hasStarted, setHasStarted] = useState(false)
   const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
@@ -106,6 +129,8 @@ export default function LaunchProjectModal({
 
   const handleLaunch = useCallback(async () => {
     if (!effectiveOwner) return
+    // If both options available but no choice made, don't proceed
+    if (hasBothOptions && !ownerChoice) return
 
     setHasStarted(true)
     await launch({
@@ -115,8 +140,9 @@ export default function LaunchProjectModal({
       rulesetConfigurations: [rulesetConfig],
       terminalConfigurations,
       memo,
+      forceSelfCustody,
     })
-  }, [effectiveOwner, chainIds, projectUri, rulesetConfig, terminalConfigurations, memo, launch])
+  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, terminalConfigurations, memo, launch])
 
   const handleClose = useCallback(() => {
     reset()
@@ -282,15 +308,68 @@ export default function LaunchProjectModal({
           {/* Pre-launch info */}
           {!hasStarted && (
             <>
-              {/* Owner */}
-              <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Project Owner {isManagedMode && '(Smart Account)'}
+              {/* Owner choice when both options available */}
+              {hasBothOptions && !ownerChoice && (
+                <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                  <div className={`text-xs font-medium mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Choose project owner
+                  </div>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => setOwnerChoice('wallet')}
+                      className={`w-full p-3 text-left transition-colors ${
+                        isDark
+                          ? 'bg-white/5 hover:bg-white/10 border border-white/10'
+                          : 'bg-white hover:bg-gray-50 border border-gray-200'
+                      }`}
+                    >
+                      <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        Use {connectedAddress?.slice(0, 6)}...{connectedAddress?.slice(-4)}
+                      </div>
+                      <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Connected wallet • Sign with wallet
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setOwnerChoice('managed')}
+                      className={`w-full p-3 text-left transition-colors ${
+                        isDark
+                          ? 'bg-white/5 hover:bg-white/10 border border-white/10'
+                          : 'bg-white hover:bg-gray-50 border border-gray-200'
+                      }`}
+                    >
+                      <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        Use {managedAddress?.slice(0, 6)}...{managedAddress?.slice(-4)}
+                      </div>
+                      <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Smart Account • No signing needed
+                      </div>
+                    </button>
+                  </div>
                 </div>
-                <div className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {effectiveOwner ? `${effectiveOwner.slice(0, 8)}...${effectiveOwner.slice(-6)}` : 'Not connected'}
+              )}
+
+              {/* Owner (show after choice or when only one option) */}
+              {(!hasBothOptions || ownerChoice) && (
+                <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                  <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Project Owner {ownerChoice === 'managed' || (!hasBothOptions && isManagedMode) ? '(Smart Account)' : '(Wallet)'}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      {effectiveOwner ? `${effectiveOwner.slice(0, 8)}...${effectiveOwner.slice(-6)}` : 'Not connected'}
+                    </div>
+                    {hasBothOptions && ownerChoice && (
+                      <button
+                        onClick={() => setOwnerChoice(null)}
+                        className={`text-xs ${isDark ? 'text-juice-cyan hover:text-juice-cyan/80' : 'text-blue-600 hover:text-blue-500'}`}
+                      >
+                        Change
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Gas Sponsorship */}
               <div className={`p-3 ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
@@ -398,10 +477,10 @@ export default function LaunchProjectModal({
               </button>
               <button
                 onClick={handleLaunch}
-                disabled={!canProceed}
+                disabled={!canProceed || (hasBothOptions && !ownerChoice)}
                 className="flex-1 py-3 font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Create Project{chainIds.length > 1 ? `s` : ''}
+                {hasBothOptions && !ownerChoice ? 'Choose Owner' : `Create Project${chainIds.length > 1 ? 's' : ''}`}
               </button>
             </div>
           )}

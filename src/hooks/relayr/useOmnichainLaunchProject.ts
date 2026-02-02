@@ -34,6 +34,7 @@ export interface OmnichainLaunchProjectParams {
   memo: string
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig  // Optional: deploy suckers atomically
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides (e.g., different USDC addresses)
+  forceSelfCustody?: boolean  // Force wallet signing even if managed mode is available
 }
 
 export interface UseOmnichainLaunchProjectReturn {
@@ -185,10 +186,15 @@ export function useOmnichainLaunchProject(
       memo,
       suckerDeploymentConfiguration,
       chainConfigs,
+      forceSelfCustody = false,
     } = params
 
+    // Determine if we should use managed mode
+    // Managed mode is used when: in managed mode AND not forced to self-custody
+    const useServerSigning = isManagedMode && !forceSelfCustody
+
     // For managed mode, use managed wallet as owner if not specified
-    const projectOwner = owner || (isManagedMode ? managedAddress : undefined)
+    const projectOwner = owner || (useServerSigning ? managedAddress : undefined)
     if (!projectOwner) {
       bundle._setError('No owner address specified')
       return
@@ -260,11 +266,11 @@ export function useOmnichainLaunchProject(
 
       let bundleId: string
 
-      if (isManagedMode) {
-        // === MANAGED MODE: Server-side ERC-2771 signing ===
+      if (useServerSigning) {
+        // === SERVER SIGNING: Server-side ERC-2771 signing ===
         // User's signing key was stored at login - no prompts needed
         // Server handles all signing and bundle creation
-        console.log('=== MANAGED MODE: Server-side signing ===')
+        console.log('=== SERVER SIGNING MODE ===')
         console.log(`Submitting ${transactions.length} transaction(s) to server for chains: ${chainIds.join(', ')}`)
 
         const serverTransactions = transactions.map(tx => ({
