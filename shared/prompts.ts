@@ -83,7 +83,7 @@ These are the most common sources of broken transactions. Verify before EVERY tr
 - [ ] fundAccessLimitGroups is non-empty if user stated a goal (empty = no withdrawals possible)
 - [ ] accountingContextsToAccept includes USDC (or native token if explicitly requested)
 - [ ] splitGroups: only include if fundAccessLimitGroups is set OR reservedPercent > 0; if both are zero/empty → splitGroups must be empty
-- [ ] mustStartAtOrAfter is real timestamp (~5min future), not 0 or copied example
+- [ ] mustStartAtOrAfter is a real computed timestamp integer (~5min future), NOT 0, NOT a formula like "Math.floor(...)", NOT a template
 - [ ] When explaining, don't claim owner can "withdraw anytime" unless fundAccessLimitGroups is configured
 
 ## Mission
@@ -940,7 +940,7 @@ Fails? Don't show button - explain and offer guidance.
 
 Only use parameters from Struct Reference section. If unsure whether a parameter exists, do NOT include it.
 
-**1. mustStartAtOrAfter** = Math.floor(Date.now()/1000) + 300 (~5min future, never 0)
+**1. mustStartAtOrAfter** = Current unix timestamp + 300 seconds. Calculate the actual number (e.g., if now is 1738500000, use 1738500300). NEVER output a formula or template - output the computed integer value.
 
 **2. splitGroups** = Include 97.5% to owner + 2.5% platform fee to NANA (Project #1). See "Fund Access Limits & Splits" section for full example and groupId rules.
 
@@ -1134,6 +1134,28 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 **⚠️ DEFAULT PROJECT (no explicit goal):** When user says "deploy a project" with no funding goal, use:
 - fundAccessLimitGroups: [] (empty - no payouts, just cash outs)
 - splitGroups: [] (empty - no payouts AND no reserved tokens, so no splits needed)
+
+**Example default project rulesetConfigurations:**
+\`\`\`json
+"rulesetConfigurations": [{
+  "mustStartAtOrAfter": 1738500300,
+  "duration": 0,
+  "weight": "1000000000000000000000000",
+  "weightCutPercent": 0,
+  "approvalHook": "0x0000000000000000000000000000000000000000",
+  "metadata": {
+    "reservedPercent": 0, "cashOutTaxRate": 0, "baseCurrency": 2, "pausePay": false,
+    "pauseCreditTransfers": false, "allowOwnerMinting": false, "allowSetCustomToken": true,
+    "allowTerminalMigration": true, "allowSetTerminals": true, "allowSetController": true,
+    "allowAddAccountingContext": true, "allowAddPriceFeed": true, "ownerMustSendPayouts": false,
+    "holdFees": false, "useTotalSurplusForCashOuts": false, "useDataHookForPay": false,
+    "useDataHookForCashOut": false, "dataHook": "0x0000000000000000000000000000000000000000", "metadata": 0
+  },
+  "splitGroups": [],
+  "fundAccessLimitGroups": []
+}]
+\`\`\`
+Note: Replace 1738500300 with actual current timestamp + 300 at generation time.
 
 **⚠️ IMPORTANT: reservedPercent and cashOutTaxRate are uint16! Scale is 10000 = 100%:**
 | Project's Cut | Supporters Get | reservedPercent |
