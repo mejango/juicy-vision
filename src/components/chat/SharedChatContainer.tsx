@@ -160,9 +160,10 @@ export default function SharedChatContainer() {
 
   // Listen for juice:send-message events from components (e.g., post-launch follow-up)
   useEffect(() => {
-    const handleComponentMessage = async (event: CustomEvent<{ message: string; bypassSkipAi?: boolean }>) => {
+    const handleComponentMessage = async (event: Event) => {
       if (!activeChatId) return
-      const { message } = event.detail
+      const customEvent = event as CustomEvent<{ message: string; bypassSkipAi?: boolean }>
+      const { message } = customEvent.detail
 
       try {
         // Send as user message
@@ -174,9 +175,9 @@ export default function SharedChatContainer() {
       }
     }
 
-    window.addEventListener('juice:send-message', handleComponentMessage as EventListener)
+    window.addEventListener('juice:send-message', handleComponentMessage)
     return () => {
-      window.removeEventListener('juice:send-message', handleComponentMessage as EventListener)
+      window.removeEventListener('juice:send-message', handleComponentMessage)
     }
   }, [activeChatId])
 
