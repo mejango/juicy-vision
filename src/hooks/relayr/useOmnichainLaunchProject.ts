@@ -53,9 +53,9 @@ export interface UseOmnichainLaunchProjectReturn {
 // 48 hours deadline for signatures
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60
 
-// localStorage keys for persisting deployment state
-const DEPLOYMENT_RESULT_KEY = 'juicy-vision:deployment-result'
-const DEPLOYMENT_IN_PROGRESS_KEY = 'juicy-vision:deployment-in-progress'
+// localStorage key prefixes for persisting deployment state (scoped by deploymentKey)
+const DEPLOYMENT_RESULT_PREFIX = 'juicy-vision:deployment-result:'
+const DEPLOYMENT_IN_PROGRESS_PREFIX = 'juicy-vision:deployment-in-progress:'
 
 interface PersistedDeploymentResult {
   bundleId: string
@@ -70,58 +70,59 @@ interface PersistedInProgressDeployment {
   timestamp: number
 }
 
-function saveDeploymentResult(result: PersistedDeploymentResult): void {
+function getResultKey(deploymentKey: string | undefined): string {
+  return deploymentKey ? `${DEPLOYMENT_RESULT_PREFIX}${deploymentKey}` : `${DEPLOYMENT_RESULT_PREFIX}default`
+}
+
+function getInProgressKey(deploymentKey: string | undefined): string {
+  return deploymentKey ? `${DEPLOYMENT_IN_PROGRESS_PREFIX}${deploymentKey}` : `${DEPLOYMENT_IN_PROGRESS_PREFIX}default`
+}
+
+function saveDeploymentResult(result: PersistedDeploymentResult, deploymentKey: string | undefined): void {
   try {
-    localStorage.setItem(DEPLOYMENT_RESULT_KEY, JSON.stringify(result))
+    localStorage.setItem(getResultKey(deploymentKey), JSON.stringify(result))
     // Clear in-progress when we have a result
-    localStorage.removeItem(DEPLOYMENT_IN_PROGRESS_KEY)
+    localStorage.removeItem(getInProgressKey(deploymentKey))
   } catch (err) {
     console.warn('Failed to save deployment result to localStorage:', err)
   }
 }
 
-function loadDeploymentResult(): PersistedDeploymentResult | null {
+function loadDeploymentResult(deploymentKey: string | undefined): PersistedDeploymentResult | null {
   try {
-    const stored = localStorage.getItem(DEPLOYMENT_RESULT_KEY)
+    const stored = localStorage.getItem(getResultKey(deploymentKey))
     if (!stored) return null
-    const result = JSON.parse(stored) as PersistedDeploymentResult
-    // Expire after 5 minutes - only purpose is to survive page reload during active deployment
-    // Not meant to persist across sessions/new chats
-    if (Date.now() - result.timestamp > 5 * 60 * 1000) {
-      localStorage.removeItem(DEPLOYMENT_RESULT_KEY)
-      return null
-    }
-    return result
+    return JSON.parse(stored) as PersistedDeploymentResult
   } catch {
     return null
   }
 }
 
-function clearDeploymentResult(): void {
+function clearDeploymentResult(deploymentKey: string | undefined): void {
   try {
-    localStorage.removeItem(DEPLOYMENT_RESULT_KEY)
-    localStorage.removeItem(DEPLOYMENT_IN_PROGRESS_KEY)
+    localStorage.removeItem(getResultKey(deploymentKey))
+    localStorage.removeItem(getInProgressKey(deploymentKey))
   } catch {
     // Ignore
   }
 }
 
-function saveInProgressDeployment(data: PersistedInProgressDeployment): void {
+function saveInProgressDeployment(data: PersistedInProgressDeployment, deploymentKey: string | undefined): void {
   try {
-    localStorage.setItem(DEPLOYMENT_IN_PROGRESS_KEY, JSON.stringify(data))
+    localStorage.setItem(getInProgressKey(deploymentKey), JSON.stringify(data))
   } catch (err) {
     console.warn('Failed to save in-progress deployment to localStorage:', err)
   }
 }
 
-function loadInProgressDeployment(): PersistedInProgressDeployment | null {
+function loadInProgressDeployment(deploymentKey: string | undefined): PersistedInProgressDeployment | null {
   try {
-    const stored = localStorage.getItem(DEPLOYMENT_IN_PROGRESS_KEY)
+    const stored = localStorage.getItem(getInProgressKey(deploymentKey))
     if (!stored) return null
     const data = JSON.parse(stored) as PersistedInProgressDeployment
     // Expire after 1 hour (bundles have limited lifetime)
     if (Date.now() - data.timestamp > 60 * 60 * 1000) {
-      localStorage.removeItem(DEPLOYMENT_IN_PROGRESS_KEY)
+      localStorage.removeItem(getInProgressKey(deploymentKey))
       return null
     }
     return data
@@ -151,7 +152,7 @@ function loadInProgressDeployment(): PersistedInProgressDeployment | null {
 export function useOmnichainLaunchProject(
   options: UseOmnichainTransactionOptions = {}
 ): UseOmnichainLaunchProjectReturn {
-  const { onSuccess, onError } = options
+  const { onSuccess, onError, deploymentKey } = options
 
   // Use refs for callbacks to avoid infinite loops when callbacks change
   const onSuccessRef = useRef(onSuccess)
@@ -177,11 +178,11 @@ export function useOmnichainLaunchProject(
   const [predictedProjectIds, setPredictedProjectIds] = useState<Record<number, number>>({})
   const [confirmedProjectIds, setConfirmedProjectIds] = useState<Record<number, number>>({})
 
-  // Track persisted completed state (survives page reload)
-  const [persistedResult, setPersistedResult] = useState<PersistedDeploymentResult | null>(() => loadDeploymentResult())
+  // Track persisted completed state (survives page reload) - scoped by deploymentKey
+  const [persistedResult, setPersistedResult] = useState<PersistedDeploymentResult | null>(() => loadDeploymentResult(deploymentKey))
 
   // Track in-progress deployment that needs to be resumed (survives component remount)
-  const [resumedInProgress, setResumedInProgress] = useState<PersistedInProgressDeployment | null>(() => loadInProgressDeployment())
+  const [resumedInProgress, setResumedInProgress] = useState<PersistedInProgressDeployment | null>(() => loadInProgressDeployment(deploymentKey))
 
   // Bundle state management
   const bundle = useRelayrBundle() as ReturnType<typeof useRelayrBundle> & {
@@ -264,7 +265,7 @@ export function useOmnichainLaunchProject(
           txHashes,
           timestamp: Date.now(),
         }
-        saveDeploymentResult(persistedData)  // Also clears in-progress from localStorage
+        saveDeploymentResult(persistedData, deploymentKey)  // Also clears in-progress from localStorage
         setPersistedResult(persistedData)
         setResumedInProgress(null)  // Clear in-progress state
         console.log('Deployment result saved to localStorage:', persistedData)
@@ -282,7 +283,7 @@ export function useOmnichainLaunchProject(
           txHashes,
           timestamp: Date.now(),
         }
-        saveDeploymentResult(persistedData)  // Also clears in-progress from localStorage
+        saveDeploymentResult(persistedData, deploymentKey)  // Also clears in-progress from localStorage
         setPersistedResult(persistedData)
         setResumedInProgress(null)  // Clear in-progress state
 
@@ -319,8 +320,8 @@ export function useOmnichainLaunchProject(
       forceSelfCustody = false,
     } = params
 
-    // Clear any persisted state from previous deployments
-    clearDeploymentResult()
+    // Clear any persisted state from previous deployments (for this deployment key)
+    clearDeploymentResult(deploymentKey)
     setPersistedResult(null)
 
     // Determine if we should use managed mode
@@ -530,7 +531,7 @@ export function useOmnichainLaunchProject(
         bundleId,
         chainIds,
         timestamp: Date.now(),
-      })
+      }, deploymentKey)
       console.log('Saved in-progress deployment:', bundleId)
 
       // Initialize bundle state with predicted project IDs
@@ -558,12 +559,12 @@ export function useOmnichainLaunchProject(
     setConfirmedProjectIds({})
     setIsSigning(false)
     setSigningChainId(null)
-    // Clear persisted state
-    clearDeploymentResult()
+    // Clear persisted state for this deployment key
+    clearDeploymentResult(deploymentKey)
     setPersistedResult(null)
     setResumedInProgress(null)
     hasResumedRef.current = false
-  }, [resetBundle])
+  }, [resetBundle, deploymentKey])
 
   // Consider launching if bundle is processing OR if we're resuming an in-progress deployment
   const isLaunching = bundleState.status === 'creating' || bundleState.status === 'processing' ||

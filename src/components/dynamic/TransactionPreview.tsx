@@ -4,6 +4,7 @@ import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useProjectDraftStore } from '../../stores/projectDraftStore'
 import { useManagedWallet } from '../../hooks'
+import { useTransactionPreviewState, type TransactionPreviewState } from '../../hooks/useComponentState'
 import { getWalletSession } from '../../services/siwe'
 import { useOmnichainLaunchProject } from '../../hooks/relayr'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
@@ -51,6 +52,7 @@ interface TransactionPreviewProps {
   chainConfigs?: string // JSON string of ChainOverride[] for multi-chain deployments
   _isTruncated?: string // Flag set by parser when component was truncated mid-stream
   _isStreaming?: boolean // True if parent message is still actively streaming
+  messageId?: string // Message ID for persisting component state server-side
 }
 
 const ACTION_ICONS: Record<string, string> = {
@@ -1345,6 +1347,7 @@ export default function TransactionPreview({
   chainConfigs,
   _isTruncated,
   _isStreaming,
+  messageId,
 }: TransactionPreviewProps) {
   const [expanded, setExpanded] = useState(false)
   const [technicalDetailsReady, setTechnicalDetailsReady] = useState(false)
@@ -1355,6 +1358,13 @@ export default function TransactionPreview({
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+
+  // Server-side persisted state for this component
+  const {
+    state: persistedState,
+    isLoading: persistedStateLoading,
+    setState: setPersistedState,
+  } = useTransactionPreviewState(messageId)
 
   // Auth state for managed wallet users - use isManagedMode from hook for consistent state
   const {
@@ -1461,6 +1471,47 @@ export default function TransactionPreview({
       }))
     }, 1000)
   }, [action, isComplete, createdProjectIds])
+
+  // Save completed state to server when transaction finishes
+  // This persists the state so all chat participants see the resolved component
+  const hasSavedCompletionRef = useRef(false)
+  useEffect(() => {
+    // Only save for launch actions
+    if (action !== 'launchProject' && action !== 'launch721Project') return
+
+    // Only save once when complete with project IDs
+    if (!isComplete || Object.keys(createdProjectIds).length === 0) return
+    if (hasSavedCompletionRef.current) return
+    if (!messageId) return // Can't save without messageId
+
+    hasSavedCompletionRef.current = true
+
+    // Get tx hashes from bundle state
+    const txHashes: Record<number, string> = {}
+    bundleState.chainStates?.forEach(cs => {
+      if (cs.txHash) {
+        txHashes[cs.chainId] = cs.txHash
+      }
+    })
+
+    // Save to server
+    setPersistedState({
+      status: 'completed',
+      projectIds: createdProjectIds,
+      txHashes: Object.keys(txHashes).length > 0 ? txHashes : persistedTxHashes || undefined,
+      bundleId: bundleState.bundleId || undefined,
+      completedAt: new Date().toISOString(),
+    })
+  }, [action, isComplete, createdProjectIds, bundleState, persistedTxHashes, messageId, setPersistedState])
+
+  // Derived state: use persisted state if available, otherwise use hook state
+  const effectiveIsComplete = persistedState?.status === 'completed' || isComplete
+  const effectiveProjectIds = (persistedState?.status === 'completed' && persistedState?.projectIds)
+    ? persistedState.projectIds
+    : createdProjectIds
+  const effectiveTxHashes = (persistedState?.status === 'completed' && persistedState?.txHashes)
+    ? persistedState.txHashes
+    : persistedTxHashes
 
   // Get draft data collected from forms - use as fallback while transaction JSON streams
   const draftTiers = useProjectDraftStore(state => state.tiers)
@@ -2332,10 +2383,10 @@ export default function TransactionPreview({
       </div>
 
       {/* Launch progress section - shown when launching */}
-      {(action === 'launchProject' || action === 'launch721Project') && (isLaunching || isComplete || hasError) && (
+      {(action === 'launchProject' || action === 'launch721Project') && (isLaunching || effectiveIsComplete || hasError) && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           {/* Simplified overall status */}
-          {isLaunching && (
+          {isLaunching && !effectiveIsComplete && (
             <div className={`-mx-4 px-4 py-4 flex items-center gap-4 border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
               <div className="relative">
                 <div className={`animate-spin w-10 h-10 border-4 ${isDark ? 'border-green-500' : 'border-green-600'} border-t-transparent rounded-full`} />
@@ -2360,7 +2411,7 @@ export default function TransactionPreview({
           )}
 
           {/* Success state with shareable links */}
-          {isComplete && Object.keys(createdProjectIds).length > 0 && (
+          {effectiveIsComplete && Object.keys(effectiveProjectIds).length > 0 && (
             <div className="space-y-4">
               <div className={`-mx-4 px-4 py-4 text-center border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
                 <p className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -2373,7 +2424,7 @@ export default function TransactionPreview({
 
               {/* Shareable links - show primary chain's link prominently */}
               <div className="space-y-2">
-                {Object.entries(createdProjectIds)
+                {Object.entries(effectiveProjectIds)
                   .filter(([, projectId]) => projectId && projectId > 0)
                   .map(([chainIdStr, projectIdNum], index) => {
                     const chainData = CHAINS[Number(chainIdStr)]
@@ -2447,15 +2498,15 @@ export default function TransactionPreview({
 
             {showDeploymentDetails && (
               <div className="mt-2 space-y-1">
-                {/* Use launchValidation chainIds if available, otherwise derive from createdProjectIds */}
-                {(launchValidation?.chainIds ?? Object.keys(createdProjectIds).map(Number).filter(id => id > 0)).map((cid) => {
+                {/* Use launchValidation chainIds if available, otherwise derive from effectiveProjectIds */}
+                {(launchValidation?.chainIds ?? Object.keys(effectiveProjectIds).map(Number).filter(id => id > 0)).map((cid) => {
                   const chain = CHAINS[cid]
                   const chainState = bundleState.chainStates.find(cs => cs.chainId === cid)
-                  const createdProjectId = createdProjectIds[cid]
+                  const createdProjectId = effectiveProjectIds[cid]
                   // Use persisted tx hash if available (page reload case), otherwise from chainState
-                  const txHash = persistedTxHashes?.[cid] ?? chainState?.txHash
+                  const txHash = effectiveTxHashes?.[cid] ?? chainState?.txHash
                   // If we have persisted data but no chainState, show as confirmed
-                  const isPersistedComplete = !chainState && persistedTxHashes?.[cid]
+                  const isPersistedComplete = !chainState && effectiveTxHashes?.[cid]
 
                   return (
                     <div
@@ -2511,7 +2562,7 @@ export default function TransactionPreview({
       )}
 
       {/* Issues section - shown for launch actions with validation issues, but only after data is loaded */}
-      {launchValidation && launchValidation.hasIssues && !isLaunching && !isComplete && !managedWalletLoading && fundingInfo && (
+      {launchValidation && launchValidation.hasIssues && !isLaunching && !effectiveIsComplete && !managedWalletLoading && fundingInfo && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <div className={`p-3 border-l-4 ${
             launchValidation.hasCritical
@@ -2559,7 +2610,7 @@ export default function TransactionPreview({
       )}
 
       {/* Action button - hide entire section when complete with project IDs */}
-      {!((action === 'launchProject' || action === 'launch721Project') && isComplete && Object.keys(createdProjectIds).length > 0) && (
+      {!((action === 'launchProject' || action === 'launch721Project') && effectiveIsComplete && Object.keys(effectiveProjectIds).length > 0) && (
       <div className={`px-4 py-3 border-t flex justify-end ${
         isDark ? 'border-white/10' : 'border-gray-200'
       }`}>

@@ -654,12 +654,12 @@ export default function ComponentRegistry({ component, chatId, messageId, userRe
   const Component = config.component
   const mappedProps = config.mapProps ? config.mapProps(props) : props
 
-  // Pass isStreaming to components that support it (e.g., transaction-preview)
+  // Pass isStreaming and messageId to components that support it (e.g., transaction-preview)
   // Use messageIsStreaming (from parent message) for the most accurate streaming status
   // This handles cases where the component was parsed as streaming but the message has since stopped
   // (e.g., due to 502 errors or network interruptions)
   const propsWithStreaming = type === 'transaction-preview'
-    ? { ...mappedProps, _isStreaming: messageIsStreaming ?? componentIsStreaming }
+    ? { ...mappedProps, _isStreaming: messageIsStreaming ?? componentIsStreaming, messageId }
     : mappedProps
 
   return (

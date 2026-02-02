@@ -72,6 +72,12 @@ import { query, queryOne, execute } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
 import { getPseudoAddress, verifyWalletSignature, parseSessionMergeMessage, isTimestampValid } from '../utils/crypto.ts';
 import { rateLimitMiddleware, rateLimitByWallet } from '../services/rateLimit.ts';
+import {
+  getComponentState,
+  setComponentState,
+  getMessageComponentStates,
+  type ComponentState,
+} from '../services/componentState.ts';
 // Rate limiting removed - AI is free for everyone
 
 const chatRouter = new Hono();
@@ -1847,6 +1853,75 @@ chatRouter.post(
     } catch (error) {
       console.error('[Merge Session] Error:', error);
       return c.json({ success: false, error: 'Failed to merge session' }, 500);
+    }
+  }
+);
+
+// ============================================================================
+// Component State Routes (for transaction-preview, etc.)
+// ============================================================================
+
+// Schema for component state updates
+const ComponentStateSchema = z.object({
+  state: z.object({
+    status: z.enum(['pending', 'in_progress', 'completed', 'failed']),
+  }).passthrough(), // Allow additional fields
+});
+
+// GET /chat/messages/:messageId/components - Get all component states for a message
+chatRouter.get(
+  '/messages/:messageId/components',
+  optionalAuth,
+  optionalWalletSession,
+  async (c) => {
+    const messageId = c.req.param('messageId');
+
+    try {
+      const states = await getMessageComponentStates(messageId);
+      return c.json({ success: true, data: states });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to get component states';
+      return c.json({ success: false, error: message }, 500);
+    }
+  }
+);
+
+// GET /chat/messages/:messageId/components/:componentKey - Get specific component state
+chatRouter.get(
+  '/messages/:messageId/components/:componentKey',
+  optionalAuth,
+  optionalWalletSession,
+  async (c) => {
+    const messageId = c.req.param('messageId');
+    const componentKey = c.req.param('componentKey');
+
+    try {
+      const state = await getComponentState(messageId, componentKey);
+      return c.json({ success: true, data: state });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to get component state';
+      return c.json({ success: false, error: message }, 500);
+    }
+  }
+);
+
+// PUT /chat/messages/:messageId/components/:componentKey - Set component state
+chatRouter.put(
+  '/messages/:messageId/components/:componentKey',
+  optionalAuth,
+  optionalWalletSession,
+  zValidator('json', ComponentStateSchema),
+  async (c) => {
+    const messageId = c.req.param('messageId');
+    const componentKey = c.req.param('componentKey');
+    const { state } = c.req.valid('json');
+
+    try {
+      const savedState = await setComponentState(messageId, componentKey, state as ComponentState);
+      return c.json({ success: true, data: savedState });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to set component state';
+      return c.json({ success: false, error: message }, 500);
     }
   }
 );

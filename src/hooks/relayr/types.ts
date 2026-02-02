@@ -116,4 +116,6 @@ export interface UseOmnichainTransactionOptions {
   onSuccess?: (bundleId: string, txHashes: Record<number, string>) => void
   onError?: (error: Error) => void
   onPaymentRequired?: (paymentOptions: PaymentOption[]) => void
+  /** Unique key to scope persisted deployment state. Each unique key gets its own cache. */
+  deploymentKey?: string
 }
