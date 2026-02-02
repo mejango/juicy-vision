@@ -53,8 +53,9 @@ export interface UseOmnichainLaunchProjectReturn {
 // 48 hours deadline for signatures
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60
 
-// localStorage key for persisting deployment result
+// localStorage keys for persisting deployment state
 const DEPLOYMENT_RESULT_KEY = 'juicy-vision:deployment-result'
+const DEPLOYMENT_IN_PROGRESS_KEY = 'juicy-vision:deployment-in-progress'
 
 interface PersistedDeploymentResult {
   bundleId: string
@@ -63,9 +64,17 @@ interface PersistedDeploymentResult {
   timestamp: number
 }
 
+interface PersistedInProgressDeployment {
+  bundleId: string
+  chainIds: number[]
+  timestamp: number
+}
+
 function saveDeploymentResult(result: PersistedDeploymentResult): void {
   try {
     localStorage.setItem(DEPLOYMENT_RESULT_KEY, JSON.stringify(result))
+    // Clear in-progress when we have a result
+    localStorage.removeItem(DEPLOYMENT_IN_PROGRESS_KEY)
   } catch (err) {
     console.warn('Failed to save deployment result to localStorage:', err)
   }
@@ -84,8 +93,33 @@ function loadDeploymentResult(): PersistedDeploymentResult | null {
 function clearDeploymentResult(): void {
   try {
     localStorage.removeItem(DEPLOYMENT_RESULT_KEY)
+    localStorage.removeItem(DEPLOYMENT_IN_PROGRESS_KEY)
   } catch {
     // Ignore
+  }
+}
+
+function saveInProgressDeployment(data: PersistedInProgressDeployment): void {
+  try {
+    localStorage.setItem(DEPLOYMENT_IN_PROGRESS_KEY, JSON.stringify(data))
+  } catch (err) {
+    console.warn('Failed to save in-progress deployment to localStorage:', err)
+  }
+}
+
+function loadInProgressDeployment(): PersistedInProgressDeployment | null {
+  try {
+    const stored = localStorage.getItem(DEPLOYMENT_IN_PROGRESS_KEY)
+    if (!stored) return null
+    const data = JSON.parse(stored) as PersistedInProgressDeployment
+    // Expire after 1 hour (bundles have limited lifetime)
+    if (Date.now() - data.timestamp > 60 * 60 * 1000) {
+      localStorage.removeItem(DEPLOYMENT_IN_PROGRESS_KEY)
+      return null
+    }
+    return data
+  } catch {
+    return null
   }
 }
 
@@ -139,6 +173,9 @@ export function useOmnichainLaunchProject(
   // Track persisted completed state (survives page reload)
   const [persistedResult, setPersistedResult] = useState<PersistedDeploymentResult | null>(() => loadDeploymentResult())
 
+  // Track in-progress deployment that needs to be resumed (survives component remount)
+  const [resumedInProgress, setResumedInProgress] = useState<PersistedInProgressDeployment | null>(() => loadInProgressDeployment())
+
   // Bundle state management
   const bundle = useRelayrBundle() as ReturnType<typeof useRelayrBundle> & {
     _initializeBundle: (
@@ -155,10 +192,32 @@ export function useOmnichainLaunchProject(
   }
   const { bundleState, reset: resetBundle } = bundle
 
-  // Status polling
+  // Restore in-progress deployment on mount (if component was unmounted during launch)
+  const hasResumedRef = useRef(false)
+  useEffect(() => {
+    if (resumedInProgress && !hasResumedRef.current && bundleState.status === 'idle') {
+      hasResumedRef.current = true
+      console.log('Resuming in-progress deployment:', resumedInProgress.bundleId)
+      // Initialize bundle state to resume polling
+      const predictedIds: Record<number, number> = {}
+      resumedInProgress.chainIds.forEach(chainId => {
+        predictedIds[chainId] = 0
+      })
+      bundle._initializeBundle(
+        resumedInProgress.bundleId,
+        resumedInProgress.chainIds,
+        predictedIds,
+        []
+      )
+      bundle._setProcessing('resumed')
+    }
+  }, [resumedInProgress, bundleState.status, bundle])
+
+  // Status polling - use resumed bundle ID if available
+  const activeBundleId = bundleState.bundleId || resumedInProgress?.bundleId || null
   const { data: statusData } = useRelayrStatus({
-    bundleId: bundleState.bundleId,
-    enabled: bundleState.status === 'processing',
+    bundleId: activeBundleId,
+    enabled: bundleState.status === 'processing' || (!!resumedInProgress && bundleState.status === 'idle'),
     stopOnComplete: true,
   })
 
@@ -198,8 +257,9 @@ export function useOmnichainLaunchProject(
           txHashes,
           timestamp: Date.now(),
         }
-        saveDeploymentResult(persistedData)
+        saveDeploymentResult(persistedData)  // Also clears in-progress from localStorage
         setPersistedResult(persistedData)
+        setResumedInProgress(null)  // Clear in-progress state
         console.log('Deployment result saved to localStorage:', persistedData)
 
         onSuccessRef.current?.(bundleState.bundleId!, txHashes)
@@ -215,8 +275,9 @@ export function useOmnichainLaunchProject(
           txHashes,
           timestamp: Date.now(),
         }
-        saveDeploymentResult(persistedData)
+        saveDeploymentResult(persistedData)  // Also clears in-progress from localStorage
         setPersistedResult(persistedData)
+        setResumedInProgress(null)  // Clear in-progress state
 
         onSuccessRef.current?.(bundleState.bundleId!, txHashes)
       })
@@ -457,6 +518,14 @@ export function useOmnichainLaunchProject(
         bundleId = bundleResponse.bundle_uuid
       }
 
+      // Save in-progress deployment to localStorage (survives component remount)
+      saveInProgressDeployment({
+        bundleId,
+        chainIds,
+        timestamp: Date.now(),
+      })
+      console.log('Saved in-progress deployment:', bundleId)
+
       // Initialize bundle state with predicted project IDs
       bundle._initializeBundle(
         bundleId,
@@ -485,9 +554,13 @@ export function useOmnichainLaunchProject(
     // Clear persisted state
     clearDeploymentResult()
     setPersistedResult(null)
+    setResumedInProgress(null)
+    hasResumedRef.current = false
   }, [resetBundle])
 
-  const isLaunching = bundleState.status === 'creating' || bundleState.status === 'processing'
+  // Consider launching if bundle is processing OR if we're resuming an in-progress deployment
+  const isLaunching = bundleState.status === 'creating' || bundleState.status === 'processing' ||
+    (resumedInProgress !== null && bundleState.status === 'idle' && !persistedResult)
 
   // Merge predicted, confirmed, and persisted IDs (persisted takes precedence on page reload)
   const createdProjectIds = useMemo(() => {
