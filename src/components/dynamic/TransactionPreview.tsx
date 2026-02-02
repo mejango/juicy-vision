@@ -1415,6 +1415,7 @@ export default function TransactionPreview({
     isComplete,
     hasError,
     createdProjectIds,
+    persistedTxHashes,
     reset: resetLaunch,
   } = useOmnichainLaunchProject({
     onSuccess: (bundleId, txHashes) => {
@@ -2381,10 +2382,15 @@ export default function TransactionPreview({
 
             {showDeploymentDetails && (
               <div className="mt-2 space-y-1">
-                {launchValidation?.chainIds.map((cid) => {
+                {/* Use launchValidation chainIds if available, otherwise derive from createdProjectIds */}
+                {(launchValidation?.chainIds ?? Object.keys(createdProjectIds).map(Number).filter(id => id > 0)).map((cid) => {
                   const chain = CHAINS[cid]
                   const chainState = bundleState.chainStates.find(cs => cs.chainId === cid)
                   const createdProjectId = createdProjectIds[cid]
+                  // Use persisted tx hash if available (page reload case), otherwise from chainState
+                  const txHash = persistedTxHashes?.[cid] ?? chainState?.txHash
+                  // If we have persisted data but no chainState, show as confirmed
+                  const isPersistedComplete = !chainState && persistedTxHashes?.[cid]
 
                   return (
                     <div
@@ -2408,17 +2414,17 @@ export default function TransactionPreview({
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        {!chainState && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Waiting</span>}
+                        {!chainState && !isPersistedComplete && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Waiting</span>}
                         {chainState?.status === 'pending' && <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Pending</span>}
                         {chainState?.status === 'submitted' && (
                           <span className="text-juice-orange">Creating...</span>
                         )}
-                        {chainState?.status === 'confirmed' && (
+                        {(chainState?.status === 'confirmed' || isPersistedComplete) && (
                           <div className="flex items-center gap-1">
                             <span className="text-green-500">✓</span>
-                            {chainState.txHash && EXPLORER_URLS[cid] && (
+                            {txHash && EXPLORER_URLS[cid] && (
                               <a
-                                href={`${EXPLORER_URLS[cid]}${chainState.txHash}`}
+                                href={`${EXPLORER_URLS[cid]}${txHash}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-juice-cyan hover:underline"

@@ -46,11 +46,48 @@ export interface UseOmnichainLaunchProjectReturn {
   isComplete: boolean
   hasError: boolean
   createdProjectIds: Record<number, number>
+  persistedTxHashes: Record<number, string> | null  // tx hashes from persisted state (survives reload)
   reset: () => void
 }
 
 // 48 hours deadline for signatures
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60
+
+// localStorage key for persisting deployment result
+const DEPLOYMENT_RESULT_KEY = 'juicy-vision:deployment-result'
+
+interface PersistedDeploymentResult {
+  bundleId: string
+  projectIds: Record<number, number>  // chainId -> projectId
+  txHashes: Record<number, string>    // chainId -> txHash
+  timestamp: number
+}
+
+function saveDeploymentResult(result: PersistedDeploymentResult): void {
+  try {
+    localStorage.setItem(DEPLOYMENT_RESULT_KEY, JSON.stringify(result))
+  } catch (err) {
+    console.warn('Failed to save deployment result to localStorage:', err)
+  }
+}
+
+function loadDeploymentResult(): PersistedDeploymentResult | null {
+  try {
+    const stored = localStorage.getItem(DEPLOYMENT_RESULT_KEY)
+    if (!stored) return null
+    return JSON.parse(stored)
+  } catch {
+    return null
+  }
+}
+
+function clearDeploymentResult(): void {
+  try {
+    localStorage.removeItem(DEPLOYMENT_RESULT_KEY)
+  } catch {
+    // Ignore
+  }
+}
 
 /**
  * Hook for launching new Juicebox projects across multiple chains with Relayr.
@@ -99,6 +136,9 @@ export function useOmnichainLaunchProject(
   const [predictedProjectIds, setPredictedProjectIds] = useState<Record<number, number>>({})
   const [confirmedProjectIds, setConfirmedProjectIds] = useState<Record<number, number>>({})
 
+  // Track persisted completed state (survives page reload)
+  const [persistedResult, setPersistedResult] = useState<PersistedDeploymentResult | null>(() => loadDeploymentResult())
+
   // Bundle state management
   const bundle = useRelayrBundle() as ReturnType<typeof useRelayrBundle> & {
     _initializeBundle: (
@@ -145,17 +185,39 @@ export function useOmnichainLaunchProject(
       // Extract actual project IDs from transaction receipts
       // This is more reliable than predictions, especially for omnichain deployments
       getProjectIdsFromReceipts(txHashes).then(extractedIds => {
+        const finalIds = Object.keys(extractedIds).length > 0 ? extractedIds : predictedProjectIds
         if (Object.keys(extractedIds).length > 0) {
           console.log('Extracted project IDs from receipts:', extractedIds)
-          setConfirmedProjectIds(extractedIds)
-        } else {
-          // Fallback to predicted IDs if extraction fails
-          setConfirmedProjectIds(predictedProjectIds)
         }
+        setConfirmedProjectIds(finalIds)
+
+        // Persist to localStorage so it survives page reload
+        const persistedData: PersistedDeploymentResult = {
+          bundleId: bundleState.bundleId!,
+          projectIds: finalIds,
+          txHashes,
+          timestamp: Date.now(),
+        }
+        saveDeploymentResult(persistedData)
+        setPersistedResult(persistedData)
+        console.log('Deployment result saved to localStorage:', persistedData)
+
         onSuccessRef.current?.(bundleState.bundleId!, txHashes)
       }).catch(err => {
         console.error('Failed to extract project IDs:', err)
-        setConfirmedProjectIds(predictedProjectIds)
+        const finalIds = predictedProjectIds
+        setConfirmedProjectIds(finalIds)
+
+        // Still persist even if extraction failed
+        const persistedData: PersistedDeploymentResult = {
+          bundleId: bundleState.bundleId!,
+          projectIds: finalIds,
+          txHashes,
+          timestamp: Date.now(),
+        }
+        saveDeploymentResult(persistedData)
+        setPersistedResult(persistedData)
+
         onSuccessRef.current?.(bundleState.bundleId!, txHashes)
       })
     }
@@ -188,6 +250,10 @@ export function useOmnichainLaunchProject(
       chainConfigs,
       forceSelfCustody = false,
     } = params
+
+    // Clear any persisted state from previous deployments
+    clearDeploymentResult()
+    setPersistedResult(null)
 
     // Determine if we should use managed mode
     // Managed mode is used when: in managed mode AND not forced to self-custody
@@ -416,15 +482,31 @@ export function useOmnichainLaunchProject(
     setConfirmedProjectIds({})
     setIsSigning(false)
     setSigningChainId(null)
+    // Clear persisted state
+    clearDeploymentResult()
+    setPersistedResult(null)
   }, [resetBundle])
 
   const isLaunching = bundleState.status === 'creating' || bundleState.status === 'processing'
 
-  // Merge predicted and confirmed IDs, preferring confirmed
-  const createdProjectIds = useMemo(() => ({
-    ...predictedProjectIds,
-    ...confirmedProjectIds,
-  }), [predictedProjectIds, confirmedProjectIds])
+  // Merge predicted, confirmed, and persisted IDs (persisted takes precedence on page reload)
+  const createdProjectIds = useMemo(() => {
+    // If we have persisted result and bundle is idle (page was reloaded), use persisted
+    if (persistedResult && bundleState.status === 'idle') {
+      return persistedResult.projectIds
+    }
+    // Otherwise use current session's data
+    return {
+      ...predictedProjectIds,
+      ...confirmedProjectIds,
+    }
+  }, [predictedProjectIds, confirmedProjectIds, persistedResult, bundleState.status])
+
+  // Consider complete if bundle is completed OR if we have persisted result from a previous deployment
+  const isComplete = bundleState.status === 'completed' || (bundleState.status === 'idle' && persistedResult !== null)
+
+  // Get tx hashes from persisted state if available
+  const persistedTxHashes = persistedResult?.txHashes ?? null
 
   return useMemo(() => ({
     launch,
@@ -432,9 +514,10 @@ export function useOmnichainLaunchProject(
     isLaunching,
     isSigning,
     signingChainId,
-    isComplete: bundleState.status === 'completed',
+    isComplete,
     hasError: bundleState.status === 'failed' || bundleState.status === 'partial',
     createdProjectIds,
+    persistedTxHashes,
     reset,
-  }), [launch, bundleState, isLaunching, isSigning, signingChainId, createdProjectIds, reset])
+  }), [launch, bundleState, isLaunching, isSigning, signingChainId, isComplete, createdProjectIds, persistedTxHashes, reset])
 }
