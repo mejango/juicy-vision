@@ -2,6 +2,7 @@
 export { useRelayrStatus } from './useRelayrStatus'
 export { useRelayrBundle } from './useRelayrBundle'
 export { useOmnichainTransaction } from './useOmnichainTransaction'
+export { useErc2771Signing } from './useErc2771Signing'
 
 // Operation-specific hooks
 export { useOmnichainQueueRuleset } from './useOmnichainQueueRuleset'

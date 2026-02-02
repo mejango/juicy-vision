@@ -30,6 +30,12 @@ export {
   JB_721_TIERS_HOOK_ABI,
 } from './jb721TiersHook'
 
+export {
+  ERC2771_FORWARDER_ADDRESS,
+  ERC2771_FORWARDER_ABI,
+  FORWARD_REQUEST_TYPES,
+} from './erc2771Forwarder'
+
 // Type definitions for ABI inputs
 export interface PayParams {
   projectId: bigint

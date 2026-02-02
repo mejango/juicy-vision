@@ -1410,6 +1410,8 @@ export default function TransactionPreview({
     launch,
     bundleState,
     isLaunching,
+    isSigning,
+    signingChainId,
     isComplete,
     hasError,
     createdProjectIds,
@@ -2274,10 +2276,16 @@ export default function TransactionPreview({
               </div>
               <div>
                 <p className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {bundleState.status === 'creating' ? 'Preparing deployment...' : 'Deploying your project'}
+                  {isSigning
+                    ? `Sign for ${signingChainId ? CHAINS[signingChainId]?.shortName || `Chain ${signingChainId}` : 'deployment'}...`
+                    : bundleState.status === 'creating'
+                      ? 'Preparing deployment...'
+                      : 'Deploying your project'}
                 </p>
                 <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  This usually takes about a minute
+                  {isSigning
+                    ? 'Your wallet will prompt you to sign for each chain'
+                    : 'This usually takes about a minute'}
                 </p>
               </div>
             </div>
