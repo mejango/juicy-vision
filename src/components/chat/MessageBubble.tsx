@@ -117,7 +117,7 @@ function looksIncomplete(content: string): boolean {
     // Ends with letters but no punctuation - likely cut off
     const lastLine = trimmed.split('\n').pop() || ''
     // Unless it's a heading, list item, or component
-    if (!lastLine.startsWith('#') && !lastLine.startsWith('-') && !lastLine.startsWith('*') && !lastLine.includes('juice-component')) {
+    if (!lastLine.startsWith('#') && !lastLine.startsWith('-') && !lastLine.startsWith('*') && !lastLine.includes('juice-component') && !lastLine.includes('<component')) {
       return true
     }
   }
@@ -134,7 +134,7 @@ function looksIncomplete(content: string): boolean {
 
   // Check if response promises action but doesn't deliver
   // Only trigger if NO component exists in the entire response
-  const hasComponent = trimmed.includes('juice-component')
+  const hasComponent = trimmed.includes('juice-component') || trimmed.includes('<component')
 
   // If there's already a component, the response is likely complete
   if (hasComponent) {

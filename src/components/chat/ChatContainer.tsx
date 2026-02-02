@@ -990,8 +990,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               if (pendingFieldId) {
                 // Get the final content and dispatch it to the OptionsPicker
                 let finalContent = streamingMessages.get(messageId)?.content || ''
-                // Strip any component tags - we just want the plain text
-                finalContent = finalContent.replace(/<juice-component[^>]*\/>/g, '').trim()
+                // Strip any component tags - we just want the plain text (supports both formats)
+                finalContent = finalContent.replace(/<(?:juice-)?component[^>]*\/>/g, '').trim()
                 // Also strip any preamble like "Here's a description:"
                 finalContent = finalContent.replace(/^(Here'?s?|The|A|An|Your)\s+(a\s+)?(brief\s+)?(compelling\s+)?(project\s+)?description:?\s*/i, '').trim()
                 window.dispatchEvent(new CustomEvent('juice:generated-content', {

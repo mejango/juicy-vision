@@ -9,9 +9,9 @@ export interface ParsedContent {
   segments: Array<{ type: 'text'; content: string } | { type: 'component'; component: ParsedComponent }>
 }
 
-// Regex to match juice-component tags - uses non-greedy match to find closing />
-// The 's' flag allows . to match newlines
-const COMPONENT_REGEX = /<juice-component\s+([\s\S]+?)\s*\/>/g
+// Regex to match component tags - supports both <juice-component> and <component>
+// Uses non-greedy match to find closing />. The 's' flag allows . to match newlines
+const COMPONENT_REGEX = /<(?:juice-)?component\s+([\s\S]+?)\s*\/>/g
 // Match attributes - double quotes are straightforward
 const ATTR_REGEX_DOUBLE = /(\w+)="([^"]+)"/g
 // Single quotes need non-greedy match with lookahead for next attr or tag end
@@ -30,10 +30,14 @@ const STREAMABLE_COMPONENT_TYPES = ['options-picker', 'transaction-preview']
 
 // Detect partial component tag that's still being streamed
 // Note: We can't use [^>]* because JSON attribute values may contain > characters
-// Instead, we look for <juice-component that isn't followed by /> in the remaining string
+// Instead, we look for <component or <juice-component that isn't followed by /> in the remaining string
 function hasPartialComponentTag(content: string): { hasPartial: boolean; index: number } {
-  // Find the last occurrence of <juice-component
-  const lastTagStart = content.lastIndexOf('<juice-component')
+  // Find the last occurrence of either tag format
+  const lastJuiceTagStart = content.lastIndexOf('<juice-component')
+  const lastShortTagStart = content.lastIndexOf('<component')
+
+  // Use the later occurrence (could be nested, though unlikely)
+  const lastTagStart = Math.max(lastJuiceTagStart, lastShortTagStart)
   if (lastTagStart === -1) {
     return { hasPartial: false, index: -1 }
   }
@@ -42,7 +46,7 @@ function hasPartialComponentTag(content: string): { hasPartial: boolean; index: 
   // We need to find /> that actually closes this tag, not one inside a quoted string
   const afterTag = content.slice(lastTagStart)
 
-  // Simple check: if /> exists after <juice-component, tag is complete
+  // Simple check: if /> exists after the tag start, tag is complete
   // This is a heuristic - technically /> could be in a string, but unlikely
   const closeIndex = afterTag.indexOf('/>')
   if (closeIndex === -1) {
