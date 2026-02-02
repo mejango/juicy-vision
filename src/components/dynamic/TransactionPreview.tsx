@@ -2284,7 +2284,9 @@ export default function TransactionPreview({
                 </p>
                 <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   {isSigning
-                    ? 'Your wallet will prompt you to sign for each chain'
+                    ? isManagedMode
+                      ? 'Use Touch ID / Face ID to sign for each chain'
+                      : 'Your wallet will prompt you to sign for each chain'
                     : 'This usually takes about a minute'}
                 </p>
               </div>

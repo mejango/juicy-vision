@@ -13,6 +13,7 @@ import {
 } from '../../services/relayr'
 import { getProjectIdsFromReceipts } from '../../services/bendystraw'
 import { buildOmnichainLaunchTransactions, type ChainConfigOverride } from '../../services/omnichainDeployer'
+import { signTypedDataWithPasskey } from '../../services/passkeyWallet'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
@@ -296,17 +297,27 @@ export function useOmnichainLaunchProject(
         }
 
         // Sign the EIP-712 typed data
-        const signature = await signTypedDataAsync({
+        // Use passkey signing for managed mode, wagmi for self-custody
+        const typedData = {
           domain: {
             name: 'Juicebox',
             chainId: tx.chain,
             verifyingContract: ERC2771_FORWARDER_ADDRESS,
             version: '1',
           },
-          primaryType: 'ForwardRequest',
+          primaryType: 'ForwardRequest' as const,
           types: FORWARD_REQUEST_TYPES,
           message: messageData,
-        })
+        }
+
+        let signature: `0x${string}`
+        if (isManagedMode) {
+          // Managed mode: Use passkey signing (Touch ID / Face ID)
+          signature = await signTypedDataWithPasskey(typedData)
+        } else {
+          // Self-custody: Use wagmi signing (MetaMask, etc.)
+          signature = await signTypedDataAsync(typedData)
+        }
 
         console.log(`Signature obtained for chain ${tx.chain}`)
 

@@ -22,6 +22,7 @@
  */
 
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
+import type { TypedDataDefinition } from 'viem'
 import { signInWithWallet } from './siwe'
 
 const PASSKEY_WALLET_KEY = 'juice-passkey-wallet'
@@ -428,4 +429,71 @@ export async function signInWithPasskey(): Promise<PasskeyWallet> {
   // No stored credential - create a new passkey wallet
   // (Skip discoverable credentials attempt as it shows confusing QR code dialog)
   return await createPasskeyWallet()
+}
+
+/**
+ * Get the passkey account for signing operations.
+ * Requires Touch ID / Face ID authentication to derive the private key.
+ */
+export async function getPasskeyAccount(): Promise<PrivateKeyAccount> {
+  const credentialId = getStoredCredentialId()
+  if (!credentialId) {
+    throw new Error('No passkey credential found. Please sign in first.')
+  }
+
+  // Authenticate to get PRF output
+  const credential = await navigator.credentials.get({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rpId: window.location.hostname,
+      timeout: 60000,
+      userVerification: 'required',
+      allowCredentials: [{
+        type: 'public-key' as const,
+        id: base64UrlToBuffer(credentialId),
+      }],
+      extensions: {
+        prf: {
+          eval: {
+            first: PRF_SALT,
+          },
+        },
+      } as any,
+    },
+  }) as PublicKeyCredential | null
+
+  if (!credential) {
+    throw new Error('Passkey authentication was cancelled')
+  }
+
+  // Get PRF output
+  const extensionResults = (credential as any).getClientExtensionResults?.()
+  const prfResult = extensionResults?.prf?.results?.first
+
+  if (!prfResult) {
+    throw new Error('PRF extension not supported on this device')
+  }
+
+  // Derive private key and create account
+  const privateKey = await derivePrivateKey(prfResult)
+  return privateKeyToAccount(privateKey)
+}
+
+/**
+ * Sign EIP-712 typed data using the passkey wallet.
+ * Requires Touch ID / Face ID authentication.
+ *
+ * @example
+ * const signature = await signTypedDataWithPasskey({
+ *   domain: { name: 'Juicebox', chainId: 1, verifyingContract: '0x...' },
+ *   types: { ForwardRequest: [...] },
+ *   primaryType: 'ForwardRequest',
+ *   message: { from: '0x...', to: '0x...', ... },
+ * })
+ */
+export async function signTypedDataWithPasskey<
+  const TTypedData extends TypedDataDefinition,
+>(typedData: TTypedData): Promise<`0x${string}`> {
+  const account = await getPasskeyAccount()
+  return account.signTypedData(typedData as any)
 }
