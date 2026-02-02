@@ -171,18 +171,10 @@ export function useOmnichainLaunchProject(
   const [confirmedProjectIds, setConfirmedProjectIds] = useState<Record<number, number>>({})
 
   // Track persisted completed state (survives page reload)
-  const [persistedResult, setPersistedResult] = useState<PersistedDeploymentResult | null>(() => {
-    const result = loadDeploymentResult()
-    console.log('[useOmnichainLaunchProject] Loaded persistedResult:', result)
-    return result
-  })
+  const [persistedResult, setPersistedResult] = useState<PersistedDeploymentResult | null>(() => loadDeploymentResult())
 
   // Track in-progress deployment that needs to be resumed (survives component remount)
-  const [resumedInProgress, setResumedInProgress] = useState<PersistedInProgressDeployment | null>(() => {
-    const result = loadInProgressDeployment()
-    console.log('[useOmnichainLaunchProject] Loaded resumedInProgress:', result)
-    return result
-  })
+  const [resumedInProgress, setResumedInProgress] = useState<PersistedInProgressDeployment | null>(() => loadInProgressDeployment())
 
   // Bundle state management
   const bundle = useRelayrBundle() as ReturnType<typeof useRelayrBundle> & {
@@ -569,14 +561,6 @@ export function useOmnichainLaunchProject(
   // Consider launching if bundle is processing OR if we're resuming an in-progress deployment
   const isLaunching = bundleState.status === 'creating' || bundleState.status === 'processing' ||
     (resumedInProgress !== null && bundleState.status === 'idle' && !persistedResult)
-
-  // Debug logging
-  console.log('[useOmnichainLaunchProject] State:', {
-    bundleStatus: bundleState.status,
-    resumedInProgress: resumedInProgress?.bundleId,
-    persistedResult: persistedResult?.bundleId,
-    isLaunching,
-  })
 
   // Merge predicted, confirmed, and persisted IDs (persisted takes precedence on page reload)
   const createdProjectIds = useMemo(() => {
