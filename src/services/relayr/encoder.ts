@@ -382,8 +382,8 @@ export interface JBTerminalConfig {
 
 export interface JBSuckerTokenMapping {
   localToken: string
-  remoteToken: string
   minGas: number
+  remoteToken: string
   minBridgeAmount: string
 }
 

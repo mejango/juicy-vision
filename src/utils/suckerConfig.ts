@@ -106,8 +106,8 @@ export function createSalt(): `0x${string}` {
 
 export interface JBTokenMapping {
   localToken: `0x${string}`
-  remoteToken: `0x${string}`
   minGas: number
+  remoteToken: `0x${string}`
   minBridgeAmount: bigint
 }
 
@@ -166,8 +166,8 @@ export function parseSuckerDeployerConfig(
         mappings: [
           {
             localToken: NATIVE_TOKEN as `0x${string}`,
-            remoteToken: NATIVE_TOKEN as `0x${string}`,
             minGas: 200_000,
+            remoteToken: NATIVE_TOKEN as `0x${string}`,
             minBridgeAmount: opts.minBridgeAmount ?? DEFAULT_MIN_BRIDGE_AMOUNT,
           },
         ],

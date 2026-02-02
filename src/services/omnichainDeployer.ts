@@ -292,19 +292,15 @@ export function buildOmnichainLaunchTransactions(params: {
         deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
           deployer: dc.deployer,
           mappings: dc.mappings.map(m => ({
+            // Order must match Solidity JBTokenMapping: localToken, minGas, remoteToken, minBridgeAmount
             localToken: m.localToken,
-            remoteToken: m.remoteToken,
             minGas: m.minGas,
+            remoteToken: m.remoteToken,
             minBridgeAmount: m.minBridgeAmount.toString(),
           })),
         })),
         salt: generatedConfig.salt,
       }
-
-      console.log(`Chain ${chainId}: Auto-generated sucker config with ${suckerConfig.deployerConfigurations.length} deployer(s)`)
-      suckerConfig.deployerConfigurations.forEach((dc, i) => {
-        console.log(`  [${i}] deployer=${dc.deployer}, mappings=${dc.mappings.length}`)
-      })
     } else {
       // Single chain deployment - no suckers needed
       suckerConfig = {

@@ -903,11 +903,12 @@ export interface JBTerminalConfig {
 }
 
 // Token mapping for cross-chain bridging via suckers
+// Order matches Solidity struct: localToken, minGas, remoteToken, minBridgeAmount
 export interface JBSuckerTokenMapping {
   localToken: string                    // Token address on local chain (0xEEEe... for native)
+  minGas: number                        // Minimum gas for bridge operation (uint32)
   remoteToken: string                   // Token address on remote chain
-  minGas: number                        // Minimum gas for bridge operation
-  minBridgeAmount: string               // Minimum amount to bridge (in wei)
+  minBridgeAmount: string               // Minimum amount to bridge (in wei, uint256)
 }
 
 // Sucker deployer configuration for a specific bridge type
