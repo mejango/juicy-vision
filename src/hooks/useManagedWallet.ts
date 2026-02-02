@@ -241,3 +241,46 @@ export function useIsManagedMode(): boolean {
   // Only consider managed mode if actually authenticated
   return (mode === 'managed' && !!token && !!user) || (!!passkeyWallet?.address && !!token)
 }
+
+/**
+ * Transaction data for Relayr bundle
+ */
+export interface RelayrTransaction {
+  chainId: number
+  target: string
+  data: string
+  value: string
+}
+
+/**
+ * Create and submit a Relayr bundle via the managed wallet backend.
+ * Server handles ERC-2771 signing with the smart account.
+ * Returns the bundle ID for status polling.
+ *
+ * @param transactions - Array of transactions to include in the bundle
+ * @param projectOwner - Address to set as project owner (smart account)
+ */
+export async function createManagedRelayrBundle(
+  transactions: RelayrTransaction[],
+  projectOwner: string
+): Promise<{ bundleId: string }> {
+  const { token, isAuthenticated, mode } = useAuthStore.getState()
+
+  if (!isAuthenticated() || mode !== 'managed' || !token) {
+    throw new Error('Not authenticated in managed mode')
+  }
+
+  const result = await apiRequest<{ bundleId: string }>(
+    '/wallet/relayr-bundle',
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        transactions,
+        owner: projectOwner,
+      }),
+    }
+  )
+
+  return result
+}

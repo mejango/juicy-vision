@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAccount, useConfig, useSignTypedData } from 'wagmi'
 import { encodeFunctionData, getContract, type Address, type Hex } from 'viem'
-import { useManagedWallet } from '../useManagedWallet'
+import { useManagedWallet, createManagedRelayrBundle } from '../useManagedWallet'
 import {
   createBalanceBundle,
   buildOmnichainLaunchProjectTransactions,
@@ -13,7 +13,6 @@ import {
 } from '../../services/relayr'
 import { getProjectIdsFromReceipts } from '../../services/bendystraw'
 import { buildOmnichainLaunchTransactions, type ChainConfigOverride } from '../../services/omnichainDeployer'
-import { signTypedDataWithPasskey } from '../../services/passkeyWallet'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
@@ -259,123 +258,136 @@ export function useOmnichainLaunchProject(
       // Store predicted project IDs
       setPredictedProjectIds(predictedIds)
 
-      // === ERC-2771 META-TRANSACTION SIGNING ===
-      // Wrap each transaction with user's signature so _msgSender() returns user's address
-      // This is critical for project ownership and future extensibility
-      console.log('=== ERC-2771 SIGNING ===')
-      console.log(`Signing ${transactions.length} transaction(s) for chains: ${chainIds.join(', ')}`)
+      let bundleId: string
 
-      setIsSigning(true)
-      const wrappedTransactions: Array<{ chain: number; target: string; data: string; value: string }> = []
+      if (isManagedMode) {
+        // === MANAGED MODE: Server-side ERC-2771 signing ===
+        // User already authenticated with Touch ID / Face ID at login
+        // Server handles signing and bundle creation
+        console.log('=== MANAGED MODE: Server-side signing ===')
+        console.log(`Submitting ${transactions.length} transaction(s) to server for chains: ${chainIds.join(', ')}`)
 
-      for (const tx of transactions) {
-        setSigningChainId(tx.chain)
-        console.log(`Requesting signature for chain ${tx.chain}...`)
-
-        // Get public client for this chain
-        const publicClient = config.getClient({ chainId: tx.chain })
-
-        // Get user's nonce from the TrustedForwarder
-        const forwarderContract = getContract({
-          address: ERC2771_FORWARDER_ADDRESS,
-          abi: ERC2771_FORWARDER_ABI,
-          client: publicClient,
-        })
-
-        const nonce = await forwarderContract.read.nonces([projectOwner as Address])
-        const deadline = Math.floor(Date.now() / 1000) + ERC2771_DEADLINE_DURATION_SECONDS
-
-        // Build the ForwardRequest message
-        const messageData = {
-          from: projectOwner as Address,
-          to: tx.target as Address,
-          value: BigInt(tx.value || '0'),
-          gas: BigInt(2000000), // Conservative gas estimate
-          nonce,
-          deadline,
-          data: tx.data as Hex,
-        }
-
-        // Sign the EIP-712 typed data
-        // Use passkey signing for managed mode, wagmi for self-custody
-        const typedData = {
-          domain: {
-            name: 'Juicebox',
-            chainId: tx.chain,
-            verifyingContract: ERC2771_FORWARDER_ADDRESS,
-            version: '1',
-          },
-          primaryType: 'ForwardRequest' as const,
-          types: FORWARD_REQUEST_TYPES,
-          message: messageData,
-        }
-
-        let signature: `0x${string}`
-        if (isManagedMode) {
-          // Managed mode: Use passkey signing (Touch ID / Face ID)
-          signature = await signTypedDataWithPasskey(typedData)
-        } else {
-          // Self-custody: Use wagmi signing (MetaMask, etc.)
-          signature = await signTypedDataAsync(typedData)
-        }
-
-        console.log(`Signature obtained for chain ${tx.chain}`)
-
-        // Encode the execute() call with the signed request
-        const executeData = encodeFunctionData({
-          abi: ERC2771_FORWARDER_ABI,
-          functionName: 'execute',
-          args: [{
-            from: messageData.from,
-            to: messageData.to,
-            value: messageData.value,
-            gas: messageData.gas,
-            deadline: messageData.deadline,
-            data: messageData.data,
-            signature,
-          }],
-        })
-
-        wrappedTransactions.push({
-          chain: tx.chain,
-          target: ERC2771_FORWARDER_ADDRESS,
-          data: executeData,
+        const serverTransactions = transactions.map(tx => ({
+          chainId: tx.chain,
+          target: tx.target,
+          data: tx.data,
           value: tx.value,
+        }))
+
+        const result = await createManagedRelayrBundle(serverTransactions, projectOwner)
+        bundleId = result.bundleId
+
+        console.log('Server created bundle:', bundleId)
+      } else {
+        // === SELF-CUSTODY MODE: Client-side ERC-2771 signing ===
+        // User signs with their wallet (MetaMask, etc.) for each chain
+        console.log('=== SELF-CUSTODY: Client-side ERC-2771 signing ===')
+        console.log(`Signing ${transactions.length} transaction(s) for chains: ${chainIds.join(', ')}`)
+
+        setIsSigning(true)
+        const wrappedTransactions: Array<{ chain: number; target: string; data: string; value: string }> = []
+
+        for (const tx of transactions) {
+          setSigningChainId(tx.chain)
+          console.log(`Requesting signature for chain ${tx.chain}...`)
+
+          // Get public client for this chain
+          const publicClient = config.getClient({ chainId: tx.chain })
+
+          // Get user's nonce from the TrustedForwarder
+          const forwarderContract = getContract({
+            address: ERC2771_FORWARDER_ADDRESS,
+            abi: ERC2771_FORWARDER_ABI,
+            client: publicClient,
+          })
+
+          const nonce = await forwarderContract.read.nonces([projectOwner as Address])
+          const deadline = Math.floor(Date.now() / 1000) + ERC2771_DEADLINE_DURATION_SECONDS
+
+          // Build the ForwardRequest message
+          const messageData = {
+            from: projectOwner as Address,
+            to: tx.target as Address,
+            value: BigInt(tx.value || '0'),
+            gas: BigInt(2000000), // Conservative gas estimate
+            nonce,
+            deadline,
+            data: tx.data as Hex,
+          }
+
+          // Sign the EIP-712 typed data with wallet
+          const typedData = {
+            domain: {
+              name: 'Juicebox',
+              chainId: tx.chain,
+              verifyingContract: ERC2771_FORWARDER_ADDRESS,
+              version: '1',
+            },
+            primaryType: 'ForwardRequest' as const,
+            types: FORWARD_REQUEST_TYPES,
+            message: messageData,
+          }
+
+          const signature = await signTypedDataAsync(typedData)
+          console.log(`Signature obtained for chain ${tx.chain}`)
+
+          // Encode the execute() call with the signed request
+          const executeData = encodeFunctionData({
+            abi: ERC2771_FORWARDER_ABI,
+            functionName: 'execute',
+            args: [{
+              from: messageData.from,
+              to: messageData.to,
+              value: messageData.value,
+              gas: messageData.gas,
+              deadline: messageData.deadline,
+              data: messageData.data,
+              signature,
+            }],
+          })
+
+          wrappedTransactions.push({
+            chain: tx.chain,
+            target: ERC2771_FORWARDER_ADDRESS,
+            data: executeData,
+            value: tx.value,
+          })
+        }
+
+        setIsSigning(false)
+        setSigningChainId(null)
+        console.log('=== ERC-2771 SIGNING COMPLETE ===')
+
+        // Debug: Log the exact request being sent to Relayr
+        const bundleRequest = {
+          app_id: RELAYR_APP_ID,
+          transactions: wrappedTransactions.map(tx => ({
+            ...tx,
+          })),
+          perform_simulation: true,
+          virtual_nonce_mode: 'Disabled' as const,
+        }
+        console.log('=== RELAYR BUNDLE REQUEST ===')
+        console.log('Full request:', JSON.stringify(bundleRequest, null, 2))
+        console.log('Chain IDs:', chainIds)
+        console.log('Predicted Project IDs:', predictedIds)
+        console.log('Transactions (via TrustedForwarder):')
+        wrappedTransactions.forEach((tx, i) => {
+          console.log(`  [${i}] Chain ${tx.chain}:`)
+          console.log(`      Target: ${tx.target} (TrustedForwarder)`)
+          console.log(`      Value: ${tx.value}`)
+          console.log(`      Data: ${tx.data.slice(0, 66)}...`)
         })
+        console.log('=============================')
+
+        // Create balance-sponsored bundle (admin pays gas)
+        const bundleResponse = await createBalanceBundle(bundleRequest)
+        bundleId = bundleResponse.bundle_uuid
       }
-
-      setIsSigning(false)
-      setSigningChainId(null)
-      console.log('=== ERC-2771 SIGNING COMPLETE ===')
-
-      // Debug: Log the exact request being sent to Relayr
-      const bundleRequest = {
-        app_id: RELAYR_APP_ID,
-        transactions: wrappedTransactions.map(tx => ({
-          ...tx,
-        })),
-        perform_simulation: true,
-        virtual_nonce_mode: 'Disabled' as const,
-      }
-      console.log('=== RELAYR BUNDLE REQUEST ===')
-      console.log('Full request:', JSON.stringify(bundleRequest, null, 2))
-      console.log('Chain IDs:', chainIds)
-      console.log('Predicted Project IDs:', predictedIds)
-      console.log('Transactions (via TrustedForwarder):')
-      wrappedTransactions.forEach((tx, i) => {
-        console.log(`  [${i}] Chain ${tx.chain}:`)
-        console.log(`      Target: ${tx.target} (TrustedForwarder)`)
-        console.log(`      Value: ${tx.value}`)
-        console.log(`      Data: ${tx.data.slice(0, 66)}...`)
-      })
-      console.log('=============================')
-
-      // Create balance-sponsored bundle (admin pays gas)
-      const bundleResponse = await createBalanceBundle(bundleRequest)
 
       // Initialize bundle state with predicted project IDs
       bundle._initializeBundle(
-        bundleResponse.bundle_uuid,
+        bundleId,
         chainIds,
         predictedIds,
         [],  // No payment options - admin sponsored
