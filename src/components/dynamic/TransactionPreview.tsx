@@ -487,7 +487,7 @@ function SuckerDeployerDisplay({
         onClick={handleCopy}
         title={`Click to copy: ${address}`}
       >
-        <span className={isDark ? 'text-purple-400' : 'text-purple-600'}>
+        <span className={isDark ? 'text-yellow-400' : 'text-yellow-600'}>
           {label}
         </span>
         <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>
@@ -499,7 +499,7 @@ function SuckerDeployerDisplay({
         <button
           onClick={handleBadgeClick}
           className={`text-[9px] px-1 py-0.5 rounded cursor-pointer hover:opacity-80 ${
-            isDark ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-700'
+            isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
           }`}
           title="Click to see deployers per chain"
         >
@@ -525,7 +525,7 @@ function SuckerDeployerDisplay({
                     → {d.remoteChain}:
                   </span>
                   <span
-                    className={`font-mono cursor-pointer hover:underline ${isDark ? 'text-purple-400' : 'text-purple-600'}`}
+                    className={`font-mono cursor-pointer hover:underline ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}
                     onClick={() => navigator.clipboard.writeText(d.address)}
                     title="Click to copy"
                   >
@@ -618,8 +618,8 @@ function SuckerConfigSection({
                 onChange={(e) => setSelectedChain(Number(e.target.value))}
                 className={`text-xs px-2 py-0.5 rounded border ${
                   isDark
-                    ? 'bg-purple-500/20 border-purple-500/30 text-purple-300'
-                    : 'bg-purple-50 border-purple-200 text-purple-700'
+                    ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-300'
+                    : 'bg-yellow-50 border-yellow-200 text-yellow-700'
                 }`}
               >
                 {allChainIds.map(chainId => (
@@ -629,7 +629,7 @@ function SuckerConfigSection({
                 ))}
               </select>
               <span className={`text-[9px] px-1 py-0.5 rounded ${
-                isDark ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-700'
+                isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
               }`}>
                 chain-specific
               </span>
@@ -651,7 +651,7 @@ function SuckerConfigSection({
                   <div className={`flex justify-between gap-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                     <span>→ {remoteChainName}</span>
                     <span
-                      className={`font-mono text-xs cursor-pointer hover:underline ${isDark ? 'text-purple-400' : 'text-purple-600'}`}
+                      className={`font-mono text-xs cursor-pointer hover:underline ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}
                       onClick={() => navigator.clipboard.writeText(dc.deployer)}
                       title={`Click to copy: ${dc.deployer}`}
                     >

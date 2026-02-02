@@ -4,10 +4,10 @@ import { IS_TESTNET, CHAIN_IDS } from '../config/environment'
 // Chain name mapping (environment-aware)
 export const CHAIN_NAMES: Record<string, string> = IS_TESTNET
   ? {
-      [String(CHAIN_IDS.ethereum)]: 'Sepolia',
-      [String(CHAIN_IDS.optimism)]: 'OP Sepolia',
-      [String(CHAIN_IDS.base)]: 'Base Sepolia',
-      [String(CHAIN_IDS.arbitrum)]: 'Arb Sepolia',
+      [String(CHAIN_IDS.ethereum)]: 'SEP',
+      [String(CHAIN_IDS.optimism)]: 'OPSEP',
+      [String(CHAIN_IDS.base)]: 'BASESEP',
+      [String(CHAIN_IDS.arbitrum)]: 'ARBSEP',
     }
   : {
       [String(CHAIN_IDS.ethereum)]: 'Ethereum',

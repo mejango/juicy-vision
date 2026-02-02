@@ -54,13 +54,13 @@ const SEPOLIA_DEPLOYERS = {
  * Maps deployer address -> { label, chainPair: [chainIdA, chainIdB] }
  */
 export const SUCKER_DEPLOYER_LABELS: Record<string, { label: string; chainPair: [number, number] }> = {
-  // Testnets
-  [SEPOLIA_DEPLOYERS.ETH_OP.toLowerCase()]: { label: 'ETH ↔ OP', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.optimismSepolia] },
-  [SEPOLIA_DEPLOYERS.ETH_ARB.toLowerCase()]: { label: 'ETH ↔ ARB', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.arbitrumSepolia] },
-  [SEPOLIA_DEPLOYERS.ETH_BASE.toLowerCase()]: { label: 'ETH ↔ BASE', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.baseSepolia] },
-  [SEPOLIA_DEPLOYERS.OP_ARB.toLowerCase()]: { label: 'OP ↔ ARB', chainPair: [CHAIN_IDS.optimismSepolia, CHAIN_IDS.arbitrumSepolia] },
-  [SEPOLIA_DEPLOYERS.OP_BASE.toLowerCase()]: { label: 'OP ↔ BASE', chainPair: [CHAIN_IDS.optimismSepolia, CHAIN_IDS.baseSepolia] },
-  [SEPOLIA_DEPLOYERS.ARB_BASE.toLowerCase()]: { label: 'ARB ↔ BASE', chainPair: [CHAIN_IDS.arbitrumSepolia, CHAIN_IDS.baseSepolia] },
+  // Testnets (SEP, OPSEP, BASESEP, ARBSEP)
+  [SEPOLIA_DEPLOYERS.ETH_OP.toLowerCase()]: { label: 'SEP ↔ OPSEP', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.optimismSepolia] },
+  [SEPOLIA_DEPLOYERS.ETH_ARB.toLowerCase()]: { label: 'SEP ↔ ARBSEP', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.arbitrumSepolia] },
+  [SEPOLIA_DEPLOYERS.ETH_BASE.toLowerCase()]: { label: 'SEP ↔ BASESEP', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.baseSepolia] },
+  [SEPOLIA_DEPLOYERS.OP_ARB.toLowerCase()]: { label: 'OPSEP ↔ ARBSEP', chainPair: [CHAIN_IDS.optimismSepolia, CHAIN_IDS.arbitrumSepolia] },
+  [SEPOLIA_DEPLOYERS.OP_BASE.toLowerCase()]: { label: 'OPSEP ↔ BASESEP', chainPair: [CHAIN_IDS.optimismSepolia, CHAIN_IDS.baseSepolia] },
+  [SEPOLIA_DEPLOYERS.ARB_BASE.toLowerCase()]: { label: 'ARBSEP ↔ BASESEP', chainPair: [CHAIN_IDS.arbitrumSepolia, CHAIN_IDS.baseSepolia] },
 }
 
 /**
