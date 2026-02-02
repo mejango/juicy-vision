@@ -181,7 +181,8 @@ describe('LaunchProjectModal', () => {
     it('shows project owner', () => {
       render(<LaunchProjectModal {...defaultProps} />)
 
-      expect(screen.getByText('Project Owner')).toBeInTheDocument()
+      // Component shows "Project Owner (Wallet)" when using wallet address
+      expect(screen.getByText('Project Owner (Wallet)')).toBeInTheDocument()
       expect(screen.getByText('0x123456...567890')).toBeInTheDocument()
     })
   })
@@ -207,6 +208,7 @@ describe('LaunchProjectModal', () => {
         rulesetConfigurations: [defaultProps.rulesetConfig],
         terminalConfigurations: defaultProps.terminalConfigurations,
         memo: defaultProps.memo,
+        forceSelfCustody: false,
       })
     })
 

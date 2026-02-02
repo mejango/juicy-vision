@@ -66,9 +66,10 @@ const sampleUsdcTerminalConfig: JBTerminalConfig = {
 }
 
 // Sample sucker deployment configuration
+// Uses real OPSuckerDeployer address from chains.ts
 const sampleSuckerConfig: JBSuckerDeploymentConfig = {
   deployerConfigurations: [{
-    deployer: '0x4a64b6c13ccecbd22b427fbd1a1f0f90a4dc0d05',
+    deployer: '0x77cdb0f5eef8febd67dd6e594ff654fb12cc3057', // OPSuckerDeployer
     mappings: [{
       localToken: '0x000000000000000000000000000000000000EEEe',
       minGas: 200000,
@@ -87,6 +88,7 @@ describe('omnichainDeployer', () => {
   describe('encodeLaunchProjectFor', () => {
     it('encodes calldata for launchProjectFor', () => {
       const calldata = encodeLaunchProjectFor({
+        chainId: 11155111, // Sepolia
         owner: '0x1234567890123456789012345678901234567890',
         projectUri: 'QmXyz123',
         rulesetConfigurations: [sampleRulesetConfig],
@@ -102,6 +104,7 @@ describe('omnichainDeployer', () => {
 
     it('uses default controller when not specified', () => {
       const calldata = encodeLaunchProjectFor({
+        chainId: 11155111, // Sepolia
         owner: '0x1234567890123456789012345678901234567890',
         projectUri: 'QmXyz123',
         rulesetConfigurations: [sampleRulesetConfig],
@@ -121,6 +124,7 @@ describe('omnichainDeployer', () => {
       }
 
       const calldata = encodeLaunchProjectFor({
+        chainId: 11155111, // Sepolia
         owner: '0x1234567890123456789012345678901234567890',
         projectUri: 'QmXyz123',
         rulesetConfigurations: [sampleRulesetConfig],
@@ -149,6 +153,7 @@ describe('omnichainDeployer', () => {
       }
 
       const calldata = encodeLaunchProjectFor({
+        chainId: 11155111, // Sepolia
         owner: '0x1234567890123456789012345678901234567890',
         projectUri: 'QmXyz123',
         rulesetConfigurations: [rulesetWithSplits],
@@ -178,6 +183,7 @@ describe('omnichainDeployer', () => {
       }
 
       const calldata = encodeLaunchProjectFor({
+        chainId: 11155111, // Sepolia
         owner: '0x1234567890123456789012345678901234567890',
         projectUri: 'QmXyz123',
         rulesetConfigurations: [rulesetWithLimits],
@@ -358,6 +364,7 @@ describe('omnichainDeployer', () => {
   describe('encodeQueueRulesetsOf', () => {
     it('encodes calldata for queueRulesetsOf', () => {
       const calldata = encodeQueueRulesetsOf({
+        chainId: 11155111, // Sepolia
         projectId: 123,
         rulesetConfigurations: [sampleRulesetConfig],
         memo: 'Queue new ruleset',
@@ -369,6 +376,7 @@ describe('omnichainDeployer', () => {
 
     it('handles BigInt project ID', () => {
       const calldata = encodeQueueRulesetsOf({
+        chainId: 11155111, // Sepolia
         projectId: BigInt(123),
         rulesetConfigurations: [sampleRulesetConfig],
         memo: 'Queue new ruleset',

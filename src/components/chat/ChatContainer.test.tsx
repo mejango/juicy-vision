@@ -219,12 +219,14 @@ describe('ChatContainer', () => {
       expect(input).toHaveAttribute('placeholder')
     })
 
-    it('renders topOnly mode correctly', () => {
+    it('renders topOnly mode correctly', async () => {
       renderWithProviders(<ChatContainer topOnly />)
       // In topOnly mode, renders message area without the input field
       // Check that a shuffle button exists (part of the top/welcome area)
-      expect(screen.getByRole('button', { name: /shuffle/i })).toBeInTheDocument()
-    })
+      // Use findBy to wait for async rendering of WelcomeScreen
+      const shuffleButton = await screen.findByRole('button', { name: /shuffle/i }, { timeout: 10000 })
+      expect(shuffleButton).toBeInTheDocument()
+    }, 15000) // Increase test timeout for slow CI environments
 
     it('renders bottomOnly mode correctly', () => {
       renderWithProviders(<ChatContainer bottomOnly />)

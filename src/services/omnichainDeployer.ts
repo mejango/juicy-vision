@@ -5,11 +5,20 @@
 
 import { encodeFunctionData } from 'viem'
 import { JB_OMNICHAIN_DEPLOYER_ABI, JB_OMNICHAIN_DEPLOYER_ADDRESS } from '../constants/abis'
-import { JB_CONTRACTS_5_1 } from '../constants/chains'
+import {
+  JB_CONTRACTS_5_1,
+  JB_SWAP_TERMINAL,
+  JB_SWAP_TERMINAL_USDC,
+  CHAIN_SUCKER_DEPLOYER,
+  type SupportedChainId,
+  ZERO_ADDRESS,
+} from '../constants/chains'
+import { CHAIN_IDS } from '../config/environment'
 import {
   parseSuckerDeployerConfig,
   createSalt,
   shouldConfigureSuckers,
+  CCIP_SUCKER_DEPLOYER_ADDRESSES,
   type JBSuckerDeploymentConfig as SuckerConfig,
 } from '../utils/suckerConfig'
 import type {
@@ -17,6 +26,141 @@ import type {
   JBTerminalConfig,
   JBSuckerDeploymentConfig,
 } from './relayr'
+
+// ============================================================================
+// ADDRESS VALIDATION
+// ============================================================================
+
+/**
+ * Validate that an address is a proper 40-character hex string.
+ * Throws an error if invalid, providing the field name for debugging.
+ */
+function validateAddress(address: string, fieldName: string): `0x${string}` {
+  if (!address || typeof address !== 'string') {
+    throw new Error(`${fieldName}: Address is required but got ${typeof address}`)
+  }
+  const normalized = address.toLowerCase()
+  if (!normalized.startsWith('0x')) {
+    throw new Error(`${fieldName}: Address must start with 0x, got "${address}"`)
+  }
+  const hexPart = normalized.slice(2)
+  if (hexPart.length !== 40) {
+    throw new Error(`${fieldName}: Address must be 40 hex characters (got ${hexPart.length}): "${address}"`)
+  }
+  if (!/^[0-9a-f]+$/.test(hexPart)) {
+    throw new Error(`${fieldName}: Address contains invalid characters: "${address}"`)
+  }
+  return address as `0x${string}`
+}
+
+/**
+ * Build a set of known valid terminal addresses for a given chain.
+ */
+function getKnownTerminalAddresses(chainId: number): Set<string> {
+  const addresses = new Set<string>()
+  const cid = chainId as SupportedChainId
+
+  // Add all known terminal addresses (lowercase for comparison)
+  // JBMultiTerminal 5.1 - same address on all chains via CREATE2
+  if (JB_CONTRACTS_5_1.JBMultiTerminal5_1) {
+    addresses.add(JB_CONTRACTS_5_1.JBMultiTerminal5_1.toLowerCase())
+  }
+
+  // JBSwapTerminal variants - chain-specific addresses
+  if (JB_SWAP_TERMINAL[cid]) addresses.add(JB_SWAP_TERMINAL[cid].toLowerCase())
+  if (JB_SWAP_TERMINAL_USDC[cid]) addresses.add(JB_SWAP_TERMINAL_USDC[cid].toLowerCase())
+
+  return addresses
+}
+
+/**
+ * Validate that a terminal address is a known Juicebox terminal.
+ * This prevents hallucinated terminal addresses from being used.
+ */
+function validateTerminalAddress(address: string, chainId: number, fieldName: string): `0x${string}` {
+  const validated = validateAddress(address, fieldName)
+  const knownTerminals = getKnownTerminalAddresses(chainId)
+
+  if (!knownTerminals.has(validated.toLowerCase())) {
+    const knownList = Array.from(knownTerminals).join(', ')
+    throw new Error(
+      `${fieldName}: Terminal address "${address}" is not a known Juicebox terminal for chain ${chainId}. ` +
+      `Known terminals: ${knownList || 'none configured for this chain'}`
+    )
+  }
+
+  return validated
+}
+
+/**
+ * Build a set of known valid sucker deployer addresses.
+ * Includes both mainnet deployers (from chains.ts) and testnet CCIP deployers (from suckerConfig.ts).
+ */
+function getKnownSuckerDeployers(): Set<string> {
+  const addresses = new Set<string>()
+
+  // Add mainnet sucker deployers from all chains
+  const chainIds = [CHAIN_IDS.ethereum, CHAIN_IDS.optimism, CHAIN_IDS.base, CHAIN_IDS.arbitrum] as SupportedChainId[]
+  for (const chainId of chainIds) {
+    const deployer = CHAIN_SUCKER_DEPLOYER[chainId]
+    if (deployer) {
+      addresses.add(deployer.toLowerCase())
+    }
+  }
+
+  // Add testnet CCIP sucker deployers (from suckerConfig.ts)
+  for (const targetChain of Object.values(CCIP_SUCKER_DEPLOYER_ADDRESSES)) {
+    for (const deployerAddress of Object.values(targetChain)) {
+      addresses.add(deployerAddress.toLowerCase())
+    }
+  }
+
+  return addresses
+}
+
+/**
+ * Validate that a sucker deployer address is a known deployer.
+ */
+function validateSuckerDeployerAddress(address: string, fieldName: string): `0x${string}` {
+  const validated = validateAddress(address, fieldName)
+  const knownDeployers = getKnownSuckerDeployers()
+
+  if (!knownDeployers.has(validated.toLowerCase())) {
+    throw new Error(
+      `${fieldName}: Sucker deployer address "${address}" is not a known deployer. ` +
+      `This may be a hallucinated address.`
+    )
+  }
+
+  return validated
+}
+
+/**
+ * Validate an address that can be user-controlled (beneficiary, owner, etc.)
+ * Only validates format, not against known list.
+ */
+function validateUserAddress(address: string, fieldName: string): `0x${string}` {
+  return validateAddress(address, fieldName)
+}
+
+/**
+ * Validate a token address. Allows native token (0xEEEE...) and validates format.
+ * For ERC20 tokens on testnet/mainnet, we could add known token validation.
+ */
+function validateTokenAddress(address: string, fieldName: string): `0x${string}` {
+  return validateAddress(address, fieldName)
+}
+
+/**
+ * Validate a hook address. Can be zero address (no hook) or any valid address.
+ */
+function validateHookAddress(address: string, fieldName: string): `0x${string}` {
+  // Zero address is valid for "no hook"
+  if (address.toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
+    return ZERO_ADDRESS
+  }
+  return validateAddress(address, fieldName)
+}
 
 // 721 Tier configuration for NFT hooks
 export interface JB721TierConfig {
@@ -75,6 +219,7 @@ const DEFAULT_CONTROLLER = JB_CONTRACTS_5_1.JBController5_1
  * This creates a project and optionally deploys suckers atomically.
  */
 export function encodeLaunchProjectFor(params: {
+  chainId: number
   owner: `0x${string}`
   projectUri: string
   rulesetConfigurations: JBRulesetConfig[]
@@ -84,6 +229,7 @@ export function encodeLaunchProjectFor(params: {
   controller?: `0x${string}`
 }): `0x${string}` {
   const {
+    chainId,
     owner,
     projectUri,
     rulesetConfigurations,
@@ -93,78 +239,21 @@ export function encodeLaunchProjectFor(params: {
     controller = DEFAULT_CONTROLLER,
   } = params
 
-  // Transform ruleset configurations to match ABI format
-  // Note: viem handles BigInt conversion, we just need to ensure proper types
-  const formattedRulesets = rulesetConfigurations.map(ruleset => ({
-    mustStartAtOrAfter: ruleset.mustStartAtOrAfter,
-    duration: ruleset.duration,
-    weight: BigInt(ruleset.weight),
-    weightCutPercent: ruleset.weightCutPercent,
-    approvalHook: ruleset.approvalHook as `0x${string}`,
-    metadata: {
-      reservedPercent: ruleset.metadata.reservedPercent,
-      cashOutTaxRate: ruleset.metadata.cashOutTaxRate,
-      baseCurrency: ruleset.metadata.baseCurrency,
-      pausePay: ruleset.metadata.pausePay,
-      pauseCreditTransfers: ruleset.metadata.pauseCreditTransfers,
-      allowOwnerMinting: ruleset.metadata.allowOwnerMinting,
-      allowSetCustomToken: ruleset.metadata.allowSetCustomToken,
-      allowTerminalMigration: ruleset.metadata.allowTerminalMigration,
-      allowSetTerminals: ruleset.metadata.allowSetTerminals,
-      allowSetController: ruleset.metadata.allowSetController,
-      allowAddAccountingContext: ruleset.metadata.allowAddAccountingContext,
-      allowAddPriceFeed: ruleset.metadata.allowAddPriceFeed,
-      ownerMustSendPayouts: ruleset.metadata.ownerMustSendPayouts,
-      holdFees: ruleset.metadata.holdFees,
-      useTotalSurplusForCashOuts: ruleset.metadata.useTotalSurplusForCashOuts,
-      useDataHookForPay: ruleset.metadata.useDataHookForPay,
-      useDataHookForCashOut: ruleset.metadata.useDataHookForCashOut,
-      dataHook: ruleset.metadata.dataHook as `0x${string}`,
-      metadata: ruleset.metadata.metadata,
-    },
-    splitGroups: ruleset.splitGroups.map(group => ({
-      groupId: BigInt(group.groupId),
-      splits: group.splits.map(split => ({
-        percent: split.percent,
-        projectId: BigInt(split.projectId),
-        beneficiary: split.beneficiary as `0x${string}`,
-        preferAddToBalance: split.preferAddToBalance,
-        lockedUntil: split.lockedUntil,
-        hook: split.hook as `0x${string}`,
-      })),
-    })),
-    fundAccessLimitGroups: ruleset.fundAccessLimitGroups.map((group, groupIdx) => ({
-      terminal: validateAddress(group.terminal, `fundAccessLimitGroups[${groupIdx}].terminal`),
-      token: validateAddress(group.token, `fundAccessLimitGroups[${groupIdx}].token`),
-      payoutLimits: group.payoutLimits.map(limit => ({
-        amount: BigInt(limit.amount),
-        currency: limit.currency,
-      })),
-      surplusAllowances: group.surplusAllowances.map(allowance => ({
-        amount: BigInt(allowance.amount),
-        currency: allowance.currency,
-      })),
-    })),
-  }))
+  // Validate the owner address format
+  const validatedOwner = validateUserAddress(owner, 'owner')
 
-  // Transform terminal configurations
-  const formattedTerminals = terminalConfigurations.map(terminal => ({
-    terminal: terminal.terminal as `0x${string}`,
-    accountingContextsToAccept: terminal.accountingContextsToAccept.map(ctx => ({
-      token: ctx.token as `0x${string}`,
-      decimals: ctx.decimals,
-      currency: ctx.currency,
-    })),
-  }))
+  // Use the shared formatting functions with address validation
+  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId)
+  const formattedTerminals = formatTerminalConfigurations(terminalConfigurations, chainId)
 
-  // Transform sucker deployment configuration
+  // Transform sucker deployment configuration with validation
   const formattedSuckerConfig = {
-    deployerConfigurations: suckerDeploymentConfiguration.deployerConfigurations.map(config => ({
-      deployer: config.deployer as `0x${string}`,
-      mappings: config.mappings.map(mapping => ({
-        localToken: mapping.localToken as `0x${string}`,
+    deployerConfigurations: suckerDeploymentConfiguration.deployerConfigurations.map((config, idx) => ({
+      deployer: validateSuckerDeployerAddress(config.deployer, `suckerDeploymentConfiguration.deployerConfigurations[${idx}].deployer`),
+      mappings: config.mappings.map((mapping, mapIdx) => ({
+        localToken: validateTokenAddress(mapping.localToken, `suckerDeploymentConfiguration.deployerConfigurations[${idx}].mappings[${mapIdx}].localToken`),
         minGas: mapping.minGas,
-        remoteToken: mapping.remoteToken as `0x${string}`,
+        remoteToken: validateTokenAddress(mapping.remoteToken, `suckerDeploymentConfiguration.deployerConfigurations[${idx}].mappings[${mapIdx}].remoteToken`),
         minBridgeAmount: BigInt(mapping.minBridgeAmount),
       })),
     })),
@@ -175,7 +264,7 @@ export function encodeLaunchProjectFor(params: {
   // Use contract parameter names for clarity
   console.log('\n=== ENCODE ARGS (JSON) ===')
   console.log(JSON.stringify({
-    owner,
+    owner: validatedOwner,
     projectUri,
     rulesetConfigurations: formattedRulesets,
     terminalConfigurations: formattedTerminals,
@@ -189,7 +278,7 @@ export function encodeLaunchProjectFor(params: {
     abi: JB_OMNICHAIN_DEPLOYER_ABI,
     functionName: 'launchProjectFor',
     args: [
-      owner,
+      validatedOwner,
       projectUri,
       formattedRulesets,
       formattedTerminals,
@@ -385,35 +474,14 @@ export interface JBLaunchRulesetsConfig {
 }
 
 /**
- * Validate that an address is a proper 40-character hex string (excluding 0x prefix).
- * Throws an error if invalid, providing the field name for debugging.
+ * Helper to format terminal configurations with validation.
+ * Validates terminal addresses against known Juicebox terminals to prevent hallucinated addresses.
  */
-function validateAddress(address: string, fieldName: string): `0x${string}` {
-  if (!address || typeof address !== 'string') {
-    throw new Error(`${fieldName}: Address is required but got ${typeof address}`)
-  }
-  const normalized = address.toLowerCase()
-  if (!normalized.startsWith('0x')) {
-    throw new Error(`${fieldName}: Address must start with 0x, got "${address}"`)
-  }
-  const hexPart = normalized.slice(2)
-  if (hexPart.length !== 40) {
-    throw new Error(`${fieldName}: Address must be 40 hex characters (got ${hexPart.length}): "${address}"`)
-  }
-  if (!/^[0-9a-f]+$/.test(hexPart)) {
-    throw new Error(`${fieldName}: Address contains invalid characters: "${address}"`)
-  }
-  return address as `0x${string}`
-}
-
-/**
- * Helper to format terminal configurations.
- */
-function formatTerminalConfigurations(terminalConfigurations: JBTerminalConfig[]) {
+function formatTerminalConfigurations(terminalConfigurations: JBTerminalConfig[], chainId: number) {
   return terminalConfigurations.map((terminal, idx) => ({
-    terminal: validateAddress(terminal.terminal, `terminalConfigurations[${idx}].terminal`),
+    terminal: validateTerminalAddress(terminal.terminal, chainId, `terminalConfigurations[${idx}].terminal`),
     accountingContextsToAccept: terminal.accountingContextsToAccept.map((ctx, ctxIdx) => ({
-      token: validateAddress(ctx.token, `terminalConfigurations[${idx}].accountingContextsToAccept[${ctxIdx}].token`),
+      token: validateTokenAddress(ctx.token, `terminalConfigurations[${idx}].accountingContextsToAccept[${ctxIdx}].token`),
       decimals: ctx.decimals,
       currency: ctx.currency,
     })),
@@ -422,14 +490,15 @@ function formatTerminalConfigurations(terminalConfigurations: JBTerminalConfig[]
 
 /**
  * Helper to format ruleset configurations consistently across functions.
+ * Validates all addresses to prevent hallucinated values.
  */
-function formatRulesetConfigurations(rulesetConfigurations: JBRulesetConfig[]) {
-  return rulesetConfigurations.map(ruleset => ({
+function formatRulesetConfigurations(rulesetConfigurations: JBRulesetConfig[], chainId: number) {
+  return rulesetConfigurations.map((ruleset, rulesetIdx) => ({
     mustStartAtOrAfter: ruleset.mustStartAtOrAfter,
     duration: ruleset.duration,
     weight: BigInt(ruleset.weight),
     weightCutPercent: ruleset.weightCutPercent,
-    approvalHook: ruleset.approvalHook as `0x${string}`,
+    approvalHook: validateHookAddress(ruleset.approvalHook, `rulesetConfigurations[${rulesetIdx}].approvalHook`),
     metadata: {
       reservedPercent: ruleset.metadata.reservedPercent,
       cashOutTaxRate: ruleset.metadata.cashOutTaxRate,
@@ -448,23 +517,23 @@ function formatRulesetConfigurations(rulesetConfigurations: JBRulesetConfig[]) {
       useTotalSurplusForCashOuts: ruleset.metadata.useTotalSurplusForCashOuts,
       useDataHookForPay: ruleset.metadata.useDataHookForPay,
       useDataHookForCashOut: ruleset.metadata.useDataHookForCashOut,
-      dataHook: ruleset.metadata.dataHook as `0x${string}`,
+      dataHook: validateHookAddress(ruleset.metadata.dataHook, `rulesetConfigurations[${rulesetIdx}].metadata.dataHook`),
       metadata: ruleset.metadata.metadata,
     },
-    splitGroups: ruleset.splitGroups.map(group => ({
+    splitGroups: ruleset.splitGroups.map((group, groupIdx) => ({
       groupId: BigInt(group.groupId),
-      splits: group.splits.map(split => ({
+      splits: group.splits.map((split, splitIdx) => ({
         percent: split.percent,
         projectId: BigInt(split.projectId),
-        beneficiary: split.beneficiary as `0x${string}`,
+        beneficiary: validateUserAddress(split.beneficiary, `rulesetConfigurations[${rulesetIdx}].splitGroups[${groupIdx}].splits[${splitIdx}].beneficiary`),
         preferAddToBalance: split.preferAddToBalance,
         lockedUntil: split.lockedUntil,
-        hook: split.hook as `0x${string}`,
+        hook: validateHookAddress(split.hook, `rulesetConfigurations[${rulesetIdx}].splitGroups[${groupIdx}].splits[${splitIdx}].hook`),
       })),
     })),
     fundAccessLimitGroups: ruleset.fundAccessLimitGroups.map((group, groupIdx) => ({
-      terminal: validateAddress(group.terminal, `fundAccessLimitGroups[${groupIdx}].terminal`),
-      token: validateAddress(group.token, `fundAccessLimitGroups[${groupIdx}].token`),
+      terminal: validateTerminalAddress(group.terminal, chainId, `rulesetConfigurations[${rulesetIdx}].fundAccessLimitGroups[${groupIdx}].terminal`),
+      token: validateTokenAddress(group.token, `rulesetConfigurations[${rulesetIdx}].fundAccessLimitGroups[${groupIdx}].token`),
       payoutLimits: group.payoutLimits.map(limit => ({
         amount: BigInt(limit.amount),
         currency: limit.currency,
@@ -523,6 +592,7 @@ function formatDeployTiersHookConfig(config: JBDeployTiersHookConfig) {
  * Launches rulesets with a 721 tiers hook for an existing project.
  */
 export function encodeLaunch721RulesetsFor(params: {
+  chainId: number
   projectId: number | bigint
   deployTiersHookConfig: JBDeployTiersHookConfig
   launchRulesetsConfig: JBLaunchRulesetsConfig
@@ -530,6 +600,7 @@ export function encodeLaunch721RulesetsFor(params: {
   salt?: `0x${string}`
 }): `0x${string}` {
   const {
+    chainId,
     projectId,
     deployTiersHookConfig,
     launchRulesetsConfig,
@@ -540,8 +611,8 @@ export function encodeLaunch721RulesetsFor(params: {
   const formattedDeployConfig = formatDeployTiersHookConfig(deployTiersHookConfig)
   const formattedLaunchConfig = {
     projectId: BigInt(launchRulesetsConfig.projectId),
-    rulesetConfigurations: formatRulesetConfigurations(launchRulesetsConfig.rulesetConfigurations),
-    terminalConfigurations: formatTerminalConfigurations(launchRulesetsConfig.terminalConfigurations),
+    rulesetConfigurations: formatRulesetConfigurations(launchRulesetsConfig.rulesetConfigurations, chainId),
+    terminalConfigurations: formatTerminalConfigurations(launchRulesetsConfig.terminalConfigurations, chainId),
     memo: launchRulesetsConfig.memo,
   }
 
@@ -633,19 +704,21 @@ export function buildOmnichainLaunch721RulesetsTransactions(params: {
  * Queues new rulesets for an existing project (without 721 tiers hook).
  */
 export function encodeQueueRulesetsOf(params: {
+  chainId: number
   projectId: number | bigint
   rulesetConfigurations: JBRulesetConfig[]
   memo: string
   controller?: `0x${string}`
 }): `0x${string}` {
   const {
+    chainId,
     projectId,
     rulesetConfigurations,
     memo,
     controller = DEFAULT_CONTROLLER,
   } = params
 
-  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations)
+  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId)
 
   return encodeFunctionData({
     abi: JB_OMNICHAIN_DEPLOYER_ABI,
@@ -712,6 +785,7 @@ export function buildOmnichainQueueRulesetsTransactions(params: {
  * Queues new rulesets with a 721 tiers hook for an existing project.
  */
 export function encodeQueue721RulesetsOf(params: {
+  chainId: number
   projectId: number | bigint
   deployTiersHookConfig: JBDeployTiersHookConfig
   queueRulesetsConfig: JBQueueRulesetsConfig
@@ -719,6 +793,7 @@ export function encodeQueue721RulesetsOf(params: {
   salt?: `0x${string}`
 }): `0x${string}` {
   const {
+    chainId,
     projectId,
     deployTiersHookConfig,
     queueRulesetsConfig,
@@ -729,7 +804,7 @@ export function encodeQueue721RulesetsOf(params: {
   const formattedDeployConfig = formatDeployTiersHookConfig(deployTiersHookConfig)
   const formattedQueueConfig = {
     projectId: BigInt(queueRulesetsConfig.projectId),
-    rulesetConfigurations: formatRulesetConfigurations(queueRulesetsConfig.rulesetConfigurations),
+    rulesetConfigurations: formatRulesetConfigurations(queueRulesetsConfig.rulesetConfigurations, chainId),
     memo: queueRulesetsConfig.memo,
   }
 
