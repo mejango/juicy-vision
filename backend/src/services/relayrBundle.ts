@@ -113,11 +113,10 @@ const FORWARD_REQUEST_TYPES = {
 // 48 hours deadline for signatures
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60;
 
-// Relayr API configuration
-// Defaults to staging; set RELAYR_API_URL for production (https://api.relayr.ba5ed.com)
-const RELAYR_API_URL = process.env.RELAYR_API_URL || 'https://relayr-api-staging.up.railway.app';
-const RELAYR_APP_ID = process.env.RELAYR_APP_ID || '43a6827c-3407-43c1-89c6-deeb8994696d';
-const RELAYR_API_KEY = process.env.RELAYR_API_KEY || '';
+// Relayr API configuration - all required env vars
+const RELAYR_API_URL = process.env.RELAYR_API_URL;
+const RELAYR_APP_ID = process.env.RELAYR_APP_ID;
+const RELAYR_API_KEY = process.env.RELAYR_API_KEY;
 
 // ============================================================================
 // Types
@@ -161,6 +160,17 @@ function getPublicClient(chainId: number) {
 export async function createRelayrBundle(params: CreateBundleParams): Promise<{ bundleId: string }> {
   const { userId, transactions, owner } = params;
   const config = getConfig();
+
+  // Validate required env vars
+  if (!RELAYR_API_URL) {
+    throw new Error('RELAYR_API_URL not configured');
+  }
+  if (!RELAYR_APP_ID) {
+    throw new Error('RELAYR_APP_ID not configured');
+  }
+  if (!RELAYR_API_KEY) {
+    throw new Error('RELAYR_API_KEY not configured');
+  }
 
   // Get the system signing key
   const systemKey = config.reservesPrivateKey as `0x${string}`;
