@@ -133,9 +133,9 @@ export function encodeLaunchProjectFor(params: {
         hook: split.hook as `0x${string}`,
       })),
     })),
-    fundAccessLimitGroups: ruleset.fundAccessLimitGroups.map(group => ({
-      terminal: group.terminal as `0x${string}`,
-      token: group.token as `0x${string}`,
+    fundAccessLimitGroups: ruleset.fundAccessLimitGroups.map((group, groupIdx) => ({
+      terminal: validateAddress(group.terminal, `fundAccessLimitGroups[${groupIdx}].terminal`),
+      token: validateAddress(group.token, `fundAccessLimitGroups[${groupIdx}].token`),
       payoutLimits: group.payoutLimits.map(limit => ({
         amount: BigInt(limit.amount),
         currency: limit.currency,
@@ -385,13 +385,35 @@ export interface JBLaunchRulesetsConfig {
 }
 
 /**
+ * Validate that an address is a proper 40-character hex string (excluding 0x prefix).
+ * Throws an error if invalid, providing the field name for debugging.
+ */
+function validateAddress(address: string, fieldName: string): `0x${string}` {
+  if (!address || typeof address !== 'string') {
+    throw new Error(`${fieldName}: Address is required but got ${typeof address}`)
+  }
+  const normalized = address.toLowerCase()
+  if (!normalized.startsWith('0x')) {
+    throw new Error(`${fieldName}: Address must start with 0x, got "${address}"`)
+  }
+  const hexPart = normalized.slice(2)
+  if (hexPart.length !== 40) {
+    throw new Error(`${fieldName}: Address must be 40 hex characters (got ${hexPart.length}): "${address}"`)
+  }
+  if (!/^[0-9a-f]+$/.test(hexPart)) {
+    throw new Error(`${fieldName}: Address contains invalid characters: "${address}"`)
+  }
+  return address as `0x${string}`
+}
+
+/**
  * Helper to format terminal configurations.
  */
 function formatTerminalConfigurations(terminalConfigurations: JBTerminalConfig[]) {
-  return terminalConfigurations.map(terminal => ({
-    terminal: terminal.terminal as `0x${string}`,
-    accountingContextsToAccept: terminal.accountingContextsToAccept.map(ctx => ({
-      token: ctx.token as `0x${string}`,
+  return terminalConfigurations.map((terminal, idx) => ({
+    terminal: validateAddress(terminal.terminal, `terminalConfigurations[${idx}].terminal`),
+    accountingContextsToAccept: terminal.accountingContextsToAccept.map((ctx, ctxIdx) => ({
+      token: validateAddress(ctx.token, `terminalConfigurations[${idx}].accountingContextsToAccept[${ctxIdx}].token`),
       decimals: ctx.decimals,
       currency: ctx.currency,
     })),
@@ -440,9 +462,9 @@ function formatRulesetConfigurations(rulesetConfigurations: JBRulesetConfig[]) {
         hook: split.hook as `0x${string}`,
       })),
     })),
-    fundAccessLimitGroups: ruleset.fundAccessLimitGroups.map(group => ({
-      terminal: group.terminal as `0x${string}`,
-      token: group.token as `0x${string}`,
+    fundAccessLimitGroups: ruleset.fundAccessLimitGroups.map((group, groupIdx) => ({
+      terminal: validateAddress(group.terminal, `fundAccessLimitGroups[${groupIdx}].terminal`),
+      token: validateAddress(group.token, `fundAccessLimitGroups[${groupIdx}].token`),
       payoutLimits: group.payoutLimits.map(limit => ({
         amount: BigInt(limit.amount),
         currency: limit.currency,
