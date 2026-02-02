@@ -85,12 +85,17 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
               <p className={`text-sm leading-relaxed font-medium ${
                 theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
               }`}>
-                {t('juicyExplainer.intro', "Juicy is the open funding platform.")}
+                {t('juicyExplainer.intro', "The juiciest way to fund and grow your project.")}
               </p>
               <p className={`text-sm leading-relaxed mt-3 ${
                 theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
               }`}>
-                {t('juicyExplainer.useIt', 'Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.')}
+                {t('juicyExplainer.useIt', 'Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams.')}
+              </p>
+              <p className={`text-sm leading-relaxed mt-3 ${
+                theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
+              }`}>
+                {t('juicyExplainer.promptAway', 'Just prompt away, in private or together.')}
               </p>
               <button
                 onClick={() => onSuggestionClick('I want to pay project ID 1 (NANA)')}

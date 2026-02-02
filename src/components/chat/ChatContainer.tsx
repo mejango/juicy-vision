@@ -2056,12 +2056,17 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
           }`}>
-            {t('beta.tagline', "Juicy is the open funding platform.")}
+            {t('beta.tagline', "The juiciest way to fund and grow your project.")}
           </p>
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
           }`}>
-            {t('beta.whatWeAreBuilding', "Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams. Just prompt away, in private or together.")}
+            {t('beta.whatWeAreBuilding', "Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams.")}
+          </p>
+          <p className={`text-xs leading-relaxed mb-2 ${
+            theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+          }`}>
+            {t('beta.promptAway', "Just prompt away, in private or together.")}
           </p>
           <p className={`text-xs leading-relaxed mb-2 ${
             theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
