@@ -45,16 +45,16 @@ const CHAINS: Record<number, typeof mainnet> = {
 };
 
 const RPC_URLS: Record<number, string> = {
-  // Mainnets
-  1: 'https://cloudflare-eth.com',
+  // Mainnets (drpc.org is generally more reliable)
+  1: 'https://eth.drpc.org',
   10: 'https://mainnet.optimism.io',
   8453: 'https://mainnet.base.org',
   42161: 'https://arb1.arbitrum.io/rpc',
-  // Testnets
-  11155111: 'https://rpc.sepolia.org',
-  11155420: 'https://sepolia.optimism.io',
-  84532: 'https://sepolia.base.org',
-  421614: 'https://sepolia-rollup.arbitrum.io/rpc',
+  // Testnets (drpc.org for reliability, public endpoints are slow)
+  11155111: 'https://sepolia.drpc.org',
+  11155420: 'https://optimism-sepolia.drpc.org',
+  84532: 'https://base-sepolia.drpc.org',
+  421614: 'https://arbitrum-sepolia.drpc.org',
 };
 
 // ============================================================================
