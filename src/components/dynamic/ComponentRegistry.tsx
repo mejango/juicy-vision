@@ -32,6 +32,7 @@ const TopProjects = lazy(() => import('./TopProjects'))
 const NFTGallery = lazy(() => import('./NFTGallery'))
 const NFTCard = lazy(() => import('./NFTCard'))
 const Storefront = lazy(() => import('./Storefront'))
+const ManageTiersForm = lazy(() => import('./ManageTiersForm'))
 const LandingPagePreview = lazy(() => import('./LandingPagePreview'))
 const SuccessVisualization = lazy(() => import('./SuccessVisualization'))
 const InteractionsSheet = lazy(() => import('./InteractionsSheet'))
@@ -227,6 +228,13 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
       sortBy: p.sortBy,
       filterCategory: p.filterCategory,
       showSoldOut: p.showSoldOut,
+    }),
+  },
+  'manage-tiers-form': {
+    component: ManageTiersForm,
+    mapProps: (p) => ({
+      projectId: p.projectId,
+      chainId: p.chainId,
     }),
   },
 

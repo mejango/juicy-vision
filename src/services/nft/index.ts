@@ -5,9 +5,19 @@ import { VIEM_CHAINS, RPC_ENDPOINTS, JB_CONTRACTS, type SupportedChainId } from 
 import { resolveIpfsUri } from '../../utils/ipfs'
 import {
   JB721TierStoreAbi,
+  JB721TiersHookAbi,
   JBControllerRulesetAbi,
 } from './queries'
-import type { NFTTier, NFTTierMetadata, ResolvedNFTTier } from './types'
+import type {
+  NFTTier,
+  NFTTierMetadata,
+  ResolvedNFTTier,
+  JB721HookFlags,
+  TierPermissions,
+  TierChangeValidation,
+  NFTTierWithPermissions,
+} from './types'
+import type { JB721TierConfigInput } from '../tiersHook'
 
 export * from './types'
 export * from './queries'
@@ -256,4 +266,202 @@ export async function getNumberOfTiers(
   } catch {
     return 0
   }
+}
+
+/**
+ * Fetch the hook flags for a JB721TiersHook contract
+ * These flags determine what operations are allowed on the collection
+ */
+export async function fetchHookFlags(
+  hookAddress: `0x${string}`,
+  chainId: number
+): Promise<JB721HookFlags | null> {
+  const chain = VIEM_CHAINS[chainId as SupportedChainId]
+  if (!chain) return null
+
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+  const client = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  })
+
+  try {
+    const flags = await client.readContract({
+      address: hookAddress,
+      abi: JB721TiersHookAbi,
+      functionName: 'FLAGS',
+    })
+
+    return {
+      noNewTiersWithReserves: flags.noNewTiersWithReserves,
+      noNewTiersWithVotes: flags.noNewTiersWithVotes,
+      noNewTiersWithOwnerMinting: flags.noNewTiersWithOwnerMinting,
+      preventOverspending: flags.preventOverspending,
+    }
+  } catch (err) {
+    console.error('Failed to fetch hook flags:', err)
+    return null
+  }
+}
+
+/**
+ * Fetch NFT tiers with their permission flags
+ */
+export async function fetchNFTTiersWithPermissions(
+  hookAddress: `0x${string}`,
+  chainId: number,
+  maxTiers: number = 100
+): Promise<NFTTierWithPermissions[]> {
+  const chain = VIEM_CHAINS[chainId as SupportedChainId]
+  if (!chain) return []
+
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+  const client = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  })
+
+  try {
+    const tiers = await client.readContract({
+      address: JB721_TIER_STORE,
+      abi: JB721TierStoreAbi,
+      functionName: 'tiersOf',
+      args: [
+        hookAddress,
+        [], // All categories
+        true, // Include resolved URI
+        0n, // Starting from tier 0
+        BigInt(maxTiers),
+      ],
+    })
+
+    return tiers.map((tier) => ({
+      tierId: Number(tier.id),
+      name: `Tier ${tier.id}`,
+      price: BigInt(tier.price),
+      currency: 1,
+      initialSupply: Number(tier.initialSupply),
+      remainingSupply: Number(tier.remainingSupply),
+      reservedRate: Number(tier.reservedRate),
+      votingUnits: BigInt(tier.votingUnits),
+      category: Number(tier.category),
+      allowOwnerMint: tier.allowOwnerMint,
+      transfersPausable: tier.transfersPausable,
+      encodedIPFSUri: tier.resolvedUri || undefined,
+      permissions: {
+        cannotBeRemoved: tier.cannotBeRemoved,
+        cannotIncreaseDiscountPercent: tier.cannotIncreaseDiscountPercent,
+      },
+    }))
+  } catch (err) {
+    console.error('Failed to fetch NFT tiers with permissions:', err)
+    return []
+  }
+}
+
+/**
+ * Validate a tier configuration change against hook flags and tier permissions
+ *
+ * @param tier - The tier configuration being added or modified
+ * @param hookFlags - The collection-wide flags from the hook contract
+ * @param existingTier - If modifying an existing tier, its current permissions
+ * @param isRemoval - If true, this is a tier removal operation
+ * @returns Validation result with allowed status and any block reason
+ */
+export function validateTierChange(
+  tier: JB721TierConfigInput | null,
+  hookFlags: JB721HookFlags,
+  existingTier?: TierPermissions,
+  isRemoval: boolean = false
+): TierChangeValidation {
+  // Tier removal validation
+  if (isRemoval) {
+    if (existingTier?.cannotBeRemoved) {
+      return {
+        allowed: false,
+        blockedReason: 'This tier has been configured to be non-removable',
+        suggestNewHook: false,
+      }
+    }
+    return { allowed: true, suggestNewHook: false }
+  }
+
+  // New tier validation
+  if (!tier) {
+    return { allowed: true, suggestNewHook: false }
+  }
+
+  // Check hook-level restrictions for new tiers
+  if (tier.reserveFrequency > 0 && hookFlags.noNewTiersWithReserves) {
+    return {
+      allowed: false,
+      blockedReason: 'This collection does not allow new tiers with reserved NFT minting',
+      suggestNewHook: true,
+    }
+  }
+
+  if (tier.votingUnits > 0 && hookFlags.noNewTiersWithVotes) {
+    return {
+      allowed: false,
+      blockedReason: 'This collection does not allow new tiers with voting power',
+      suggestNewHook: true,
+    }
+  }
+
+  if (tier.allowOwnerMint && hookFlags.noNewTiersWithOwnerMinting) {
+    return {
+      allowed: false,
+      blockedReason: 'This collection does not allow new tiers with owner minting enabled',
+      suggestNewHook: true,
+    }
+  }
+
+  return { allowed: true, suggestNewHook: false }
+}
+
+/**
+ * Validate a discount percent change against tier permissions
+ *
+ * @param newDiscountPercent - The new discount percent value
+ * @param currentDiscountPercent - The current discount percent value
+ * @param tierPermissions - The tier's permission flags
+ * @returns Validation result
+ */
+export function validateDiscountChange(
+  newDiscountPercent: number,
+  currentDiscountPercent: number,
+  tierPermissions: TierPermissions
+): TierChangeValidation {
+  // Increasing discount is restricted if cannotIncreaseDiscountPercent is set
+  if (newDiscountPercent > currentDiscountPercent && tierPermissions.cannotIncreaseDiscountPercent) {
+    return {
+      allowed: false,
+      blockedReason: 'This tier does not allow increasing the discount percentage',
+      suggestNewHook: false,
+    }
+  }
+
+  return { allowed: true, suggestNewHook: false }
+}
+
+/**
+ * Get a summary of what operations are blocked by hook flags
+ */
+export function getBlockedOperations(flags: JB721HookFlags): string[] {
+  const blocked: string[] = []
+
+  if (flags.noNewTiersWithReserves) {
+    blocked.push('Adding tiers with reserved NFT minting')
+  }
+  if (flags.noNewTiersWithVotes) {
+    blocked.push('Adding tiers with voting power')
+  }
+  if (flags.noNewTiersWithOwnerMinting) {
+    blocked.push('Adding tiers with owner minting')
+  }
+  if (flags.preventOverspending) {
+    blocked.push('Overspending on tier purchases')
+  }
+
+  return blocked
 }

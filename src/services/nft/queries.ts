@@ -18,6 +18,31 @@ export const JB721TiersHookAbi = [
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  {
+    name: 'DIRECTORY',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'FLAGS',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'noNewTiersWithReserves', type: 'bool' },
+          { name: 'noNewTiersWithVotes', type: 'bool' },
+          { name: 'noNewTiersWithOwnerMinting', type: 'bool' },
+          { name: 'preventOverspending', type: 'bool' },
+        ],
+      },
+    ],
+  },
 ] as const
 
 /**

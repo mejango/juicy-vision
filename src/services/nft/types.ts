@@ -82,3 +82,47 @@ export interface NFTMintEvent {
   amount: bigint
   timestamp: number
 }
+
+/**
+ * Collection-wide permission flags for JB721TiersHook
+ * These flags control what operations are allowed on the entire collection
+ */
+export interface JB721HookFlags {
+  /** If true, new tiers with reserve frequencies cannot be added */
+  noNewTiersWithReserves: boolean
+  /** If true, new tiers with voting units cannot be added */
+  noNewTiersWithVotes: boolean
+  /** If true, new tiers with owner minting enabled cannot be added */
+  noNewTiersWithOwnerMinting: boolean
+  /** If true, overspending (paying more than tier price) is prevented */
+  preventOverspending: boolean
+}
+
+/**
+ * Per-tier permission flags (from contract tier data)
+ */
+export interface TierPermissions {
+  /** If true, this tier cannot be removed from the collection */
+  cannotBeRemoved: boolean
+  /** If true, the discount percent for this tier cannot be increased */
+  cannotIncreaseDiscountPercent: boolean
+}
+
+/**
+ * Extended tier data that includes permission flags
+ */
+export interface NFTTierWithPermissions extends NFTTier {
+  permissions: TierPermissions
+}
+
+/**
+ * Result of validating a tier change against permissions
+ */
+export interface TierChangeValidation {
+  /** Whether the change is allowed */
+  allowed: boolean
+  /** If not allowed, the reason why */
+  blockedReason?: string
+  /** If true, user should consider deploying a new hook with different flags */
+  suggestNewHook: boolean
+}

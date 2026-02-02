@@ -12,6 +12,10 @@ interface NFTTierCardProps {
   compact?: boolean
   showMintAction?: boolean
   ethPrice?: number
+  /** If true, shows an edit button for tier management */
+  isOwner?: boolean
+  /** Called when edit button is clicked */
+  onEdit?: (tierId: number) => void
 }
 
 // Dispatch event to open wallet panel
@@ -26,6 +30,8 @@ export default function NFTTierCard({
   compact = false,
   showMintAction = true,
   ethPrice,
+  isOwner = false,
+  onEdit,
 }: NFTTierCardProps) {
   const { theme } = useThemeStore()
   const { addTransaction } = useTransactionStore()
@@ -157,6 +163,23 @@ export default function NFTTierCard({
           }`}>
             Category {tier.category}
           </div>
+        )}
+
+        {/* Edit button (owner only) */}
+        {isOwner && onEdit && (
+          <button
+            onClick={() => onEdit(tier.tierId)}
+            className={`absolute bottom-2 right-2 p-2 transition-colors ${
+              isDark
+                ? 'bg-black/70 text-white hover:bg-black/90'
+                : 'bg-white/90 text-gray-700 hover:bg-white'
+            }`}
+            title="Edit tier"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
         )}
       </div>
 
