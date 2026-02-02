@@ -84,7 +84,14 @@ function loadDeploymentResult(): PersistedDeploymentResult | null {
   try {
     const stored = localStorage.getItem(DEPLOYMENT_RESULT_KEY)
     if (!stored) return null
-    return JSON.parse(stored)
+    const result = JSON.parse(stored) as PersistedDeploymentResult
+    // Expire after 5 minutes - only purpose is to survive page reload during active deployment
+    // Not meant to persist across sessions/new chats
+    if (Date.now() - result.timestamp > 5 * 60 * 1000) {
+      localStorage.removeItem(DEPLOYMENT_RESULT_KEY)
+      return null
+    }
+    return result
   } catch {
     return null
   }
