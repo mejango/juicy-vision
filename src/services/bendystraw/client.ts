@@ -206,6 +206,9 @@ const LAUNCH_PROJECT_EVENT_TOPIC = '0xf3e6948ba8b32d557363ea08470121c47c0127659a
  * Extract project ID from a transaction receipt.
  * Searches all logs for the LaunchProject event, which has projectId as the first indexed param.
  * This works for LaunchProject events from JBController and JBOmnichainDeployer.
+ *
+ * IMPORTANT: Uses retry logic with fallback RPCs since receipt fetching can time out,
+ * especially on Sepolia where public RPCs are often slow/unreliable.
  */
 export async function getProjectIdFromReceipt(
   chainId: number,
@@ -213,71 +216,101 @@ export async function getProjectIdFromReceipt(
 ): Promise<number | null> {
   console.log(`[getProjectIdFromReceipt] Starting extraction for chain ${chainId}, tx ${txHash}`)
 
-  const publicClient = getPublicClient(chainId)
-  if (!publicClient) {
-    console.error(`[getProjectIdFromReceipt] No public client for chain ${chainId}`)
+  const chain = VIEM_CHAINS[chainId as SupportedChainId]
+  if (!chain) {
+    console.error(`[getProjectIdFromReceipt] No chain config for chain ${chainId}`)
     return null
   }
 
-  try {
-    const receipt = await publicClient.getTransactionReceipt({ hash: txHash })
-    console.log(`[getProjectIdFromReceipt] Receipt for ${txHash}:`, {
-      status: receipt.status,
-      logsCount: receipt.logs.length,
-      logs: receipt.logs.map(log => ({
-        address: log.address,
-        topic0: log.topics[0],
-        topic1: log.topics[1],
-      }))
-    })
+  const rpcUrls = RPC_ENDPOINTS[chainId] || []
+  if (rpcUrls.length === 0) {
+    console.error(`[getProjectIdFromReceipt] No RPC endpoints for chain ${chainId}`)
+    return null
+  }
 
-    // Search all logs for the LaunchProject event
-    for (const log of receipt.logs) {
-      // Check if this is a LaunchProject event (by topic signature)
-      if (log.topics[0]?.toLowerCase() === LAUNCH_PROJECT_EVENT_TOPIC.toLowerCase()) {
-        const projectIdHex = log.topics[1]
-        console.log(`[getProjectIdFromReceipt] Found LaunchProject event, projectId hex: ${projectIdHex}`)
-        if (projectIdHex) {
-          const projectId = Number(BigInt(projectIdHex))
-          console.log(`[getProjectIdFromReceipt] Extracted projectId: ${projectId}`)
-          return projectId
-        }
-      }
+  // Try each RPC endpoint until one succeeds
+  let receipt = null
+  let lastError: Error | null = null
+
+  for (let i = 0; i < rpcUrls.length; i++) {
+    const rpcUrl = rpcUrls[i]
+    console.log(`[getProjectIdFromReceipt] Trying RPC ${i + 1}/${rpcUrls.length} for chain ${chainId}: ${rpcUrl}`)
+
+    try {
+      const client = createPublicClient({
+        chain,
+        transport: http(rpcUrl, { timeout: 15000 }), // 15 second timeout
+      })
+
+      receipt = await client.getTransactionReceipt({ hash: txHash })
+      console.log(`[getProjectIdFromReceipt] RPC ${rpcUrl} succeeded`)
+      break // Success - exit loop
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      console.warn(`[getProjectIdFromReceipt] RPC ${rpcUrl} failed:`, lastError.message)
+      // Continue to next RPC
     }
+  }
 
-    console.log(`[getProjectIdFromReceipt] No LaunchProject event found, trying fallback. Expected topic: ${LAUNCH_PROJECT_EVENT_TOPIC}`)
+  if (!receipt) {
+    console.error(`[getProjectIdFromReceipt] All RPCs failed for chain ${chainId}:`, lastError?.message)
+    return null
+  }
 
-    // Fallback 1: Use first log's topics[1] (like revnet-app does)
-    // This works because LaunchProject is typically the first event emitted
-    const firstLog = receipt.logs[0]
-    if (firstLog?.topics[1]) {
-      const projectId = Number(BigInt(firstLog.topics[1]))
-      if (projectId > 0 && projectId < 100000) {
-        console.log(`[getProjectIdFromReceipt] First log fallback found projectId: ${projectId}`)
+  // Process the receipt to extract project ID
+  console.log(`[getProjectIdFromReceipt] Receipt for ${txHash}:`, {
+    status: receipt.status,
+    logsCount: receipt.logs.length,
+    logs: receipt.logs.map(log => ({
+      address: log.address,
+      topic0: log.topics[0],
+      topic1: log.topics[1],
+    }))
+  })
+
+  // Search all logs for the LaunchProject event
+  for (const log of receipt.logs) {
+    // Check if this is a LaunchProject event (by topic signature)
+    if (log.topics[0]?.toLowerCase() === LAUNCH_PROJECT_EVENT_TOPIC.toLowerCase()) {
+      const projectIdHex = log.topics[1]
+      console.log(`[getProjectIdFromReceipt] Found LaunchProject event, projectId hex: ${projectIdHex}`)
+      if (projectIdHex) {
+        const projectId = Number(BigInt(projectIdHex))
+        console.log(`[getProjectIdFromReceipt] Extracted projectId: ${projectId}`)
         return projectId
       }
     }
+  }
 
-    // Fallback 2: Look for any log with a reasonable project ID in topics[1]
-    // This handles cases where the event signature might differ
-    for (const log of receipt.logs) {
-      const projectIdHex = log.topics[1]
-      if (projectIdHex) {
-        const projectId = Number(BigInt(projectIdHex))
-        // Project IDs are typically small numbers (< 100000)
-        if (projectId > 0 && projectId < 100000) {
-          console.log(`[getProjectIdFromReceipt] Fallback found projectId: ${projectId} from log ${log.address}`)
-          return projectId
-        }
+  console.log(`[getProjectIdFromReceipt] No LaunchProject event found, trying fallback. Expected topic: ${LAUNCH_PROJECT_EVENT_TOPIC}`)
+
+  // Fallback 1: Use first log's topics[1] (like revnet-app does)
+  // This works because LaunchProject is typically the first event emitted
+  const firstLog = receipt.logs[0]
+  if (firstLog?.topics[1]) {
+    const projectId = Number(BigInt(firstLog.topics[1]))
+    if (projectId > 0 && projectId < 100000) {
+      console.log(`[getProjectIdFromReceipt] First log fallback found projectId: ${projectId}`)
+      return projectId
+    }
+  }
+
+  // Fallback 2: Look for any log with a reasonable project ID in topics[1]
+  // This handles cases where the event signature might differ
+  for (const log of receipt.logs) {
+    const projectIdHex = log.topics[1]
+    if (projectIdHex) {
+      const projectId = Number(BigInt(projectIdHex))
+      // Project IDs are typically small numbers (< 100000)
+      if (projectId > 0 && projectId < 100000) {
+        console.log(`[getProjectIdFromReceipt] Fallback found projectId: ${projectId} from log ${log.address}`)
+        return projectId
       }
     }
-
-    console.log(`[getProjectIdFromReceipt] No project ID found in any log for ${txHash}`)
-    return null
-  } catch (error) {
-    console.error(`[getProjectIdFromReceipt] Failed for ${txHash} on chain ${chainId}:`, error)
-    return null
   }
+
+  console.log(`[getProjectIdFromReceipt] No project ID found in any log for ${txHash}`)
+  return null
 }
 
 /**
