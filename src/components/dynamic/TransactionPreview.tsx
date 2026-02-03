@@ -1674,7 +1674,10 @@ export default function TransactionPreview({
 
   // Single JSON parse - extract all preview data at once for fast initial render
   const previewData = useMemo(() => {
-    if (_isTruncated === 'true') return null
+    // Skip parsing only if still actively streaming AND marked as truncated
+    // If streaming has stopped (_isStreaming === false), try to parse anyway
+    // as the parameters might be complete even if initially marked truncated
+    if (_isTruncated === 'true' && _isStreaming !== false) return null
     try {
       // Clean up malformed JSON from AI (e.g., embedded JS expressions)
       let cleanedParams = parameters || '{}'
@@ -1778,7 +1781,7 @@ export default function TransactionPreview({
       console.error('[TransactionPreview] Failed to parse parameters:', err, parameters?.slice(0, 200))
       return null
     }
-  }, [parameters, _isTruncated])
+  }, [parameters, _isTruncated, _isStreaming])
 
   // "Sticky" content: once we've successfully parsed content, remember it
   // This prevents flashing back to shimmer during state transitions

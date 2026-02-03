@@ -320,4 +320,7 @@ export interface EnvConfig {
   // Forge (Hook Development)
   forgeDockerEnabled?: boolean;  // Enable Docker-based forge execution
   semgrepEnabled?: boolean;      // Enable Semgrep security analysis
+
+  // Replicate (Image Generation)
+  replicateApiToken?: string;    // Replicate API token for image generation
 }

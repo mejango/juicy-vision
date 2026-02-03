@@ -6,6 +6,7 @@ import type { JB721HookFlags, TierPermissions } from '../../services/nft'
 import { validateTierChange } from '../../services/nft'
 import { encodeIpfsUri, pinJson, pinFile } from '../../utils/ipfs'
 import { ZERO_ADDRESS } from '../../constants'
+import GenerateImageButton from '../ui/GenerateImageButton'
 
 interface TierEditorProps {
   /** Tier data for editing, undefined for new tier */
@@ -117,6 +118,11 @@ export default function TierEditor({
       setUploading(false)
     }
   }, [pinataJwt, formState.name, updateField])
+
+  // Handle AI image generation
+  const handleImageGenerated = useCallback((ipfsUri: string) => {
+    updateField('imageUri', ipfsUri)
+  }, [updateField])
 
   // Validate and save
   const handleSave = useCallback(async () => {
@@ -266,22 +272,33 @@ export default function TierEditor({
                     : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
                 }`}
               />
-              {pinataJwt && (
-                <label className={`block mt-2 ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <span className={`text-xs cursor-pointer ${
-                    isDark ? 'text-juice-orange hover:text-juice-orange/80' : 'text-orange-600 hover:text-orange-700'
-                  }`}>
-                    {uploading ? 'Uploading...' : 'Or upload image'}
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    disabled={uploading}
-                  />
-                </label>
-              )}
+              <div className="flex items-center gap-3 mt-2">
+                {pinataJwt && (
+                  <label className={`${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <span className={`text-xs cursor-pointer ${
+                      isDark ? 'text-juice-orange hover:text-juice-orange/80' : 'text-orange-600 hover:text-orange-700'
+                    }`}>
+                      {uploading ? 'Uploading...' : 'Upload'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      disabled={uploading}
+                    />
+                  </label>
+                )}
+                <GenerateImageButton
+                  context={{
+                    name: formState.name || 'NFT Tier',
+                    description: formState.description || undefined,
+                  }}
+                  onGenerated={handleImageGenerated}
+                  onError={(err) => setError(err.message)}
+                  size="sm"
+                />
+              </div>
             </div>
           </div>
         </div>

@@ -77,6 +77,9 @@ export function loadConfig(): EnvConfig {
     // Forge (Hook Development)
     forgeDockerEnabled: getEnv('FORGE_DOCKER_ENABLED', 'false') === 'true',
     semgrepEnabled: getEnv('SEMGREP_ENABLED', 'false') === 'true',
+
+    // Replicate (Image Generation)
+    replicateApiToken: getEnv('REPLICATE_API_TOKEN', ''),
   };
 }
 

@@ -4,6 +4,7 @@ import { useAccount } from 'wagmi'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import type { ResolvedNFTTier } from '../../services/nft'
+import GenerateImageButton from '../ui/GenerateImageButton'
 
 interface NFTTierCardProps {
   tier: ResolvedNFTTier
@@ -16,6 +17,12 @@ interface NFTTierCardProps {
   isOwner?: boolean
   /** Called when edit button is clicked */
   onEdit?: (tierId: number) => void
+  /** If true, shows a generate image button on empty placeholders (owner only) */
+  showGenerateImage?: boolean
+  /** Called when an image is generated for this tier */
+  onImageGenerated?: (tierId: number, ipfsUri: string, httpUrl: string) => void
+  /** Optional project context for image generation prompts */
+  projectContext?: string
 }
 
 // Dispatch event to open wallet panel
@@ -32,6 +39,9 @@ export default function NFTTierCard({
   ethPrice,
   isOwner = false,
   onEdit,
+  showGenerateImage = false,
+  onImageGenerated,
+  projectContext,
 }: NFTTierCardProps) {
   const { theme } = useThemeStore()
   const { addTransaction } = useTransactionStore()
@@ -138,12 +148,27 @@ export default function NFTTierCard({
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className={`w-full h-full flex items-center justify-center ${
+          <div className={`w-full h-full flex items-center justify-center relative group ${
             isDark ? 'bg-white/5' : 'bg-gray-100'
           }`}>
             <span className={`text-4xl font-bold ${isDark ? 'text-gray-600' : 'text-gray-300'}`}>
               #{tier.tierId}
             </span>
+            {/* AI image generation overlay (owner only) */}
+            {showGenerateImage && onImageGenerated && (
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <GenerateImageButton
+                  context={{
+                    name: tier.name,
+                    description: tier.description || undefined,
+                    projectTheme: projectContext,
+                  }}
+                  onGenerated={(ipfsUri, httpUrl) => onImageGenerated(tier.tierId, ipfsUri, httpUrl)}
+                  variant="overlay"
+                  size="md"
+                />
+              </div>
+            )}
           </div>
         )}
 
