@@ -1366,6 +1366,11 @@ export default function TransactionPreview({
     setState: setPersistedState,
   } = useTransactionPreviewState(messageId)
 
+  // Debug: log persisted state
+  useEffect(() => {
+    console.log('[TransactionPreview] Persisted state:', { messageId, persistedState, persistedStateLoading })
+  }, [messageId, persistedState, persistedStateLoading])
+
   // Auth state for managed wallet users - use isManagedMode from hook for consistent state
   const {
     address: managedAddress,

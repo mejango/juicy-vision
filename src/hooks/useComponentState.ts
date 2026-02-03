@@ -112,11 +112,12 @@ export function useComponentState<T extends ComponentState = ComponentState>(
   // Save state to server
   const setState = useCallback(async (newState: T) => {
     if (!messageId) {
-      console.warn('Cannot save component state: no messageId')
+      console.warn('[useComponentState] Cannot save state: no messageId')
       setLocalState(newState)
       return
     }
 
+    console.log(`[useComponentState] Saving state for ${componentKey} to message ${messageId}:`, newState)
     setLocalState(newState)
     setError(null)
 
@@ -131,10 +132,12 @@ export function useComponentState<T extends ComponentState = ComponentState>(
 
       if (!response.ok) {
         const result = await response.json()
+        console.error(`[useComponentState] Failed to save state: ${response.status}`, result)
         throw new Error(result.error || 'Failed to save state')
       }
+      console.log(`[useComponentState] Successfully saved state for ${componentKey}`)
     } catch (err) {
-      console.error('Failed to save component state:', err)
+      console.error('[useComponentState] Failed to save component state:', err)
       setError(err instanceof Error ? err.message : 'Failed to save state')
     }
   }, [messageId, componentKey])
