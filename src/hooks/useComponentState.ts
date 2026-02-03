@@ -93,14 +93,9 @@ export function useComponentState<T extends ComponentState = ComponentState>(
 
         if (response.ok) {
           const result = await response.json()
-          console.log(`[useComponentState] Loaded state for ${componentKey} (messageId: ${messageId}):`, result)
           if (result.success && result.data) {
             setLocalState(result.data as T)
-          } else {
-            console.log(`[useComponentState] No data found for ${componentKey} (messageId: ${messageId})`)
           }
-        } else {
-          console.warn(`[useComponentState] Failed to load state for ${componentKey} (messageId: ${messageId}): ${response.status}`)
         }
       } catch (err) {
         console.error('[useComponentState] Failed to load component state:', err)
@@ -122,8 +117,6 @@ export function useComponentState<T extends ComponentState = ComponentState>(
       return
     }
 
-    console.log(`[useComponentState] Saving state for ${componentKey} to message ${messageId}:`, newState)
-    console.log(`[useComponentState] API URL: ${API_URL}/chat/messages/${messageId}/components/${componentKey}`)
     setLocalState(newState)
     setError(null)
 
@@ -138,10 +131,8 @@ export function useComponentState<T extends ComponentState = ComponentState>(
 
       if (!response.ok) {
         const result = await response.json()
-        console.error(`[useComponentState] Failed to save state: ${response.status}`, result)
         throw new Error(result.error || 'Failed to save state')
       }
-      console.log(`[useComponentState] Successfully saved state for ${componentKey}`)
     } catch (err) {
       console.error('[useComponentState] Failed to save component state:', err)
       setError(err instanceof Error ? err.message : 'Failed to save state')
