@@ -90,12 +90,15 @@ export function useComponentState<T extends ComponentState = ComponentState>(
 
         if (response.ok) {
           const result = await response.json()
+          console.log(`[useComponentState] Loaded state for ${componentKey}:`, result)
           if (result.success && result.data) {
             setLocalState(result.data as T)
           }
+        } else {
+          console.warn(`[useComponentState] Failed to load state: ${response.status}`)
         }
       } catch (err) {
-        console.error('Failed to load component state:', err)
+        console.error('[useComponentState] Failed to load component state:', err)
         setError(err instanceof Error ? err.message : 'Failed to load state')
       } finally {
         setIsLoading(false)

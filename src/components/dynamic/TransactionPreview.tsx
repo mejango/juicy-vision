@@ -1486,33 +1486,50 @@ export default function TransactionPreview({
   // Save completed state to server when transaction finishes
   // This persists the state so all chat participants see the resolved component
   const hasSavedCompletionRef = useRef(false)
+  const savedProjectIdsRef = useRef<Record<number, number>>({})
   useEffect(() => {
     // Only save for launch actions
     if (action !== 'launchProject' && action !== 'launch721Project') return
 
-    // Only save once when complete with project IDs
+    // Only save when complete with project IDs
     if (!isComplete || Object.keys(createdProjectIds).length === 0) return
-    if (hasSavedCompletionRef.current) return
     if (!messageId) return // Can't save without messageId
 
-    hasSavedCompletionRef.current = true
+    // Check if we have better (non-zero) project IDs than before
+    const hasValidIds = Object.values(createdProjectIds).some(id => id > 0)
+    const hadValidIds = Object.values(savedProjectIdsRef.current).some(id => id > 0)
 
-    // Get tx hashes from bundle state
-    const txHashes: Record<number, string> = {}
-    bundleState.chainStates?.forEach(cs => {
-      if (cs.txHash) {
-        txHashes[cs.chainId] = cs.txHash
-      }
-    })
+    // Skip if already saved with valid IDs
+    if (hasSavedCompletionRef.current && hadValidIds) return
 
-    // Save to server
-    setPersistedState({
-      status: 'completed',
-      projectIds: createdProjectIds,
-      txHashes: Object.keys(txHashes).length > 0 ? txHashes : persistedTxHashes || undefined,
-      bundleId: bundleState.bundleId || undefined,
-      completedAt: new Date().toISOString(),
-    })
+    // Update if we now have valid IDs (or first save)
+    if (hasValidIds || !hasSavedCompletionRef.current) {
+      hasSavedCompletionRef.current = true
+      savedProjectIdsRef.current = { ...createdProjectIds }
+
+      // Get tx hashes from bundle state
+      const txHashes: Record<number, string> = {}
+      bundleState.chainStates?.forEach(cs => {
+        if (cs.txHash) {
+          txHashes[cs.chainId] = cs.txHash
+        }
+      })
+
+      console.log('[TransactionPreview] Saving completion state to server:', {
+        hasValidIds,
+        createdProjectIds,
+        txHashes: Object.keys(txHashes).length > 0 ? txHashes : persistedTxHashes,
+      })
+
+      // Save to server
+      setPersistedState({
+        status: 'completed',
+        projectIds: createdProjectIds,
+        txHashes: Object.keys(txHashes).length > 0 ? txHashes : persistedTxHashes || undefined,
+        bundleId: bundleState.bundleId || undefined,
+        completedAt: new Date().toISOString(),
+      })
+    }
   }, [action, isComplete, createdProjectIds, bundleState, persistedTxHashes, messageId, setPersistedState])
 
   // Derived state: use persisted state if available, otherwise use hook state
