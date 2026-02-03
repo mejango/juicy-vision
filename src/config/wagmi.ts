@@ -1,10 +1,16 @@
-import { createConfig, http, type Config } from 'wagmi'
+import { createConfig, http, fallback, type Config } from 'wagmi'
 import { mainnet, optimism, base, arbitrum, sepolia, optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains'
 import { injected, walletConnect, safe } from 'wagmi/connectors'
 import { IS_TESTNET, CHAIN_IDS } from './environment'
 import { RPC_ENDPOINTS } from '../constants/chains'
 
 const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'juicy-vision'
+
+// Build fallback transport with all RPCs for a chain
+function buildFallbackTransport(chainKey: keyof typeof CHAIN_IDS) {
+  const rpcs = RPC_ENDPOINTS[CHAIN_IDS[chainKey]]
+  return fallback(rpcs.map(url => http(url)))
+}
 
 // Build config based on environment
 // Using a function to ensure TypeScript infers the correct types
@@ -30,10 +36,10 @@ function buildWagmiConfig(): Config {
         }),
       ],
       transports: {
-        [sepolia.id]: http(RPC_ENDPOINTS[CHAIN_IDS.ethereum][0]),
-        [optimismSepolia.id]: http(RPC_ENDPOINTS[CHAIN_IDS.optimism][0]),
-        [baseSepolia.id]: http(RPC_ENDPOINTS[CHAIN_IDS.base][0]),
-        [arbitrumSepolia.id]: http(RPC_ENDPOINTS[CHAIN_IDS.arbitrum][0]),
+        [sepolia.id]: buildFallbackTransport('ethereum'),
+        [optimismSepolia.id]: buildFallbackTransport('optimism'),
+        [baseSepolia.id]: buildFallbackTransport('base'),
+        [arbitrumSepolia.id]: buildFallbackTransport('arbitrum'),
       },
     })
   }
@@ -58,10 +64,10 @@ function buildWagmiConfig(): Config {
       }),
     ],
     transports: {
-      [mainnet.id]: http(RPC_ENDPOINTS[CHAIN_IDS.ethereum][0]),
-      [optimism.id]: http(RPC_ENDPOINTS[CHAIN_IDS.optimism][0]),
-      [base.id]: http(RPC_ENDPOINTS[CHAIN_IDS.base][0]),
-      [arbitrum.id]: http(RPC_ENDPOINTS[CHAIN_IDS.arbitrum][0]),
+      [mainnet.id]: buildFallbackTransport('ethereum'),
+      [optimism.id]: buildFallbackTransport('optimism'),
+      [base.id]: buildFallbackTransport('base'),
+      [arbitrum.id]: buildFallbackTransport('arbitrum'),
     },
   })
 }
