@@ -37,6 +37,10 @@ import {
   CCIP_SUCKER_DEPLOYER_ADDRESSES,
 } from '../../utils/suckerConfig'
 
+// Module-level tracking to prevent duplicate post-launch messages
+// This is necessary because React's useRef can reset on component remount
+const dispatchedFollowUps = new Set<string>()
+
 interface ChainOverride {
   chainId: string
   label?: string
@@ -1445,7 +1449,7 @@ export default function TransactionPreview({
     },
   })
 
-  // Track if we've triggered the post-launch follow-up messages
+  // Track if we've triggered the post-launch follow-up messages (refs for component-level tracking)
   const hasTriggeredLoadingRef = useRef(false)
   const hasTriggeredFollowUpRef = useRef(false)
 
@@ -1455,8 +1459,18 @@ export default function TransactionPreview({
     if (!isComplete) return
     if (hasTriggeredLoadingRef.current) return
 
-    // Trigger immediately when deployment completes - don't wait for project IDs
+    // Create a unique key for this deployment to prevent duplicates across component remounts
+    // Use messageId as the stable identifier for this deployment
+    const loadingKey = `loading:${messageId}`
+    if (dispatchedFollowUps.has(loadingKey)) {
+      console.log('[TransactionPreview] Skipping duplicate loading message dispatch for', messageId)
+      hasTriggeredLoadingRef.current = true
+      return
+    }
+
+    // Mark as triggered at both component and module level
     hasTriggeredLoadingRef.current = true
+    dispatchedFollowUps.add(loadingKey)
 
     console.log('[TransactionPreview] Deployment complete, showing loading message while indexing...')
     setTimeout(() => {
@@ -1468,7 +1482,7 @@ export default function TransactionPreview({
         }
       }))
     }, 500)
-  }, [action, isComplete])
+  }, [action, isComplete, messageId])
 
   // Phase 2: Show project card once IDs are extracted
   useEffect(() => {
@@ -1492,8 +1506,17 @@ export default function TransactionPreview({
       return // Don't mark as triggered - wait for actual IDs
     }
 
-    // Mark as triggered only after we have valid project IDs
+    // Create a unique key for this follow-up to prevent duplicates across component remounts
+    const followUpKey = `followup:${messageId}`
+    if (dispatchedFollowUps.has(followUpKey)) {
+      console.log('[TransactionPreview] Skipping duplicate follow-up dispatch for', messageId)
+      hasTriggeredFollowUpRef.current = true
+      return
+    }
+
+    // Mark as triggered at both component and module level
     hasTriggeredFollowUpRef.current = true
+    dispatchedFollowUps.add(followUpKey)
 
     // Chain priority: Sepolia/Ethereum first, then Arb, then Base, then OP
     // Testnets: 11155111 (Sepolia), 421614 (Arb Sep), 84532 (Base Sep), 11155420 (OP Sep)
@@ -1538,7 +1561,7 @@ export default function TransactionPreview({
         }
       }))
     }, 1000)
-  }, [action, isComplete, createdProjectIds])
+  }, [action, isComplete, createdProjectIds, messageId])
 
   // Save completed state to server when transaction finishes
   // This persists the state so all chat participants see the resolved component
