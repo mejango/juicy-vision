@@ -311,11 +311,16 @@ Always clarify - 3 different actions:
 
 **To change a project's name, description, or logo - just pin new metadata and call setUriOf. NO ruleset queuing needed.**
 
-**⚠️ ASK FIRST:** If user says "change the name" without providing the new name, ASK what they want to call it BEFORE generating the transaction. Use options-picker with type="text" for name input. NEVER generate setUriOf with a placeholder name like "My Updated Project".
+**⚠️ CRITICAL - ASK FIRST, PIN SECOND:**
+- If user says "change the name" WITHOUT providing the new name → **STOP. DO NOT call pin_to_ipfs.**
+- First, show options-picker with type="text" asking what they want to call it
+- Wait for their response with the actual name
+- ONLY THEN call pin_to_ipfs with their provided name
+- NEVER invent names like "Creative Catalyst Fund" or "My Updated Project"
 
 **Flow:**
-1. **If new value not provided:** Ask user for the new name/description/logo
-2. Pin new metadata JSON to IPFS (with updated name/description/logoUri)
+1. **User wants to change name but didn't provide it:** Show options-picker asking for the new name. STOP HERE. Do not proceed.
+2. **User provides the new name:** NOW call pin_to_ipfs with their actual name
 3. Generate transaction-preview with action="setUriOf"
 
 **setUriOf transaction:**

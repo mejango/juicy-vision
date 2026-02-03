@@ -476,13 +476,13 @@ export const OMNICHAIN_TOOLS = [
   {
     name: 'pin_to_ipfs',
     description:
-      'Pin JSON metadata to IPFS and get a real CID. Use this to upload project metadata before showing transaction-preview. ALWAYS use this tool to get real CIDs - never use placeholder CIDs.',
+      'Pin JSON metadata to IPFS and get a real CID. IMPORTANT: Only use AFTER collecting all required information from the user. For setUriOf (changing name/description), ASK the user what they want FIRST using options-picker, then pin with their actual values. NEVER pin with made-up or placeholder values.',
     input_schema: {
       type: 'object' as const,
       properties: {
         content: {
           type: 'object',
-          description: 'The JSON object to pin to IPFS (e.g., project metadata with name, description, logoUri, infoUri)',
+          description: 'The JSON object to pin to IPFS (e.g., project metadata with name, description, logoUri, infoUri). Must contain actual user-provided values, not placeholders.',
         },
         name: {
           type: 'string',
