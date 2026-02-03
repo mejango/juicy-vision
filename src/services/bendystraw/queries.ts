@@ -20,6 +20,35 @@ export const PROJECT_QUERY = `
   }
 `
 
+// Query projects owned by a specific address
+export const PROJECTS_BY_OWNER_QUERY = `
+  query ProjectsByOwner($owner: String!, $limit: Int) {
+    projects(
+      where: { owner: $owner }
+      limit: $limit
+      orderBy: "createdAt"
+      orderDirection: "desc"
+    ) {
+      items {
+        id
+        projectId
+        chainId
+        version
+        handle
+        name
+        logoUri
+        owner
+        volume
+        volumeUsd
+        balance
+        contributorsCount
+        paymentsCount
+        createdAt
+      }
+    }
+  }
+`
+
 export const PROJECTS_QUERY = `
   query Projects($limit: Int, $offset: Int, $orderBy: String, $orderDirection: String) {
     projects(

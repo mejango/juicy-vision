@@ -1,6 +1,7 @@
 export {
   fetchProject,
   fetchProjects,
+  fetchProjectsByOwner,
   getProjectIdFromReceipt,
   getProjectIdsFromReceipts,
   fetchParticipants,
@@ -67,6 +68,7 @@ export {
 export {
   PROJECT_QUERY,
   PROJECTS_QUERY,
+  PROJECTS_BY_OWNER_QUERY,
   PARTICIPANTS_QUERY,
   SEARCH_PROJECTS_QUERY,
   SEMANTIC_SEARCH_PROJECTS_QUERY,

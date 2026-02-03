@@ -1,14 +1,20 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAccount } from 'wagmi'
 import { useChatStore, useThemeStore } from '../../stores'
 import type { Chat } from '../../stores/chatStore'
 import { fetchMyChats } from '../../services/chat'
+import { fetchProjectsByOwner, type Project } from '../../services/bendystraw'
 import { useAuthStore } from '../../stores/authStore'
+import { resolveIpfsUri } from '../../utils/ipfs'
+import { CHAINS } from '../../constants'
 
-function formatTimeAgo(timestamp: string): string {
+type SidebarTab = 'chats' | 'projects'
+
+function formatTimeAgo(timestamp: string | number): string {
   const now = Date.now()
-  const time = new Date(timestamp).getTime()
+  const time = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp * 1000
   const diff = now - time
   const minutes = Math.floor(diff / 60000)
   const hours = Math.floor(diff / 3600000)
@@ -18,7 +24,7 @@ function formatTimeAgo(timestamp: string): string {
   if (minutes < 60) return `${minutes}m ago`
   if (hours < 24) return `${hours}h ago`
   if (days < 7) return `${days}d ago`
-  return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return new Date(time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function getChatDisplayTitle(chat: Chat): string {
@@ -41,6 +47,14 @@ function isGenericName(name: string | null | undefined): boolean {
   return genericPatterns.some((pattern) => pattern.test(name.trim()))
 }
 
+function formatVolume(volumeUsd: number | string | null | undefined): string {
+  if (!volumeUsd) return '$0'
+  const num = typeof volumeUsd === 'string' ? parseFloat(volumeUsd) : volumeUsd
+  if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`
+  if (num >= 1000) return `$${(num / 1000).toFixed(1)}K`
+  return `$${num.toFixed(0)}`
+}
+
 interface ChatHistorySidebarProps {
   isOpen: boolean
   onClose: () => void
@@ -53,9 +67,14 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
   const navigate = useNavigate()
   const { chats, setChats, setActiveChat } = useChatStore()
   const { isAuthenticated, user, _hasHydrated } = useAuthStore()
+  const { address, isConnected } = useAccount()
 
+  const [activeTab, setActiveTab] = useState<SidebarTab>('chats')
   const [isLoading, setIsLoading] = useState(false)
   const [totalChats, setTotalChats] = useState(0)
+  const [ownedProjects, setOwnedProjects] = useState<Project[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
+  const [projectsLoaded, setProjectsLoaded] = useState(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
   const prevAuthState = useRef<{ isAuth: boolean; userId?: string } | null>(null)
 
@@ -84,12 +103,40 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     }
   }, [isLoading, setChats, chats])
 
+  // Load owned projects
+  const loadProjects = useCallback(async () => {
+    if (!address || projectsLoading) return
+    setProjectsLoading(true)
+    try {
+      const projects = await fetchProjectsByOwner(address)
+      setOwnedProjects(projects)
+      setProjectsLoaded(true)
+    } catch (error) {
+      console.error('Failed to load owned projects:', error)
+    } finally {
+      setProjectsLoading(false)
+    }
+  }, [address, projectsLoading])
+
   // Load chats on mount and when sidebar opens
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && activeTab === 'chats') {
       loadChats()
     }
-  }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load projects when tab switches or sidebar opens with projects tab
+  useEffect(() => {
+    if (isOpen && activeTab === 'projects' && address && !projectsLoaded) {
+      loadProjects()
+    }
+  }, [isOpen, activeTab, address, projectsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset projects loaded state when address changes
+  useEffect(() => {
+    setProjectsLoaded(false)
+    setOwnedProjects([])
+  }, [address])
 
   // Auto-reload on user sign in
   useEffect(() => {
@@ -171,6 +218,17 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     onClose()
   }
 
+  const handleSelectProject = (project: Project) => {
+    // Start a new chat about this project
+    setActiveChat(null)
+    navigate('/', { state: { projectContext: project } })
+    // Dispatch event to pre-fill the chat with project context
+    window.dispatchEvent(new CustomEvent('juice:project-selected', {
+      detail: { project }
+    }))
+    onClose()
+  }
+
   // Sort chats: pinned first, then by updatedAt (filter out null/undefined)
   const sortedChats = [...chats].filter(Boolean).sort((a, b) => {
     if (a.isPinned && !b.isPinned) return -1
@@ -191,7 +249,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
       {/* Sidebar */}
       <div
         ref={sidebarRef}
-        className={`fixed top-0 left-0 h-full w-72 z-50 transform transition-transform duration-200 ease-out ${
+        className={`fixed top-0 left-0 h-full w-72 z-50 transform transition-transform duration-200 ease-out flex flex-col ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         } ${
           theme === 'dark'
@@ -199,130 +257,266 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
             : 'bg-white border-r border-gray-200'
         }`}
       >
-        {/* Header */}
-        <div className={`flex items-center justify-between p-4 border-b ${
-          theme === 'dark' ? 'border-white/10' : 'border-gray-200'
-        }`}>
-          <h2 className={`text-sm font-semibold ${
-            theme === 'dark' ? 'text-white' : 'text-gray-900'
+        {/* Header with tabs */}
+        <div className={`border-b ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
+          {/* Tab bar */}
+          <div className="flex">
+            <button
+              onClick={() => setActiveTab('chats')}
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                activeTab === 'chats'
+                  ? theme === 'dark'
+                    ? 'text-white border-b-2 border-juice-orange'
+                    : 'text-gray-900 border-b-2 border-juice-orange'
+                  : theme === 'dark'
+                    ? 'text-gray-400 hover:text-gray-200'
+                    : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t('ui.chats', 'Chats')} {totalChats > 0 && `(${totalChats})`}
+            </button>
+            <button
+              onClick={() => setActiveTab('projects')}
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                activeTab === 'projects'
+                  ? theme === 'dark'
+                    ? 'text-white border-b-2 border-juice-orange'
+                    : 'text-gray-900 border-b-2 border-juice-orange'
+                  : theme === 'dark'
+                    ? 'text-gray-400 hover:text-gray-200'
+                    : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t('ui.myProjects', 'My Projects')} {ownedProjects.length > 0 && `(${ownedProjects.length})`}
+            </button>
+          </div>
+
+          {/* Action buttons */}
+          <div className={`flex items-center justify-between px-4 py-2 ${
+            theme === 'dark' ? 'bg-white/5' : 'bg-gray-50'
           }`}>
-            {t('ui.recent', 'Recent')} {totalChats > 0 && `(${totalChats})`}
-          </h2>
-          <div className="flex items-center gap-2">
-            {/* New chat button */}
-            <button
-              onClick={handleNewChat}
-              className={`p-1.5 transition-colors ${
-                theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-              }`}
-              title={t('chat.newChat', 'New Chat')}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-            {/* Close button */}
-            <button
-              onClick={onClose}
-              className={`p-1.5 transition-colors ${
-                theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <span className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+              {activeTab === 'chats' ? t('ui.recentConversations', 'Recent conversations') : t('ui.projectsYouOwn', 'Projects you own')}
+            </span>
+            <div className="flex items-center gap-1">
+              {activeTab === 'chats' && (
+                <button
+                  onClick={handleNewChat}
+                  className={`p-1.5 rounded transition-colors ${
+                    theme === 'dark'
+                      ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  }`}
+                  title={t('chat.newChat', 'New Chat')}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className={`p-1.5 rounded transition-colors ${
+                  theme === 'dark'
+                    ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Chat list */}
-        <div className="flex-1 overflow-y-auto h-[calc(100%-60px)]">
-          {isLoading && chats.length === 0 ? (
-            <div className="p-4 text-center">
-              <div className={`text-sm ${
-                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-              }`}>
-                {t('ui.loading', 'Loading...')}
-              </div>
-            </div>
-          ) : sortedChats.length === 0 ? (
-            <div className="p-4 text-center">
-              <div className={`text-sm ${
-                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-              }`}>
-                {t('chat.noChats', 'No chats yet')}
-              </div>
-              <button
-                onClick={handleNewChat}
-                className="mt-2 text-sm text-juice-orange hover:underline"
-              >
-                {t('chat.createFirst', 'Start a new chat')}
-              </button>
-            </div>
-          ) : (
-            <div className="py-2">
-              {sortedChats.map((chat) => (
-                <button
-                  key={chat.id}
-                  onClick={() => handleSelectChat(chat.id)}
-                  className={`w-full px-4 py-3 text-left transition-colors ${
-                    chat.id === currentChatId
-                      ? theme === 'dark'
-                        ? 'bg-white/10 border-l-2 border-juice-orange'
-                        : 'bg-gray-100 border-l-2 border-juice-orange'
-                      : theme === 'dark'
-                        ? 'hover:bg-white/5'
-                        : 'hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Pin indicator */}
-                    {chat.isPinned && (
-                      <svg className={`w-3 h-3 shrink-0 mt-1 ${
-                        theme === 'dark' ? 'text-purple-400' : 'text-purple-600'
-                      }`} viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                      </svg>
-                    )}
-
-                    {/* Chat info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`text-sm font-medium truncate ${
-                          chat.id === currentChatId
-                            ? theme === 'dark' ? 'text-white' : 'text-gray-900'
-                            : theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
-                        }`}>
-                          {getChatDisplayTitle(chat)}
-                        </span>
-                        <span className={`text-xs shrink-0 ${
-                          theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-                        }`}>
-                          {formatTimeAgo(chat.updatedAt)}
-                        </span>
-                      </div>
-                      {chat.description && (
-                        <div className={`text-xs truncate mt-0.5 ${
-                          theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-                        }`}>
-                          {chat.description}
-                        </div>
-                      )}
-                      {/* Unread badge */}
-                      {chat.unreadCount && chat.unreadCount > 0 && (
-                        <span className="inline-block mt-1 px-1.5 py-0.5 text-xs font-medium bg-juice-orange text-white rounded-full">
-                          {chat.unreadCount} new
-                        </span>
-                      )}
-                    </div>
+        {/* Content area */}
+        <div className="flex-1 overflow-y-auto">
+          {activeTab === 'chats' ? (
+            // Chat list
+            <>
+              {isLoading && chats.length === 0 ? (
+                <div className="p-4 text-center">
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('ui.loading', 'Loading...')}
                   </div>
-                </button>
-              ))}
-            </div>
+                </div>
+              ) : sortedChats.length === 0 ? (
+                <div className="p-4 text-center">
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('chat.noChats', 'No chats yet')}
+                  </div>
+                  <button
+                    onClick={handleNewChat}
+                    className="mt-2 text-sm text-juice-orange hover:underline"
+                  >
+                    {t('chat.createFirst', 'Start a new chat')}
+                  </button>
+                </div>
+              ) : (
+                <div className="py-2">
+                  {sortedChats.map((chat) => (
+                    <button
+                      key={chat.id}
+                      onClick={() => handleSelectChat(chat.id)}
+                      className={`w-full px-4 py-3 text-left transition-colors ${
+                        chat.id === currentChatId
+                          ? theme === 'dark'
+                            ? 'bg-white/10 border-l-2 border-juice-orange'
+                            : 'bg-gray-100 border-l-2 border-juice-orange'
+                          : theme === 'dark'
+                            ? 'hover:bg-white/5'
+                            : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Pin indicator */}
+                        {chat.isPinned && (
+                          <svg className={`w-3 h-3 shrink-0 mt-1 ${
+                            theme === 'dark' ? 'text-purple-400' : 'text-purple-600'
+                          }`} viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                          </svg>
+                        )}
+
+                        {/* Chat info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-sm font-medium truncate ${
+                              chat.id === currentChatId
+                                ? theme === 'dark' ? 'text-white' : 'text-gray-900'
+                                : theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
+                            }`}>
+                              {getChatDisplayTitle(chat)}
+                            </span>
+                            <span className={`text-xs shrink-0 ${
+                              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                            }`}>
+                              {formatTimeAgo(chat.updatedAt)}
+                            </span>
+                          </div>
+                          {chat.description && (
+                            <div className={`text-xs truncate mt-0.5 ${
+                              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                            }`}>
+                              {chat.description}
+                            </div>
+                          )}
+                          {/* Unread badge */}
+                          {chat.unreadCount && chat.unreadCount > 0 && (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 text-xs font-medium bg-juice-orange text-white rounded-full">
+                              {chat.unreadCount} new
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            // Projects list
+            <>
+              {!isConnected ? (
+                <div className="p-4 text-center">
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('wallet.connectToSeeProjects', 'Connect wallet to see your projects')}
+                  </div>
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))}
+                    className="mt-2 text-sm text-juice-orange hover:underline"
+                  >
+                    {t('wallet.connect', 'Connect Wallet')}
+                  </button>
+                </div>
+              ) : projectsLoading ? (
+                <div className="p-4 text-center">
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('ui.loading', 'Loading...')}
+                  </div>
+                </div>
+              ) : ownedProjects.length === 0 ? (
+                <div className="p-4 text-center">
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('projects.noOwned', 'You don\'t own any projects yet')}
+                  </div>
+                  <button
+                    onClick={() => {
+                      handleNewChat()
+                      // Could pre-fill with "I want to launch a project"
+                    }}
+                    className="mt-2 text-sm text-juice-orange hover:underline"
+                  >
+                    {t('projects.launchFirst', 'Launch a project')}
+                  </button>
+                </div>
+              ) : (
+                <div className="py-2">
+                  {ownedProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      onClick={() => handleSelectProject(project)}
+                      className={`w-full px-4 py-3 text-left transition-colors ${
+                        theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Project logo */}
+                        {project.logoUri ? (
+                          <img
+                            src={resolveIpfsUri(project.logoUri) ?? ''}
+                            alt=""
+                            className="w-8 h-8 rounded-lg object-cover shrink-0"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none'
+                            }}
+                          />
+                        ) : (
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            theme === 'dark' ? 'bg-white/10' : 'bg-gray-100'
+                          }`}>
+                            <span className={`text-sm font-medium ${
+                              theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                            }`}>
+                              {(project.name || 'P')[0].toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Project info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-sm font-medium truncate ${
+                              theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
+                            }`}>
+                              {project.name || `Project #${project.projectId}`}
+                            </span>
+                            <span className={`text-xs shrink-0 px-1.5 py-0.5 rounded ${
+                              theme === 'dark' ? 'bg-white/10 text-gray-400' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {CHAINS[project.chainId as keyof typeof CHAINS]?.name || `Chain ${project.chainId}`}
+                            </span>
+                          </div>
+                          <div className={`flex items-center gap-2 mt-1 text-xs ${
+                            theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                          }`}>
+                            <span>{formatVolume(project.volumeUsd)} raised</span>
+                            <span>·</span>
+                            <span>{project.paymentsCount || 0} payments</span>
+                          </div>
+                          <div className={`text-xs mt-0.5 ${
+                            theme === 'dark' ? 'text-gray-600' : 'text-gray-400'
+                          }`}>
+                            Created {formatTimeAgo(project.createdAt)}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

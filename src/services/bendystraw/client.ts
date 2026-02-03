@@ -6,6 +6,7 @@ import { createCache, CACHE_DURATIONS, bendystrawCircuit, rpcCircuit } from '../
 import {
   PROJECT_QUERY,
   PROJECTS_QUERY,
+  PROJECTS_BY_OWNER_QUERY,
   PARTICIPANTS_QUERY,
   SEARCH_PROJECTS_QUERY,
   SEMANTIC_SEARCH_PROJECTS_QUERY,
@@ -1033,6 +1034,39 @@ export async function isProjectOwner(
   const project = await fetchProjectWithRuleset(projectId, chainId)
   if (!project) return false
   return project.owner.toLowerCase() === wallet.toLowerCase()
+}
+
+// Cache for projects by owner
+const projectsByOwnerCache = createCache<Project[]>(CACHE_DURATIONS.SHORT)
+
+// Fetch all projects owned by an address
+export async function fetchProjectsByOwner(
+  ownerAddress: string,
+  options: { limit?: number } = {}
+): Promise<Project[]> {
+  const { limit = 50 } = options
+  const cacheKey = `${ownerAddress.toLowerCase()}:${limit}`
+
+  try {
+    // Try cache first
+    const cached = projectsByOwnerCache.get(cacheKey)
+    if (cached) return cached
+
+    const result = await safeRequest<{ projects: { items: Project[] } }>(
+      PROJECTS_BY_OWNER_QUERY,
+      {
+        owner: ownerAddress.toLowerCase(),
+        limit,
+      }
+    )
+
+    const projects = result?.projects?.items || []
+    projectsByOwnerCache.set(cacheKey, projects)
+    return projects
+  } catch (err) {
+    console.error('fetchProjectsByOwner error:', err)
+    return []
+  }
 }
 
 // Check if payments are enabled for a project
