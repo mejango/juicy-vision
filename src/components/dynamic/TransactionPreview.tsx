@@ -1439,10 +1439,32 @@ export default function TransactionPreview({
     },
   })
 
-  // Track if we've triggered the post-launch follow-up message
+  // Track if we've triggered the post-launch follow-up messages
+  const hasTriggeredLoadingRef = useRef(false)
   const hasTriggeredFollowUpRef = useRef(false)
 
-  // Trigger AI follow-up message when project launch completes
+  // Phase 1: Show immediate loading message when deployment completes (before IDs are extracted)
+  useEffect(() => {
+    if (action !== 'launchProject' && action !== 'launch721Project') return
+    if (!isComplete) return
+    if (hasTriggeredLoadingRef.current) return
+
+    // Trigger immediately when deployment completes - don't wait for project IDs
+    hasTriggeredLoadingRef.current = true
+
+    console.log('[TransactionPreview] Deployment complete, showing loading message while indexing...')
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('juice:send-message', {
+        detail: {
+          message: `[SYSTEM: Project deployment confirmed on-chain. It's now being indexed - this takes about a minute. Show a brief reassuring message like "Your project was deployed successfully! It's now being indexed..." Don't show any project card yet - wait for the next message with the project ID.]`,
+          bypassSkipAi: true,
+          hidden: true,
+        }
+      }))
+    }, 500)
+  }, [action, isComplete])
+
+  // Phase 2: Show project card once IDs are extracted
   useEffect(() => {
     // Only trigger for launch actions
     if (action !== 'launchProject' && action !== 'launch721Project') return
