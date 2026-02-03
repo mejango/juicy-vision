@@ -382,7 +382,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assistantMessageCount, t])
 
-  const handleSend = useCallback(async (content: string, attachments?: Attachment[], bypassSkipAi?: boolean) => {
+  const handleSend = useCallback(async (content: string, attachments?: Attachment[], bypassSkipAi?: boolean, hidden?: boolean) => {
     // IMPORTANT: Read chatId at execution time, not from closure
     // The forceActiveChatId prop is the most reliable source (comes from URL)
     // Fall back to store only if prop is not available
@@ -394,6 +394,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       return
     }
 
+    // Hidden messages can only be sent to existing chats (no chat creation)
+    if (hidden && !currentChatId) {
+      console.warn('Cannot send hidden message without existing chat')
+      return
+    }
+
     setError(null)
     setIsStreaming(true)
     setShowContinueButton(false) // Clear nudge button when user sends a new message
@@ -402,15 +408,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
     // For new chats: set pending state immediately to keep UI in chat mode
     // This prevents flickering between welcome and chat views during API call
-    if (isNewChat) {
+    if (isNewChat && !hidden) {
       setPendingNewChat(true, content)
     }
 
     try {
       let chatId = currentChatId
 
-      // Create a new shared chat if we don't have one
-      if (!chatId) {
+      // Create a new shared chat if we don't have one (not for hidden messages)
+      if (!chatId && !hidden) {
         const newChat = await chatApi.createChat({
           name: 'New Chat',
           isPublic: false,
@@ -425,11 +431,23 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         navigate(`/chat/${chatId}`, { replace: true })
       }
 
+      // For hidden messages, skip saving to chat - just invoke AI directly
+      if (hidden && chatId) {
+        setWaitingForAiChatId(chatId)
+        try {
+          await chatApi.invokeAi(chatId, content)
+        } catch (aiErr) {
+          console.error('Failed to invoke AI for hidden message:', aiErr)
+          setWaitingForAiChatId(null)
+        }
+        return
+      }
+
       // Add optimistic user message for existing chats with attachments
       if (attachments && attachments.length > 0) {
         const optimisticMessage: ChatMessage = {
           id: `optimistic-${Date.now()}`,
-          chatId,
+          chatId: chatId!,
           senderAddress: currentAddress || '0x0000000000000000000000000000000000000000',
           role: 'user',
           content,
@@ -437,7 +455,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           createdAt: new Date().toISOString(),
           attachments: attachments,
         }
-        addChatMessage(chatId, optimisticMessage)
+        addChatMessage(chatId!, optimisticMessage)
       }
 
       // Send the user's message through the shared chat API
@@ -448,12 +466,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         mimeType: a.mimeType,
         data: a.data,
       }))
-      const savedMessage = await chatApi.sendMessage(chatId, content, undefined, attachmentData)
+      const savedMessage = await chatApi.sendMessage(chatId!, content, undefined, attachmentData)
 
       // Always add the saved message to ensure sender sees it
       // This handles cases where WebSocket is reconnecting or temporarily disconnected
       // The store will dedupe if WebSocket also delivers it
-      addChatMessage(chatId, savedMessage)
+      addChatMessage(chatId!, savedMessage)
 
       // Clear pending state now that the real message is in the chat
       if (isNewChat) {
@@ -467,9 +485,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       if (shouldInvokeAi) {
         // Set waiting state NOW (after navigation for new chats, so state doesn't reset)
         // Uses store state so it persists across navigation
-        setWaitingForAiChatId(chatId)
+        setWaitingForAiChatId(chatId!)
         try {
-          await chatApi.invokeAi(chatId, content, attachmentData)
+          await chatApi.invokeAi(chatId!, content, attachmentData)
         } catch (aiErr) {
           console.error('Failed to invoke AI:', aiErr)
           setWaitingForAiChatId(null)
@@ -1139,14 +1157,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         }
 
         const bypassSkipAi = event.detail.bypassSkipAi ?? false
+        const hidden = event.detail.hidden ?? false
 
         if (event.detail.newChat) {
           // Clear active chat and send message immediately
           // handleSend now handles optimistic UI for instant feedback
           useChatStore.getState().setActiveChat(null)
-          handleSend(event.detail.message, attachments, bypassSkipAi)
+          handleSend(event.detail.message, attachments, bypassSkipAi, hidden)
         } else {
-          handleSend(event.detail.message, attachments, bypassSkipAi)
+          handleSend(event.detail.message, attachments, bypassSkipAi, hidden)
         }
       }
     }

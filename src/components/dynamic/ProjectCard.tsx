@@ -373,7 +373,35 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
           setFullMetadata(ipfsMetadata)
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load project')
+        // If project not found (not indexed yet), show a placeholder card
+        // with known info - newly created projects take ~1 minute to index
+        const errorMsg = err instanceof Error ? err.message : 'Failed to load project'
+        if (errorMsg.includes('not found') || errorMsg.includes('404')) {
+          // Create a placeholder project with known info
+          setProject({
+            id: currentProjectId,
+            projectId: parseInt(currentProjectId),
+            chainId: parseInt(selectedChainId),
+            name: `Project #${currentProjectId}`,
+            handle: null,
+            owner: '',
+            createdAt: Math.floor(Date.now() / 1000),
+            balance: '0',
+            volume: '0',
+            paymentsCount: 0,
+          })
+          setSuckerBalance({
+            totalBalance: '0',
+            currency: 1,
+            decimals: 18,
+            totalPaymentsCount: 0,
+            projectBalances: [],
+          })
+          setOwnersCount(0)
+          setError(null) // Clear error - we're showing placeholder
+        } else {
+          setError(errorMsg)
+        }
       } finally {
         setLoading(false)
       }

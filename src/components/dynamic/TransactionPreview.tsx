@@ -1477,6 +1477,7 @@ export default function TransactionPreview({
         detail: {
           message: `[SYSTEM: Project #${primaryProjectId} created on ${chainData?.name || 'chain'}. Show project-card for projectId=${primaryProjectId} chainId=${primaryChainId}. After showing the card, invite user to be the first to put $5 into their project, and mention you can show other info about their project like activity, treasury balance, etc.]`,
           bypassSkipAi: true,
+          hidden: true, // Don't show SYSTEM message to user, just send to AI
         }
       }))
     }, 1000)
