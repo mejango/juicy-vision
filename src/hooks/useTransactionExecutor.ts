@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react'
 import { useAccount, useSwitchChain } from 'wagmi'
 import { getWalletClient } from 'wagmi/actions'
-import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, encodeAbiParameters, erc20Abi, type Hex, type Address, type Chain } from 'viem'
+import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, encodeAbiParameters, erc20Abi, keccak256, toBytes, concat, type Hex, type Address, type Chain } from 'viem'
 import { ethers } from 'ethers'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useTransactionStore, useAuthStore } from '../stores'
@@ -221,6 +221,105 @@ function buildPermit2Metadata(allowanceData: Hex, terminalAddress: Address): Hex
   return metadata as Hex
 }
 
+// =============================================================================
+// NFT 721 Metadata Encoding
+// =============================================================================
+
+/**
+ * Compute NFT metadata ID for 721 hook
+ * Matches Solidity: bytes4(bytes20(hook) ^ bytes20(keccak256(bytes("721"))))
+ */
+function computeNFTMetadataId(hookAddress: Address): Hex {
+  const purposeHash = keccak256(toBytes('721'))
+
+  // bytes20 takes the FIRST 20 bytes of the hash
+  const purposeBytes20 = purposeHash.slice(0, 42)
+  const hookBytes20 = hookAddress.toLowerCase()
+
+  // Convert to BigNumber for XOR
+  const purposeBN = ethers.BigNumber.from(purposeBytes20)
+  const hookBN = ethers.BigNumber.from(hookBytes20)
+  const xorResult = purposeBN.xor(hookBN)
+
+  // Pad to exactly 40 hex chars (20 bytes) and take FIRST 4 bytes (8 hex chars)
+  const xorHex = xorResult.toHexString().slice(2).padStart(40, '0')
+  const first4Bytes = xorHex.slice(0, 8)
+
+  return ('0x' + first4Bytes) as Hex
+}
+
+/**
+ * Build NFT mint metadata with tier IDs
+ * Format for JBMetadataResolver:
+ * - 32B reserved
+ * - Lookup table entries (4B ID + 1B offset), padded to 32B
+ * - Data section (tier IDs encoded as uint16[])
+ */
+function buildNFTMintMetadata(hookAddress: Address, tierIds: number[]): Hex {
+  const nftId = computeNFTMetadataId(hookAddress)
+
+  // Encode tier IDs as uint16 array
+  const tierData = encodeAbiParameters(
+    [{ type: 'uint16[]' }],
+    [tierIds.map(id => id)]
+  )
+
+  // The raw data bytes (without 0x prefix)
+  const dataHex = tierData.slice(2)
+  const dataBytes = dataHex.length / 2
+
+  // Data must be padded to 32-byte boundary
+  const paddedDataBytes = Math.ceil(dataBytes / 32) * 32
+  const paddedDataHex = dataHex.padEnd(paddedDataBytes * 2, '0')
+
+  // Build metadata:
+  const reserved = '00'.repeat(32)
+  const idHex = nftId.slice(2)
+  const offsetHex = '02' // Offset in words = 2
+  const lookupPadding = '00'.repeat(27)
+
+  const metadata = '0x' + reserved + idHex + offsetHex + lookupPadding + paddedDataHex
+
+  return metadata as Hex
+}
+
+/**
+ * Combine permit2 metadata and NFT metadata into a single JB metadata blob
+ * Uses multi-entry lookup table format
+ */
+function combineMetadata(permit2Metadata: Hex, nftMetadata: Hex): Hex {
+  // Extract components from each metadata
+  // Each has: 32B reserved + 32B lookup table + data
+
+  // Get permit2 data (skip reserved word and lookup table)
+  const permit2DataHex = permit2Metadata.slice(2 + 64 + 64) // Skip 0x + 32B + 32B
+  const permit2Id = permit2Metadata.slice(2 + 64, 2 + 64 + 8) // Get ID from lookup table
+
+  // Get NFT data (skip reserved word and lookup table)
+  const nftDataHex = nftMetadata.slice(2 + 64 + 64)
+  const nftId = nftMetadata.slice(2 + 64, 2 + 64 + 8)
+
+  // Calculate padded sizes (in words)
+  const permit2DataWords = Math.ceil(permit2DataHex.length / 64)
+  const nftDataWords = Math.ceil(nftDataHex.length / 64)
+
+  // Build combined metadata:
+  // 1. Reserved word
+  const reserved = '00'.repeat(32)
+
+  // 2. Lookup table with 2 entries (each 5 bytes: 4B ID + 1B offset)
+  // First entry starts at word 2, second at word 2 + permit2DataWords
+  const permit2Offset = '02' // Word 2
+  const nftOffset = (2 + permit2DataWords).toString(16).padStart(2, '0')
+  const lookupTable = permit2Id + permit2Offset + nftId + nftOffset + '00'.repeat(22) // Pad to 32B
+
+  // 3. Data sections (permit2 first, then NFT)
+  const paddedPermit2 = permit2DataHex.padEnd(permit2DataWords * 64, '0')
+  const paddedNft = nftDataHex.padEnd(nftDataWords * 64, '0')
+
+  return ('0x' + reserved + lookupTable + paddedPermit2 + paddedNft) as Hex
+}
+
 interface PayEventDetail {
   txId: string
   projectId: string
@@ -232,6 +331,10 @@ interface PayEventDetail {
   feeAmount: string
   juicyProjectId: number
   totalAmount: string
+  tierId?: number | null
+  hookAddress?: `0x${string}` | null
+  preventOverspending?: boolean
+  tierPrice?: string // Exact tier price in wei as string (for preventOverspending)
 }
 
 export function useTransactionExecutor() {
@@ -264,7 +367,7 @@ export function useTransactionExecutor() {
   }, [])
 
   const executePayTransaction = useCallback(async (detail: PayEventDetail) => {
-    const { txId, projectId, chainId, amount, memo, token, payUs, feeAmount, juicyProjectId } = detail
+    const { txId, projectId, chainId, amount, memo, token, payUs, feeAmount, juicyProjectId, tierId, hookAddress, preventOverspending, tierPrice } = detail
 
     // Handle PAY_CREDITS payments via API
     if (token === 'PAY_CREDITS') {
@@ -427,9 +530,16 @@ export function useTransactionExecutor() {
       }
 
       // Parse amounts based on token decimals (USDC = 6, ETH = 18)
-      const projectAmount = isUsdc
-        ? parseUnits(amount, 6)
-        : parseEther(amount)
+      // When preventOverspending is enabled and we have an exact tier price, use that
+      let projectAmount: bigint
+      if (preventOverspending && tierPrice && tierId) {
+        // Use exact tier price (already in wei)
+        projectAmount = BigInt(tierPrice)
+      } else {
+        projectAmount = isUsdc
+          ? parseUnits(amount, 6)
+          : parseEther(amount)
+      }
 
       // For USDC payments, build permit2 metadata for single-tx flow
       let permit2Metadata: Hex = '0x'
@@ -533,8 +643,23 @@ export function useTransactionExecutor() {
       // Update to submitting stage
       updateTransaction(txId, { stage: 'submitting' })
 
-      // Pay the project with permit2 metadata (terminal will call permit internally)
-      const payCallData = buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, permit2Metadata)
+      // Build final metadata (may combine permit2 + NFT metadata)
+      let finalMetadata: Hex = permit2Metadata
+
+      // If a tier is selected, add NFT metadata for 721 mint
+      if (tierId && hookAddress) {
+        const nftMetadata = buildNFTMintMetadata(hookAddress, [tierId])
+        if (permit2Metadata !== '0x') {
+          // Combine permit2 and NFT metadata
+          finalMetadata = combineMetadata(permit2Metadata, nftMetadata)
+        } else {
+          // Just NFT metadata
+          finalMetadata = nftMetadata
+        }
+      }
+
+      // Pay the project with metadata (terminal will call permit internally if permit2)
+      const payCallData = buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, finalMetadata)
 
       const hash = await client.sendTransaction({
         to: terminalAddress,

@@ -6,7 +6,7 @@ import { useProjectDraftStore } from '../../stores/projectDraftStore'
 import { useManagedWallet } from '../../hooks'
 import { useTransactionPreviewState, type TransactionPreviewState } from '../../hooks/useComponentState'
 import { getWalletSession } from '../../services/siwe'
-import { useOmnichainLaunchProject } from '../../hooks/relayr'
+import { useOmnichainLaunchProject, useOmnichainSetUri } from '../../hooks/relayr'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { decodeEncodedIPFSUri, encodeIpfsUri } from '../../utils/ipfs'
 
@@ -103,6 +103,8 @@ const ACTION_ICONS: Record<string, string> = {
   deployRevnet: '🔄',
   queueRuleset: '📋',
   deployERC20: '🎟️',
+  setUri: '📝',
+  setUriOf: '📝',
 }
 
 const ACTION_BUTTON_LABELS: Record<string, string> = {
@@ -117,6 +119,8 @@ const ACTION_BUTTON_LABELS: Record<string, string> = {
   deployRevnet: 'Deploy Revnet',
   queueRuleset: 'Queue Ruleset',
   deployERC20: 'Deploy Token',
+  setUri: 'Update Metadata',
+  setUriOf: 'Update Metadata',
 }
 
 // Map semantic action names to actual Solidity function names
@@ -132,6 +136,8 @@ const ACTION_FUNCTION_NAMES: Record<string, string> = {
   deployRevnet: 'deployFor',
   queueRuleset: 'queueRulesetsOf',
   deployERC20: 'deployERC20For',
+  setUri: 'setUriOf',
+  setUriOf: 'setUriOf',
 }
 
 // Replace placeholder strings like USER_WALLET with actual address
@@ -1502,6 +1508,23 @@ export default function TransactionPreview({
     },
   })
 
+  // Omnichain setUri hook - for updating project metadata across chains
+  const {
+    setUri,
+    bundleState: setUriBundleState,
+    isUpdating: isSettingUri,
+    isSigning: isSigningSetUri,
+    signingChainId: signingSetUriChainId,
+    isComplete: isSetUriComplete,
+    hasError: hasSetUriError,
+    reset: resetSetUri,
+  } = useOmnichainSetUri({
+    deploymentKey: `setUri-${stableDeploymentKey}`,
+    onError: (error) => {
+      console.error('SetUri failed:', error)
+    },
+  })
+
   // ============================================================================
   // POST-LAUNCH FOLLOW-UP MESSAGES
   // ============================================================================
@@ -2285,6 +2308,109 @@ export default function TransactionPreview({
     launchValidation.owner &&
     (!launchValidation.hasCritical || issuesAcknowledged)
 
+  // For setUri/setUriOf, extract and validate parameters
+  const setUriValidation = useMemo(() => {
+    if (action !== 'setUri' && action !== 'setUriOf') return null
+    if (!effectivePreviewData?.raw) return null
+
+    const raw = effectivePreviewData.raw
+
+    // Get the new URI
+    const uri = (raw.uri as string) || (raw.projectUri as string) || ''
+
+    // Get project ID - required
+    const rawProjectId = raw.projectId
+    const projectIdNum = typeof rawProjectId === 'string' ? parseInt(rawProjectId) : rawProjectId as number
+
+    // Get chain project mappings for omnichain support
+    // If chainProjectMappings is provided, use it; otherwise create from single projectId/chainId
+    let chainProjectMappings: Array<{ chainId: number; projectId: number }> = []
+
+    if (raw.chainProjectMappings && Array.isArray(raw.chainProjectMappings)) {
+      // Explicit multi-chain mappings provided
+      chainProjectMappings = (raw.chainProjectMappings as Array<{ chainId: number | string; projectId: number | string }>).map(m => ({
+        chainId: typeof m.chainId === 'string' ? parseInt(m.chainId) : m.chainId,
+        projectId: typeof m.projectId === 'string' ? parseInt(m.projectId) : m.projectId,
+      }))
+    } else if (projectIdNum && validChainId) {
+      // Single chain mode - project may only exist on this chain
+      chainProjectMappings = [{ chainId: parseInt(validChainId), projectId: projectIdNum }]
+    }
+
+    // Validation
+    const doubts: Array<{ field: string; message: string; severity: 'warning' | 'critical' }> = []
+
+    if (!uri) {
+      doubts.push({
+        field: 'uri',
+        message: 'No URI specified for project metadata',
+        severity: 'critical',
+      })
+    }
+
+    if (chainProjectMappings.length === 0) {
+      if (projectIdNum && !validChainId) {
+        doubts.push({
+          field: 'chainId',
+          message: 'Chain ID required to update project metadata',
+          severity: 'critical',
+        })
+      } else {
+        doubts.push({
+          field: 'projectId',
+          message: 'No project ID or chain mappings specified',
+          severity: 'critical',
+        })
+      }
+    }
+
+    // Check if user is signed in
+    const isWaitingForManagedWallet = isManagedMode && !managedAddress && managedWalletLoading
+    const hasWalletError = isManagedMode && !managedAddress && !!managedWalletError
+    const hasOwner = !!effectiveUserAddress
+
+    if (!hasOwner && !isWaitingForManagedWallet) {
+      doubts.push({
+        field: 'owner',
+        message: 'Sign in to update project metadata',
+        severity: 'critical',
+      })
+    }
+
+    return {
+      uri,
+      chainProjectMappings,
+      chainIds: chainProjectMappings.map(m => m.chainId),
+      doubts,
+      hasIssues: doubts.length > 0,
+      hasCritical: doubts.some(d => d.severity === 'critical'),
+      isWaitingForWallet: isWaitingForManagedWallet,
+      hasWalletError,
+    }
+  }, [action, effectivePreviewData?.raw, validChainId, effectiveUserAddress, isManagedMode, managedAddress, managedWalletLoading, managedWalletError])
+
+  // Handle setUri button click
+  const handleSetUriClick = useCallback(async () => {
+    if (!setUriValidation) return
+    if (setUriValidation.hasCritical && !issuesAcknowledged) return
+
+    const { uri, chainProjectMappings } = setUriValidation
+
+    await setUri({
+      chainProjectMappings,
+      uri,
+    })
+  }, [setUriValidation, issuesAcknowledged, setUri])
+
+  // Can proceed with setUri?
+  const canSetUri = setUriValidation &&
+    !setUriValidation.isWaitingForWallet &&
+    effectiveUserAddress &&
+    (!setUriValidation.hasCritical || issuesAcknowledged)
+
+  // Helper to check if this is a setUri action
+  const isSetUriAction = action === 'setUri' || action === 'setUriOf'
+
   return (
     <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
       isDark
@@ -2619,6 +2745,89 @@ export default function TransactionPreview({
         </div>
       )}
 
+      {/* SetUri progress section - shown when updating metadata */}
+      {isSetUriAction && (isSettingUri || isSetUriComplete || hasSetUriError) && (
+        <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          {/* Success state */}
+          {isSetUriComplete && (
+            <div className={`-mx-4 px-4 py-3 text-center border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
+              <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                ✓ Metadata Updated
+              </p>
+              <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Changes will appear within a minute
+              </p>
+            </div>
+          )}
+
+          {/* Error state */}
+          {hasSetUriError && setUriBundleState.error && (
+            <div className={`p-4 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
+              <div className="text-2xl mb-2">❌</div>
+              <p className={`font-medium ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+                Update failed
+              </p>
+              <p className={`text-sm mt-1 ${isDark ? 'text-red-400/80' : 'text-red-500'}`}>
+                {setUriBundleState.error}
+              </p>
+            </div>
+          )}
+
+          {/* Progress indicator */}
+          {isSettingUri && setUriValidation && (
+            <div className="space-y-2">
+              {setUriValidation.chainIds.map((cid) => {
+                const chain = CHAINS[cid]
+                const chainState = setUriBundleState.chainStates.find(cs => cs.chainId === cid)
+                const txHash = chainState?.txHash
+
+                return (
+                  <div
+                    key={cid}
+                    className={`p-2 flex items-center justify-between text-xs ${
+                      isDark ? 'bg-white/5' : 'bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: chain?.color || '#888' }}
+                      />
+                      <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>
+                        {chain?.shortName || `Chain ${cid}`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!chainState && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Waiting</span>}
+                      {chainState?.status === 'pending' && <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Pending</span>}
+                      {chainState?.status === 'submitted' && (
+                        <span className="text-juice-orange">Updating...</span>
+                      )}
+                      {chainState?.status === 'confirmed' && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-green-500">✓</span>
+                          {txHash && EXPLORER_URLS[cid] && (
+                            <a
+                              href={`${EXPLORER_URLS[cid]}${txHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-juice-cyan hover:underline"
+                            >
+                              tx
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      {chainState?.status === 'failed' && <span className="text-red-400">Failed</span>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Issues section - shown for launch actions with validation issues, but only after data is loaded */}
       {launchValidation && launchValidation.hasIssues && !isLaunching && !effectiveIsComplete && !managedWalletLoading && fundingInfo && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
@@ -2702,6 +2911,52 @@ export default function TransactionPreview({
               }`}
             >
               {launchValidation?.owner ? (ACTION_BUTTON_LABELS[action] || action) : 'Sign in'}
+            </button>
+          )
+        ) : isSetUriAction ? (
+          // Direct execution for setUri actions
+          isSettingUri ? (
+            <button
+              disabled
+              className="px-5 py-2 text-sm font-bold border-2 bg-gray-500 text-white border-gray-500 cursor-not-allowed opacity-75"
+            >
+              <span className="flex items-center gap-2">
+                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                Updating...
+              </span>
+            </button>
+          ) : isSetUriComplete ? (
+            <button
+              disabled
+              className="px-5 py-2 text-sm font-bold border-2 bg-green-500 text-black border-green-500"
+            >
+              ✓ Updated
+            </button>
+          ) : hasSetUriError ? (
+            <button
+              onClick={handleSetUriClick}
+              className="px-5 py-2 text-sm font-bold border-2 bg-red-500 text-white border-red-500 hover:bg-red-600 hover:border-red-600 transition-colors"
+            >
+              Retry
+            </button>
+          ) : (
+            <button
+              onClick={effectiveUserAddress ? handleSetUriClick : (e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                window.dispatchEvent(new CustomEvent('juice:open-wallet-panel', {
+                  detail: { anchorPosition: { top: rect.top, left: rect.left, width: rect.width, height: rect.height } }
+                }))
+              }}
+              disabled={effectiveUserAddress ? !canSetUri : false}
+              className={`px-5 py-2 text-sm font-bold border-2 transition-colors ${
+                !effectiveUserAddress
+                  ? 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
+                  : canSetUri
+                    ? 'bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600'
+                    : 'bg-gray-500 text-white border-gray-500 cursor-not-allowed opacity-75'
+              }`}
+            >
+              {effectiveUserAddress ? (ACTION_BUTTON_LABELS[action] || action) : 'Sign in'}
             </button>
           )
         ) : (

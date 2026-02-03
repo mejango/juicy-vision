@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
 import { formatEther, formatUnits, parseUnits, parseEther } from 'viem'
 import { useThemeStore } from '../../stores'
+import { useQueueRulesetFormState } from '../../hooks/useComponentState'
 import {
   fetchProject,
   fetchProjectWithRuleset,
@@ -21,6 +22,7 @@ import { ZERO_ADDRESS, USDC_ADDRESSES, type SupportedChainId, JB_CONTRACTS } fro
 interface QueueRulesetFormProps {
   projectId: string
   chainId?: string
+  messageId?: string // For persisting state to server (visible to all chat users)
 }
 
 // Chain info for display
@@ -175,7 +177,7 @@ function formStateToRulesetConfig(
   }
 }
 
-export default function QueueRulesetForm({ projectId, chainId = '1' }: QueueRulesetFormProps) {
+export default function QueueRulesetForm({ projectId, chainId = '1', messageId }: QueueRulesetFormProps) {
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -184,6 +186,12 @@ export default function QueueRulesetForm({ projectId, chainId = '1' }: QueueRule
   const isDark = theme === 'dark'
 
   const { isConnected } = useAccount()
+
+  // Persistent state for transaction status
+  const { state: persistedState, updateState: updatePersistedState } = useQueueRulesetFormState(messageId)
+
+  // Check if form is locked (already submitted)
+  const isLocked = persistedState?.status && persistedState.status !== 'pending'
 
   // Dispatch event to open wallet panel
   const openWalletPanel = () => {
@@ -339,6 +347,7 @@ export default function QueueRulesetForm({ projectId, chainId = '1' }: QueueRule
   }, [projectId, chainId])
 
   const toggleChainSelection = (chainId: number) => {
+    if (isLocked) return
     setChainRulesetData(prev =>
       prev.map(cd =>
         cd.chainId === chainId
@@ -348,13 +357,42 @@ export default function QueueRulesetForm({ projectId, chainId = '1' }: QueueRule
     )
   }
 
+  // Callbacks for transaction completion (for persistence)
+  const handleConfirmed = useCallback((txHashes: Record<number, string>, bundleId?: string) => {
+    updatePersistedState({
+      status: 'completed',
+      txHashes,
+      bundleId,
+      confirmedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState])
+
+  const handleError = useCallback((error: string) => {
+    updatePersistedState({
+      status: 'failed',
+      error,
+    })
+  }, [updatePersistedState])
+
   const handleQueue = () => {
-    if (selectedChains.length === 0) return
+    if (selectedChains.length === 0 || isLocked) return
 
     if (!isConnected) {
       openWalletPanel()
       return
     }
+
+    // Persist in_progress state
+    updatePersistedState({
+      status: 'in_progress',
+      duration: formState.duration,
+      weight: formState.weight,
+      decayPercent: formState.weightCutPercent,
+      reservedPercent: formState.reservedPercent,
+      cashOutTaxRate: formState.cashOutTaxRate,
+      selectedChains: selectedChains.map(c => c.chainId),
+      submittedAt: new Date().toISOString(),
+    })
 
     setShowModal(true)
   }
@@ -774,17 +812,87 @@ export default function QueueRulesetForm({ projectId, chainId = '1' }: QueueRule
           />
         </div>
 
+        {/* Transaction Status Indicator */}
+        {isLocked && (
+          <div className={`mb-3 p-3 text-sm ${
+            persistedState?.status === 'completed'
+              ? isDark ? 'bg-green-500/10' : 'bg-green-50'
+              : persistedState?.status === 'failed'
+                ? isDark ? 'bg-red-500/10' : 'bg-red-50'
+                : isDark ? 'bg-purple-500/10' : 'bg-purple-50'
+          }`}>
+            <div className={`flex items-center gap-2 ${
+              persistedState?.status === 'completed'
+                ? isDark ? 'text-green-400' : 'text-green-600'
+                : persistedState?.status === 'failed'
+                  ? isDark ? 'text-red-400' : 'text-red-600'
+                  : isDark ? 'text-purple-400' : 'text-purple-600'
+            }`}>
+              {persistedState?.status === 'completed' ? (
+                <>
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Ruleset queued successfully!</span>
+                </>
+              ) : persistedState?.status === 'failed' ? (
+                <>
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  <span>Transaction failed</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Transaction pending...</span>
+                </>
+              )}
+            </div>
+            {persistedState?.txHashes && Object.keys(persistedState.txHashes).length > 0 && (
+              <div className="mt-2 space-y-1">
+                {Object.entries(persistedState.txHashes).map(([cid, hash]) => {
+                  const chain = CHAIN_INFO[parseInt(cid)]
+                  return (
+                    <a
+                      key={cid}
+                      href={`https://${chain?.slug === 'eth' ? '' : chain?.slug + '.'}etherscan.io/tx/${hash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`text-xs ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
+                    >
+                      {chain?.name || `Chain ${cid}`}: View on explorer
+                    </a>
+                  )
+                })}
+              </div>
+            )}
+            {persistedState?.error && (
+              <p className={`text-xs mt-1 ml-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {persistedState.error}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Queue Button */}
         <button
           onClick={handleQueue}
-          disabled={selectedChains.length === 0}
+          disabled={selectedChains.length === 0 || isLocked}
           className={`w-full py-3 text-sm font-bold transition-colors ${
-            selectedChains.length === 0
+            selectedChains.length === 0 || isLocked
               ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
               : 'bg-purple-500 hover:bg-purple-500/90 text-white'
           }`}
         >
-          Queue Ruleset{selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}
+          {persistedState?.status === 'completed'
+            ? 'Queued'
+            : persistedState?.status === 'in_progress'
+              ? 'Pending...'
+              : `Queue Ruleset${selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}`}
         </button>
 
         {/* Info */}
@@ -804,6 +912,8 @@ export default function QueueRulesetForm({ projectId, chainId = '1' }: QueueRule
         rulesetConfig={rulesetConfig}
         synchronizedStartTime={synchronizedStartTime}
         memo={formState.memo}
+        onConfirmed={handleConfirmed}
+        onError={handleError}
       />
     </div>
   )

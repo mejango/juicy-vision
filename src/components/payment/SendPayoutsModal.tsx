@@ -61,6 +61,10 @@ interface SendPayoutsModalProps {
   splits?: Array<{ beneficiary: string; percent: number }>
   // New: for omnichain support
   allChainProjects?: ChainProjectData[]
+  // Transaction status callbacks for persistence
+  onSubmitted?: (txHash: string) => void
+  onConfirmed?: (txHash: string) => void
+  onError?: (error: string) => void
 }
 
 type PayoutStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
@@ -75,6 +79,9 @@ export default function SendPayoutsModal({
   baseCurrency = 1,
   splits = [],
   allChainProjects,
+  onSubmitted,
+  onConfirmed,
+  onError,
 }: SendPayoutsModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -154,6 +161,15 @@ export default function SendPayoutsModal({
       resetOmnichain()
     }
   }, [isOpen, resetOmnichain])
+
+  // Call parent callbacks when status changes (for persistence)
+  useEffect(() => {
+    if (status === 'confirmed' && txHash) {
+      onConfirmed?.(txHash)
+    } else if (status === 'failed' && error) {
+      onError?.(error)
+    }
+  }, [status, txHash, error, onConfirmed, onError])
 
   // Fetch the project's terminal from JBDirectory
   useEffect(() => {

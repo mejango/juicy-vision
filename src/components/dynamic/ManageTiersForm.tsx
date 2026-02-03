@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { formatEther } from 'viem'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useSettingsStore } from '../../stores'
+import { useManageTiersFormState } from '../../hooks/useComponentState'
 import {
   fetchProject,
   fetchConnectedChains,
@@ -24,6 +25,7 @@ import { ManageTiersModal } from '../payment'
 interface ManageTiersFormProps {
   projectId: string
   chainId?: string
+  messageId?: string // For persisting state to server (visible to all chat users)
 }
 
 // Chain info for display
@@ -52,11 +54,17 @@ interface ChainHookData {
   selected: boolean
 }
 
-export default function ManageTiersForm({ projectId, chainId = '1' }: ManageTiersFormProps) {
+export default function ManageTiersForm({ projectId, chainId = '1', messageId }: ManageTiersFormProps) {
   const { theme } = useThemeStore()
   const { pinataJwt } = useSettingsStore()
   const isDark = theme === 'dark'
   const { isConnected } = useAccount()
+
+  // Persistent state for transaction status
+  const { state: persistedState, updateState: updatePersistedState } = useManageTiersFormState(messageId)
+
+  // Check if form is locked (already submitted)
+  const isLocked = persistedState?.status && persistedState.status !== 'pending'
 
   // Project state
   const [project, setProject] = useState<Project | null>(null)
@@ -100,6 +108,22 @@ export default function ManageTiersForm({ projectId, chainId = '1' }: ManageTier
   const openWalletPanel = () => {
     window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
   }
+
+  // Callbacks for transaction completion (for persistence)
+  const handleConfirmed = useCallback((txHash: string) => {
+    updatePersistedState({
+      status: 'completed',
+      txHash,
+      confirmedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState])
+
+  const handleError = useCallback((errorMsg: string) => {
+    updatePersistedState({
+      status: 'failed',
+      error: errorMsg,
+    })
+  }, [updatePersistedState])
 
   // Load project and hook data
   useEffect(() => {
@@ -233,18 +257,27 @@ export default function ManageTiersForm({ projectId, chainId = '1' }: ManageTier
 
   // Handle submit
   const handleSubmit = useCallback(() => {
-    if (!hasPendingChanges) return
+    if (!hasPendingChanges || isLocked) return
 
     if (!isConnected) {
       openWalletPanel()
       return
     }
 
+    // Persist in_progress state
+    updatePersistedState({
+      status: 'in_progress',
+      tiersToAddCount: pendingChanges.tiersToAdd.length,
+      tierIdsToRemove: pendingChanges.tierIdsToRemove,
+      metadataUpdatesCount: pendingChanges.metadataUpdates.length + pendingChanges.discountUpdates.length,
+      submittedAt: new Date().toISOString(),
+    })
+
     setShowModal(true)
-  }, [hasPendingChanges, isConnected])
+  }, [hasPendingChanges, isConnected, isLocked, pendingChanges, updatePersistedState])
 
   // Reset after successful transaction
-  const handleTransactionComplete = useCallback(() => {
+  const handleTransactionComplete = useCallback((txHash?: string) => {
     setPendingChanges({
       tiersToAdd: [],
       tierIdsToRemove: [],
@@ -252,8 +285,11 @@ export default function ManageTiersForm({ projectId, chainId = '1' }: ManageTier
       discountUpdates: [],
     })
     setShowModal(false)
-    // Could trigger a refresh here
-  }, [])
+    // Update persisted state
+    if (txHash) {
+      handleConfirmed(txHash)
+    }
+  }, [handleConfirmed])
 
   // Loading state
   if (loading) {
@@ -545,7 +581,7 @@ export default function ManageTiersForm({ projectId, chainId = '1' }: ManageTier
           )}
 
           {/* Add Tier Button */}
-          {!showEditor && (
+          {!showEditor && !isLocked && (
             <button
               onClick={() => setShowEditor(true)}
               className={`w-full py-3 text-sm font-medium border-2 border-dashed transition-colors ${
@@ -560,31 +596,93 @@ export default function ManageTiersForm({ projectId, chainId = '1' }: ManageTier
         </div>
 
         {/* Submit Section */}
-        {hasPendingChanges && (
+        {(hasPendingChanges || isLocked) && (
           <div className={`p-4 border-t ${isDark ? 'border-gray-600/50' : 'border-gray-200'}`}>
-            <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {pendingChanges.tiersToAdd.length > 0 && (
-                <span className="text-green-500">+{pendingChanges.tiersToAdd.length} add </span>
-              )}
-              {pendingChanges.tierIdsToRemove.length > 0 && (
-                <span className="text-red-500">-{pendingChanges.tierIdsToRemove.length} remove</span>
-              )}
-              {selectedChains.length > 1 && (
-                <span className="ml-2">on {selectedChains.length} chains</span>
-              )}
-            </div>
+            {/* Transaction Status Indicator */}
+            {isLocked && (
+              <div className={`mb-3 p-3 text-sm ${
+                persistedState?.status === 'completed'
+                  ? isDark ? 'bg-green-500/10' : 'bg-green-50'
+                  : persistedState?.status === 'failed'
+                    ? isDark ? 'bg-red-500/10' : 'bg-red-50'
+                    : isDark ? 'bg-juice-orange/10' : 'bg-orange-50'
+              }`}>
+                <div className={`flex items-center gap-2 ${
+                  persistedState?.status === 'completed'
+                    ? isDark ? 'text-green-400' : 'text-green-600'
+                    : persistedState?.status === 'failed'
+                      ? isDark ? 'text-red-400' : 'text-red-600'
+                      : isDark ? 'text-juice-orange' : 'text-orange-600'
+                }`}>
+                  {persistedState?.status === 'completed' ? (
+                    <>
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Tiers updated successfully!</span>
+                    </>
+                  ) : persistedState?.status === 'failed' ? (
+                    <>
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      <span>Transaction failed</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Transaction pending...</span>
+                    </>
+                  )}
+                </div>
+                {persistedState?.txHash && (
+                  <a
+                    href={`https://${CHAIN_INFO[primaryChainId]?.slug === 'eth' ? '' : CHAIN_INFO[primaryChainId]?.slug + '.'}etherscan.io/tx/${persistedState.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
+                  >
+                    View on explorer
+                  </a>
+                )}
+                {persistedState?.error && (
+                  <p className={`text-xs mt-1 ml-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {persistedState.error}
+                  </p>
+                )}
+              </div>
+            )}
 
-            <button
-              onClick={handleSubmit}
-              disabled={selectedChains.length === 0}
-              className={`w-full py-3 text-sm font-bold transition-colors ${
-                selectedChains.length === 0
-                  ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                  : 'bg-juice-orange hover:bg-juice-orange/90 text-black'
-              }`}
-            >
-              Review & Submit Changes
-            </button>
+            {!isLocked && (
+              <>
+                <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {pendingChanges.tiersToAdd.length > 0 && (
+                    <span className="text-green-500">+{pendingChanges.tiersToAdd.length} add </span>
+                  )}
+                  {pendingChanges.tierIdsToRemove.length > 0 && (
+                    <span className="text-red-500">-{pendingChanges.tierIdsToRemove.length} remove</span>
+                  )}
+                  {selectedChains.length > 1 && (
+                    <span className="ml-2">on {selectedChains.length} chains</span>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleSubmit}
+                  disabled={selectedChains.length === 0 || isLocked}
+                  className={`w-full py-3 text-sm font-bold transition-colors ${
+                    selectedChains.length === 0 || isLocked
+                      ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                      : 'bg-juice-orange hover:bg-juice-orange/90 text-black'
+                  }`}
+                >
+                  Review & Submit Changes
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -598,6 +696,7 @@ export default function ManageTiersForm({ projectId, chainId = '1' }: ManageTier
           chainHookData={selectedChains}
           pendingChanges={pendingChanges}
           onComplete={handleTransactionComplete}
+          onError={handleError}
         />
       )}
     </div>

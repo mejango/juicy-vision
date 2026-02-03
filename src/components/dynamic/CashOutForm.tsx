@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
+import { useCashOutFormState } from '../../hooks/useComponentState'
 import { fetchProject, fetchIssuanceRate, fetchConnectedChains, type Project, type IssuanceRate, type ConnectedChain } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { CashOutModal } from '../payment'
@@ -9,9 +10,13 @@ import { CHAINS, ALL_CHAIN_IDS, CURRENCIES } from '../../constants'
 interface CashOutFormProps {
   projectId: string
   chainId?: string
+  messageId?: string // For persisting state to server (visible to all chat users)
 }
 
-export default function CashOutForm({ projectId, chainId: initialChainId = '1' }: CashOutFormProps) {
+export default function CashOutForm({ projectId, chainId: initialChainId = '1', messageId }: CashOutFormProps) {
+  // Persistent state (visible to all chat users)
+  const { state: persistedState, updateState: updatePersistedState } = useCashOutFormState(messageId)
+
   const [project, setProject] = useState<Project | null>(null)
   const [issuanceRate, setIssuanceRate] = useState<IssuanceRate | null>(null)
   const [loading, setLoading] = useState(true)
@@ -24,6 +29,33 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1' }
   const isDark = theme === 'dark'
 
   const { isConnected } = useAccount()
+
+  // Check if form should be locked due to active/completed transaction
+  const isLocked = persistedState?.status && persistedState.status !== 'pending'
+
+  // Restore state from persisted data on load
+  useEffect(() => {
+    if (persistedState && persistedState.status !== 'pending') {
+      if (persistedState.tokenAmount) setTokenAmount(persistedState.tokenAmount)
+      if (persistedState.selectedChainId) setSelectedChainId(String(persistedState.selectedChainId))
+    }
+  }, [persistedState?.status])
+
+  // Transaction callbacks for persistence
+  const handleConfirmed = useCallback((txHash: string) => {
+    updatePersistedState({
+      status: 'completed',
+      txHash,
+      confirmedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState])
+
+  const handleError = useCallback((error: string) => {
+    updatePersistedState({
+      status: 'failed',
+      error,
+    })
+  }, [updatePersistedState])
 
   const chainInfo = CHAINS[parseInt(selectedChainId)] || CHAINS[1]
 
@@ -75,12 +107,20 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1' }
   }
 
   const handleCashOut = () => {
-    if (!tokenAmount || parseFloat(tokenAmount) <= 0) return
+    if (!tokenAmount || parseFloat(tokenAmount) <= 0 || isLocked) return
 
     if (!isConnected) {
       openWalletPanel()
       return
     }
+
+    // Persist in_progress state
+    updatePersistedState({
+      status: 'in_progress',
+      tokenAmount,
+      selectedChainId: parseInt(selectedChainId),
+      submittedAt: new Date().toISOString(),
+    })
 
     setShowModal(true)
   }
@@ -197,9 +237,10 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1' }
                 value={tokenAmount}
                 onChange={(e) => setTokenAmount(e.target.value)}
                 placeholder="10000"
+                disabled={isLocked}
                 className={`flex-1 px-3 py-2 text-sm bg-transparent outline-none ${
                   isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
-                }`}
+                } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
               <span className={`px-3 py-2 text-sm border-l ${
                 isDark ? 'border-white/10 text-gray-400' : 'border-gray-200 text-gray-500'
@@ -209,16 +250,74 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1' }
             </div>
             <button
               onClick={handleCashOut}
-              disabled={!tokenAmount || parseFloat(tokenAmount) <= 0}
+              disabled={!tokenAmount || parseFloat(tokenAmount) <= 0 || isLocked}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
-                !tokenAmount || parseFloat(tokenAmount) <= 0
+                !tokenAmount || parseFloat(tokenAmount) <= 0 || isLocked
                   ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                   : 'bg-juice-cyan hover:bg-juice-cyan/90 text-black'
               }`}
             >
-              Cash Out
+              {persistedState?.status === 'completed' ? 'Cashed out' : persistedState?.status === 'in_progress' ? 'Pending...' : 'Cash Out'}
             </button>
           </div>
+
+          {/* Transaction status indicator */}
+          {isLocked && (
+            <div className={`mt-2 p-2 text-sm ${
+              persistedState?.status === 'completed'
+                ? isDark ? 'bg-green-500/10' : 'bg-green-50'
+                : persistedState?.status === 'failed'
+                  ? isDark ? 'bg-red-500/10' : 'bg-red-50'
+                  : isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'
+            }`}>
+              <div className={`flex items-center gap-2 ${
+                persistedState?.status === 'completed'
+                  ? isDark ? 'text-green-400' : 'text-green-600'
+                  : persistedState?.status === 'failed'
+                    ? isDark ? 'text-red-400' : 'text-red-600'
+                    : isDark ? 'text-juice-cyan' : 'text-cyan-600'
+              }`}>
+                {persistedState?.status === 'completed' ? (
+                  <>
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Cash out successful!</span>
+                  </>
+                ) : persistedState?.status === 'failed' ? (
+                  <>
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    <span>Transaction failed</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Transaction pending...</span>
+                  </>
+                )}
+              </div>
+              {persistedState?.txHash && (
+                <a
+                  href={`${chainInfo.explorerTx}${persistedState.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
+                >
+                  View on explorer
+                </a>
+              )}
+              {persistedState?.error && (
+                <p className={`text-xs mt-1 ml-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {persistedState.error}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Quick amount options */}
           <div className="flex gap-2 mt-2">
@@ -261,6 +360,8 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1' }
         tokenAmount={tokenAmount}
         estimatedReturn={estimatedReturn}
         currencySymbol={currencySymbol}
+        onConfirmed={handleConfirmed}
+        onError={handleError}
       />
     </div>
   )

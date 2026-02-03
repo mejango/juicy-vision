@@ -4,7 +4,12 @@
  */
 
 import { encodeFunctionData } from 'viem'
-import { JB_OMNICHAIN_DEPLOYER_ABI, JB_OMNICHAIN_DEPLOYER_ADDRESS } from '../constants/abis'
+import {
+  JB_OMNICHAIN_DEPLOYER_ABI,
+  JB_OMNICHAIN_DEPLOYER_ADDRESS,
+  JB_CONTROLLER_ABI,
+  JB_CONTROLLER_ADDRESS,
+} from '../constants/abis'
 import {
   JB_CONTRACTS_5_1,
   JB_SWAP_TERMINAL,
@@ -874,6 +879,103 @@ export function buildOmnichainQueue721RulesetsTransactions(params: {
     buildQueue721RulesetsTransaction({
       ...params,
       chainId,
+    })
+  )
+}
+
+// ============================================================================
+// SET URI FUNCTIONS
+// ============================================================================
+
+/**
+ * Encode setUriOf calldata for JBController.
+ * Updates the project metadata URI on a single chain.
+ */
+export function encodeSetUriOf(params: {
+  projectId: number | bigint
+  uri: string
+}): `0x${string}` {
+  const { projectId, uri } = params
+
+  return encodeFunctionData({
+    abi: JB_CONTROLLER_ABI,
+    functionName: 'setUriOf',
+    args: [BigInt(projectId), uri],
+  })
+}
+
+/**
+ * Build transaction data for setting project URI via JBController.
+ *
+ * IMPORTANT: The controller address MUST be derived from JBDirectory.controllerOf(projectId)
+ * since different projects may use different controller versions (V5 vs V5.1).
+ */
+export function buildSetUriTransaction(params: {
+  chainId: number
+  projectId: number | bigint
+  uri: string
+  controller: `0x${string}` // Must be fetched from JBDirectory.controllerOf
+}): {
+  chainId: number
+  to: `0x${string}`
+  data: `0x${string}`
+  value: string
+} {
+  const data = encodeSetUriOf(params)
+
+  return {
+    chainId: params.chainId,
+    to: params.controller,
+    data,
+    value: '0x0',
+  }
+}
+
+/**
+ * Per-chain project ID mapping for omnichain projects.
+ * Each chain may have a different project ID for the same logical project.
+ */
+export interface ChainProjectMapping {
+  chainId: number
+  projectId: number | bigint
+  controller: `0x${string}` // Must be fetched from JBDirectory.controllerOf per chain
+}
+
+/**
+ * Build transactions for setting project URI on multiple chains.
+ * For omnichain projects, each chain may have a different projectId AND controller.
+ *
+ * IMPORTANT: The controller address MUST be derived from JBDirectory.controllerOf(projectId)
+ * for each chain, since projects may use different controller versions.
+ */
+export function buildOmnichainSetUriTransactions(params: {
+  chainProjectMappings: ChainProjectMapping[]
+  uri: string
+}): Array<{
+  chainId: number
+  to: `0x${string}`
+  data: `0x${string}`
+  value: string
+}> {
+  const { chainProjectMappings, uri } = params
+
+  console.log('\n=== OMNICHAIN SET URI PARAMS ===')
+  console.log(JSON.stringify({
+    chainProjectMappings: chainProjectMappings.map(m => ({
+      chainId: m.chainId,
+      projectId: typeof m.projectId === 'bigint' ? m.projectId.toString() : m.projectId,
+      controller: m.controller,
+    })),
+    uri,
+  }, null, 2))
+  console.log('================================\n')
+
+  return chainProjectMappings.map(({ chainId, projectId, controller }) =>
+    buildSetUriTransaction({
+      chainId,
+      projectId,
+      uri,
+      controller,
     })
   )
 }

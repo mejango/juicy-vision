@@ -33,6 +33,8 @@ const NFTGallery = lazy(() => import('./NFTGallery'))
 const NFTCard = lazy(() => import('./NFTCard'))
 const Storefront = lazy(() => import('./Storefront'))
 const ManageTiersForm = lazy(() => import('./ManageTiersForm'))
+const SetSplitsForm = lazy(() => import('./SetSplitsForm'))
+const SetUriForm = lazy(() => import('./SetUriForm'))
 const LandingPagePreview = lazy(() => import('./LandingPagePreview'))
 const SuccessVisualization = lazy(() => import('./SuccessVisualization'))
 const InteractionsSheet = lazy(() => import('./InteractionsSheet'))
@@ -232,6 +234,20 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
   },
   'manage-tiers-form': {
     component: ManageTiersForm,
+    mapProps: (p) => ({
+      projectId: p.projectId,
+      chainId: p.chainId,
+    }),
+  },
+  'set-splits-form': {
+    component: SetSplitsForm,
+    mapProps: (p) => ({
+      projectId: p.projectId,
+      chainId: p.chainId,
+    }),
+  },
+  'set-uri-form': {
+    component: SetUriForm,
     mapProps: (p) => ({
       projectId: p.projectId,
       chainId: p.chainId,

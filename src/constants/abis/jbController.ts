@@ -220,4 +220,43 @@ export const JB_CONTROLLER_ABI = [
     ],
     outputs: [{ name: 'tokenCount', type: 'uint256' }],
   },
+  {
+    name: 'setUriOf',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'uri', type: 'string' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'setSplitGroupsOf',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'rulesetId', type: 'uint256' },
+      {
+        name: 'splitGroups',
+        type: 'tuple[]',
+        components: [
+          { name: 'groupId', type: 'uint256' },
+          {
+            name: 'splits',
+            type: 'tuple[]',
+            components: [
+              { name: 'preferAddToBalance', type: 'bool' },
+              { name: 'percent', type: 'uint32' },
+              { name: 'projectId', type: 'uint56' },
+              { name: 'beneficiary', type: 'address' },
+              { name: 'lockedUntil', type: 'uint48' },
+              { name: 'hook', type: 'address' },
+            ],
+          },
+        ],
+      },
+    ],
+    outputs: [],
+  },
 ] as const

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
+import { useSendReservedTokensFormState } from '../../hooks/useComponentState'
 import {
   fetchProject,
   fetchConnectedChains,
@@ -20,6 +21,7 @@ import { SendReservedTokensModal } from '../payment'
 interface SendReservedTokensFormProps {
   projectId: string
   chainId?: string
+  messageId?: string // For persisting state to server (visible to all chat users)
 }
 
 // Chain info for display
@@ -89,7 +91,10 @@ function InlineChainSelector({
   )
 }
 
-export default function SendReservedTokensForm({ projectId, chainId = '1' }: SendReservedTokensFormProps) {
+export default function SendReservedTokensForm({ projectId, chainId = '1', messageId }: SendReservedTokensFormProps) {
+  // Persistent state (visible to all chat users)
+  const { state: persistedState, updateState: updatePersistedState } = useSendReservedTokensFormState(messageId)
+
   const [project, setProject] = useState<Project | null>(null)
   const [tokenSymbol, setTokenSymbol] = useState<string>('tokens')
   const [loading, setLoading] = useState(true)
@@ -99,6 +104,32 @@ export default function SendReservedTokensForm({ projectId, chainId = '1' }: Sen
   const isDark = theme === 'dark'
 
   const { isConnected } = useAccount()
+
+  // Check if form should be locked due to active/completed transaction
+  const isLocked = persistedState?.status && persistedState.status !== 'pending'
+
+  // Restore state from persisted data on load
+  useEffect(() => {
+    if (persistedState && persistedState.status !== 'pending') {
+      if (persistedState.selectedChainId) setSelectedChainId(persistedState.selectedChainId)
+    }
+  }, [persistedState?.status])
+
+  // Transaction callbacks for persistence
+  const handleConfirmed = useCallback((txHash: string) => {
+    updatePersistedState({
+      status: 'completed',
+      txHash,
+      confirmedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState])
+
+  const handleError = useCallback((error: string) => {
+    updatePersistedState({
+      status: 'failed',
+      error,
+    })
+  }, [updatePersistedState])
 
   const openWalletPanel = () => {
     window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
@@ -225,12 +256,19 @@ export default function SendReservedTokensForm({ projectId, chainId = '1' }: Sen
   }, [projectId, chainId])
 
   const handleSendReservedTokens = () => {
-    if (pendingTokens <= 0) return
+    if (pendingTokens <= 0 || isLocked) return
 
     if (!isConnected) {
       openWalletPanel()
       return
     }
+
+    // Persist in_progress state
+    updatePersistedState({
+      status: 'in_progress',
+      selectedChainId,
+      submittedAt: new Date().toISOString(),
+    })
 
     setShowModal(true)
   }
@@ -456,18 +494,80 @@ export default function SendReservedTokensForm({ projectId, chainId = '1' }: Sen
         {/* Action Button */}
         <button
           onClick={handleSendReservedTokens}
-          disabled={!hasPendingTokens}
+          disabled={!hasPendingTokens || isLocked}
           className={`w-full py-3 text-sm font-medium transition-colors ${
-            !hasPendingTokens
+            !hasPendingTokens || isLocked
               ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
               : 'bg-amber-500 hover:bg-amber-500/90 text-black'
           }`}
         >
-          {hasPendingTokens
-            ? `Distribute ${pendingTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${tokenSymbol}`
-            : `No ${tokenSymbol} to Distribute`
+          {persistedState?.status === 'completed'
+            ? 'Sent'
+            : persistedState?.status === 'in_progress'
+              ? 'Pending...'
+              : hasPendingTokens
+                ? `Distribute ${pendingTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${tokenSymbol}`
+                : `No ${tokenSymbol} to Distribute`
           }
         </button>
+
+        {/* Transaction status indicator */}
+        {isLocked && (
+          <div className={`mt-2 p-2 text-sm ${
+            persistedState?.status === 'completed'
+              ? isDark ? 'bg-green-500/10' : 'bg-green-50'
+              : persistedState?.status === 'failed'
+                ? isDark ? 'bg-red-500/10' : 'bg-red-50'
+                : isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'
+          }`}>
+            <div className={`flex items-center gap-2 ${
+              persistedState?.status === 'completed'
+                ? isDark ? 'text-green-400' : 'text-green-600'
+                : persistedState?.status === 'failed'
+                  ? isDark ? 'text-red-400' : 'text-red-600'
+                  : isDark ? 'text-juice-cyan' : 'text-cyan-600'
+            }`}>
+              {persistedState?.status === 'completed' ? (
+                <>
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>{tokenSymbol} distributed successfully!</span>
+                </>
+              ) : persistedState?.status === 'failed' ? (
+                <>
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  <span>Transaction failed</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Transaction pending...</span>
+                </>
+              )}
+            </div>
+            {persistedState?.txHash && (
+              <a
+                href={`${CHAIN_INFO[selectedChainId]?.slug ? `https://${CHAIN_INFO[selectedChainId].slug === 'eth' ? '' : CHAIN_INFO[selectedChainId].slug + '.'}etherscan.io` : 'https://etherscan.io'}/tx/${persistedState.txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
+              >
+                View on explorer
+              </a>
+            )}
+            {persistedState?.error && (
+              <p className={`text-xs mt-1 ml-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {persistedState.error}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Info */}
         <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -487,6 +587,8 @@ export default function SendReservedTokensForm({ projectId, chainId = '1' }: Sen
         chainId={selectedChainId}
         tokenSymbol={tokenSymbol}
         amount={activeChainData?.pendingReserved || '0'}
+        onConfirmed={handleConfirmed}
+        onError={handleError}
       />
     </div>
   )

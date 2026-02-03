@@ -50,6 +50,10 @@ interface CashOutModalProps {
   cashOutTaxRate?: number
   /** Currency symbol for the return amount - 'ETH' or 'USDC'. Defaults to 'ETH' */
   currencySymbol?: 'ETH' | 'USDC'
+  // Transaction status callbacks for persistence
+  onSubmitted?: (txHash: string) => void
+  onConfirmed?: (txHash: string) => void
+  onError?: (error: string) => void
 }
 
 type CashOutStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
@@ -65,6 +69,9 @@ export default function CashOutModal({
   estimatedReturn = 0,
   cashOutTaxRate = 0,
   currencySymbol = 'ETH',
+  onSubmitted,
+  onConfirmed,
+  onError,
 }: CashOutModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -119,6 +126,15 @@ export default function CashOutModal({
       setWarningsAcknowledged(false)
     }
   }, [isOpen])
+
+  // Call parent callbacks when status changes (for persistence)
+  useEffect(() => {
+    if (status === 'confirmed' && txHash) {
+      onConfirmed?.(txHash)
+    } else if (status === 'failed' && error) {
+      onError?.(error)
+    }
+  }, [status, txHash, error, onConfirmed, onError])
 
   // Fetch the project's terminal from JBDirectory
   useEffect(() => {

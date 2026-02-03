@@ -14,6 +14,10 @@ export { useOmnichainLaunchProject } from './useOmnichainLaunchProject'
 export { useOmnichainDeployRevnet } from './useOmnichainDeployRevnet'
 export { useOmnichainDeploySuckers } from './useOmnichainDeploySuckers'
 
+// Owner action hooks
+export { useOmnichainSetUri } from './useOmnichainSetUri'
+export { useOmnichainSetSplits } from './useOmnichainSetSplits'
+
 // Types
 export type {
   BundleStatus,
@@ -32,3 +36,4 @@ export type {
 export type { OmnichainLaunchProjectParams, UseOmnichainLaunchProjectReturn } from './useOmnichainLaunchProject'
 export type { OmnichainDeployRevnetParams, UseOmnichainDeployRevnetReturn } from './useOmnichainDeployRevnet'
 export type { OmnichainDeploySuckersParams, UseOmnichainDeploySuckersReturn } from './useOmnichainDeploySuckers'
+export type { OmnichainSetUriParams, UseOmnichainSetUriReturn, ChainProjectInput } from './useOmnichainSetUri'

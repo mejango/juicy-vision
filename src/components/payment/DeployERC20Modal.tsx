@@ -65,6 +65,10 @@ interface DeployERC20ModalProps {
   tokenSymbol: string
   // New: for omnichain support - deploy same token on all chains with same address
   allChainProjects?: ChainProjectData[]
+  // Transaction status callbacks for persistence
+  onSubmitted?: (txHash: string) => void
+  onConfirmed?: (txHash: string) => void
+  onError?: (error: string) => void
 }
 
 type DeployStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
@@ -78,6 +82,9 @@ export default function DeployERC20Modal({
   tokenName,
   tokenSymbol,
   allChainProjects,
+  onSubmitted,
+  onConfirmed,
+  onError,
 }: DeployERC20ModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -151,6 +158,15 @@ export default function DeployERC20Modal({
       resetOmnichain()
     }
   }, [isOpen, resetOmnichain])
+
+  // Call parent callbacks when status changes (for persistence)
+  useEffect(() => {
+    if (status === 'confirmed' && txHash) {
+      onConfirmed?.(txHash)
+    } else if (status === 'failed' && error) {
+      onError?.(error)
+    }
+  }, [status, txHash, error, onConfirmed, onError])
 
   // Fetch the project's controller from JBDirectory
   useEffect(() => {

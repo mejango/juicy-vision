@@ -62,7 +62,8 @@ interface ManageTiersModalProps {
   projectName?: string
   chainHookData: ChainHookData[]
   pendingChanges: PendingChanges
-  onComplete?: () => void
+  onComplete?: (txHash?: string) => void
+  onError?: (error: string) => void
 }
 
 type ChainStatus = 'pending' | 'signing' | 'submitted' | 'confirmed' | 'failed'
@@ -83,6 +84,7 @@ export default function ManageTiersModal({
   chainHookData,
   pendingChanges,
   onComplete,
+  onError,
 }: ManageTiersModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -127,6 +129,17 @@ export default function ManageTiersModal({
   const allSucceeded = chainStates.length > 0 && chainStates.every(cs => cs.status === 'confirmed')
 
   const canProceed = hasGasBalance && validChainData.length > 0 && changeSummary.total > 0
+
+  // Call parent callbacks when transactions complete (for persistence)
+  useEffect(() => {
+    if (allSucceeded && isStarted) {
+      const firstTxHash = chainStates.find(cs => cs.txHash)?.txHash
+      onComplete?.(firstTxHash)
+    } else if (anyFailed && isStarted) {
+      const failedChain = chainStates.find(cs => cs.status === 'failed')
+      onError?.(failedChain?.error || 'Transaction failed')
+    }
+  }, [allSucceeded, anyFailed, isStarted, chainStates, onComplete, onError])
 
   // Initialize chain states
   useEffect(() => {

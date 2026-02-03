@@ -63,6 +63,10 @@ interface UseSurplusAllowanceModalProps {
   chainId: number
   amount: string
   baseCurrency?: number // 1 = ETH, 2 = USD
+  // Transaction status callbacks for persistence
+  onSubmitted?: (txHash: string) => void
+  onConfirmed?: (txHash: string) => void
+  onError?: (error: string) => void
 }
 
 type WithdrawStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
@@ -75,6 +79,9 @@ export default function UseSurplusAllowanceModal({
   chainId,
   amount,
   baseCurrency = 1,
+  onSubmitted,
+  onConfirmed,
+  onError,
 }: UseSurplusAllowanceModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -131,6 +138,15 @@ export default function UseSurplusAllowanceModal({
       setWarningsAcknowledged(false)
     }
   }, [isOpen])
+
+  // Call parent callbacks when status changes (for persistence)
+  useEffect(() => {
+    if (status === 'confirmed' && txHash) {
+      onConfirmed?.(txHash)
+    } else if (status === 'failed' && error) {
+      onError?.(error)
+    }
+  }, [status, txHash, error, onConfirmed, onError])
 
   // Fetch the project's terminal from JBDirectory
   useEffect(() => {

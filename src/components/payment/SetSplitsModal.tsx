@@ -1,112 +1,17 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { encodeFunctionData, type Chain, createPublicClient, http, type Address } from 'viem'
+import { encodeFunctionData, type Chain, createPublicClient, http, type PublicClient } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
-import { useOmnichainQueueRuleset } from '../../hooks/relayr'
-import { type JBRulesetConfig } from '../../services/relayr'
+import { useOmnichainSetSplits, type ChainState } from '../../hooks/relayr'
+import { JB_CONTROLLER_ABI } from '../../constants/abis/jbController'
+import { SPLIT_GROUP_RESERVED, getPayoutSplitGroup, NATIVE_TOKEN } from '../../constants/abis/jbSplits'
+import { USDC_ADDRESSES, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
+import { getProjectController } from '../../utils/paymentTerminal'
 import ChainPaymentSelector from './ChainPaymentSelector'
 import TechnicalDetails from '../shared/TechnicalDetails'
-import TransactionSummary from '../shared/TransactionSummary'
-import TransactionWarning from '../shared/TransactionWarning'
-import { verifyQueueRulesetParams } from '../../utils/transactionVerification'
-import { getProjectController } from '../../utils/paymentTerminal'
-import { RPC_ENDPOINTS } from '../../constants'
-
-// ABI for queueRulesetsOf
-const CONTROLLER_QUEUE_RULESETS_ABI = [
-  {
-    name: 'queueRulesetsOf',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      {
-        name: 'rulesetConfigurations',
-        type: 'tuple[]',
-        components: [
-          { name: 'mustStartAtOrAfter', type: 'uint48' },
-          { name: 'duration', type: 'uint32' },
-          { name: 'weight', type: 'uint112' },
-          { name: 'weightCutPercent', type: 'uint32' },
-          { name: 'approvalHook', type: 'address' },
-          {
-            name: 'metadata',
-            type: 'tuple',
-            components: [
-              { name: 'reservedPercent', type: 'uint16' },
-              { name: 'cashOutTaxRate', type: 'uint16' },
-              { name: 'baseCurrency', type: 'uint32' },
-              { name: 'pausePay', type: 'bool' },
-              { name: 'pauseCreditTransfers', type: 'bool' },
-              { name: 'allowOwnerMinting', type: 'bool' },
-              { name: 'allowSetCustomToken', type: 'bool' },
-              { name: 'allowTerminalMigration', type: 'bool' },
-              { name: 'allowSetTerminals', type: 'bool' },
-              { name: 'allowSetController', type: 'bool' },
-              { name: 'allowAddAccountingContext', type: 'bool' },
-              { name: 'allowAddPriceFeed', type: 'bool' },
-              { name: 'ownerMustSendPayouts', type: 'bool' },
-              { name: 'holdFees', type: 'bool' },
-              { name: 'useTotalSurplusForCashOuts', type: 'bool' },
-              { name: 'useDataHookForPay', type: 'bool' },
-              { name: 'useDataHookForCashOut', type: 'bool' },
-              { name: 'dataHook', type: 'address' },
-              { name: 'metadata', type: 'uint16' },
-            ],
-          },
-          {
-            name: 'splitGroups',
-            type: 'tuple[]',
-            components: [
-              { name: 'groupId', type: 'uint256' },
-              {
-                name: 'splits',
-                type: 'tuple[]',
-                components: [
-                  { name: 'percent', type: 'uint32' },
-                  { name: 'projectId', type: 'uint64' },
-                  { name: 'beneficiary', type: 'address' },
-                  { name: 'preferAddToBalance', type: 'bool' },
-                  { name: 'lockedUntil', type: 'uint48' },
-                  { name: 'hook', type: 'address' },
-                ],
-              },
-            ],
-          },
-          {
-            name: 'fundAccessLimitGroups',
-            type: 'tuple[]',
-            components: [
-              { name: 'terminal', type: 'address' },
-              { name: 'token', type: 'address' },
-              {
-                name: 'payoutLimits',
-                type: 'tuple[]',
-                components: [
-                  { name: 'amount', type: 'uint224' },
-                  { name: 'currency', type: 'uint32' },
-                ],
-              },
-              {
-                name: 'surplusAllowances',
-                type: 'tuple[]',
-                components: [
-                  { name: 'amount', type: 'uint224' },
-                  { name: 'currency', type: 'uint32' },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      { name: 'memo', type: 'string' },
-    ],
-    outputs: [{ name: 'rulesetId', type: 'uint256' }],
-  },
-] as const
 
 const CHAINS: Record<number, Chain> = {
   1: mainnet,
@@ -129,20 +34,36 @@ const EXPLORER_URLS: Record<number, string> = {
   42161: 'https://arbiscan.io/tx/',
 }
 
-interface ChainRulesetData {
+// Data passed from the form
+interface ChainSplitsData {
   chainId: number
   projectId: number
+  rulesetId: string
+  baseCurrency: number
+  selected: boolean
 }
 
-interface QueueRulesetModalProps {
+// Split format from the form
+interface EditableSplit {
+  id: string
+  percent: string
+  beneficiary: string
+  projectId: string
+  preferAddToBalance: boolean
+  lockedUntil: number
+  hook: string
+  isLocked: boolean
+  isNew: boolean
+}
+
+interface SetSplitsModalProps {
   isOpen: boolean
   onClose: () => void
   projectName?: string
-  chainRulesetData: ChainRulesetData[]
-  rulesetConfig: JBRulesetConfig
-  synchronizedStartTime: number
-  memo: string
-  // Transaction status callbacks for persistence
+  chainSplitsData: ChainSplitsData[]
+  payoutSplits: EditableSplit[]
+  reservedSplits: EditableSplit[]
+  baseCurrency: number
   onConfirmed?: (txHashes: Record<number, string>, bundleId?: string) => void
   onError?: (error: string) => void
 }
@@ -157,17 +78,23 @@ interface ChainTxState {
   error?: string
 }
 
-export default function QueueRulesetModal({
+// Convert display percent (0-100) to basis points (0-1_000_000_000)
+function toBasisPoints(displayPercent: string): number {
+  const pct = parseFloat(displayPercent) || 0
+  return Math.floor((pct / 100) * 1_000_000_000)
+}
+
+export default function SetSplitsModal({
   isOpen,
   onClose,
   projectName,
-  chainRulesetData,
-  rulesetConfig,
-  synchronizedStartTime,
-  memo,
+  chainSplitsData,
+  payoutSplits,
+  reservedSplits,
+  baseCurrency,
   onConfirmed,
   onError,
-}: QueueRulesetModalProps) {
+}: SetSplitsModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { address } = useAccount()
@@ -185,54 +112,35 @@ export default function QueueRulesetModal({
   const [chainStates, setChainStates] = useState<ChainTxState[]>([])
   const [currentChainIndex, setCurrentChainIndex] = useState<number>(-1)
   const [isStarted, setIsStarted] = useState(false)
-  const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
-
-  // Controller addresses fetched from JBDirectory (per chain)
-  const [controllerAddresses, setControllerAddresses] = useState<Record<number, Address>>({})
-  const [controllersLoading, setControllersLoading] = useState(false)
-  const [controllerError, setControllerError] = useState<string | null>(null)
 
   // Relayr omnichain mode
-  const [useOmnichain, setUseOmnichain] = useState(true) // Default to omnichain for multi-chain
+  const [useOmnichain, setUseOmnichain] = useState(true)
   const {
-    queue,
+    setSplits,
     bundleState,
     isExecuting,
     isComplete: omnichainComplete,
     hasError: omnichainError,
     reset: resetOmnichain,
     setPaymentChain,
-  } = useOmnichainQueueRuleset({
+  } = useOmnichainSetSplits({
     onSuccess: (bundleId, txHashes) => {
-      console.log('Omnichain queue completed:', bundleId, txHashes)
+      console.log('Omnichain set splits completed:', bundleId, txHashes)
     },
     onError: (error) => {
-      console.error('Omnichain queue failed:', error)
+      console.error('Omnichain set splits failed:', error)
     },
   })
 
   const hasGasBalance = totalEth >= 0.001
-  const isOmnichain = chainRulesetData.length > 1
-  const startDate = new Date(synchronizedStartTime * 1000)
-
-  // Verify transaction parameters
-  const verificationResult = useMemo(() => {
-    return verifyQueueRulesetParams({
-      projectId: BigInt(chainRulesetData[0]?.projectId || 0),
-      rulesetConfigurations: [rulesetConfig],
-      memo,
-    })
-  }, [chainRulesetData, rulesetConfig, memo])
-
-  const hasWarnings = verificationResult.doubts.length > 0
-  const allControllersLoaded = chainRulesetData.every(cd => controllerAddresses[cd.chainId])
-  const canProceed = hasGasBalance && (!hasWarnings || warningsAcknowledged) && allControllersLoaded && !controllersLoading && !controllerError
+  const isOmnichain = chainSplitsData.length > 1
+  const canProceed = hasGasBalance
 
   // Derive chain states from bundle state when in omnichain mode
   const effectiveChainStates = useOmnichain && bundleState.bundleId
-    ? bundleState.chainStates.map(cs => ({
+    ? bundleState.chainStates.map((cs: ChainState) => ({
         chainId: cs.chainId,
-        projectId: cs.projectId || chainRulesetData.find(cd => cd.chainId === cs.chainId)?.projectId || 0,
+        projectId: cs.projectId || chainSplitsData.find(cd => cd.chainId === cs.chainId)?.projectId || 0,
         status: cs.status as ChainStatus,
         txHash: cs.txHash,
         error: cs.error,
@@ -250,34 +158,34 @@ export default function QueueRulesetModal({
     ? omnichainComplete
     : chainStates.length > 0 && chainStates.every(cs => cs.status === 'confirmed')
 
-  // Call parent callbacks when transactions complete (for persistence)
+  // Call parent callbacks when transactions complete
   useEffect(() => {
     if (allSucceeded) {
       const txHashes: Record<number, string> = {}
       if (useOmnichain) {
-        bundleState.chainStates.forEach(cs => {
+        bundleState.chainStates.forEach((cs: ChainState) => {
           if (cs.txHash) txHashes[cs.chainId] = cs.txHash
         })
         onConfirmed?.(txHashes, bundleState.bundleId || undefined)
       } else {
-        chainStates.forEach(cs => {
+        chainStates.forEach((cs: ChainTxState) => {
           if (cs.txHash) txHashes[cs.chainId] = cs.txHash
         })
         onConfirmed?.(txHashes)
       }
     } else if (anyFailed) {
       const failedChain = useOmnichain
-        ? bundleState.chainStates.find(cs => cs.status === 'failed')
-        : chainStates.find(cs => cs.status === 'failed')
-      onError?.(failedChain?.error || 'Transaction failed')
+        ? bundleState.chainStates.find((cs: ChainState) => cs.status === 'failed')
+        : chainStates.find((cs: ChainTxState) => cs.status === 'failed')
+      onError?.(failedChain?.error || bundleState.error || 'Transaction failed')
     }
-  }, [allSucceeded, anyFailed, useOmnichain, bundleState.chainStates, bundleState.bundleId, chainStates, onConfirmed, onError])
+  }, [allSucceeded, anyFailed, useOmnichain, bundleState.chainStates, bundleState.bundleId, bundleState.error, chainStates, onConfirmed, onError])
 
   // Initialize chain states
   useEffect(() => {
     if (isOpen) {
       setChainStates(
-        chainRulesetData.map(cd => ({
+        chainSplitsData.map(cd => ({
           chainId: cd.chainId,
           projectId: cd.projectId,
           status: 'pending',
@@ -285,53 +193,10 @@ export default function QueueRulesetModal({
       )
       setCurrentChainIndex(-1)
       setIsStarted(false)
-      setWarningsAcknowledged(false)
       resetOmnichain()
-      // Default to omnichain for multi-chain scenarios
       setUseOmnichain(isOmnichain)
     }
-  }, [isOpen, chainRulesetData, isOmnichain, resetOmnichain])
-
-  // Fetch controllers from JBDirectory for all chains
-  useEffect(() => {
-    if (!isOpen || chainRulesetData.length === 0) {
-      setControllerAddresses({})
-      setControllerError(null)
-      return
-    }
-
-    const fetchControllers = async () => {
-      setControllersLoading(true)
-      setControllerError(null)
-      const addresses: Record<number, Address> = {}
-
-      try {
-        for (const cd of chainRulesetData) {
-          const chain = CHAINS[cd.chainId]
-          if (!chain) continue
-
-          const rpcUrl = RPC_ENDPOINTS[cd.chainId]?.[0]
-          if (!rpcUrl) continue
-
-          const publicClient = createPublicClient({
-            chain,
-            transport: http(rpcUrl),
-          })
-
-          const controller = await getProjectController(publicClient, BigInt(cd.projectId))
-          addresses[cd.chainId] = controller
-        }
-        setControllerAddresses(addresses)
-      } catch (err) {
-        console.error('Failed to fetch controllers:', err)
-        setControllerError('Failed to fetch project controllers from JBDirectory')
-      } finally {
-        setControllersLoading(false)
-      }
-    }
-
-    fetchControllers()
-  }, [isOpen, chainRulesetData])
+  }, [isOpen, chainSplitsData, isOmnichain, resetOmnichain])
 
   const updateChainState = useCallback((chainId: number, update: Partial<ChainTxState>) => {
     setChainStates(prev =>
@@ -343,63 +208,50 @@ export default function QueueRulesetModal({
     )
   }, [])
 
-  // Convert ruleset config to contract format
-  const buildRulesetArgs = useCallback(() => {
-    return [{
-      mustStartAtOrAfter: rulesetConfig.mustStartAtOrAfter,
-      duration: rulesetConfig.duration,
-      weight: BigInt(rulesetConfig.weight),
-      weightCutPercent: rulesetConfig.weightCutPercent,
-      approvalHook: rulesetConfig.approvalHook as `0x${string}`,
-      metadata: {
-        reservedPercent: rulesetConfig.metadata.reservedPercent,
-        cashOutTaxRate: rulesetConfig.metadata.cashOutTaxRate,
-        baseCurrency: rulesetConfig.metadata.baseCurrency,
-        pausePay: rulesetConfig.metadata.pausePay,
-        pauseCreditTransfers: rulesetConfig.metadata.pauseCreditTransfers,
-        allowOwnerMinting: rulesetConfig.metadata.allowOwnerMinting,
-        allowSetCustomToken: rulesetConfig.metadata.allowSetCustomToken,
-        allowTerminalMigration: rulesetConfig.metadata.allowTerminalMigration,
-        allowSetTerminals: rulesetConfig.metadata.allowSetTerminals,
-        allowSetController: rulesetConfig.metadata.allowSetController,
-        allowAddAccountingContext: rulesetConfig.metadata.allowAddAccountingContext,
-        allowAddPriceFeed: rulesetConfig.metadata.allowAddPriceFeed,
-        ownerMustSendPayouts: rulesetConfig.metadata.ownerMustSendPayouts,
-        holdFees: rulesetConfig.metadata.holdFees,
-        useTotalSurplusForCashOuts: rulesetConfig.metadata.useTotalSurplusForCashOuts,
-        useDataHookForPay: rulesetConfig.metadata.useDataHookForPay,
-        useDataHookForCashOut: rulesetConfig.metadata.useDataHookForCashOut,
-        dataHook: rulesetConfig.metadata.dataHook as `0x${string}`,
-        metadata: rulesetConfig.metadata.metadata,
-      },
-      splitGroups: rulesetConfig.splitGroups.map(sg => ({
-        groupId: BigInt(sg.groupId),
-        splits: sg.splits.map(s => ({
-          percent: s.percent,
-          projectId: BigInt(s.projectId),
-          beneficiary: s.beneficiary as `0x${string}`,
-          preferAddToBalance: s.preferAddToBalance,
-          lockedUntil: Number(s.lockedUntil),
-          hook: s.hook as `0x${string}`,
-        })),
-      })),
-      fundAccessLimitGroups: rulesetConfig.fundAccessLimitGroups.map(fg => ({
-        terminal: fg.terminal as `0x${string}`,
-        token: fg.token as `0x${string}`,
-        payoutLimits: fg.payoutLimits.map(pl => ({
-          amount: BigInt(pl.amount),
-          currency: pl.currency,
-        })),
-        surplusAllowances: fg.surplusAllowances.map(sa => ({
-          amount: BigInt(sa.amount),
-          currency: sa.currency,
-        })),
-      })),
-    }]
-  }, [rulesetConfig])
+  // Build split struct for contract call
+  const buildSplitStruct = (split: EditableSplit) => ({
+    preferAddToBalance: split.preferAddToBalance,
+    percent: toBasisPoints(split.percent),
+    projectId: BigInt(split.projectId || 0),
+    beneficiary: (split.beneficiary || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    lockedUntil: split.lockedUntil,
+    hook: (split.hook || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+  })
 
-  // Queue ruleset on a single chain (legacy mode)
-  const queueOnChain = useCallback(async (chainData: ChainRulesetData) => {
+  // Build split groups for a chain
+  const buildSplitGroups = (chainData: ChainSplitsData) => {
+    const payoutToken = chainData.baseCurrency === 2
+      ? USDC_ADDRESSES[chainData.chainId as SupportedChainId]
+      : NATIVE_TOKEN
+
+    const groups: Array<{
+      groupId: bigint
+      splits: ReturnType<typeof buildSplitStruct>[]
+    }> = []
+
+    // Payout splits (keyed by token address)
+    const validPayoutSplits = payoutSplits.filter(s => s.percent && parseFloat(s.percent) > 0)
+    if (validPayoutSplits.length > 0) {
+      groups.push({
+        groupId: getPayoutSplitGroup(payoutToken),
+        splits: validPayoutSplits.map(buildSplitStruct),
+      })
+    }
+
+    // Reserved splits (always group ID 1)
+    const validReservedSplits = reservedSplits.filter(s => s.percent && parseFloat(s.percent) > 0)
+    if (validReservedSplits.length > 0) {
+      groups.push({
+        groupId: SPLIT_GROUP_RESERVED,
+        splits: validReservedSplits.map(buildSplitStruct),
+      })
+    }
+
+    return groups
+  }
+
+  // Set splits on a single chain (legacy mode)
+  const setSplitsOnChain = useCallback(async (chainData: ChainSplitsData) => {
     if (isManagedMode) {
       if (!managedAddress) {
         throw new Error('Managed wallet not available')
@@ -415,14 +267,26 @@ export default function QueueRulesetModal({
       throw new Error(`Unsupported chain: ${chainData.chainId}`)
     }
 
-    const controllerAddress = controllerAddresses[chainData.chainId]
-    if (!controllerAddress) {
-      throw new Error(`Controller not found for chain: ${chainData.chainId}`)
-    }
-
     updateChainState(chainData.chainId, { status: 'signing' })
 
     try {
+      // Fetch controller address from JBDirectory
+      const viemChain = VIEM_CHAINS[chainData.chainId as SupportedChainId]
+      const rpcUrls = RPC_ENDPOINTS[chainData.chainId]
+      if (!viemChain || !rpcUrls || rpcUrls.length === 0) {
+        throw new Error(`No RPC endpoint for chain ${chainData.chainId}`)
+      }
+
+      const publicClient = createPublicClient({
+        chain: viemChain,
+        transport: http(rpcUrls[0]),
+      }) as PublicClient
+
+      const controllerAddress = await getProjectController(
+        publicClient,
+        BigInt(chainData.projectId)
+      )
+
       const txId = addTransaction({
         type: 'deploy',
         projectId: String(chainData.projectId),
@@ -431,15 +295,15 @@ export default function QueueRulesetModal({
         status: 'pending',
       })
 
-      const rulesetArgs = buildRulesetArgs()
+      const splitGroups = buildSplitGroups(chainData)
 
       const callData = encodeFunctionData({
-        abi: CONTROLLER_QUEUE_RULESETS_ABI,
-        functionName: 'queueRulesetsOf',
+        abi: JB_CONTROLLER_ABI,
+        functionName: 'setSplitGroupsOf',
         args: [
           BigInt(chainData.projectId),
-          rulesetArgs,
-          memo,
+          BigInt(chainData.rulesetId),
+          splitGroups,
         ],
       })
 
@@ -467,42 +331,54 @@ export default function QueueRulesetModal({
       updateChainState(chainData.chainId, { status: 'failed', error: errorMessage })
       throw err
     }
-  }, [walletClient, address, memo, buildRulesetArgs, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress, controllerAddresses])
+  }, [walletClient, address, payoutSplits, reservedSplits, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress])
 
-  // Start the queuing process
+  // Start the set splits process
   const handleStart = useCallback(async () => {
     const activeAddress = isManagedMode ? managedAddress : address
-    if (!activeAddress || chainRulesetData.length === 0) return
+    if (!activeAddress || chainSplitsData.length === 0) return
 
     setIsStarted(true)
 
     if (useOmnichain && isOmnichain) {
       // Use Relayr omnichain execution
-      const projectIds: Record<number, number> = {}
-      chainRulesetData.forEach(cd => {
-        projectIds[cd.chainId] = cd.projectId
-      })
-
-      await queue({
-        chainIds: chainRulesetData.map(cd => cd.chainId),
-        projectIds,
-        rulesetConfigurations: [rulesetConfig],
-        memo,
-        mustStartAtOrAfter: synchronizedStartTime,
+      await setSplits({
+        chainData: chainSplitsData.map(cd => ({
+          chainId: cd.chainId,
+          projectId: cd.projectId,
+          rulesetId: cd.rulesetId,
+          baseCurrency: cd.baseCurrency,
+        })),
+        payoutSplits: payoutSplits.map(s => ({
+          percent: s.percent,
+          beneficiary: s.beneficiary,
+          projectId: s.projectId,
+          preferAddToBalance: s.preferAddToBalance,
+          lockedUntil: s.lockedUntil,
+          hook: s.hook,
+        })),
+        reservedSplits: reservedSplits.map(s => ({
+          percent: s.percent,
+          beneficiary: s.beneficiary,
+          projectId: s.projectId,
+          preferAddToBalance: s.preferAddToBalance,
+          lockedUntil: s.lockedUntil,
+          hook: s.hook,
+        })),
       })
     } else {
       // Legacy: process chains sequentially
-      for (let i = 0; i < chainRulesetData.length; i++) {
+      for (let i = 0; i < chainSplitsData.length; i++) {
         setCurrentChainIndex(i)
         try {
-          await queueOnChain(chainRulesetData[i])
+          await setSplitsOnChain(chainSplitsData[i])
         } catch (err) {
-          console.error(`Queue failed on chain ${chainRulesetData[i].chainId}:`, err)
+          console.error(`Set splits failed on chain ${chainSplitsData[i].chainId}:`, err)
         }
       }
       setCurrentChainIndex(-1)
     }
-  }, [walletClient, address, chainRulesetData, queueOnChain, isManagedMode, managedAddress, useOmnichain, isOmnichain, queue, rulesetConfig, memo, synchronizedStartTime])
+  }, [walletClient, address, chainSplitsData, setSplitsOnChain, isManagedMode, managedAddress, useOmnichain, isOmnichain, setSplits, payoutSplits, reservedSplits])
 
   const handleClose = useCallback(() => {
     resetOmnichain()
@@ -512,6 +388,10 @@ export default function QueueRulesetModal({
   if (!isOpen) return null
 
   const showOmnichainSelector = isOmnichain && !isStarted && !isManagedMode
+
+  // Count non-empty splits for display
+  const payoutCount = payoutSplits.filter(s => parseFloat(s.percent) > 0).length
+  const reservedCount = reservedSplits.filter(s => parseFloat(s.percent) > 0).length
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -535,19 +415,19 @@ export default function QueueRulesetModal({
                 ? 'bg-green-500/20'
                 : anyFailed
                   ? 'bg-red-500/20'
-                  : isDark ? 'bg-purple-500/20' : 'bg-purple-100'
+                  : isDark ? 'bg-green-500/20' : 'bg-green-100'
             }`}>
-              {allSucceeded ? '✓' : anyFailed ? '!' : '⚙️'}
+              {allSucceeded ? '✓' : anyFailed ? '!' : '📊'}
             </div>
             <div>
               <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {allSucceeded
-                  ? 'Ruleset Queued'
+                  ? 'Splits Updated'
                   : anyFailed && allCompleted
-                    ? 'Some Queues Failed'
+                    ? 'Some Updates Failed'
                     : isStarted
-                      ? 'Queueing Ruleset...'
-                      : 'Confirm Queue Ruleset'}
+                      ? 'Updating Splits...'
+                      : 'Confirm Split Update'}
               </h2>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 {projectName || 'Project'}
@@ -570,19 +450,16 @@ export default function QueueRulesetModal({
 
         {/* Content */}
         <div className="p-5 space-y-4">
-          {/* Synchronized Start Time */}
-          <div className={`p-3 ${isDark ? 'bg-purple-500/10' : 'bg-purple-50'}`}>
-            <div className={`text-xs font-medium ${isDark ? 'text-purple-300' : 'text-purple-700'}`}>
-              Synchronized Start Time
+          {/* Summary of changes */}
+          <div className={`p-3 ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
+            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-green-300' : 'text-green-700'}`}>
+              Splits to Update
             </div>
-            <div className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {startDate.toLocaleString()}
+            <div className={`text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {payoutCount > 0 && <div>{payoutCount} payout split{payoutCount > 1 ? 's' : ''}</div>}
+              {reservedCount > 0 && <div>{reservedCount} reserved split{reservedCount > 1 ? 's' : ''}</div>}
+              {payoutCount === 0 && reservedCount === 0 && <div>Clear all splits</div>}
             </div>
-            {isOmnichain && (
-              <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                All chains will activate at the same time
-              </div>
-            )}
           </div>
 
           {/* Omnichain mode toggle (for multi-chain) */}
@@ -600,7 +477,7 @@ export default function QueueRulesetModal({
                     Use Relayr for single-signature execution
                   </div>
                   <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Pay gas on one chain, execute on all {chainRulesetData.length} chains
+                    Pay gas on one chain, execute on all {chainSplitsData.length} chains
                   </div>
                 </div>
               </label>
@@ -618,7 +495,7 @@ export default function QueueRulesetModal({
 
           {/* Chain Status */}
           <div className="space-y-2">
-            {effectiveChainStates.map((cs, idx) => {
+            {effectiveChainStates.map((cs: ChainTxState, idx: number) => {
               const chainInfo = CHAIN_INFO[cs.chainId]
               const isCurrent = idx === currentChainIndex
 
@@ -627,7 +504,7 @@ export default function QueueRulesetModal({
                   key={cs.chainId}
                   className={`p-3 flex items-center justify-between ${
                     isCurrent
-                      ? isDark ? 'bg-purple-500/20 border border-purple-500/50' : 'bg-purple-100 border border-purple-300'
+                      ? isDark ? 'bg-green-500/20 border border-green-500/50' : 'bg-green-100 border border-green-300'
                       : isDark ? 'bg-white/5' : 'bg-gray-50'
                   }`}
                 >
@@ -651,8 +528,8 @@ export default function QueueRulesetModal({
                     )}
                     {cs.status === 'signing' && (
                       <div className="flex items-center gap-2">
-                        <div className="animate-spin w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full" />
-                        <span className={`text-xs ${isDark ? 'text-purple-300' : 'text-purple-600'}`}>
+                        <div className="animate-spin w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full" />
+                        <span className={`text-xs ${isDark ? 'text-green-300' : 'text-green-600'}`}>
                           Sign in wallet
                         </span>
                       </div>
@@ -694,7 +571,7 @@ export default function QueueRulesetModal({
           {/* Error details */}
           {anyFailed && (
             <div className={`p-3 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
-              {effectiveChainStates.filter(cs => cs.status === 'failed').map(cs => (
+              {effectiveChainStates.filter((cs: ChainTxState) => cs.status === 'failed').map((cs: ChainTxState) => (
                 <div key={cs.chainId} className="text-xs">
                   <span className={isDark ? 'text-red-400' : 'text-red-600'}>
                     {CHAIN_INFO[cs.chainId]?.name || `Chain ${cs.chainId}`}:
@@ -707,7 +584,7 @@ export default function QueueRulesetModal({
             </div>
           )}
 
-          {/* Pre-queue info */}
+          {/* Pre-execution info */}
           {!isStarted && (
             <>
               {/* Gas balance check */}
@@ -726,68 +603,32 @@ export default function QueueRulesetModal({
                 </div>
               )}
 
-              {controllersLoading && (
-                <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-600'}`}>
-                  <div className="animate-spin w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full" />
-                  Loading controller addresses...
-                </div>
-              )}
-
-              {controllerError && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                  {controllerError}
-                </div>
-              )}
-
               {isOmnichain && !useOmnichain && (
                 <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
-                  You will need to sign {chainRulesetData.length} transactions, one for each chain.
+                  You will need to sign {chainSplitsData.length} transactions, one for each chain.
                 </div>
               )}
 
               {isOmnichain && useOmnichain && (
                 <div className={`p-3 text-sm ${isDark ? 'bg-green-500/10 text-green-300' : 'bg-green-50 text-green-700'}`}>
-                  Sign once to queue on all {chainRulesetData.length} chains via Relayr
+                  Sign once to update splits on all {chainSplitsData.length} chains via Relayr
                 </div>
-              )}
-
-              {/* Transaction Summary */}
-              <TransactionSummary
-                type="queueRuleset"
-                details={{
-                  projectId: chainRulesetData[0]?.projectId?.toString() || '',
-                  projectName,
-                  effectiveDate: startDate.toLocaleString(),
-                  changes: [
-                    { field: 'Duration', to: rulesetConfig.duration ? `${rulesetConfig.duration / 86400} days` : 'Ongoing' },
-                    { field: 'Token issuance', to: `${rulesetConfig.weight} tokens/ETH` },
-                    { field: 'Reserved rate', to: `${(rulesetConfig.metadata.reservedPercent / 100).toFixed(1)}%` },
-                    { field: 'Cash out tax', to: `${(rulesetConfig.metadata.cashOutTaxRate / 100).toFixed(1)}%` },
-                  ],
-                }}
-                isDark={isDark}
-              />
-
-              {/* Transaction Warning */}
-              {hasWarnings && (
-                <TransactionWarning
-                  doubts={verificationResult.doubts}
-                  onConfirm={() => setWarningsAcknowledged(true)}
-                  onCancel={handleClose}
-                  isDark={isDark}
-                />
               )}
 
               {/* Technical Details */}
               <TechnicalDetails
                 contract="JB_CONTROLLER"
-                contractAddress={controllerAddresses[chainRulesetData[0]?.chainId] || '0x...'}
-                functionName="queueRulesetsOf"
-                chainId={chainRulesetData[0]?.chainId || 1}
-                projectId={chainRulesetData[0]?.projectId?.toString()}
-                parameters={verificationResult.verifiedParams}
+                contractAddress="(varies per chain)"
+                functionName="setSplitGroupsOf"
+                chainId={chainSplitsData[0]?.chainId || 1}
+                projectId={chainSplitsData[0]?.projectId?.toString()}
+                parameters={{
+                  rulesetId: chainSplitsData[0]?.rulesetId || '0',
+                  payoutSplitsCount: payoutCount,
+                  reservedSplitsCount: reservedCount,
+                }}
                 isDark={isDark}
-                allChains={isOmnichain ? chainRulesetData.map(cd => ({
+                allChains={isOmnichain ? chainSplitsData.map(cd => ({
                   chainId: cd.chainId,
                   chainName: CHAIN_INFO[cd.chainId]?.name || `Chain ${cd.chainId}`,
                   projectId: cd.projectId,
@@ -831,9 +672,9 @@ export default function QueueRulesetModal({
               <button
                 onClick={handleStart}
                 disabled={!canProceed}
-                className="flex-1 py-3 font-bold bg-purple-500 text-white hover:bg-purple-500/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-3 font-bold bg-green-500 text-black hover:bg-green-500/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Queue{isOmnichain ? ` on ${chainRulesetData.length} Chains` : ''}
+                Update{isOmnichain ? ` on ${chainSplitsData.length} Chains` : ''}
               </button>
             </div>
           )}
@@ -853,7 +694,7 @@ export default function QueueRulesetModal({
           {allCompleted && (
             <button
               onClick={handleClose}
-              className="w-full py-3 font-medium bg-purple-500 text-white hover:bg-purple-500/90 transition-colors"
+              className="w-full py-3 font-medium bg-green-500 text-black hover:bg-green-500/90 transition-colors"
             >
               Done
             </button>

@@ -58,6 +58,10 @@ interface SendReservedTokensModalProps {
   splits?: ReservedSplit[] // Reserved token recipients
   // New: for omnichain support
   allChainProjects?: ChainProjectData[]
+  // Transaction status callbacks for persistence
+  onSubmitted?: (txHash: string) => void
+  onConfirmed?: (txHash: string) => void
+  onError?: (error: string) => void
 }
 
 type DistributeStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
@@ -73,6 +77,9 @@ export default function SendReservedTokensModal({
   reservedRate,
   splits,
   allChainProjects,
+  onSubmitted,
+  onConfirmed,
+  onError,
 }: SendReservedTokensModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -154,6 +161,15 @@ export default function SendReservedTokensModal({
       resetOmnichain()
     }
   }, [isOpen, resetOmnichain])
+
+  // Call parent callbacks when status changes (for persistence)
+  useEffect(() => {
+    if (status === 'confirmed' && txHash) {
+      onConfirmed?.(txHash)
+    } else if (status === 'failed' && error) {
+      onError?.(error)
+    }
+  }, [status, txHash, error, onConfirmed, onError])
 
   // Fetch the project's controller from JBDirectory
   useEffect(() => {

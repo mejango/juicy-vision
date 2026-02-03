@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
+import { useDeployERC20FormState } from '../../hooks/useComponentState'
 import {
   fetchProject,
   fetchProjectTokenAddress,
@@ -15,6 +16,7 @@ import { DeployERC20Modal } from '../payment'
 interface DeployERC20FormProps {
   projectId: string
   chainId?: string
+  messageId?: string // For persisting state to server (visible to all chat users)
 }
 
 // Chain info for display
@@ -80,7 +82,10 @@ function InlineChainSelector({
   )
 }
 
-export default function DeployERC20Form({ projectId, chainId = '1' }: DeployERC20FormProps) {
+export default function DeployERC20Form({ projectId, chainId = '1', messageId }: DeployERC20FormProps) {
+  // Persistent state (visible to all chat users)
+  const { state: persistedState, updateState: updatePersistedState } = useDeployERC20FormState(messageId)
+
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [tokenName, setTokenName] = useState('')
@@ -90,6 +95,34 @@ export default function DeployERC20Form({ projectId, chainId = '1' }: DeployERC2
   const isDark = theme === 'dark'
 
   const { isConnected } = useAccount()
+
+  // Check if form should be locked due to active/completed transaction
+  const isLocked = persistedState?.status && persistedState.status !== 'pending'
+
+  // Restore state from persisted data on load
+  useEffect(() => {
+    if (persistedState && persistedState.status !== 'pending') {
+      if (persistedState.tokenName) setTokenName(persistedState.tokenName)
+      if (persistedState.tokenSymbol) setTokenSymbol(persistedState.tokenSymbol)
+      if (persistedState.selectedChainId) setSelectedChainId(persistedState.selectedChainId)
+    }
+  }, [persistedState?.status])
+
+  // Transaction callbacks for persistence
+  const handleConfirmed = useCallback((txHash: string) => {
+    updatePersistedState({
+      status: 'completed',
+      txHash,
+      confirmedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState])
+
+  const handleError = useCallback((error: string) => {
+    updatePersistedState({
+      status: 'failed',
+      error,
+    })
+  }, [updatePersistedState])
 
   const openWalletPanel = () => {
     window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
@@ -187,12 +220,21 @@ export default function DeployERC20Form({ projectId, chainId = '1' }: DeployERC2
   }, [projectId, chainId])
 
   const handleDeploy = () => {
-    if (!tokenName.trim() || !tokenSymbol.trim()) return
+    if (!tokenName.trim() || !tokenSymbol.trim() || isLocked) return
 
     if (!isConnected) {
       openWalletPanel()
       return
     }
+
+    // Persist in_progress state
+    updatePersistedState({
+      status: 'in_progress',
+      tokenName: tokenName.trim(),
+      tokenSymbol: tokenSymbol.trim(),
+      selectedChainId,
+      submittedAt: new Date().toISOString(),
+    })
 
     setShowModal(true)
   }
@@ -349,11 +391,12 @@ export default function DeployERC20Form({ projectId, chainId = '1' }: DeployERC2
               value={tokenName}
               onChange={(e) => setTokenName(e.target.value)}
               placeholder="e.g., Bananapus"
+              disabled={isLocked}
               className={`w-full px-3 py-2 text-sm outline-none ${
                 isDark
                   ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-500'
                   : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
-              }`}
+              } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
             />
           </div>
 
@@ -370,11 +413,12 @@ export default function DeployERC20Form({ projectId, chainId = '1' }: DeployERC2
                 onChange={(e) => setTokenSymbol(e.target.value.toUpperCase())}
                 placeholder="e.g., NANA"
                 maxLength={10}
+                disabled={isLocked}
                 className={`flex-1 px-3 py-2 text-sm font-mono outline-none uppercase ${
                   isDark
                     ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-500'
                     : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
-                } ${tokenSymbol && !isValidSymbol ? 'border-red-500' : ''}`}
+                } ${tokenSymbol && !isValidSymbol ? 'border-red-500' : ''} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
             </div>
             {tokenSymbol && !isValidSymbol && (
@@ -387,15 +431,73 @@ export default function DeployERC20Form({ projectId, chainId = '1' }: DeployERC2
           {/* Deploy Button */}
           <button
             onClick={handleDeploy}
-            disabled={!isValidName || !isValidSymbol}
+            disabled={!isValidName || !isValidSymbol || isLocked}
             className={`w-full py-3 text-sm font-medium transition-colors ${
-              !isValidName || !isValidSymbol
+              !isValidName || !isValidSymbol || isLocked
                 ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                 : 'bg-juice-cyan hover:bg-juice-cyan/90 text-black'
             }`}
           >
-            Deploy ${tokenSymbol || 'TOKEN'}
+            {persistedState?.status === 'completed' ? 'Deployed' : persistedState?.status === 'in_progress' ? 'Pending...' : `Deploy $${tokenSymbol || 'TOKEN'}`}
           </button>
+
+          {/* Transaction status indicator */}
+          {isLocked && (
+            <div className={`mt-2 p-2 text-sm ${
+              persistedState?.status === 'completed'
+                ? isDark ? 'bg-green-500/10' : 'bg-green-50'
+                : persistedState?.status === 'failed'
+                  ? isDark ? 'bg-red-500/10' : 'bg-red-50'
+                  : isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'
+            }`}>
+              <div className={`flex items-center gap-2 ${
+                persistedState?.status === 'completed'
+                  ? isDark ? 'text-green-400' : 'text-green-600'
+                  : persistedState?.status === 'failed'
+                    ? isDark ? 'text-red-400' : 'text-red-600'
+                    : isDark ? 'text-juice-cyan' : 'text-cyan-600'
+              }`}>
+                {persistedState?.status === 'completed' ? (
+                  <>
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Token deployed successfully!</span>
+                  </>
+                ) : persistedState?.status === 'failed' ? (
+                  <>
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    <span>Deployment failed</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Transaction pending...</span>
+                  </>
+                )}
+              </div>
+              {persistedState?.txHash && (
+                <a
+                  href={`${CHAIN_INFO[selectedChainId]?.slug ? `https://${CHAIN_INFO[selectedChainId].slug === 'eth' ? '' : CHAIN_INFO[selectedChainId].slug + '.'}etherscan.io` : 'https://etherscan.io'}/tx/${persistedState.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
+                >
+                  View on explorer
+                </a>
+              )}
+              {persistedState?.error && (
+                <p className={`text-xs mt-1 ml-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {persistedState.error}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Info */}
@@ -414,6 +516,8 @@ export default function DeployERC20Form({ projectId, chainId = '1' }: DeployERC2
         chainId={selectedChainId}
         tokenName={tokenName.trim()}
         tokenSymbol={tokenSymbol.trim()}
+        onConfirmed={handleConfirmed}
+        onError={handleError}
       />
     </div>
   )
