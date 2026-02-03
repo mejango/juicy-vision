@@ -9,8 +9,13 @@ import { fetchProjectsByOwner, type Project } from '../../services/bendystraw'
 import { useAuthStore } from '../../stores/authStore'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { CHAINS } from '../../constants'
+import {
+  getOwnerConversations,
+  getSupporterConversations,
+  type ProjectConversation,
+} from '../../api/projectConversations'
 
-type SidebarTab = 'chats' | 'projects'
+type SidebarTab = 'chats' | 'projects' | 'payments'
 
 function formatTimeAgo(timestamp: string | number): string {
   const now = Date.now()
@@ -55,6 +60,17 @@ function formatVolume(volumeUsd: number | string | null | undefined): string {
   return `$${num.toFixed(0)}`
 }
 
+function formatAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`
+}
+
+function formatWei(wei: string): string {
+  const num = parseFloat(wei) / 1e18
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`
+  if (num >= 1) return num.toFixed(2)
+  return num.toFixed(4)
+}
+
 interface ChatHistorySidebarProps {
   isOpen: boolean
   onClose: () => void
@@ -72,9 +88,20 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
   const [activeTab, setActiveTab] = useState<SidebarTab>('chats')
   const [isLoading, setIsLoading] = useState(false)
   const [totalChats, setTotalChats] = useState(0)
+
+  // Projects tab state
   const [ownedProjects, setOwnedProjects] = useState<Project[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
   const [projectsLoaded, setProjectsLoaded] = useState(false)
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
+  const [projectSupporters, setProjectSupporters] = useState<Record<string, ProjectConversation[]>>({})
+  const [supportersLoading, setSupportersLoading] = useState<string | null>(null)
+
+  // Payments tab state (for supporters)
+  const [supporterConversations, setSupporterConversations] = useState<ProjectConversation[]>([])
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [paymentsLoaded, setPaymentsLoaded] = useState(false)
+
   const sidebarRef = useRef<HTMLDivElement>(null)
   const prevAuthState = useRef<{ isAuth: boolean; userId?: string } | null>(null)
 
@@ -86,7 +113,6 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
       const { chats: newChats, total } = await fetchMyChats({ limit: 20 })
       setTotalChats(total)
 
-      // Merge with existing chats to preserve local state
       const existingChatsMap = new Map(chats.map(c => [c.id, c]))
       const mergedChats = newChats.map(apiChat => {
         const existing = existingChatsMap.get(apiChat.id)
@@ -118,6 +144,44 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     }
   }, [address, projectsLoading])
 
+  // Load supporters for a project
+  const loadSupporters = useCallback(async (project: Project) => {
+    const projectKey = `${project.projectId}-${project.chainId}`
+    if (supportersLoading === projectKey || projectSupporters[projectKey]) return
+
+    setSupportersLoading(projectKey)
+    try {
+      const result = await getOwnerConversations({
+        projectId: project.projectId,
+        chainId: project.chainId,
+        limit: 20,
+      })
+      setProjectSupporters(prev => ({
+        ...prev,
+        [projectKey]: result.conversations,
+      }))
+    } catch (error) {
+      console.error('Failed to load supporters:', error)
+    } finally {
+      setSupportersLoading(null)
+    }
+  }, [supportersLoading, projectSupporters])
+
+  // Load supporter conversations (payments tab)
+  const loadPayments = useCallback(async () => {
+    if (!address || paymentsLoading) return
+    setPaymentsLoading(true)
+    try {
+      const result = await getSupporterConversations({ limit: 50 })
+      setSupporterConversations(result.conversations)
+      setPaymentsLoaded(true)
+    } catch (error) {
+      console.error('Failed to load payment conversations:', error)
+    } finally {
+      setPaymentsLoading(false)
+    }
+  }, [address, paymentsLoading])
+
   // Load chats on mount and when sidebar opens
   useEffect(() => {
     if (isOpen && activeTab === 'chats') {
@@ -125,17 +189,28 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     }
   }, [isOpen, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load projects when tab switches or sidebar opens with projects tab
+  // Load projects when tab switches
   useEffect(() => {
     if (isOpen && activeTab === 'projects' && address && !projectsLoaded) {
       loadProjects()
     }
   }, [isOpen, activeTab, address, projectsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset projects loaded state when address changes
+  // Load payments when tab switches
+  useEffect(() => {
+    if (isOpen && activeTab === 'payments' && address && !paymentsLoaded) {
+      loadPayments()
+    }
+  }, [isOpen, activeTab, address, paymentsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset state when address changes
   useEffect(() => {
     setProjectsLoaded(false)
     setOwnedProjects([])
+    setPaymentsLoaded(false)
+    setSupporterConversations([])
+    setProjectSupporters({})
+    setExpandedProjectId(null)
   }, [address])
 
   // Auto-reload on user sign in
@@ -147,14 +222,12 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
       userId: user?.id
     }
 
-    // Check if auth state changed (user signed in)
     if (prevAuthState.current !== null) {
       const wasNotAuthenticated = !prevAuthState.current.isAuth
       const isNowAuthenticated = currentAuthState.isAuth
       const userChanged = prevAuthState.current.userId !== currentAuthState.userId
 
       if ((wasNotAuthenticated && isNowAuthenticated) || userChanged) {
-        // User just signed in - reload chats
         console.log('[ChatHistorySidebar] Auth state changed, reloading chats')
         loadChats()
       }
@@ -167,7 +240,6 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
   useEffect(() => {
     const handleAuthSuccess = () => {
       console.log('[ChatHistorySidebar] Auth success event, reloading chats')
-      // Small delay to let the auth state settle
       setTimeout(() => loadChats(), 200)
     }
 
@@ -218,23 +290,37 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     onClose()
   }
 
-  const handleSelectProject = (project: Project) => {
-    // Start a new chat about this project
-    setActiveChat(null)
-    navigate('/', { state: { projectContext: project } })
-    // Dispatch event to pre-fill the chat with project context
-    window.dispatchEvent(new CustomEvent('juice:project-selected', {
-      detail: { project }
-    }))
+  const handleToggleProject = (project: Project) => {
+    const projectKey = `${project.projectId}-${project.chainId}`
+    if (expandedProjectId === projectKey) {
+      setExpandedProjectId(null)
+    } else {
+      setExpandedProjectId(projectKey)
+      loadSupporters(project)
+    }
+  }
+
+  const handleSelectConversation = (conversation: ProjectConversation) => {
+    // Navigate to the conversation's underlying chat
+    setActiveChat(conversation.chatId)
+    navigate(`/chat/${conversation.chatId}`)
     onClose()
   }
 
-  // Sort chats: pinned first, then by updatedAt (filter out null/undefined)
+  // Sort chats
   const sortedChats = [...chats].filter(Boolean).sort((a, b) => {
     if (a.isPinned && !b.isPinned) return -1
     if (!a.isPinned && b.isPinned) return 1
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   })
+
+  const getTabLabel = () => {
+    switch (activeTab) {
+      case 'chats': return t('ui.recentConversations', 'Recent conversations')
+      case 'projects': return t('ui.projectsYouOwn', 'Projects you own')
+      case 'payments': return t('ui.projectsYouSupport', 'Projects you support')
+    }
+  }
 
   return (
     <>
@@ -249,7 +335,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
       {/* Sidebar */}
       <div
         ref={sidebarRef}
-        className={`fixed top-0 left-0 h-full w-72 z-50 transform transition-transform duration-200 ease-out flex flex-col ${
+        className={`fixed top-0 left-0 h-full w-80 z-50 transform transition-transform duration-200 ease-out flex flex-col ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         } ${
           theme === 'dark'
@@ -263,7 +349,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
           <div className="flex">
             <button
               onClick={() => setActiveTab('chats')}
-              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+              className={`flex-1 px-2 py-3 text-xs font-medium transition-colors ${
                 activeTab === 'chats'
                   ? theme === 'dark'
                     ? 'text-white border-b-2 border-juice-orange'
@@ -273,11 +359,11 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                     : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {t('ui.chats', 'Chats')} {totalChats > 0 && `(${totalChats})`}
+              {t('ui.chats', 'Chats')}
             </button>
             <button
               onClick={() => setActiveTab('projects')}
-              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+              className={`flex-1 px-2 py-3 text-xs font-medium transition-colors ${
                 activeTab === 'projects'
                   ? theme === 'dark'
                     ? 'text-white border-b-2 border-juice-orange'
@@ -287,7 +373,21 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                     : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {t('ui.myProjects', 'My Projects')} {ownedProjects.length > 0 && `(${ownedProjects.length})`}
+              {t('ui.myProjects', 'My Projects')}
+            </button>
+            <button
+              onClick={() => setActiveTab('payments')}
+              className={`flex-1 px-2 py-3 text-xs font-medium transition-colors ${
+                activeTab === 'payments'
+                  ? theme === 'dark'
+                    ? 'text-white border-b-2 border-juice-orange'
+                    : 'text-gray-900 border-b-2 border-juice-orange'
+                  : theme === 'dark'
+                    ? 'text-gray-400 hover:text-gray-200'
+                    : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t('ui.payments', 'Payments')}
             </button>
           </div>
 
@@ -296,7 +396,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
             theme === 'dark' ? 'bg-white/5' : 'bg-gray-50'
           }`}>
             <span className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-              {activeTab === 'chats' ? t('ui.recentConversations', 'Recent conversations') : t('ui.projectsYouOwn', 'Projects you own')}
+              {getTabLabel()}
             </span>
             <div className="flex items-center gap-1">
               {activeTab === 'chats' && (
@@ -332,8 +432,8 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
 
         {/* Content area */}
         <div className="flex-1 overflow-y-auto">
-          {activeTab === 'chats' ? (
-            // Chat list
+          {/* Chats Tab */}
+          {activeTab === 'chats' && (
             <>
               {isLoading && chats.length === 0 ? (
                 <div className="p-4 text-center">
@@ -370,7 +470,6 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        {/* Pin indicator */}
                         {chat.isPinned && (
                           <svg className={`w-3 h-3 shrink-0 mt-1 ${
                             theme === 'dark' ? 'text-purple-400' : 'text-purple-600'
@@ -378,8 +477,6 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                             <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                           </svg>
                         )}
-
-                        {/* Chat info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <span className={`text-sm font-medium truncate ${
@@ -402,7 +499,6 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                               {chat.description}
                             </div>
                           )}
-                          {/* Unread badge */}
                           {chat.unreadCount && chat.unreadCount > 0 && (
                             <span className="inline-block mt-1 px-1.5 py-0.5 text-xs font-medium bg-juice-orange text-white rounded-full">
                               {chat.unreadCount} new
@@ -415,8 +511,10 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                 </div>
               )}
             </>
-          ) : (
-            // Projects list
+          )}
+
+          {/* Projects Tab */}
+          {activeTab === 'projects' && (
             <>
               {!isConnected ? (
                 <div className="p-4 text-center">
@@ -442,10 +540,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                     {t('projects.noOwned', 'You don\'t own any projects yet')}
                   </div>
                   <button
-                    onClick={() => {
-                      handleNewChat()
-                      // Could pre-fill with "I want to launch a project"
-                    }}
+                    onClick={handleNewChat}
                     className="mt-2 text-sm text-juice-orange hover:underline"
                   >
                     {t('projects.launchFirst', 'Launch a project')}
@@ -453,63 +548,230 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                 </div>
               ) : (
                 <div className="py-2">
-                  {ownedProjects.map((project) => (
+                  {ownedProjects.map((project) => {
+                    const projectKey = `${project.projectId}-${project.chainId}`
+                    const isExpanded = expandedProjectId === projectKey
+                    const supporters = projectSupporters[projectKey] || []
+                    const isLoadingSupporters = supportersLoading === projectKey
+
+                    return (
+                      <div key={project.id}>
+                        {/* Project row */}
+                        <button
+                          onClick={() => handleToggleProject(project)}
+                          className={`w-full px-4 py-3 text-left transition-colors ${
+                            theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Expand chevron */}
+                            <svg
+                              className={`w-4 h-4 shrink-0 mt-1 transition-transform ${
+                                isExpanded ? 'rotate-90' : ''
+                              } ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+
+                            {/* Project logo */}
+                            {project.logoUri ? (
+                              <img
+                                src={resolveIpfsUri(project.logoUri) ?? ''}
+                                alt=""
+                                className="w-8 h-8 rounded-lg object-cover shrink-0"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none'
+                                }}
+                              />
+                            ) : (
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                                theme === 'dark' ? 'bg-white/10' : 'bg-gray-100'
+                              }`}>
+                                <span className={`text-sm font-medium ${
+                                  theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                                }`}>
+                                  {(project.name || 'P')[0].toUpperCase()}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Project info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`text-sm font-medium truncate ${
+                                  theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
+                                }`}>
+                                  {project.name || `Project #${project.projectId}`}
+                                </span>
+                                <span className={`text-xs shrink-0 px-1.5 py-0.5 rounded ${
+                                  theme === 'dark' ? 'bg-white/10 text-gray-400' : 'bg-gray-100 text-gray-500'
+                                }`}>
+                                  {CHAINS[project.chainId as keyof typeof CHAINS]?.name || `Chain ${project.chainId}`}
+                                </span>
+                              </div>
+                              <div className={`flex items-center gap-2 mt-1 text-xs ${
+                                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                              }`}>
+                                <span>{formatVolume(project.volumeUsd)} raised</span>
+                                <span>·</span>
+                                <span>{project.paymentsCount || 0} payments</span>
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+
+                        {/* Supporters list (expanded) */}
+                        {isExpanded && (
+                          <div className={`ml-8 border-l ${
+                            theme === 'dark' ? 'border-white/10' : 'border-gray-200'
+                          }`}>
+                            {isLoadingSupporters ? (
+                              <div className={`px-4 py-2 text-xs ${
+                                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                              }`}>
+                                {t('ui.loading', 'Loading...')}
+                              </div>
+                            ) : supporters.length === 0 ? (
+                              <div className={`px-4 py-2 text-xs ${
+                                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                              }`}>
+                                {t('projects.noSupporters', 'No conversations yet')}
+                              </div>
+                            ) : (
+                              supporters.map((conv) => (
+                                <button
+                                  key={conv.id}
+                                  onClick={() => handleSelectConversation(conv)}
+                                  className={`w-full px-4 py-2 text-left transition-colors ${
+                                    conv.chatId === currentChatId
+                                      ? theme === 'dark'
+                                        ? 'bg-white/10'
+                                        : 'bg-gray-100'
+                                      : theme === 'dark'
+                                        ? 'hover:bg-white/5'
+                                        : 'hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className={`text-xs font-medium ${
+                                      theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+                                    }`}>
+                                      {formatAddress(conv.supporterAddress)}
+                                    </span>
+                                    <span className={`text-xs ${
+                                      theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                                    }`}>
+                                      {formatWei(conv.totalPaidWei)} ETH
+                                    </span>
+                                  </div>
+                                  {conv.latestMessage && (
+                                    <div className={`text-xs truncate mt-0.5 ${
+                                      theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                                    }`}>
+                                      {conv.latestMessage.content}
+                                    </div>
+                                  )}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Payments Tab (Supporter view) */}
+          {activeTab === 'payments' && (
+            <>
+              {!isConnected ? (
+                <div className="p-4 text-center">
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('wallet.connectToSeePayments', 'Connect wallet to see your payments')}
+                  </div>
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))}
+                    className="mt-2 text-sm text-juice-orange hover:underline"
+                  >
+                    {t('wallet.connect', 'Connect Wallet')}
+                  </button>
+                </div>
+              ) : paymentsLoading ? (
+                <div className="p-4 text-center">
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('ui.loading', 'Loading...')}
+                  </div>
+                </div>
+              ) : supporterConversations.length === 0 ? (
+                <div className="p-4 text-center">
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('payments.noConversations', 'No payment conversations yet')}
+                  </div>
+                  <p className={`mt-1 text-xs ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`}>
+                    {t('payments.hint', 'Pay a project to start a conversation with them')}
+                  </p>
+                </div>
+              ) : (
+                <div className="py-2">
+                  {supporterConversations.map((conv) => (
                     <button
-                      key={project.id}
-                      onClick={() => handleSelectProject(project)}
+                      key={conv.id}
+                      onClick={() => handleSelectConversation(conv)}
                       className={`w-full px-4 py-3 text-left transition-colors ${
-                        theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'
+                        conv.chatId === currentChatId
+                          ? theme === 'dark'
+                            ? 'bg-white/10 border-l-2 border-juice-orange'
+                            : 'bg-gray-100 border-l-2 border-juice-orange'
+                          : theme === 'dark'
+                            ? 'hover:bg-white/5'
+                            : 'hover:bg-gray-50'
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        {/* Project logo */}
-                        {project.logoUri ? (
-                          <img
-                            src={resolveIpfsUri(project.logoUri) ?? ''}
-                            alt=""
-                            className="w-8 h-8 rounded-lg object-cover shrink-0"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none'
-                            }}
-                          />
-                        ) : (
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                            theme === 'dark' ? 'bg-white/10' : 'bg-gray-100'
+                        {/* Project placeholder icon */}
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                          theme === 'dark' ? 'bg-white/10' : 'bg-gray-100'
+                        }`}>
+                          <span className={`text-sm font-medium ${
+                            theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
                           }`}>
-                            <span className={`text-sm font-medium ${
-                              theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
-                            }`}>
-                              {(project.name || 'P')[0].toUpperCase()}
-                            </span>
-                          </div>
-                        )}
+                            #{conv.projectId}
+                          </span>
+                        </div>
 
-                        {/* Project info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <span className={`text-sm font-medium truncate ${
                               theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
                             }`}>
-                              {project.name || `Project #${project.projectId}`}
+                              {conv.projectName || `Project #${conv.projectId}`}
                             </span>
-                            <span className={`text-xs shrink-0 px-1.5 py-0.5 rounded ${
-                              theme === 'dark' ? 'bg-white/10 text-gray-400' : 'bg-gray-100 text-gray-500'
+                            <span className={`text-xs shrink-0 ${
+                              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
                             }`}>
-                              {CHAINS[project.chainId as keyof typeof CHAINS]?.name || `Chain ${project.chainId}`}
+                              {formatTimeAgo(conv.updatedAt)}
                             </span>
                           </div>
                           <div className={`flex items-center gap-2 mt-1 text-xs ${
                             theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
                           }`}>
-                            <span>{formatVolume(project.volumeUsd)} raised</span>
+                            <span>{formatWei(conv.totalPaidWei)} ETH paid</span>
                             <span>·</span>
-                            <span>{project.paymentsCount || 0} payments</span>
+                            <span>{conv.paymentCount} payment{conv.paymentCount !== 1 ? 's' : ''}</span>
                           </div>
-                          <div className={`text-xs mt-0.5 ${
-                            theme === 'dark' ? 'text-gray-600' : 'text-gray-400'
-                          }`}>
-                            Created {formatTimeAgo(project.createdAt)}
-                          </div>
+                          {conv.latestMessage && (
+                            <div className={`text-xs truncate mt-0.5 ${
+                              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                            }`}>
+                              {conv.latestMessage.content}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </button>
