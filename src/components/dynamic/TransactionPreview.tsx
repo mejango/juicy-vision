@@ -2458,79 +2458,6 @@ export default function TransactionPreview({
               </p>
             </div>
           )}
-
-          {/* Technical details dropdown */}
-          <div className="mt-3">
-            <button
-              onClick={() => setShowDeploymentDetails(!showDeploymentDetails)}
-              className={`flex items-center gap-2 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
-            >
-              <span className={`transform transition-transform ${showDeploymentDetails ? 'rotate-90' : ''}`}>›</span>
-              {showDeploymentDetails ? 'Hide' : 'Show'} technical details
-            </button>
-
-            {showDeploymentDetails && (
-              <div className="mt-2 space-y-1">
-                {/* Use launchValidation chainIds if available, otherwise derive from effectiveProjectIds */}
-                {(launchValidation?.chainIds ?? Object.keys(effectiveProjectIds).map(Number).filter(id => id > 0)).map((cid) => {
-                  const chain = CHAINS[cid]
-                  const chainState = bundleState.chainStates.find(cs => cs.chainId === cid)
-                  const createdProjectId = effectiveProjectIds[cid]
-                  // Use persisted tx hash if available (page reload case), otherwise from chainState
-                  const txHash = effectiveTxHashes?.[cid] ?? chainState?.txHash
-                  // If we have persisted data but no chainState, show as confirmed
-                  const isPersistedComplete = !chainState && effectiveTxHashes?.[cid]
-
-                  return (
-                    <div
-                      key={cid}
-                      className={`p-2 flex items-center justify-between text-xs ${
-                        isDark ? 'bg-white/5' : 'bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: chain?.color || '#888' }}
-                        />
-                        <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>
-                          {chain?.shortName || `Chain ${cid}`}
-                        </span>
-                        {createdProjectId > 0 && (
-                          <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>
-                            #{createdProjectId}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {!chainState && !isPersistedComplete && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Waiting</span>}
-                        {chainState?.status === 'pending' && <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Pending</span>}
-                        {chainState?.status === 'submitted' && (
-                          <span className="text-juice-orange">Creating...</span>
-                        )}
-                        {(chainState?.status === 'confirmed' || isPersistedComplete) && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-green-500">✓</span>
-                            {txHash && EXPLORER_URLS[cid] && (
-                              <a
-                                href={`${EXPLORER_URLS[cid]}${txHash}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-juice-cyan hover:underline"
-                              >
-                                tx
-                              </a>
-                            )}
-                          </div>
-                        )}
-                        {chainState?.status === 'failed' && <span className="text-red-400">Failed</span>}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -2669,6 +2596,81 @@ export default function TransactionPreview({
           </button>
         )}
       </div>
+      )}
+
+      {/* Deployment technical details - shown at bottom when launching/complete/error */}
+      {(action === 'launchProject' || action === 'launch721Project') && (isLaunching || effectiveIsComplete || hasError) && (
+        <div className={`px-4 py-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <button
+            onClick={() => setShowDeploymentDetails(!showDeploymentDetails)}
+            className={`flex items-center gap-2 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+          >
+            <span className={`transform transition-transform ${showDeploymentDetails ? 'rotate-90' : ''}`}>›</span>
+            {showDeploymentDetails ? 'Hide' : 'Show'} technical details
+          </button>
+
+          {showDeploymentDetails && (
+            <div className="mt-2 space-y-1">
+              {/* Use launchValidation chainIds if available, otherwise derive from effectiveProjectIds */}
+              {(launchValidation?.chainIds ?? Object.keys(effectiveProjectIds).map(Number).filter(id => id > 0)).map((cid) => {
+                const chain = CHAINS[cid]
+                const chainState = bundleState.chainStates.find(cs => cs.chainId === cid)
+                const createdProjectId = effectiveProjectIds[cid]
+                // Use persisted tx hash if available (page reload case), otherwise from chainState
+                const txHash = effectiveTxHashes?.[cid] ?? chainState?.txHash
+                // If we have persisted data but no chainState, show as confirmed
+                const isPersistedComplete = !chainState && effectiveTxHashes?.[cid]
+
+                return (
+                  <div
+                    key={cid}
+                    className={`p-2 flex items-center justify-between text-xs ${
+                      isDark ? 'bg-white/5' : 'bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: chain?.color || '#888' }}
+                      />
+                      <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>
+                        {chain?.shortName || `Chain ${cid}`}
+                      </span>
+                      {createdProjectId > 0 && (
+                        <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>
+                          #{createdProjectId}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!chainState && !isPersistedComplete && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Waiting</span>}
+                      {chainState?.status === 'pending' && <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Pending</span>}
+                      {chainState?.status === 'submitted' && (
+                        <span className="text-juice-orange">Creating...</span>
+                      )}
+                      {(chainState?.status === 'confirmed' || isPersistedComplete) && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-green-500">✓</span>
+                          {txHash && EXPLORER_URLS[cid] && (
+                            <a
+                              href={`${EXPLORER_URLS[cid]}${txHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-juice-cyan hover:underline"
+                            >
+                              tx
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      {chainState?.status === 'failed' && <span className="text-red-400">Failed</span>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       )}
 
     </div>
