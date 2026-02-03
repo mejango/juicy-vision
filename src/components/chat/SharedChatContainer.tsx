@@ -161,15 +161,21 @@ export default function SharedChatContainer() {
   // Listen for juice:send-message events from components (e.g., post-launch follow-up)
   useEffect(() => {
     const handleComponentMessage = async (event: Event) => {
-      if (!activeChatId) return
+      if (!activeChatId) {
+        console.log('[SharedChatContainer] Received juice:send-message but no activeChatId')
+        return
+      }
       const customEvent = event as CustomEvent<{ message: string; bypassSkipAi?: boolean }>
-      const { message } = customEvent.detail
+      const { message, bypassSkipAi } = customEvent.detail
+
+      console.log('[SharedChatContainer] Handling juice:send-message:', { message: message.slice(0, 100) + '...', bypassSkipAi, activeChatId })
 
       try {
         // Send as user message
         await chatApi.sendMessage(activeChatId, message)
         // Invoke AI to respond
         await chatApi.invokeAi(activeChatId, message)
+        console.log('[SharedChatContainer] Successfully sent and invoked AI for component message')
       } catch (err) {
         console.error('Failed to handle component message:', err)
       }

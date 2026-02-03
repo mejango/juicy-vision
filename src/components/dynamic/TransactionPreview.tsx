@@ -1447,6 +1447,12 @@ export default function TransactionPreview({
     // Only trigger for launch actions
     if (action !== 'launchProject' && action !== 'launch721Project') return
 
+    console.log('[TransactionPreview] Follow-up check:', {
+      isComplete,
+      createdProjectIds,
+      hasTriggeredFollowUp: hasTriggeredFollowUpRef.current,
+    })
+
     // Only trigger once when complete with project IDs
     if (!isComplete || Object.keys(createdProjectIds).length === 0) return
     if (hasTriggeredFollowUpRef.current) return
@@ -1455,15 +1461,17 @@ export default function TransactionPreview({
 
     // Get the primary project (first chain)
     const entries = Object.entries(createdProjectIds).filter(([, pid]) => pid && pid > 0)
-    if (entries.length === 0) return
+    if (entries.length === 0) {
+      console.log('[TransactionPreview] No valid project IDs found in entries:', entries)
+      return
+    }
 
     const [primaryChainId, primaryProjectId] = entries[0]
     const chainData = CHAINS[Number(primaryChainId)]
-    const chainSlug = chainData?.slug || 'eth'
 
     // Small delay to let the success UI render first
     setTimeout(() => {
-      console.log('[TransactionPreview] Dispatching post-launch follow-up for project', primaryProjectId)
+      console.log('[TransactionPreview] Dispatching post-launch follow-up for project', primaryProjectId, 'on chain', primaryChainId)
       window.dispatchEvent(new CustomEvent('juice:send-message', {
         detail: {
           message: `[SYSTEM: Project #${primaryProjectId} created on ${chainData?.name || 'chain'}. Show project-card for projectId=${primaryProjectId} chainId=${primaryChainId}. After showing the card, invite user to be the first to put $5 into their project, and mention you can show other info about their project like activity, treasury balance, etc.]`,
