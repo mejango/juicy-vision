@@ -24,17 +24,19 @@ export interface UseOmnichainDistributeReturn extends Omit<UseOmnichainTransacti
  *   onSuccess: (bundleId, txHashes) => console.log('Distributed on all chains'),
  * })
  *
+ * // IMPORTANT: Omnichain projects have DIFFERENT projectIds per chain!
  * await distribute({
  *   chainIds: [1, 10, 8453],
- *   projectIds: { 1: 100, 10: 100, 8453: 100 },
+ *   projectIds: { 1: 123, 10: 456, 8453: 789 },  // Different IDs per chain!
  *   type: 'payouts',
  * })
  *
  * @example
  * // Distribute reserved tokens on all chains
+ * // IMPORTANT: Omnichain projects have DIFFERENT projectIds per chain!
  * await distribute({
  *   chainIds: [1, 10, 8453],
- *   projectIds: { 1: 100, 10: 100, 8453: 100 },
+ *   projectIds: { 1: 123, 10: 456, 8453: 789 },  // Different IDs per chain!
  *   type: 'reserves',
  * })
  */

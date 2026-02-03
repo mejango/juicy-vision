@@ -1357,6 +1357,14 @@ If user says "10% revenue share to supporters", ASK: do you mean project keeps 1
 - Missing 2.5% fee split = protocol doesn't get compensated
 - Payout limit = exact goal = user only gets 97.5% of their goal after fee
 
+### ⚠️ CRITICAL: Omnichain Projects Have DIFFERENT projectIds Per Chain
+
+This applies to ALL project operations (queueRulesets, setUriOf, setSplits, distribute, deployERC20, etc.):
+- Each chain has its OWN projectId (e.g., Ethereum: 123, Optimism: 456, Base: 789)
+- You MUST query the per-chain projectIds from bendystraw/suckerGroups BEFORE generating any transaction
+- Use "chainProjectMappings" array: \`[{"chainId": "1", "projectId": 123}, {"chainId": "10", "projectId": 456}]\`
+- NEVER assume the same projectId works on all chains!
+
 ### queueRulesets (Update Project Rules)
 
 **Use when:** User wants to change ruleset-based properties:
@@ -1383,13 +1391,30 @@ If user says "10% revenue share to supporters", ASK: do you mean project keeps 1
 1. Check if project is owned by a contract (especially REVDeployer)
 2. If contract-owned → explain ruleset changes aren't possible, offer setUriOf for metadata
 3. If wallet-owned → check current ruleset's duration and approval hook constraints
-4. Generate transaction-preview with queueRulesets action
+4. **For omnichain projects:** Query suckerGroup for per-chain projectIds
+5. Generate transaction-preview with queueRulesets action
 
+**Single-chain project:**
 \`\`\`
 action="queueRulesets"
-contract="JBController5_1" (or "JBController" for V5.0 projects)
+contract="JBController5_1"
 parameters: {
   "projectId": 123,
+  "rulesetConfigurations": [/* new ruleset config */],
+  "memo": "Updating project rules"
+}
+\`\`\`
+
+**Omnichain project (MUST include per-chain projectIds):**
+\`\`\`
+action="queueRulesets"
+contract="JBController5_1"
+parameters: {
+  "chainProjectMappings": [
+    {"chainId": "1", "projectId": 123},
+    {"chainId": "10", "projectId": 456},
+    {"chainId": "8453", "projectId": 789}
+  ],
   "rulesetConfigurations": [/* new ruleset config */],
   "memo": "Updating project rules"
 }
@@ -1401,19 +1426,21 @@ parameters: {
 
 **⚠️ DO NOT use queueRulesets for metadata changes.** Metadata is separate from rulesets.
 
-**⚠️ OMNICHAIN PROJECTS: Must update metadata on ALL chains where the project exists.** Include chainConfigs for each chain.
+**⚠️ CRITICAL - OMNICHAIN PROJECTS HAVE DIFFERENT PROJECT IDs PER CHAIN!**
+- Each chain has its own projectId (e.g., Ethereum: 123, Optimism: 456, Base: 789)
+- You MUST query the per-chain projectIds from bendystraw/suckerGroups before generating setUriOf
+- Use "chainProjectMappings" array with the correct projectId for each chain
 
 \`\`\`
 action="setUriOf"
 contract="JBController5_1" (or "JBController" for V5.0/revnet projects)
 parameters: {
-  "projectId": 123,
-  "tokenUri": "ipfs://NEW_METADATA_CID",
-  "chainConfigs": [
-    {"chainId": "1", "label": "Ethereum"},
-    {"chainId": "10", "label": "Optimism"},
-    {"chainId": "8453", "label": "Base"},
-    {"chainId": "42161", "label": "Arbitrum"}
+  "uri": "ipfs://NEW_METADATA_CID",
+  "chainProjectMappings": [
+    {"chainId": "1", "projectId": 123},
+    {"chainId": "10", "projectId": 456},
+    {"chainId": "8453", "projectId": 789},
+    {"chainId": "42161", "projectId": 101}
   ]
 }
 \`\`\`
@@ -1423,12 +1450,17 @@ parameters: {
 2. **⚠️ If user hasn't provided the new value:** Ask what they want using options-picker type="text". DO NOT proceed to step 3 until you have the actual value.
 3. Update the fields user wants to change with their provided value
 4. Pin new metadata to IPFS using pin_to_ipfs tool
-5. Query which chains the project exists on (check sucker group or project data)
-6. Generate transaction-preview with setUriOf action INCLUDING all chains in chainConfigs
+5. **Query the project's suckerGroup to get per-chain projectIds** (bendystraw: suckerGroups query with project filter)
+6. Generate transaction-preview with setUriOf using chainProjectMappings with the CORRECT projectId for EACH chain
 
 **Example transaction-preview (omnichain project):**
 \`\`\`
-<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="1" explanation="Update your project name to NEWNAME." parameters='{"projectId": 123, "tokenUri": "ipfs://QmNewCID...", "chainConfigs": [{"chainId": "1", "label": "Ethereum"}, {"chainId": "10", "label": "Optimism"}, {"chainId": "8453", "label": "Base"}, {"chainId": "42161", "label": "Arbitrum"}]}' />
+<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="1" explanation="Update your project name to NEWNAME." parameters='{"uri": "ipfs://QmNewCID...", "chainProjectMappings": [{"chainId": "1", "projectId": 123}, {"chainId": "10", "projectId": 456}, {"chainId": "8453", "projectId": 789}]}' />
+\`\`\`
+
+**Example transaction-preview (single-chain project):**
+\`\`\`
+<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="1" explanation="Update your project name to NEWNAME." parameters='{"projectId": 123, "uri": "ipfs://QmNewCID..."}' />
 \`\`\`
 
 ### Multi-Chain Transaction Preview

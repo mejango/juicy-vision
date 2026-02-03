@@ -35,9 +35,10 @@ const RELAYR_APP_ID = import.meta.env.VITE_RELAYR_APP_ID || 'juicy-vision'
  * })
  *
  * // Queue rulesets across chains
+ * // IMPORTANT: Omnichain projects have DIFFERENT projectIds per chain!
  * await execute({
  *   chainIds: [1, 10, 8453],
- *   projectIds: { 1: 100, 10: 100, 8453: 100 },
+ *   projectIds: { 1: 123, 10: 456, 8453: 789 },  // Different IDs per chain!
  *   rulesetConfig: { rulesetConfigurations: [...], memo: 'Queue' },
  * })
  */

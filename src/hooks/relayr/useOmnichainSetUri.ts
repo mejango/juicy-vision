@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAccount, useConfig, useSignTypedData } from 'wagmi'
-import { encodeFunctionData, getContract, createPublicClient, http, fallback, type Address, type Hex, type PublicClient } from 'viem'
+import { encodeFunctionData, getContract, createPublicClient, http, fallback, zeroAddress, type Address, type Hex, type PublicClient } from 'viem'
 import { useManagedWallet, createManagedRelayrBundle } from '../useManagedWallet'
 import { createBalanceBundle } from '../../services/relayr'
 import {
@@ -134,10 +134,11 @@ function loadInProgressSetUri(deploymentKey: string | undefined): PersistedInPro
  *   onSuccess: (bundleId, txHashes) => console.log('URI updated on all chains'),
  * })
  *
+ * // IMPORTANT: Omnichain projects have DIFFERENT projectIds per chain!
  * await setUri({
  *   chainProjectMappings: [
- *     { chainId: 1, projectId: 123 },
- *     { chainId: 10, projectId: 456 },
+ *     { chainId: 1, projectId: 123 },   // Ethereum project ID
+ *     { chainId: 10, projectId: 456 },  // Optimism project ID (different!)
  *   ],
  *   uri: 'QmNewMetadataCid...',
  * })
@@ -315,9 +316,27 @@ export function useOmnichainSetUri(
         })
       )
 
+      // Filter out chains where project doesn't exist yet (controller is zero address)
+      // This can happen with omnichain projects where cross-chain messages haven't arrived
+      const validMappings = mappingsWithControllers.filter(m => {
+        if (m.controller === zeroAddress) {
+          console.warn(`Skipping chain ${m.chainId}: Project ${m.projectId} has no controller (not deployed yet?)`)
+          return false
+        }
+        return true
+      })
+
+      if (validMappings.length === 0) {
+        throw new Error('Project not found on any chain. If this is a new omnichain project, wait a minute for cross-chain deployment to complete.')
+      }
+
+      if (validMappings.length < mappingsWithControllers.length) {
+        console.warn(`Only ${validMappings.length} of ${mappingsWithControllers.length} chains have the project deployed`)
+      }
+
       // Build transactions for all chains with their respective controllers
       const txs = buildOmnichainSetUriTransactions({
-        chainProjectMappings: mappingsWithControllers,
+        chainProjectMappings: validMappings,
         uri,
       })
 
@@ -328,7 +347,7 @@ export function useOmnichainSetUri(
         value: tx.value,
       }))
 
-      const chainIds = chainProjectMappings.map(m => m.chainId)
+      const chainIds = validMappings.map(m => m.chainId)
       let bundleId: string
 
       if (useServerSigning) {
@@ -441,7 +460,7 @@ export function useOmnichainSetUri(
 
       // Initialize bundle state
       const projectIds: Record<number, number> = {}
-      chainProjectMappings.forEach(m => {
+      validMappings.forEach(m => {
         projectIds[m.chainId] = typeof m.projectId === 'bigint' ? Number(m.projectId) : m.projectId
       })
 

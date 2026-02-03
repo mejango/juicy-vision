@@ -2327,7 +2327,7 @@ export default function TransactionPreview({
 
     const raw = effectivePreviewData.raw
 
-    // Get the new URI (tokenUri is the Solidity parameter name)
+    // Get the new URI (Solidity parameter is "uri", but AI may generate "projectUri" or "tokenUri")
     const uri = (raw.uri as string) || (raw.projectUri as string) || (raw.tokenUri as string) || ''
 
     // Get project ID - required
@@ -2345,12 +2345,27 @@ export default function TransactionPreview({
         projectId: typeof m.projectId === 'string' ? parseInt(m.projectId) : m.projectId,
       }))
     } else if (raw.chainConfigs && Array.isArray(raw.chainConfigs) && projectIdNum) {
-      // AI often generates chainConfigs instead of chainProjectMappings - extract chainIds from it
-      // and use the same projectId for all chains (omnichain projects share projectId)
-      chainProjectMappings = (raw.chainConfigs as Array<{ chainId: number | string }>).map(c => ({
-        chainId: typeof c.chainId === 'string' ? parseInt(c.chainId) : c.chainId,
-        projectId: projectIdNum,
-      }))
+      // AI generates chainConfigs - check if it includes per-chain projectIds
+      // IMPORTANT: Omnichain projects have DIFFERENT projectIds on each chain!
+      const chainConfigsWithIds = raw.chainConfigs as Array<{ chainId: number | string; projectId?: number | string }>
+      const hasPerChainProjectIds = chainConfigsWithIds.some(c => c.projectId !== undefined)
+
+      if (hasPerChainProjectIds) {
+        // Use per-chain projectIds from chainConfigs
+        chainProjectMappings = chainConfigsWithIds
+          .filter(c => c.projectId !== undefined)
+          .map(c => ({
+            chainId: typeof c.chainId === 'string' ? parseInt(c.chainId) : c.chainId,
+            projectId: typeof c.projectId === 'string' ? parseInt(c.projectId) : c.projectId as number,
+          }))
+      } else {
+        // No per-chain projectIds - only update on the specified chainId (fall through to single-chain mode)
+        // Don't assume the same projectId works on all chains!
+        console.warn('[TransactionPreview] chainConfigs without per-chain projectIds - falling back to single chain mode')
+        if (validChainId) {
+          chainProjectMappings = [{ chainId: parseInt(validChainId), projectId: projectIdNum }]
+        }
+      }
     } else if (projectIdNum && validChainId) {
       // Single chain mode - project may only exist on this chain
       chainProjectMappings = [{ chainId: parseInt(validChainId), projectId: projectIdNum }]

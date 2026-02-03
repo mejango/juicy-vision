@@ -37,9 +37,10 @@ function generateDeterministicSalt(projectId: number, tokenSymbol: string): stri
  *   onSuccess: (bundleId, txHashes) => console.log('Deployed on all chains'),
  * })
  *
+ * // IMPORTANT: Omnichain projects have DIFFERENT projectIds per chain!
  * await deploy({
  *   chainIds: [1, 10, 8453, 42161],
- *   projectIds: { 1: 100, 10: 100, 8453: 100, 42161: 100 },
+ *   projectIds: { 1: 123, 10: 456, 8453: 789, 42161: 101 },  // Different IDs per chain!
  *   tokenName: 'My Token',
  *   tokenSymbol: 'MTK',
  * })
