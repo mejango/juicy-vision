@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, startTransition, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useTranslation } from 'react-i18next'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useProjectDraftStore } from '../../stores/projectDraftStore'
@@ -1371,17 +1370,10 @@ export default function TransactionPreview({
   // This prevents re-firing follow-up messages on page refresh
   const wasAlreadyCompletedOnLoadRef = useRef<boolean | null>(null)
   useEffect(() => {
-    // Only set once when we first get the persisted state
     if (wasAlreadyCompletedOnLoadRef.current === null && !persistedStateLoading && persistedState) {
       wasAlreadyCompletedOnLoadRef.current = persistedState.status === 'completed'
-      console.log('[TransactionPreview] Initial load completion status:', wasAlreadyCompletedOnLoadRef.current)
     }
   }, [persistedState, persistedStateLoading])
-
-  // Debug: log persisted state
-  useEffect(() => {
-    console.log('[TransactionPreview] Persisted state:', { messageId, persistedState, persistedStateLoading })
-  }, [messageId, persistedState, persistedStateLoading])
 
   // Auth state for managed wallet users - use isManagedMode from hook for consistent state
   const {
@@ -1447,10 +1439,7 @@ export default function TransactionPreview({
     persistedTxHashes,
     reset: resetLaunch,
   } = useOmnichainLaunchProject({
-    deploymentKey: messageId, // Scope localStorage by messageId to prevent state bleeding
-    onSuccess: (bundleId, txHashes) => {
-      console.log('Projects launched:', bundleId, txHashes)
-    },
+    deploymentKey: messageId,
     onError: (error) => {
       console.error('Launch failed:', error)
     },
@@ -1463,20 +1452,15 @@ export default function TransactionPreview({
   // Phase 1: Show immediate loading message when deployment completes (before IDs are extracted)
   useEffect(() => {
     if (action !== 'launchProject' && action !== 'launch721Project') return
-    if (!isComplete) return
-    if (hasTriggeredLoadingRef.current) return
+    if (!isComplete || hasTriggeredLoadingRef.current) return
 
-    // Skip if this deployment was already completed before page load (page refresh scenario)
-    // The follow-up messages were already sent in the original session
+    // Skip if already completed before page load (page refresh)
     if (wasAlreadyCompletedOnLoadRef.current === true) {
-      console.log('[TransactionPreview] Skipping loading message - deployment was already complete on page load')
       hasTriggeredLoadingRef.current = true
       return
     }
 
     hasTriggeredLoadingRef.current = true
-
-    console.log('[TransactionPreview] Deployment complete, showing loading message while indexing...')
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('juice:send-message', {
         detail: {
@@ -1490,34 +1474,19 @@ export default function TransactionPreview({
 
   // Phase 2: Show project card once IDs are extracted
   useEffect(() => {
-    // Only trigger for launch actions
     if (action !== 'launchProject' && action !== 'launch721Project') return
-
-    console.log('[TransactionPreview] Follow-up check:', {
-      isComplete,
-      createdProjectIds,
-      hasTriggeredFollowUp: hasTriggeredFollowUpRef.current,
-      wasAlreadyCompletedOnLoad: wasAlreadyCompletedOnLoadRef.current,
-    })
-
-    // Only trigger once when complete with project IDs
     if (!isComplete || Object.keys(createdProjectIds).length === 0) return
     if (hasTriggeredFollowUpRef.current) return
 
-    // Skip if this deployment was already completed before page load (page refresh scenario)
-    // The follow-up messages were already sent in the original session
+    // Skip if already completed before page load (page refresh)
     if (wasAlreadyCompletedOnLoadRef.current === true) {
-      console.log('[TransactionPreview] Skipping follow-up - deployment was already complete on page load')
       hasTriggeredFollowUpRef.current = true
       return
     }
 
     // Get valid project entries - must have non-zero ID
     const entries = Object.entries(createdProjectIds).filter(([, pid]) => pid && pid > 0)
-    if (entries.length === 0) {
-      console.log('[TransactionPreview] No valid project IDs found yet, waiting for receipt extraction')
-      return // Don't mark as triggered - wait for actual IDs
-    }
+    if (entries.length === 0) return // Wait for actual IDs
 
     hasTriggeredFollowUpRef.current = true
 
@@ -1547,15 +1516,8 @@ export default function TransactionPreview({
     const [primaryChainId, primaryProjectId] = sortedEntries[0]
     const chainData = CHAINS[Number(primaryChainId)]
 
-    console.log('[TransactionPreview] Selected primary chain for follow-up:', {
-      primaryChainId,
-      primaryProjectId,
-      allValidEntries: sortedEntries.map(([c, p]) => `${CHAINS[Number(c)]?.name || c}: #${p}`),
-    })
-
-    // Small delay to let the success UI render first
+    // Delay to let success UI render first
     setTimeout(() => {
-      console.log('[TransactionPreview] Dispatching post-launch follow-up for project', primaryProjectId, 'on chain', primaryChainId)
       window.dispatchEvent(new CustomEvent('juice:send-message', {
         detail: {
           message: `[SYSTEM: Project #${primaryProjectId} created on ${chainData?.name || 'chain'}. Show project-card for projectId=${primaryProjectId} chainId=${primaryChainId}. After showing the card, invite user to be the first to put $5 into their project, and mention you can show other info about their project like activity, treasury balance, etc.]`,
@@ -1598,13 +1560,6 @@ export default function TransactionPreview({
         }
       })
 
-      console.log('[TransactionPreview] Saving completion state to server:', {
-        hasValidIds,
-        createdProjectIds,
-        txHashes: Object.keys(txHashes).length > 0 ? txHashes : persistedTxHashes,
-      })
-
-      // Save to server
       setPersistedState({
         status: 'completed',
         projectIds: createdProjectIds,
