@@ -88,10 +88,10 @@ describe('TransactionPreview', () => {
       expect(screen.getByText('Review for deployment')).toBeInTheDocument()
     })
 
-    it('renders the action icon', () => {
+    it('renders the execute button', () => {
       render(<TransactionPreview {...defaultProps} />)
-      // Pay action should show 💰
-      expect(screen.getByText('💰')).toBeInTheDocument()
+      // Pay action should show Pay button
+      expect(screen.getByRole('button', { name: 'Pay' })).toBeInTheDocument()
     })
 
     it('renders execute button with correct label', () => {
@@ -108,29 +108,23 @@ describe('TransactionPreview', () => {
     })
   })
 
-  describe('action icons', () => {
-    const actionIconPairs = [
-      { action: 'pay', icon: '💰' },
-      { action: 'cashOut', icon: '🔄' },
-      { action: 'sendPayouts', icon: '📤' },
-      { action: 'useAllowance', icon: '💸' },
-      { action: 'mintTokens', icon: '🪙' },
-      { action: 'burnTokens', icon: '🔥' },
-      { action: 'launchProject', icon: '🚀' },
-      { action: 'queueRuleset', icon: '📋' },
-      { action: 'deployERC20', icon: '🎟️' },
+  describe('action buttons', () => {
+    const actionButtonPairs = [
+      { action: 'pay', label: 'Pay' },
+      { action: 'cashOut', label: 'Cash Out' },
+      { action: 'sendPayouts', label: 'Send Payouts' },
+      { action: 'useAllowance', label: 'Use Allowance' },
+      { action: 'mintTokens', label: 'Mint Tokens' },
+      { action: 'burnTokens', label: 'Burn Tokens' },
+      { action: 'queueRuleset', label: 'Queue Ruleset' },
+      { action: 'deployERC20', label: 'Deploy Token' },
     ]
 
-    actionIconPairs.forEach(({ action, icon }) => {
-      it(`displays ${icon} for ${action} action`, () => {
+    actionButtonPairs.forEach(({ action, label }) => {
+      it(`displays "${label}" button for ${action} action`, () => {
         render(<TransactionPreview {...defaultProps} action={action} />)
-        expect(screen.getByText(icon)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
       })
-    })
-
-    it('displays default icon for unknown action', () => {
-      render(<TransactionPreview {...defaultProps} action="unknownAction" />)
-      expect(screen.getByText('📝')).toBeInTheDocument()
     })
   })
 
@@ -239,7 +233,6 @@ describe('TransactionPreview', () => {
         />
       )
 
-      expect(screen.getByText('🚀')).toBeInTheDocument()
       expect(screen.getByText('Review for deployment')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Launch Project' })).toBeInTheDocument()
     })

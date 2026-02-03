@@ -381,11 +381,19 @@ const PROJECT_SLUG_REGEX = /^([a-z]+):(\d+)$/i
 import { CHAIN_IDS, IS_TESTNET } from './config/environment'
 
 // Map chain slugs to chain IDs (uses environment-aware chain IDs)
+// Supports both canonical slugs (eth, op, base, arb) and testnet-specific aliases (sep, opsep, etc.)
 const CHAIN_SLUG_TO_ID: Record<string, number> = {
   eth: CHAIN_IDS.ethereum,
   op: CHAIN_IDS.optimism,
   base: CHAIN_IDS.base,
   arb: CHAIN_IDS.arbitrum,
+  // Testnet-specific slugs (only work when IS_TESTNET is true, otherwise map to mainnet which won't match)
+  ...(IS_TESTNET ? {
+    sep: CHAIN_IDS.ethereum,      // Sepolia
+    opsep: CHAIN_IDS.optimism,    // Optimism Sepolia
+    basesep: CHAIN_IDS.base,      // Base Sepolia
+    arbsep: CHAIN_IDS.arbitrum,   // Arbitrum Sepolia
+  } : {}),
 }
 
 // Map chain IDs to display names (includes both mainnet and testnet names)
