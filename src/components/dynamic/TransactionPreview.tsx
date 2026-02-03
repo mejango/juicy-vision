@@ -1457,14 +1457,15 @@ export default function TransactionPreview({
     if (!isComplete || Object.keys(createdProjectIds).length === 0) return
     if (hasTriggeredFollowUpRef.current) return
 
-    hasTriggeredFollowUpRef.current = true
-
-    // Get the primary project (first chain)
+    // Get the primary project (first chain) - must have non-zero ID
     const entries = Object.entries(createdProjectIds).filter(([, pid]) => pid && pid > 0)
     if (entries.length === 0) {
-      console.log('[TransactionPreview] No valid project IDs found in entries:', entries)
-      return
+      console.log('[TransactionPreview] No valid project IDs found yet, waiting for receipt extraction')
+      return // Don't mark as triggered - wait for actual IDs
     }
+
+    // Mark as triggered only after we have valid project IDs
+    hasTriggeredFollowUpRef.current = true
 
     const [primaryChainId, primaryProjectId] = entries[0]
     const chainData = CHAINS[Number(primaryChainId)]
