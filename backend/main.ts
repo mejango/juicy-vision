@@ -25,6 +25,7 @@ import { identityRouter } from './src/routes/identity.ts';
 import { juiceRouter } from './src/routes/juice.ts';
 import { adminRouter } from './src/routes/admin.ts';
 import { hooksRouter } from './src/routes/hooks.ts';
+import projectConversationsRouter from './src/routes/projectConversations.ts';
 import { getConfig, validateConfigForAuth, validateConfigForEncryption, validateConfigForReserves } from './src/utils/config.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
@@ -152,6 +153,7 @@ app.route('/identity', identityRouter);
 app.route('/juice', juiceRouter);
 app.route('/admin', adminRouter);
 app.route('/hooks', hooksRouter);
+app.route('/project-conversations', projectConversationsRouter);
 
 // ============================================================================
 // Static File Serving (disabled - frontend served separately in production)
