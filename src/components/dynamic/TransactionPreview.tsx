@@ -1680,10 +1680,10 @@ export default function TransactionPreview({
 
   // Single JSON parse - extract all preview data at once for fast initial render
   const previewData = useMemo(() => {
-    // Skip parsing only if still actively streaming AND marked as truncated
-    // If streaming has stopped (_isStreaming === false), try to parse anyway
+    // Skip parsing only if DEFINITELY still streaming (explicitly true) AND marked as truncated
+    // If streaming status is false or undefined, try to parse anyway
     // as the parameters might be complete even if initially marked truncated
-    if (_isTruncated === 'true' && _isStreaming !== false) return null
+    if (_isTruncated === 'true' && _isStreaming === true) return null
     try {
       // Clean up malformed JSON from AI (e.g., embedded JS expressions)
       let cleanedParams = parameters || '{}'
