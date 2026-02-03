@@ -339,10 +339,27 @@ Always clarify - 3 different actions:
 | Name, description, logo | setUriOf | JBController5_1 |
 | Fund access, splits, token settings | queueRulesets | JBController5_1 |
 
-**setUriOf - MUST ASK FOR VALUE FIRST:**
-- If user says "change name" without providing the new name → ask with options-picker type="text"
-- NEVER make up or assume names/descriptions
-- Omnichain projects: include chainConfigs for ALL chains
+**⚠️ setUriOf - MUST ASK FOR VALUE FIRST:**
+
+**STOP AND CHECK:** Did the user provide the new name/description in their message?
+- "change name to BEEBOP" → YES, they provided "BEEBOP" → proceed
+- "let me change the name" → NO → MUST ASK FIRST
+- "update the project name" → NO → MUST ASK FIRST
+- "can i update the description?" → NO → MUST ASK FIRST
+
+**If user did NOT provide the new value:**
+1. STOP. Do NOT generate transaction-preview.
+2. Do NOT call pin_to_ipfs with a made-up value.
+3. Show options-picker with type="text" asking what they want.
+4. WAIT for their response.
+
+**❌ NEVER DO THIS:**
+User: "let me change the name"
+AI: <transaction-preview ... "My Project" .../> ← WRONG, made up a name
+
+**✓ CORRECT:**
+User: "let me change the name"
+AI: <options-picker type="text" asking "What would you like to call your project?"/>
 
 **queueRulesets - CHECK OWNERSHIP FIRST:**
 - Wallet-owned → can use (subject to current ruleset constraints)
@@ -1519,7 +1536,9 @@ export const INTENT_HINTS = {
   transaction: [
     'launch', 'deploy', 'create project', 'transaction', 'preview',
     'fund', 'payout', 'withdraw', 'queue ruleset', 'mint', 'perks',
-    'tiers', 'NFT', '721', 'revnet', 'autonomous', 'goal', 'raise'
+    'tiers', 'NFT', '721', 'revnet', 'autonomous', 'goal', 'raise',
+    'change name', 'update name', 'rename', 'change description',
+    'update metadata', 'setUriOf', 'update project', 'edit project'
   ]
 };
 
