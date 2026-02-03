@@ -10,6 +10,9 @@ import {
   verifyLaunchProjectParams,
   verifyDeployRevnetParams,
   createVerificationResult,
+  autoCorrectAddress,
+  autoCorrectTerminalConfigurations,
+  autoCorrectChainConfigs,
   type TransactionDoubt,
   type VerificationResult,
 } from './transactionVerification'
@@ -853,6 +856,113 @@ describe('transactionVerification', () => {
       })
       expect(result.isValid).toBe(true)
       expect(result.verifiedParams.amount).toBe('1000000000000000000')
+    })
+  })
+
+  describe('autoCorrectAddress', () => {
+    it('does not modify valid addresses', () => {
+      const result = autoCorrectAddress('0x1234567890123456789012345678901234567890')
+      expect(result.wasCorrected).toBe(false)
+      expect(result.address).toBe('0x1234567890123456789012345678901234567890')
+    })
+
+    it('does not modify known canonical addresses', () => {
+      const result = autoCorrectAddress('0x52869db3d61dde1e391967f2ce5039ad0ecd371c')
+      expect(result.wasCorrected).toBe(false)
+    })
+
+    it('corrects hallucinated JBSwapTerminalUSDCRegistry address (missing "05")', () => {
+      // AI dropped '05' from 'de05810' making it 'de1810'
+      const hallucinated = '0x1ce40d201cdec791de1810d17aaf501be167422'
+      const correct = '0x1ce40d201cdec791de05810d17aaf501be167422'
+
+      const result = autoCorrectAddress(hallucinated)
+      expect(result.wasCorrected).toBe(true)
+      expect(result.address).toBe(correct)
+      expect(result.originalAddress).toBe(hallucinated)
+      expect(result.matchedContract).toBe('JBSwapTerminalUSDCRegistry')
+    })
+
+    it('corrects hallucinated JBMultiTerminal5_1 address (missing characters)', () => {
+      // AI dropped 'd' from 'ad0ecd' making it 'a0ecd'
+      const hallucinated = '0x52869db3d61dde1e391967f2ce5039a0ecd371c'
+      const correct = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c'
+
+      const result = autoCorrectAddress(hallucinated)
+      expect(result.wasCorrected).toBe(true)
+      expect(result.address).toBe(correct)
+      expect(result.matchedContract).toBe('JBMultiTerminal5_1')
+    })
+
+    it('does not correct addresses with too many differences', () => {
+      // This is a completely different address
+      const different = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      const result = autoCorrectAddress(different)
+      expect(result.wasCorrected).toBe(false)
+    })
+
+    it('handles empty and null addresses', () => {
+      expect(autoCorrectAddress('').wasCorrected).toBe(false)
+      expect(autoCorrectAddress(null as unknown as string).wasCorrected).toBe(false)
+    })
+  })
+
+  describe('autoCorrectTerminalConfigurations', () => {
+    it('corrects hallucinated terminal addresses', () => {
+      const configs = [
+        {
+          terminal: '0x52869db3d61dde1e391967f2ce5039a0ecd371c', // Missing 'd'
+          accountingContextsToAccept: [
+            { token: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' }
+          ]
+        }
+      ]
+
+      const corrections = autoCorrectTerminalConfigurations(configs)
+
+      expect(corrections.length).toBe(1)
+      expect(corrections[0].field).toBe('terminalConfigurations[0].terminal')
+      expect(corrections[0].corrected).toBe('0x52869db3d61dde1e391967f2ce5039ad0ecd371c')
+      // Mutated in place
+      expect(configs[0].terminal).toBe('0x52869db3d61dde1e391967f2ce5039ad0ecd371c')
+    })
+
+    it('handles configs with no corrections needed', () => {
+      const configs = [
+        {
+          terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+          accountingContextsToAccept: []
+        }
+      ]
+
+      const corrections = autoCorrectTerminalConfigurations(configs)
+      expect(corrections.length).toBe(0)
+    })
+  })
+
+  describe('autoCorrectChainConfigs', () => {
+    it('corrects addresses in chain config overrides', () => {
+      const chainConfigs = [
+        {
+          chainId: 11155111,
+          overrides: {
+            terminalConfigurations: [
+              {
+                terminal: '0x1ce40d201cdec791de1810d17aaf501be167422', // Missing '05'
+                accountingContextsToAccept: []
+              }
+            ]
+          }
+        }
+      ]
+
+      const corrections = autoCorrectChainConfigs(chainConfigs)
+
+      expect(corrections.length).toBe(1)
+      expect(corrections[0].corrected).toBe('0x1ce40d201cdec791de05810d17aaf501be167422')
+      // Mutated in place
+      expect(chainConfigs[0].overrides?.terminalConfigurations?.[0].terminal)
+        .toBe('0x1ce40d201cdec791de05810d17aaf501be167422')
     })
   })
 })

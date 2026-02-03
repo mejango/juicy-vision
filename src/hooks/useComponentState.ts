@@ -20,6 +20,9 @@ export interface TransactionPreviewState extends ComponentState {
   bundleId?: string
   completedAt?: string
   error?: string
+  // Track which follow-up messages have been sent (survives reload)
+  hasShownLoadingMessage?: boolean
+  hasShownProjectCard?: boolean
 }
 
 interface UseComponentStateOptions<T extends ComponentState> {

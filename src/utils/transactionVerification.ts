@@ -33,6 +33,230 @@ const MAX_REASONABLE_ETH = BigInt('1000000000000000000000') // 1000 ETH
 const MAX_REASONABLE_TOKENS = BigInt('1000000000000000000000000000') // 1 billion tokens
 const MIN_REASONABLE_AMOUNT = BigInt('1000000000000') // 0.000001 ETH (1e12 wei)
 
+// ============================================================================
+// ADDRESS AUTO-CORRECTION
+// ============================================================================
+// AI models sometimes "hallucinate" addresses by dropping characters.
+// This utility detects malformed addresses that are close to known canonical
+// addresses and auto-corrects them before validation.
+//
+// Example hallucination:
+//   Wrong:   0x1ce40d201cdec791de1810d17aaf501be167422  (missing '05')
+//   Correct: 0x1ce40d201cdec791de05810d17aaf501be167422
+// ============================================================================
+
+// Known canonical addresses that AI might hallucinate
+// These are JB V5.1 terminal addresses (same on all chains via CREATE2)
+const KNOWN_ADDRESSES: Record<string, string> = {
+  // JB V5.1 Terminals (deterministic addresses)
+  '0x52869db3d61dde1e391967f2ce5039ad0ecd371c': 'JBMultiTerminal5_1',
+  '0x1ce40d201cdec791de05810d17aaf501be167422': 'JBSwapTerminalUSDCRegistry',
+  // JB Shared Contracts
+  '0x4d0edd347fb1fa21589c1e109b3474924be87636': 'JBTokens',
+  '0x885f707efa18d2cb12f05a3a8eba6b4b26c8c1d4': 'JBProjects',
+  '0x0061e516886a0540f63157f112c0588ee0651dcf': 'JBDirectory',
+  '0x7160a322fea44945a6ef9adfd65c322258df3c5e': 'JBSplits',
+  '0x3a46b21720c8b70184b0434a2293b2fdcc497ce7': 'JBFundAccessLimits',
+  // JB V5 Terminals (for Revnets)
+  '0x27da30646502e2f642be5281322ae8c394f7668a': 'JBController_V5',
+  '0x2db6d704058e552defe415753465df8df0361846': 'JBMultiTerminal_V5',
+  // V5.1 Specific
+  '0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1': 'JBController5_1',
+  '0xd4257005ca8d27bbe11f356453b0e4692414b056': 'JBRulesets5_1',
+  '0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71': 'JBOmnichainDeployer5_1',
+}
+
+// Compute Levenshtein edit distance between two strings
+function levenshteinDistance(a: string, b: string): number {
+  const matrix: number[][] = []
+
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i]
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b[i - 1] === a[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1]
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        )
+      }
+    }
+  }
+
+  return matrix[b.length][a.length]
+}
+
+// Find the closest known address to a potentially hallucinated address
+function findClosestKnownAddress(address: string): { address: string; name: string; distance: number } | null {
+  if (!address || !address.startsWith('0x')) return null
+
+  const normalizedInput = address.toLowerCase()
+  let bestMatch: { address: string; name: string; distance: number } | null = null
+
+  for (const [knownAddr, name] of Object.entries(KNOWN_ADDRESSES)) {
+    const distance = levenshteinDistance(normalizedInput, knownAddr.toLowerCase())
+
+    // Only consider matches with small edit distance (1-3 character differences)
+    // This catches AI dropping characters but avoids false matches
+    if (distance > 0 && distance <= 3) {
+      if (!bestMatch || distance < bestMatch.distance) {
+        bestMatch = { address: knownAddr, name, distance }
+      }
+    }
+  }
+
+  return bestMatch
+}
+
+/**
+ * Auto-correct a potentially hallucinated address to its canonical form.
+ * Returns the corrected address if a close match is found, otherwise returns the original.
+ *
+ * @param address - The address to check and potentially correct
+ * @returns Object with corrected address and whether a correction was made
+ */
+export function autoCorrectAddress(address: string): {
+  address: string
+  wasCorrected: boolean
+  originalAddress?: string
+  matchedContract?: string
+} {
+  if (!address) return { address, wasCorrected: false }
+
+  // If already valid and exact match to known address, no correction needed
+  const normalized = address.toLowerCase()
+  if (KNOWN_ADDRESSES[normalized]) {
+    return { address, wasCorrected: false }
+  }
+
+  // If valid address format, no correction needed
+  if (isValidAddress(address)) {
+    return { address, wasCorrected: false }
+  }
+
+  // Address is malformed - try to find a close match
+  const match = findClosestKnownAddress(address)
+  if (match) {
+    console.log(`[autoCorrectAddress] Corrected hallucinated address:`)
+    console.log(`  Original: ${address} (${address.length} chars)`)
+    console.log(`  Corrected: ${match.address} (${match.address.length} chars)`)
+    console.log(`  Contract: ${match.name}, Edit distance: ${match.distance}`)
+    return {
+      address: match.address,
+      wasCorrected: true,
+      originalAddress: address,
+      matchedContract: match.name,
+    }
+  }
+
+  // No close match found, return original
+  return { address, wasCorrected: false }
+}
+
+/**
+ * Auto-correct all addresses in terminal configurations.
+ * Mutates the input object in place and returns correction info.
+ */
+export function autoCorrectTerminalConfigurations(
+  terminalConfigurations: Array<{ terminal?: string; accountingContextsToAccept?: Array<{ token?: string }> }>
+): Array<{ field: string; original: string; corrected: string; contract: string }> {
+  const corrections: Array<{ field: string; original: string; corrected: string; contract: string }> = []
+
+  terminalConfigurations.forEach((tc, idx) => {
+    // Check terminal address
+    if (tc.terminal) {
+      const result = autoCorrectAddress(tc.terminal)
+      if (result.wasCorrected) {
+        corrections.push({
+          field: `terminalConfigurations[${idx}].terminal`,
+          original: result.originalAddress!,
+          corrected: result.address,
+          contract: result.matchedContract!,
+        })
+        tc.terminal = result.address
+      }
+    }
+
+    // Check token addresses in accounting contexts
+    tc.accountingContextsToAccept?.forEach((ctx, ctxIdx) => {
+      if (ctx.token) {
+        const result = autoCorrectAddress(ctx.token)
+        if (result.wasCorrected) {
+          corrections.push({
+            field: `terminalConfigurations[${idx}].accountingContextsToAccept[${ctxIdx}].token`,
+            original: result.originalAddress!,
+            corrected: result.address,
+            contract: result.matchedContract!,
+          })
+          ctx.token = result.address
+        }
+      }
+    })
+  })
+
+  return corrections
+}
+
+/**
+ * Auto-correct addresses in chain configs (per-chain terminal overrides).
+ */
+export function autoCorrectChainConfigs(
+  chainConfigs: Array<{
+    chainId: number | string
+    overrides?: {
+      terminalConfigurations?: Array<{ terminal?: string; accountingContextsToAccept?: Array<{ token?: string }> }>
+    }
+  }>
+): Array<{ field: string; original: string; corrected: string; contract: string }> {
+  const corrections: Array<{ field: string; original: string; corrected: string; contract: string }> = []
+
+  chainConfigs.forEach((cfg, cfgIdx) => {
+    if (cfg.overrides?.terminalConfigurations) {
+      cfg.overrides.terminalConfigurations.forEach((tc, idx) => {
+        // Check terminal address
+        if (tc.terminal) {
+          const result = autoCorrectAddress(tc.terminal)
+          if (result.wasCorrected) {
+            corrections.push({
+              field: `chainConfigs[${cfgIdx}].terminalConfigurations[${idx}].terminal`,
+              original: result.originalAddress!,
+              corrected: result.address,
+              contract: result.matchedContract!,
+            })
+            tc.terminal = result.address
+          }
+        }
+
+        // Check token addresses
+        tc.accountingContextsToAccept?.forEach((ctx, ctxIdx) => {
+          if (ctx.token) {
+            const result = autoCorrectAddress(ctx.token)
+            if (result.wasCorrected) {
+              corrections.push({
+                field: `chainConfigs[${cfgIdx}].terminalConfigurations[${idx}].accountingContextsToAccept[${ctxIdx}].token`,
+                original: result.originalAddress!,
+                corrected: result.address,
+                contract: result.matchedContract!,
+              })
+              ctx.token = result.address
+            }
+          }
+        })
+      })
+    }
+  })
+
+  return corrections
+}
+
 // Validation helpers
 function isValidAddress(address: string): boolean {
   return /^0x[a-fA-F0-9]{40}$/.test(address)

@@ -9,7 +9,12 @@ import { getWalletSession } from '../../services/siwe'
 import { useOmnichainLaunchProject } from '../../hooks/relayr'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { decodeEncodedIPFSUri, encodeIpfsUri } from '../../utils/ipfs'
-import { verifyLaunchProjectParams, type TransactionDoubt } from '../../utils/transactionVerification'
+import {
+  verifyLaunchProjectParams,
+  autoCorrectTerminalConfigurations,
+  autoCorrectChainConfigs,
+  type TransactionDoubt,
+} from '../../utils/transactionVerification'
 import {
   CHAIN_NAMES,
   CHAIN_COLORS,
@@ -1366,17 +1371,6 @@ export default function TransactionPreview({
     setState: setPersistedState,
   } = useTransactionPreviewState(messageId)
 
-  // Track if the initial load showed the deployment was already completed
-  // This prevents re-firing follow-up messages on page refresh
-  // Using state (not ref) so effects re-run when this is determined
-  const [wasAlreadyCompletedOnLoad, setWasAlreadyCompletedOnLoad] = useState<boolean | null>(null)
-  useEffect(() => {
-    if (wasAlreadyCompletedOnLoad === null && !persistedStateLoading) {
-      // Persisted state loaded - check if it was already completed
-      setWasAlreadyCompletedOnLoad(persistedState?.status === 'completed')
-    }
-  }, [persistedState, persistedStateLoading, wasAlreadyCompletedOnLoad])
-
   // Auth state for managed wallet users - use isManagedMode from hook for consistent state
   const {
     address: managedAddress,
@@ -1447,24 +1441,39 @@ export default function TransactionPreview({
     },
   })
 
-  // Track if we've triggered the post-launch follow-up messages (refs for component-level tracking)
+  // ============================================================================
+  // POST-LAUNCH FOLLOW-UP MESSAGES
+  // ============================================================================
+  // These effects trigger AI follow-up messages after a successful launch.
+  // The key insight: we use PERSISTED STATE to track which messages have been sent,
+  // so the tracking survives page reload. This prevents duplicate messages.
+  //
+  // Architecture:
+  // - persistedState.hasShownLoadingMessage: tracks Phase 1 (loading message)
+  // - persistedState.hasShownProjectCard: tracks Phase 2 (project card)
+  // - On reload, if these are true in persisted state, we skip the messages
+  // ============================================================================
+
+  // Local refs for same-session deduplication (prevents double-fires within same render cycle)
   const hasTriggeredLoadingRef = useRef(false)
   const hasTriggeredFollowUpRef = useRef(false)
 
   // Phase 1: Show immediate loading message when deployment completes (before IDs are extracted)
   useEffect(() => {
     if (action !== 'launchProject' && action !== 'launch721Project') return
-    if (!isComplete || hasTriggeredLoadingRef.current) return
+    if (!isComplete) return
+    if (hasTriggeredLoadingRef.current) return
+    if (persistedStateLoading) return // Wait for server state to load first
 
-    // Skip if server state shows already completed (page refresh scenario)
-    // Check both: initial load state AND current persisted state
-    if (persistedStateLoading) return // Still loading, wait
-    if (wasAlreadyCompletedOnLoad || persistedState?.status === 'completed') {
+    // Check PERSISTED state for whether we already sent this message (survives reload)
+    if (persistedState?.hasShownLoadingMessage) {
       hasTriggeredLoadingRef.current = true
       return
     }
 
     hasTriggeredLoadingRef.current = true
+
+    // Send the loading message
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('juice:send-message', {
         detail: {
@@ -1473,18 +1482,27 @@ export default function TransactionPreview({
           hidden: true,
         }
       }))
+
+      // Mark as sent in persisted state (survives reload)
+      if (messageId) {
+        setPersistedState({
+          ...persistedState,
+          status: persistedState?.status || 'in_progress',
+          hasShownLoadingMessage: true,
+        })
+      }
     }, 500)
-  }, [action, isComplete, wasAlreadyCompletedOnLoad, persistedState?.status, persistedStateLoading])
+  }, [action, isComplete, persistedState, persistedStateLoading, messageId, setPersistedState])
 
   // Phase 2: Show project card once IDs are extracted
   useEffect(() => {
     if (action !== 'launchProject' && action !== 'launch721Project') return
     if (!isComplete || Object.keys(createdProjectIds).length === 0) return
     if (hasTriggeredFollowUpRef.current) return
+    if (persistedStateLoading) return // Wait for server state to load first
 
-    // Skip if server state shows already completed (page refresh scenario)
-    if (persistedStateLoading) return // Still loading, wait
-    if (wasAlreadyCompletedOnLoad || persistedState?.status === 'completed') {
+    // Check PERSISTED state for whether we already sent this message (survives reload)
+    if (persistedState?.hasShownProjectCard) {
       hasTriggeredFollowUpRef.current = true
       return
     }
@@ -1496,8 +1514,6 @@ export default function TransactionPreview({
     hasTriggeredFollowUpRef.current = true
 
     // Chain priority: Sepolia/Ethereum first, then Arb, then Base, then OP
-    // Testnets: 11155111 (Sepolia), 421614 (Arb Sep), 84532 (Base Sep), 11155420 (OP Sep)
-    // Mainnets: 1 (Ethereum), 42161 (Arbitrum), 8453 (Base), 10 (Optimism)
     const chainPriority: Record<number, number> = {
       // Mainnets
       1: 1,      // Ethereum - highest priority
@@ -1527,55 +1543,33 @@ export default function TransactionPreview({
         detail: {
           message: `[SYSTEM: Project #${primaryProjectId} created on ${chainData?.name || 'chain'}. Show project-card for projectId=${primaryProjectId} chainId=${primaryChainId}. After showing the card, invite user to be the first to put $5 into their project, and mention you can show other info about their project like activity, treasury balance, etc.]`,
           bypassSkipAi: true,
-          hidden: true, // Don't show SYSTEM message to user, just send to AI
+          hidden: true,
         }
       }))
+
+      // Mark as sent in persisted state (survives reload)
+      // This is the FINAL save - include projectIds and mark as completed
+      if (messageId) {
+        const txHashes: Record<number, string> = {}
+        bundleState.chainStates?.forEach(cs => {
+          if (cs.txHash) txHashes[cs.chainId] = cs.txHash
+        })
+
+        setPersistedState({
+          status: 'completed',
+          projectIds: createdProjectIds,
+          txHashes: Object.keys(txHashes).length > 0 ? txHashes : persistedTxHashes || undefined,
+          bundleId: bundleState.bundleId || undefined,
+          completedAt: new Date().toISOString(),
+          hasShownLoadingMessage: true,
+          hasShownProjectCard: true,
+        })
+      }
     }, 1000)
-  }, [action, isComplete, createdProjectIds, wasAlreadyCompletedOnLoad, persistedState?.status, persistedStateLoading])
-
-  // Save completed state to server when transaction finishes
-  // This persists the state so all chat participants see the resolved component
-  const hasSavedCompletionRef = useRef(false)
-  const savedProjectIdsRef = useRef<Record<number, number>>({})
-  useEffect(() => {
-    // Only save for launch actions
-    if (action !== 'launchProject' && action !== 'launch721Project') return
-
-    // Only save when complete with project IDs
-    if (!isComplete || Object.keys(createdProjectIds).length === 0) return
-    if (!messageId) return // Can't save without messageId
-
-    // Check if we have better (non-zero) project IDs than before
-    const hasValidIds = Object.values(createdProjectIds).some(id => id > 0)
-    const hadValidIds = Object.values(savedProjectIdsRef.current).some(id => id > 0)
-
-    // Skip if already saved with valid IDs
-    if (hasSavedCompletionRef.current && hadValidIds) return
-
-    // Update if we now have valid IDs (or first save)
-    if (hasValidIds || !hasSavedCompletionRef.current) {
-      hasSavedCompletionRef.current = true
-      savedProjectIdsRef.current = { ...createdProjectIds }
-
-      // Get tx hashes from bundle state
-      const txHashes: Record<number, string> = {}
-      bundleState.chainStates?.forEach(cs => {
-        if (cs.txHash) {
-          txHashes[cs.chainId] = cs.txHash
-        }
-      })
-
-      setPersistedState({
-        status: 'completed',
-        projectIds: createdProjectIds,
-        txHashes: Object.keys(txHashes).length > 0 ? txHashes : persistedTxHashes || undefined,
-        bundleId: bundleState.bundleId || undefined,
-        completedAt: new Date().toISOString(),
-      })
-    }
-  }, [action, isComplete, createdProjectIds, bundleState, persistedTxHashes, messageId, setPersistedState])
+  }, [action, isComplete, createdProjectIds, persistedState, persistedStateLoading, messageId, setPersistedState, bundleState, persistedTxHashes])
 
   // Derived state: use persisted state if available, otherwise use hook state
+  // IMPORTANT: persistedState is the source of truth after page reload
   const effectiveIsComplete = persistedState?.status === 'completed' || isComplete
   const effectiveProjectIds = (persistedState?.status === 'completed' && persistedState?.projectIds)
     ? persistedState.projectIds
@@ -2005,6 +1999,28 @@ export default function TransactionPreview({
     // Get terminal configurations (check both top-level and nested in launchProjectConfig)
     const terminalConfigurations = (raw.terminalConfigurations as unknown[]) ||
       (launchConfig?.terminalConfigurations as unknown[]) || []
+
+    // Auto-correct any hallucinated addresses in terminal configurations
+    // AI sometimes drops characters from addresses (e.g., 0x1ce40d201cdec791de1810d17... missing '05')
+    const terminalCorrections = autoCorrectTerminalConfigurations(
+      terminalConfigurations as Array<{ terminal?: string; accountingContextsToAccept?: Array<{ token?: string }> }>
+    )
+    if (terminalCorrections.length > 0) {
+      console.log('[LaunchValidation] Auto-corrected hallucinated addresses:', terminalCorrections)
+    }
+
+    // Also auto-correct chain config overrides
+    if (parsedChainConfigs.length > 0) {
+      const chainConfigCorrections = autoCorrectChainConfigs(
+        parsedChainConfigs as Array<{
+          chainId: number | string
+          overrides?: { terminalConfigurations?: Array<{ terminal?: string; accountingContextsToAccept?: Array<{ token?: string }> }> }
+        }>
+      )
+      if (chainConfigCorrections.length > 0) {
+        console.log('[LaunchValidation] Auto-corrected hallucinated addresses in chain configs:', chainConfigCorrections)
+      }
+    }
 
     // Get memo (check both top-level and nested)
     const memo = (raw.memo as string) || (launchConfig?.memo as string) || 'Project launch via Juicy Vision'
