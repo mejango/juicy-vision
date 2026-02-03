@@ -2605,7 +2605,7 @@ export default function TransactionPreview({
       </div>
       )}
 
-      {/* Deployment technical details - shown at bottom when launching/complete/error */}
+      {/* Deployment details - shown at bottom when launching/complete/error */}
       {(action === 'launchProject' || action === 'launch721Project') && (isLaunching || effectiveIsComplete || hasError) && (
         <div className={`px-4 py-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <button
@@ -2613,7 +2613,7 @@ export default function TransactionPreview({
             className={`flex items-center gap-2 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
           >
             <span className={`transform transition-transform ${showDeploymentDetails ? 'rotate-90' : ''}`}>›</span>
-            {showDeploymentDetails ? 'Hide' : 'Show'} technical details
+            {showDeploymentDetails ? 'Hide' : 'Show'} deployment details
           </button>
 
           {showDeploymentDetails && (

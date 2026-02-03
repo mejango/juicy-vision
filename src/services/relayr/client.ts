@@ -488,18 +488,30 @@ function deriveBundleStatus(
 
 // Transform raw API response to simplified format
 function transformBundleResponse(raw: RawBundleResponse): BundleStatusResponse {
-  const transactions: BundleTransactionStatus[] = raw.transactions.map(tx => ({
-    tx_uuid: tx.tx_uuid,
-    chain_id: tx.request.chain,
-    status: mapCallStateToStatus(tx.status),
-    // tx_hash and gas_used are in the CallState data for Success/Reverted states
-    tx_hash: 'data' in tx.status && typeof tx.status.data === 'object' && tx.status.data !== null
-      ? (tx.status.data as Record<string, unknown>).tx_hash as string | undefined
-      : undefined,
-    error: tx.status.state === 'Reverted' || tx.status.state === 'Invalid'
-      ? `Transaction ${tx.status.state.toLowerCase()}`
-      : undefined,
-  }))
+  console.log('[Relayr] Raw bundle response:', JSON.stringify(raw, null, 2))
+  const transactions: BundleTransactionStatus[] = raw.transactions.map(tx => {
+    // Debug: log the status data structure
+    if ('data' in tx.status) {
+      console.log(`[Relayr] Chain ${tx.request.chain} status data:`, tx.status.data)
+    }
+    // Try both tx_hash and txHash (API might use either)
+    const statusData = 'data' in tx.status && typeof tx.status.data === 'object' && tx.status.data !== null
+      ? tx.status.data as Record<string, unknown>
+      : null
+    const txHash = statusData?.tx_hash ?? statusData?.txHash ?? statusData?.hash
+    if (txHash) {
+      console.log(`[Relayr] Found txHash for chain ${tx.request.chain}:`, txHash)
+    }
+    return {
+      tx_uuid: tx.tx_uuid,
+      chain_id: tx.request.chain,
+      status: mapCallStateToStatus(tx.status),
+      tx_hash: txHash as string | undefined,
+      error: tx.status.state === 'Reverted' || tx.status.state === 'Invalid'
+        ? `Transaction ${tx.status.state.toLowerCase()}`
+        : undefined,
+    }
+  })
 
   return {
     bundle_uuid: raw.bundle_uuid,
