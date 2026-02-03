@@ -242,12 +242,16 @@ export function useOmnichainLaunchProject(
   useEffect(() => {
     if (bundleState.status === 'completed' && bundleState.bundleId && !hasProcessedCompletionRef.current) {
       hasProcessedCompletionRef.current = true
+      console.log('[useOmnichainLaunchProject] Bundle completed, extracting project IDs')
+      console.log('[useOmnichainLaunchProject] chainStates:', bundleState.chainStates)
       const txHashes: Record<number, string> = {}
       bundleState.chainStates.forEach(cs => {
+        console.log(`[useOmnichainLaunchProject] Chain ${cs.chainId}: txHash=${cs.txHash}, status=${cs.status}`)
         if (cs.txHash) {
           txHashes[cs.chainId] = cs.txHash
         }
       })
+      console.log('[useOmnichainLaunchProject] Built txHashes:', txHashes)
 
       // Extract actual project IDs from transaction receipts
       // This is more reliable than predictions, especially for omnichain deployments

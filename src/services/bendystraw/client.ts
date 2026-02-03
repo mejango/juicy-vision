@@ -211,24 +211,54 @@ export async function getProjectIdFromReceipt(
   chainId: number,
   txHash: `0x${string}`
 ): Promise<number | null> {
+  console.log(`[getProjectIdFromReceipt] Starting extraction for chain ${chainId}, tx ${txHash}`)
+
   const publicClient = getPublicClient(chainId)
-  if (!publicClient) return null
+  if (!publicClient) {
+    console.error(`[getProjectIdFromReceipt] No public client for chain ${chainId}`)
+    return null
+  }
 
   try {
     const receipt = await publicClient.getTransactionReceipt({ hash: txHash })
+    console.log(`[getProjectIdFromReceipt] Receipt for ${txHash}:`, {
+      status: receipt.status,
+      logsCount: receipt.logs.length,
+      logs: receipt.logs.map(log => ({
+        address: log.address,
+        topic0: log.topics[0],
+        topic1: log.topics[1],
+      }))
+    })
 
     // Search all logs for the LaunchProject event
     for (const log of receipt.logs) {
       // Check if this is a LaunchProject event (by topic signature)
       if (log.topics[0]?.toLowerCase() === LAUNCH_PROJECT_EVENT_TOPIC.toLowerCase()) {
         const projectIdHex = log.topics[1]
+        console.log(`[getProjectIdFromReceipt] Found LaunchProject event, projectId hex: ${projectIdHex}`)
         if (projectIdHex) {
-          return Number(BigInt(projectIdHex))
+          const projectId = Number(BigInt(projectIdHex))
+          console.log(`[getProjectIdFromReceipt] Extracted projectId: ${projectId}`)
+          return projectId
         }
       }
     }
 
-    // Fallback: Look for any log with a reasonable project ID in topics[1]
+    console.log(`[getProjectIdFromReceipt] No LaunchProject event found, trying fallback. Expected topic: ${LAUNCH_PROJECT_EVENT_TOPIC}`)
+
+    // Fallback 1: Use first log's topics[1] (like revnet-app does)
+    // This works because LaunchProject is typically the first event emitted
+    const firstLog = receipt.logs[0]
+    if (firstLog?.topics[1]) {
+      const projectId = Number(BigInt(firstLog.topics[1]))
+      if (projectId > 0 && projectId < 100000) {
+        console.log(`[getProjectIdFromReceipt] First log fallback found projectId: ${projectId}`)
+        return projectId
+      }
+    }
+
+    // Fallback 2: Look for any log with a reasonable project ID in topics[1]
     // This handles cases where the event signature might differ
     for (const log of receipt.logs) {
       const projectIdHex = log.topics[1]
@@ -236,14 +266,16 @@ export async function getProjectIdFromReceipt(
         const projectId = Number(BigInt(projectIdHex))
         // Project IDs are typically small numbers (< 100000)
         if (projectId > 0 && projectId < 100000) {
+          console.log(`[getProjectIdFromReceipt] Fallback found projectId: ${projectId} from log ${log.address}`)
           return projectId
         }
       }
     }
 
+    console.log(`[getProjectIdFromReceipt] No project ID found in any log for ${txHash}`)
     return null
   } catch (error) {
-    console.error(`Failed to get project ID from receipt ${txHash} on chain ${chainId}:`, error)
+    console.error(`[getProjectIdFromReceipt] Failed for ${txHash} on chain ${chainId}:`, error)
     return null
   }
 }
@@ -254,18 +286,31 @@ export async function getProjectIdFromReceipt(
 export async function getProjectIdsFromReceipts(
   txHashes: Record<number, string>
 ): Promise<Record<number, number>> {
+  console.log('[getProjectIdsFromReceipts] Input txHashes:', txHashes)
   const result: Record<number, number> = {}
+
+  if (Object.keys(txHashes).length === 0) {
+    console.warn('[getProjectIdsFromReceipts] No txHashes provided!')
+    return result
+  }
 
   await Promise.all(
     Object.entries(txHashes).map(async ([chainIdStr, txHash]) => {
       const chainId = Number(chainIdStr)
+      if (!txHash) {
+        console.warn(`[getProjectIdsFromReceipts] Empty txHash for chain ${chainId}`)
+        return
+      }
       const projectId = await getProjectIdFromReceipt(chainId, txHash as `0x${string}`)
       if (projectId !== null) {
         result[chainId] = projectId
+      } else {
+        console.warn(`[getProjectIdsFromReceipts] No projectId found for chain ${chainId}`)
       }
     })
   )
 
+  console.log('[getProjectIdsFromReceipts] Result:', result)
   return result
 }
 
