@@ -1133,7 +1133,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     // Skip if we're topOnly (no input to handle messages)
     if (topOnly) return
 
-    const handleComponentMessage = (event: CustomEvent<{ message: string; newChat?: boolean; fileAttachments?: Record<string, string>; bypassSkipAi?: boolean }>) => {
+    const handleComponentMessage = (event: CustomEvent<{ message: string; newChat?: boolean; fileAttachments?: Record<string, string>; bypassSkipAi?: boolean; hidden?: boolean }>) => {
       console.log('[ChatContainer] Received juice:send-message event', event.detail)
       if (event.detail?.message) {
         // Convert file attachments (data URLs) to Attachment objects
@@ -2021,32 +2021,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         </>
       )}
 
-      {/* Wallet Panel - also render in topOnly mode so Settings can trigger it */}
-      {topOnly && (
-        <>
-          <AuthOptionsModal
-            isOpen={showAuthOptionsModal}
-            onClose={() => setShowAuthOptionsModal(false)}
-            onWalletClick={() => {
-              setWalletPanelInitialView('self_custody')
-              setShowWalletPanel(true)
-            }}
-            onPasskeySuccess={handlePasskeySuccess}
-            title={authModalContext === 'connect' ? t('auth.connectTitle', 'Connect') : undefined}
-            description={authModalContext === 'connect' ? t('auth.connectDescription', 'Choose how to connect your account.') : undefined}
-            anchorPosition={authModalAnchorPosition}
-          />
-          <WalletPanel
-            isOpen={showWalletPanel}
-            onClose={() => {
-              setShowWalletPanel(false)
-              setWalletPanelInitialView('select')
-            }}
-            anchorPosition={walletPanelAnchorPosition}
-            initialView={walletPanelInitialView}
-          />
-        </>
-      )}
 
       {/* Beta Popover - portaled to document.body to escape backdrop-filter containing block */}
       {!topOnly && showBetaPopover && betaAnchorPosition && createPortal(
