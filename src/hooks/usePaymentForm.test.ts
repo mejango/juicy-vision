@@ -67,8 +67,7 @@ describe('usePaymentForm', () => {
     ethPrice: 2000,
     issuanceRate: {
       tokensPerEth: 1000000,
-      issuanceRate: '1000000000000000000000000',
-      reservedRate: 0,
+      basedOnPayments: 10,
     },
   }
 
@@ -77,8 +76,7 @@ describe('usePaymentForm', () => {
     mockIsConnected = true
     mockFetchIssuanceRate.mockResolvedValue({
       tokensPerEth: 500000,
-      issuanceRate: '500000000000000000000000',
-      reservedRate: 0,
+      basedOnPayments: 5,
     })
   })
 

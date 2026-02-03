@@ -9,13 +9,13 @@ import {
   type TransactionReceipt,
 } from './transactions'
 
-// Mock auth store
-const mockToken = 'test-jwt-token'
+// Mock auth store - use let so we can change it per test
+let mockToken: string | null = 'test-jwt-token'
 vi.mock('../stores/authStore', () => ({
   useAuthStore: {
-    getState: vi.fn(() => ({
+    getState: () => ({
       token: mockToken,
-    })),
+    }),
   },
 }))
 
@@ -52,6 +52,7 @@ describe('transactions API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockFetch.mockReset()
+    mockToken = 'test-jwt-token' // Reset token to default
   })
 
   describe('createTransactionRecord', () => {
@@ -170,10 +171,8 @@ describe('transactions API', () => {
     })
 
     it('works without auth token', async () => {
-      // Mock no token
-      vi.mocked(await import('../stores/authStore')).useAuthStore.getState.mockReturnValue({
-        token: null,
-      } as any)
+      // Set token to null for this test
+      mockToken = null
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
