@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { encodeFunctionData, type Chain, createPublicClient, http, type PublicClient } from 'viem'
+import { encodeFunctionData, type Chain, createPublicClient, http, fallback, type PublicClient } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
@@ -277,9 +277,10 @@ export default function SetSplitsModal({
         throw new Error(`No RPC endpoint for chain ${chainData.chainId}`)
       }
 
+      // Use fallback transport with all RPCs to handle timeouts
       const publicClient = createPublicClient({
         chain: viemChain,
-        transport: http(rpcUrls[0]),
+        transport: fallback(rpcUrls.map(url => http(url))),
       }) as PublicClient
 
       const controllerAddress = await getProjectController(

@@ -90,6 +90,7 @@ interface TransactionPreviewProps {
   _isTruncated?: string // Flag set by parser when component was truncated mid-stream
   _isStreaming?: boolean // True if parent message is still actively streaming
   messageId?: string // Message ID for persisting component state server-side
+  chatId?: string // Chat ID for isolating deployment state between chats
 }
 
 const ACTION_ICONS: Record<string, string> = {
@@ -1391,6 +1392,7 @@ export default function TransactionPreview({
   _isTruncated,
   _isStreaming,
   messageId,
+  chatId,
 }: TransactionPreviewProps) {
   const [expanded, setExpanded] = useState(false)
   const [technicalDetailsReady, setTechnicalDetailsReady] = useState(false)
@@ -1403,9 +1405,10 @@ export default function TransactionPreview({
   const isDark = theme === 'dark'
 
   // Create a STABLE deployment key from component content (not messageId which can change on reload)
+  // IMPORTANT: Include chatId to isolate deployments between different chats
   const stableDeploymentKey = useMemo(
-    () => createStableDeploymentKey(action, parameters),
-    [action, parameters]
+    () => createStableDeploymentKey(action, parameters, chatId),
+    [action, parameters, chatId]
   )
 
   // Server-side persisted state for this component
@@ -2332,7 +2335,7 @@ export default function TransactionPreview({
     const projectIdNum = typeof rawProjectId === 'string' ? parseInt(rawProjectId) : rawProjectId as number
 
     // Get chain project mappings for omnichain support
-    // If chainProjectMappings is provided, use it; otherwise create from single projectId/chainId
+    // Supports multiple formats: chainProjectMappings, chainConfigs, or single projectId/chainId
     let chainProjectMappings: Array<{ chainId: number; projectId: number }> = []
 
     if (raw.chainProjectMappings && Array.isArray(raw.chainProjectMappings)) {
@@ -2340,6 +2343,13 @@ export default function TransactionPreview({
       chainProjectMappings = (raw.chainProjectMappings as Array<{ chainId: number | string; projectId: number | string }>).map(m => ({
         chainId: typeof m.chainId === 'string' ? parseInt(m.chainId) : m.chainId,
         projectId: typeof m.projectId === 'string' ? parseInt(m.projectId) : m.projectId,
+      }))
+    } else if (raw.chainConfigs && Array.isArray(raw.chainConfigs) && projectIdNum) {
+      // AI often generates chainConfigs instead of chainProjectMappings - extract chainIds from it
+      // and use the same projectId for all chains (omnichain projects share projectId)
+      chainProjectMappings = (raw.chainConfigs as Array<{ chainId: number | string }>).map(c => ({
+        chainId: typeof c.chainId === 'string' ? parseInt(c.chainId) : c.chainId,
+        projectId: projectIdNum,
       }))
     } else if (projectIdNum && validChainId) {
       // Single chain mode - project may only exist on this chain

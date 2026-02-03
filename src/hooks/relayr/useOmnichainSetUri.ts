@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAccount, useConfig, useSignTypedData } from 'wagmi'
-import { encodeFunctionData, getContract, createPublicClient, http, type Address, type Hex, type PublicClient } from 'viem'
+import { encodeFunctionData, getContract, createPublicClient, http, fallback, type Address, type Hex, type PublicClient } from 'viem'
 import { useManagedWallet, createManagedRelayrBundle } from '../useManagedWallet'
 import { createBalanceBundle } from '../../services/relayr'
 import {
@@ -294,9 +294,10 @@ export function useOmnichainSetUri(
             throw new Error(`No RPC endpoint configured for chain ${chainId}`)
           }
 
+          // Use fallback transport with all RPCs to handle timeouts
           const publicClient = createPublicClient({
             chain: viemChain,
-            transport: http(rpcUrls[0]),
+            transport: fallback(rpcUrls.map(url => http(url))),
           }) as PublicClient
 
           const controller = await getProjectController(

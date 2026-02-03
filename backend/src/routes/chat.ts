@@ -1294,13 +1294,65 @@ chatRouter.post(
       // Stream Claude response with automatic tool execution
       let fullContent = '';
       let streamingStarted = false;
+      let transactionPreviewCount = 0;
+      let duplicatePreviewDetected = false;
+      let firstPreviewComplete = false; // Track when first preview is complete
 
       try {
         for await (const event of streamMessageWithTools(chatId, { messages: chatHistory, system: enhancedSystem }, userApiKey)) {
           streamingStarted = true;
           if (event.type === 'text') {
             const token = event.data as string;
-            fullContent += token;
+            const testContent = fullContent + token;
+
+            // AGGRESSIVE DUPLICATE PREVENTION:
+            // Once we have a complete transaction-preview, stop accepting any more content
+            // that could start another one
+            if (firstPreviewComplete) {
+              // Check if new content tries to start another transaction-preview
+              const afterFirstPreview = testContent.substring(fullContent.lastIndexOf('/>') + 2);
+              if (afterFirstPreview.includes('<juice-component') ||
+                  afterFirstPreview.includes('type="transaction-preview"') ||
+                  afterFirstPreview.includes("type='transaction-preview'")) {
+                console.warn(`[AI] ${chatId}: Detected attempt to start second transaction-preview after first was complete, stopping stream`);
+                duplicatePreviewDetected = true;
+                break;
+              }
+            }
+
+            // Check for complete transaction-preview (ends with />)
+            const completePreviewRegex = /<juice-component[^>]*type=["']transaction-preview["'][^>]*\/>/g;
+            const completeMatches = [...testContent.matchAll(completePreviewRegex)];
+
+            if (completeMatches.length >= 1 && !firstPreviewComplete) {
+              firstPreviewComplete = true;
+              console.log(`[AI] ${chatId}: First complete transaction-preview detected, will stop if second starts`);
+            }
+
+            // Also catch if a single chunk contains multiple previews
+            const newCount = (testContent.match(/<juice-component[^>]*type=["']transaction-preview["']/g) || []).length;
+            if (newCount > 1 && newCount > transactionPreviewCount) {
+              console.warn(`[AI] ${chatId}: Detected ${newCount} transaction-previews in content - Claude violated ONE TRANSACTION-PREVIEW rule`);
+              duplicatePreviewDetected = true;
+
+              // Try to salvage: keep only up to end of first complete preview
+              if (completeMatches.length > 0) {
+                const firstComplete = completeMatches[0];
+                const endOfFirst = (firstComplete.index || 0) + firstComplete[0].length;
+                const cleanedContent = testContent.substring(0, endOfFirst);
+                // Only stream what we haven't streamed yet
+                const newPart = cleanedContent.substring(fullContent.length);
+                if (newPart) {
+                  streamAiToken(chatId, messageId, newPart, false);
+                }
+                fullContent = cleanedContent;
+              }
+              break;
+            }
+
+            transactionPreviewCount = newCount;
+            fullContent = testContent;
+
             // Broadcast each token to connected clients
             streamAiToken(chatId, messageId, token, false);
           } else if (event.type === 'thinking') {
@@ -1351,6 +1403,30 @@ chatRouter.post(
       } finally {
         // Always signal streaming is done, even on error
         streamAiToken(chatId, messageId, '', true);
+      }
+
+      // If we detected duplicate previews, clean up the content
+      // Find incomplete transaction-preview tags and remove them
+      if (duplicatePreviewDetected || transactionPreviewCount > 1) {
+        // Find the last complete transaction-preview (ends with />)
+        const completePreviewRegex = /<juice-component[^>]*type=["']transaction-preview["'][^>]*\/>/g;
+        const completeMatches = [...fullContent.matchAll(completePreviewRegex)];
+
+        if (completeMatches.length > 0) {
+          // Keep up to the end of the first complete preview
+          const firstComplete = completeMatches[0];
+          const endOfFirst = (firstComplete.index || 0) + firstComplete[0].length;
+          fullContent = fullContent.substring(0, endOfFirst);
+          console.log(`[AI] ${chatId}: Cleaned up duplicate previews, keeping first complete preview`);
+        } else {
+          // No complete previews - find start of first one and remove everything after it
+          const previewStart = fullContent.indexOf('<juice-component');
+          if (previewStart > 0) {
+            fullContent = fullContent.substring(0, previewStart).trim();
+            fullContent += '\n\n*Something went wrong generating the transaction. Please try again.*';
+            console.log(`[AI] ${chatId}: No complete preview found, removed incomplete content`);
+          }
+        }
       }
 
       // Store the complete AI response as a message

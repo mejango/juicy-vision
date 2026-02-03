@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useMemo } from 'react'
 import { useAccount, useWalletClient } from 'wagmi'
-import { encodeFunctionData, createPublicClient, http, type PublicClient } from 'viem'
+import { encodeFunctionData, createPublicClient, http, fallback, type PublicClient } from 'viem'
 import { useAuthStore } from '../../stores'
 import { useManagedWallet } from '../useManagedWallet'
 import { createPrepaidBundle, createBalanceBundle } from '../../services/relayr'
@@ -200,9 +200,10 @@ export function useOmnichainSetSplits(
             throw new Error(`No RPC endpoint configured for chain ${chain.chainId}`)
           }
 
+          // Use fallback transport with all RPCs to handle timeouts
           const publicClient = createPublicClient({
             chain: viemChain,
-            transport: http(rpcUrls[0]),
+            transport: fallback(rpcUrls.map(url => http(url))),
           }) as PublicClient
 
           const controller = await getProjectController(
