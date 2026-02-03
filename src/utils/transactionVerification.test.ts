@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import * as fc from 'fast-check'
 import {
   verifyPayParams,
   verifyCashOutParams,
@@ -963,6 +964,431 @@ describe('transactionVerification', () => {
       // Mutated in place
       expect(chainConfigs[0].overrides?.terminalConfigurations?.[0].terminal)
         .toBe('0x1ce40d201cdec791de05810d17aaf501be167422')
+    })
+  })
+
+  // ===========================================================================
+  // Property-Based Tests (fast-check)
+  // ===========================================================================
+
+  describe('property-based tests', () => {
+    // Custom arbitrary for hex strings (fast-check v4+ doesn't have hexaString)
+    const hexChars = '0123456789abcdef'
+    const hexCharArb = fc.constantFrom(...hexChars.split(''))
+    const hexStringArb = (length: number) =>
+      fc.array(hexCharArb, { minLength: length, maxLength: length }).map(chars => chars.join(''))
+    const hexStringRangeArb = (minLength: number, maxLength: number) =>
+      fc.integer({ min: minLength, max: maxLength }).chain(len =>
+        fc.array(hexCharArb, { minLength: len, maxLength: len }).map(chars => chars.join(''))
+      )
+
+    // Custom arbitraries for Ethereum addresses
+    const validAddressArb = hexStringArb(40).map(s => `0x${s}`)
+    const invalidAddressArb = fc.oneof(
+      hexStringRangeArb(0, 39).map(s => `0x${s}`), // Too short
+      hexStringRangeArb(41, 50).map(s => `0x${s}`), // Too long
+      fc.string().filter(s => !s.startsWith('0x')), // No 0x prefix
+    )
+
+    // Arbitrary for positive bigints (valid project IDs)
+    const positiveBigIntArb = fc.bigInt({ min: 1n, max: BigInt(Number.MAX_SAFE_INTEGER) })
+
+    // Arbitrary for valid ETH amounts (reasonable range)
+    const validAmountArb = fc.bigInt({
+      min: BigInt('1000000000000'), // 0.000001 ETH (1e12 wei)
+      max: BigInt('1000000000000000000000'), // 1000 ETH
+    })
+
+    describe('address validation properties', () => {
+      it('always rejects addresses shorter than 42 characters', () => {
+        fc.assert(
+          fc.property(
+            hexStringRangeArb(1, 39).map(s => `0x${s}`),
+            (address) => {
+              const result = verifyPayParams({
+                projectId: 1n,
+                token: NATIVE_TOKEN,
+                amount: BigInt('1000000000000000000'),
+                beneficiary: address,
+                minReturnedTokens: 0n,
+                memo: '',
+              })
+              return result.doubts.some(d =>
+                d.severity === 'critical' && d.field === 'beneficiary'
+              )
+            }
+          ),
+          { numRuns: 100 }
+        )
+      })
+
+      it('always accepts valid 40-character hex addresses', () => {
+        fc.assert(
+          fc.property(validAddressArb, (address) => {
+            const result = verifyPayParams({
+              projectId: 1n,
+              token: address,
+              amount: BigInt('1000000000000000000'),
+              beneficiary: address,
+              minReturnedTokens: 0n,
+              memo: '',
+            })
+            // Should not have critical address-related doubts (except zero address)
+            const nonZeroAddr = address.toLowerCase() !== '0x' + '0'.repeat(40)
+            if (nonZeroAddr) {
+              return !result.doubts.some(d =>
+                d.severity === 'critical' &&
+                (d.field === 'token' || d.field === 'beneficiary') &&
+                d.message.includes('format')
+              )
+            }
+            return true
+          }),
+          { numRuns: 100 }
+        )
+      })
+    })
+
+    describe('bigint amount boundaries', () => {
+      it('never overflows for amounts within reasonable range', () => {
+        fc.assert(
+          fc.property(validAmountArb, (amount) => {
+            const result = verifyPayParams({
+              projectId: 1n,
+              token: NATIVE_TOKEN,
+              amount,
+              beneficiary: '0x1234567890123456789012345678901234567890',
+              minReturnedTokens: 0n,
+              memo: '',
+            })
+            // Should not have overflow error for reasonable amounts
+            return !result.doubts.some(d =>
+              d.message === 'Amount exceeds maximum value'
+            )
+          }),
+          { numRuns: 100 }
+        )
+      })
+
+      it('detects amounts exceeding uint256', () => {
+        fc.assert(
+          fc.property(
+            fc.bigInt({ min: BigInt(2) ** BigInt(256), max: BigInt(2) ** BigInt(260) }),
+            (amount) => {
+              const result = verifyPayParams({
+                projectId: 1n,
+                token: NATIVE_TOKEN,
+                amount,
+                beneficiary: '0x1234567890123456789012345678901234567890',
+                minReturnedTokens: 0n,
+                memo: '',
+              })
+              return result.doubts.some(d =>
+                d.severity === 'critical' && d.message === 'Amount exceeds maximum value'
+              )
+            }
+          ),
+          { numRuns: 20 }
+        )
+      })
+
+      it('always warns for zero amounts', () => {
+        fc.assert(
+          fc.property(
+            positiveBigIntArb,
+            validAddressArb,
+            (projectId, address) => {
+              const result = verifyPayParams({
+                projectId,
+                token: NATIVE_TOKEN,
+                amount: 0n,
+                beneficiary: address,
+                minReturnedTokens: 0n,
+                memo: '',
+              })
+              return result.doubts.some(d =>
+                d.severity === 'warning' && d.message === 'Payment amount is zero'
+              )
+            }
+          ),
+          { numRuns: 50 }
+        )
+      })
+    })
+
+    describe('project ID validation', () => {
+      it('always accepts positive project IDs', () => {
+        fc.assert(
+          fc.property(positiveBigIntArb, (projectId) => {
+            const result = verifyPayParams({
+              projectId,
+              token: NATIVE_TOKEN,
+              amount: BigInt('1000000000000000000'),
+              beneficiary: '0x1234567890123456789012345678901234567890',
+              minReturnedTokens: 0n,
+              memo: '',
+            })
+            return !result.doubts.some(d =>
+              d.severity === 'critical' && d.field === 'projectId'
+            )
+          }),
+          { numRuns: 100 }
+        )
+      })
+
+      it('always rejects non-positive project IDs', () => {
+        fc.assert(
+          fc.property(
+            fc.bigInt({ min: BigInt(-1000), max: 0n }),
+            (projectId) => {
+              const result = verifyPayParams({
+                projectId,
+                token: NATIVE_TOKEN,
+                amount: BigInt('1000000000000000000'),
+                beneficiary: '0x1234567890123456789012345678901234567890',
+                minReturnedTokens: 0n,
+                memo: '',
+              })
+              return result.doubts.some(d =>
+                d.severity === 'critical' &&
+                d.field === 'projectId' &&
+                d.message === 'Invalid project ID'
+              )
+            }
+          ),
+          { numRuns: 50 }
+        )
+      })
+
+      it('accepts string and number project IDs consistently', () => {
+        fc.assert(
+          fc.property(
+            fc.integer({ min: 1, max: Number.MAX_SAFE_INTEGER }),
+            (projectId) => {
+              const params = {
+                token: NATIVE_TOKEN,
+                amount: BigInt('1000000000000000000'),
+                beneficiary: '0x1234567890123456789012345678901234567890',
+                minReturnedTokens: 0n,
+                memo: '',
+              }
+
+              const resultBigInt = verifyPayParams({ ...params, projectId: BigInt(projectId) })
+              const resultNumber = verifyPayParams({ ...params, projectId })
+              const resultString = verifyPayParams({ ...params, projectId: String(projectId) })
+
+              // All should have the same validity for projectId
+              const bigIntValid = !resultBigInt.doubts.some(d => d.field === 'projectId' && d.severity === 'critical')
+              const numberValid = !resultNumber.doubts.some(d => d.field === 'projectId' && d.severity === 'critical')
+              const stringValid = !resultString.doubts.some(d => d.field === 'projectId' && d.severity === 'critical')
+
+              return bigIntValid === numberValid && numberValid === stringValid
+            }
+          ),
+          { numRuns: 50 }
+        )
+      })
+    })
+
+    describe('autoCorrectAddress edge cases', () => {
+      // Known canonical addresses for testing
+      const knownAddresses = [
+        '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+        '0x1ce40d201cdec791de05810d17aaf501be167422',
+      ]
+
+      it('never modifies valid addresses', () => {
+        fc.assert(
+          fc.property(validAddressArb, (address) => {
+            const result = autoCorrectAddress(address)
+            // If address is already valid format and not close to a known address,
+            // it should not be corrected
+            if (/^0x[a-fA-F0-9]{40}$/.test(address)) {
+              // Can only be corrected if it's within edit distance of a known address
+              return result.wasCorrected === false || result.matchedContract !== undefined
+            }
+            return true
+          }),
+          { numRuns: 100 }
+        )
+      })
+
+      it('returns original address for completely different strings', () => {
+        fc.assert(
+          fc.property(
+            fc.string().filter(s => !s.startsWith('0x')),
+            (str) => {
+              const result = autoCorrectAddress(str)
+              return result.wasCorrected === false && result.address === str
+            }
+          ),
+          { numRuns: 50 }
+        )
+      })
+
+      it('Levenshtein corrections are within 3 edits', () => {
+        // For any corrected address, the edit distance should be <= 3
+        fc.assert(
+          fc.property(
+            fc.constantFrom(...knownAddresses),
+            fc.integer({ min: 0, max: 3 }),
+            fc.integer({ min: 2, max: 40 }),
+            (knownAddr, numDeletes, startPos) => {
+              // Create a hallucinated address by removing characters
+              let hallucinated = knownAddr
+              for (let i = 0; i < numDeletes && hallucinated.length > 2; i++) {
+                const pos = Math.min(startPos + i, hallucinated.length - 1)
+                hallucinated = hallucinated.slice(0, pos) + hallucinated.slice(pos + 1)
+              }
+
+              const result = autoCorrectAddress(hallucinated)
+
+              // If it was corrected, the corrected address should be known
+              if (result.wasCorrected) {
+                return knownAddresses.includes(result.address.toLowerCase())
+              }
+              // If not corrected, either it's already valid or too far from any known
+              return true
+            }
+          ),
+          { numRuns: 100 }
+        )
+      })
+    })
+
+    describe('verification result invariants', () => {
+      it('isValid is false iff there are critical doubts', () => {
+        fc.assert(
+          fc.property(
+            positiveBigIntArb,
+            fc.oneof(validAddressArb, invalidAddressArb),
+            validAmountArb,
+            (projectId, address, amount) => {
+              const result = verifyPayParams({
+                projectId,
+                token: NATIVE_TOKEN,
+                amount,
+                beneficiary: address,
+                minReturnedTokens: 0n,
+                memo: '',
+              })
+
+              const hasCriticalDoubts = result.doubts.some(d => d.severity === 'critical')
+              return result.isValid !== hasCriticalDoubts
+            }
+          ),
+          { numRuns: 100 }
+        )
+      })
+
+      it('verifiedParams always contains normalized values', () => {
+        fc.assert(
+          fc.property(
+            positiveBigIntArb,
+            validAmountArb,
+            (projectId, amount) => {
+              const result = verifyPayParams({
+                projectId,
+                token: NATIVE_TOKEN,
+                amount,
+                beneficiary: '0x1234567890123456789012345678901234567890',
+                minReturnedTokens: 0n,
+                memo: '',
+              })
+
+              // verifiedParams should always have string representations
+              return (
+                typeof result.verifiedParams.projectId === 'string' &&
+                typeof result.verifiedParams.amount === 'string'
+              )
+            }
+          ),
+          { numRuns: 50 }
+        )
+      })
+    })
+
+    describe('token deployment validation', () => {
+      it('accepts any non-empty name and symbol', () => {
+        fc.assert(
+          fc.property(
+            positiveBigIntArb,
+            fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+            fc.string({ minLength: 1, maxLength: 10 }).filter(s => s.trim().length > 0),
+            (projectId, name, symbol) => {
+              const result = verifyDeployERC20Params({
+                projectId,
+                name,
+                symbol,
+              })
+              return result.isValid
+            }
+          ),
+          { numRuns: 50 }
+        )
+      })
+
+      it('rejects empty or whitespace-only names', () => {
+        fc.assert(
+          fc.property(
+            positiveBigIntArb,
+            fc.constantFrom('', '   ', '\t', '\n'),
+            (projectId, name) => {
+              const result = verifyDeployERC20Params({
+                projectId,
+                name,
+                symbol: 'TEST',
+              })
+              return !result.isValid &&
+                result.doubts.some(d => d.field === 'name' && d.severity === 'critical')
+            }
+          ),
+          { numRuns: 20 }
+        )
+      })
+    })
+
+    describe('ruleset configuration validation', () => {
+      it('validates weight boundaries (uint112)', () => {
+        fc.assert(
+          fc.property(
+            positiveBigIntArb,
+            fc.bigInt({ min: BigInt(2) ** BigInt(112), max: BigInt(2) ** BigInt(120) }),
+            (projectId, weight) => {
+              const result = verifyQueueRulesetParams({
+                projectId,
+                rulesetConfigurations: [{ weight }],
+                memo: '',
+              })
+              return result.doubts.some(d =>
+                d.severity === 'critical' &&
+                d.message === 'Weight exceeds maximum value'
+              )
+            }
+          ),
+          { numRuns: 20 }
+        )
+      })
+
+      it('accepts weights within uint112 range', () => {
+        fc.assert(
+          fc.property(
+            positiveBigIntArb,
+            fc.bigInt({ min: 1n, max: BigInt(2) ** BigInt(112) - 1n }),
+            (projectId, weight) => {
+              const result = verifyQueueRulesetParams({
+                projectId,
+                rulesetConfigurations: [{ weight }],
+                memo: '',
+              })
+              return !result.doubts.some(d =>
+                d.message === 'Weight exceeds maximum value'
+              )
+            }
+          ),
+          { numRuns: 50 }
+        )
+      })
     })
   })
 })

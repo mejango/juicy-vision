@@ -61,6 +61,14 @@ vi.mock('../../hooks/relayr', () => ({
     createdProjectIds: {},
     reset: vi.fn(),
   }),
+  useOmnichainSetUri: () => ({
+    setUri: vi.fn(),
+    bundleState: { status: 'idle', chainStates: [], error: null },
+    isSettingUri: false,
+    isComplete: false,
+    hasError: false,
+    reset: vi.fn(),
+  }),
 }))
 
 describe('TransactionPreview', () => {

@@ -94,6 +94,11 @@ export interface ParticipantInfo {
 // Token Budget Configuration
 // ============================================================================
 
+// Safety margin multiplier to account for "4 chars per token" approximation errors
+// The estimateTokens() function uses a rough 4:1 char-to-token ratio, which can be off
+// by up to 20% depending on content. Applying 0.8x gives us a safety buffer.
+const TOKEN_SAFETY_MARGIN = 0.8;
+
 export const TOKEN_BUDGET = {
   // Total context budget (conservative to leave room for response)
   total: 50000,
@@ -103,12 +108,12 @@ export const TOKEN_BUDGET = {
   userContext: 1000,
   participantContext: 500,
 
-  // Variable allocations
-  attachmentSummaries: 3000,
-  summaries: 10000,
+  // Variable allocations (with safety margin for approximation errors)
+  attachmentSummaries: Math.floor(3000 * TOKEN_SAFETY_MARGIN), // ~2400
+  summaries: Math.floor(10000 * TOKEN_SAFETY_MARGIN), // ~8000
 
   // Remainder goes to recent messages
-  // recentMessages = total - fixed - variable = ~33500
+  // recentMessages = total - fixed - variable = ~35600 (more headroom after safety margin)
 };
 
 // ============================================================================
@@ -200,13 +205,13 @@ export async function detectIntentsWithContext(
     }
   }
 
-  // 4. Fallback: if nothing detected and conversation is short, include transaction
-  // (most users are here to create/manage projects)
+  // 4. Fallback: if nothing detected and conversation is short, include data query
+  // Most users start by exploring projects before creating/transacting
   if (!needsDataQuery && !needsHookDeveloper && !needsTransaction) {
     if (messages.length <= 4) {
-      // New conversation - include transaction context by default
-      needsTransaction = true;
-      reasons.push('new conversation default');
+      // New conversation - include data query context by default (users typically explore first)
+      needsDataQuery = true;
+      reasons.push('new conversation default (exploration)');
     }
   }
 
@@ -241,10 +246,10 @@ export function detectIntents(messages: ChatMessage[]): DetectedIntents {
   if (needsHookDeveloper) reasons.push('keywords: hook developer');
   if (needsTransaction) reasons.push('keywords: transaction');
 
-  // Default: include transaction for new conversations
+  // Default: include data query for new conversations (users typically explore first)
   if (!needsDataQuery && !needsHookDeveloper && !needsTransaction && messages.length <= 4) {
-    needsTransaction = true;
-    reasons.push('new conversation default');
+    needsDataQuery = true;
+    reasons.push('new conversation default (exploration)');
   }
 
   return { needsDataQuery, needsHookDeveloper, needsTransaction, reasons };

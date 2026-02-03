@@ -1,5 +1,37 @@
 # Development Guide
 
+## Prerequisites
+
+### Deno (for backend)
+
+The backend runs on [Deno](https://deno.com/), a secure TypeScript runtime. Install it:
+
+```bash
+# macOS/Linux
+curl -fsSL https://deno.land/install.sh | sh
+
+# or via Homebrew (macOS)
+brew install deno
+
+# Windows (PowerShell)
+irm https://deno.land/install.ps1 | iex
+```
+
+Verify installation:
+```bash
+deno --version
+# deno 2.x.x
+```
+
+### Node.js (for frontend)
+
+Node.js 18+ is required for the frontend:
+```bash
+# Check version
+node --version
+# v18.x.x or higher
+```
+
 ## Quick Start
 
 ```bash
@@ -11,10 +43,14 @@ docker run -d --name juicyvision-db \
   -p 5432:5432 \
   postgres:16-alpine
 
-# 2. Start backend (in backend/ directory)
+# 2. Configure backend environment
+cp backend/.env.example backend/.env
+# Edit backend/.env with your API keys
+
+# 3. Start backend (in backend/ directory)
 cd backend && deno task dev
 
-# 3. Start frontend (in project root)
+# 4. Start frontend (in project root)
 npm run dev
 ```
 
@@ -88,12 +124,91 @@ cd backend && deno task dev
 
 ## Environment Variables
 
-Backend configuration is in `backend/.env`:
+Backend configuration is in `backend/.env`. Create it from the example and fill in your values.
+
+### Required Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://juicy:juicy123@localhost:5432/juicyvision` |
+| `ANTHROPIC_API_KEY` | Claude API key for AI features | `sk-ant-api03-...` |
+
+### Optional Variables
+
+#### Server Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3001` | Backend server port |
+| `DENO_ENV` | `development` | Environment (`development` or `production`) |
+| `TESTNET_MODE` | `false` | Use testnet chains instead of mainnet |
+
+#### Authentication & Security
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JWT_SECRET` | `dev-secret-*` | Secret for signing JWT tokens. **Must change in production** |
+| `SESSION_DURATION_MS` | `604800000` (7 days) | JWT session expiry in milliseconds |
+| `ENCRYPTION_MASTER_KEY` | `dev-encryption-*` | Key for encrypting keypairs. **Must differ from JWT_SECRET** |
+| `CRON_SECRET` | `dev-cron-secret` | Secret for authenticating cron job requests |
+
+#### AI Provider
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AI_PROVIDER` | `anthropic` | AI provider (`anthropic` or `moonshot`) |
+| `MOONSHOT_API_KEY` | - | Kimi/Moonshot API key (if using moonshot provider) |
+| `MOONSHOT_MODEL` | `moonshot-v1-32k` | Moonshot model to use |
+
+#### Blockchain & External APIs
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RESERVES_PRIVATE_KEY` | - | Private key for reserves wallet (hex with 0x prefix) |
+| `BENDYSTRAW_API_KEY` | - | API key for Bendystraw GraphQL proxy |
+| `THEGRAPH_API_KEY` | - | The Graph API key for subgraph queries |
+| `ANKR_API_KEY` | - | Ankr API key for RPC endpoints |
+
+#### IPFS (Pinata)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IPFS_API_URL` | `https://api.pinata.cloud` | Pinata API URL |
+| `IPFS_API_KEY` | - | Pinata API key |
+| `IPFS_API_SECRET` | - | Pinata API secret |
+
+#### Stripe Payments
+
+| Variable | Description |
+|----------|-------------|
+| `STRIPE_SECRET_KEY` | Stripe secret API key |
+| `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
+
+#### Passkey/WebAuthn
+
+| Variable | Description |
+|----------|-------------|
+| `PASSKEY_RP_ID` | Relying party ID (usually your domain) |
+| `PASSKEY_ORIGIN` | Expected origin for WebAuthn (e.g., `https://yourdomain.com`) |
+
+#### Development Features
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FORGE_DOCKER_ENABLED` | `false` | Enable Foundry Docker for hook compilation |
+| `SEMGREP_ENABLED` | `false` | Enable Semgrep security scanning |
+
+### Minimal Development Setup
+
+For basic local development, only these are required:
 
 ```env
 DATABASE_URL=postgresql://juicy:juicy123@localhost:5432/juicyvision
 ANTHROPIC_API_KEY=your-key-here
 ```
+
+All other variables have sensible defaults for development. **Never use the dev defaults in production.**
 
 ## Production Safety
 

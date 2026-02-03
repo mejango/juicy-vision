@@ -1,5 +1,11 @@
 # Security Policy
 
+## Security Reviews
+
+For findings from our security audits, see [SECURITY_FINDINGS.md](./SECURITY_FINDINGS.md).
+
+For the complete security architecture including authentication modes, key management, and transaction signing, see the [Architecture document](./ARCHITECTURE.md#security-considerations).
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability in this project, please report it responsibly:

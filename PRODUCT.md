@@ -87,14 +87,19 @@ Juicy Vision supports four distinct privacy modes for different user needs:
 - centralized gas accounting: track per-user gas costs alongside AI token usage, single balance to monitor/replenish instead of per-chain reserves
 
 ## Data Features
+
+### Implemented
 - user context profiles track jargon familiarity level (beginner/intermediate/advanced), familiar terms, and timestamped observations
-- conversations are analyzed to generate prompt improvement suggestions, prioritized by severity (critical/high/medium/low)
-- weekly automated training pipeline (GitHub Actions, Sundays at midnight UTC) processes conversation data
-- pipeline outputs: training reports, prompt patches (additions/modifications), and few-shot examples
-- applied suggestions are tracked with effectiveness scores (0.00-1.00) for feedback loops
-- critical findings automatically create GitHub issues for human review
-- training artifacts retained for 90 days
-- all data used to refine system prompts, improve response quality, and expand few-shot example coverage
+- training pipeline scripts (`backend/scripts/training/`) that export conversations, analyze patterns, and generate optimization outputs
+- pipeline outputs include: training reports, prompt patches (additions/modifications), and few-shot examples
+- training run tracking in database (`training_runs` table)
+
+### Planned
+- weekly automated training pipeline via GitHub Actions (Sundays at midnight UTC)
+- effectiveness scores (0.00-1.00) for applied suggestions with feedback loops
+- automatic GitHub issue creation for critical findings
+- 90-day artifact retention policy
+- severity prioritization (critical/high/medium/low) for prompt improvement suggestions
 
 ## Environment Features
 - Docker Compose for local dev (PostgreSQL 16, backend on port 3001)

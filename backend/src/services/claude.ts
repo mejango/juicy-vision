@@ -158,8 +158,9 @@ async function getBuildEnhancedSystemPrompt() {
 
 /**
  * Build the full system prompt including omnichain context (sync version for backward compat)
+ * @deprecated Use buildEnhancedPrompt() for modular prompt loading and context management
  */
-function buildSystemPrompt(customSystem?: string, includeOmnichain = true): string {
+function buildSystemPromptSync(customSystem?: string, includeOmnichain = true): string {
   const parts: string[] = [];
 
   // Start with default or custom system
@@ -262,7 +263,8 @@ export async function sendMessage(
   const includeOmnichain = request.includeOmnichainContext !== false;
 
   // Build system prompt with omnichain knowledge
-  const systemPrompt = buildSystemPrompt(request.system, includeOmnichain);
+  // Note: For better token efficiency, prefer using buildEnhancedPrompt() with messages for intent detection
+  const systemPrompt = buildSystemPromptSync(request.system, includeOmnichain);
 
   // Get all tools including omnichain tools
   const allTools = includeOmnichain
@@ -380,7 +382,8 @@ export async function* streamMessage(
   const includeOmnichain = request.includeOmnichainContext !== false;
 
   // Build system prompt with omnichain knowledge
-  const systemPrompt = buildSystemPrompt(request.system, includeOmnichain);
+  // Note: For better token efficiency, prefer using buildEnhancedPrompt() with messages for intent detection
+  const systemPrompt = buildSystemPromptSync(request.system, includeOmnichain);
 
   // Get all tools including omnichain tools
   const allTools = includeOmnichain
