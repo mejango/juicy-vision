@@ -2145,7 +2145,6 @@ export default function TransactionPreview({
         isDark ? 'border-white/10' : 'border-gray-200'
       }`}>
         <div className="flex items-center gap-2">
-          <span className="text-xl">{actionIcon}</span>
           <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
             Review for deployment
           </span>
