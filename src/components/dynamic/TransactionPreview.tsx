@@ -9,6 +9,37 @@ import { getWalletSession } from '../../services/siwe'
 import { useOmnichainLaunchProject } from '../../hooks/relayr'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { decodeEncodedIPFSUri, encodeIpfsUri } from '../../utils/ipfs'
+
+/**
+ * Create a stable deployment key from component parameters.
+ * This key is content-based and won't change on page reload,
+ * unlike messageId which can differ between localStorage and server.
+ */
+function createStableDeploymentKey(
+  action: string,
+  parameters: string,
+  chatId?: string
+): string {
+  // Extract projectUri from parameters - this uniquely identifies the deployment
+  let projectUri = ''
+  try {
+    const params = JSON.parse(parameters)
+    projectUri = params.projectUri || ''
+  } catch {
+    // Use full parameters as fallback
+    projectUri = parameters
+  }
+
+  // Create a simple hash from the key components
+  const input = `${chatId || 'nochat'}:${action}:${projectUri}`
+  let hash = 0
+  for (let i = 0; i < input.length; i++) {
+    const char = input.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // Convert to 32bit integer
+  }
+  return `deploy-${Math.abs(hash).toString(36)}`
+}
 import {
   verifyLaunchProjectParams,
   autoCorrectTerminalConfigurations,
@@ -1364,12 +1395,41 @@ export default function TransactionPreview({
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
+  // Create a STABLE deployment key from component content (not messageId which can change on reload)
+  const stableDeploymentKey = useMemo(
+    () => createStableDeploymentKey(action, parameters),
+    [action, parameters]
+  )
+
   // Server-side persisted state for this component
   const {
     state: persistedState,
     isLoading: persistedStateLoading,
     setState: setPersistedState,
   } = useTransactionPreviewState(messageId)
+
+  // Local storage keys for follow-up message tracking (more reliable than server state)
+  const followUpStorageKey = `juicy-vision:followup:${stableDeploymentKey}`
+
+  // Get follow-up flags from localStorage (survives reload reliably)
+  const getFollowUpFlags = useCallback(() => {
+    try {
+      const stored = localStorage.getItem(followUpStorageKey)
+      return stored ? JSON.parse(stored) : {}
+    } catch {
+      return {}
+    }
+  }, [followUpStorageKey])
+
+  // Save follow-up flags to localStorage
+  const setFollowUpFlag = useCallback((flag: string) => {
+    try {
+      const current = getFollowUpFlags()
+      localStorage.setItem(followUpStorageKey, JSON.stringify({ ...current, [flag]: true }))
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [followUpStorageKey, getFollowUpFlags])
 
   // Auth state for managed wallet users - use isManagedMode from hook for consistent state
   const {
@@ -1423,6 +1483,7 @@ export default function TransactionPreview({
   }, [effectiveUserAddress])
 
   // Omnichain launch hook - only used for launchProject action
+  // Uses stableDeploymentKey (content-based) instead of messageId (which can change on reload)
   const {
     launch,
     bundleState,
@@ -1435,7 +1496,7 @@ export default function TransactionPreview({
     persistedTxHashes,
     reset: resetLaunch,
   } = useOmnichainLaunchProject({
-    deploymentKey: messageId,
+    deploymentKey: stableDeploymentKey,
     onError: (error) => {
       console.error('Launch failed:', error)
     },
@@ -1463,10 +1524,10 @@ export default function TransactionPreview({
     if (action !== 'launchProject' && action !== 'launch721Project') return
     if (!isComplete) return
     if (hasTriggeredLoadingRef.current) return
-    if (persistedStateLoading) return // Wait for server state to load first
 
-    // Check PERSISTED state for whether we already sent this message (survives reload)
-    if (persistedState?.hasShownLoadingMessage) {
+    // Check localStorage for whether we already sent this message (survives reload reliably)
+    const followUpFlags = getFollowUpFlags()
+    if (followUpFlags.hasShownLoadingMessage) {
       hasTriggeredLoadingRef.current = true
       return
     }
@@ -1483,7 +1544,10 @@ export default function TransactionPreview({
         }
       }))
 
-      // Mark as sent in persisted state (survives reload)
+      // Mark as sent in localStorage (survives reload reliably)
+      setFollowUpFlag('hasShownLoadingMessage')
+
+      // Also update server state for backup
       if (messageId) {
         setPersistedState({
           ...persistedState,
@@ -1492,17 +1556,17 @@ export default function TransactionPreview({
         })
       }
     }, 500)
-  }, [action, isComplete, persistedState, persistedStateLoading, messageId, setPersistedState])
+  }, [action, isComplete, getFollowUpFlags, setFollowUpFlag, messageId, setPersistedState, persistedState])
 
   // Phase 2: Show project card once IDs are extracted
   useEffect(() => {
     if (action !== 'launchProject' && action !== 'launch721Project') return
     if (!isComplete || Object.keys(createdProjectIds).length === 0) return
     if (hasTriggeredFollowUpRef.current) return
-    if (persistedStateLoading) return // Wait for server state to load first
 
-    // Check PERSISTED state for whether we already sent this message (survives reload)
-    if (persistedState?.hasShownProjectCard) {
+    // Check localStorage for whether we already sent this message (survives reload reliably)
+    const followUpFlags = getFollowUpFlags()
+    if (followUpFlags.hasShownProjectCard) {
       hasTriggeredFollowUpRef.current = true
       return
     }
@@ -1547,8 +1611,10 @@ export default function TransactionPreview({
         }
       }))
 
-      // Mark as sent in persisted state (survives reload)
-      // This is the FINAL save - include projectIds and mark as completed
+      // Mark as sent in localStorage (survives reload reliably)
+      setFollowUpFlag('hasShownProjectCard')
+
+      // Also update server state for backup
       if (messageId) {
         const txHashes: Record<number, string> = {}
         bundleState.chainStates?.forEach(cs => {
@@ -1566,7 +1632,7 @@ export default function TransactionPreview({
         })
       }
     }, 1000)
-  }, [action, isComplete, createdProjectIds, persistedState, persistedStateLoading, messageId, setPersistedState, bundleState, persistedTxHashes])
+  }, [action, isComplete, createdProjectIds, getFollowUpFlags, setFollowUpFlag, messageId, setPersistedState, bundleState, persistedTxHashes])
 
   // Derived state: use persisted state if available, otherwise use hook state
   // IMPORTANT: persistedState is the source of truth after page reload
