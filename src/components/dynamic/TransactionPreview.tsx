@@ -2324,8 +2324,8 @@ export default function TransactionPreview({
 
     const raw = effectivePreviewData.raw
 
-    // Get the new URI
-    const uri = (raw.uri as string) || (raw.projectUri as string) || ''
+    // Get the new URI (tokenUri is the Solidity parameter name)
+    const uri = (raw.uri as string) || (raw.projectUri as string) || (raw.tokenUri as string) || ''
 
     // Get project ID - required
     const rawProjectId = raw.projectId
