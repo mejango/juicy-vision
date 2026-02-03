@@ -1456,10 +1456,10 @@ export default function TransactionPreview({
     if (action !== 'launchProject' && action !== 'launch721Project') return
     if (!isComplete || hasTriggeredLoadingRef.current) return
 
-    // Wait until we know if this was already completed on page load
-    // null = still loading, true = was completed (skip), false = fresh deployment (proceed)
-    if (wasAlreadyCompletedOnLoad === null) return
-    if (wasAlreadyCompletedOnLoad) {
+    // Skip if server state shows already completed (page refresh scenario)
+    // Check both: initial load state AND current persisted state
+    if (persistedStateLoading) return // Still loading, wait
+    if (wasAlreadyCompletedOnLoad || persistedState?.status === 'completed') {
       hasTriggeredLoadingRef.current = true
       return
     }
@@ -1474,7 +1474,7 @@ export default function TransactionPreview({
         }
       }))
     }, 500)
-  }, [action, isComplete, wasAlreadyCompletedOnLoad])
+  }, [action, isComplete, wasAlreadyCompletedOnLoad, persistedState?.status, persistedStateLoading])
 
   // Phase 2: Show project card once IDs are extracted
   useEffect(() => {
@@ -1482,9 +1482,9 @@ export default function TransactionPreview({
     if (!isComplete || Object.keys(createdProjectIds).length === 0) return
     if (hasTriggeredFollowUpRef.current) return
 
-    // Wait until we know if this was already completed on page load
-    if (wasAlreadyCompletedOnLoad === null) return
-    if (wasAlreadyCompletedOnLoad) {
+    // Skip if server state shows already completed (page refresh scenario)
+    if (persistedStateLoading) return // Still loading, wait
+    if (wasAlreadyCompletedOnLoad || persistedState?.status === 'completed') {
       hasTriggeredFollowUpRef.current = true
       return
     }
@@ -1531,7 +1531,7 @@ export default function TransactionPreview({
         }
       }))
     }, 1000)
-  }, [action, isComplete, createdProjectIds, wasAlreadyCompletedOnLoad])
+  }, [action, isComplete, createdProjectIds, wasAlreadyCompletedOnLoad, persistedState?.status, persistedStateLoading])
 
   // Save completed state to server when transaction finishes
   // This persists the state so all chat participants see the resolved component
