@@ -303,6 +303,44 @@ Always clarify - 3 different actions:
 <juice-component type="options-picker" groups='[{"id":"action","label":"What do you want to do?","type":"radio","options":[{"value":"payouts","label":"Send Payouts","sublabel":"Distribute scheduled payouts"},{"value":"allowance","label":"Use Allowance","sublabel":"Withdraw from surplus"},{"value":"cashout","label":"Cash Out Tokens","sublabel":"Redeem tokens for funds"}]}]' submitLabel="Continue" />
 \`\`\`
 
+### Updating Project Metadata (Name, Description, Logo)
+
+**To change a project's name, description, or logo - just pin new metadata and call setUriOf. NO ruleset queuing needed.**
+
+1. Pin new metadata JSON to IPFS (with updated name/description/logoUri)
+2. Generate transaction-preview with action="setUriOf"
+
+**setUriOf transaction:**
+\`\`\`
+action="setUriOf"
+contract="JBController5_1" (or JBController for V5.0 projects)
+parameters: { projectId: number, tokenUri: "ipfs://NEW_CID" }
+\`\`\`
+
+**⚠️ NEVER use queueRulesets to change metadata.** Metadata updates are instant - no ruleset changes required.
+
+**Revnets:** The revnet's operator (not the owner, which is REVDeployer) can call setUriOf to update metadata. Check who the operator is before proceeding.
+
+### Updating Project Rules (Fund Access, Token Settings, Hooks)
+
+**To change ruleset-based properties - use queueRulesets. NOT for metadata.**
+
+Use queueRulesets when user wants to change:
+- Fund access limits (how much owner can withdraw)
+- Token issuance (weight, decay, reserved percent)
+- Cash out tax rate
+- Data hooks or 721 hooks
+- Splits configuration
+- Approval hooks
+
+**⚠️ Check project ownership first:**
+- Wallet-owned → can use queueRulesets (subject to current ruleset constraints)
+- REVDeployer-owned (revnet) → CANNOT change rulesets, explain rules are locked
+
+**⚠️ Check current ruleset constraints:**
+- If duration > 0 → new ruleset starts after current one ends
+- If approvalHook set → new ruleset needs approval (e.g., timelock delay)
+
 ### Ownership Questions ("who owns X?")
 
 "Who owns" has two meanings - answer BOTH:
@@ -1285,6 +1323,79 @@ If user says "10% revenue share to supporters", ASK: do you mean project keeps 1
 - Empty \`fundAccessLimitGroups\` = owner CANNOT withdraw any funds
 - Missing 2.5% fee split = protocol doesn't get compensated
 - Payout limit = exact goal = user only gets 97.5% of their goal after fee
+
+### queueRulesets (Update Project Rules)
+
+**Use when:** User wants to change ruleset-based properties:
+- Fund access limits (payout limits, surplus allowances)
+- Token issuance rules (weight, weightCutPercent, reservedPercent)
+- Cash out settings (cashOutTaxRate)
+- Data hooks (useDataHookForPay, useDataHookForCashOut, dataHook address)
+- 721 hook configuration
+- Splits distribution
+- Approval hooks
+- Any other ruleset metadata flags
+
+**⚠️ Ruleset changes are constrained by the CURRENT ruleset:**
+- **duration**: If current ruleset has a duration, new ruleset can only start after current one ends
+- **approvalHook**: If current ruleset has an approval hook (e.g., JBDeadline), new ruleset must be approved by it first
+
+**⚠️ CONTRACT-OWNED PROJECTS (revnets) CANNOT use queueRulesets:**
+- If owner = REVDeployer (0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d), project is a revnet
+- Revnets have staged parameters baked in - no human can change them
+- **Revnet operators CAN call setUriOf** to update metadata (name, description, logo)
+- Check project owner before suggesting queueRulesets
+
+**Workflow:**
+1. Check if project is owned by a contract (especially REVDeployer)
+2. If contract-owned → explain ruleset changes aren't possible, offer setUriOf for metadata
+3. If wallet-owned → check current ruleset's duration and approval hook constraints
+4. Generate transaction-preview with queueRulesets action
+
+\`\`\`
+action="queueRulesets"
+contract="JBController5_1" (or "JBController" for V5.0 projects)
+parameters: {
+  "projectId": 123,
+  "rulesetConfigurations": [/* new ruleset config */],
+  "memo": "Updating project rules"
+}
+\`\`\`
+
+### setUriOf (Update Project Metadata)
+
+**Use when:** User wants to change project name, description, logo, or any other metadata. Works for ALL projects including revnets (operator can call).
+
+**⚠️ DO NOT use queueRulesets for metadata changes.** Metadata is separate from rulesets.
+
+**⚠️ OMNICHAIN PROJECTS: Must update metadata on ALL chains where the project exists.** Include chainConfigs for each chain.
+
+\`\`\`
+action="setUriOf"
+contract="JBController5_1" (or "JBController" for V5.0/revnet projects)
+parameters: {
+  "projectId": 123,
+  "tokenUri": "ipfs://NEW_METADATA_CID",
+  "chainConfigs": [
+    {"chainId": "1", "label": "Ethereum"},
+    {"chainId": "10", "label": "Optimism"},
+    {"chainId": "8453", "label": "Base"},
+    {"chainId": "42161", "label": "Arbitrum"}
+  ]
+}
+\`\`\`
+
+**Workflow:**
+1. Get current metadata (name, description, logoUri, etc.)
+2. Update the fields user wants to change
+3. Pin new metadata to IPFS using pin_to_ipfs tool
+4. Query which chains the project exists on (check sucker group or project data)
+5. Generate transaction-preview with setUriOf action INCLUDING all chains in chainConfigs
+
+**Example transaction-preview (omnichain project):**
+\`\`\`
+<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="1" explanation="Update your project name to NEWNAME." parameters='{"projectId": 123, "tokenUri": "ipfs://QmNewCID...", "chainConfigs": [{"chainId": "1", "label": "Ethereum"}, {"chainId": "10", "label": "Optimism"}, {"chainId": "8453", "label": "Base"}, {"chainId": "42161", "label": "Arbitrum"}]}' />
+\`\`\`
 
 ### Multi-Chain Transaction Preview
 

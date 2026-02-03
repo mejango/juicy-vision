@@ -2672,60 +2672,60 @@ export default function TransactionPreview({
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           {/* Success state with shareable links */}
           {effectiveIsComplete && Object.keys(effectiveProjectIds).length > 0 && (
-            <div className="space-y-4">
-              <div className={`-mx-4 px-4 py-3 text-center border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
-                <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Project Created!
-                </p>
-              </div>
+            <div className="space-y-3">
+              {/* Shareable links */}
+              {Object.entries(effectiveProjectIds)
+                .filter(([, projectId]) => projectId && projectId > 0)
+                .map(([chainIdStr, projectIdNum], index) => {
+                  const chainData = CHAINS[Number(chainIdStr)]
+                  const projectUrl = `juicy.vision/${chainData?.slug || 'eth'}:${projectIdNum}`
+                  const fullUrl = `https://${projectUrl}`
+                  const isCopied = copiedLink === projectUrl
 
-              {/* Shareable links - show primary chain's link prominently */}
-              <div className="space-y-2">
-                {Object.entries(effectiveProjectIds)
-                  .filter(([, projectId]) => projectId && projectId > 0)
-                  .map(([chainIdStr, projectIdNum], index) => {
-                    const chainData = CHAINS[Number(chainIdStr)]
-                    const projectUrl = `juicy.vision/${chainData?.slug || 'eth'}:${projectIdNum}`
-                    const fullUrl = `https://${projectUrl}`
-                    const isCopied = copiedLink === projectUrl
-
-                    return (
-                      <button
-                        key={chainIdStr}
-                        onClick={() => {
-                          navigator.clipboard.writeText(fullUrl)
-                          setCopiedLink(projectUrl)
-                          setTimeout(() => setCopiedLink(null), 2000)
-                        }}
-                        className={`w-full p-3 flex items-center justify-between transition-colors ${
-                          index === 0
-                            ? isDark
-                              ? 'bg-juice-cyan/20 hover:bg-juice-cyan/30 border border-juice-cyan/30'
-                              : 'bg-cyan-50 hover:bg-cyan-100 border border-cyan-200'
-                            : isDark
-                              ? 'bg-white/5 hover:bg-white/10'
-                              : 'bg-gray-50 hover:bg-gray-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: chainData?.color || '#888' }}
-                          />
-                          <span className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                            {projectUrl}
-                          </span>
-                        </div>
-                        <span className={`text-xs font-medium ${
-                          isCopied
-                            ? 'text-green-500'
-                            : isDark ? 'text-gray-400' : 'text-gray-500'
-                        }`}>
-                          {isCopied ? '✓ Copied!' : 'Copy'}
+                  return (
+                    <button
+                      key={chainIdStr}
+                      onClick={() => {
+                        navigator.clipboard.writeText(fullUrl)
+                        setCopiedLink(projectUrl)
+                        setTimeout(() => setCopiedLink(null), 2000)
+                      }}
+                      className={`w-full p-3 flex items-center justify-between transition-colors ${
+                        index === 0
+                          ? isDark
+                            ? 'bg-juice-cyan/20 hover:bg-juice-cyan/30 border border-juice-cyan/30'
+                            : 'bg-cyan-50 hover:bg-cyan-100 border border-cyan-200'
+                          : isDark
+                            ? 'bg-white/5 hover:bg-white/10'
+                            : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: chainData?.color || '#888' }}
+                        />
+                        <span className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                          {projectUrl}
                         </span>
-                      </button>
-                    )
-                  })}
+                      </div>
+                      <span className={`text-xs font-medium ${
+                        isCopied
+                          ? 'text-green-500'
+                          : isDark ? 'text-gray-400' : 'text-gray-500'
+                      }`}>
+                        {isCopied ? '✓ Copied!' : 'Copy'}
+                      </span>
+                    </button>
+                  )
+                })}
+
+              {/* Deployed indicator */}
+              <div className={`flex items-center justify-center gap-2 py-2 ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-sm font-medium">Deployed</span>
               </div>
             </div>
           )}
