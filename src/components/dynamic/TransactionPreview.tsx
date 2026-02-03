@@ -2578,7 +2578,7 @@ export default function TransactionPreview({
             >
               <span className="flex items-center gap-2">
                 <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                Launching...
+                Launching (~1 min)...
               </span>
             </button>
           ) : (
