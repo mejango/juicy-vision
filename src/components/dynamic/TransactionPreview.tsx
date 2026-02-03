@@ -2100,6 +2100,13 @@ export default function TransactionPreview({
       rulesetConfigurations,
       terminalConfigurations,
       memo,
+      chainConfigs: parsedChainConfigs.length > 0
+        ? parsedChainConfigs.map(cfg => ({
+            chainId: Number(cfg.chainId),
+            label: cfg.label,
+            overrides: cfg.overrides,
+          }))
+        : undefined,
     })
 
     // Check if the only issue is missing owner (user not signed in)

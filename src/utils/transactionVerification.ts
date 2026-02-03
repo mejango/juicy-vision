@@ -591,6 +591,13 @@ export function verifyLaunchProjectParams(params: {
   rulesetConfigurations: Array<unknown>
   terminalConfigurations: Array<unknown>
   memo: string
+  chainConfigs?: Array<{
+    chainId: number
+    label?: string
+    overrides?: {
+      terminalConfigurations?: Array<unknown>
+    }
+  }>
 }): VerificationResult {
   const doubts: TransactionDoubt[] = []
   const warnings: string[] = []
@@ -738,6 +745,44 @@ export function verifyLaunchProjectParams(params: {
         `this may cause simulation failures if the terminal requires accounting contexts`
       )
     }
+  }
+
+  // Validate chainConfigs (per-chain terminal overrides)
+  if (params.chainConfigs && params.chainConfigs.length > 0) {
+    params.chainConfigs.forEach((chainConfig, ccIdx) => {
+      const chainLabel = chainConfig.label || `Chain ${chainConfig.chainId}`
+
+      // Validate terminal configurations in the override
+      const overrideTerminals = chainConfig.overrides?.terminalConfigurations as Array<{ terminal?: string; accountingContextsToAccept?: unknown[] }> | undefined
+      if (overrideTerminals) {
+        overrideTerminals.forEach((tc, tcIdx) => {
+          // Validate terminal address format
+          if (tc.terminal && !isValidAddress(tc.terminal)) {
+            doubts.push({
+              severity: 'critical',
+              field: `chainConfigs[${ccIdx}] (${chainLabel}).terminalConfigurations[${tcIdx}].terminal`,
+              message: `Invalid terminal address on ${chainLabel}: "${tc.terminal}"`,
+              technicalNote: 'Terminal address must be a valid 40-character hex address (42 with 0x prefix). This appears to be a hallucinated or corrupted address.',
+            })
+          }
+
+          // Validate token addresses in accounting contexts
+          if (tc.accountingContextsToAccept) {
+            const contexts = tc.accountingContextsToAccept as Array<{ token?: string }>
+            contexts.forEach((ctx, ctxIdx) => {
+              if (ctx.token && !isValidAddress(ctx.token)) {
+                doubts.push({
+                  severity: 'critical',
+                  field: `chainConfigs[${ccIdx}] (${chainLabel}).terminalConfigurations[${tcIdx}].accountingContextsToAccept[${ctxIdx}].token`,
+                  message: `Invalid token address on ${chainLabel}: "${ctx.token}"`,
+                  technicalNote: 'Token address must be a valid 40-character hex address (42 with 0x prefix)',
+                })
+              }
+            })
+          }
+        })
+      }
+    })
   }
 
   const verifiedParams: Record<string, unknown> = {
