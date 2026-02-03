@@ -1457,7 +1457,7 @@ export default function TransactionPreview({
     if (!isComplete || Object.keys(createdProjectIds).length === 0) return
     if (hasTriggeredFollowUpRef.current) return
 
-    // Get the primary project (first chain) - must have non-zero ID
+    // Get valid project entries - must have non-zero ID
     const entries = Object.entries(createdProjectIds).filter(([, pid]) => pid && pid > 0)
     if (entries.length === 0) {
       console.log('[TransactionPreview] No valid project IDs found yet, waiting for receipt extraction')
@@ -1467,8 +1467,37 @@ export default function TransactionPreview({
     // Mark as triggered only after we have valid project IDs
     hasTriggeredFollowUpRef.current = true
 
-    const [primaryChainId, primaryProjectId] = entries[0]
+    // Chain priority: Sepolia/Ethereum first, then Arb, then Base, then OP
+    // Testnets: 11155111 (Sepolia), 421614 (Arb Sep), 84532 (Base Sep), 11155420 (OP Sep)
+    // Mainnets: 1 (Ethereum), 42161 (Arbitrum), 8453 (Base), 10 (Optimism)
+    const chainPriority: Record<number, number> = {
+      // Mainnets
+      1: 1,      // Ethereum - highest priority
+      42161: 2,  // Arbitrum
+      8453: 3,   // Base
+      10: 4,     // Optimism
+      // Testnets
+      11155111: 1,  // Sepolia - highest priority
+      421614: 2,    // Arb Sepolia
+      84532: 3,     // Base Sepolia
+      11155420: 4,  // OP Sepolia
+    }
+
+    // Sort by chain priority (lowest number = highest priority)
+    const sortedEntries = entries.sort(([chainIdA], [chainIdB]) => {
+      const priorityA = chainPriority[Number(chainIdA)] ?? 99
+      const priorityB = chainPriority[Number(chainIdB)] ?? 99
+      return priorityA - priorityB
+    })
+
+    const [primaryChainId, primaryProjectId] = sortedEntries[0]
     const chainData = CHAINS[Number(primaryChainId)]
+
+    console.log('[TransactionPreview] Selected primary chain for follow-up:', {
+      primaryChainId,
+      primaryProjectId,
+      allValidEntries: sortedEntries.map(([c, p]) => `${CHAINS[Number(c)]?.name || c}: #${p}`),
+    })
 
     // Small delay to let the success UI render first
     setTimeout(() => {
