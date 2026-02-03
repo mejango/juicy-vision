@@ -1371,6 +1371,17 @@ export default function TransactionPreview({
     setState: setPersistedState,
   } = useTransactionPreviewState(messageId)
 
+  // Track if the initial load showed the deployment was already completed
+  // This prevents re-firing follow-up messages on page refresh
+  const wasAlreadyCompletedOnLoadRef = useRef<boolean | null>(null)
+  useEffect(() => {
+    // Only set once when we first get the persisted state
+    if (wasAlreadyCompletedOnLoadRef.current === null && !persistedStateLoading && persistedState) {
+      wasAlreadyCompletedOnLoadRef.current = persistedState.status === 'completed'
+      console.log('[TransactionPreview] Initial load completion status:', wasAlreadyCompletedOnLoadRef.current)
+    }
+  }, [persistedState, persistedStateLoading])
+
   // Debug: log persisted state
   useEffect(() => {
     console.log('[TransactionPreview] Persisted state:', { messageId, persistedState, persistedStateLoading })
@@ -1459,6 +1470,14 @@ export default function TransactionPreview({
     if (!isComplete) return
     if (hasTriggeredLoadingRef.current) return
 
+    // Skip if this deployment was already completed before page load (page refresh scenario)
+    // The follow-up messages were already sent in the original session
+    if (wasAlreadyCompletedOnLoadRef.current === true) {
+      console.log('[TransactionPreview] Skipping loading message - deployment was already complete on page load')
+      hasTriggeredLoadingRef.current = true
+      return
+    }
+
     // Create a unique key for this deployment to prevent duplicates across component remounts
     // Use messageId as the stable identifier for this deployment
     const loadingKey = `loading:${messageId}`
@@ -1493,11 +1512,20 @@ export default function TransactionPreview({
       isComplete,
       createdProjectIds,
       hasTriggeredFollowUp: hasTriggeredFollowUpRef.current,
+      wasAlreadyCompletedOnLoad: wasAlreadyCompletedOnLoadRef.current,
     })
 
     // Only trigger once when complete with project IDs
     if (!isComplete || Object.keys(createdProjectIds).length === 0) return
     if (hasTriggeredFollowUpRef.current) return
+
+    // Skip if this deployment was already completed before page load (page refresh scenario)
+    // The follow-up messages were already sent in the original session
+    if (wasAlreadyCompletedOnLoadRef.current === true) {
+      console.log('[TransactionPreview] Skipping follow-up - deployment was already complete on page load')
+      hasTriggeredFollowUpRef.current = true
+      return
+    }
 
     // Get valid project entries - must have non-zero ID
     const entries = Object.entries(createdProjectIds).filter(([, pid]) => pid && pid > 0)
