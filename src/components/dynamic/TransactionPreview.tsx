@@ -1368,12 +1368,14 @@ export default function TransactionPreview({
 
   // Track if the initial load showed the deployment was already completed
   // This prevents re-firing follow-up messages on page refresh
-  const wasAlreadyCompletedOnLoadRef = useRef<boolean | null>(null)
+  // Using state (not ref) so effects re-run when this is determined
+  const [wasAlreadyCompletedOnLoad, setWasAlreadyCompletedOnLoad] = useState<boolean | null>(null)
   useEffect(() => {
-    if (wasAlreadyCompletedOnLoadRef.current === null && !persistedStateLoading && persistedState) {
-      wasAlreadyCompletedOnLoadRef.current = persistedState.status === 'completed'
+    if (wasAlreadyCompletedOnLoad === null && !persistedStateLoading) {
+      // Persisted state loaded - check if it was already completed
+      setWasAlreadyCompletedOnLoad(persistedState?.status === 'completed')
     }
-  }, [persistedState, persistedStateLoading])
+  }, [persistedState, persistedStateLoading, wasAlreadyCompletedOnLoad])
 
   // Auth state for managed wallet users - use isManagedMode from hook for consistent state
   const {
@@ -1454,8 +1456,10 @@ export default function TransactionPreview({
     if (action !== 'launchProject' && action !== 'launch721Project') return
     if (!isComplete || hasTriggeredLoadingRef.current) return
 
-    // Skip if already completed before page load (page refresh)
-    if (wasAlreadyCompletedOnLoadRef.current === true) {
+    // Wait until we know if this was already completed on page load
+    // null = still loading, true = was completed (skip), false = fresh deployment (proceed)
+    if (wasAlreadyCompletedOnLoad === null) return
+    if (wasAlreadyCompletedOnLoad) {
       hasTriggeredLoadingRef.current = true
       return
     }
@@ -1470,7 +1474,7 @@ export default function TransactionPreview({
         }
       }))
     }, 500)
-  }, [action, isComplete])
+  }, [action, isComplete, wasAlreadyCompletedOnLoad])
 
   // Phase 2: Show project card once IDs are extracted
   useEffect(() => {
@@ -1478,8 +1482,9 @@ export default function TransactionPreview({
     if (!isComplete || Object.keys(createdProjectIds).length === 0) return
     if (hasTriggeredFollowUpRef.current) return
 
-    // Skip if already completed before page load (page refresh)
-    if (wasAlreadyCompletedOnLoadRef.current === true) {
+    // Wait until we know if this was already completed on page load
+    if (wasAlreadyCompletedOnLoad === null) return
+    if (wasAlreadyCompletedOnLoad) {
       hasTriggeredFollowUpRef.current = true
       return
     }
@@ -1526,7 +1531,7 @@ export default function TransactionPreview({
         }
       }))
     }, 1000)
-  }, [action, isComplete, createdProjectIds])
+  }, [action, isComplete, createdProjectIds, wasAlreadyCompletedOnLoad])
 
   // Save completed state to server when transaction finishes
   // This persists the state so all chat participants see the resolved component
