@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, startTransition, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useProjectDraftStore } from '../../stores/projectDraftStore'

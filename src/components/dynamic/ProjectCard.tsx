@@ -31,19 +31,35 @@ interface ProjectCardProps {
 }
 
 const CHAIN_INFO: Record<string, { name: string; slug: string }> = {
+  // Mainnets
   '1': { name: 'Ethereum', slug: 'eth' },
   '10': { name: 'Optimism', slug: 'op' },
   '8453': { name: 'Base', slug: 'base' },
   '42161': { name: 'Arbitrum', slug: 'arb' },
+  // Testnets
+  '11155111': { name: 'Sepolia', slug: 'sepolia' },
+  '11155420': { name: 'OP Sepolia', slug: 'opsepolia' },
+  '84532': { name: 'Base Sepolia', slug: 'basesepolia' },
+  '421614': { name: 'Arb Sepolia', slug: 'arbsepolia' },
 }
 
 // All chains as fallback when no sucker data available
-const ALL_CHAINS: Array<{ chainId: number; projectId: number }> = [
+const ALL_MAINNET_CHAINS: Array<{ chainId: number; projectId: number }> = [
   { chainId: 1, projectId: 0 },  // projectId 0 means use the prop value
   { chainId: 10, projectId: 0 },
   { chainId: 8453, projectId: 0 },
   { chainId: 42161, projectId: 0 },
 ]
+
+const ALL_TESTNET_CHAINS: Array<{ chainId: number; projectId: number }> = [
+  { chainId: 11155111, projectId: 0 },  // Sepolia
+  { chainId: 11155420, projectId: 0 },  // OP Sepolia
+  { chainId: 84532, projectId: 0 },     // Base Sepolia
+  { chainId: 421614, projectId: 0 },    // Arb Sepolia
+]
+
+// Testnet chain IDs for detection
+const TESTNET_CHAIN_IDS = [11155111, 11155420, 84532, 421614]
 
 const TOKENS = [
   { symbol: 'ETH', name: 'Ether' },
@@ -284,7 +300,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1' }
   const JUICY_FEE_PERCENT = 2.5
 
   // Use connected chains if available, otherwise fall back to all chains
-  const availableChains = connectedChains.length > 0 ? connectedChains : ALL_CHAINS
+  // Detect if this is a testnet project based on initial chainId
+  const isTestnet = TESTNET_CHAIN_IDS.includes(parseInt(initialChainId))
+  const fallbackChains = isTestnet ? ALL_TESTNET_CHAINS : ALL_MAINNET_CHAINS
+  const availableChains = connectedChains.length > 0 ? connectedChains : fallbackChains
 
   // Get the current project ID for the selected chain (may differ from initial projectId)
   const chainData = availableChains.find(c => c.chainId === parseInt(selectedChainId))
