@@ -185,7 +185,9 @@ export function useOmnichainLaunchProject(
   const [resumedInProgress, setResumedInProgress] = useState<PersistedInProgressDeployment | null>(() => loadInProgressDeployment(deploymentKey))
 
   // Track whether launch() was called in this session - prevents false "isComplete" from stale localStorage
-  const hasLaunchedInSessionRef = useRef(false)
+  // IMPORTANT: This must be state (not ref) so React batches it with setPersistedResult(null)
+  // Otherwise there's a race condition where the ref is true but persistedResult hasn't cleared yet
+  const [hasLaunchedInSession, setHasLaunchedInSession] = useState(false)
 
   // Bundle state management
   const bundle = useRelayrBundle() as ReturnType<typeof useRelayrBundle> & {
@@ -342,8 +344,9 @@ export function useOmnichainLaunchProject(
       return
     }
 
+    // Mark launch initiated AND clear persisted result in same batch (prevents race condition)
+    setHasLaunchedInSession(true)
     bundle._setCreating()
-    hasLaunchedInSessionRef.current = true  // Mark that launch was initiated in this session
 
     try {
       let transactions: Array<{ chain: number; target: string; data: string; value: string }>
@@ -572,7 +575,7 @@ export function useOmnichainLaunchProject(
     setPersistedResult(null)
     setResumedInProgress(null)
     hasResumedRef.current = false
-    hasLaunchedInSessionRef.current = false
+    setHasLaunchedInSession(false)
   }, [resetBundle, deploymentKey])
 
   // Consider launching if bundle is processing OR if we're resuming an in-progress deployment
@@ -596,8 +599,9 @@ export function useOmnichainLaunchProject(
   // 1. Bundle actually completed in this session, OR
   // 2. We have persisted result AND (launched in this session OR resumed an in-progress deployment)
   // This prevents stale localStorage data from triggering "isComplete" on fresh transaction previews
+  // NOTE: hasLaunchedInSession is state (not ref) so React batches it with setPersistedResult(null)
   const isComplete = bundleState.status === 'completed' ||
-    (bundleState.status === 'idle' && persistedResult !== null && (hasLaunchedInSessionRef.current || hasResumedRef.current))
+    (bundleState.status === 'idle' && persistedResult !== null && (hasLaunchedInSession || hasResumedRef.current))
 
   // Get tx hashes from persisted state if available
   const persistedTxHashes = persistedResult?.txHashes ?? null
