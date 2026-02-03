@@ -1039,6 +1039,17 @@ export async function isProjectOwner(
 // Cache for projects by owner
 const projectsByOwnerCache = createCache<Project[]>(CACHE_DURATIONS.SHORT)
 
+// Clear the projects by owner cache (call after deployment completes)
+export function clearProjectsByOwnerCache(ownerAddress?: string): void {
+  if (ownerAddress) {
+    // Clear specific owner's cache entries
+    projectsByOwnerCache.delete(`${ownerAddress.toLowerCase()}:50`)
+  } else {
+    // Clear all cached entries
+    projectsByOwnerCache.clear()
+  }
+}
+
 // Fetch all projects owned by an address
 export async function fetchProjectsByOwner(
   ownerAddress: string,

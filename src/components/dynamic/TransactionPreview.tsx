@@ -7,6 +7,7 @@ import { useManagedWallet } from '../../hooks'
 import { useTransactionPreviewState, type TransactionPreviewState } from '../../hooks/useComponentState'
 import { getWalletSession } from '../../services/siwe'
 import { useOmnichainLaunchProject, useOmnichainSetUri } from '../../hooks/relayr'
+import { clearProjectsByOwnerCache } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { decodeEncodedIPFSUri, encodeIpfsUri } from '../../utils/ipfs'
 
@@ -1557,6 +1558,11 @@ export default function TransactionPreview({
 
     hasTriggeredLoadingRef.current = true
 
+    // Clear the projects cache so "My Projects" will show the new project
+    if (effectiveUserAddress) {
+      clearProjectsByOwnerCache(effectiveUserAddress)
+    }
+
     // Send the loading message
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('juice:send-message', {
@@ -1579,7 +1585,7 @@ export default function TransactionPreview({
         })
       }
     }, 500)
-  }, [action, isComplete, getFollowUpFlags, setFollowUpFlag, messageId, setPersistedState, persistedState])
+  }, [action, isComplete, getFollowUpFlags, setFollowUpFlag, messageId, setPersistedState, persistedState, effectiveUserAddress])
 
   // Phase 2: Show project card once IDs are extracted
   useEffect(() => {

@@ -2,6 +2,7 @@ export {
   fetchProject,
   fetchProjects,
   fetchProjectsByOwner,
+  clearProjectsByOwnerCache,
   getProjectIdFromReceipt,
   getProjectIdsFromReceipts,
   fetchParticipants,

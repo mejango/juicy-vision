@@ -535,6 +535,55 @@ describe('useOmnichainLaunchProject', () => {
 
       expect(result.current.hasError).toBe(true)
     })
+
+    it('does not report isComplete from stale localStorage when launch was not called in session', () => {
+      // Simulate stale localStorage from a previous deployment with the same key
+      // This bug caused the chat to auto-continue with "Your project now exists!" before
+      // the user clicked the Launch Project button
+      const staleResult = {
+        bundleId: 'old-bundle-from-previous-deployment',
+        projectIds: { 11155111: 213 },
+        txHashes: { 11155111: '0xoldtxhash' },
+        timestamp: Date.now() - 1000,
+      }
+      localStorage.setItem('juicy-vision:deployment-result:test-stale-key', JSON.stringify(staleResult))
+
+      // Render the hook fresh with the same deploymentKey - should NOT report complete
+      const { result } = renderHook(() => useOmnichainLaunchProject({ deploymentKey: 'test-stale-key' }))
+
+      // isComplete should be false because launch() was never called in this session
+      expect(result.current.isComplete).toBe(false)
+      // Bundle state should be idle
+      expect(result.current.bundleState.status).toBe('idle')
+
+      // Cleanup
+      localStorage.removeItem('juicy-vision:deployment-result:test-stale-key')
+    })
+
+    it('reports isComplete from localStorage when launch was called in current session', async () => {
+      // This tests that legitimate persisted results ARE used after launch() is called
+      mockCreateBalanceBundle.mockResolvedValue({ bundle_uuid: 'new-bundle-123' })
+
+      const { result } = renderHook(() => useOmnichainLaunchProject({ deploymentKey: 'test-launched-key' }))
+
+      // Call launch - this sets hasLaunchedInSessionRef.current = true
+      await act(async () => {
+        await result.current.launch(defaultParams)
+      })
+
+      // Now if bundle status becomes idle but persistedResult exists, isComplete should be true
+      // (simulating page refresh scenario where bundle completed)
+      mockBundleState.status = 'completed'
+
+      const { result: result2 } = renderHook(() => useOmnichainLaunchProject({ deploymentKey: 'test-launched-key' }))
+
+      // After bundle completes, isComplete should be true
+      expect(result2.current.isComplete).toBe(true)
+
+      // Cleanup
+      localStorage.removeItem('juicy-vision:deployment-result:test-launched-key')
+      localStorage.removeItem('juicy-vision:deployment-in-progress:test-launched-key')
+    })
   })
 
   describe('managed mode (server signing)', () => {

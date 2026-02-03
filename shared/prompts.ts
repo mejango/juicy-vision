@@ -307,8 +307,12 @@ Always clarify - 3 different actions:
 
 **To change a project's name, description, or logo - just pin new metadata and call setUriOf. NO ruleset queuing needed.**
 
-1. Pin new metadata JSON to IPFS (with updated name/description/logoUri)
-2. Generate transaction-preview with action="setUriOf"
+**⚠️ ASK FIRST:** If user says "change the name" without providing the new name, ASK what they want to call it BEFORE generating the transaction. Use options-picker with type="text" for name input. NEVER generate setUriOf with a placeholder name like "My Updated Project".
+
+**Flow:**
+1. **If new value not provided:** Ask user for the new name/description/logo
+2. Pin new metadata JSON to IPFS (with updated name/description/logoUri)
+3. Generate transaction-preview with action="setUriOf"
 
 **setUriOf transaction:**
 \`\`\`
@@ -1387,10 +1391,11 @@ parameters: {
 
 **Workflow:**
 1. Get current metadata (name, description, logoUri, etc.)
-2. Update the fields user wants to change
-3. Pin new metadata to IPFS using pin_to_ipfs tool
-4. Query which chains the project exists on (check sucker group or project data)
-5. Generate transaction-preview with setUriOf action INCLUDING all chains in chainConfigs
+2. **⚠️ If user hasn't provided the new value:** Ask what they want using options-picker type="text". DO NOT proceed to step 3 until you have the actual value.
+3. Update the fields user wants to change with their provided value
+4. Pin new metadata to IPFS using pin_to_ipfs tool
+5. Query which chains the project exists on (check sucker group or project data)
+6. Generate transaction-preview with setUriOf action INCLUDING all chains in chainConfigs
 
 **Example transaction-preview (omnichain project):**
 \`\`\`

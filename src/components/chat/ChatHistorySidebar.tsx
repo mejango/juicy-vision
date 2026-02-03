@@ -5,7 +5,7 @@ import { useAccount } from 'wagmi'
 import { useChatStore, useThemeStore } from '../../stores'
 import type { Chat } from '../../stores/chatStore'
 import { fetchMyChats } from '../../services/chat'
-import { fetchProjectsByOwner, type Project } from '../../services/bendystraw'
+import { fetchProjectsByOwner, clearProjectsByOwnerCache, type Project } from '../../services/bendystraw'
 import { useAuthStore } from '../../stores/authStore'
 import { useManagedWallet } from '../../hooks'
 import { resolveIpfsUri } from '../../utils/ipfs'
@@ -85,11 +85,14 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
   const { chats, setChats, setActiveChat } = useChatStore()
   const { isAuthenticated, user, _hasHydrated } = useAuthStore()
   const { address: wagmiAddress, isConnected: wagmiConnected } = useAccount()
-  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const { address: managedAddress, isManagedMode, loading: managedWalletLoading } = useManagedWallet()
 
   // User has wallet access if connected via wagmi OR authenticated via managed wallet
+  // Wait for auth store hydration before determining wallet access
   const hasWalletAccess = wagmiConnected || isManagedMode
   const activeAddress = wagmiConnected ? wagmiAddress : managedAddress
+  // Still loading if auth store hasn't hydrated or managed wallet is loading
+  const isWalletAccessLoading = !_hasHydrated || managedWalletLoading
 
   const [activeTab, setActiveTab] = useState<SidebarTab>('chats')
   const [isLoading, setIsLoading] = useState(false)
@@ -136,8 +139,12 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
   }, [isLoading, setChats, chats])
 
   // Load owned projects
-  const loadProjects = useCallback(async () => {
+  const loadProjects = useCallback(async (forceRefresh = false) => {
     if (!activeAddress || projectsLoading) return
+    // Clear cache if force refreshing (e.g., after deploying a new project)
+    if (forceRefresh) {
+      clearProjectsByOwnerCache(activeAddress)
+    }
     setProjectsLoading(true)
     try {
       const projects = await fetchProjectsByOwner(activeAddress)
@@ -420,6 +427,21 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                   </svg>
                 </button>
               )}
+              {activeTab === 'projects' && hasWalletAccess && (
+                <button
+                  onClick={() => loadProjects(true)}
+                  className={`p-1.5 rounded transition-colors ${
+                    theme === 'dark'
+                      ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  }`}
+                  title={t('ui.refresh', 'Refresh')}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={onClose}
                 className={`p-1.5 rounded transition-colors ${
@@ -522,7 +544,13 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
           {/* Projects Tab */}
           {activeTab === 'projects' && (
             <>
-              {!hasWalletAccess ? (
+              {isWalletAccessLoading ? (
+                <div className="p-4 text-center">
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('ui.loading', 'Loading...')}
+                  </div>
+                </div>
+              ) : !hasWalletAccess ? (
                 <div className="p-4 text-center">
                   <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
                     {t('wallet.connectToSeeProjects', 'Connect wallet to see your projects')}
@@ -545,12 +573,24 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                   <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
                     {t('projects.noOwned', 'You don\'t own any projects yet')}
                   </div>
-                  <button
-                    onClick={handleNewChat}
-                    className="mt-2 text-sm text-juice-orange hover:underline"
-                  >
-                    {t('projects.launchFirst', 'Launch a project')}
-                  </button>
+                  <div className="flex items-center justify-center gap-3 mt-2">
+                    <button
+                      onClick={handleNewChat}
+                      className="text-sm text-juice-orange hover:underline"
+                    >
+                      {t('projects.launchFirst', 'Launch a project')}
+                    </button>
+                    <span className={`text-xs ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`}>or</span>
+                    <button
+                      onClick={() => loadProjects(true)}
+                      className={`text-sm ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'} flex items-center gap-1`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      {t('ui.refresh', 'Refresh')}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="py-2">
@@ -696,7 +736,13 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
           {/* Payments Tab (Supporter view) */}
           {activeTab === 'payments' && (
             <>
-              {!hasWalletAccess ? (
+              {isWalletAccessLoading ? (
+                <div className="p-4 text-center">
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('ui.loading', 'Loading...')}
+                  </div>
+                </div>
+              ) : !hasWalletAccess ? (
                 <div className="p-4 text-center">
                   <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
                     {t('wallet.connectToSeePayments', 'Connect wallet to see your payments')}
