@@ -7,6 +7,7 @@ import type { Chat } from '../../stores/chatStore'
 import { fetchMyChats } from '../../services/chat'
 import { fetchProjectsByOwner, type Project } from '../../services/bendystraw'
 import { useAuthStore } from '../../stores/authStore'
+import { useManagedWallet } from '../../hooks'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { CHAINS } from '../../constants'
 import {
@@ -83,7 +84,12 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
   const navigate = useNavigate()
   const { chats, setChats, setActiveChat } = useChatStore()
   const { isAuthenticated, user, _hasHydrated } = useAuthStore()
-  const { address, isConnected } = useAccount()
+  const { address: wagmiAddress, isConnected: wagmiConnected } = useAccount()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+
+  // User has wallet access if connected via wagmi OR authenticated via managed wallet
+  const hasWalletAccess = wagmiConnected || isManagedMode
+  const activeAddress = wagmiConnected ? wagmiAddress : managedAddress
 
   const [activeTab, setActiveTab] = useState<SidebarTab>('chats')
   const [isLoading, setIsLoading] = useState(false)
@@ -131,10 +137,10 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
 
   // Load owned projects
   const loadProjects = useCallback(async () => {
-    if (!address || projectsLoading) return
+    if (!activeAddress || projectsLoading) return
     setProjectsLoading(true)
     try {
-      const projects = await fetchProjectsByOwner(address)
+      const projects = await fetchProjectsByOwner(activeAddress)
       setOwnedProjects(projects)
       setProjectsLoaded(true)
     } catch (error) {
@@ -142,7 +148,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     } finally {
       setProjectsLoading(false)
     }
-  }, [address, projectsLoading])
+  }, [activeAddress, projectsLoading])
 
   // Load supporters for a project
   const loadSupporters = useCallback(async (project: Project) => {
@@ -169,7 +175,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
 
   // Load supporter conversations (payments tab)
   const loadPayments = useCallback(async () => {
-    if (!address || paymentsLoading) return
+    if (!activeAddress || paymentsLoading) return
     setPaymentsLoading(true)
     try {
       const result = await getSupporterConversations({ limit: 50 })
@@ -180,7 +186,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     } finally {
       setPaymentsLoading(false)
     }
-  }, [address, paymentsLoading])
+  }, [activeAddress, paymentsLoading])
 
   // Load chats on mount and when sidebar opens
   useEffect(() => {
@@ -191,17 +197,17 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
 
   // Load projects when tab switches
   useEffect(() => {
-    if (isOpen && activeTab === 'projects' && address && !projectsLoaded) {
+    if (isOpen && activeTab === 'projects' && activeAddress && !projectsLoaded) {
       loadProjects()
     }
-  }, [isOpen, activeTab, address, projectsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, activeTab, activeAddress, projectsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load payments when tab switches
   useEffect(() => {
-    if (isOpen && activeTab === 'payments' && address && !paymentsLoaded) {
+    if (isOpen && activeTab === 'payments' && activeAddress && !paymentsLoaded) {
       loadPayments()
     }
-  }, [isOpen, activeTab, address, paymentsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, activeTab, activeAddress, paymentsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset state when address changes
   useEffect(() => {
@@ -211,7 +217,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     setSupporterConversations([])
     setProjectSupporters({})
     setExpandedProjectId(null)
-  }, [address])
+  }, [activeAddress])
 
   // Auto-reload on user sign in
   useEffect(() => {
@@ -516,7 +522,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
           {/* Projects Tab */}
           {activeTab === 'projects' && (
             <>
-              {!isConnected ? (
+              {!hasWalletAccess ? (
                 <div className="p-4 text-center">
                   <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
                     {t('wallet.connectToSeeProjects', 'Connect wallet to see your projects')}
@@ -690,7 +696,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
           {/* Payments Tab (Supporter view) */}
           {activeTab === 'payments' && (
             <>
-              {!isConnected ? (
+              {!hasWalletAccess ? (
                 <div className="p-4 text-center">
                   <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
                     {t('wallet.connectToSeePayments', 'Connect wallet to see your payments')}
