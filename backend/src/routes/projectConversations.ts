@@ -28,6 +28,7 @@ import {
   getChatIdForConversation,
 } from '../services/projectConversations.ts'
 import { getChatMessages, sendMessage } from '../services/chat.ts'
+import { hasAddressPaidProject, isProjectOwner } from '../services/bendystraw.ts'
 
 const projectConversations = new Hono()
 
@@ -289,9 +290,31 @@ projectConversations.post(
       }, 403)
     }
 
-    // TODO: If caller is supporter, verify they have actually paid the project
-    // This would involve checking Bendystraw for payment records
-    // For now, we'll trust the frontend to only call this after payment verification
+    // Verify the caller has the right to create this conversation
+    // - Owners can create conversations with any supporter
+    // - Supporters must have paid the project
+    if (isSupporter) {
+      const hasPaid = await hasAddressPaidProject(
+        body.projectId,
+        body.chainId,
+        body.supporterAddress
+      )
+      if (!hasPaid) {
+        return c.json({
+          success: false,
+          error: 'You must pay the project before starting a conversation',
+        }, 403)
+      }
+    } else if (isOwner) {
+      // Verify they actually own the project
+      const ownsProject = await isProjectOwner(body.projectId, body.chainId, body.ownerAddress)
+      if (!ownsProject) {
+        return c.json({
+          success: false,
+          error: 'You do not own this project',
+        }, 403)
+      }
+    }
 
     try {
       const conversation = await getOrCreateConversation(body)
@@ -361,8 +384,11 @@ projectConversations.get(
       return c.json({ success: false, error: 'Address required' }, 401)
     }
 
-    // TODO: Verify the caller is the project owner
-    // This would involve checking Bendystraw for project ownership
+    // Verify the caller is the project owner
+    const ownsProject = await isProjectOwner(projectId, chainId, address)
+    if (!ownsProject) {
+      return c.json({ success: false, error: 'Only project owners can view supporters' }, 403)
+    }
 
     try {
       const result = await getSupportersForProject(projectId, chainId, { limit, offset })
