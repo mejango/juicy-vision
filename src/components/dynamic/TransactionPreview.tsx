@@ -1456,7 +1456,7 @@ export default function TransactionPreview({
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('juice:send-message', {
         detail: {
-          message: `[SYSTEM: Project deployment confirmed on-chain. It's now being indexed - this takes about a minute. Show a brief reassuring message like "Your project was deployed successfully! It's now being indexed..." Don't show any project card yet - wait for the next message with the project ID.]`,
+          message: `[SYSTEM: Project deployment confirmed on-chain. Respond with EXACTLY this message and nothing else: "Your project now exists! It'll be available for payments in about a minute. I'll throw it in the chat when it's ready."]`,
           bypassSkipAi: true,
           hidden: true,
         }
