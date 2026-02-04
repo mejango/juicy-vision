@@ -18,6 +18,7 @@ import {
   type CreateProjectParams,
 } from './projectCreation.ts';
 import { execute, queryOne } from '../db/index.ts';
+import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
 // Test user ID - must be a valid UUID format
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -68,6 +69,7 @@ async function createTestProject(
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'createProject: creates project with all chain records',
   async fn() {
     const project = await createTestProject({
@@ -99,6 +101,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'createProject: creates revnet with split operator',
   async fn() {
     const splitOperator = '0x1234567890123456789012345678901234567890';
@@ -117,6 +120,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'createProject: handles single chain',
   async fn() {
     const project = await createTestProject({
@@ -132,6 +136,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'createProject: creates without user ID',
   async fn() {
     const project = await createProject({
@@ -153,6 +158,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'updateProject: updates creation status',
   async fn() {
     const project = await createTestProject();
@@ -168,6 +174,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'updateProject: updates sucker group ID',
   async fn() {
     const project = await createTestProject();
@@ -184,6 +191,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'updateProject: handles no updates',
   async fn() {
     const project = await createTestProject();
@@ -202,6 +210,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'updateProjectChain: updates chain project ID and tx hash',
   async fn() {
     const project = await createTestProject({ chainIds: [1, 10] });
@@ -222,6 +231,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'updateProjectChain: updates sucker address and status',
   async fn() {
     const project = await createTestProject({ chainIds: [1] });
@@ -240,6 +250,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'updateProjectChain: throws on missing chain',
   async fn() {
     const project = await createTestProject({ chainIds: [1] });
@@ -263,6 +274,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'getProjectById: returns project',
   async fn() {
     const created = await createTestProject({
@@ -280,6 +292,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'getProjectById: returns null for non-existent',
   async fn() {
     const fetched = await getProjectById('00000000-0000-0000-0000-000000000000');
@@ -291,6 +304,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'getProjectChains: returns all chain records',
   async fn() {
     const project = await createTestProject({
@@ -314,6 +328,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'getProjectsByUser: returns user projects with chains',
   async fn() {
     // Create a few projects for the test user
@@ -334,6 +349,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'getProjectsByUser: filters by project type',
   async fn() {
     await createTestProject({ projectType: 'project' });
@@ -352,6 +368,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'getProjectsByUser: respects limit and offset',
   async fn() {
     const projects = await getProjectsByUser(TEST_USER_ID, {
@@ -370,6 +387,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'saveRevnetStages: saves stage configurations',
   async fn() {
     const project = await createTestProject({ projectType: 'revnet' });
@@ -408,6 +426,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'saveRevnetStages: upserts on duplicate stage number',
   async fn() {
     const project = await createTestProject({ projectType: 'revnet' });
@@ -449,6 +468,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'getRevnetStages: returns empty for project without stages',
   async fn() {
     const project = await createTestProject({ projectType: 'revnet' });
@@ -466,6 +486,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Integration: full project creation workflow',
   async fn() {
     // 1. Create project
@@ -518,6 +539,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Integration: revnet with stages and suckers',
   async fn() {
     // 1. Create revnet
@@ -583,6 +605,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Integration: partial failure handling',
   async fn() {
     const project = await createTestProject({

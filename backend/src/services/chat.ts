@@ -98,6 +98,8 @@ export interface ChatMember {
   canInvokeAi: boolean;
   canManageMembers: boolean;
   canPauseAi: boolean;
+  canInviteOthers: boolean;
+  canPassOnRoles: boolean;
   publicKey?: string;
   displayName?: string;
   customEmoji?: string;
@@ -225,6 +227,8 @@ interface DbChatMember {
   role: ChatRole;
   can_send_messages: boolean;
   can_invite: boolean;
+  can_invite_others: boolean;
+  can_pass_on_roles: boolean;
   can_invoke_ai: boolean;
   can_manage_members: boolean;
   can_pause_ai: boolean;
@@ -306,6 +310,8 @@ function dbToMember(db: DbChatMember): ChatMember {
     canInvokeAi: db.can_invoke_ai,
     canManageMembers: db.can_manage_members,
     canPauseAi: db.can_pause_ai ?? false,
+    canInviteOthers: db.can_invite_others ?? db.can_invite ?? false,
+    canPassOnRoles: db.can_pass_on_roles ?? false,
     publicKey: db.public_key ?? undefined,
     displayName: db.display_name ?? undefined,
     customEmoji: db.custom_emoji ?? undefined,

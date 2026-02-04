@@ -12,6 +12,7 @@ import {
   http,
   encodeFunctionData,
   type Address,
+  type Chain,
   formatEther,
   parseUnits,
 } from 'viem';
@@ -29,7 +30,7 @@ import {
 // Chain Configuration
 // ============================================================================
 
-const CHAINS: Record<number, { chain: typeof mainnet; rpcUrl: string }> = {
+const CHAINS: Record<number, { chain: Chain; rpcUrl: string }> = {
   1: { chain: mainnet, rpcUrl: 'https://eth.llamarpc.com' },
   10: { chain: optimism, rpcUrl: 'https://optimism.llamarpc.com' },
   8453: { chain: base, rpcUrl: 'https://base.llamarpc.com' },
@@ -737,12 +738,15 @@ export async function claimBridgeTransaction(params: {
       terminalTokenAmount: BigInt(claim.Leaf.TerminalTokenAmount),
     },
     proof: proofBytes,
-  };
+  } as const;
 
+  // Cast needed: viem infers a fixed-length tuple for proof from the ABI,
+  // but we have a dynamic-length array from the API response
   const data = encodeFunctionData({
     abi: SUCKER_ABI,
     functionName: 'claim',
-    args: [claimData],
+    // deno-lint-ignore no-explicit-any
+    args: [claimData] as any,
   });
 
   return {

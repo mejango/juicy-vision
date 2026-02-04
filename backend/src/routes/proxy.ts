@@ -32,7 +32,7 @@ proxyRouter.post('/bendystraw', async (c) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Bendystraw proxy error:', response.status, errorText);
-      return c.json({ error: 'Bendystraw request failed' }, response.status);
+      return c.json({ error: 'Bendystraw request failed' }, response.status as 400 | 401 | 403 | 404 | 500 | 502 | 503);
     }
 
     const data = await response.json();
@@ -89,7 +89,7 @@ proxyRouter.post('/thegraph/uniswap', async (c) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('TheGraph proxy error:', response.status, errorText);
-      return c.json({ error: 'TheGraph request failed' }, response.status);
+      return c.json({ error: 'TheGraph request failed' }, response.status as 400 | 401 | 403 | 404 | 500 | 502 | 503);
     }
 
     const data = await response.json();
@@ -210,7 +210,7 @@ proxyRouter.post('/rpc/:chainId', async (c) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('RPC proxy error:', response.status, errorText);
-      return c.json({ error: 'RPC request failed' }, response.status);
+      return c.json({ error: 'RPC request failed' }, response.status as 400 | 401 | 403 | 404 | 500 | 502 | 503);
     }
 
     const data = await response.json();

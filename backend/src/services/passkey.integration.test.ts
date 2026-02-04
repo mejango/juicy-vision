@@ -27,6 +27,7 @@ import {
   cleanupExpiredChallenges,
 } from './passkey.ts';
 import { findOrCreateUser } from './auth.ts';
+import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
 // ============================================================================
 // Test Setup
@@ -122,6 +123,7 @@ async function createTestCredential(userId: string, credentialIdB64: string): Pr
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Registration challenge creation',
   // First test initializes DB pool
   sanitizeResources: false,
@@ -168,6 +170,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Authentication challenge creation without email',
   async fn() {
     await cleanupTestData();
@@ -197,6 +200,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Authentication challenge includes user credentials',
   async fn() {
     await cleanupTestData();
@@ -222,6 +226,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Each challenge is unique',
   async fn() {
     await cleanupTestData();
@@ -244,6 +249,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - getUserPasskeys returns user credentials',
   async fn() {
     await cleanupTestData();
@@ -277,6 +283,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Users only see their own passkeys',
   async fn() {
     await cleanupTestData();
@@ -304,6 +311,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - deletePasskey removes credential',
   async fn() {
     await cleanupTestData();
@@ -329,6 +337,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Cannot delete another user passkey',
   async fn() {
     await cleanupTestData();
@@ -353,6 +362,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - renamePasskey updates display name',
   async fn() {
     await cleanupTestData();
@@ -377,6 +387,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Cannot rename another user passkey',
   async fn() {
     await cleanupTestData();
@@ -400,6 +411,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Counter is stored and retrieved correctly',
   async fn() {
     await cleanupTestData();
@@ -429,6 +441,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Last used timestamp is tracked',
   async fn() {
     await cleanupTestData();
@@ -457,6 +470,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Deleting last passkey disables passkey flag',
   async fn() {
     await cleanupTestData();
@@ -486,6 +500,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - User can have multiple passkeys',
   async fn() {
     await cleanupTestData();
@@ -507,6 +522,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - cleanupExpiredChallenges removes old challenges',
   async fn() {
     await cleanupTestData();
@@ -548,6 +564,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Backup flags are stored correctly',
   async fn() {
     await cleanupTestData();
@@ -583,6 +600,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Passkey Integration - Credential IDs must be unique',
   async fn() {
     await cleanupTestData();

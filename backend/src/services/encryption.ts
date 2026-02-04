@@ -106,7 +106,7 @@ async function deriveServerKey(salt: Uint8Array): Promise<CryptoKey> {
 
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    masterKey,
+    masterKey.buffer as ArrayBuffer,
     'HKDF',
     false,
     ['deriveKey']
@@ -116,8 +116,8 @@ async function deriveServerKey(salt: Uint8Array): Promise<CryptoKey> {
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt,
-      info: new TextEncoder().encode('juicy-vision-keypair-encryption'),
+      salt: salt.buffer as ArrayBuffer,
+      info: new TextEncoder().encode('juicy-vision-keypair-encryption').buffer as ArrayBuffer,
     },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
@@ -166,7 +166,7 @@ export async function deriveSharedSecret(
 
   const privateKey = await crypto.subtle.importKey(
     'pkcs8',
-    privateKeyBytes,
+    privateKeyBytes.buffer as ArrayBuffer,
     { name: 'ECDH', namedCurve: 'P-256' },
     false,
     ['deriveBits']
@@ -174,7 +174,7 @@ export async function deriveSharedSecret(
 
   const publicKey = await crypto.subtle.importKey(
     'raw',
-    publicKeyBytes,
+    publicKeyBytes.buffer as ArrayBuffer,
     { name: 'ECDH', namedCurve: 'P-256' },
     false,
     []
@@ -203,16 +203,16 @@ export async function encryptWithKey(
   const nonce = generateNonce();
   const key = await crypto.subtle.importKey(
     'raw',
-    keyBytes,
+    keyBytes.buffer as ArrayBuffer,
     { name: 'AES-GCM' },
     false,
     ['encrypt']
   );
 
   const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: nonce },
+    { name: 'AES-GCM', iv: nonce.buffer as ArrayBuffer },
     key,
-    new TextEncoder().encode(plaintext)
+    new TextEncoder().encode(plaintext).buffer as ArrayBuffer
   );
 
   // Prepend nonce to ciphertext
@@ -236,16 +236,16 @@ export async function decryptWithKey(
 
   const key = await crypto.subtle.importKey(
     'raw',
-    keyBytes,
+    keyBytes.buffer as ArrayBuffer,
     { name: 'AES-GCM' },
     false,
     ['decrypt']
   );
 
   const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: nonce },
+    { name: 'AES-GCM', iv: nonce.buffer as ArrayBuffer },
     key,
-    ciphertext
+    ciphertext.buffer as ArrayBuffer
   );
 
   return new TextDecoder().decode(plaintext);
@@ -263,9 +263,9 @@ export async function encryptPrivateKey(privateKeyBase64: string): Promise<strin
   const serverKey = await deriveServerKey(salt);
 
   const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: salt }, // Use salt as IV for simplicity
+    { name: 'AES-GCM', iv: salt.buffer as ArrayBuffer }, // Use salt as IV for simplicity
     serverKey,
-    fromBase64(privateKeyBase64)
+    fromBase64(privateKeyBase64).buffer as ArrayBuffer
   );
 
   // Prepend salt to ciphertext
@@ -287,9 +287,9 @@ export async function decryptPrivateKey(encryptedBase64: string): Promise<string
   const serverKey = await deriveServerKey(salt);
 
   const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: salt },
+    { name: 'AES-GCM', iv: salt.buffer as ArrayBuffer },
     serverKey,
-    ciphertext
+    ciphertext.buffer as ArrayBuffer
   );
 
   return toBase64(new Uint8Array(plaintext));
@@ -396,9 +396,9 @@ export async function storeGroupKeyForMember(
   const derivedKey = await deriveServerKey(salt);
 
   const encryptedKey = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: salt },
+    { name: 'AES-GCM', iv: salt.buffer as ArrayBuffer },
     derivedKey,
-    fromBase64(groupKey.key)
+    fromBase64(groupKey.key).buffer as ArrayBuffer
   );
 
   const encryptedKeyBase64 = toBase64(new Uint8Array(encryptedKey));
@@ -444,9 +444,9 @@ export async function getGroupKeyForMember(
   try {
     const encryptedKeyBytes = fromBase64(keyRecord.encrypted_key);
     const decryptedKey = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: salt },
+      { name: 'AES-GCM', iv: salt.buffer as ArrayBuffer },
       derivedKey,
-      encryptedKeyBytes
+      encryptedKeyBytes.buffer as ArrayBuffer
     );
 
     return {

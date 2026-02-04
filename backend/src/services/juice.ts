@@ -199,23 +199,23 @@ export async function creditJuice(
   amount: number,
   purchaseId: string
 ): Promise<void> {
-  await transaction(async (q, exec) => {
+  await transaction(async (client) => {
     // Verify purchase exists and is in clearing status
-    const [purchase] = await q<{ status: string }>(
+    const { rows: purchases } = await client.queryObject<{ status: string }>(
       `SELECT status FROM juice_purchases WHERE id = $1 AND user_id = $2`,
       [purchaseId, userId]
     );
 
-    if (!purchase) {
+    if (!purchases[0]) {
       throw new Error('Purchase not found');
     }
 
-    if (purchase.status !== 'clearing') {
-      throw new Error(`Cannot credit purchase with status: ${purchase.status}`);
+    if (purchases[0].status !== 'clearing') {
+      throw new Error(`Cannot credit purchase with status: ${purchases[0].status}`);
     }
 
     // Ensure balance record exists
-    await exec(
+    await client.queryObject(
       `INSERT INTO juice_balances (user_id)
        VALUES ($1)
        ON CONFLICT (user_id) DO NOTHING`,
@@ -223,7 +223,7 @@ export async function creditJuice(
     );
 
     // Credit the balance and update activity timestamp
-    await exec(
+    await client.queryObject(
       `UPDATE juice_balances
        SET balance = balance + $1,
            lifetime_purchased = lifetime_purchased + $1,
@@ -234,7 +234,7 @@ export async function creditJuice(
     );
 
     // Mark purchase as credited
-    await exec(
+    await client.queryObject(
       `UPDATE juice_purchases
        SET status = 'credited', credited_at = NOW()
        WHERE id = $1`,
@@ -443,9 +443,9 @@ export async function spendJuice(params: {
 }): Promise<string> {
   const chainId = params.chainId || DEFAULT_OPERATING_CHAIN;
 
-  return await transaction(async (q, exec) => {
+  return await transaction(async (client) => {
     // Deduct from balance first and update activity timestamp
-    const debitCount = await exec(
+    const debitResult = await client.queryObject(
       `UPDATE juice_balances
        SET balance = balance - $1,
            lifetime_spent = lifetime_spent + $1,
@@ -456,12 +456,12 @@ export async function spendJuice(params: {
       [params.amount, params.userId]
     );
 
-    if (debitCount === 0) {
+    if ((debitResult.rowCount ?? 0) === 0) {
       throw new Error('Insufficient Juice balance');
     }
 
     // Create spend record
-    const [row] = await q<{ id: string }>(
+    const { rows } = await client.queryObject<{ id: string }>(
       `INSERT INTO juice_spends (
         user_id, project_id, chain_id, beneficiary_address, memo, juice_amount
       ) VALUES ($1, $2, $3, $4, $5, $6)
@@ -477,14 +477,14 @@ export async function spendJuice(params: {
     );
 
     logger.info('Juice spend created', {
-      spendId: row.id,
+      spendId: rows[0].id,
       userId: params.userId,
       amount: params.amount,
       projectId: params.projectId,
       chainId,
     });
 
-    return row.id;
+    return rows[0].id;
   });
 }
 
@@ -542,9 +542,9 @@ export async function initiateCashOut(params: {
   const availableAt = new Date();
   availableAt.setHours(availableAt.getHours() + CASH_OUT_DELAY_HOURS);
 
-  return await transaction(async (q, exec) => {
+  return await transaction(async (client) => {
     // Deduct from balance first and update activity timestamp
-    const debitCount = await exec(
+    const debitResult = await client.queryObject(
       `UPDATE juice_balances
        SET balance = balance - $1,
            lifetime_cashed_out = lifetime_cashed_out + $1,
@@ -555,12 +555,12 @@ export async function initiateCashOut(params: {
       [params.amount, params.userId]
     );
 
-    if (debitCount === 0) {
+    if ((debitResult.rowCount ?? 0) === 0) {
       throw new Error('Insufficient Juice balance');
     }
 
     // Create cash out record
-    const [row] = await q<{ id: string }>(
+    const { rows } = await client.queryObject<{ id: string }>(
       `INSERT INTO juice_cash_outs (
         user_id, destination_address, chain_id, juice_amount, available_at
       ) VALUES ($1, $2, $3, $4, $5)
@@ -575,7 +575,7 @@ export async function initiateCashOut(params: {
     );
 
     logger.info('Cash out initiated', {
-      cashOutId: row.id,
+      cashOutId: rows[0].id,
       userId: params.userId,
       amount: params.amount,
       destinationAddress: params.destinationAddress,
@@ -583,7 +583,7 @@ export async function initiateCashOut(params: {
       availableAt: availableAt.toISOString(),
     });
 
-    return row.id;
+    return rows[0].id;
   });
 }
 
@@ -594,26 +594,26 @@ export async function cancelCashOut(
   cashOutId: string,
   userId: string
 ): Promise<void> {
-  await transaction(async (q, exec) => {
+  await transaction(async (client) => {
     // Get the cash out
-    const [cashOut] = await q<{ juice_amount: string; status: string }>(
+    const { rows: cashOuts } = await client.queryObject<{ juice_amount: string; status: string }>(
       `SELECT juice_amount, status FROM juice_cash_outs
        WHERE id = $1 AND user_id = $2`,
       [cashOutId, userId]
     );
 
-    if (!cashOut) {
+    if (!cashOuts[0]) {
       throw new Error('Cash out not found');
     }
 
-    if (cashOut.status !== 'pending') {
-      throw new Error(`Cannot cancel cash out with status: ${cashOut.status}`);
+    if (cashOuts[0].status !== 'pending') {
+      throw new Error(`Cannot cancel cash out with status: ${cashOuts[0].status}`);
     }
 
-    const amount = parseFloat(cashOut.juice_amount);
+    const amount = parseFloat(cashOuts[0].juice_amount);
 
     // Refund the balance
-    await exec(
+    await client.queryObject(
       `UPDATE juice_balances
        SET balance = balance + $1,
            lifetime_cashed_out = lifetime_cashed_out - $1,
@@ -623,7 +623,7 @@ export async function cancelCashOut(
     );
 
     // Mark as cancelled
-    await exec(
+    await client.queryObject(
       `UPDATE juice_cash_outs
        SET status = 'cancelled', updated_at = NOW()
        WHERE id = $1`,
@@ -1184,16 +1184,16 @@ export async function processExpiredCredits(): Promise<{
     try {
       const amount = parseFloat(balance.balance);
 
-      await transaction(async (q, exec) => {
+      await transaction(async (client) => {
         // Record the expiration
-        await exec(
+        await client.queryObject(
           `INSERT INTO credit_expirations (user_id, amount, last_activity_at)
            VALUES ($1, $2, $3)`,
           [balance.user_id, amount, balance.last_activity_at]
         );
 
         // Zero the balance
-        await exec(
+        await client.queryObject(
           `UPDATE juice_balances
            SET balance = 0,
                updated_at = NOW()

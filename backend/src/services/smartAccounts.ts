@@ -1311,7 +1311,7 @@ export async function retryExport(exportId: string): Promise<{
     user_id: string;
     new_owner_address: string;
     chain_ids: number[];
-    chain_status: Record<string, { status: string; txHash?: string; error?: string }>;
+    chain_status: Record<string, { status: string; txHash?: string; error?: string; completedAt?: string }>;
     status: string;
     retry_count: number;
   }>(
@@ -1406,7 +1406,7 @@ export async function cancelExport(exportId: string): Promise<void> {
     [exportId]
   );
 
-  if (result.rowCount === 0) {
+  if (result === 0) {
     throw new Error('Export not found or cannot be cancelled');
   }
 
@@ -1765,9 +1765,8 @@ export async function executeReadySmartAccountTransfers(): Promise<number> {
       executed++;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Transfer execution failed', {
+      logger.error('Transfer execution failed', error instanceof Error ? error : new Error(errorMsg), {
         transferId: transfer.id,
-        error: errorMsg,
       });
 
       // Mark as failed

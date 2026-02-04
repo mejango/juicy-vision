@@ -16,6 +16,7 @@ import {
   encodeFunctionData,
   parseEther,
   formatEther,
+  type Chain,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { mainnet, optimism, arbitrum, base } from 'viem/chains';
@@ -27,7 +28,7 @@ const DEFAULT_SETTLEMENT_DELAY_DAYS = 7;
 const MAX_RETRIES = 5;
 
 // Chain configurations
-const CHAINS: Record<number, { chain: typeof mainnet; rpcUrl: string }> = {
+const CHAINS: Record<number, { chain: Chain; rpcUrl: string }> = {
   1: { chain: mainnet, rpcUrl: 'https://eth.llamarpc.com' },
   10: { chain: optimism, rpcUrl: 'https://optimism.llamarpc.com' },
   42161: { chain: arbitrum, rpcUrl: 'https://arbitrum.llamarpc.com' },
@@ -165,18 +166,20 @@ export async function markPaymentDisputed(
   stripeDisputeId: string,
   disputeReason?: string
 ): Promise<boolean> {
-  return await transaction(async (q, exec) => {
+  return await transaction(async (client) => {
     // Find the payment
-    const [payment] = await q<{ id: string; status: string }>(
+    const { rows: payments } = await client.queryObject<{ id: string; status: string }>(
       `SELECT id, status FROM pending_fiat_payments
        WHERE stripe_payment_intent_id = $1`,
       [stripePaymentIntentId]
     );
 
-    if (!payment) {
+    if (!payments[0]) {
       logger.warn('Dispute for unknown payment', { stripePaymentIntentId });
       return false;
     }
+
+    const payment = payments[0];
 
     if (payment.status === 'settled') {
       logger.error('Dispute received for already settled payment', undefined, {
@@ -188,7 +191,7 @@ export async function markPaymentDisputed(
     }
 
     // Mark as disputed
-    await exec(
+    await client.queryObject(
       `UPDATE pending_fiat_payments
        SET status = 'disputed', updated_at = NOW()
        WHERE id = $1`,
@@ -196,7 +199,7 @@ export async function markPaymentDisputed(
     );
 
     // Log the dispute
-    await exec(
+    await client.queryObject(
       `INSERT INTO fiat_payment_disputes (
         pending_payment_id, stripe_dispute_id, dispute_reason
       ) VALUES ($1, $2, $3)`,

@@ -1,4 +1,4 @@
-import { Pool } from 'postgres';
+import { Pool, type PoolClient } from 'postgres';
 import { getConfig } from '../utils/config.ts';
 
 let pool: Pool | null = null;
@@ -39,8 +39,9 @@ export async function execute(sql: string, args?: unknown[]): Promise<number> {
 }
 
 // Transaction helper - passes raw connection for tagged template support
+export type TransactionClient = PoolClient;
 export async function transaction<T>(
-  fn: (client: { queryObject: <U>(sql: TemplateStringsArray | string, ...args: unknown[]) => Promise<{ rows: U[]; rowCount?: number }> }) => Promise<T>
+  fn: (client: PoolClient) => Promise<T>
 ): Promise<T> {
   const pool = getPool();
   const connection = await pool.connect();

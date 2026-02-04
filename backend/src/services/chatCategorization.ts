@@ -99,7 +99,7 @@ export async function generateChatTitle(
       messages: [{ role: 'user', content: conversationText }],
     });
 
-    const textBlock = response.content.find((block) => block.type === 'text');
+    const textBlock = response.content.find((block: { type: string }) => block.type === 'text');
     if (!textBlock || textBlock.type !== 'text') return null;
 
     // Clean and limit title

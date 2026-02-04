@@ -13,6 +13,7 @@
 
 import { assertEquals, assertExists, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import { query, queryOne, execute } from '../db/index.ts';
+import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
 // ============================================================================
 // Test User Setup
@@ -62,6 +63,7 @@ async function cleanupTestData(): Promise<void> {
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - Account creation is idempotent',
   // First test initializes DB pool, which opens TCP connections
   sanitizeResources: false,
@@ -118,6 +120,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - Custody status transitions',
   async fn() {
     await ensureTestUsersExist();
@@ -182,6 +185,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - Revert custody status on transfer failure',
   async fn() {
     await ensureTestUsersExist();
@@ -227,6 +231,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - Export blocked by pending withdrawals',
   async fn() {
     await ensureTestUsersExist();
@@ -294,6 +299,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - Multi-chain export tracks per-chain status',
   async fn() {
     await ensureTestUsersExist();
@@ -376,6 +382,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - 7-day delayed transfer hold period',
   async fn() {
     await ensureTestUsersExist();
@@ -449,6 +456,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - Transfer cancellation only when pending',
   async fn() {
     await ensureTestUsersExist();
@@ -520,6 +528,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - IDOR protection on transfer cancellation',
   async fn() {
     await ensureTestUsersExist();
@@ -593,6 +602,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - Export status transitions',
   async fn() {
     await ensureTestUsersExist();
@@ -658,6 +668,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - User-specific account isolation',
   async fn() {
     await ensureTestUsersExist();
@@ -715,6 +726,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - Withdrawal status state machine',
   async fn() {
     await ensureTestUsersExist();
@@ -775,6 +787,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SmartAccounts Integration - Multi-chain account creation',
   async fn() {
     await ensureTestUsersExist();

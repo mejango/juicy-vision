@@ -27,7 +27,7 @@ authRouter.post(
       const { code, expiresIn } = await requestOtp(email);
 
       // Send email with code
-      await emailService.sendOtpEmail(email, code);
+      await emailService.sendOtpEmail(email, code!);
 
       return c.json({
         success: true,

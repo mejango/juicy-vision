@@ -15,6 +15,7 @@ import {
   http,
   getContract,
   type Address,
+  type Chain,
   type Hex,
 } from 'viem';
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
@@ -37,7 +38,7 @@ import { getFactoryDeployData } from './smartAccounts.ts';
 // Chain Configuration
 // ============================================================================
 
-const CHAINS: Record<number, typeof mainnet> = {
+const CHAINS: Record<number, Chain> = {
   // Mainnets
   1: mainnet,
   10: optimism,

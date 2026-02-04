@@ -26,6 +26,7 @@ import {
   deleteAllUserSessions,
   updateUserPrivacyMode,
 } from './auth.ts';
+import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
 // ============================================================================
 // Test Setup
@@ -69,6 +70,7 @@ async function cleanupTestData(): Promise<void> {
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - OTP code generation creates valid 6-digit code',
   // First test initializes DB pool
   sanitizeResources: false,
@@ -101,6 +103,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - Creating new OTP invalidates previous codes',
   async fn() {
     await cleanupTestData();
@@ -136,6 +139,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - Valid OTP verification succeeds and marks code used',
   async fn() {
     await cleanupTestData();
@@ -161,6 +165,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - Invalid OTP code is rejected',
   async fn() {
     await cleanupTestData();
@@ -179,6 +184,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - Used OTP code cannot be reused',
   async fn() {
     await cleanupTestData();
@@ -202,6 +208,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - OTP verification is case-insensitive for email',
   async fn() {
     await cleanupTestData();
@@ -223,6 +230,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - findOrCreateUser creates new user on first login',
   async fn() {
     await cleanupTestData();
@@ -248,6 +256,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - findOrCreateUser returns existing user',
   async fn() {
     await cleanupTestData();
@@ -270,6 +279,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - Each user gets unique custodial address index',
   async fn() {
     await cleanupTestData();
@@ -291,6 +301,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - markEmailVerified updates user state',
   async fn() {
     await cleanupTestData();
@@ -312,6 +323,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - createSession generates session and JWT token',
   async fn() {
     await cleanupTestData();
@@ -344,6 +356,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - findValidSession returns active sessions',
   async fn() {
     await cleanupTestData();
@@ -366,6 +379,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - deleteSession removes session',
   async fn() {
     await cleanupTestData();
@@ -393,6 +407,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - deleteAllUserSessions removes all sessions for user',
   async fn() {
     await cleanupTestData();
@@ -426,6 +441,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - updateUserPrivacyMode changes user privacy setting',
   async fn() {
     await cleanupTestData();
@@ -453,6 +469,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - findUserById returns user or null',
   async fn() {
     await cleanupTestData();
@@ -478,6 +495,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - OTP verification fails gracefully when no code exists',
   async fn() {
     await cleanupTestData();
@@ -496,6 +514,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Auth Integration - User queries are properly isolated',
   async fn() {
     await cleanupTestData();

@@ -6,6 +6,7 @@
  */
 
 import { assertEquals, assertExists, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
 const BASE_URL = 'http://localhost:3001/api';
 const SESSION_ID = 'ses_test_projects_api_12345678';
@@ -86,6 +87,7 @@ async function getProjectStatusViaAPI(id: string) {
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'POST /projects: creates project successfully',
   async fn() {
     const { res, json } = await createProjectViaAPI({
@@ -108,6 +110,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'POST /projects: creates revnet with split operator',
   async fn() {
     const splitOperator = '0x1234567890123456789012345678901234567890';
@@ -129,6 +132,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'POST /projects: validates required fields',
   async fn() {
     const res = await fetch(`${BASE_URL}/projects`, {
@@ -153,6 +157,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'POST /projects: validates project type enum',
   async fn() {
     const res = await fetch(`${BASE_URL}/projects`, {
@@ -177,6 +182,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'POST /projects: validates split operator address format',
   async fn() {
     const res = await fetch(`${BASE_URL}/projects`, {
@@ -206,6 +212,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id: returns project with chains',
   async fn() {
     const { json: created } = await createProjectViaAPI({
@@ -228,6 +235,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id: returns 404 for non-existent',
   async fn() {
     const { res, json } = await getProjectViaAPI('00000000-0000-0000-0000-000000000000');
@@ -245,6 +253,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id: updates creation status',
   async fn() {
     const { json: created } = await createProjectViaAPI({
@@ -266,6 +275,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id: updates sucker group ID',
   async fn() {
     const { json: created } = await createProjectViaAPI({
@@ -288,6 +298,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id: returns 404 for non-existent',
   async fn() {
     const { res, json } = await updateProjectViaAPI(
@@ -303,6 +314,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id: validates status enum',
   async fn() {
     const { json: created } = await createProjectViaAPI({
@@ -335,6 +347,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id/chains/:chainId: updates chain status',
   async fn() {
     const { json: created } = await createProjectViaAPI({
@@ -361,6 +374,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id/chains/:chainId: updates sucker info',
   async fn() {
     const { json: created } = await createProjectViaAPI({
@@ -385,6 +399,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id/chains/:chainId: validates tx hash format',
   async fn() {
     const { json: created } = await createProjectViaAPI({
@@ -417,6 +432,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id/status: returns computed status',
   async fn() {
     const { json: created } = await createProjectViaAPI({
@@ -451,6 +467,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id/status: computes completed status',
   async fn() {
     const { json: created } = await createProjectViaAPI({
@@ -479,6 +496,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id/status: computes partial status',
   async fn() {
     const { json: created } = await createProjectViaAPI({
@@ -506,6 +524,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id/status: returns 404 for non-existent',
   async fn() {
     const { res, json } = await getProjectStatusViaAPI('00000000-0000-0000-0000-000000000000');
@@ -522,6 +541,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Integration: full project creation workflow via API',
   async fn() {
     // 1. Create project

@@ -16,6 +16,7 @@
 
 import { assertEquals, assertExists, assertNotEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import { query, queryOne, execute } from '../db/index.ts';
+import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
 // ============================================================================
 // Test Setup
@@ -55,6 +56,7 @@ function generateTestSessionToken(): string {
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Wallet session is stored in database',
   // First test initializes DB pool
   sanitizeResources: false,
@@ -102,6 +104,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Session tokens are unique',
   async fn() {
     await cleanupTestData();
@@ -120,6 +123,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Re-login updates existing session',
   async fn() {
     await cleanupTestData();
@@ -168,6 +172,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Valid session is found',
   async fn() {
     await cleanupTestData();
@@ -200,6 +205,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Expired session is rejected',
   async fn() {
     await cleanupTestData();
@@ -231,6 +237,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Invalid token returns no session',
   async fn() {
     await cleanupTestData();
@@ -252,6 +259,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Logout deletes session',
   async fn() {
     await cleanupTestData();
@@ -291,6 +299,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Wallet addresses are normalized to lowercase',
   async fn() {
     await cleanupTestData();
@@ -325,6 +334,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Anonymous session ID is stored for migration',
   async fn() {
     await cleanupTestData();
@@ -356,6 +366,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Different wallets have separate sessions',
   async fn() {
     await cleanupTestData();
@@ -396,6 +407,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Sessions have 30-day expiry',
   async fn() {
     await cleanupTestData();
@@ -434,6 +446,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Full SIWE message is stored for audit',
   async fn() {
     await cleanupTestData();
@@ -478,6 +491,7 @@ Issued At: 2024-01-01T00:00:00.000Z`;
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Only one session per wallet address',
   async fn() {
     await cleanupTestData();
@@ -518,6 +532,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Session can be looked up by token',
   async fn() {
     await cleanupTestData();
@@ -549,6 +564,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'SIWE Integration - Session creation timestamp is recorded',
   async fn() {
     await cleanupTestData();

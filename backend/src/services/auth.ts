@@ -323,7 +323,7 @@ export async function requestOtp(email: string): Promise<{ code?: string; expire
   await emailService.sendOtpEmail(email, code);
 
   // Only return code in development mode for testing
-  const isDev = config.nodeEnv === 'development';
+  const isDev = config.env === 'development';
   if (isDev) {
     console.log(`[DEV] OTP code for ${email}: ${code}`);
   }

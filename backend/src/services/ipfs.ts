@@ -98,7 +98,7 @@ export interface PinResponse {
 
 class IpfsClient {
   private apiUrl: string;
-  private headers: HeadersInit;
+  private headers: Record<string, string>;
 
   constructor(config: IpfsConfig) {
     this.apiUrl = config.apiUrl;
@@ -145,15 +145,15 @@ class IpfsClient {
    */
   async pinFile(data: Uint8Array, name: string, mimeType: string): Promise<PinResponse> {
     const formData = new FormData();
-    const blob = new Blob([data], { type: mimeType });
+    const blob = new Blob([data.buffer as ArrayBuffer], { type: mimeType });
     formData.append('file', blob, name);
     formData.append('pinataMetadata', JSON.stringify({ name }));
 
     // Don't set Content-Type - let the browser set it with boundary
-    const headers: HeadersInit = {};
+    const headers: Record<string, string> = {};
     if (this.headers['pinata_api_key']) {
-      headers['pinata_api_key'] = this.headers['pinata_api_key'] as string;
-      headers['pinata_secret_api_key'] = this.headers['pinata_secret_api_key'] as string;
+      headers['pinata_api_key'] = this.headers['pinata_api_key'];
+      headers['pinata_secret_api_key'] = this.headers['pinata_secret_api_key'];
     }
 
     // File uploads may take longer, use 30 second timeout
@@ -405,7 +405,7 @@ export async function getArchiveHistory(cid: string): Promise<ArchivedChat[]> {
 
   while (currentCid) {
     try {
-      const archive = await client.get<ArchivedChat>(currentCid);
+      const archive: ArchivedChat = await client.get<ArchivedChat>(currentCid);
       history.push(archive);
       currentCid = archive.previousCid;
     } catch (error) {

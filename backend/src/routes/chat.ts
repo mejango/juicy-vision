@@ -1208,7 +1208,7 @@ chatRouter.post(
       });
 
       // Build multimodal content blocks for the new prompt
-      const contentBlocks: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
+      const contentBlocks: Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } } | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }> = [];
 
       // Pin image attachments to IPFS first so we can include URIs in the prompt
       const ipfsUris: Record<string, string> = {};
@@ -1773,7 +1773,7 @@ chatRouter.post(
     const user = c.get('user');
 
     // Get reporter address from wallet session or user
-    const reporterAddress = wallet?.address || user?.walletAddress;
+    const reporterAddress = wallet?.address;
     if (!reporterAddress) {
       return c.json({ success: false, error: 'Authentication required' }, 401);
     }

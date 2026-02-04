@@ -114,7 +114,7 @@ const ERC20_ABI = [
   },
 ] as const;
 
-function getPublicClient(chainId: number): PublicClient {
+function getPublicClient(chainId: number) {
   const chain = CHAINS[chainId as keyof typeof CHAINS];
   if (!chain) {
     throw new Error(`Unsupported chain: ${chainId}`);
@@ -254,8 +254,9 @@ export async function getProjectTokenBalances(
           tokenAddress: `jb:${p.projectId}`, // Special prefix for JB project tokens
           tokenSymbol: projectName.slice(0, 10), // Truncate for display
           balance: p.balance,
-          decimals: 18, // JB tokens use 18 decimals
-          usdValue: undefined, // No USD value for project tokens
+          tokenDecimals: 18, // JB tokens use 18 decimals
+          isProjectToken: true,
+          projectId: p.projectId,
         };
       });
   } catch (err) {

@@ -220,7 +220,7 @@ export function encodePayCalldata(payment: SqueezePaymentData): {
   // Encode memo string
   const memoBytes = new TextEncoder().encode(payment.memo);
   const memoLength = memoBytes.length.toString(16).padStart(64, '0');
-  const memoPadded = Buffer.from(memoBytes).toString('hex').padEnd(Math.ceil(memoBytes.length / 32) * 64, '0');
+  const memoPadded = Array.from(memoBytes).map(b => b.toString(16).padStart(2, '0')).join('').padEnd(Math.ceil(memoBytes.length / 32) * 64, '0');
 
   // Empty metadata
   const metadataLength = '0'.padStart(64, '0');

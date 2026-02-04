@@ -188,7 +188,7 @@ inviteRouter.post(
         canInvokeAi: body.canInvokeAi,
         canPauseAi: body.canPauseAi,
         canGrantPauseAi: body.canGrantPauseAi,
-        maxUses: body.maxUses ?? null,
+        maxUses: (body as Record<string, unknown>).maxUses as number | null ?? null,
       });
 
       // Create system event
@@ -219,6 +219,7 @@ inviteRouter.post(
           metadata: event.metadata,
           createdAt: event.createdAt,
         },
+        timestamp: Date.now(),
       });
 
       // Generate full invite URL (using hash router format)
@@ -409,6 +410,7 @@ inviteRouter.post(
           metadata: event.metadata,
           createdAt: event.createdAt,
         },
+        timestamp: Date.now(),
       });
 
       // Also broadcast member_joined for UI updates
@@ -425,6 +427,7 @@ inviteRouter.post(
           canPauseAi: invite.canPauseAi,
           joinedAt: new Date().toISOString(),
         },
+        timestamp: Date.now(),
       });
 
       const chat = await getChatById(invite.chatId);

@@ -29,8 +29,28 @@ import {
 } from '../services/projectConversations.ts'
 import { getChatMessages, sendMessage } from '../services/chat.ts'
 import { hasAddressPaidProject, isProjectOwner } from '../services/bendystraw.ts'
+import { getOrCreateSmartAccount } from '../services/smartAccounts.ts'
 
 const projectConversations = new Hono()
+
+/**
+ * Helper to get wallet address from authenticated user context
+ */
+async function getAddressFromContext(c: any): Promise<string | null> {
+  const user = c.get('user')
+  if (!user) return null
+  try {
+    const smartAccount = await getOrCreateSmartAccount(user.id, 1)
+    return smartAccount.address
+  } catch {
+    return null
+  }
+}
+
+function getUserIdFromContext(c: any): string | undefined {
+  const user = c.get('user')
+  return user?.id
+}
 
 // ============================================================================
 // Schemas
@@ -64,7 +84,7 @@ projectConversations.get(
   '/owner',
   requireAuth,
   async (c) => {
-    const address = c.get('address')
+    const address = await getAddressFromContext(c)
     if (!address) {
       return c.json({ success: false, error: 'Address required' }, 401)
     }
@@ -103,7 +123,7 @@ projectConversations.get(
   '/supporter',
   requireAuth,
   async (c) => {
-    const address = c.get('address')
+    const address = await getAddressFromContext(c)
     if (!address) {
       return c.json({ success: false, error: 'Address required' }, 401)
     }
@@ -137,7 +157,7 @@ projectConversations.get(
   '/:id',
   requireAuth,
   async (c) => {
-    const address = c.get('address')
+    const address = await getAddressFromContext(c)
     const conversationId = c.req.param('id')
 
     if (!address) {
@@ -177,7 +197,7 @@ projectConversations.get(
   '/:id/messages',
   requireAuth,
   async (c) => {
-    const address = c.get('address')
+    const address = await getAddressFromContext(c)
     const conversationId = c.req.param('id')
     const limit = parseInt(c.req.query('limit') || '100')
     const beforeId = c.req.query('beforeId')
@@ -221,8 +241,8 @@ projectConversations.post(
   requireAuth,
   zValidator('json', sendMessageSchema),
   async (c) => {
-    const address = c.get('address')
-    const userId = c.get('userId')
+    const address = await getAddressFromContext(c)
+    const userId = getUserIdFromContext(c)
     const conversationId = c.req.param('id')
     const { content } = c.req.valid('json')
 
@@ -246,10 +266,9 @@ projectConversations.post(
       // Send message using existing chat service
       const message = await sendMessage({
         chatId,
-        senderAddress: address,
+        senderAddress: address!,
         senderUserId: userId,
         content,
-        role: 'user',
       })
 
       return c.json({
@@ -272,7 +291,7 @@ projectConversations.post(
   requireAuth,
   zValidator('json', createConversationSchema),
   async (c) => {
-    const address = c.get('address')
+    const address = await getAddressFromContext(c)
     const body = c.req.valid('json')
 
     if (!address) {
@@ -338,7 +357,7 @@ projectConversations.post(
   requireAuth,
   zValidator('json', archiveSchema),
   async (c) => {
-    const address = c.get('address')
+    const address = await getAddressFromContext(c)
     const conversationId = c.req.param('id')
     const { archived } = c.req.valid('json')
 
@@ -374,7 +393,7 @@ projectConversations.get(
   '/projects/:projectId/:chainId/supporters',
   requireAuth,
   async (c) => {
-    const address = c.get('address')
+    const address = await getAddressFromContext(c)
     const projectId = parseInt(c.req.param('projectId'))
     const chainId = parseInt(c.req.param('chainId'))
     const limit = parseInt(c.req.query('limit') || '50')

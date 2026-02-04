@@ -117,7 +117,21 @@ export interface DocumentBlock {
   };
 }
 
-export type ContentBlock = TextBlock | ImageBlock | DocumentBlock;
+export interface ToolUseBlock {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+export interface ToolResultBlock {
+  type: 'tool_result';
+  tool_use_id: string;
+  content: string;
+  is_error?: boolean;
+}
+
+export type ContentBlock = TextBlock | ImageBlock | DocumentBlock | ToolUseBlock | ToolResultBlock;
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -288,8 +302,7 @@ export async function sendMessage(
                 data: block.source.data,
               },
             };
-          } else {
-            // Document block
+          } else if (block.type === 'document') {
             return {
               type: 'document' as const,
               source: {
@@ -298,6 +311,9 @@ export async function sendMessage(
                 data: block.source.data,
               },
             };
+          } else {
+            // Tool use/result blocks — pass through as-is
+            return block;
           }
         }),
   })) as unknown as Anthropic.MessageParam[];

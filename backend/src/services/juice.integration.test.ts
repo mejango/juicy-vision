@@ -14,6 +14,7 @@
 
 import { assertEquals, assertExists, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import { query, queryOne, execute, transaction } from '../db/index.ts';
+import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
 // ============================================================================
 // Test User Setup
@@ -75,6 +76,7 @@ async function createBalance(userId: string, amount: number): Promise<void> {
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Balance creation on first access',
   // First test initializes DB pool, which opens TCP connections
   sanitizeResources: false,
@@ -126,6 +128,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Purchase credit with settlement delay',
   async fn() {
     await ensureTestUsersExist();
@@ -204,6 +207,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Spend blocked when insufficient balance',
   async fn() {
     await ensureTestUsersExist();
@@ -241,6 +245,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Spend succeeds with sufficient balance',
   async fn() {
     await ensureTestUsersExist();
@@ -279,6 +284,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Spend refund restores balance on failure',
   async fn() {
     await ensureTestUsersExist();
@@ -343,6 +349,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Cash out 24-hour delay enforcement',
   async fn() {
     await ensureTestUsersExist();
@@ -405,6 +412,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Cash out cancellation restores balance',
   async fn() {
     await ensureTestUsersExist();
@@ -480,6 +488,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Cannot cancel cash out once processing',
   async fn() {
     await ensureTestUsersExist();
@@ -519,6 +528,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Disputed purchase cannot be credited',
   async fn() {
     await ensureTestUsersExist();
@@ -566,6 +576,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Spend fails after max retries',
   async fn() {
     await ensureTestUsersExist();
@@ -607,6 +618,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Balance = purchased - spent - cashed_out',
   async fn() {
     await ensureTestUsersExist();
@@ -647,6 +659,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Spend records track project and chain',
   async fn() {
     await ensureTestUsersExist();
@@ -701,6 +714,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Purchase stores risk score and settlement delay',
   async fn() {
     await ensureTestUsersExist();
@@ -743,6 +757,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - User data isolation',
   async fn() {
     await ensureTestUsersExist();
@@ -791,6 +806,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Spend status transitions',
   async fn() {
     await ensureTestUsersExist();
@@ -843,6 +859,7 @@ Deno.test({
 // ============================================================================
 
 Deno.test({
+  ignore: SKIP_DB_TESTS,
   name: 'Juice Integration - Purchase idempotency by payment intent ID',
   async fn() {
     await ensureTestUsersExist();

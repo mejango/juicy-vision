@@ -6,7 +6,6 @@
 
 import { Hono } from 'hono';
 import { detectGeoFromIP, recordUserRegion, getRegionStats } from '../services/geo.ts';
-import { authMiddleware } from '../middleware/auth.ts';
 
 export const localeRouter = new Hono();
 
@@ -24,9 +23,9 @@ localeRouter.get('/detect', async (c) => {
 
   // Fallback to connection info if available
   if (!ip) {
-    const connInfo = c.env?.remoteAddr;
+    const connInfo = (c.env as Record<string, unknown>)?.remoteAddr;
     if (connInfo && typeof connInfo === 'object' && 'hostname' in connInfo) {
-      ip = connInfo.hostname;
+      ip = (connInfo as { hostname: string }).hostname;
     }
   }
 
