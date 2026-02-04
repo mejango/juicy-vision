@@ -1368,6 +1368,14 @@ chatRouter.post(
             }
           }
         }
+
+        // If the AI produced no text (e.g., tool calls exhausted token budget, or empty
+        // data from bendystraw for a freshly deployed project), surface a recovery message
+        if (!fullContent.trim()) {
+          console.warn(`[AI] ${chatId}: Stream completed with no text content`);
+          fullContent = "Sorry, I wasn't able to process that. Could you try again?";
+          streamAiToken(chatId, messageId, fullContent, false);
+        }
       } catch (streamError) {
         // Parse error and provide user-friendly message
         const rawMsg = streamError instanceof Error ? streamError.message : 'Stream interrupted';
