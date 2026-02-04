@@ -1070,8 +1070,8 @@ export async function fetchProjectsByOwner(
     const cached = projectsByOwnerCache.get(mergedCacheKey)
     if (cached) return cached
 
-    // Query both owner and deployer in parallel
-    const [ownerResult, deployerResult] = await Promise.all([
+    // Query both owner and deployer in parallel (each fails independently)
+    const [ownerResult, deployerResult] = await Promise.allSettled([
       safeRequest<{ projects: { items: Project[] } }>(
         PROJECTS_BY_OWNER_QUERY,
         { owner: addr, limit }
@@ -1082,8 +1082,12 @@ export async function fetchProjectsByOwner(
       ),
     ])
 
-    const ownerProjects = ownerResult?.projects?.items || []
-    const deployerProjects = deployerResult?.projects?.items || []
+    const ownerProjects = ownerResult.status === 'fulfilled'
+      ? ownerResult.value?.projects?.items || []
+      : []
+    const deployerProjects = deployerResult.status === 'fulfilled'
+      ? deployerResult.value?.projects?.items || []
+      : []
 
     // Merge and deduplicate by projectId-chainId
     const seen = new Set<string>()
