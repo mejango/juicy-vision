@@ -611,11 +611,12 @@ describe('useOmnichainLaunchProject', () => {
         })
       })
 
-      // Should call server signing endpoint with smart account address for routing
+      // Should call server signing endpoint WITHOUT smart account routing
+      // For launches, the project doesn't exist yet - owner is in calldata
       expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
         expect.any(Array),
-        '0xSmartAccount123456789012345678901234567',
-        '0xSmartAccount123456789012345678901234567' // Smart account address for routing
+        '0xSmartAccount123456789012345678901234567'
+        // No smart account routing for launches
       )
       expect(mockCreateBalanceBundle).not.toHaveBeenCalled()
     })
@@ -630,11 +631,11 @@ describe('useOmnichainLaunchProject', () => {
         })
       })
 
-      // Should use managed address as both owner and smart account for routing
+      // Should use managed address as owner, but no smart account routing for launches
       expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
         expect.any(Array),
-        '0xSmartAccount123456789012345678901234567',
-        '0xSmartAccount123456789012345678901234567' // Smart account address for routing
+        '0xSmartAccount123456789012345678901234567'
+        // No smart account routing for launches
       )
     })
 
@@ -653,13 +654,13 @@ describe('useOmnichainLaunchProject', () => {
         })
       })
 
+      // No smart account routing for launches - project doesn't exist yet
       expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
         [
           { chainId: 1, target: '0xDeployer1', data: '0xabc', value: '100' },
           { chainId: 10, target: '0xDeployer2', data: '0xdef', value: '0' },
         ],
-        expect.any(String),
-        '0xSmartAccount123456789012345678901234567' // Smart account address for routing
+        expect.any(String)
       )
     })
 
@@ -794,11 +795,12 @@ describe('useOmnichainLaunchProject', () => {
         })
       })
 
-      // Should use managed address as both owner and smart account for routing
+      // Should use managed address as owner, but NO smart account routing for launches
+      // (project doesn't exist yet, owner is specified in the calldata)
       expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
         expect.any(Array),
-        '0xManagedFallback1234567890123456789012',
-        '0xManagedFallback1234567890123456789012' // Smart account address for routing
+        '0xManagedFallback1234567890123456789012'
+        // No smart account routing for launches
       )
     })
 
