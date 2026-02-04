@@ -27,7 +27,7 @@ import {
 import { getConfig } from '../utils/config.ts';
 import { logger } from '../utils/logger.ts';
 import { getSigningKey } from './encryption.ts';
-import { ensureDeployed } from './smartAccounts.ts';
+import { getFactoryDeployData } from './smartAccounts.ts';
 
 // ============================================================================
 // Chain Configuration
@@ -240,13 +240,32 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     chains: transactions.map(tx => tx.chainId),
   });
 
-  // Deploy smart account on all target chains before building forward requests.
-  // Without this, SmartAccount.execute() reverts because there's no contract code.
+  // Build factory deployment transactions for chains that need smart account deployment.
+  // These are included in the Relayr bundle so deployment is gas-sponsored.
+  // createAccount is idempotent - safe to include even if already deployed.
+  const deploymentTransactions: Array<{
+    chain: number;
+    target: string;
+    data: string;
+    value: string;
+  }> = [];
+
   if (smartAccountAddress) {
+    const { target, data } = getFactoryDeployData(signingAccount.address, userId);
     const uniqueChainIds = [...new Set(transactions.map(tx => tx.chainId))];
-    await Promise.all(uniqueChainIds.map(chainId =>
-      ensureDeployed(userId, chainId)
-    ));
+    for (const chainId of uniqueChainIds) {
+      deploymentTransactions.push({
+        chain: chainId,
+        target,
+        data,
+        value: '0',
+      });
+    }
+    logger.info('Including smart account deployment in bundle', {
+      userId,
+      chains: uniqueChainIds,
+      factory: target,
+    });
   }
 
   // Sign ERC-2771 forward requests for each transaction
@@ -363,16 +382,19 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
   }
 
   // Create Relayr bundle
+  // Deployment transactions go first so smart accounts exist before execute() calls
+  const allTransactions = [...deploymentTransactions, ...wrappedTransactions];
   const bundleRequest = {
     app_id: RELAYR_APP_ID,
-    transactions: wrappedTransactions,
+    transactions: allTransactions,
     perform_simulation: true,
     virtual_nonce_mode: 'Disabled',
   };
 
   logger.info('Submitting bundle to Relayr', {
     userId,
-    transactionCount: wrappedTransactions.length,
+    transactionCount: allTransactions.length,
+    deploymentCount: deploymentTransactions.length,
   });
 
   const response = await fetch(`${RELAYR_API_URL}/v1/bundle/balance`, {

@@ -22,6 +22,7 @@ import {
   pad,
   type Address,
   type Hash,
+  type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
@@ -492,6 +493,26 @@ export async function ensureDeployed(
   }
 
   return account.address;
+}
+
+/**
+ * Get the factory deployment transaction data for a user's smart account.
+ * Used by Relayr bundle creation to include deployment in gas-sponsored bundles.
+ * createAccount is idempotent - if already deployed, it returns early with no effect.
+ */
+export function getFactoryDeployData(
+  ownerAddress: Address,
+  userId: string,
+): { target: Address; data: Hex } {
+  const salt = generateSalt(userId);
+  return {
+    target: SIMPLE_ACCOUNT_FACTORY as Address,
+    data: encodeFunctionData({
+      abi: FACTORY_ABI,
+      functionName: 'createAccount',
+      args: [ownerAddress, salt],
+    }),
+  };
 }
 
 // ============================================================================
