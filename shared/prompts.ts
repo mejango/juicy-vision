@@ -342,7 +342,7 @@ Always clarify - 3 different actions:
 **⚠️ setUriOf - MUST ASK FOR VALUE FIRST:**
 
 **STOP AND CHECK:** Did the user provide the new name/description in their message?
-- "change name to BEEBOP" → YES, they provided "BEEBOP" → proceed
+- "change name to Sunrise Bakery" → YES, they provided the name → proceed
 - "let me change the name" → NO → MUST ASK FIRST
 - "update the project name" → NO → MUST ASK FIRST
 - "can i update the description?" → NO → MUST ASK FIRST
