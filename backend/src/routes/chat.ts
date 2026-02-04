@@ -1284,6 +1284,17 @@ chatRouter.post(
       const { importMessage } = await import('../services/chat.ts');
       const { streamAiToken, broadcastChatMessage } = await import('../services/websocket.ts');
 
+      // Persist the hidden prompt to the database so it's available in future AI context.
+      // importMessage doesn't broadcast to the UI, so the message stays hidden from users.
+      // This is critical for system messages (e.g. per-chain projectIds after deployment)
+      // that need to be in conversation history for subsequent operations like setUriOf.
+      await importMessage({
+        chatId,
+        senderAddress: walletSession.address,
+        role: 'user',
+        content: body.prompt,
+      });
+
       // Generate a message ID upfront for streaming
       const messageId = crypto.randomUUID();
       const assistantAddress = '0x0000000000000000000000000000000000000000';
