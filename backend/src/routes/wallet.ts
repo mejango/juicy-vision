@@ -28,6 +28,8 @@ import {
 } from '../services/smartAccounts.ts';
 import { createRelayrBundle } from '../services/relayrBundle.ts';
 import type { Address } from 'viem';
+import { getConfig } from '../utils/config.ts';
+import { getPrimaryChainId, getAllChainIds } from '@shared/chains.ts';
 
 const walletRouter = new Hono();
 
@@ -39,7 +41,8 @@ const walletRouter = new Hono();
 // Creates deterministic address if not exists (does not deploy contract)
 walletRouter.get('/address', requireAuth, async (c) => {
   const user = c.get('user');
-  const chainId = Number(c.req.query('chainId')) || 1; // Default to mainnet
+  const config = getConfig();
+  const chainId = Number(c.req.query('chainId')) || getPrimaryChainId(config.isTestnet);
 
   try {
     const smartAccount = await getOrCreateSmartAccount(user.id, chainId);
@@ -89,8 +92,9 @@ walletRouter.get('/balances', requireAuth, async (c) => {
     chainId: c.req.query('chainId'),
   });
 
-  // Default to all supported chains
-  const chainIds = query.chainId ? [query.chainId] : [1, 10, 8453, 42161];
+  // Default to all supported chains for the current environment
+  const config = getConfig();
+  const chainIds = query.chainId ? [query.chainId] : getAllChainIds(config.isTestnet);
 
   // Use Promise.allSettled to handle individual chain failures gracefully
   const settledResults = await Promise.allSettled(
@@ -582,7 +586,8 @@ walletRouter.get('/exports', requireAuth, async (c) => {
 // ============================================================================
 
 walletRouter.get('/admin/reserves', requireAuth, requireAdmin, async (c) => {
-  const chainIds = [1, 10, 8453, 42161];
+  const config = getConfig();
+  const chainIds = getAllChainIds(config.isTestnet);
   const address = getReservesAddress();
 
   const reserves = await Promise.all(
