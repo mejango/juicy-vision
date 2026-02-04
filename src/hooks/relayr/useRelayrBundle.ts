@@ -84,6 +84,7 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
       ...prev,
       status: 'processing',
       paymentTxHash,
+      processingStartedAt: prev.processingStartedAt ?? Date.now(),
     }))
   }, [])
 
@@ -193,6 +194,9 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
         ...prev,
         status,
         chainStates,
+        processingStartedAt: status === 'processing' && !prev.processingStartedAt
+          ? Date.now()
+          : prev.processingStartedAt,
       }
     })
   }, [])

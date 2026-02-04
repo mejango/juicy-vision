@@ -110,6 +110,40 @@ export default function DeployRevnetModal({
   const allComplete = phase === 'complete' || (!autoDeploySuckers && revnetComplete)
   const hasError = revnetError || suckersError
 
+  // Slow-chain detection
+  const [slowChainDismissed, setSlowChainDismissed] = useState(false)
+  const [tick, setTick] = useState(0)
+  const SLOW_CHAIN_THRESHOLD_MS = 90_000
+
+  useEffect(() => {
+    if (!isDeploying) return
+    const id = setInterval(() => setTick(t => t + 1), 5000)
+    return () => clearInterval(id)
+  }, [isDeploying])
+
+  useEffect(() => {
+    if (!isDeploying) setSlowChainDismissed(false)
+  }, [isDeploying])
+
+  const { slowChainIds, hasSlowChains } = useMemo(() => {
+    void tick
+    const bs = phase === 'suckers' ? suckerBundleState : revnetBundleState
+    const startedAt = bs.processingStartedAt
+    if (!startedAt || !isDeploying) {
+      return { slowChainIds: [] as number[], hasSlowChains: false }
+    }
+    const elapsed = Date.now() - startedAt
+    if (elapsed < SLOW_CHAIN_THRESHOLD_MS) {
+      return { slowChainIds: [] as number[], hasSlowChains: false }
+    }
+    const hasConfirmed = bs.chainStates.some(cs => cs.status === 'confirmed')
+    const stuck = bs.chainStates
+      .filter(cs => cs.status === 'pending' || cs.status === 'submitted')
+      .map(cs => cs.chainId)
+    const hasSlow = hasConfirmed && stuck.length > 0
+    return { slowChainIds: hasSlow ? stuck : [], hasSlowChains: hasSlow }
+  }, [tick, phase, suckerBundleState, revnetBundleState, isDeploying])
+
   // Verify transaction parameters
   const verificationResult = useMemo(() => {
     return verifyDeployRevnetParams({
@@ -164,7 +198,7 @@ export default function DeployRevnetModal({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!hasStarted || allComplete ? handleClose : undefined}
+        onClick={!hasStarted || allComplete || hasSlowChains ? handleClose : undefined}
       />
 
       {/* Modal */}
@@ -202,7 +236,7 @@ export default function DeployRevnetModal({
               </p>
             </div>
           </div>
-          {(!hasStarted || allComplete) && (
+          {(!hasStarted || allComplete || hasSlowChains) && (
             <button
               onClick={handleClose}
               className={`p-2 transition-colors ${
@@ -299,17 +333,19 @@ export default function DeployRevnetModal({
                       </span>
                     )}
                     {chainState?.status === 'pending' && (
-                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Pending
-                      </span>
+                      slowChainIds.includes(chainId)
+                        ? <span className="text-xs text-amber-500">Slow</span>
+                        : <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Pending</span>
                     )}
                     {chainState?.status === 'submitted' && (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full" />
-                        <span className={`text-xs ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>
-                          {phase === 'suckers' ? 'Deploying sucker...' : 'Creating...'}
-                        </span>
-                      </div>
+                      slowChainIds.includes(chainId)
+                        ? <span className="text-xs text-amber-500">Slow</span>
+                        : <div className="flex items-center gap-2">
+                            <div className="animate-spin w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full" />
+                            <span className={`text-xs ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>
+                              {phase === 'suckers' ? 'Deploying sucker...' : 'Creating...'}
+                            </span>
+                          </div>
                     )}
                     {chainState?.status === 'confirmed' && (
                       <div className="flex items-center gap-2">
@@ -544,9 +580,23 @@ export default function DeployRevnetModal({
             </div>
           )}
 
-          {isDeploying && (
+          {isDeploying && !hasSlowChains && (
             <div className={`text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Do not close this window
+            </div>
+          )}
+
+          {isDeploying && hasSlowChains && (
+            <div className="space-y-3">
+              <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-700'}`}>
+                Some chains are taking longer than expected. Confirmed chains are already live. You can safely close.
+              </div>
+              <button
+                onClick={handleClose}
+                className="w-full py-3 font-medium bg-amber-500 text-black hover:bg-amber-600 transition-colors"
+              >
+                Close (slow chains will continue)
+              </button>
             </div>
           )}
 

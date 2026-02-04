@@ -67,7 +67,7 @@ Juicy Vision supports four distinct privacy modes for different user needs:
 - Deno runtime with Hono framework
 - PostgreSQL database with migrations
 - allow full sessions without the user being authenticated. auth just helps a user access progress.
-- all normie users get a smart account wallet (GCP KMS-backed key derivation)
+- all normie users get a ForwardableSimpleAccount (ERC-4337 + ERC-2771) — deterministic address via CREATE2, server-signed meta-transactions via Relayr
 - users can pay projects either in crypto or with Stripe. if with stripe, account for the increment to the project's balance, and when deemed risk-appropriate, pay the project from our own balance and account for the users' tokens correctly.
 - "Squeeze to Pay" AI billing model: chat AI balance tracking, cost per request, auto-refill on NANA payments
 - WebSocket-based real-time chat with presence tracking, typing indicators, and message broadcasting

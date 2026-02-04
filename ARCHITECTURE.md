@@ -522,6 +522,50 @@ Each managed user gets an ERC-4337 Smart Account:
 - **Salt:** Derived from `keccak256("juicy-vision:{userId}")`
 - **Lazy deployment:** Only deploy when user takes first action
 
+### Custom Contract Design
+
+`ForwardableSimpleAccount` extends `SimpleAccount` (ERC-4337) + `ERC2771Context` (OpenZeppelin):
+
+- **Key override:** `_requireForExecute()` uses `_msgSender()` instead of `msg.sender`
+- This allows the TrustedForwarder to relay `execute()` calls on behalf of the owner
+- Supports both direct execution (from owner/entrypoint) **and** forwarder-relayed execution
+- Diamond resolution: `_msgSender()`, `_msgData()`, `_contextSuffixLength()` all resolve to `ERC2771Context`
+- Contract source: `contracts/src/ForwardableSimpleAccount.sol`
+
+### Factory
+
+`ForwardableSimpleAccountFactory` deploys proxies (ERC1967) via CREATE2:
+
+- `createAccount(owner, salt)` — idempotent; returns existing if already deployed
+- `getAddress(owner, salt)` — computes counterfactual address without deploying
+- No `senderCreator` restriction (called directly, not via UserOps)
+- Contract source: `contracts/src/ForwardableSimpleAccountFactory.sol`
+
+### Managed-Mode Transaction Routing
+
+How server-signed transactions flow through the smart account:
+
+1. **Signing key precedence:** user's stored PRF key → `RESERVES_PRIVATE_KEY` fallback
+2. Each bundle auto-includes `factory.createAccount()` per chain (idempotent lazy deploy)
+3. Each application tx wrapped as `SmartAccount.execute(target, value, data)`
+4. ERC-2771 ForwardRequest signed with EIP-712 (domain name `"Juicebox"`, version `"1"`)
+5. `_msgSender()` inside the contract resolves to the signer (reserves EOA = owner)
+6. No UserOps overhead — direct ERC-2771 relay via Relayr, not bundler-based
+
+```
+Signer ──► EIP-712 sign ForwardRequest
+              │
+              ▼
+TrustedForwarder.execute(request)
+              │
+              ▼
+SmartAccount.execute(target, value, data)
+  └── _requireForExecute() checks _msgSender() == owner ✓
+              │
+              ▼
+Target contract receives call from SmartAccount
+```
+
 ### Database Schema
 
 ```sql
@@ -596,6 +640,15 @@ CREATE TABLE smart_account_exports (
 | DB status | `managed` | `self_custody` |
 
 **The `transferOwnership` call is irreversible.** Once called, our service key can no longer sign transactions for that account.
+
+### Delayed Transfers
+
+Transfers out of managed smart accounts have a 7-day hold period for fraud protection:
+
+- `requestTransfer()` creates a pending withdrawal in `smart_account_withdrawals` with `available_at = NOW() + 7 days`
+- `executeReadySmartAccountTransfers()` cron job processes withdrawals past their hold period
+- User can cancel during the hold period via `cancelTransfer()`
+- Custody status progression: `managed` → `transferring` → `self_custody`
 
 ---
 
@@ -700,7 +753,7 @@ This creates a flywheel: AI usage funds the NANA treasury, which funds developme
 | Managed Smart Account | ✅ No gas, no signing | ✅ Real on-chain wallet | High |
 | Export to self-custody | ⚠️ Requires EOA | ✅ Full sovereignty | Low |
 | Arbitrum default | ✅ Low fees | ✅ Real L2 | Low |
-| SimpleAccount (not Safe) | ⚠️ Less ecosystem | ✅ ERC-4337 native | Low |
+| ForwardableSimpleAccount (SimpleAccount + ERC2771Context) | ⚠️ Less ecosystem | ✅ ERC-4337 + meta-tx native | Low |
 
 ---
 
@@ -783,12 +836,15 @@ Each managed user has Smart Accounts on all chains (same address via CREATE2).
 | **Auth** | `backend/src/services/auth.ts`, `backend/src/routes/auth.ts` |
 | **Juice Service** | `backend/src/services/juice.ts`, `backend/src/routes/juice.ts` |
 | **Smart Accounts** | `backend/src/services/smartAccounts.ts` |
+| **ERC-2771 Bundles** | `backend/src/services/relayrBundle.ts` |
 | **Transactions** | `backend/src/services/transactions.ts` |
 | **Passkeys** | `backend/src/services/passkey.ts`, `backend/src/routes/passkey.ts` |
 | **SIWE** | `backend/src/routes/siwe.ts` |
 | **Stripe Webhook** | `backend/src/routes/stripe-webhook.ts` |
 | **Cron Jobs** | `backend/src/routes/cron.ts` |
 | **Wagmi Config** | `src/config/wagmi.ts` |
+| **Smart Account Contract** | `contracts/src/ForwardableSimpleAccount.sol` |
+| **Account Factory Contract** | `contracts/src/ForwardableSimpleAccountFactory.sol` |
 | **DB Migrations** | `backend/src/db/migrations/` |
 
 ---
@@ -1654,7 +1710,10 @@ CREATE TABLE chat_summaries (
 |----------|---------|
 | EntryPoint v0.7 | `0x0000000071727De22E5E9d8BAf0edAc6f37da032` |
 | ForwardableSimpleAccountFactory | `0x69a05d911af23501ff9d6b811a97cac972dade05` |
+| ForwardableSimpleAccount (implementation) | `0x605Cb84933FE2C28B56089912e8428DaC417495B` |
 | TrustedForwarder | `0xc29d6995ab3b0df4650ad643adeac55e7acbb566` |
+
+> All ERC-4337 addresses above are identical across mainnets and testnets (deterministic CREATE2 deployment).
 
 ### USDC Addresses
 

@@ -25,6 +25,7 @@ export interface BundleState {
   error: string | null
   synchronizedStartTime?: number
   expiresAt?: number  // Unix timestamp when payment quote expires
+  processingStartedAt?: number  // Date.now() when status first became 'processing'
 }
 
 // ============================================================================

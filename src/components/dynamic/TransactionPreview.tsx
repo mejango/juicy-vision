@@ -1402,6 +1402,8 @@ export default function TransactionPreview({
   const [issuesAcknowledged, setIssuesAcknowledged] = useState(false)
   const [showDeploymentDetails, setShowDeploymentDetails] = useState(false)
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
+  const [slowChainDismissed, setSlowChainDismissed] = useState(false)
+  const [tick, setTick] = useState(0)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -1531,6 +1533,47 @@ export default function TransactionPreview({
       console.error('SetUri failed:', error)
     },
   })
+
+  // ============================================================================
+  // SLOW-CHAIN DETECTION
+  // ============================================================================
+  // 5-second tick timer for re-evaluating slow chain state while launching
+  useEffect(() => {
+    if (!isLaunching) return
+    const id = setInterval(() => setTick(t => t + 1), 5000)
+    return () => clearInterval(id)
+  }, [isLaunching])
+
+  // Reset slow-chain dismissed state when launching starts/stops
+  useEffect(() => {
+    if (!isLaunching) setSlowChainDismissed(false)
+  }, [isLaunching])
+
+  const SLOW_CHAIN_THRESHOLD_MS = 90_000
+
+  const { slowChainIds, hasSlowChains, canProceedDespiteSlowChains } = useMemo(() => {
+    void tick // re-evaluate on tick
+    const startedAt = bundleState.processingStartedAt
+    if (!startedAt || !isLaunching) {
+      return { slowChainIds: [] as number[], hasSlowChains: false, canProceedDespiteSlowChains: false }
+    }
+    const elapsed = Date.now() - startedAt
+    if (elapsed < SLOW_CHAIN_THRESHOLD_MS) {
+      return { slowChainIds: [] as number[], hasSlowChains: false, canProceedDespiteSlowChains: false }
+    }
+    const hasConfirmed = bundleState.chainStates.some(cs => cs.status === 'confirmed')
+    const stuck = bundleState.chainStates
+      .filter(cs => cs.status === 'pending' || cs.status === 'submitted')
+      .map(cs => cs.chainId)
+    const hasSlow = hasConfirmed && stuck.length > 0
+    return {
+      slowChainIds: hasSlow ? stuck : [],
+      hasSlowChains: hasSlow,
+      canProceedDespiteSlowChains: hasSlow,
+    }
+  }, [tick, bundleState.processingStartedAt, bundleState.chainStates, isLaunching])
+
+  const effectiveIsLaunching = isLaunching && !(hasSlowChains && slowChainDismissed)
 
   // ============================================================================
   // POST-LAUNCH FOLLOW-UP MESSAGES
@@ -2746,7 +2789,7 @@ export default function TransactionPreview({
       </div>
 
       {/* Launch progress section - shown when launching */}
-      {(action === 'launchProject' || action === 'launch721Project') && (isLaunching || effectiveIsComplete || hasError) && (
+      {(action === 'launchProject' || action === 'launch721Project') && (effectiveIsLaunching || effectiveIsComplete || hasError) && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           {/* Success state with shareable links */}
           {effectiveIsComplete && Object.keys(effectiveProjectIds).length > 0 && (
@@ -2907,7 +2950,7 @@ export default function TransactionPreview({
       )}
 
       {/* Issues section - shown for launch actions with validation issues, but only after data is loaded */}
-      {launchValidation && launchValidation.hasIssues && !isLaunching && !effectiveIsComplete && !managedWalletLoading && fundingInfo && (
+      {launchValidation && launchValidation.hasIssues && !effectiveIsLaunching && !effectiveIsComplete && !managedWalletLoading && fundingInfo && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <div className={`p-3 border-l-4 ${
             launchValidation.hasCritical
@@ -2961,7 +3004,7 @@ export default function TransactionPreview({
       }`}>
         {(action === 'launchProject' || action === 'launch721Project') ? (
           // Direct launch execution for launch actions
-          isLaunching ? (
+          effectiveIsLaunching ? (
             <button
               disabled
               className="px-5 py-2 text-sm font-bold border-2 bg-gray-500 text-white border-gray-500 cursor-not-allowed opacity-75"
@@ -2970,6 +3013,13 @@ export default function TransactionPreview({
                 <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
                 Launching (~1 min)...
               </span>
+            </button>
+          ) : canProceedDespiteSlowChains && !slowChainDismissed ? (
+            <button
+              onClick={() => setSlowChainDismissed(true)}
+              className="px-5 py-2 text-sm font-bold border-2 bg-amber-500 text-black border-amber-500 hover:bg-amber-600 hover:border-amber-600 transition-colors"
+            >
+              Continue (some chains slow)
             </button>
           ) : (
             <button
@@ -3090,7 +3140,7 @@ export default function TransactionPreview({
       )}
 
       {/* Deployment details - shown at bottom when launching/complete/error */}
-      {(action === 'launchProject' || action === 'launch721Project') && (isLaunching || effectiveIsComplete || hasError) && (
+      {(action === 'launchProject' || action === 'launch721Project') && (effectiveIsLaunching || isLaunching || effectiveIsComplete || hasError) && (
         <div className={`px-4 py-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <button
             onClick={() => setShowDeploymentDetails(!showDeploymentDetails)}
@@ -3135,9 +3185,15 @@ export default function TransactionPreview({
                     </div>
                     <div className="flex items-center gap-2">
                       {!chainState && !isPersistedComplete && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Waiting</span>}
-                      {chainState?.status === 'pending' && <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Pending</span>}
+                      {chainState?.status === 'pending' && (
+                        slowChainIds.includes(cid)
+                          ? <span className="text-amber-500">Slow</span>
+                          : <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Pending</span>
+                      )}
                       {chainState?.status === 'submitted' && (
-                        <span className="text-juice-orange">Creating...</span>
+                        slowChainIds.includes(cid)
+                          ? <span className="text-amber-500">Slow</span>
+                          : <span className="text-juice-orange">Creating...</span>
                       )}
                       {(chainState?.status === 'confirmed' || isPersistedComplete) && (
                         <div className="flex items-center gap-1">
@@ -3159,6 +3215,13 @@ export default function TransactionPreview({
                   </div>
                 )
               })}
+
+              {/* Slow chain banner */}
+              {hasSlowChains && (
+                <div className={`mt-2 p-2 text-xs ${isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-700'}`}>
+                  Some chains are taking longer than expected. Confirmed chains are already live. You can safely close.
+                </div>
+              )}
             </div>
           )}
         </div>

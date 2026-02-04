@@ -104,6 +104,39 @@ export default function LaunchProjectModal({
   const startDate = new Date(synchronizedStartTime * 1000)
   const allCompleted = isComplete || hasError
 
+  // Slow-chain detection
+  const [slowChainDismissed, setSlowChainDismissed] = useState(false)
+  const [tick, setTick] = useState(0)
+  const SLOW_CHAIN_THRESHOLD_MS = 90_000
+
+  useEffect(() => {
+    if (!isLaunching) return
+    const id = setInterval(() => setTick(t => t + 1), 5000)
+    return () => clearInterval(id)
+  }, [isLaunching])
+
+  useEffect(() => {
+    if (!isLaunching) setSlowChainDismissed(false)
+  }, [isLaunching])
+
+  const { slowChainIds, hasSlowChains } = useMemo(() => {
+    void tick
+    const startedAt = bundleState.processingStartedAt
+    if (!startedAt || !isLaunching) {
+      return { slowChainIds: [] as number[], hasSlowChains: false }
+    }
+    const elapsed = Date.now() - startedAt
+    if (elapsed < SLOW_CHAIN_THRESHOLD_MS) {
+      return { slowChainIds: [] as number[], hasSlowChains: false }
+    }
+    const hasConfirmed = bundleState.chainStates.some(cs => cs.status === 'confirmed')
+    const stuck = bundleState.chainStates
+      .filter(cs => cs.status === 'pending' || cs.status === 'submitted')
+      .map(cs => cs.chainId)
+    const hasSlow = hasConfirmed && stuck.length > 0
+    return { slowChainIds: hasSlow ? stuck : [], hasSlowChains: hasSlow }
+  }, [tick, bundleState.processingStartedAt, bundleState.chainStates, isLaunching])
+
   // Verify transaction parameters
   const verificationResult = useMemo(() => {
     return verifyLaunchProjectParams({
@@ -157,7 +190,7 @@ export default function LaunchProjectModal({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!hasStarted || allCompleted ? handleClose : undefined}
+        onClick={!hasStarted || allCompleted || hasSlowChains ? handleClose : undefined}
       />
 
       {/* Modal */}
@@ -193,7 +226,7 @@ export default function LaunchProjectModal({
               </p>
             </div>
           </div>
-          {(!hasStarted || allCompleted) && (
+          {(!hasStarted || allCompleted || hasSlowChains) && (
             <button
               onClick={handleClose}
               className={`p-2 transition-colors ${
@@ -259,17 +292,19 @@ export default function LaunchProjectModal({
                       </span>
                     )}
                     {chainState?.status === 'pending' && (
-                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Pending
-                      </span>
+                      slowChainIds.includes(chainId)
+                        ? <span className="text-xs text-amber-500">Slow</span>
+                        : <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Pending</span>
                     )}
                     {chainState?.status === 'submitted' && (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin w-3 h-3 border-2 border-juice-orange border-t-transparent rounded-full" />
-                        <span className={`text-xs ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
-                          Creating...
-                        </span>
-                      </div>
+                      slowChainIds.includes(chainId)
+                        ? <span className="text-xs text-amber-500">Slow</span>
+                        : <div className="flex items-center gap-2">
+                            <div className="animate-spin w-3 h-3 border-2 border-juice-orange border-t-transparent rounded-full" />
+                            <span className={`text-xs ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
+                              Creating...
+                            </span>
+                          </div>
                     )}
                     {chainState?.status === 'confirmed' && (
                       <div className="flex items-center gap-2">
@@ -486,9 +521,23 @@ export default function LaunchProjectModal({
             </div>
           )}
 
-          {isLaunching && (
+          {isLaunching && !hasSlowChains && (
             <div className={`text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Do not close this window
+            </div>
+          )}
+
+          {isLaunching && hasSlowChains && (
+            <div className="space-y-3">
+              <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-700'}`}>
+                Some chains are taking longer than expected. Confirmed chains are already live. You can safely close.
+              </div>
+              <button
+                onClick={handleClose}
+                className="w-full py-3 font-medium bg-amber-500 text-black hover:bg-amber-600 transition-colors"
+              >
+                Close (slow chains will continue)
+              </button>
             </div>
           )}
 

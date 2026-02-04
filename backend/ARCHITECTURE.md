@@ -60,6 +60,7 @@ src/
 | Service | Responsibility |
 |---------|---------------|
 | `smartAccounts.ts` | ERC-4337 smart accounts (CREATE2) |
+| `relayrBundle.ts` | ERC-2771 signing & Relayr bundle creation |
 | `wallet.ts` | Token balances, transfers |
 | `transactions.ts` | On-chain tx tracking |
 
@@ -146,9 +147,12 @@ Authentication:
 ```
 
 **Key Features:**
+- Custom contract: `ForwardableSimpleAccount` (`SimpleAccount` + `ERC2771Context`)
 - Counterfactual addresses (valid before deployment)
 - One address per user per chain
-- Gas sponsorship via paymaster
+- Gas-free via ERC-2771 meta-transactions through Relayr (no paymaster)
+- Server-signed ERC-2771 ForwardRequests (no UserOps, no bundler)
+- Factory auto-deployment included in Relayr bundles (idempotent per chain)
 - Single-tx custody transfer to user EOA
 
 ## Context Management
@@ -202,7 +206,7 @@ Risk Score → Delay:
 | **Auth** | users, sessions, otp_codes |
 | **Passkey** | passkey_credentials, passkey_challenges |
 | **SIWE** | wallet_sessions |
-| **Smart Accounts** | user_smart_accounts, smart_account_balances, smart_account_withdrawals |
+| **Smart Accounts** | user_smart_accounts, smart_account_balances, smart_account_withdrawals, smart_account_exports |
 | **Juice** | juice_balances, juice_purchases, juice_spends, juice_cash_outs |
 | **Payments** | pending_fiat_payments, fiat_payment_disputes |
 | **Chat** | multi_chats, multi_chat_members, multi_chat_messages |
