@@ -118,4 +118,6 @@ export interface UseOmnichainTransactionOptions {
   onPaymentRequired?: (paymentOptions: PaymentOption[]) => void
   /** Unique key to scope persisted deployment state. Each unique key gets its own cache. */
   deploymentKey?: string
+  /** Chat ID for scoping deployment results to prevent cross-chat contamination. */
+  chatId?: string
 }

@@ -1507,6 +1507,7 @@ export default function TransactionPreview({
     reset: resetLaunch,
   } = useOmnichainLaunchProject({
     deploymentKey: stableDeploymentKey,
+    chatId,
     onError: (error) => {
       console.error('Launch failed:', error)
     },
@@ -1524,6 +1525,7 @@ export default function TransactionPreview({
     reset: resetSetUri,
   } = useOmnichainSetUri({
     deploymentKey: `setUri-${stableDeploymentKey}`,
+    chatId,
     onError: (error) => {
       console.error('SetUri failed:', error)
     },

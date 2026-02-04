@@ -62,6 +62,7 @@ interface PersistedDeploymentResult {
   projectIds: Record<number, number>  // chainId -> projectId
   txHashes: Record<number, string>    // chainId -> txHash
   timestamp: number
+  chatId?: string  // Scopes result to a specific chat
 }
 
 interface PersistedInProgressDeployment {
@@ -152,7 +153,7 @@ function loadInProgressDeployment(deploymentKey: string | undefined): PersistedI
 export function useOmnichainLaunchProject(
   options: UseOmnichainTransactionOptions = {}
 ): UseOmnichainLaunchProjectReturn {
-  const { onSuccess, onError, deploymentKey } = options
+  const { onSuccess, onError, deploymentKey, chatId } = options
 
   // Use refs for callbacks to avoid infinite loops when callbacks change
   const onSuccessRef = useRef(onSuccess)
@@ -273,6 +274,7 @@ export function useOmnichainLaunchProject(
           projectIds: finalIds,
           txHashes,
           timestamp: Date.now(),
+          chatId,
         }
         saveDeploymentResult(persistedData, deploymentKey)  // Also clears in-progress from localStorage
         setPersistedResult(persistedData)
@@ -291,6 +293,7 @@ export function useOmnichainLaunchProject(
           projectIds: finalIds,
           txHashes,
           timestamp: Date.now(),
+          chatId,
         }
         saveDeploymentResult(persistedData, deploymentKey)  // Also clears in-progress from localStorage
         setPersistedResult(persistedData)

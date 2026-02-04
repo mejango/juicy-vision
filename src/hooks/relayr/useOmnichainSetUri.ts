@@ -49,6 +49,40 @@ export interface UseOmnichainSetUriReturn {
 // 48 hours deadline for signatures
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60
 
+/**
+ * Search localStorage for a deployment result matching a projectId on a specific chain.
+ * Deployment results (from on-chain receipts) are the ground truth for per-chain project IDs.
+ * This corrects stale IDs that the AI may get from bendystraw indexing lag.
+ */
+function findDeploymentResultByProjectId(
+  projectId: number,
+  chainId: number,
+  chatId?: string,
+): Record<number, number> | null {
+  try {
+    const prefix = 'juicy-vision:deployment-result:'
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (!key || !key.startsWith(prefix)) continue
+
+      const stored = localStorage.getItem(key)
+      if (!stored) continue
+
+      const result = JSON.parse(stored) as { projectIds?: Record<number, number>; chatId?: string }
+
+      // Skip results from different chats to prevent cross-chat contamination
+      if (chatId && result.chatId && result.chatId !== chatId) continue
+
+      if (result.projectIds && result.projectIds[chainId] === projectId) {
+        return result.projectIds
+      }
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+  return null
+}
+
 // localStorage key prefix for persisting state
 const SET_URI_RESULT_PREFIX = 'juicy-vision:set-uri-result:'
 const SET_URI_IN_PROGRESS_PREFIX = 'juicy-vision:set-uri-in-progress:'
@@ -146,7 +180,7 @@ function loadInProgressSetUri(deploymentKey: string | undefined): PersistedInPro
 export function useOmnichainSetUri(
   options: UseOmnichainTransactionOptions = {}
 ): UseOmnichainSetUriReturn {
-  const { onSuccess, onError, deploymentKey } = options
+  const { onSuccess, onError, deploymentKey, chatId } = options
 
   // Use refs for callbacks to avoid infinite loops
   const onSuccessRef = useRef(onSuccess)
@@ -264,7 +298,27 @@ export function useOmnichainSetUri(
    * Fetches the controller address from JBDirectory.controllerOf for each chain.
    */
   const setUri = useCallback(async (params: OmnichainSetUriParams) => {
-    const { chainProjectMappings, uri, forceSelfCustody = false } = params
+    const { chainProjectMappings: rawMappings, uri, forceSelfCustody = false } = params
+
+    // Correct chainProjectMappings using stored deployment results from localStorage.
+    // The AI may provide stale per-chain IDs from bendystraw (indexing lag).
+    // Deployment results from on-chain receipts are the ground truth.
+    let chainProjectMappings = rawMappings
+    const primaryMapping = rawMappings[0]
+    if (primaryMapping && rawMappings.length > 1) {
+      const storedIds = findDeploymentResultByProjectId(
+        Number(primaryMapping.projectId),
+        primaryMapping.chainId,
+        chatId,
+      )
+      if (storedIds) {
+        chainProjectMappings = rawMappings.map(m => ({
+          ...m,
+          projectId: storedIds[m.chainId] ?? m.projectId,
+        }))
+        console.log('Corrected chainProjectMappings from stored deployment result:', storedIds)
+      }
+    }
 
     // Clear any previous state
     clearSetUriResult(deploymentKey)
