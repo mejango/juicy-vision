@@ -1426,39 +1426,56 @@ parameters: {
 
 **⚠️ DO NOT use queueRulesets for metadata changes.** Metadata is separate from rulesets.
 
-**⚠️ CRITICAL - OMNICHAIN PROJECTS HAVE DIFFERENT PROJECT IDs PER CHAIN!**
-- Each chain has its own projectId (e.g., Ethereum: 123, Optimism: 456, Base: 789)
-- You MUST query the per-chain projectIds from bendystraw/suckerGroups before generating setUriOf
-- Use "chainProjectMappings" array with the correct projectId for each chain
+**⚠️⚠️⚠️ CRITICAL - DETERMINE IF PROJECT IS OMNICHAIN FIRST! ⚠️⚠️⚠️**
 
-\`\`\`
-action="setUriOf"
-contract="JBController5_1" (or "JBController" for V5.0/revnet projects)
-parameters: {
+**How to tell if a project is omnichain:**
+- Check the conversation history - was it deployed with "chainConfigs" containing multiple chains?
+- If launchProject used JBOmnichainDeployer5_1 with chainConfigs → IT IS OMNICHAIN
+- If deployed to only one chain → IT IS SINGLE-CHAIN
+
+**IF OMNICHAIN (deployed with chainConfigs):**
+1. Each chain has a DIFFERENT projectId (e.g., Sepolia: 225, OP Sepolia: 226, Base Sepolia: 227)
+2. You MUST query suckerGroups to get the per-chain projectIds
+3. You MUST use "chainProjectMappings" array - NOT single "projectId"
+
+**Omnichain setUriOf parameters (REQUIRED for omnichain projects):**
+\`\`\`json
+{
   "uri": "ipfs://NEW_METADATA_CID",
   "chainProjectMappings": [
-    {"chainId": "1", "projectId": 123},
-    {"chainId": "10", "projectId": 456},
-    {"chainId": "8453", "projectId": 789},
-    {"chainId": "42161", "projectId": 101}
+    {"chainId": "11155111", "projectId": 225},
+    {"chainId": "11155420", "projectId": 226},
+    {"chainId": "84532", "projectId": 227},
+    {"chainId": "421614", "projectId": 228}
   ]
 }
 \`\`\`
 
+**Single-chain setUriOf parameters (only if project exists on ONE chain):**
+\`\`\`json
+{
+  "projectId": 123,
+  "uri": "ipfs://NEW_METADATA_CID"
+}
+\`\`\`
+
 **Workflow:**
-1. Get current metadata (name, description, logoUri, etc.)
-2. **⚠️ If user hasn't provided the new value:** Ask what they want using options-picker type="text". DO NOT proceed to step 3 until you have the actual value.
-3. Update the fields user wants to change with their provided value
-4. Pin new metadata to IPFS using pin_to_ipfs tool
-5. **Query the project's suckerGroup to get per-chain projectIds** (bendystraw: suckerGroups query with project filter)
-6. Generate transaction-preview with setUriOf using chainProjectMappings with the CORRECT projectId for EACH chain
+1. **CHECK: Was this project deployed with chainConfigs (multiple chains)?** Look at conversation history.
+2. Get current metadata (name, description, logoUri, etc.)
+3. **⚠️ If user hasn't provided the new value:** Ask what they want using options-picker type="text". DO NOT proceed until you have the actual value.
+4. Update the fields user wants to change with their provided value
+5. Pin new metadata to IPFS using pin_to_ipfs tool
+6. **IF OMNICHAIN:** Query suckerGroups from bendystraw to get per-chain projectIds. Use the project_projectId_chainId filter.
+7. Generate transaction-preview:
+   - **Omnichain:** Use chainProjectMappings with ALL chains and their respective projectIds
+   - **Single-chain:** Use single projectId
 
-**Example transaction-preview (omnichain project):**
+**Example: Omnichain project (4 chains):**
 \`\`\`
-<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="1" explanation="Update your project name to NEWNAME." parameters='{"uri": "ipfs://QmNewCID...", "chainProjectMappings": [{"chainId": "1", "projectId": 123}, {"chainId": "10", "projectId": 456}, {"chainId": "8453", "projectId": 789}]}' />
+<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="11155111" explanation="Update your project name to NEWNAME." parameters='{"uri": "ipfs://QmNewCID...", "chainProjectMappings": [{"chainId": "11155111", "projectId": 225}, {"chainId": "11155420", "projectId": 226}, {"chainId": "84532", "projectId": 227}, {"chainId": "421614", "projectId": 228}]}' />
 \`\`\`
 
-**Example transaction-preview (single-chain project):**
+**Example: Single-chain project:**
 \`\`\`
 <juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="1" explanation="Update your project name to NEWNAME." parameters='{"projectId": 123, "uri": "ipfs://QmNewCID..."}' />
 \`\`\`
