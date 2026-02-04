@@ -18,8 +18,9 @@ proxyRouter.post('/bendystraw', async (c) => {
   try {
     const body = await c.req.json();
 
-    // Construct the authenticated endpoint
-    const endpoint = `https://bendystraw.xyz/${config.bendystrawApiKey}/graphql`;
+    // Construct the authenticated endpoint (testnet uses a separate indexer)
+    const host = config.isTestnet ? 'testnet.bendystraw.xyz' : 'bendystraw.xyz';
+    const endpoint = `https://${host}/${config.bendystrawApiKey}/graphql`;
 
     const response = await fetch(endpoint, {
       method: 'POST',
