@@ -28,6 +28,7 @@ import { hooksRouter } from './src/routes/hooks.ts';
 import projectConversationsRouter from './src/routes/projectConversations.ts';
 import { imagesRouter } from './src/routes/images.ts';
 import { getConfig, validateConfigForAuth, validateConfigForEncryption, validateConfigForReserves } from './src/utils/config.ts';
+import { getPrimaryChainId } from '@shared/chains.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
 import { executeReadyTransfers } from './src/services/wallet.ts';
@@ -358,7 +359,8 @@ async function extractWalletSessionForWs(
 
   const jwtResult = await validateSession(sessionToken);
   if (jwtResult) {
-    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, 1);
+    const config = getConfig();
+    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, getPrimaryChainId(config.isTestnet));
     return { address: smartAccount.address, userId: jwtResult.user.id };
   }
 
