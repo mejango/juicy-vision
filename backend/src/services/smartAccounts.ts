@@ -24,7 +24,16 @@ import {
   type Hash,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { mainnet, optimism, arbitrum, base } from 'viem/chains';
+import {
+  mainnet,
+  optimism,
+  arbitrum,
+  base,
+  sepolia,
+  optimismSepolia,
+  baseSepolia,
+  arbitrumSepolia,
+} from 'viem/chains';
 import { query, queryOne, execute, transaction } from '../db/index.ts';
 import { logger } from '../utils/logger.ts';
 import { getConfig } from '../utils/config.ts';
@@ -34,18 +43,30 @@ import { getConfig } from '../utils/config.ts';
 // ============================================================================
 
 const CHAINS = {
+  // Mainnets
   1: mainnet,
   10: optimism,
   8453: base,
   42161: arbitrum,
+  // Testnets
+  11155111: sepolia,
+  11155420: optimismSepolia,
+  84532: baseSepolia,
+  421614: arbitrumSepolia,
 } as const;
 
 // Use official/reliable public RPC endpoints
 const RPC_URLS: Record<number, string> = {
+  // Mainnets
   1: 'https://cloudflare-eth.com',
   10: 'https://mainnet.optimism.io',
   8453: 'https://mainnet.base.org',
   42161: 'https://arb1.arbitrum.io/rpc',
+  // Testnets
+  11155111: 'https://sepolia.drpc.org',
+  11155420: 'https://optimism-sepolia.drpc.org',
+  84532: 'https://base-sepolia.drpc.org',
+  421614: 'https://arbitrum-sepolia.drpc.org',
 };
 
 // ============================================================================
