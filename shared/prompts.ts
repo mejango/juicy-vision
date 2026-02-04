@@ -1360,10 +1360,13 @@ If user says "10% revenue share to supporters", ASK: do you mean project keeps 1
 ### ⚠️ CRITICAL: Omnichain Projects Have DIFFERENT projectIds Per Chain
 
 This applies to ALL project operations (queueRulesets, setUriOf, setSplits, distribute, deployERC20, etc.):
-- Each chain has its OWN projectId (e.g., Ethereum: 123, Optimism: 456, Base: 789)
-- You MUST query the per-chain projectIds from bendystraw/suckerGroups BEFORE generating any transaction
-- Use "chainProjectMappings" array: \`[{"chainId": "1", "projectId": 123}, {"chainId": "10", "projectId": 456}]\`
+- Each chain has its OWN projectId (e.g., Sepolia: 226, OP Sepolia: 66, Base Sepolia: 164, Arb Sepolia: 81)
+- **⚠️ ProjectIds are NOT sequential!** If Sepolia is 226, OP Sepolia is NOT 227!
+- **FIRST** check conversation history for deployment results containing actual per-chain projectIds
+- **IF NOT FOUND:** Query the per-chain projectIds from bendystraw/suckerGroups BEFORE generating any transaction
+- Use "chainProjectMappings" array: \`[{"chainId": "11155111", "projectId": 226}, {"chainId": "11155420", "projectId": 66}]\`
 - NEVER assume the same projectId works on all chains!
+- NEVER increment projectIds across chains - each chain assigns IDs independently!
 
 ### queueRulesets (Update Project Rules)
 
@@ -1434,22 +1437,26 @@ parameters: {
 - If deployed to only one chain → IT IS SINGLE-CHAIN
 
 **IF OMNICHAIN (deployed with chainConfigs):**
-1. Each chain has a DIFFERENT projectId (e.g., Sepolia: 225, OP Sepolia: 226, Base Sepolia: 227)
-2. You MUST query suckerGroups to get the per-chain projectIds
-3. You MUST use "chainProjectMappings" array - NOT single "projectId"
+1. Each chain has a COMPLETELY DIFFERENT projectId - they are NOT sequential!
+   - Example: Sepolia: 226, OP Sepolia: 66, Base Sepolia: 164, Arb Sepolia: 81
+   - ⚠️ NEVER assume projectIds increment (226, 227, 228, 229) - this is WRONG!
+2. **FIRST** check conversation history for the deployment result which contains the actual per-chain projectIds
+3. **IF NOT IN HISTORY:** Query suckerGroups from bendystraw to get the per-chain projectIds
+4. You MUST use "chainProjectMappings" array with the ACTUAL projectIds from each chain
 
 **Omnichain setUriOf parameters (REQUIRED for omnichain projects):**
 \`\`\`json
 {
   "uri": "ipfs://NEW_METADATA_CID",
   "chainProjectMappings": [
-    {"chainId": "11155111", "projectId": 225},
-    {"chainId": "11155420", "projectId": 226},
-    {"chainId": "84532", "projectId": 227},
-    {"chainId": "421614", "projectId": 228}
+    {"chainId": "11155111", "projectId": 226},
+    {"chainId": "11155420", "projectId": 66},
+    {"chainId": "84532", "projectId": 164},
+    {"chainId": "421614", "projectId": 81}
   ]
 }
 \`\`\`
+⚠️ NOTE: The projectIds above (226, 66, 164, 81) are ALL DIFFERENT - this is normal!
 
 **Single-chain setUriOf parameters (only if project exists on ONE chain):**
 \`\`\`json
@@ -1465,14 +1472,17 @@ parameters: {
 3. **⚠️ If user hasn't provided the new value:** Ask what they want using options-picker type="text". DO NOT proceed until you have the actual value.
 4. Update the fields user wants to change with their provided value
 5. Pin new metadata to IPFS using pin_to_ipfs tool
-6. **IF OMNICHAIN:** Query suckerGroups from bendystraw to get per-chain projectIds. Use the project_projectId_chainId filter.
+6. **IF OMNICHAIN - GET THE ACTUAL PER-CHAIN PROJECT IDs (CRITICAL!):**
+   - **FIRST:** Check conversation history for the deployment result (shows actual projectIds per chain)
+   - **IF NOT FOUND:** Query suckerGroups from bendystraw using the project_projectId_chainId filter
+   - **⚠️ NEVER guess or increment projectIds!** Each chain has a completely different ID.
 7. Generate transaction-preview:
-   - **Omnichain:** Use chainProjectMappings with ALL chains and their respective projectIds
+   - **Omnichain:** Use chainProjectMappings with the ACTUAL projectIds from each chain (NOT sequential!)
    - **Single-chain:** Use single projectId
 
-**Example: Omnichain project (4 chains):**
+**Example: Omnichain project (4 chains) - notice the projectIds are NOT sequential:**
 \`\`\`
-<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="11155111" explanation="Update your project name to NEWNAME." parameters='{"uri": "ipfs://QmNewCID...", "chainProjectMappings": [{"chainId": "11155111", "projectId": 225}, {"chainId": "11155420", "projectId": 226}, {"chainId": "84532", "projectId": 227}, {"chainId": "421614", "projectId": 228}]}' />
+<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="11155111" explanation="Update your project name to NEWNAME." parameters='{"uri": "ipfs://QmNewCID...", "chainProjectMappings": [{"chainId": "11155111", "projectId": 226}, {"chainId": "11155420", "projectId": 66}, {"chainId": "84532", "projectId": 164}, {"chainId": "421614", "projectId": 81}]}' />
 \`\`\`
 
 **Example: Single-chain project:**
