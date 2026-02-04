@@ -27,6 +27,7 @@ import {
 import { getConfig } from '../utils/config.ts';
 import { logger } from '../utils/logger.ts';
 import { getSigningKey } from './encryption.ts';
+import { ensureDeployed } from './smartAccounts.ts';
 
 // ============================================================================
 // Chain Configuration
@@ -238,6 +239,15 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     chainCount: transactions.length,
     chains: transactions.map(tx => tx.chainId),
   });
+
+  // Deploy smart account on all target chains before building forward requests.
+  // Without this, SmartAccount.execute() reverts because there's no contract code.
+  if (smartAccountAddress) {
+    const uniqueChainIds = [...new Set(transactions.map(tx => tx.chainId))];
+    await Promise.all(uniqueChainIds.map(chainId =>
+      ensureDeployed(userId, chainId)
+    ));
+  }
 
   // Sign ERC-2771 forward requests for each transaction
   const wrappedTransactions: Array<{

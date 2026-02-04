@@ -460,7 +460,7 @@ export async function deploySmartAccount(
  * Ensure account is deployed before taking action
  * Returns the account address (deploying if needed)
  */
-async function ensureDeployed(
+export async function ensureDeployed(
   userId: string,
   chainId: number
 ): Promise<Address> {
