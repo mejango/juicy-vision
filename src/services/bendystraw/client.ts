@@ -7,6 +7,7 @@ import {
   PROJECT_QUERY,
   PROJECTS_QUERY,
   PROJECTS_BY_OWNER_QUERY,
+  PROJECTS_BY_DEPLOYER_QUERY,
   PARTICIPANTS_QUERY,
   SEARCH_PROJECTS_QUERY,
   SEMANTIC_SEARCH_PROJECTS_QUERY,
@@ -76,6 +77,7 @@ export interface Project {
   version: number
   handle?: string
   owner: string
+  deployer?: string
   metadataUri?: string
   metadata?: ProjectMetadata
   name: string
@@ -1036,44 +1038,69 @@ export async function isProjectOwner(
   return project.owner.toLowerCase() === wallet.toLowerCase()
 }
 
-// Cache for projects by owner
+// Cache for projects by owner/deployer
 const projectsByOwnerCache = createCache<Project[]>(CACHE_DURATIONS.SHORT)
 
 // Clear the projects by owner cache (call after deployment completes)
 export function clearProjectsByOwnerCache(ownerAddress?: string): void {
   if (ownerAddress) {
-    // Clear specific owner's cache entries
-    projectsByOwnerCache.delete(`${ownerAddress.toLowerCase()}:50`)
+    // Clear specific address's cache entries (both owner and deployer keys)
+    const addr = ownerAddress.toLowerCase()
+    projectsByOwnerCache.delete(`owner:${addr}:50`)
+    projectsByOwnerCache.delete(`deployer:${addr}:50`)
+    projectsByOwnerCache.delete(`merged:${addr}:50`)
   } else {
     // Clear all cached entries
     projectsByOwnerCache.clear()
   }
 }
 
-// Fetch all projects owned by an address
+// Fetch all projects owned by OR deployed by an address
+// Queries both owner and deployer fields and merges/deduplicates results
 export async function fetchProjectsByOwner(
   ownerAddress: string,
   options: { limit?: number } = {}
 ): Promise<Project[]> {
   const { limit = 50 } = options
-  const cacheKey = `${ownerAddress.toLowerCase()}:${limit}`
+  const addr = ownerAddress.toLowerCase()
+  const mergedCacheKey = `merged:${addr}:${limit}`
 
   try {
-    // Try cache first
-    const cached = projectsByOwnerCache.get(cacheKey)
+    // Try merged cache first
+    const cached = projectsByOwnerCache.get(mergedCacheKey)
     if (cached) return cached
 
-    const result = await safeRequest<{ projects: { items: Project[] } }>(
-      PROJECTS_BY_OWNER_QUERY,
-      {
-        owner: ownerAddress.toLowerCase(),
-        limit,
-      }
-    )
+    // Query both owner and deployer in parallel
+    const [ownerResult, deployerResult] = await Promise.all([
+      safeRequest<{ projects: { items: Project[] } }>(
+        PROJECTS_BY_OWNER_QUERY,
+        { owner: addr, limit }
+      ),
+      safeRequest<{ projects: { items: Project[] } }>(
+        PROJECTS_BY_DEPLOYER_QUERY,
+        { deployer: addr, limit }
+      ),
+    ])
 
-    const projects = result?.projects?.items || []
-    projectsByOwnerCache.set(cacheKey, projects)
-    return projects
+    const ownerProjects = ownerResult?.projects?.items || []
+    const deployerProjects = deployerResult?.projects?.items || []
+
+    // Merge and deduplicate by projectId-chainId
+    const seen = new Set<string>()
+    const merged: Project[] = []
+    for (const p of [...ownerProjects, ...deployerProjects]) {
+      const key = `${p.projectId}-${p.chainId}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        merged.push(p)
+      }
+    }
+
+    // Sort by createdAt descending
+    merged.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+
+    projectsByOwnerCache.set(mergedCacheKey, merged)
+    return merged
   } catch (err) {
     console.error('fetchProjectsByOwner error:', err)
     return []

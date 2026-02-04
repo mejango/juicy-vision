@@ -38,6 +38,37 @@ export const PROJECTS_BY_OWNER_QUERY = `
         name
         logoUri
         owner
+        deployer
+        volume
+        volumeUsd
+        balance
+        contributorsCount
+        paymentsCount
+        createdAt
+      }
+    }
+  }
+`
+
+// Query projects deployed by a specific address (deployer may differ from owner)
+export const PROJECTS_BY_DEPLOYER_QUERY = `
+  query ProjectsByDeployer($deployer: String!, $limit: Int) {
+    projects(
+      where: { deployer: $deployer }
+      limit: $limit
+      orderBy: "createdAt"
+      orderDirection: "desc"
+    ) {
+      items {
+        id
+        projectId
+        chainId
+        version
+        handle
+        name
+        logoUri
+        owner
+        deployer
         volume
         volumeUsd
         balance
