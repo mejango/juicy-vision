@@ -54,7 +54,7 @@ const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60
  * Deployment results (from on-chain receipts) are the ground truth for per-chain project IDs.
  * This corrects stale IDs that the AI may get from bendystraw indexing lag.
  */
-function findDeploymentResultByProjectId(
+export function findDeploymentResultByProjectId(
   projectId: number,
   chainId: number,
   chatId?: string,

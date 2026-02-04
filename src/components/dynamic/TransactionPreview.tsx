@@ -7,6 +7,7 @@ import { useManagedWallet } from '../../hooks'
 import { useTransactionPreviewState, type TransactionPreviewState } from '../../hooks/useComponentState'
 import { getWalletSession } from '../../services/siwe'
 import { useOmnichainLaunchProject, useOmnichainSetUri } from '../../hooks/relayr'
+import { findDeploymentResultByProjectId } from '../../hooks/relayr/useOmnichainSetUri'
 import { clearProjectsByOwnerCache } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { decodeEncodedIPFSUri, encodeIpfsUri } from '../../utils/ipfs'
@@ -1722,6 +1723,26 @@ export default function TransactionPreview({
 
       const raw = JSON.parse(cleanedParams)
 
+      // For setUri actions, correct chainProjectMappings using stored deployment results.
+      // The AI may provide stale per-chain IDs from bendystraw (indexing lag ~5 minutes after deployment).
+      // Deployment results from on-chain receipts are the ground truth.
+      if ((action === 'setUri' || action === 'setUriOf') &&
+          raw.chainProjectMappings && Array.isArray(raw.chainProjectMappings) && raw.chainProjectMappings.length > 1) {
+        const pm = raw.chainProjectMappings[0]
+        if (pm) {
+          const pChainId = typeof pm.chainId === 'string' ? parseInt(pm.chainId) : pm.chainId
+          const pProjectId = typeof pm.projectId === 'string' ? parseInt(pm.projectId) : pm.projectId
+          const storedIds = findDeploymentResultByProjectId(pProjectId, pChainId, chatId)
+          if (storedIds) {
+            console.log('[TransactionPreview] Correcting chainProjectMappings from stored deployment result:', storedIds)
+            raw.chainProjectMappings = raw.chainProjectMappings.map((m: { chainId: string | number; projectId: string | number }) => {
+              const cid = typeof m.chainId === 'string' ? parseInt(m.chainId) : m.chainId
+              return { ...m, projectId: storedIds[cid] ?? m.projectId }
+            })
+          }
+        }
+      }
+
       // Extract project metadata
       const projectMetadata = raw?.projectMetadata as Record<string, unknown> | null
 
@@ -1802,7 +1823,7 @@ export default function TransactionPreview({
       console.error('[TransactionPreview] Failed to parse parameters:', err, parameters?.slice(0, 200))
       return null
     }
-  }, [parameters, _isTruncated, _isStreaming])
+  }, [parameters, _isTruncated, _isStreaming, action, chatId])
 
   // "Sticky" content: once we've successfully parsed content, remember it
   // This prevents flashing back to shimmer during state transitions
