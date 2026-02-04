@@ -19,7 +19,10 @@ proxyRouter.post('/bendystraw', async (c) => {
     const body = await c.req.json();
 
     // Construct the authenticated endpoint (testnet uses a separate indexer)
-    const host = config.isTestnet ? 'testnet.bendystraw.xyz' : 'bendystraw.xyz';
+    // Allow ?network=mainnet to force mainnet (e.g., for the activity feed on staging)
+    const networkParam = c.req.query('network');
+    const useMainnet = networkParam === 'mainnet';
+    const host = (config.isTestnet && !useMainnet) ? 'testnet.bendystraw.xyz' : 'bendystraw.xyz';
     const endpoint = `https://${host}/${config.bendystrawApiKey}/graphql`;
 
     const response = await fetch(endpoint, {

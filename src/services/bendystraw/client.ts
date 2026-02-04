@@ -107,11 +107,12 @@ export interface Participant {
   lastPaidTimestamp?: number
 }
 
-function getClient(): GraphQLClient {
+function getClient(options?: { network?: 'mainnet' }): GraphQLClient {
   // If backend API is configured, use the proxy endpoint to keep API keys secure
   const apiUrl = import.meta.env.VITE_API_URL
   if (apiUrl) {
-    return new GraphQLClient(`${apiUrl}/proxy/bendystraw`)
+    const params = options?.network ? `?network=${options.network}` : ''
+    return new GraphQLClient(`${apiUrl}/proxy/bendystraw${params}`)
   }
   // Fallback to direct endpoint (requires user to configure in settings)
   const endpoint = useSettingsStore.getState().bendystrawEndpoint
@@ -125,9 +126,10 @@ function getClient(): GraphQLClient {
  */
 async function safeRequest<T>(
   document: RequestDocument,
-  variables?: Variables
+  variables?: Variables,
+  options?: { network?: 'mainnet' }
 ): Promise<T> {
-  const client = getClient()
+  const client = getClient(options)
   const queryString = typeof document === 'string' ? document : String(document)
 
   const result = await bendystrawCircuit.call(async () => {
@@ -633,9 +635,12 @@ function transformEvent(raw: RawActivityEvent): ActivityEvent {
 }
 
 export async function fetchActivityEvents(limit: number = 20, offset: number = 0): Promise<ActivityEvent[]> {
+  // Always fetch from mainnet — the activity feed should show real protocol activity
+  // even when running on staging/testnet
   const data = await safeRequest<{ activityEvents: { items: RawActivityEvent[] } }>(
     ACTIVITY_EVENTS_QUERY,
-    { limit, offset, orderBy: 'timestamp', orderDirection: 'desc' }
+    { limit, offset, orderBy: 'timestamp', orderDirection: 'desc' },
+    { network: 'mainnet' }
   )
 
   // Filter out unknown events (events where no recognized type is present)
