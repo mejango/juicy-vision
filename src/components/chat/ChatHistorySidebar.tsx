@@ -90,9 +90,9 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
   // User has wallet access if connected via wagmi OR authenticated via managed wallet
   // Wait for auth store hydration before determining wallet access
   const hasWalletAccess = wagmiConnected || isManagedMode
-  const activeAddress = wagmiConnected ? wagmiAddress : managedAddress
-  // Still loading if auth store hasn't hydrated or managed wallet is loading
-  const isWalletAccessLoading = !_hasHydrated || managedWalletLoading
+  // Still loading if auth store hasn't hydrated, or managed wallet is loading
+  // and it's the sole access method (don't block if wagmi is already connected)
+  const isWalletAccessLoading = !_hasHydrated || (managedWalletLoading && !wagmiConnected)
 
   const [activeTab, setActiveTab] = useState<SidebarTab>('chats')
   const [isLoading, setIsLoading] = useState(false)
@@ -138,24 +138,41 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     }
   }, [isLoading, setChats, chats])
 
-  // Load owned projects
+  // Load owned projects from all connected addresses (managed + external)
   const loadProjects = useCallback(async (forceRefresh = false) => {
-    if (!activeAddress || projectsLoading) return
-    // Clear cache if force refreshing (e.g., after deploying a new project)
+    if (projectsLoading) return
+    const addresses = [
+      ...(managedAddress ? [managedAddress] : []),
+      ...(wagmiAddress ? [wagmiAddress] : []),
+    ].filter((addr, i, arr) => arr.indexOf(addr) === i) // dedupe if same address
+    if (addresses.length === 0) return
+    // Clear cache for all addresses if force refreshing
     if (forceRefresh) {
-      clearProjectsByOwnerCache(activeAddress)
+      addresses.forEach(addr => clearProjectsByOwnerCache(addr))
     }
     setProjectsLoading(true)
     try {
-      const projects = await fetchProjectsByOwner(activeAddress)
-      setOwnedProjects(projects)
+      const results = await Promise.all(addresses.map(addr => fetchProjectsByOwner(addr)))
+      // Merge and deduplicate by projectId-chainId
+      const seen = new Set<string>()
+      const merged: Project[] = []
+      for (const projects of results) {
+        for (const p of projects) {
+          const key = `${p.projectId}-${p.chainId}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            merged.push(p)
+          }
+        }
+      }
+      setOwnedProjects(merged)
       setProjectsLoaded(true)
     } catch (error) {
       console.error('Failed to load owned projects:', error)
     } finally {
       setProjectsLoading(false)
     }
-  }, [activeAddress, projectsLoading])
+  }, [managedAddress, wagmiAddress, projectsLoading])
 
   // Load supporters for a project
   const loadSupporters = useCallback(async (project: Project) => {
@@ -182,7 +199,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
 
   // Load supporter conversations (payments tab)
   const loadPayments = useCallback(async () => {
-    if (!activeAddress || paymentsLoading) return
+    if (!hasWalletAccess || paymentsLoading) return
     setPaymentsLoading(true)
     try {
       const result = await getSupporterConversations({ limit: 50 })
@@ -193,7 +210,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     } finally {
       setPaymentsLoading(false)
     }
-  }, [activeAddress, paymentsLoading])
+  }, [hasWalletAccess, paymentsLoading])
 
   // Load chats on mount and when sidebar opens
   useEffect(() => {
@@ -204,19 +221,19 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
 
   // Load projects when tab switches
   useEffect(() => {
-    if (isOpen && activeTab === 'projects' && activeAddress && !projectsLoaded) {
+    if (isOpen && activeTab === 'projects' && hasWalletAccess && !projectsLoaded) {
       loadProjects()
     }
-  }, [isOpen, activeTab, activeAddress, projectsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, activeTab, hasWalletAccess, projectsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load payments when tab switches
   useEffect(() => {
-    if (isOpen && activeTab === 'payments' && activeAddress && !paymentsLoaded) {
+    if (isOpen && activeTab === 'payments' && hasWalletAccess && !paymentsLoaded) {
       loadPayments()
     }
-  }, [isOpen, activeTab, activeAddress, paymentsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, activeTab, hasWalletAccess, paymentsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset state when address changes
+  // Reset state when either wallet address changes
   useEffect(() => {
     setProjectsLoaded(false)
     setOwnedProjects([])
@@ -224,7 +241,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     setSupporterConversations([])
     setProjectSupporters({})
     setExpandedProjectId(null)
-  }, [activeAddress])
+  }, [wagmiAddress, managedAddress])
 
   // Auto-reload on user sign in
   useEffect(() => {
