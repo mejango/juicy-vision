@@ -1871,9 +1871,12 @@ export default function TransactionPreview({
   }
 
   // Deferred full parameter parsing - only computed when technical details are expanded
+  // For simple actions (setUri, etc.), skip the technicalDetailsReady guard since JSON is small
   // Must be before early return to satisfy React hooks rules
+  const isSimpleAction = action === 'setUri' || action === 'setUriOf'
   const parsedParams = useMemo(() => {
-    if (!isParamsValid || !technicalDetailsReady) return null
+    // For simple actions, parse immediately; for launch actions, wait for expansion
+    if (!isParamsValid || (!isSimpleAction && !technicalDetailsReady)) return null
     try {
       const rawParams = JSON.parse(parameters)
       // Apply transformations: timestamps, then media URI encoding
@@ -1882,7 +1885,7 @@ export default function TransactionPreview({
     } catch {
       return { raw: parameters }
     }
-  }, [parameters, technicalDetailsReady, isParamsValid])
+  }, [parameters, technicalDetailsReady, isParamsValid, isSimpleAction])
 
   // When expanded, trigger deferred processing using startTransition
   // Must be before early return to satisfy React hooks rules
@@ -2048,7 +2051,9 @@ export default function TransactionPreview({
     // Ignore parsing errors
   }
 
-  const isMultiChain = parsedChainConfigs.length > 0 || hasMultiChainSuckers
+  // Check for multi-chain: chainConfigs (launch), chainProjectMappings (setUri), or suckers
+  const hasChainProjectMappings = effectivePreviewData?.raw?.chainProjectMappings?.length > 1
+  const isMultiChain = parsedChainConfigs.length > 0 || hasMultiChainSuckers || hasChainProjectMappings
 
   // All supported chains for multi-chain deployments
   const ALL_CHAINS = ['1', '10', '8453', '42161'] // Ethereum, Optimism, Base, Arbitrum
@@ -2595,7 +2600,13 @@ export default function TransactionPreview({
               <span>Chains</span>
               <div className="flex gap-1 flex-wrap justify-end">
                 {isMultiChain ? (
-                  (parsedChainConfigs.length > 0 ? parsedChainConfigs.map(c => c.chainId) : ALL_CHAINS).map((cid) => {
+                  // Get chain IDs from: parsedChainConfigs, chainProjectMappings, or fallback to ALL_CHAINS
+                  (parsedChainConfigs.length > 0
+                    ? parsedChainConfigs.map(c => c.chainId)
+                    : hasChainProjectMappings
+                      ? (effectivePreviewData?.raw?.chainProjectMappings as Array<{chainId: string | number}>).map(m => String(m.chainId))
+                      : ALL_CHAINS
+                  ).map((cid) => {
                     const config = parsedChainConfigs.find(c => c.chainId === cid)
                     const name = config?.label || CHAIN_NAMES[cid] || `Chain ${cid}`
                     const color = CHAIN_COLORS[cid] || 'bg-gray-500/20 text-gray-300 border-gray-500/30'
