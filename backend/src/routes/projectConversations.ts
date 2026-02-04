@@ -30,6 +30,8 @@ import {
 import { getChatMessages, sendMessage } from '../services/chat.ts'
 import { hasAddressPaidProject, isProjectOwner } from '../services/bendystraw.ts'
 import { getOrCreateSmartAccount } from '../services/smartAccounts.ts'
+import { getConfig } from '../utils/config.ts'
+import { getPrimaryChainId } from '@shared/chains.ts'
 
 const projectConversations = new Hono()
 
@@ -40,7 +42,8 @@ async function getAddressFromContext(c: any): Promise<string | null> {
   const user = c.get('user')
   if (!user) return null
   try {
-    const smartAccount = await getOrCreateSmartAccount(user.id, 1)
+    const config = getConfig()
+    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet))
     return smartAccount.address
   } catch {
     return null

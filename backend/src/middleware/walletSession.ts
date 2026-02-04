@@ -8,6 +8,8 @@
 import { Context, Next } from 'hono';
 import { query, queryOne } from '../db/index.ts';
 import { getPseudoAddress } from '../utils/crypto.ts';
+import { getConfig } from '../utils/config.ts';
+import { getPrimaryChainId } from '@shared/chains.ts';
 
 export interface WalletSession {
   address: string;
@@ -38,7 +40,8 @@ export async function extractWalletSession(
 
   const jwtResult = await validateSession(token);
   if (jwtResult) {
-    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, 1);
+    const config = getConfig();
+    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, getPrimaryChainId(config.isTestnet));
     return {
       address: smartAccount.address,
       userId: jwtResult.user.id,
@@ -103,7 +106,8 @@ export async function requireWalletOrAuth(c: Context, next: Next) {
   if (user) {
     // User authenticated - get their smart account address
     const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
-    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    const config = getConfig();
+    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
     c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
@@ -146,7 +150,8 @@ export async function optionalWalletSession(c: Context, next: Next) {
 
   if (user) {
     const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
-    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    const config = getConfig();
+    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
     c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }

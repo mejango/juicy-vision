@@ -10,6 +10,8 @@ import { z } from 'zod';
 import { optionalAuth, requireAuth } from '../middleware/auth.ts';
 import { requireWalletAuth, requireWalletOrAuth } from '../middleware/walletSession.ts';
 import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
+import { getConfig } from '../utils/config.ts';
+import { getPrimaryChainId } from '@shared/chains.ts';
 import {
   getIdentityByAddress,
   getIdentityByAddressResolved,
@@ -165,7 +167,8 @@ identityRouter.get('/check', optionalAuth, zValidator('query', CheckAvailability
   let excludeAddress: string | undefined;
   const user = c.get('user');
   if (user) {
-    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    const config = getConfig();
+    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
     excludeAddress = smartAccount.address;
   }
 

@@ -25,6 +25,8 @@ import {
   checkPermission,
 } from '../services/chat.ts';
 import { broadcastToChat } from '../services/websocket.ts';
+import { getConfig } from '../utils/config.ts';
+import { getPrimaryChainId } from '@shared/chains.ts';
 
 export const inviteRouter = new Hono();
 
@@ -85,7 +87,8 @@ async function requireWalletOrAuth(c: any, next: any) {
 
   if (user) {
     const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
-    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    const config = getConfig();
+    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
     c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }

@@ -70,6 +70,7 @@ import {
 } from '../services/websocket.ts';
 import { query, queryOne, execute } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
+import { getPrimaryChainId } from '@shared/chains.ts';
 import { getPseudoAddress, verifyWalletSignature, parseSessionMergeMessage, isTimestampValid } from '../utils/crypto.ts';
 import { rateLimitMiddleware, rateLimitByWallet } from '../services/rateLimit.ts';
 import {
@@ -115,7 +116,8 @@ async function extractWalletSession(
 
   const jwtResult = await validateSession(token);
   if (jwtResult) {
-    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, 1);
+    const config = getConfig();
+    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, getPrimaryChainId(config.isTestnet));
     return {
       address: smartAccount.address,
       userId: jwtResult.user.id,
@@ -163,7 +165,8 @@ async function requireWalletOrAuth(c: any, next: any) {
   if (user) {
     // User authenticated - get their smart account address
     const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
-    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    const config = getConfig();
+    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
     c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
@@ -206,7 +209,8 @@ async function optionalWalletSession(c: any, next: any) {
   if (user) {
     // User authenticated - get their smart account address
     const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
-    const smartAccount = await getOrCreateSmartAccount(user.id, 1);
+    const config = getConfig();
+    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
     c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
