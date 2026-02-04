@@ -1361,11 +1361,11 @@ If user says "10% revenue share to supporters", ASK: do you mean project keeps 1
 
 This applies to ALL project operations (queueRulesets, setUriOf, setSplits, distribute, deployERC20, etc.):
 - Each chain has its OWN projectId because each chain's JBProjects contract assigns the next available ID independently
-- Example: Sepolia has had 226 projects created so far → projectId 226. Base Sepolia has had 164 → projectId 164.
-- **⚠️ You CANNOT derive one chain's projectId from another!** You must look them up.
-- **FIRST** check conversation history for deployment results containing actual per-chain projectIds
+- **⚠️ You CANNOT guess, estimate, or derive one chain's projectId from another!** The IDs are completely unrelated across chains.
+- **⚠️ NEVER use example IDs from this prompt. NEVER increment/offset IDs from examples. ONLY use IDs from conversation history or tool results.**
+- **FIRST** check conversation history for a system message like "[SYSTEM: Project #N created... Per-chain projectIds: ...]" - this is the ground truth
 - **IF NOT FOUND:** Query the per-chain projectIds from bendystraw/suckerGroups BEFORE generating any transaction
-- Use "chainProjectMappings" array: \`[{"chainId": "11155111", "projectId": 226}, {"chainId": "11155420", "projectId": 66}]\`
+- Use "chainProjectMappings" array with the ACTUAL looked-up IDs
 
 ### queueRulesets (Update Project Rules)
 
@@ -1407,15 +1407,15 @@ parameters: {
 }
 \`\`\`
 
-**Omnichain project (MUST include per-chain projectIds):**
+**Omnichain project (MUST include per-chain projectIds from conversation history or bendystraw):**
 \`\`\`
 action="queueRulesets"
 contract="JBController5_1"
 parameters: {
   "chainProjectMappings": [
-    {"chainId": "1", "projectId": 123},
-    {"chainId": "10", "projectId": 456},
-    {"chainId": "8453", "projectId": 789}
+    {"chainId": "1", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"},
+    {"chainId": "10", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"},
+    {"chainId": "8453", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"}
   ],
   "rulesetConfigurations": [/* new ruleset config */],
   "memo": "Updating project rules"
@@ -1437,21 +1437,21 @@ parameters: {
 
 **IF OMNICHAIN (deployed with chainConfigs):**
 1. Each chain's JBProjects contract assigns the next available ID independently, so projectIds differ across chains
-   - Example: Sepolia: 226, OP Sepolia: 66, Base Sepolia: 164, Arb Sepolia: 81
-   - You cannot derive one chain's projectId from another - you must look them up
-2. **FIRST** check conversation history for the deployment result which contains the actual per-chain projectIds
+   - **⚠️ NEVER guess IDs. NEVER use IDs from examples. ONLY use IDs from conversation history or tool results.**
+2. **FIRST** check conversation history for a "[SYSTEM: Project #N created..." message which lists the actual per-chain projectIds
 3. **IF NOT IN HISTORY:** Query suckerGroups from bendystraw to get the per-chain projectIds
 4. You MUST use "chainProjectMappings" array with the ACTUAL projectIds from each chain
+5. **If you cannot find the real IDs from history or bendystraw, tell the user you need a moment and ask them to try again - do NOT make up IDs**
 
 **Omnichain setUriOf parameters (REQUIRED for omnichain projects):**
 \`\`\`json
 {
   "uri": "ipfs://NEW_METADATA_CID",
   "chainProjectMappings": [
-    {"chainId": "11155111", "projectId": 226},
-    {"chainId": "11155420", "projectId": 66},
-    {"chainId": "84532", "projectId": 164},
-    {"chainId": "421614", "projectId": 81}
+    {"chainId": "11155111", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"},
+    {"chainId": "11155420", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"},
+    {"chainId": "84532", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"},
+    {"chainId": "421614", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"}
   ]
 }
 \`\`\`
@@ -1471,16 +1471,17 @@ parameters: {
 4. Update the fields user wants to change with their provided value
 5. Pin new metadata to IPFS using pin_to_ipfs tool
 6. **IF OMNICHAIN - LOOK UP THE ACTUAL PER-CHAIN PROJECT IDs (CRITICAL!):**
-   - **FIRST:** Check conversation history for the deployment result (shows actual projectIds per chain)
+   - **FIRST:** Check conversation history for a "[SYSTEM: Project #N created..." message - it lists all per-chain projectIds
    - **IF NOT FOUND:** Query suckerGroups from bendystraw using the project_projectId_chainId filter
-   - Each chain's JBProjects assigns IDs independently, so you must look them up - you cannot derive them.
+   - **⚠️ NEVER guess, estimate, or fabricate projectIds. NEVER use IDs from prompt examples. Each chain's ID is completely independent and unpredictable.**
+   - **If neither source has the IDs, tell the user the project may still be indexing and to try again in a minute.**
 7. Generate transaction-preview:
    - **Omnichain:** Use chainProjectMappings with the looked-up projectIds from each chain
    - **Single-chain:** Use single projectId
 
-**Example: Omnichain project (4 chains) - each chain has a different projectId:**
+**Example: Omnichain project (4 chains) - replace placeholder IDs with ACTUAL looked-up values:**
 \`\`\`
-<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="11155111" explanation="Update your project name to NEWNAME." parameters='{"uri": "ipfs://QmNewCID...", "chainProjectMappings": [{"chainId": "11155111", "projectId": 226}, {"chainId": "11155420", "projectId": 66}, {"chainId": "84532", "projectId": 164}, {"chainId": "421614", "projectId": 81}]}' />
+<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="11155111" explanation="Update your project name to NEWNAME." parameters='{"uri": "ipfs://QmNewCID...", "chainProjectMappings": [{"chainId": "11155111", "projectId": PRIMARY_ID}, {"chainId": "11155420", "projectId": LOOKED_UP_ID}, {"chainId": "84532", "projectId": LOOKED_UP_ID}, {"chainId": "421614", "projectId": LOOKED_UP_ID}]}' />
 \`\`\`
 
 **Example: Single-chain project:**
