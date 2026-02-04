@@ -237,6 +237,10 @@ const RelayrBundleSchema = z.object({
     value: z.string(),
   })),
   owner: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  // Smart account address for ERC-4337 routing
+  // When provided, transactions are wrapped through SmartAccount.execute()
+  // so that _msgSender() inside the target contract = smart account = project owner
+  smartAccountAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
 });
 
 walletRouter.post(
@@ -252,6 +256,7 @@ walletRouter.post(
         userId: user.id,
         transactions: body.transactions,
         owner: body.owner,
+        smartAccountAddress: body.smartAccountAddress,
       });
 
       return c.json({

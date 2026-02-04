@@ -12,20 +12,21 @@ vi.mock('../../stores', () => ({
 }))
 
 // Mock managed wallet hook
+const mockCreateManagedRelayrBundle = vi.fn()
+
 vi.mock('../useManagedWallet', () => ({
   useManagedWallet: vi.fn(() => ({
     address: '0xmanagedaddress123456789012345678901234',
     isLoading: false,
   })),
+  createManagedRelayrBundle: (...args: unknown[]) => mockCreateManagedRelayrBundle(...args),
 }))
 
 // Mock relayr services
 const mockBuildOmnichainDeploySuckersTransactions = vi.fn()
-const mockCreateBalanceBundle = vi.fn()
 
 vi.mock('../../services/relayr', () => ({
   buildOmnichainDeploySuckersTransactions: (...args: unknown[]) => mockBuildOmnichainDeploySuckersTransactions(...args),
-  createBalanceBundle: (...args: unknown[]) => mockCreateBalanceBundle(...args),
 }))
 
 // Mock useRelayrBundle
@@ -83,6 +84,11 @@ describe('useOmnichainDeploySuckers', () => {
     mockBundleState.status = 'idle'
     mockBundleState.chainStates = []
     mockBundleState.error = null
+
+    // Default mock for managed bundle creation
+    mockCreateManagedRelayrBundle.mockResolvedValue({
+      bundleId: 'test-bundle-id',
+    })
   })
 
   const defaultParams: OmnichainDeploySuckersParams = {
@@ -118,8 +124,8 @@ describe('useOmnichainDeploySuckers', () => {
         suckerGroupId: 'group-123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeploySuckers())
@@ -140,8 +146,8 @@ describe('useOmnichainDeploySuckers', () => {
         suckerGroupId: 'group-123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeploySuckers())
@@ -160,7 +166,7 @@ describe('useOmnichainDeploySuckers', () => {
       )
     })
 
-    it('creates balance bundle with correct parameters', async () => {
+    it('creates managed bundle with smart account routing', async () => {
       const mockTxs = [
         { txData: { chainId: 1, to: '0xsuckerregistry1', data: '0x111', value: '0' } },
         { txData: { chainId: 10, to: '0xsuckerregistry10', data: '0x222', value: '0' } },
@@ -172,8 +178,8 @@ describe('useOmnichainDeploySuckers', () => {
         suckerGroupId: 'group-123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeploySuckers())
@@ -182,15 +188,15 @@ describe('useOmnichainDeploySuckers', () => {
         await result.current.deploySuckers(defaultParams)
       })
 
-      expect(mockCreateBalanceBundle).toHaveBeenCalledWith({
-        app_id: expect.any(String),
-        transactions: [
-          { chain: 1, target: '0xsuckerregistry1', data: '0x111', value: '0' },
-          { chain: 10, target: '0xsuckerregistry10', data: '0x222', value: '0' },
+      // Should call createManagedRelayrBundle with transactions, owner, and smart account address
+      expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
+        [
+          { chainId: 1, target: '0xsuckerregistry1', data: '0x111', value: '0' },
+          { chainId: 10, target: '0xsuckerregistry10', data: '0x222', value: '0' },
         ],
-        perform_simulation: true,
-        virtual_nonce_mode: 'Disabled',
-      })
+        '0xmanagedaddress123456789012345678901234', // Project owner
+        '0xmanagedaddress123456789012345678901234'  // Smart account address for routing
+      )
     })
 
     it('initializes bundle and sets processing', async () => {
@@ -202,8 +208,8 @@ describe('useOmnichainDeploySuckers', () => {
         suckerGroupId: 'group-123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-sucker-bundle',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-sucker-bundle',
       })
 
       const { result } = renderHook(() => useOmnichainDeploySuckers())
@@ -260,7 +266,7 @@ describe('useOmnichainDeploySuckers', () => {
         suckerGroupId: 'group-123',
       })
 
-      mockCreateBalanceBundle.mockRejectedValue(new Error('Bundle creation failed'))
+      mockCreateManagedRelayrBundle.mockRejectedValue(new Error('Bundle creation failed'))
 
       const { result } = renderHook(() => useOmnichainDeploySuckers())
 
@@ -296,8 +302,8 @@ describe('useOmnichainDeploySuckers', () => {
         suckerGroupId: 'group-123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeploySuckers())
@@ -332,8 +338,8 @@ describe('useOmnichainDeploySuckers', () => {
         suckerGroupId: 'group-123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeploySuckers())
@@ -431,8 +437,8 @@ describe('useOmnichainDeploySuckers', () => {
         suckerGroupId: 'group-123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeploySuckers())

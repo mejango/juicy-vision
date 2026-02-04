@@ -259,10 +259,14 @@ export interface RelayrTransaction {
  *
  * @param transactions - Array of transactions to include in the bundle
  * @param projectOwner - Address to set as project owner (smart account)
+ * @param smartAccountAddress - Smart account address for ERC-4337 routing
+ *   When provided, transactions are wrapped through SmartAccount.execute()
+ *   so that _msgSender() inside the target contract = smart account = project owner
  */
 export async function createManagedRelayrBundle(
   transactions: RelayrTransaction[],
-  projectOwner: string
+  projectOwner: string,
+  smartAccountAddress?: string
 ): Promise<{ bundleId: string }> {
   const { token, isAuthenticated, mode } = useAuthStore.getState()
 
@@ -278,6 +282,7 @@ export async function createManagedRelayrBundle(
       body: JSON.stringify({
         transactions,
         owner: projectOwner,
+        smartAccountAddress,
       }),
     }
   )

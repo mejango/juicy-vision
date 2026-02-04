@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { keccak256, toBytes } from 'viem'
 import { useAuthStore } from '../../stores'
-import { useManagedWallet } from '../useManagedWallet'
+import { useManagedWallet, createManagedRelayrBundle, type RelayrTransaction } from '../useManagedWallet'
 import {
-  createBalanceBundle,
   buildOmnichainDeployRevnetTransactions,
   type JBDeployRevnetRequest,
   type REVStageConfig,
@@ -224,22 +223,28 @@ export function useOmnichainDeployRevnet(
       setPredictedProjectIds(deployResponse.predictedProjectIds)
       setPredictedTokenAddress(deployResponse.predictedTokenAddress)
 
-      // Create balance-sponsored bundle (admin pays gas)
-      const bundleResponse = await createBalanceBundle({
-        app_id: RELAYR_APP_ID,
-        transactions: deployResponse.transactions.map(tx => ({
-          chain: tx.txData.chainId,
-          target: tx.txData.to,
-          data: tx.txData.data,
-          value: tx.txData.value,
-        })),
-        perform_simulation: true,
-        virtual_nonce_mode: 'Disabled',
-      })
+      console.log('=== SERVER SIGNING MODE (deployRevnet) ===')
+      console.log(`Smart account routing: ${managedAddress}`)
+
+      // Convert to RelayrTransaction format
+      const relayrTransactions: RelayrTransaction[] = deployResponse.transactions.map(tx => ({
+        chainId: tx.txData.chainId,
+        target: tx.txData.to,
+        data: tx.txData.data,
+        value: tx.txData.value,
+      }))
+
+      // Use createManagedRelayrBundle with smart account routing
+      // This ensures _msgSender() = smart account (project owner), not passkey EOA
+      const result = await createManagedRelayrBundle(
+        relayrTransactions,
+        operator,  // Project owner (split operator)
+        managedAddress ?? undefined  // Smart account address for routing
+      )
 
       // Initialize bundle state
       bundle._initializeBundle(
-        bundleResponse.bundle_uuid,
+        result.bundleId,
         chainIds,
         deployResponse.predictedProjectIds,
         [],  // No payment options - admin sponsored

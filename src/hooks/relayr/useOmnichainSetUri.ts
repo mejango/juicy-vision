@@ -351,9 +351,12 @@ export function useOmnichainSetUri(
       let bundleId: string
 
       if (useServerSigning) {
-        // Server-side signing
+        // Server-side signing with smart account routing
+        // Transactions are wrapped through SmartAccount.execute() so that
+        // _msgSender() inside the target contract = smart account = project owner
         console.log('=== SERVER SIGNING MODE (setUri) ===')
         console.log(`Submitting ${transactions.length} transaction(s) for chains: ${chainIds.join(', ')}`)
+        console.log(`Smart account routing: ${managedAddress}`)
 
         const serverTransactions = transactions.map(tx => ({
           chainId: tx.chain,
@@ -362,7 +365,13 @@ export function useOmnichainSetUri(
           value: tx.value,
         }))
 
-        const result = await createManagedRelayrBundle(serverTransactions, signerAddress)
+        // Pass smart account address for ERC-4337 routing
+        // This ensures _msgSender() = smart account (project owner), not passkey EOA
+        const result = await createManagedRelayrBundle(
+          serverTransactions,
+          signerAddress,
+          managedAddress ?? undefined  // Smart account address for routing
+        )
         bundleId = result.bundleId
 
         console.log('Server created bundle:', bundleId)

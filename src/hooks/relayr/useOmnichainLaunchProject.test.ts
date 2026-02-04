@@ -611,8 +611,12 @@ describe('useOmnichainLaunchProject', () => {
         })
       })
 
-      // Should call server signing endpoint, not client-side createBalanceBundle
-      expect(mockCreateManagedRelayrBundle).toHaveBeenCalled()
+      // Should call server signing endpoint with smart account address for routing
+      expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
+        expect.any(Array),
+        '0xSmartAccount123456789012345678901234567',
+        '0xSmartAccount123456789012345678901234567' // Smart account address for routing
+      )
       expect(mockCreateBalanceBundle).not.toHaveBeenCalled()
     })
 
@@ -626,10 +630,11 @@ describe('useOmnichainLaunchProject', () => {
         })
       })
 
-      // Should use managed address
+      // Should use managed address as both owner and smart account for routing
       expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
         expect.any(Array),
-        '0xSmartAccount123456789012345678901234567'
+        '0xSmartAccount123456789012345678901234567',
+        '0xSmartAccount123456789012345678901234567' // Smart account address for routing
       )
     })
 
@@ -653,7 +658,8 @@ describe('useOmnichainLaunchProject', () => {
           { chainId: 1, target: '0xDeployer1', data: '0xabc', value: '100' },
           { chainId: 10, target: '0xDeployer2', data: '0xdef', value: '0' },
         ],
-        expect.any(String)
+        expect.any(String),
+        '0xSmartAccount123456789012345678901234567' // Smart account address for routing
       )
     })
 
@@ -788,10 +794,11 @@ describe('useOmnichainLaunchProject', () => {
         })
       })
 
-      // Should use managed address as fallback
+      // Should use managed address as both owner and smart account for routing
       expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
         expect.any(Array),
-        '0xManagedFallback1234567890123456789012'
+        '0xManagedFallback1234567890123456789012',
+        '0xManagedFallback1234567890123456789012' // Smart account address for routing
       )
     })
 

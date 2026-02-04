@@ -12,20 +12,21 @@ vi.mock('../../stores', () => ({
 }))
 
 // Mock managed wallet hook
+const mockCreateManagedRelayrBundle = vi.fn()
+
 vi.mock('../useManagedWallet', () => ({
   useManagedWallet: vi.fn(() => ({
     address: '0xmanagedaddress123456789012345678901234',
     isLoading: false,
   })),
+  createManagedRelayrBundle: (...args: unknown[]) => mockCreateManagedRelayrBundle(...args),
 }))
 
 // Mock relayr services
 const mockBuildOmnichainDeployRevnetTransactions = vi.fn()
-const mockCreateBalanceBundle = vi.fn()
 
 vi.mock('../../services/relayr', () => ({
   buildOmnichainDeployRevnetTransactions: (...args: unknown[]) => mockBuildOmnichainDeployRevnetTransactions(...args),
-  createBalanceBundle: (...args: unknown[]) => mockCreateBalanceBundle(...args),
 }))
 
 // Mock useRelayrBundle
@@ -83,6 +84,11 @@ describe('useOmnichainDeployRevnet', () => {
     mockBundleState.status = 'idle'
     mockBundleState.chainStates = []
     mockBundleState.error = null
+
+    // Default mock for managed bundle creation
+    mockCreateManagedRelayrBundle.mockResolvedValue({
+      bundleId: 'test-bundle-id',
+    })
   })
 
   const defaultParams: OmnichainDeployRevnetParams = {
@@ -124,8 +130,8 @@ describe('useOmnichainDeployRevnet', () => {
         predictedTokenAddress: '0xtoken123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeployRevnet())
@@ -146,8 +152,8 @@ describe('useOmnichainDeployRevnet', () => {
         predictedTokenAddress: '0xtoken123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeployRevnet())
@@ -170,7 +176,7 @@ describe('useOmnichainDeployRevnet', () => {
       )
     })
 
-    it('creates balance bundle with correct parameters', async () => {
+    it('creates managed bundle with smart account routing', async () => {
       const mockTxs = [
         { txData: { chainId: 1, to: '0xrevdeployer1', data: '0x111', value: '0' } },
         { txData: { chainId: 10, to: '0xrevdeployer10', data: '0x222', value: '0' } },
@@ -182,8 +188,8 @@ describe('useOmnichainDeployRevnet', () => {
         predictedTokenAddress: '0xtoken123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeployRevnet())
@@ -192,15 +198,15 @@ describe('useOmnichainDeployRevnet', () => {
         await result.current.deploy(defaultParams)
       })
 
-      expect(mockCreateBalanceBundle).toHaveBeenCalledWith({
-        app_id: expect.any(String),
-        transactions: [
-          { chain: 1, target: '0xrevdeployer1', data: '0x111', value: '0' },
-          { chain: 10, target: '0xrevdeployer10', data: '0x222', value: '0' },
+      // Should call createManagedRelayrBundle with transactions, owner, and smart account address
+      expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
+        [
+          { chainId: 1, target: '0xrevdeployer1', data: '0x111', value: '0' },
+          { chainId: 10, target: '0xrevdeployer10', data: '0x222', value: '0' },
         ],
-        perform_simulation: true,
-        virtual_nonce_mode: 'Disabled',
-      })
+        defaultParams.splitOperator,
+        '0xmanagedaddress123456789012345678901234' // Smart account address for routing
+      )
     })
 
     it('initializes bundle and sets processing', async () => {
@@ -212,8 +218,8 @@ describe('useOmnichainDeployRevnet', () => {
         predictedTokenAddress: '0xtoken123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-revnet-bundle',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-revnet-bundle',
       })
 
       const { result } = renderHook(() => useOmnichainDeployRevnet())
@@ -266,7 +272,7 @@ describe('useOmnichainDeployRevnet', () => {
         predictedTokenAddress: '0xtoken123',
       })
 
-      mockCreateBalanceBundle.mockRejectedValue(new Error('Bundle creation failed'))
+      mockCreateManagedRelayrBundle.mockRejectedValue(new Error('Bundle creation failed'))
 
       const { result } = renderHook(() => useOmnichainDeployRevnet())
 
@@ -312,8 +318,8 @@ describe('useOmnichainDeployRevnet', () => {
         predictedTokenAddress: '0xtoken123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeployRevnet())
@@ -361,8 +367,8 @@ describe('useOmnichainDeployRevnet', () => {
         predictedTokenAddress: '0xtoken123',
       })
 
-      mockCreateBalanceBundle.mockResolvedValue({
-        bundle_uuid: 'test-bundle-id',
+      mockCreateManagedRelayrBundle.mockResolvedValue({
+        bundleId: 'test-bundle-id',
       })
 
       const { result } = renderHook(() => useOmnichainDeployRevnet())

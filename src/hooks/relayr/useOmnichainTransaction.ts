@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useAccount, useWalletClient } from 'wagmi'
 import { useAuthStore } from '../../stores'
-import { useManagedWallet } from '../useManagedWallet'
+import { useManagedWallet, createManagedRelayrBundle } from '../useManagedWallet'
 import {
   createPrepaidBundle,
-  createBalanceBundle,
   sendBundlePayment,
   buildOmnichainQueueRulesetTransactions,
   buildOmnichainDistributeTransactions,
@@ -150,8 +149,11 @@ export function useOmnichainTransaction(
 
     try {
       if (isManagedMode) {
-        // MANAGED MODE: Create balance-sponsored bundle
-        let transactions: Array<{ chain: number; target: string; data?: string; value?: string }>
+        // MANAGED MODE: Create balance-sponsored bundle with smart account routing
+        // Transactions are wrapped through SmartAccount.execute() so that
+        // _msgSender() inside the target contract = smart account = project owner
+        let transactions: Array<{ chainId: number; target: string; data: string; value: string }>
+        let synchronizedStartTime: number | undefined
 
         if (rulesetConfig) {
           const omnichainRequest: JBOmnichainQueueRequest = {
@@ -163,11 +165,12 @@ export function useOmnichainTransaction(
           }
           const response = await buildOmnichainQueueRulesetTransactions(omnichainRequest)
           transactions = response.transactions.map(tx => ({
-            chain: tx.txData.chainId,
+            chainId: tx.txData.chainId,
             target: tx.txData.to,
             data: tx.txData.data,
             value: tx.txData.value,
           }))
+          synchronizedStartTime = response.synchronizedStartTime
         } else if (distributeConfig) {
           const distributeRequest: JBOmnichainDistributeRequest = {
             chainIds,
@@ -176,7 +179,7 @@ export function useOmnichainTransaction(
           }
           const response = await buildOmnichainDistributeTransactions(distributeRequest)
           transactions = response.transactions.map(tx => ({
-            chain: tx.txData.chainId,
+            chainId: tx.txData.chainId,
             target: tx.txData.to,
             data: tx.txData.data,
             value: tx.txData.value,
@@ -191,7 +194,7 @@ export function useOmnichainTransaction(
           }
           const response = await buildOmnichainDeployERC20Transactions(deployRequest)
           transactions = response.transactions.map(tx => ({
-            chain: tx.txData.chainId,
+            chainId: tx.txData.chainId,
             target: tx.txData.to,
             data: tx.txData.data,
             value: tx.txData.value,
@@ -200,22 +203,24 @@ export function useOmnichainTransaction(
           throw new Error('One of rulesetConfig, distributeConfig, or deployERC20Config is required')
         }
 
-        const bundleResponse = await createBalanceBundle({
-          app_id: RELAYR_APP_ID,
-          transactions: transactions.map(tx => ({
-            ...tx,
-          })),
-          perform_simulation: true,
-          virtual_nonce_mode: 'Disabled',
-        })
+        console.log('=== SERVER SIGNING MODE (omnichain transaction) ===')
+        console.log(`Smart account routing: ${managedAddress}`)
+
+        // Use createManagedRelayrBundle with smart account routing
+        // This ensures _msgSender() = smart account (project owner), not passkey EOA
+        const result = await createManagedRelayrBundle(
+          transactions,
+          activeAddress,
+          managedAddress ?? undefined  // Smart account address for routing
+        )
 
         // For managed mode, bundle starts processing immediately
         bundle._initializeBundle(
-          bundleResponse.bundle_uuid,
+          result.bundleId,
           chainIds,
           projectIds,
           [],
-          rulesetConfig?.mustStartAtOrAfter
+          synchronizedStartTime
         )
         bundle._setProcessing('sponsored')
       } else {

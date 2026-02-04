@@ -10,8 +10,8 @@ import { useCallback, useEffect, useRef, useMemo } from 'react'
 import { useAccount, useWalletClient } from 'wagmi'
 import { encodeFunctionData, createPublicClient, http, fallback, type PublicClient } from 'viem'
 import { useAuthStore } from '../../stores'
-import { useManagedWallet } from '../useManagedWallet'
-import { createPrepaidBundle, createBalanceBundle } from '../../services/relayr'
+import { useManagedWallet, createManagedRelayrBundle, type RelayrTransaction } from '../useManagedWallet'
+import { createPrepaidBundle } from '../../services/relayr'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { BundleState } from './types'
@@ -277,16 +277,29 @@ export function useOmnichainSetSplits(
       })
 
       if (isManagedMode) {
-        // MANAGED MODE: Create balance-sponsored bundle
-        const bundleResponse = await createBalanceBundle({
-          app_id: RELAYR_APP_ID,
-          transactions,
-          perform_simulation: true,
-          virtual_nonce_mode: 'Disabled',
-        })
+        // MANAGED MODE: Create balance-sponsored bundle with smart account routing
+        // Transactions are wrapped through SmartAccount.execute() so that
+        // _msgSender() inside the target contract = smart account = project owner
+        console.log('=== SERVER SIGNING MODE (setSplits) ===')
+        console.log(`Smart account routing: ${managedAddress}`)
+
+        // Convert to RelayrTransaction format
+        const relayrTransactions: RelayrTransaction[] = transactions.map(tx => ({
+          chainId: tx.chain,
+          target: tx.target,
+          data: tx.data,
+          value: tx.value,
+        }))
+
+        // Use createManagedRelayrBundle with smart account routing
+        const result = await createManagedRelayrBundle(
+          relayrTransactions,
+          activeAddress,
+          managedAddress ?? undefined  // Smart account address for routing
+        )
 
         bundle._initializeBundle(
-          bundleResponse.bundle_uuid,
+          result.bundleId,
           chainData.map(cd => cd.chainId),
           projectIds,
           []

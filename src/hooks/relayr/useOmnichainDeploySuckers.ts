@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { keccak256, toBytes } from 'viem'
 import { useAuthStore } from '../../stores'
-import { useManagedWallet } from '../useManagedWallet'
+import { useManagedWallet, createManagedRelayrBundle, type RelayrTransaction } from '../useManagedWallet'
 import {
-  createBalanceBundle,
   buildOmnichainDeploySuckersTransactions,
   type JBDeploySuckersRequest,
   type SuckerTokenMapping,
@@ -190,22 +189,28 @@ export function useOmnichainDeploySuckers(
       setSuckerAddresses(deployResponse.suckerAddresses)
       setSuckerGroupId(deployResponse.suckerGroupId)
 
-      // Create balance-sponsored bundle (admin pays gas)
-      const bundleResponse = await createBalanceBundle({
-        app_id: RELAYR_APP_ID,
-        transactions: deployResponse.transactions.map(tx => ({
-          chain: tx.txData.chainId,
-          target: tx.txData.to,
-          data: tx.txData.data,
-          value: tx.txData.value,
-        })),
-        perform_simulation: true,
-        virtual_nonce_mode: 'Disabled',
-      })
+      console.log('=== SERVER SIGNING MODE (deploySuckers) ===')
+      console.log(`Smart account routing: ${managedAddress}`)
+
+      // Convert to RelayrTransaction format
+      const relayrTransactions: RelayrTransaction[] = deployResponse.transactions.map(tx => ({
+        chainId: tx.txData.chainId,
+        target: tx.txData.to,
+        data: tx.txData.data,
+        value: tx.txData.value,
+      }))
+
+      // Use createManagedRelayrBundle with smart account routing
+      // This ensures _msgSender() = smart account (project owner), not passkey EOA
+      const result = await createManagedRelayrBundle(
+        relayrTransactions,
+        managedAddress ?? '',  // Project owner
+        managedAddress ?? undefined  // Smart account address for routing
+      )
 
       // Initialize bundle state
       bundle._initializeBundle(
-        bundleResponse.bundle_uuid,
+        result.bundleId,
         chainIds,
         projectIds,
         [],  // No payment options - admin sponsored

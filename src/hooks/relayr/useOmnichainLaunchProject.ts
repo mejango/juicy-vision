@@ -413,11 +413,12 @@ export function useOmnichainLaunchProject(
       let bundleId: string
 
       if (useServerSigning) {
-        // === SERVER SIGNING: Server-side ERC-2771 signing ===
-        // User's signing key was stored at login - no prompts needed
-        // Server handles all signing and bundle creation
+        // === SERVER SIGNING: Server-side ERC-2771 signing with smart account routing ===
+        // Transactions are wrapped through SmartAccount.execute() so that
+        // _msgSender() inside the target contract = smart account = project owner
         console.log('=== SERVER SIGNING MODE ===')
         console.log(`Submitting ${transactions.length} transaction(s) to server for chains: ${chainIds.join(', ')}`)
+        console.log(`Smart account routing: ${managedAddress}`)
 
         const serverTransactions = transactions.map(tx => ({
           chainId: tx.chain,
@@ -426,7 +427,13 @@ export function useOmnichainLaunchProject(
           value: tx.value,
         }))
 
-        const result = await createManagedRelayrBundle(serverTransactions, projectOwner)
+        // Pass smart account address for ERC-4337 routing
+        // This ensures _msgSender() = smart account (project owner), not passkey EOA
+        const result = await createManagedRelayrBundle(
+          serverTransactions,
+          projectOwner,
+          managedAddress ?? undefined  // Smart account address for routing
+        )
         bundleId = result.bundleId
 
         console.log('Server created bundle:', bundleId)
