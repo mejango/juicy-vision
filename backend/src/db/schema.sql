@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ZQp1eMK72nDPIc6wL3gF0hR0tOdEtQegTtQtKJsleno5x7Wemg4WG4ILje4cspw
+\restrict huNyVdCN4Lapq3QR6Qb4BvhVQWuWL46OuA6LcdOdYLLaEzzlFeQm2bPyDcHfu5F
 
 -- Dumped from database version 16.11
 -- Dumped by pg_dump version 16.11
@@ -77,6 +77,50 @@ $$;
 
 
 --
+-- Name: sync_project_conversation_on_message(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sync_project_conversation_on_message() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  UPDATE project_conversations
+  SET updated_at = NOW()
+  WHERE chat_id = NEW.chat_id;
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: update_hook_project_timestamp(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.update_hook_project_timestamp() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: update_project_conversation_timestamp(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.update_project_conversation_timestamp() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: update_updated_at_column(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -95,6 +139,37 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: _migrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public._migrations (
+    id integer NOT NULL,
+    name character varying(255) NOT NULL,
+    applied_at timestamp with time zone DEFAULT now()
+);
+
+
+--
+-- Name: _migrations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public._migrations_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: _migrations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public._migrations_id_seq OWNED BY public._migrations.id;
+
+
+--
 -- Name: ai_billing; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -111,7 +186,7 @@ CREATE TABLE public.ai_billing (
     model character varying(50),
     tokens_used integer,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT ai_billing_type_check CHECK (((type)::text = ANY ((ARRAY['deposit'::character varying, 'usage'::character varying, 'refund'::character varying])::text[])))
+    CONSTRAINT ai_billing_type_check CHECK (((type)::text = ANY (ARRAY[('deposit'::character varying)::text, ('usage'::character varying)::text, ('refund'::character varying)::text])))
 );
 
 
@@ -230,7 +305,7 @@ CREATE TABLE public.chat_messages (
     feedback_report_reason text,
     feedback_user_correction text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT chat_messages_role_check CHECK (((role)::text = ANY ((ARRAY['user'::character varying, 'assistant'::character varying, 'system'::character varying])::text[])))
+    CONSTRAINT chat_messages_role_check CHECK (((role)::text = ANY (ARRAY[('user'::character varying)::text, ('assistant'::character varying)::text, ('system'::character varying)::text])))
 );
 
 
@@ -272,7 +347,7 @@ CREATE TABLE public.chat_sessions (
     session_feedback text,
     started_at timestamp with time zone DEFAULT now() NOT NULL,
     ended_at timestamp with time zone,
-    CONSTRAINT chat_sessions_mode_check CHECK (((mode)::text = ANY ((ARRAY['self_custody'::character varying, 'managed'::character varying])::text[]))),
+    CONSTRAINT chat_sessions_mode_check CHECK (((mode)::text = ANY (ARRAY[('self_custody'::character varying)::text, ('managed'::character varying)::text]))),
     CONSTRAINT chat_sessions_session_rating_check CHECK (((session_rating >= 1) AND (session_rating <= 5)))
 );
 
@@ -377,7 +452,7 @@ CREATE TABLE public.corrections (
     review_notes text,
     reviewed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT corrections_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying])::text[])))
+    CONSTRAINT corrections_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('approved'::character varying)::text, ('rejected'::character varying)::text])))
 );
 
 
@@ -401,8 +476,8 @@ CREATE TABLE public.created_project_chains (
     sucker_status character varying(20) DEFAULT 'pending'::character varying,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT created_project_chains_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'submitted'::character varying, 'confirmed'::character varying, 'failed'::character varying])::text[]))),
-    CONSTRAINT created_project_chains_sucker_status_check CHECK (((sucker_status)::text = ANY ((ARRAY['pending'::character varying, 'submitted'::character varying, 'confirmed'::character varying, 'failed'::character varying, 'skipped'::character varying])::text[])))
+    CONSTRAINT created_project_chains_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('submitted'::character varying)::text, ('confirmed'::character varying)::text, ('failed'::character varying)::text]))),
+    CONSTRAINT created_project_chains_sucker_status_check CHECK (((sucker_status)::text = ANY (ARRAY[('pending'::character varying)::text, ('submitted'::character varying)::text, ('confirmed'::character varying)::text, ('failed'::character varying)::text, ('skipped'::character varying)::text])))
 );
 
 
@@ -429,8 +504,8 @@ CREATE TABLE public.created_projects (
     split_operator character varying(42),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT created_projects_creation_status_check CHECK (((creation_status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'completed'::character varying, 'partial'::character varying, 'failed'::character varying])::text[]))),
-    CONSTRAINT created_projects_project_type_check CHECK (((project_type)::text = ANY ((ARRAY['project'::character varying, 'revnet'::character varying])::text[])))
+    CONSTRAINT created_projects_creation_status_check CHECK (((creation_status)::text = ANY (ARRAY[('pending'::character varying)::text, ('processing'::character varying)::text, ('completed'::character varying)::text, ('partial'::character varying)::text, ('failed'::character varying)::text]))),
+    CONSTRAINT created_projects_project_type_check CHECK (((project_type)::text = ANY (ARRAY[('project'::character varying)::text, ('revnet'::character varying)::text])))
 );
 
 
@@ -468,6 +543,37 @@ COMMENT ON TABLE public.created_revnet_stages IS 'Stage configurations for revne
 
 
 --
+-- Name: credit_expirations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.credit_expirations (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    user_id uuid NOT NULL,
+    amount numeric(12,2) NOT NULL,
+    expired_at timestamp with time zone DEFAULT now(),
+    last_activity_at timestamp with time zone NOT NULL,
+    beneficiary_project_id integer,
+    beneficiary_chain_id integer,
+    tx_hash character varying(66),
+    created_at timestamp with time zone DEFAULT now()
+);
+
+
+--
+-- Name: TABLE credit_expirations; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.credit_expirations IS 'Records of expired Juice credits after 6 months of inactivity';
+
+
+--
+-- Name: COLUMN credit_expirations.last_activity_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.credit_expirations.last_activity_at IS 'When the user was last active before expiration';
+
+
+--
 -- Name: events; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -499,6 +605,132 @@ CREATE TABLE public.fiat_payment_disputes (
 
 
 --
+-- Name: forge_jobs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.forge_jobs (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    project_id uuid,
+    user_address character varying(42) NOT NULL,
+    job_type character varying(20) NOT NULL,
+    input_hash character varying(64) NOT NULL,
+    input_data jsonb NOT NULL,
+    status character varying(20) DEFAULT 'queued'::character varying NOT NULL,
+    result_data jsonb,
+    output_log text,
+    docker_container_id character varying(64),
+    created_at timestamp with time zone DEFAULT now(),
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    expires_at timestamp with time zone DEFAULT (now() + '00:30:00'::interval),
+    CONSTRAINT valid_job_type CHECK (((job_type)::text = ANY ((ARRAY['compile'::character varying, 'test'::character varying, 'script'::character varying])::text[]))),
+    CONSTRAINT valid_status CHECK (((status)::text = ANY ((ARRAY['queued'::character varying, 'running'::character varying, 'completed'::character varying, 'failed'::character varying, 'timeout'::character varying])::text[])))
+);
+
+
+--
+-- Name: TABLE forge_jobs; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.forge_jobs IS 'Queue for Forge compilation and test jobs';
+
+
+--
+-- Name: COLUMN forge_jobs.input_hash; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.forge_jobs.input_hash IS 'SHA-256 hash of input for result caching';
+
+
+--
+-- Name: COLUMN forge_jobs.input_data; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.forge_jobs.input_data IS 'Job configuration including files and fork settings';
+
+
+--
+-- Name: COLUMN forge_jobs.expires_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.forge_jobs.expires_at IS 'When this job record should be cleaned up';
+
+
+--
+-- Name: hook_project_files; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.hook_project_files (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    project_id uuid NOT NULL,
+    path character varying(255) NOT NULL,
+    content text NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+--
+-- Name: TABLE hook_project_files; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.hook_project_files IS 'Source files belonging to hook projects';
+
+
+--
+-- Name: COLUMN hook_project_files.path; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.hook_project_files.path IS 'File path within the project (e.g., src/MyHook.sol)';
+
+
+--
+-- Name: hook_projects; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.hook_projects (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    user_address character varying(42) NOT NULL,
+    name character varying(255) NOT NULL,
+    project_type character varying(50) NOT NULL,
+    description text,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    is_deployed boolean DEFAULT false,
+    deployed_addresses jsonb DEFAULT '{}'::jsonb,
+    CONSTRAINT valid_project_type CHECK (((project_type)::text = ANY ((ARRAY['pay-hook'::character varying, 'cash-out-hook'::character varying, 'split-hook'::character varying])::text[])))
+);
+
+
+--
+-- Name: TABLE hook_projects; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.hook_projects IS 'Custom Juicebox hook development projects';
+
+
+--
+-- Name: COLUMN hook_projects.user_address; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.hook_projects.user_address IS 'Wallet address of the project owner';
+
+
+--
+-- Name: COLUMN hook_projects.project_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.hook_projects.project_type IS 'Type of hook: pay-hook, cash-out-hook, or split-hook';
+
+
+--
+-- Name: COLUMN hook_projects.deployed_addresses; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.hook_projects.deployed_addresses IS 'JSON map of chainId to deployed contract address';
+
+
+--
 -- Name: juice_balances; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -511,6 +743,7 @@ CREATE TABLE public.juice_balances (
     expires_at timestamp with time zone DEFAULT (now() + '1000 years'::interval) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_activity_at timestamp with time zone DEFAULT now(),
     CONSTRAINT juice_balances_balance_check CHECK ((balance >= (0)::numeric))
 );
 
@@ -520,6 +753,13 @@ CREATE TABLE public.juice_balances (
 --
 
 COMMENT ON TABLE public.juice_balances IS 'User Juice balances. 1 Juice = $1 USD. Non-refundable, non-transferable.';
+
+
+--
+-- Name: COLUMN juice_balances.last_activity_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.juice_balances.last_activity_at IS 'Last activity timestamp for 6-month credit expiration';
 
 
 --
@@ -542,7 +782,7 @@ CREATE TABLE public.juice_cash_outs (
     retry_count integer DEFAULT 0 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT juice_cash_outs_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'completed'::character varying, 'failed'::character varying, 'cancelled'::character varying])::text[])))
+    CONSTRAINT juice_cash_outs_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('processing'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text, ('cancelled'::character varying)::text])))
 );
 
 
@@ -573,9 +813,10 @@ CREATE TABLE public.juice_purchases (
     credited_at timestamp with time zone,
     error_message text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    credit_rate numeric(6,4),
     CONSTRAINT juice_purchases_radar_risk_score_check CHECK (((radar_risk_score IS NULL) OR ((radar_risk_score >= 0) AND (radar_risk_score <= 100)))),
     CONSTRAINT juice_purchases_settlement_delay_days_check CHECK (((settlement_delay_days >= 0) AND (settlement_delay_days <= 120))),
-    CONSTRAINT juice_purchases_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'clearing'::character varying, 'credited'::character varying, 'disputed'::character varying, 'refunded'::character varying])::text[])))
+    CONSTRAINT juice_purchases_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('clearing'::character varying)::text, ('credited'::character varying)::text, ('disputed'::character varying)::text, ('refunded'::character varying)::text])))
 );
 
 
@@ -584,6 +825,13 @@ CREATE TABLE public.juice_purchases (
 --
 
 COMMENT ON TABLE public.juice_purchases IS 'Fiat → Juice purchases via Stripe. Risk-based clearing delay before crediting.';
+
+
+--
+-- Name: COLUMN juice_purchases.credit_rate; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.juice_purchases.credit_rate IS 'Credit rate applied at time of purchase (e.g., 1.10)';
 
 
 --
@@ -623,7 +871,7 @@ CREATE TABLE public.juice_spends (
     last_retry_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT juice_spends_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'executing'::character varying, 'completed'::character varying, 'failed'::character varying, 'refunded'::character varying])::text[])))
+    CONSTRAINT juice_spends_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('executing'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text, ('refunded'::character varying)::text])))
 );
 
 
@@ -741,7 +989,7 @@ CREATE TABLE public.juicy_identity_history (
     started_at timestamp with time zone NOT NULL,
     ended_at timestamp with time zone DEFAULT now() NOT NULL,
     change_type character varying(20) NOT NULL,
-    CONSTRAINT juicy_identity_history_change_type_check CHECK (((change_type)::text = ANY ((ARRAY['created'::character varying, 'updated'::character varying, 'deleted'::character varying])::text[])))
+    CONSTRAINT juicy_identity_history_change_type_check CHECK (((change_type)::text = ANY (ARRAY[('created'::character varying)::text, ('updated'::character varying)::text, ('deleted'::character varying)::text])))
 );
 
 
@@ -750,6 +998,104 @@ CREATE TABLE public.juicy_identity_history (
 --
 
 COMMENT ON TABLE public.juicy_identity_history IS 'History of identity changes - tracks all past identities for each address';
+
+
+--
+-- Name: linked_address_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.linked_address_history (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    primary_address character varying(42) NOT NULL,
+    linked_address character varying(42) NOT NULL,
+    link_type character varying(20) NOT NULL,
+    action character varying(20) NOT NULL,
+    performed_at timestamp with time zone DEFAULT now() NOT NULL,
+    performed_by_address character varying(42),
+    CONSTRAINT linked_address_history_action_check CHECK (((action)::text = ANY ((ARRAY['linked'::character varying, 'unlinked'::character varying])::text[])))
+);
+
+
+--
+-- Name: linked_addresses; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.linked_addresses (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    primary_address character varying(42) NOT NULL,
+    linked_address character varying(42) NOT NULL,
+    link_type character varying(20) DEFAULT 'manual'::character varying NOT NULL,
+    user_id uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT linked_addresses_link_type_check CHECK (((link_type)::text = ANY ((ARRAY['manual'::character varying, 'smart_account'::character varying, 'passkey'::character varying, 'wallet'::character varying])::text[]))),
+    CONSTRAINT no_self_link CHECK ((lower((primary_address)::text) <> lower((linked_address)::text)))
+);
+
+
+--
+-- Name: TABLE linked_addresses; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.linked_addresses IS 'Links secondary addresses to a primary address for shared JuicyID.
+When looking up an identity, if the address has a link, use the primary address identity.';
+
+
+--
+-- Name: COLUMN linked_addresses.primary_address; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.linked_addresses.primary_address IS 'The address that owns the JuicyID. All linked addresses inherit this identity.';
+
+
+--
+-- Name: COLUMN linked_addresses.linked_address; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.linked_addresses.linked_address IS 'Secondary address that inherits the primary''s JuicyID. Can only be linked to one primary.';
+
+
+--
+-- Name: COLUMN linked_addresses.link_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.linked_addresses.link_type IS 'Type of link: manual (user initiated), smart_account (ERC-4337), passkey (Touch ID derived), wallet (connected wallet)';
+
+
+--
+-- Name: message_component_states; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.message_component_states (
+    message_id uuid NOT NULL,
+    component_key character varying(64) NOT NULL,
+    state jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: TABLE message_component_states; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.message_component_states IS 'Stores resolved state for dynamic message components like transaction-preview.
+State persists across sessions and is visible to all chat participants.
+Component key uniquely identifies the component within a message (e.g., "transaction-preview").';
+
+
+--
+-- Name: COLUMN message_component_states.component_key; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.message_component_states.component_key IS 'Unique identifier for the component within the message. Convention: component-name or component-name:index if multiple.';
+
+
+--
+-- Name: COLUMN message_component_states.state; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.message_component_states.state IS 'JSON state object. Structure depends on component type.
+For transaction-preview: { status, projectIds, txHashes, completedAt }';
 
 
 --
@@ -837,7 +1183,7 @@ CREATE TABLE public.multi_chat_messages (
     edited_at timestamp with time zone,
     deleted_at timestamp with time zone,
     token_count integer,
-    CONSTRAINT multi_chat_messages_role_check CHECK (((role)::text = ANY ((ARRAY['user'::character varying, 'assistant'::character varying, 'system'::character varying])::text[])))
+    CONSTRAINT multi_chat_messages_role_check CHECK (((role)::text = ANY (ARRAY[('user'::character varying)::text, ('assistant'::character varying)::text, ('system'::character varying)::text])))
 );
 
 
@@ -930,7 +1276,7 @@ CREATE TABLE public.passkey_challenges (
     email character varying(255),
     expires_at timestamp with time zone DEFAULT (now() + '00:05:00'::interval) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT passkey_challenges_type_check CHECK (((type)::text = ANY ((ARRAY['registration'::character varying, 'authentication'::character varying])::text[])))
+    CONSTRAINT passkey_challenges_type_check CHECK (((type)::text = ANY (ARRAY[('registration'::character varying)::text, ('authentication'::character varying)::text])))
 );
 
 
@@ -991,7 +1337,7 @@ CREATE TABLE public.payment_executions (
     error_message text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     completed_at timestamp with time zone,
-    CONSTRAINT payment_executions_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'completed'::character varying, 'failed'::character varying])::text[])))
+    CONSTRAINT payment_executions_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('processing'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text])))
 );
 
 
@@ -1027,7 +1373,7 @@ CREATE TABLE public.pending_fiat_payments (
     settlement_delay_days integer DEFAULT 7 NOT NULL,
     CONSTRAINT pending_fiat_payments_risk_score_check CHECK (((risk_score IS NULL) OR ((risk_score >= 0) AND (risk_score <= 100)))),
     CONSTRAINT pending_fiat_payments_settlement_delay_days_check CHECK (((settlement_delay_days >= 0) AND (settlement_delay_days <= 120))),
-    CONSTRAINT pending_fiat_payments_status_check CHECK (((status)::text = ANY ((ARRAY['pending_settlement'::character varying, 'settling'::character varying, 'settled'::character varying, 'disputed'::character varying, 'refunded'::character varying, 'failed'::character varying])::text[])))
+    CONSTRAINT pending_fiat_payments_status_check CHECK (((status)::text = ANY (ARRAY[('pending_settlement'::character varying)::text, ('settling'::character varying)::text, ('settled'::character varying)::text, ('disputed'::character varying)::text, ('refunded'::character varying)::text, ('failed'::character varying)::text])))
 );
 
 
@@ -1069,8 +1415,78 @@ CREATE TABLE public.pending_transfers (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     available_at timestamp with time zone NOT NULL,
     executed_at timestamp with time zone,
-    CONSTRAINT pending_transfers_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'ready'::character varying, 'executed'::character varying, 'cancelled'::character varying])::text[])))
+    CONSTRAINT pending_transfers_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('ready'::character varying)::text, ('executed'::character varying)::text, ('cancelled'::character varying)::text])))
 );
+
+
+--
+-- Name: project_conversations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.project_conversations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    chat_id uuid NOT NULL,
+    project_id integer NOT NULL,
+    chain_id integer NOT NULL,
+    supporter_address character varying(42) NOT NULL,
+    owner_address character varying(42) NOT NULL,
+    total_paid_wei character varying(78) DEFAULT '0'::character varying,
+    payment_count integer DEFAULT 0,
+    last_payment_at timestamp with time zone,
+    is_archived_by_owner boolean DEFAULT false,
+    is_archived_by_supporter boolean DEFAULT false,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+--
+-- Name: TABLE project_conversations; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.project_conversations IS 'Links Juicebox project supporters to project owners via chat conversations';
+
+
+--
+-- Name: COLUMN project_conversations.chat_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.project_conversations.chat_id IS 'Reference to the multi_chats table for actual messaging';
+
+
+--
+-- Name: COLUMN project_conversations.project_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.project_conversations.project_id IS 'Juicebox project ID (on-chain)';
+
+
+--
+-- Name: COLUMN project_conversations.chain_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.project_conversations.chain_id IS 'Chain ID where the project exists';
+
+
+--
+-- Name: COLUMN project_conversations.supporter_address; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.project_conversations.supporter_address IS 'Wallet address of the supporter who paid the project';
+
+
+--
+-- Name: COLUMN project_conversations.owner_address; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.project_conversations.owner_address IS 'Wallet address of the project owner (cached)';
+
+
+--
+-- Name: COLUMN project_conversations.total_paid_wei; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.project_conversations.total_paid_wei IS 'Total amount paid by supporter (cached, in wei)';
 
 
 --
@@ -1112,6 +1528,18 @@ CREATE VIEW public.public_chats AS
 
 
 --
+-- Name: rate_limits; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.rate_limits (
+    identifier character varying(255) NOT NULL,
+    count integer DEFAULT 1 NOT NULL,
+    window_start bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+
+--
 -- Name: reserve_transactions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1125,8 +1553,36 @@ CREATE TABLE public.reserve_transactions (
     tx_hash character varying(66),
     note text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT reserve_transactions_direction_check CHECK (((direction)::text = ANY ((ARRAY['in'::character varying, 'out'::character varying])::text[])))
+    CONSTRAINT reserve_transactions_direction_check CHECK (((direction)::text = ANY (ARRAY[('in'::character varying)::text, ('out'::character varying)::text])))
 );
+
+
+--
+-- Name: security_analyses; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.security_analyses (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    project_id uuid NOT NULL,
+    tool character varying(50) NOT NULL,
+    findings jsonb DEFAULT '[]'::jsonb NOT NULL,
+    summary jsonb,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+
+--
+-- Name: TABLE security_analyses; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.security_analyses IS 'Security analysis results for hook projects';
+
+
+--
+-- Name: COLUMN security_analyses.findings; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.security_analyses.findings IS 'Array of security findings with severity, message, and location';
 
 
 --
@@ -1178,7 +1634,7 @@ CREATE TABLE public.smart_account_exports (
     last_retry_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT smart_account_exports_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'blocked'::character varying, 'processing'::character varying, 'completed'::character varying, 'partial'::character varying, 'failed'::character varying, 'cancelled'::character varying])::text[])))
+    CONSTRAINT smart_account_exports_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('blocked'::character varying)::text, ('processing'::character varying)::text, ('completed'::character varying)::text, ('partial'::character varying)::text, ('failed'::character varying)::text, ('cancelled'::character varying)::text])))
 );
 
 
@@ -1212,7 +1668,7 @@ CREATE TABLE public.smart_account_project_roles (
     active boolean DEFAULT true NOT NULL,
     removed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT smart_account_project_roles_role_type_check CHECK (((role_type)::text = ANY ((ARRAY['payout_recipient'::character varying, 'reserved_recipient'::character varying, 'operator'::character varying])::text[])))
+    CONSTRAINT smart_account_project_roles_role_type_check CHECK (((role_type)::text = ANY (ARRAY[('payout_recipient'::character varying)::text, ('reserved_recipient'::character varying)::text, ('operator'::character varying)::text])))
 );
 
 
@@ -1233,7 +1689,7 @@ CREATE TABLE public.smart_account_withdrawals (
     gas_sponsored boolean DEFAULT true NOT NULL,
     gas_cost_wei character varying(78),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT smart_account_withdrawals_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'completed'::character varying, 'failed'::character varying, 'cancelled'::character varying])::text[])))
+    CONSTRAINT smart_account_withdrawals_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('processing'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text, ('cancelled'::character varying)::text])))
 );
 
 
@@ -1281,7 +1737,7 @@ CREATE TABLE public.training_runs (
     output_path text,
     error_message text,
     stats jsonb DEFAULT '{}'::jsonb,
-    CONSTRAINT training_runs_status_check CHECK (((status)::text = ANY ((ARRAY['running'::character varying, 'completed'::character varying, 'failed'::character varying])::text[])))
+    CONSTRAINT training_runs_status_check CHECK (((status)::text = ANY (ARRAY[('running'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text])))
 );
 
 
@@ -1306,7 +1762,7 @@ CREATE TABLE public.transactions (
     submitted_at timestamp with time zone,
     confirmed_at timestamp with time zone,
     receipt jsonb,
-    CONSTRAINT transactions_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'submitted'::character varying, 'confirmed'::character varying, 'failed'::character varying, 'cancelled'::character varying])::text[])))
+    CONSTRAINT transactions_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('submitted'::character varying)::text, ('confirmed'::character varying)::text, ('failed'::character varying)::text, ('cancelled'::character varying)::text])))
 );
 
 
@@ -1348,7 +1804,7 @@ CREATE TABLE public.user_contexts (
     observations jsonb DEFAULT '[]'::jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT user_contexts_jargon_level_check CHECK (((jargon_level)::text = ANY ((ARRAY['beginner'::character varying, 'intermediate'::character varying, 'advanced'::character varying])::text[])))
+    CONSTRAINT user_contexts_jargon_level_check CHECK (((jargon_level)::text = ANY (ARRAY[('beginner'::character varying)::text, ('intermediate'::character varying)::text, ('advanced'::character varying)::text])))
 );
 
 
@@ -1380,7 +1836,7 @@ CREATE VIEW public.user_pending_payments AS
     min(settles_at) AS next_settlement_at,
     json_agg(json_build_object('id', id, 'project_id', project_id, 'chain_id', chain_id, 'amount_usd', amount_usd, 'settles_at', settles_at, 'status', status) ORDER BY settles_at) AS payments
    FROM public.pending_fiat_payments
-  WHERE ((status)::text = ANY ((ARRAY['pending_settlement'::character varying, 'settling'::character varying])::text[]))
+  WHERE ((status)::text = ANY (ARRAY[('pending_settlement'::character varying)::text, ('settling'::character varying)::text]))
   GROUP BY user_id;
 
 
@@ -1441,7 +1897,7 @@ CREATE TABLE public.user_smart_accounts (
     custody_transfer_tx_hash character varying(66),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT user_smart_accounts_custody_status_check CHECK (((custody_status)::text = ANY ((ARRAY['managed'::character varying, 'transferring'::character varying, 'self_custody'::character varying])::text[])))
+    CONSTRAINT user_smart_accounts_custody_status_check CHECK (((custody_status)::text = ANY (ARRAY[('managed'::character varying)::text, ('transferring'::character varying)::text, ('self_custody'::character varying)::text])))
 );
 
 
@@ -1458,19 +1914,7 @@ CREATE TABLE public.users (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     passkey_enabled boolean DEFAULT false NOT NULL,
-    CONSTRAINT users_privacy_mode_check CHECK (((privacy_mode)::text = ANY ((ARRAY['open_book'::character varying, 'anonymous'::character varying, 'private'::character varying, 'ghost'::character varying])::text[])))
-);
-
-
---
--- Name: rate_limits; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.rate_limits (
-    identifier character varying(255) NOT NULL,
-    count integer DEFAULT 1 NOT NULL,
-    window_start bigint NOT NULL,
-    created_at timestamp with time zone DEFAULT now()
+    CONSTRAINT users_privacy_mode_check CHECK (((privacy_mode)::text = ANY (ARRAY[('open_book'::character varying)::text, ('anonymous'::character varying)::text, ('private'::character varying)::text, ('ghost'::character varying)::text])))
 );
 
 
@@ -1492,10 +1936,33 @@ CREATE TABLE public.wallet_sessions (
 
 
 --
+-- Name: _migrations id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public._migrations ALTER COLUMN id SET DEFAULT nextval('public._migrations_id_seq'::regclass);
+
+
+--
 -- Name: user_regions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_regions ALTER COLUMN id SET DEFAULT nextval('public.user_regions_id_seq'::regclass);
+
+
+--
+-- Name: _migrations _migrations_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public._migrations
+    ADD CONSTRAINT _migrations_name_key UNIQUE (name);
+
+
+--
+-- Name: _migrations _migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public._migrations
+    ADD CONSTRAINT _migrations_pkey PRIMARY KEY (id);
 
 
 --
@@ -1675,6 +2142,14 @@ ALTER TABLE ONLY public.created_revnet_stages
 
 
 --
+-- Name: credit_expirations credit_expirations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.credit_expirations
+    ADD CONSTRAINT credit_expirations_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: events events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1688,6 +2163,38 @@ ALTER TABLE ONLY public.events
 
 ALTER TABLE ONLY public.fiat_payment_disputes
     ADD CONSTRAINT fiat_payment_disputes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: forge_jobs forge_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.forge_jobs
+    ADD CONSTRAINT forge_jobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: hook_project_files hook_project_files_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hook_project_files
+    ADD CONSTRAINT hook_project_files_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: hook_project_files hook_project_files_project_id_path_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hook_project_files
+    ADD CONSTRAINT hook_project_files_project_id_path_key UNIQUE (project_id, path);
+
+
+--
+-- Name: hook_projects hook_projects_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hook_projects
+    ADD CONSTRAINT hook_projects_pkey PRIMARY KEY (id);
 
 
 --
@@ -1784,6 +2291,30 @@ ALTER TABLE ONLY public.juicy_identities
 
 ALTER TABLE ONLY public.juicy_identity_history
     ADD CONSTRAINT juicy_identity_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: linked_address_history linked_address_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.linked_address_history
+    ADD CONSTRAINT linked_address_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: linked_addresses linked_addresses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.linked_addresses
+    ADD CONSTRAINT linked_addresses_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: message_component_states message_component_states_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.message_component_states
+    ADD CONSTRAINT message_component_states_pkey PRIMARY KEY (message_id, component_key);
 
 
 --
@@ -1963,11 +2494,43 @@ ALTER TABLE ONLY public.pending_transfers
 
 
 --
+-- Name: project_conversations project_conversations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_conversations
+    ADD CONSTRAINT project_conversations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: project_conversations project_conversations_project_id_chain_id_supporter_address_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_conversations
+    ADD CONSTRAINT project_conversations_project_id_chain_id_supporter_address_key UNIQUE (project_id, chain_id, supporter_address);
+
+
+--
+-- Name: rate_limits rate_limits_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.rate_limits
+    ADD CONSTRAINT rate_limits_pkey PRIMARY KEY (identifier);
+
+
+--
 -- Name: reserve_transactions reserve_transactions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.reserve_transactions
     ADD CONSTRAINT reserve_transactions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_analyses security_analyses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.security_analyses
+    ADD CONSTRAINT security_analyses_pkey PRIMARY KEY (id);
 
 
 --
@@ -2035,6 +2598,14 @@ ALTER TABLE ONLY public.transactions
 
 
 --
+-- Name: linked_addresses unique_linked_address; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.linked_addresses
+    ADD CONSTRAINT unique_linked_address UNIQUE (linked_address);
+
+
+--
 -- Name: user_contexts user_contexts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2096,14 +2667,6 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
-
---
--- Name: rate_limits rate_limits_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.rate_limits
-    ADD CONSTRAINT rate_limits_pkey PRIMARY KEY (identifier);
 
 
 --
@@ -2404,6 +2967,20 @@ CREATE INDEX idx_created_revnet_stages_project ON public.created_revnet_stages U
 
 
 --
+-- Name: idx_credit_expirations_expired_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_credit_expirations_expired_at ON public.credit_expirations USING btree (expired_at);
+
+
+--
+-- Name: idx_credit_expirations_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_credit_expirations_user_id ON public.credit_expirations USING btree (user_id);
+
+
+--
 -- Name: idx_disputes_payment; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2442,7 +3019,7 @@ CREATE INDEX idx_events_user_id ON public.events USING btree (user_id);
 -- Name: idx_exports_pending; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_exports_pending ON public.smart_account_exports USING btree (status) WHERE ((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying])::text[]));
+CREATE INDEX idx_exports_pending ON public.smart_account_exports USING btree (status) WHERE ((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('processing'::character varying)::text]));
 
 
 --
@@ -2457,6 +3034,69 @@ CREATE INDEX idx_exports_status ON public.smart_account_exports USING btree (sta
 --
 
 CREATE INDEX idx_exports_user ON public.smart_account_exports USING btree (user_id);
+
+
+--
+-- Name: idx_forge_jobs_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_forge_jobs_expires_at ON public.forge_jobs USING btree (expires_at);
+
+
+--
+-- Name: idx_forge_jobs_input_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_forge_jobs_input_hash ON public.forge_jobs USING btree (input_hash);
+
+
+--
+-- Name: idx_forge_jobs_project_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_forge_jobs_project_id ON public.forge_jobs USING btree (project_id);
+
+
+--
+-- Name: idx_forge_jobs_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_forge_jobs_status ON public.forge_jobs USING btree (status);
+
+
+--
+-- Name: idx_forge_jobs_user_address; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_forge_jobs_user_address ON public.forge_jobs USING btree (user_address);
+
+
+--
+-- Name: idx_hook_project_files_project_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_hook_project_files_project_id ON public.hook_project_files USING btree (project_id);
+
+
+--
+-- Name: idx_hook_projects_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_hook_projects_created_at ON public.hook_projects USING btree (created_at DESC);
+
+
+--
+-- Name: idx_hook_projects_is_deployed; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_hook_projects_is_deployed ON public.hook_projects USING btree (is_deployed);
+
+
+--
+-- Name: idx_hook_projects_user_address; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_hook_projects_user_address ON public.hook_projects USING btree (user_address);
 
 
 --
@@ -2579,6 +3219,62 @@ CREATE INDEX idx_juicy_identity_history_ended_at ON public.juicy_identity_histor
 
 
 --
+-- Name: idx_linked_address_history_linked; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_linked_address_history_linked ON public.linked_address_history USING btree (lower((linked_address)::text));
+
+
+--
+-- Name: idx_linked_address_history_primary; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_linked_address_history_primary ON public.linked_address_history USING btree (lower((primary_address)::text));
+
+
+--
+-- Name: idx_linked_address_history_time; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_linked_address_history_time ON public.linked_address_history USING btree (performed_at DESC);
+
+
+--
+-- Name: idx_linked_addresses_linked; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_linked_addresses_linked ON public.linked_addresses USING btree (lower((linked_address)::text));
+
+
+--
+-- Name: idx_linked_addresses_primary; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_linked_addresses_primary ON public.linked_addresses USING btree (lower((primary_address)::text));
+
+
+--
+-- Name: idx_linked_addresses_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_linked_addresses_user ON public.linked_addresses USING btree (user_id) WHERE (user_id IS NOT NULL);
+
+
+--
+-- Name: idx_message_component_states_message; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_message_component_states_message ON public.message_component_states USING btree (message_id);
+
+
+--
+-- Name: idx_message_component_states_updated; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_message_component_states_updated ON public.message_component_states USING btree (updated_at DESC);
+
+
+--
 -- Name: idx_multi_chat_invites_address; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2695,6 +3391,13 @@ CREATE INDEX idx_multi_chats_founder ON public.multi_chats USING btree (founder_
 --
 
 CREATE INDEX idx_multi_chats_pinned ON public.multi_chats USING btree (founder_address, is_pinned) WHERE (is_pinned = true);
+
+
+--
+-- Name: idx_multi_chats_private; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_multi_chats_private ON public.multi_chats USING btree (is_private);
 
 
 --
@@ -2859,6 +3562,55 @@ CREATE INDEX idx_pending_transfers_user_id ON public.pending_transfers USING btr
 
 
 --
+-- Name: idx_project_conversations_owner; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_project_conversations_owner ON public.project_conversations USING btree (owner_address, updated_at DESC);
+
+
+--
+-- Name: idx_project_conversations_owner_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_project_conversations_owner_active ON public.project_conversations USING btree (owner_address, is_archived_by_owner, updated_at DESC) WHERE (is_archived_by_owner = false);
+
+
+--
+-- Name: idx_project_conversations_project; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_project_conversations_project ON public.project_conversations USING btree (project_id, chain_id, updated_at DESC);
+
+
+--
+-- Name: idx_project_conversations_supporter; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_project_conversations_supporter ON public.project_conversations USING btree (supporter_address, updated_at DESC);
+
+
+--
+-- Name: idx_project_conversations_supporter_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_project_conversations_supporter_active ON public.project_conversations USING btree (supporter_address, is_archived_by_supporter, updated_at DESC) WHERE (is_archived_by_supporter = false);
+
+
+--
+-- Name: idx_rate_limits_identifier; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_rate_limits_identifier ON public.rate_limits USING btree (identifier varchar_pattern_ops);
+
+
+--
+-- Name: idx_rate_limits_window_start; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_rate_limits_window_start ON public.rate_limits USING btree (window_start);
+
+
+--
 -- Name: idx_reserve_transactions_chain_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2870,6 +3622,20 @@ CREATE INDEX idx_reserve_transactions_chain_id ON public.reserve_transactions US
 --
 
 CREATE INDEX idx_reserve_transactions_created_at ON public.reserve_transactions USING btree (created_at);
+
+
+--
+-- Name: idx_security_analyses_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_security_analyses_created_at ON public.security_analyses USING btree (created_at DESC);
+
+
+--
+-- Name: idx_security_analyses_project_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_security_analyses_project_id ON public.security_analyses USING btree (project_id);
 
 
 --
@@ -3034,27 +3800,6 @@ CREATE INDEX idx_users_email ON public.users USING btree (email);
 
 
 --
--- Name: idx_rate_limits_window_start; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_rate_limits_window_start ON public.rate_limits USING btree (window_start);
-
-
---
--- Name: idx_rate_limits_identifier; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_rate_limits_identifier ON public.rate_limits USING btree (identifier varchar_pattern_ops);
-
-
---
--- Name: idx_multi_chats_private; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_multi_chats_private ON public.multi_chats USING btree (is_private);
-
-
---
 -- Name: idx_wallet_sessions_address; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3110,7 +3855,7 @@ CREATE OR REPLACE VIEW public.training_bad_conversations AS
     cs.session_feedback
    FROM (public.chat_sessions cs
      JOIN public.chat_messages cm ON ((cm.session_id = cs.id)))
-  WHERE (((cs.privacy_mode)::text = ANY ((ARRAY['open_book'::character varying, 'anonymous'::character varying])::text[])) AND ((cs.session_rating <= 2) OR (cs.outcome_user_abandoned = true) OR (cs.outcome_error_encountered = true) OR (EXISTS ( SELECT 1
+  WHERE (((cs.privacy_mode)::text = ANY (ARRAY[('open_book'::character varying)::text, ('anonymous'::character varying)::text])) AND ((cs.session_rating <= 2) OR (cs.outcome_user_abandoned = true) OR (cs.outcome_error_encountered = true) OR (EXISTS ( SELECT 1
            FROM public.chat_messages m
           WHERE ((m.session_id = cs.id) AND (m.feedback_helpful = false))))))
   GROUP BY cs.id;
@@ -3129,10 +3874,38 @@ CREATE OR REPLACE VIEW public.training_good_conversations AS
     cs.session_rating
    FROM (public.chat_sessions cs
      JOIN public.chat_messages cm ON ((cm.session_id = cs.id)))
-  WHERE (((cs.privacy_mode)::text = ANY ((ARRAY['open_book'::character varying, 'anonymous'::character varying])::text[])) AND ((cs.session_rating >= 4) OR (cs.outcome_completed_payment = true) OR (EXISTS ( SELECT 1
+  WHERE (((cs.privacy_mode)::text = ANY (ARRAY[('open_book'::character varying)::text, ('anonymous'::character varying)::text])) AND ((cs.session_rating >= 4) OR (cs.outcome_completed_payment = true) OR (EXISTS ( SELECT 1
            FROM public.chat_messages m
           WHERE ((m.session_id = cs.id) AND (m.feedback_helpful = true))))))
   GROUP BY cs.id;
+
+
+--
+-- Name: hook_project_files hook_project_files_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER hook_project_files_updated_at BEFORE UPDATE ON public.hook_project_files FOR EACH ROW EXECUTE FUNCTION public.update_hook_project_timestamp();
+
+
+--
+-- Name: hook_projects hook_projects_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER hook_projects_updated_at BEFORE UPDATE ON public.hook_projects FOR EACH ROW EXECUTE FUNCTION public.update_hook_project_timestamp();
+
+
+--
+-- Name: multi_chat_messages project_conversations_message_sync; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER project_conversations_message_sync AFTER INSERT ON public.multi_chat_messages FOR EACH ROW EXECUTE FUNCTION public.sync_project_conversation_on_message();
+
+
+--
+-- Name: project_conversations project_conversations_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER project_conversations_updated_at BEFORE UPDATE ON public.project_conversations FOR EACH ROW EXECUTE FUNCTION public.update_project_conversation_timestamp();
 
 
 --
@@ -3433,6 +4206,14 @@ ALTER TABLE ONLY public.created_revnet_stages
 
 
 --
+-- Name: credit_expirations credit_expirations_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.credit_expirations
+    ADD CONSTRAINT credit_expirations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: events events_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3454,6 +4235,22 @@ ALTER TABLE ONLY public.events
 
 ALTER TABLE ONLY public.fiat_payment_disputes
     ADD CONSTRAINT fiat_payment_disputes_pending_payment_id_fkey FOREIGN KEY (pending_payment_id) REFERENCES public.pending_fiat_payments(id);
+
+
+--
+-- Name: forge_jobs forge_jobs_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.forge_jobs
+    ADD CONSTRAINT forge_jobs_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.hook_projects(id) ON DELETE SET NULL;
+
+
+--
+-- Name: hook_project_files hook_project_files_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hook_project_files
+    ADD CONSTRAINT hook_project_files_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.hook_projects(id) ON DELETE CASCADE;
 
 
 --
@@ -3510,6 +4307,14 @@ ALTER TABLE ONLY public.juicy_feedback
 
 ALTER TABLE ONLY public.juicy_feedback
     ADD CONSTRAINT juicy_feedback_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: linked_addresses linked_addresses_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.linked_addresses
+    ADD CONSTRAINT linked_addresses_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -3649,11 +4454,27 @@ ALTER TABLE ONLY public.pending_transfers
 
 
 --
+-- Name: project_conversations project_conversations_chat_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_conversations
+    ADD CONSTRAINT project_conversations_chat_id_fkey FOREIGN KEY (chat_id) REFERENCES public.multi_chats(id) ON DELETE CASCADE;
+
+
+--
 -- Name: reserve_transactions reserve_transactions_related_payment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.reserve_transactions
     ADD CONSTRAINT reserve_transactions_related_payment_id_fkey FOREIGN KEY (related_payment_id) REFERENCES public.payment_executions(id);
+
+
+--
+-- Name: security_analyses security_analyses_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.security_analyses
+    ADD CONSTRAINT security_analyses_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.hook_projects(id) ON DELETE CASCADE;
 
 
 --
@@ -3748,5 +4569,5 @@ ALTER TABLE ONLY public.user_smart_accounts
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ZQp1eMK72nDPIc6wL3gF0hR0tOdEtQegTtQtKJsleno5x7Wemg4WG4ILje4cspw
+\unrestrict huNyVdCN4Lapq3QR6Qb4BvhVQWuWL46OuA6LcdOdYLLaEzzlFeQm2bPyDcHfu5F
 
