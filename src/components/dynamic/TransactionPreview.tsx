@@ -2294,19 +2294,19 @@ export default function TransactionPreview({
         : undefined,
     })
 
-    // Check if the only issue is missing owner (user not signed in)
+    // Check if the only issues are sign-in-related (missing owner, unresolved USER_WALLET placeholders)
     // In this case, we don't need to show scary warnings - just prompt to sign in
-    const ownerDoubts = verification.doubts.filter(d =>
-      d.field === 'owner' || d.message.toLowerCase().includes('owner')
+    const signInRelatedDoubts = verification.doubts.filter(d =>
+      d.field === 'owner' ||
+      d.message.toLowerCase().includes('owner') ||
+      (!effectiveUserAddress && d.message.includes('USER_WALLET'))
     )
-    const nonOwnerDoubts = verification.doubts.filter(d =>
-      d.field !== 'owner' && !d.message.toLowerCase().includes('owner')
-    )
-    const onlyOwnerIssue = ownerDoubts.length > 0 && nonOwnerDoubts.length === 0 && !owner
+    const genuineDoubts = verification.doubts.filter(d => !signInRelatedDoubts.includes(d))
+    const onlySignInIssue = signInRelatedDoubts.length > 0 && genuineDoubts.length === 0 && !owner
 
-    // Filter out owner-related issues while waiting for managed wallet or if there's a wallet error
-    let filteredDoubts = (isWaitingForManagedWallet || hasWalletError || onlyOwnerIssue)
-      ? nonOwnerDoubts
+    // Filter out sign-in-related issues while waiting for managed wallet or if there's a wallet error
+    let filteredDoubts = (isWaitingForManagedWallet || hasWalletError || onlySignInIssue)
+      ? genuineDoubts
       : verification.doubts
 
     // If there's a wallet error, add a specific doubt for it
@@ -2362,7 +2362,7 @@ export default function TransactionPreview({
       hasCritical: filteredDoubts.some(d => d.severity === 'critical'),
       isWaitingForWallet: isWaitingForManagedWallet,
       hasWalletError,
-      onlyOwnerIssue, // True when user just needs to sign in
+      onlySignInIssue, // True when user just needs to sign in
     }
   }, [action, effectivePreviewData?.raw, effectiveUserAddress, isManagedMode, managedAddress, managedWalletLoading, managedWalletError, parsedChainConfigs, validChainId, projectMetadata?.name])
 
@@ -2949,8 +2949,34 @@ export default function TransactionPreview({
         </div>
       )}
 
-      {/* Issues section - shown for launch actions with validation issues, but only after data is loaded */}
-      {launchValidation && launchValidation.hasIssues && !effectiveIsLaunching && !effectiveIsComplete && !managedWalletLoading && fundingInfo && (
+      {/* Sign-in prompt - shown when the only issues are sign-in-related */}
+      {launchValidation && launchValidation.onlySignInIssue && !effectiveIsLaunching && !effectiveIsComplete && !managedWalletLoading && fundingInfo && (
+        <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <button
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              window.dispatchEvent(new CustomEvent('juice:open-wallet-panel', {
+                detail: { anchorPosition: { top: rect.top, left: rect.left, width: rect.width, height: rect.height } }
+              }))
+            }}
+            className={`w-full p-3 border-l-4 text-left cursor-pointer transition-colors ${
+              isDark
+                ? 'bg-blue-500/10 border-blue-400 hover:bg-blue-500/20'
+                : 'bg-blue-50 border-blue-400 hover:bg-blue-100'
+            }`}
+          >
+            <div className={`text-sm font-medium ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
+              Sign in to launch your project
+            </div>
+            <div className={`text-xs mt-1 ${isDark ? 'text-blue-300/70' : 'text-blue-600/70'}`}>
+              Connect a wallet to set the project owner and finalize configuration.
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Issues section - shown for launch actions with genuine validation issues, but only after data is loaded */}
+      {launchValidation && launchValidation.hasIssues && !launchValidation.onlySignInIssue && !effectiveIsLaunching && !effectiveIsComplete && !managedWalletLoading && fundingInfo && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <div className={`p-3 border-l-4 ${
             launchValidation.hasCritical
