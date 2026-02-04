@@ -3,6 +3,10 @@
  *
  * Creates Relayr bundles with ERC-2771 signed forward requests.
  * Enables server-side signing for managed wallet users.
+ *
+ * Smart account routing: wraps transactions through SmartAccount.execute()
+ * via the ERC-2771 forwarder, so _msgSender() = reserves EOA = owner.
+ * ForwardableSimpleAccount trusts the forwarder (implements isTrustedForwarder).
  */
 
 import {
@@ -99,6 +103,21 @@ const ERC2771_FORWARDER_ABI = [
   },
 ] as const;
 
+// SimpleAccount execute ABI for wrapping calls through the smart account
+const SIMPLE_ACCOUNT_EXECUTE_ABI = [
+  {
+    name: 'execute',
+    type: 'function',
+    inputs: [
+      { name: 'dest', type: 'address' },
+      { name: 'value', type: 'uint256' },
+      { name: 'func', type: 'bytes' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const;
+
 // EIP-712 typed data types for ForwardRequest signing
 const FORWARD_REQUEST_TYPES = {
   ForwardRequest: [
@@ -114,22 +133,6 @@ const FORWARD_REQUEST_TYPES = {
 
 // 48 hours deadline for signatures
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60;
-
-// ERC-4337 SimpleAccount ABI (minimal - only execute function needed)
-// Used to wrap transactions through the user's smart account
-const SIMPLE_ACCOUNT_ABI = [
-  {
-    name: 'execute',
-    type: 'function',
-    inputs: [
-      { name: 'dest', type: 'address' },
-      { name: 'value', type: 'uint256' },
-      { name: 'func', type: 'bytes' },
-    ],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-] as const;
 
 // Relayr API configuration - all required env vars
 const RELAYR_API_URL = process.env.RELAYR_API_URL;
@@ -174,15 +177,17 @@ function getPublicClient(chainId: number) {
 
 /**
  * Create a Relayr bundle with ERC-2771 signed transactions.
- * Server signs on behalf of the user's smart account.
  *
  * When smartAccountAddress is provided:
- * - Transactions are wrapped through SmartAccount.execute(target, value, data)
- * - ERC-2771 is signed by reserves EOA (which owns all smart accounts)
- * - Result: _msgSender() inside target contract = smart account = project owner
+ * - Wraps each tx as SmartAccount.execute(target, value, data)
+ * - Signs ERC-2771 forward request targeting the smart account
+ * - Forwarder calls SmartAccount.execute(), _msgSender() = reserves EOA = owner
+ * - Includes factory createAccount() for lazy deployment
+ * - All gas sponsored via Relayr
  *
- * This solves the permission issue where projects are owned by the smart account
- * but ERC-2771 _msgSender() returns the passkey EOA.
+ * When smartAccountAddress is NOT provided:
+ * - Signs ERC-2771 forward request targeting the contract directly
+ * - _msgSender() inside target = reserves EOA
  */
 export async function createRelayrBundle(params: CreateBundleParams): Promise<{ bundleId: string }> {
   const { userId, transactions, owner, smartAccountAddress } = params;
@@ -199,25 +204,10 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     throw new Error('RELAYR_API_KEY not configured');
   }
 
-  // Get signing account
-  // When routing through smart account: ALWAYS use reserves EOA (which owns all smart accounts)
-  // Otherwise: prefer user's stored signing key, fall back to reserves
+  // Get signing account: prefer user's stored signing key, fall back to reserves
   let signingAccount: PrivateKeyAccount;
 
-  if (smartAccountAddress) {
-    // Smart account routing: reserves EOA must sign because it owns all smart accounts
-    const reservesKey = config.reservesPrivateKey as `0x${string}`;
-    if (!reservesKey) {
-      throw new Error('RESERVES_PRIVATE_KEY required for smart account transaction routing');
-    }
-    signingAccount = privateKeyToAccount(reservesKey);
-    logger.info('Using reserves key for smart account routing', {
-      userId,
-      signer: signingAccount.address,
-      smartAccount: smartAccountAddress,
-    });
-  } else {
-    // Direct signing: prefer user's stored signing key, fall back to reserves
+  {
     const userSigningKey = await getSigningKey(userId);
     if (userSigningKey) {
       signingAccount = privateKeyToAccount(userSigningKey);
@@ -235,40 +225,62 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
   logger.info('Creating Relayr bundle', {
     userId,
     owner,
-    smartAccountAddress: smartAccountAddress || 'none (direct)',
+    smartAccount: smartAccountAddress || 'none',
     chainCount: transactions.length,
     chains: transactions.map(tx => tx.chainId),
   });
 
-  // Build factory deployment transactions for chains that need smart account deployment.
-  // These are included in the Relayr bundle so deployment is gas-sponsored.
-  // createAccount is idempotent - safe to include even if already deployed.
-  const deploymentTransactions: Array<{
-    chain: number;
-    target: string;
-    data: string;
-    value: string;
+  // Build the raw transactions to wrap with ERC-2771.
+  // For smart account routing: wrap each tx as SmartAccount.execute(target, value, data)
+  // and target the forwarder at the smart account address.
+  const rawTransactions: Array<{
+    chainId: number;
+    target: Address;
+    data: Hex;
+    value: bigint;
   }> = [];
 
   if (smartAccountAddress) {
-    const { target, data } = getFactoryDeployData(signingAccount.address, userId);
+    // Include factory deployment on each chain (idempotent - no-op if already deployed)
     const uniqueChainIds = [...new Set(transactions.map(tx => tx.chainId))];
     for (const chainId of uniqueChainIds) {
-      deploymentTransactions.push({
-        chain: chainId,
-        target,
-        data,
-        value: '0',
+      const deployData = getFactoryDeployData(signingAccount.address, userId);
+      rawTransactions.push({
+        chainId,
+        target: deployData.target,
+        data: deployData.data as Hex,
+        value: 0n,
       });
     }
-    logger.info('Including smart account deployment in bundle', {
-      userId,
-      chains: uniqueChainIds,
-      factory: target,
-    });
+
+    // Wrap each application tx through SmartAccount.execute()
+    for (const tx of transactions) {
+      const executeData = encodeFunctionData({
+        abi: SIMPLE_ACCOUNT_EXECUTE_ABI,
+        functionName: 'execute',
+        args: [tx.target as Address, BigInt(tx.value || '0'), tx.data as Hex],
+      });
+
+      rawTransactions.push({
+        chainId: tx.chainId,
+        target: smartAccountAddress as Address,
+        data: executeData,
+        value: 0n, // Value is encoded in the execute() call, not sent with the forward request
+      });
+    }
+  } else {
+    // Direct: forward request targets the contract directly
+    for (const tx of transactions) {
+      rawTransactions.push({
+        chainId: tx.chainId,
+        target: tx.target as Address,
+        data: tx.data as Hex,
+        value: BigInt(tx.value || '0'),
+      });
+    }
   }
 
-  // Sign ERC-2771 forward requests for each transaction
+  // Sign ERC-2771 forward requests for each raw transaction
   const wrappedTransactions: Array<{
     chain: number;
     target: string;
@@ -276,7 +288,7 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     value: string;
   }> = [];
 
-  for (const tx of transactions) {
+  for (const tx of rawTransactions) {
     const publicClient = getPublicClient(tx.chainId);
 
     // Get nonce from TrustedForwarder
@@ -286,55 +298,24 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
       client: publicClient,
     });
 
-    // Use system account as the ERC-2771 signer (not user's address)
-    // The project owner is encoded in the transaction calldata, not the meta-tx sender
     const signerAddress = signingAccount.address;
-    const nonce = await forwarderContract.read.nonces([signerAddress]);
+    // Each signed forward request increments the nonce, so we need to track
+    // the expected nonce across multiple txs on the same chain
+    const baseNonce = await forwarderContract.read.nonces([signerAddress]);
+    const chainTxCount = wrappedTransactions.filter(w => w.chain === tx.chainId).length;
+    const nonce = baseNonce + BigInt(chainTxCount);
+
     const deadline = Math.floor(Date.now() / 1000) + ERC2771_DEADLINE_DURATION_SECONDS;
-
-    // Determine the actual target and data for the ERC-2771 forward request
-    // When routing through smart account: wrap the inner transaction in execute()
-    let erc2771Target: Address;
-    let erc2771Data: Hex;
-    let erc2771Value: bigint;
-
-    if (smartAccountAddress) {
-      // Wrap transaction through smart account's execute() function
-      // SmartAccount.execute(dest, value, func) will call the inner transaction
-      // with msg.sender = smart account (which is the project owner)
-      erc2771Target = smartAccountAddress as Address;
-      erc2771Data = encodeFunctionData({
-        abi: SIMPLE_ACCOUNT_ABI,
-        functionName: 'execute',
-        args: [
-          tx.target as Address,
-          BigInt(tx.value || '0'),
-          tx.data as Hex,
-        ],
-      });
-      erc2771Value = BigInt(0); // Value is passed to execute(), not the outer call
-      logger.debug('Wrapping transaction through smart account', {
-        chainId: tx.chainId,
-        smartAccount: smartAccountAddress,
-        innerTarget: tx.target,
-        innerValue: tx.value,
-      });
-    } else {
-      // Direct transaction (no smart account routing)
-      erc2771Target = tx.target as Address;
-      erc2771Data = tx.data as Hex;
-      erc2771Value = BigInt(tx.value || '0');
-    }
 
     // Build the ForwardRequest message
     const messageData = {
       from: signerAddress,
-      to: erc2771Target,
-      value: erc2771Value,
+      to: tx.target,
+      value: tx.value,
       gas: BigInt(2000000), // Conservative gas estimate
       nonce,
       deadline,
-      data: erc2771Data,
+      data: tx.data,
     };
 
     // Sign the EIP-712 typed data
@@ -353,13 +334,13 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     logger.debug('Signed ERC-2771 forward request', {
       chainId: tx.chainId,
       signer: signerAddress,
-      projectOwner: owner,
       to: tx.target,
       nonce: nonce.toString(),
+      isSmartAccountCall: !!smartAccountAddress,
     });
 
     // Encode the execute() call with the signed request
-    const executeData = encodeFunctionData({
+    const forwarderExecuteData = encodeFunctionData({
       abi: ERC2771_FORWARDER_ABI,
       functionName: 'execute',
       args: [{
@@ -376,25 +357,23 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     wrappedTransactions.push({
       chain: tx.chainId,
       target: ERC2771_FORWARDER_ADDRESS,
-      data: executeData,
-      value: erc2771Value.toString(),
+      data: forwarderExecuteData,
+      value: tx.value.toString(),
     });
   }
 
   // Create Relayr bundle
-  // Deployment transactions go first so smart accounts exist before execute() calls
-  const allTransactions = [...deploymentTransactions, ...wrappedTransactions];
   const bundleRequest = {
     app_id: RELAYR_APP_ID,
-    transactions: allTransactions,
+    transactions: wrappedTransactions,
     perform_simulation: true,
     virtual_nonce_mode: 'Disabled',
   };
 
   logger.info('Submitting bundle to Relayr', {
     userId,
-    transactionCount: allTransactions.length,
-    deploymentCount: deploymentTransactions.length,
+    transactionCount: wrappedTransactions.length,
+    smartAccount: smartAccountAddress || 'none',
   });
 
   const response = await fetch(`${RELAYR_API_URL}/v1/bundle/balance`, {

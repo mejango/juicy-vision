@@ -34,3 +34,10 @@ coverage/
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Foundry build artifacts
+contracts/cache/
+contracts/out/
+
+# Playwright
+playwright-report/

@@ -517,7 +517,7 @@ Each managed user gets an ERC-4337 Smart Account:
 
 ### Smart Account Details
 
-- **Factory:** `0x9406Cc6185a346906296840746125a0E44976454` (SimpleAccountFactory)
+- **Factory:** `0x69a05d911af23501ff9d6b811a97cac972dade05` (ForwardableSimpleAccountFactory)
 - **EntryPoint:** `0x0000000071727De22E5E9d8BAf0edAc6f37da032` (v0.7)
 - **Salt:** Derived from `keccak256("juicy-vision:{userId}")`
 - **Lazy deployment:** Only deploy when user takes first action
@@ -1653,7 +1653,7 @@ CREATE TABLE chat_summaries (
 | Contract | Address |
 |----------|---------|
 | EntryPoint v0.7 | `0x0000000071727De22E5E9d8BAf0edAc6f37da032` |
-| SimpleAccountFactory | `0x9406Cc6185a346906296840746125a0E44976454` |
+| ForwardableSimpleAccountFactory | `0x69a05d911af23501ff9d6b811a97cac972dade05` |
 | TrustedForwarder | `0xc29d6995ab3b0df4650ad643adeac55e7acbb566` |
 
 ### USDC Addresses

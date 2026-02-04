@@ -21,7 +21,7 @@ const TRANSFER_HOLD_MS = TRANSFER_HOLD_DAYS * 24 * 60 * 60 * 1000;
 
 const SUPPORTED_CHAINS = [1, 10, 8453, 42161] as const;
 
-const SIMPLE_ACCOUNT_FACTORY = '0x9406Cc6185a346906296840746125a0E44976454' as const;
+const SIMPLE_ACCOUNT_FACTORY = '0x69a05d911af23501ff9d6b811a97cac972dade05' as const;
 const ENTRY_POINT = '0x0000000071727De22E5E9d8BAf0edAc6f37da032' as const;
 
 // ============================================================================

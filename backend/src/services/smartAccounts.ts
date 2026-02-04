@@ -16,10 +16,6 @@ import {
   encodeFunctionData,
   keccak256,
   encodeAbiParameters,
-  concat,
-  getContractAddress,
-  toBytes,
-  pad,
   type Address,
   type Hash,
   type Hex,
@@ -74,9 +70,9 @@ const RPC_URLS: Record<number, string> = {
 // Smart Account Factory (SimpleAccount from eth-infinitism)
 // ============================================================================
 
-// Using eth-infinitism's SimpleAccount for ERC-4337 compatibility
-// These addresses are the same across all EVM chains via CREATE2
-const SIMPLE_ACCOUNT_FACTORY = '0x9406Cc6185a346906296840746125a0E44976454' as const;
+// ForwardableSimpleAccountFactory: SimpleAccount + ERC2771Context
+// Deployed via CREATE2 (deterministic deployer) - same address on all EVM chains
+const SIMPLE_ACCOUNT_FACTORY = '0x69a05d911af23501ff9d6b811a97cac972dade05' as const;
 const ENTRY_POINT = '0x0000000071727De22E5E9d8BAf0edAc6f37da032' as const; // v0.7
 
 // Factory ABI for creating accounts
@@ -231,26 +227,23 @@ function generateSalt(userId: string): bigint {
 }
 
 /**
- * Compute the smart account address without deploying
- * Uses deterministic derivation from owner + salt
- *
- * Note: This computes a deterministic address locally without calling any contract.
- * The address is derived from: keccak256(owner || salt) truncated to 20 bytes.
- * This gives each user a unique, deterministic address across all chains.
+ * Compute the smart account address without deploying.
+ * Calls the factory's getAddress() which uses CREATE2 to deterministically
+ * derive the proxy address from owner + salt + implementation.
+ * Address is the same across all chains (same factory, same implementation).
  */
-function computeSmartAccountAddress(
-  _chainId: number, // Not used - address is same across all chains
+async function computeSmartAccountAddress(
+  chainId: number,
   ownerAddress: Address,
   salt: bigint
-): Address {
-  // Compute deterministic address from owner and salt
-  // Format: keccak256(abi.encodePacked(owner, salt))[12:32]
-  const saltBytes = pad(toBytes(salt), { size: 32 });
-  const packed = concat([toBytes(ownerAddress), saltBytes]);
-  const hash = keccak256(packed);
-
-  // Take last 20 bytes as address
-  const address = ('0x' + hash.slice(-40)) as Address;
+): Promise<Address> {
+  const client = getPublicClient(chainId);
+  const address = await client.readContract({
+    address: SIMPLE_ACCOUNT_FACTORY,
+    abi: FACTORY_ABI,
+    functionName: 'getAddress',
+    args: [ownerAddress, salt],
+  });
   return address;
 }
 
@@ -304,7 +297,7 @@ export async function getOrCreateSmartAccount(
 
   const systemAccount = privateKeyToAccount(systemKey);
   const salt = generateSalt(userId);
-  const address = computeSmartAccountAddress(
+  const address = await computeSmartAccountAddress(
     chainId,
     systemAccount.address,
     salt
