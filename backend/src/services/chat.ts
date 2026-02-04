@@ -139,6 +139,13 @@ export function getMemberPermissionLevel(member: ChatMember): ChatPermissionLeve
   return 'view-and-write-and-invite';
 }
 
+export interface AttachmentMetadata {
+  type: 'image' | 'document';
+  name: string;
+  mimeType: string;
+  cid: string;
+}
+
 export interface ChatMessage {
   id: string;
   chatId: string;
@@ -152,6 +159,7 @@ export interface ChatMessage {
   signature?: string;
   replyToId?: string;
   ipfsCid?: string;
+  attachments?: AttachmentMetadata[];
   createdAt: Date;
   editedAt?: Date;
   deletedAt?: Date;
@@ -175,6 +183,7 @@ export interface SendMessageParams {
   content: string;
   signature?: string; // Required for external wallets
   replyToId?: string;
+  attachments?: AttachmentMetadata[];
 }
 
 export interface ImportMessageParams {
@@ -253,6 +262,7 @@ interface DbChatMessage {
   signature: string | null;
   reply_to_id: string | null;
   ipfs_cid: string | null;
+  attachments: AttachmentMetadata[] | null;
   created_at: Date;
   edited_at: Date | null;
   deleted_at: Date | null;
@@ -335,6 +345,7 @@ function dbToMessage(db: DbChatMessage): ChatMessage {
     signature: db.signature ?? undefined,
     replyToId: db.reply_to_id ?? undefined,
     ipfsCid: db.ipfs_cid ?? undefined,
+    attachments: db.attachments ?? undefined,
     createdAt: db.created_at,
     editedAt: db.edited_at ?? undefined,
     deletedAt: db.deleted_at ?? undefined,
@@ -1018,7 +1029,7 @@ function estimateTokenCount(text: string): number {
  * Send a message to a chat
  */
 export async function sendMessage(params: SendMessageParams): Promise<ChatMessage> {
-  const { chatId, senderAddress, senderUserId, content, signature, replyToId } = params;
+  const { chatId, senderAddress, senderUserId, content, signature, replyToId, attachments } = params;
 
   // Check permission
   const canWrite = await checkPermission(chatId, senderAddress, 'write');
@@ -1055,13 +1066,14 @@ export async function sendMessage(params: SendMessageParams): Promise<ChatMessag
   const tokenCount = estimateTokenCount(finalContent);
 
   // Insert message
+  const attachmentsJson = attachments && attachments.length > 0 ? JSON.stringify(attachments) : null;
   const result = await query<{ id: string }>(
     `INSERT INTO multi_chat_messages (
        chat_id, sender_address, sender_user_id, role, content,
-       is_encrypted, signature, reply_to_id, token_count
-     ) VALUES ($1, $2, $3, 'user', $4, $5, $6, $7, $8)
+       is_encrypted, signature, reply_to_id, token_count, attachments
+     ) VALUES ($1, $2, $3, 'user', $4, $5, $6, $7, $8, $9)
      RETURNING id`,
-    [chatId, senderAddress, senderUserId ?? null, finalContent, isEncrypted, signature ?? null, replyToId ?? null, tokenCount]
+    [chatId, senderAddress, senderUserId ?? null, finalContent, isEncrypted, signature ?? null, replyToId ?? null, tokenCount, attachmentsJson]
   );
 
   const messageId = result[0].id;
@@ -1073,7 +1085,7 @@ export async function sendMessage(params: SendMessageParams): Promise<ChatMessag
   );
 
   // Broadcast to connected clients (user messages)
-  broadcastChatMessage(chatId, messageId, finalContent, senderAddress, isEncrypted, 'user');
+  broadcastChatMessage(chatId, messageId, finalContent, senderAddress, isEncrypted, 'user', attachments);
 
   return (await getMessageById(messageId))!;
 }

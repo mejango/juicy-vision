@@ -289,6 +289,20 @@ export async function reorderPinnedFolders(folderIds: string[]): Promise<void> {
 // Messages
 // ============================================================================
 
+/**
+ * Generate stable IDs for server-returned attachments (for React keys)
+ */
+function hydrateAttachmentIds(msg: ChatMessage): ChatMessage {
+  if (!msg.attachments || msg.attachments.length === 0) return msg
+  return {
+    ...msg,
+    attachments: msg.attachments.map((att, i) => ({
+      ...att,
+      id: att.id || `${msg.id}-att-${i}`,
+    })),
+  }
+}
+
 export async function fetchMessages(
   chatId: string,
   limit = 50,
@@ -297,9 +311,10 @@ export async function fetchMessages(
   const params = new URLSearchParams({ limit: String(limit) })
   if (before) params.set('before', before)
 
-  return apiRequest<ChatMessage[]>(
+  const messages = await apiRequest<ChatMessage[]>(
     `/chat/${chatId}/messages?${params}`
   )
+  return messages.map(hydrateAttachmentIds)
 }
 
 export async function sendMessage(
@@ -308,10 +323,11 @@ export async function sendMessage(
   replyToId?: string,
   attachments?: Array<{ type: string; name: string; mimeType: string; data: string }>
 ): Promise<ChatMessage> {
-  return apiRequest<ChatMessage>(`/chat/${chatId}/messages`, {
+  const msg = await apiRequest<ChatMessage>(`/chat/${chatId}/messages`, {
     method: 'POST',
     body: JSON.stringify({ content, replyToId, attachments }),
   })
+  return hydrateAttachmentIds(msg)
 }
 
 export async function deleteMessage(

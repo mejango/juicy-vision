@@ -245,7 +245,8 @@ export function broadcastChatMessage(
   content: string,
   senderAddress: string,
   isEncrypted: boolean,
-  role: 'user' | 'assistant' | 'system' = 'user'
+  role: 'user' | 'assistant' | 'system' = 'user',
+  attachments?: Array<{ type: string; name: string; mimeType: string; cid: string }>
 ): void {
   broadcastToChat(chatId, {
     type: 'message',
@@ -258,6 +259,7 @@ export function broadcastChatMessage(
       content,
       isEncrypted,
       createdAt: new Date().toISOString(),
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
     },
     sender: senderAddress,
     timestamp: Date.now(),

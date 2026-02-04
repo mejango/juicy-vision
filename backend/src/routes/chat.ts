@@ -872,6 +872,23 @@ chatRouter.post(
     }
 
     try {
+      // Pin attachments to IPFS before saving the message
+      let attachmentMetadata: Array<{ type: 'image' | 'document'; name: string; mimeType: string; cid: string }> | undefined;
+      if (body.attachments && body.attachments.length > 0) {
+        const { pinFileToIpfs } = await import('../services/ipfs.ts');
+        attachmentMetadata = [];
+        for (const att of body.attachments) {
+          try {
+            const cid = await pinFileToIpfs(att.data, att.name, att.mimeType);
+            attachmentMetadata.push({ type: att.type, name: att.name, mimeType: att.mimeType, cid });
+          } catch (err) {
+            console.error(`[IPFS] Failed to pin attachment ${att.name}:`, err);
+            // Skip failed attachments, don't fail the message
+          }
+        }
+        if (attachmentMetadata.length === 0) attachmentMetadata = undefined;
+      }
+
       const message = await sendMessage({
         chatId,
         senderAddress,
@@ -879,6 +896,7 @@ chatRouter.post(
         content: body.content,
         signature: body.signature,
         replyToId: body.replyToId,
+        attachments: attachmentMetadata,
       });
       return c.json({ success: true, data: serializeMessage(message) });
     } catch (error) {

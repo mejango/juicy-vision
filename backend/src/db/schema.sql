@@ -1183,6 +1183,7 @@ CREATE TABLE public.multi_chat_messages (
     edited_at timestamp with time zone,
     deleted_at timestamp with time zone,
     token_count integer,
+    attachments jsonb,
     CONSTRAINT multi_chat_messages_role_check CHECK (((role)::text = ANY (ARRAY[('user'::character varying)::text, ('assistant'::character varying)::text, ('system'::character varying)::text])))
 );
 
@@ -1192,6 +1193,13 @@ CREATE TABLE public.multi_chat_messages (
 --
 
 COMMENT ON COLUMN public.multi_chat_messages.token_count IS 'Estimated token count for this message content. Used for context budget management.';
+
+
+--
+-- Name: COLUMN multi_chat_messages.attachments; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.multi_chat_messages.attachments IS 'IPFS-pinned attachment metadata as JSONB array: [{type, name, mimeType, cid}]';
 
 
 --

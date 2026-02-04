@@ -297,18 +297,19 @@ export const useChatStore = create<ChatState>()(
             const messages = c.messages || []
             // Avoid duplicates by ID
             if (messages.some((m) => m.id === message.id)) return c
-            // For user messages, skip if there's already a matching message (optimistic or real)
-            // This prevents duplicates from WebSocket echoing back our own messages
+            // For user messages, check if there's an optimistic match to replace
             if (message.role === 'user') {
-              const hasMatchingMessage = messages.some((m) =>
+              const optimisticIdx = messages.findIndex((m) =>
                 m.role === 'user' &&
                 m.content === message.content &&
-                // Only consider recent messages (within 30 seconds) as potential duplicates
                 Math.abs(new Date(m.createdAt).getTime() - new Date(message.createdAt).getTime()) < 30000
               )
-              // If there's already a matching message, skip adding this one
-              // This keeps the optimistic message (which has attachments) instead of replacing with WebSocket message
-              if (hasMatchingMessage) return c
+              if (optimisticIdx !== -1) {
+                // Server message has CID-based attachments — replace the optimistic one
+                const updated = [...messages]
+                updated[optimisticIdx] = message
+                return { ...c, messages: updated }
+              }
             }
             return { ...c, messages: [...messages, message] }
           }),
@@ -331,23 +332,7 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           chats: state.chats.map((c) => {
             if (c.id !== chatId) return c
-            // Preserve attachments from local messages when merging with server data
-            // Server doesn't store attachments, so we need to keep them from local optimistic messages
-            const existingMessages = c.messages || []
-            const mergedMessages = messages.map(msg => {
-              const existingMsg = existingMessages.find(em =>
-                (em.id === msg.id) ||
-                (em.role === 'user' &&
-                 em.content === msg.content &&
-                 Math.abs(new Date(em.createdAt).getTime() - new Date(msg.createdAt).getTime()) < 30000)
-              )
-              // Preserve attachments from existing local message
-              if (existingMsg?.attachments && existingMsg.attachments.length > 0) {
-                return { ...msg, attachments: existingMsg.attachments }
-              }
-              return msg
-            })
-            return { ...c, messages: mergedMessages }
+            return { ...c, messages }
           }),
         })),
 
@@ -446,14 +431,20 @@ export const useChatStore = create<ChatState>()(
       name: 'juice-chat',
       partialize: (state) => ({
         // Only persist chats, folders, and activeChatId, not loading/error states
-        // Strip attachments from messages to avoid localStorage quota issues (base64 files are large)
+        // Strip base64 data from attachments to avoid localStorage quota issues
+        // Keep CID-based attachments (small strings, safe for localStorage)
         // Filter out null chats that can occur during test cleanup
         chats: state.chats.filter(Boolean).map(chat => ({
           ...chat,
           messages: chat.messages?.map(msg => {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { attachments, ...msgWithoutAttachments } = msg
-            return msgWithoutAttachments
+            if (!msg.attachments || msg.attachments.length === 0) return msg
+            // Keep only CID-based attachments, strip base64 data
+            const persistedAttachments = msg.attachments
+              .filter(a => a.cid)
+              .map(({ data: _data, ...rest }) => rest)
+            return persistedAttachments.length > 0
+              ? { ...msg, attachments: persistedAttachments }
+              : (() => { const { attachments: _att, ...rest } = msg; return rest })()
           }),
         })),
         folders: state.folders,
@@ -469,7 +460,8 @@ export interface Attachment {
   type: 'image' | 'document'
   name: string
   mimeType: string
-  data: string  // base64
+  data?: string  // base64 (only for local/optimistic messages)
+  cid?: string   // IPFS CID (for persisted messages)
 }
 
 export interface Message {

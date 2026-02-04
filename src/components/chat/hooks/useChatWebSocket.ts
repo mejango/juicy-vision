@@ -134,9 +134,18 @@ export function useChatWebSocket({ chatId, onError }: UseChatWebSocketOptions) {
             }))
             break
           }
-          case 'message':
-            addChatMessage(targetChatId, msg.data as ChatMessage)
+          case 'message': {
+            const wsMsg = msg.data as ChatMessage
+            // Hydrate attachment IDs for React keys
+            if (wsMsg.attachments) {
+              wsMsg.attachments = wsMsg.attachments.map((att, i) => ({
+                ...att,
+                id: att.id || `${wsMsg.id}-att-${i}`,
+              }))
+            }
+            addChatMessage(targetChatId, wsMsg)
             break
+          }
           case 'ai_response': {
             const { messageId, token, isDone } = msg.data as { messageId: string; token: string; isDone: boolean }
 

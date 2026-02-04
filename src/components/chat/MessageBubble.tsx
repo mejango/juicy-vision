@@ -8,6 +8,7 @@ import { Message, Attachment } from '../../stores'
 import type { ChatMember } from '../../stores/chatStore'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { parseMessageContent } from '../../utils/messageParser'
+import { IPFS_GATEWAY } from '../../constants'
 import ComponentRegistry from '../dynamic/ComponentRegistry'
 import ThinkingIndicator from './ThinkingIndicator'
 import { getEmojiForUser, MemberPopover } from './ParticipantAvatars'
@@ -53,12 +54,17 @@ function DownloadPopover({
   }, [onClose, anchorRef])
 
   const handleDownload = () => {
-    const link = document.createElement('a')
-    link.href = `data:${attachment.mimeType};base64,${attachment.data}`
-    link.download = attachment.name
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    if (attachment.cid) {
+      // Download from IPFS gateway
+      window.open(`${IPFS_GATEWAY}${attachment.cid}`, '_blank')
+    } else {
+      const link = document.createElement('a')
+      link.href = `data:${attachment.mimeType};base64,${attachment.data}`
+      link.download = attachment.name
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
     onClose()
   }
 
@@ -317,22 +323,30 @@ export default function MessageBubble({
                 <div className="flex gap-2 mb-2 justify-end flex-wrap">
                   {message.attachments.map(attachment => {
                     const isImage = attachment.type === 'image' || attachment.mimeType?.startsWith('image/')
+                    const imageSrc = attachment.cid
+                      ? `${IPFS_GATEWAY}${attachment.cid}`
+                      : `data:${attachment.mimeType};base64,${attachment.data}`
                     return isImage ? (
                       <img
                         key={attachment.id}
-                        src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                        src={imageSrc}
                         alt={attachment.name}
                         className="max-w-[200px] max-h-[200px] object-contain rounded border-2 border-juice-cyan cursor-pointer hover:opacity-90 transition-opacity"
                         onClick={() => {
-                          // Open image in new tab for full view (using DOM methods to avoid XSS)
-                          const win = window.open()
-                          if (win) {
-                            const img = win.document.createElement('img')
-                            img.src = `data:${attachment.mimeType};base64,${attachment.data}`
-                            img.alt = attachment.name
-                            img.style.maxWidth = '100%'
-                            img.style.height = 'auto'
-                            win.document.body.appendChild(img)
+                          if (attachment.cid) {
+                            // Open IPFS URL directly in new tab
+                            window.open(`${IPFS_GATEWAY}${attachment.cid}`, '_blank')
+                          } else {
+                            // Open data URI image in new tab (using DOM methods to avoid XSS)
+                            const win = window.open()
+                            if (win) {
+                              const img = win.document.createElement('img')
+                              img.src = `data:${attachment.mimeType};base64,${attachment.data}`
+                              img.alt = attachment.name
+                              img.style.maxWidth = '100%'
+                              img.style.height = 'auto'
+                              win.document.body.appendChild(img)
+                            }
                           }
                         }}
                       />

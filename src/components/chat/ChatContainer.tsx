@@ -462,12 +462,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
       // Send the user's message through the shared chat API
       // This will broadcast via WebSocket to all connected clients
-      const attachmentData = attachments?.map(a => ({
-        type: a.type,
-        name: a.name,
-        mimeType: a.mimeType,
-        data: a.data,
-      }))
+      const attachmentData = attachments
+        ?.filter(a => a.data)
+        .map(a => ({
+          type: a.type,
+          name: a.name,
+          mimeType: a.mimeType,
+          data: a.data!,
+        }))
       const savedMessage = await chatApi.sendMessage(chatId!, content, undefined, attachmentData)
 
       // Always add the saved message to ensure sender sees it
@@ -1141,21 +1143,21 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         // Convert file attachments (data URLs) to Attachment objects
         let attachments: Attachment[] | undefined
         if (event.detail.fileAttachments) {
-          attachments = Object.entries(event.detail.fileAttachments).map(([fieldId, dataUrl]) => {
-            // Extract mime type and base64 data from data URL (format: data:image/png;base64,XXXX)
+          const parsed: Attachment[] = []
+          for (const [fieldId, dataUrl] of Object.entries(event.detail.fileAttachments)) {
             const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
             if (matches) {
               const [, mimeType, base64Data] = matches
-              return {
+              parsed.push({
                 id: `file-${fieldId}-${Date.now()}`,
-                type: mimeType.startsWith('image/') ? 'image' as const : 'document' as const,
+                type: mimeType.startsWith('image/') ? 'image' : 'document',
                 name: `${fieldId}.${mimeType.split('/')[1] || 'bin'}`,
                 mimeType,
                 data: base64Data,
-              }
+              })
             }
-            return null
-          }).filter((a): a is Attachment => a !== null)
+          }
+          attachments = parsed.length > 0 ? parsed : undefined
         }
 
         const bypassSkipAi = event.detail.bypassSkipAi ?? false
