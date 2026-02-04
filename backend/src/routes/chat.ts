@@ -1159,6 +1159,7 @@ const InvokeAiSchema = z.object({
   prompt: z.string().max(10000),
   attachments: z.array(AttachmentSchema).max(5).optional(),
   apiKey: z.string().optional(), // User-provided Claude API key (BYOK)
+  savePrompt: z.boolean().optional(), // Save prompt to DB for future AI context (hidden messages)
 }).refine(
   (data) => data.prompt.length > 0 || (data.attachments && data.attachments.length > 0),
   { message: 'Message must have prompt or attachments' }
@@ -1284,16 +1285,18 @@ chatRouter.post(
       const { importMessage } = await import('../services/chat.ts');
       const { streamAiToken, broadcastChatMessage } = await import('../services/websocket.ts');
 
-      // Persist the hidden prompt to the database so it's available in future AI context.
-      // importMessage doesn't broadcast to the UI, so the message stays hidden from users.
+      // When savePrompt is true, persist the hidden prompt to the database so it's
+      // available in future AI context. importMessage doesn't broadcast to the UI.
       // This is critical for system messages (e.g. per-chain projectIds after deployment)
       // that need to be in conversation history for subsequent operations like setUriOf.
-      await importMessage({
-        chatId,
-        senderAddress: walletSession.address,
-        role: 'user',
-        content: body.prompt,
-      });
+      if (body.savePrompt) {
+        await importMessage({
+          chatId,
+          senderAddress: walletSession.address,
+          role: 'user',
+          content: body.prompt,
+        });
+      }
 
       // Generate a message ID upfront for streaming
       const messageId = crypto.randomUUID();

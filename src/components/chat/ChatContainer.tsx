@@ -432,10 +432,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       }
 
       // For hidden messages, skip saving to chat - just invoke AI directly
+      // savePrompt: true tells the backend to persist the prompt in the database
+      // so it's available in future AI context (e.g., per-chain projectIds after deployment)
       if (hidden && chatId) {
         setWaitingForAiChatId(chatId)
         try {
-          await chatApi.invokeAi(chatId, content)
+          await chatApi.invokeAi(chatId, content, undefined, true)
         } catch (aiErr) {
           console.error('Failed to invoke AI for hidden message:', aiErr)
           setWaitingForAiChatId(null)

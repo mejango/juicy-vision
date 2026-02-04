@@ -474,7 +474,8 @@ export async function getAiBalance(chatId: string): Promise<AiBalanceStatus> {
 export async function invokeAi(
   chatId: string,
   prompt: string,
-  attachments?: Array<{ type: string; name: string; mimeType: string; data: string }>
+  attachments?: Array<{ type: string; name: string; mimeType: string; data: string }>,
+  savePrompt?: boolean,
 ): Promise<ChatMessage> {
   // Get user's API key if configured (BYOK - Bring Your Own Key)
   const { claudeApiKey } = useSettingsStore.getState()
@@ -485,6 +486,7 @@ export async function invokeAi(
       prompt,
       attachments,
       apiKey: claudeApiKey || undefined, // Only include if set
+      savePrompt: savePrompt || undefined,
     }),
   })
 }
