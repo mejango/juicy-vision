@@ -1633,11 +1633,21 @@ export default function TransactionPreview({
     const [primaryChainId, primaryProjectId] = sortedEntries[0]
     const chainData = CHAINS[Number(primaryChainId)]
 
+    // Build per-chain project ID listing for AI context
+    // This is critical: omnichain projects have different projectIds on each chain.
+    // Including them here ensures the AI has correct IDs for subsequent operations (e.g. setUriOf).
+    const perChainIds = sortedEntries
+      .map(([cid, pid]) => {
+        const chain = CHAINS[Number(cid)]
+        return `${chain?.name || `chain ${cid}`}: projectId=${pid}`
+      })
+      .join(', ')
+
     // Delay to let success UI render first
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('juice:send-message', {
         detail: {
-          message: `[SYSTEM: Project #${primaryProjectId} created on ${chainData?.name || 'chain'}. Show project-card for projectId=${primaryProjectId} chainId=${primaryChainId}. After showing the card, invite user to be the first to put $5 into their project, and mention you can show other info about their project like activity, treasury balance, etc.]`,
+          message: `[SYSTEM: Project #${primaryProjectId} created on ${chainData?.name || 'chain'}. Per-chain projectIds: ${perChainIds}. Show project-card for projectId=${primaryProjectId} chainId=${primaryChainId}. After showing the card, invite user to be the first to put $5 into their project, and mention you can show other info about their project like activity, treasury balance, etc. IMPORTANT: Remember the per-chain projectIds listed above - they are needed for any future omnichain operations like setUriOf.]`,
           bypassSkipAi: true,
           hidden: true,
         }
