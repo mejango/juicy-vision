@@ -116,6 +116,18 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
   const sidebarRef = useRef<HTMLDivElement>(null)
   const prevAuthState = useRef<{ isAuth: boolean; userId?: string } | null>(null)
 
+  // Debug: log render conditions for projects tab
+  console.log('[Projects render]', {
+    isWalletAccessLoading,
+    _hasHydrated,
+    managedWalletLoading,
+    wagmiConnected,
+    managedAddress: managedAddress?.slice(0, 10),
+    hasWalletAccess,
+    projectsLoading,
+    ownedProjectsCount: ownedProjects.length,
+  })
+
   // Load chats
   const loadChats = useCallback(async () => {
     if (isLoading) return
