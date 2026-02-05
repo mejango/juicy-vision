@@ -58,12 +58,13 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
       </div>
 
       <div className="flex-1 flex flex-col items-center px-4">
-        <div className="shrink-0 w-full flex flex-col items-center justify-end" style={{ height: 'calc(100vh * 0.62 - 8px)' }}>
-          <div className="flex-1 flex items-end justify-center pointer-events-none" style={{ maxHeight: 'calc(100vh * 0.52)' }}>
+        <div className="shrink-0 w-full flex flex-col items-center">
+          <div className="flex items-end justify-center pointer-events-none">
             <img
               src={theme === 'dark' ? '/mascot-dark.png' : '/mascot-light.png'}
               alt="Juicy Mascot"
-              className="drop-shadow-lg h-full object-contain"
+              className="drop-shadow-lg object-contain"
+              style={{ maxHeight: 'calc(100vh * 0.52)' }}
             />
           </div>
 
