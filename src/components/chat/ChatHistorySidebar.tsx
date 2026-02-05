@@ -228,7 +228,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     if (isOpen && activeTab === 'projects' && hasWalletAccess && !projectsLoaded) {
       loadProjects()
     }
-  }, [isOpen, activeTab, hasWalletAccess, projectsLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, activeTab, hasWalletAccess, projectsLoaded, loadProjects])
 
   // Load payments when tab switches
   useEffect(() => {
