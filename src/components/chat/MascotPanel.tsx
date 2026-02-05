@@ -58,17 +58,16 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
       </div>
 
       <div className="flex-1 flex flex-col items-center px-4">
-        <div className="shrink-0 w-full flex flex-col items-center justify-end" style={{ minHeight: '62vh', paddingBottom: '20px' }}>
-          <div className="flex items-end justify-center pointer-events-none">
+        <div className="shrink-0 w-full flex flex-col items-center" style={{ height: '62vh' }}>
+          <div className="flex-1 flex items-end justify-center pointer-events-none min-h-0">
             <img
               src={theme === 'dark' ? '/mascot-dark.png' : '/mascot-light.png'}
               alt="Juicy Mascot"
-              className="drop-shadow-lg object-contain"
-              style={{ maxHeight: 'calc(100vh * 0.35)' }}
+              className="drop-shadow-lg object-contain max-h-full max-w-full"
             />
           </div>
 
-          <div className="pointer-events-none text-center px-4 mt-[20px]">
+          <div className="shrink-0 pointer-events-none text-center px-4 pt-[20px]">
             <p className="text-sm sm:text-base md:text-lg font-bold text-juice-orange whitespace-pre-line">
               {t('mascot.tagline', 'Fund Your Thing Your Way')}
             </p>
