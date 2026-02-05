@@ -142,12 +142,19 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
 
   // Load owned projects from all connected addresses (managed + external)
   const loadProjects = useCallback(async (forceRefresh = false) => {
-    if (projectsLoadingRef.current) return
+    if (projectsLoadingRef.current) {
+      console.log('[loadProjects] Already loading, skipping')
+      return
+    }
     const addresses = [
       ...(managedAddress ? [managedAddress] : []),
       ...(wagmiAddress ? [wagmiAddress] : []),
     ].filter((addr, i, arr) => arr.indexOf(addr) === i) // dedupe if same address
-    if (addresses.length === 0) return
+    console.log('[loadProjects] Addresses:', addresses)
+    if (addresses.length === 0) {
+      console.log('[loadProjects] No addresses, skipping')
+      return
+    }
     // Clear cache for all addresses if force refreshing
     if (forceRefresh) {
       addresses.forEach(addr => clearProjectsByOwnerCache(addr))
@@ -155,7 +162,9 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     projectsLoadingRef.current = true
     setProjectsLoading(true)
     try {
+      console.log('[loadProjects] Fetching projects...')
       const results = await Promise.all(addresses.map(addr => fetchProjectsByOwner(addr)))
+      console.log('[loadProjects] Results:', results)
       // Merge and deduplicate by projectId-chainId
       const seen = new Set<string>()
       const merged: Project[] = []
@@ -168,6 +177,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
           }
         }
       }
+      console.log('[loadProjects] Merged projects:', merged.length)
       setOwnedProjects(merged)
       setProjectsLoaded(true)
     } catch (error) {
@@ -175,6 +185,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     } finally {
       projectsLoadingRef.current = false
       setProjectsLoading(false)
+      console.log('[loadProjects] Done, loading set to false')
     }
   }, [managedAddress, wagmiAddress])
 
