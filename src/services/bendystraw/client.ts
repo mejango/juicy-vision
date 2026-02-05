@@ -1068,48 +1068,26 @@ export async function fetchProjectsByOwner(
 ): Promise<Project[]> {
   const { limit = 50 } = options
   const addr = ownerAddress.toLowerCase()
-  const mergedCacheKey = `merged:${addr}:${limit}`
+  const cacheKey = `owner:${addr}:${limit}`
 
   try {
-    // Try merged cache first
-    const cached = projectsByOwnerCache.get(mergedCacheKey)
+    // Try cache first
+    const cached = projectsByOwnerCache.get(cacheKey)
     if (cached) return cached
 
-    // Query both owner and deployer in parallel (each fails independently)
-    const [ownerResult, deployerResult] = await Promise.allSettled([
-      safeRequest<{ projects: { items: Project[] } }>(
-        PROJECTS_BY_OWNER_QUERY,
-        { owner: addr, limit }
-      ),
-      safeRequest<{ projects: { items: Project[] } }>(
-        PROJECTS_BY_DEPLOYER_QUERY,
-        { deployer: addr, limit }
-      ),
-    ])
+    // Query by owner only
+    const data = await safeRequest<{ projects: { items: Project[] } }>(
+      PROJECTS_BY_OWNER_QUERY,
+      { owner: addr, limit }
+    )
 
-    const ownerProjects = ownerResult.status === 'fulfilled'
-      ? ownerResult.value?.projects?.items || []
-      : []
-    const deployerProjects = deployerResult.status === 'fulfilled'
-      ? deployerResult.value?.projects?.items || []
-      : []
-
-    // Merge and deduplicate by projectId-chainId
-    const seen = new Set<string>()
-    const merged: Project[] = []
-    for (const p of [...ownerProjects, ...deployerProjects]) {
-      const key = `${p.projectId}-${p.chainId}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        merged.push(p)
-      }
-    }
+    const projects = data?.projects?.items || []
 
     // Sort by createdAt descending
-    merged.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    projects.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
 
-    projectsByOwnerCache.set(mergedCacheKey, merged)
-    return merged
+    projectsByOwnerCache.set(cacheKey, projects)
+    return projects
   } catch (err) {
     console.error('fetchProjectsByOwner error:', err)
     return []

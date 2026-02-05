@@ -88,12 +88,10 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
   const { address: managedAddress, isManagedMode, loading: managedWalletLoading } = useManagedWallet()
 
   // User has wallet access if connected via wagmi OR authenticated via managed wallet
-  // Wait for auth store hydration before determining wallet access
   const hasWalletAccess = wagmiConnected || isManagedMode
-  // Still loading if auth store hasn't hydrated, or managed wallet is loading
-  // and we don't yet have any usable address (don't block if wagmi is connected
-  // or if managedAddress is already available from cache)
-  const isWalletAccessLoading = !_hasHydrated || (managedWalletLoading && !wagmiConnected && !managedAddress)
+  // Still loading if managed wallet is loading and we don't have any usable address yet
+  // Don't block on _hasHydrated if we already have a working address
+  const isWalletAccessLoading = managedWalletLoading && !wagmiConnected && !managedAddress
 
   const [activeTab, setActiveTab] = useState<SidebarTab>('chats')
   const [isLoading, setIsLoading] = useState(false)
