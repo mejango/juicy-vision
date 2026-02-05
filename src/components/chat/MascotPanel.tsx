@@ -67,7 +67,7 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
             />
           </div>
 
-          <div className="pb-4 pointer-events-none text-center px-4" style={{ marginTop: '-20px' }}>
+          <div className="pointer-events-none text-center px-4" style={{ marginTop: '20px' }}>
             <p className="text-sm sm:text-base md:text-lg font-bold text-juice-orange whitespace-pre-line">
               {t('mascot.tagline', 'Fund Your Thing Your Way')}
             </p>
