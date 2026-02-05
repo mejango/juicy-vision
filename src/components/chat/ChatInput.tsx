@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, ClipboardEvent, DragEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAccount, useDisconnect, useSignMessage, useChainId } from 'wagmi'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
@@ -9,7 +10,7 @@ import { getEmojiFromAddress } from './ParticipantAvatars'
 import { JuicyIdPopover, type JuicyIdentity, type AnchorPosition } from './WalletInfo'
 import type { Attachment } from '../../stores'
 
-const DEFAULT_PLACEHOLDER = 'Type any message...'
+const DEFAULT_PLACEHOLDER_KEY = 'chat.typeMessage'
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: Attachment[]) => void
@@ -55,6 +56,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   const [passkeyWallet, setPasskeyWallet] = useState(() => getPasskeyWallet())
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { t } = useTranslation()
   const { theme, toggleTheme } = useThemeStore()
   const { token: authToken, _hasHydrated, isAuthenticated, user: authUser } = useAuthStore()
   const { address, isConnected } = useAccount()
@@ -129,7 +131,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     return null // Don't show emoji - will show "Set your Juicy ID" prompt instead
   }
 
-  const currentPlaceholder = placeholder || DEFAULT_PLACEHOLDER
+  const currentPlaceholder = placeholder || t(DEFAULT_PLACEHOLDER_KEY)
 
   // Handle file selection
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
@@ -561,7 +563,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
             <span className={`text-sm font-medium ${
               theme === 'dark' ? 'text-juice-cyan' : 'text-juice-cyan'
             }`}>
-              Drop files here
+              {t('chat.dropFiles')}
             </span>
           </div>
         )}
@@ -625,7 +627,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                         : 'text-green-600 hover:text-green-500'
                     } ${signing ? 'opacity-50' : ''}`}
                   >
-                    · {signing ? 'Signing...' : 'Sign to save'}
+                    · {signing ? t('chat.signing') : t('chat.signToSave')}
                   </button>
                 )}
                 {!balancesLoading && (totalEth > 0n || totalUsdc > 0n) && (
@@ -694,7 +696,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                   className="inline-flex items-center gap-1.5 transition-colors hover:text-gray-300"
                 >
                   <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50" />
-                  Sign in
+                  {t('chat.signIn')}
                 </button>
                 {/* Set Juicy ID - available even before connecting */}
                 {!identity && (

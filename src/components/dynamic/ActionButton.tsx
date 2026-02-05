@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 
 interface ActionButtonProps {
@@ -5,24 +6,25 @@ interface ActionButtonProps {
   label?: string
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  pay: 'Pay',
-  cashOut: 'Cash Out',
-  sendPayouts: 'Send Payouts',
-  useAllowance: 'Use Allowance',
-  mintTokens: 'Mint Tokens',
-  burnTokens: 'Burn Tokens',
-  launchProject: 'Launch Project',
-  launch721Project: 'Launch Project',
-  queueRuleset: 'Queue Ruleset',
-  deployERC20: 'Deploy Token',
+const ACTION_KEY_MAP: Record<string, string> = {
+  pay: 'actions.pay',
+  cashOut: 'actions.cashOut',
+  sendPayouts: 'actions.sendPayouts',
+  useAllowance: 'actions.useAllowance',
+  mintTokens: 'actions.mintTokens',
+  burnTokens: 'actions.burnTokens',
+  launchProject: 'actions.launchProject',
+  launch721Project: 'actions.launchProject',
+  queueRuleset: 'actions.queueRuleset',
+  deployERC20: 'actions.deployToken',
 }
 
 export default function ActionButton({ action, label }: ActionButtonProps) {
   const { theme } = useThemeStore()
+  const { t } = useTranslation()
   const isDark = theme === 'dark'
 
-  const buttonLabel = label || ACTION_LABELS[action] || action
+  const buttonLabel = label || (ACTION_KEY_MAP[action] ? t(ACTION_KEY_MAP[action]) : action)
 
   return (
     <button

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, startTransition, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useProjectDraftStore } from '../../stores/projectDraftStore'
@@ -110,20 +111,20 @@ const ACTION_ICONS: Record<string, string> = {
   setUriOf: '📝',
 }
 
-const ACTION_BUTTON_LABELS: Record<string, string> = {
-  pay: 'Pay',
-  cashOut: 'Cash Out',
-  sendPayouts: 'Send Payouts',
-  useAllowance: 'Use Allowance',
-  mintTokens: 'Mint Tokens',
-  burnTokens: 'Burn Tokens',
-  launchProject: 'Launch Project',
-  launch721Project: 'Launch Project',
-  deployRevnet: 'Deploy Revnet',
-  queueRuleset: 'Queue Ruleset',
-  deployERC20: 'Deploy Token',
-  setUri: 'Update Metadata',
-  setUriOf: 'Update Metadata',
+const ACTION_BUTTON_LABEL_KEYS: Record<string, string> = {
+  pay: 'actions.pay',
+  cashOut: 'actions.cashOut',
+  sendPayouts: 'actions.sendPayouts',
+  useAllowance: 'actions.useAllowance',
+  mintTokens: 'actions.mintTokens',
+  burnTokens: 'actions.burnTokens',
+  launchProject: 'actions.launchProject',
+  launch721Project: 'actions.launchProject',
+  deployRevnet: 'actions.deployRevnet',
+  queueRuleset: 'actions.queueRuleset',
+  deployERC20: 'actions.deployToken',
+  setUri: 'actions.updateMetadata',
+  setUriOf: 'actions.updateMetadata',
 }
 
 // Map semantic action names to actual Solidity function names
@@ -784,6 +785,7 @@ function SectionHeader({ title, isDark, onEdit }: { title: string; isDark: boole
 
 // Component to show a preview of project metadata (name, description, website, etc.)
 function ProjectMetadataPreview({ metadata, isDark, onEdit }: { metadata: Record<string, unknown>; isDark: boolean; onEdit?: () => void }) {
+  const { t } = useTranslation()
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState((metadata.name as string) || '')
   const [editDescription, setEditDescription] = useState((metadata.description as string) || '')
@@ -906,7 +908,7 @@ function ProjectMetadataPreview({ metadata, isDark, onEdit }: { metadata: Record
             </div>
             <div className="flex-1 min-w-0">
               <div className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {name || 'Untitled Project'}
+                {name || t('deployment.untitledProject')}
               </div>
               {tagline && (
                 <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -1090,11 +1092,12 @@ function TiersPreview({ tiers, currency, decimals, isDark, onEdit, isLoading }: 
   onEdit?: () => void;
   isLoading?: boolean;
 }) {
+  const { t } = useTranslation()
   // Show skeleton state when loading
   if (isLoading) {
     return (
       <div className="space-y-3">
-        <SectionHeader title="Reward Tiers" isDark={isDark} />
+        <SectionHeader title={t('deployment.rewardTiers')} isDark={isDark} />
         <div className="space-y-2">
           <TierSkeleton isDark={isDark} />
         </div>
@@ -1106,7 +1109,7 @@ function TiersPreview({ tiers, currency, decimals, isDark, onEdit, isLoading }: 
 
   return (
     <div className="space-y-3">
-      <SectionHeader title={`Reward Tiers (${tiers.length})`} isDark={isDark} onEdit={onEdit} />
+      <SectionHeader title={`${t('deployment.rewardTiers')} (${tiers.length})`} isDark={isDark} onEdit={onEdit} />
       <div className="space-y-2">
         {tiers.map((tier, i) => (
           <TierPreview key={i} tier={{ ...tier, currency, decimals }} index={i} isDark={isDark} />
@@ -1118,9 +1121,10 @@ function TiersPreview({ tiers, currency, decimals, isDark, onEdit, isLoading }: 
 
 // Skeleton funding breakdown for loading state
 function FundingSkeleton({ isDark }: { isDark: boolean }) {
+  const { t } = useTranslation()
   return (
     <div className="space-y-3">
-      <SectionHeader title="Payout Distribution" isDark={isDark} />
+      <SectionHeader title={t('deployment.payoutDistribution')} isDark={isDark} />
       <div className={`flex justify-between items-center py-2 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
         <div className={`h-4 w-24 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
         <div className={`h-6 w-16 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
@@ -1136,7 +1140,7 @@ function FundingSkeleton({ isDark }: { isDark: boolean }) {
         </div>
       </div>
       <div className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-        This one can take a minute...
+        {t('deployment.loadingHint')}
       </div>
     </div>
   )
@@ -1166,6 +1170,7 @@ function FundingBreakdown({
   onToggleJuicyFee: (enabled: boolean) => void;
   hasEmptyFundAccessLimits?: boolean;
 }) {
+  const { t } = useTranslation()
   const [isEditing, setIsEditing] = useState(false)
 
   // uint224.max for unlimited payouts
@@ -1244,13 +1249,13 @@ function FundingBreakdown({
 
   return (
     <div className="space-y-3">
-      <SectionHeader title="Payout Distribution" isDark={isDark} onEdit={isEditing ? undefined : handleEdit} />
+      <SectionHeader title={t('deployment.payoutDistribution')} isDark={isDark} onEdit={isEditing ? undefined : handleEdit} />
 
       {isEditing ? (
         <div className="space-y-3">
           <div>
             <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Payout Limit (USD)
+              {t('deployment.payoutLimit')} (USD)
             </label>
             <input
               type="number"
@@ -1285,13 +1290,13 @@ function FundingBreakdown({
         <>
           {/* Payout limit header - show prominently */}
           <div className={`flex justify-between items-center py-2 ${hasEmptyFundAccessLimits ? '' : `border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}`}>
-            <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Payout Limit</span>
+            <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>{t('deployment.payoutLimit')}</span>
             <span className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {hasEmptyFundAccessLimits
                 ? 'None'
                 : hasDefinedLimit && effectivePayoutLimit
                   ? `$${(effectivePayoutLimit / 1000000).toLocaleString()}`
-                  : 'Unlimited'}
+                  : t('deployment.unlimited')}
             </span>
           </div>
 
@@ -1301,7 +1306,7 @@ function FundingBreakdown({
             {/* Show implied owner share first (when not explicitly split) */}
             {hasImpliedOwner && (
               <div className="flex justify-between items-center">
-                <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>You</span>
+                <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>{t('deployment.you')}</span>
                 <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   {hasDefinedLimit && effectivePayoutLimit ? formatAmount(effectivePayoutLimit, effectiveOwnerPercent) : formatPercent(effectiveOwnerPercent)}
                 </span>
@@ -1311,7 +1316,7 @@ function FundingBreakdown({
             {/* Show explicit owner split if it exists */}
             {ownerSplit && (
               <div className="flex justify-between items-center">
-                <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>You</span>
+                <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>{t('deployment.you')}</span>
                 <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   {hasDefinedLimit && effectivePayoutLimit ? formatAmount(effectivePayoutLimit, effectiveOwnerPercent) : formatPercent(effectiveOwnerPercent)}
                 </span>
@@ -1328,7 +1333,7 @@ function FundingBreakdown({
                   {split.projectId > 0 ? (
                     <span>Project #{split.projectId}</span>
                   ) : (
-                    <span>Recipient</span>
+                    <span>{t('deployment.recipient')}</span>
                   )}
                 </span>
                 <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -1365,7 +1370,7 @@ function FundingBreakdown({
                       </svg>
                     )}
                   </button>
-                  Join Juicy
+                  {t('deployment.joinJuicy')}
                   <InfoPopover
                     content="Help us keep building. JUICY runs like a co-op and is the revenue token that powers this app. When you pay 2.5% into JUICY, you receive JUICY tokens proportional to your payment. As Juicy's balance grows over time, so does the value backing each token."
                     isDark={isDark}
@@ -1404,6 +1409,7 @@ export default function TransactionPreview({
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
   const [slowChainDismissed, setSlowChainDismissed] = useState(false)
   const [tick, setTick] = useState(0)
+  const { t } = useTranslation()
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -2538,7 +2544,7 @@ export default function TransactionPreview({
       }`}>
         <div className="flex items-center gap-2">
           <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Review for deployment
+            {t('deployment.reviewForDeployment')}
           </span>
         </div>
       </div>
@@ -2590,20 +2596,20 @@ export default function TransactionPreview({
       {/* Owner section for launch actions */}
       {(action === 'launchProject' || action === 'launch721Project') && launchValidation && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          <SectionHeader title="Project Owner" isDark={isDark} />
+          <SectionHeader title={t('deployment.projectOwner')} isDark={isDark} />
           <div className={`mt-2 p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
             {/* Show loading state only while managed wallet is loading */}
             {managedWalletLoading ? (
               <div className="flex items-center gap-2">
                 <div className="animate-spin w-4 h-4 border-2 border-juice-cyan border-t-transparent rounded-full" />
                 <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Loading...
+                  {t('deployment.loading')}
                 </span>
               </div>
             ) : managedWalletError ? (
               <div className={`text-sm ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-                <span className="font-medium">Session expired.</span>{' '}
-                <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Please sign out and sign in again to continue.</span>
+                <span className="font-medium">{t('deployment.sessionExpired')}</span>{' '}
+                <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>{t('deployment.sessionExpiredDesc')}</span>
               </div>
             ) : launchValidation.owner ? (
               <div className="flex items-center gap-2">
@@ -2611,7 +2617,7 @@ export default function TransactionPreview({
                 {effectiveUserAddress && launchValidation.owner.toLowerCase() === effectiveUserAddress.toLowerCase() ? (
                   // Owner is current user - show identity, ENS, or "You"
                   <span className={`text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {identity ? identity.formatted : ownerEns || 'You'}
+                    {identity ? identity.formatted : ownerEns || t('deployment.you')}
                   </span>
                 ) : (
                   // Owner is someone else - show ENS or truncated address
@@ -2623,8 +2629,8 @@ export default function TransactionPreview({
             ) : (
               <span className={`text-sm ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
                 {isManagedMode
-                  ? 'Session expired'
-                  : 'No owner address - sign in below'}
+                  ? t('deployment.sessionExpired')
+                  : t('deployment.noOwnerAddress')}
               </span>
             )}
           </div>
@@ -2656,7 +2662,7 @@ export default function TransactionPreview({
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
-          {expanded ? 'Hide' : 'Show'} technical details
+          {expanded ? t('deployment.hideTechnicalDetails') : t('deployment.showTechnicalDetails')}
         </button>
 
         {expanded && (
@@ -2781,7 +2787,7 @@ export default function TransactionPreview({
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <span>Loading parameters...</span>
+                <span>{t('deployment.loadingParams')}</span>
               </div>
             )}
           </div>
@@ -2835,7 +2841,7 @@ export default function TransactionPreview({
                           ? 'text-green-500'
                           : isDark ? 'text-gray-400' : 'text-gray-500'
                       }`}>
-                        {isCopied ? '✓ Copied!' : 'Copy'}
+                        {isCopied ? `✓ ${t('deployment.copied')}` : t('deployment.copy')}
                       </span>
                     </button>
                   )
@@ -2846,7 +2852,7 @@ export default function TransactionPreview({
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                <span className="text-sm font-medium">Deployed</span>
+                <span className="text-sm font-medium">{t('deployment.deployed')}</span>
               </div>
             </div>
           )}
@@ -2856,7 +2862,7 @@ export default function TransactionPreview({
             <div className={`p-4 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
               <div className="text-2xl mb-2">❌</div>
               <p className={`font-medium ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-                Deployment failed
+                {t('deployment.deploymentFailed')}
               </p>
               <p className={`text-sm mt-1 ${isDark ? 'text-red-400/80' : 'text-red-500'}`}>
                 {bundleState.error}
@@ -2873,10 +2879,10 @@ export default function TransactionPreview({
           {isSetUriComplete && (
             <div className={`-mx-4 px-4 py-3 text-center border-y ${isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
               <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                ✓ Metadata Updated
+                ✓ {t('deployment.metadataUpdated')}
               </p>
               <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                Changes will appear within a minute
+                {t('deployment.changesAppearSoon')}
               </p>
             </div>
           )}
@@ -2886,7 +2892,7 @@ export default function TransactionPreview({
             <div className={`p-4 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
               <div className="text-2xl mb-2">❌</div>
               <p className={`font-medium ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-                Update failed
+                {t('deployment.updateFailed')}
               </p>
               <p className={`text-sm mt-1 ${isDark ? 'text-red-400/80' : 'text-red-500'}`}>
                 {setUriBundleState.error}
@@ -2919,10 +2925,10 @@ export default function TransactionPreview({
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {!chainState && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Waiting</span>}
-                      {chainState?.status === 'pending' && <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Pending</span>}
+                      {!chainState && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>{t('deployment.waiting')}</span>}
+                      {chainState?.status === 'pending' && <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>{t('deployment.pending')}</span>}
                       {chainState?.status === 'submitted' && (
-                        <span className="text-juice-orange">Updating...</span>
+                        <span className="text-juice-orange">{t('deployment.updating')}</span>
                       )}
                       {chainState?.status === 'confirmed' && (
                         <div className="flex items-center gap-1">
@@ -2939,7 +2945,7 @@ export default function TransactionPreview({
                           )}
                         </div>
                       )}
-                      {chainState?.status === 'failed' && <span className="text-red-400">Failed</span>}
+                      {chainState?.status === 'failed' && <span className="text-red-400">{t('deployment.failed')}</span>}
                     </div>
                   </div>
                 )
@@ -2966,10 +2972,10 @@ export default function TransactionPreview({
             }`}
           >
             <div className={`text-sm font-medium ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
-              Sign in to launch your project
+              {t('deployment.signInToLaunch')}
             </div>
             <div className={`text-xs mt-1 ${isDark ? 'text-blue-300/70' : 'text-blue-600/70'}`}>
-              Connect a wallet to set the project owner and finalize configuration.
+              {t('deployment.connectWalletPrompt')}
             </div>
           </button>
         </div>
@@ -2988,7 +2994,7 @@ export default function TransactionPreview({
                 ? isDark ? 'text-red-400' : 'text-red-700'
                 : isDark ? 'text-yellow-400' : 'text-yellow-700'
             }`}>
-              {launchValidation.hasCritical ? '! Review Required' : 'Warnings'}
+              {launchValidation.hasCritical ? `! ${t('deployment.reviewRequired')}` : t('deployment.warnings')}
             </div>
             <div className="space-y-1">
               {launchValidation.doubts.map((doubt, i) => (
@@ -2998,7 +3004,7 @@ export default function TransactionPreview({
                       ? isDark ? 'bg-red-500/20 text-red-400' : 'bg-red-100 text-red-700'
                       : isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
                   }`}>
-                    {doubt.severity === 'critical' ? 'Critical' : 'Warning'}
+                    {doubt.severity === 'critical' ? t('deployment.critical') : t('deployment.warning')}
                   </span>
                   <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                     {doubt.message}
@@ -3016,7 +3022,7 @@ export default function TransactionPreview({
                   onChange={(e) => setIssuesAcknowledged(e.target.checked)}
                   className="w-4 h-4"
                 />
-                <span className="text-xs">I understand the risks and want to proceed anyway</span>
+                <span className="text-xs">{t('deployment.understandRisks')}</span>
               </label>
             )}
           </div>
@@ -3037,7 +3043,7 @@ export default function TransactionPreview({
             >
               <span className="flex items-center gap-2">
                 <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                Launching (~1 min)...
+                {t('deployment.launching')}
               </span>
             </button>
           ) : canProceedDespiteSlowChains && !slowChainDismissed ? (
@@ -3045,7 +3051,7 @@ export default function TransactionPreview({
               onClick={() => setSlowChainDismissed(true)}
               className="px-5 py-2 text-sm font-bold border-2 bg-amber-500 text-black border-amber-500 hover:bg-amber-600 hover:border-amber-600 transition-colors"
             >
-              Continue (some chains slow)
+              {t('deployment.continueSlowChains')}
             </button>
           ) : (
             <button
@@ -3064,7 +3070,7 @@ export default function TransactionPreview({
                     : 'bg-gray-500 text-white border-gray-500 cursor-not-allowed opacity-75'
               }`}
             >
-              {launchValidation?.owner ? (ACTION_BUTTON_LABELS[action] || action) : 'Sign in'}
+              {launchValidation?.owner ? (ACTION_BUTTON_LABEL_KEYS[action] ? t(ACTION_BUTTON_LABEL_KEYS[action]) : action) : t('deployment.signIn')}
             </button>
           )
         ) : isSetUriAction ? (
@@ -3076,7 +3082,7 @@ export default function TransactionPreview({
             >
               <span className="flex items-center gap-2">
                 <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                Updating...
+                {t('deployment.updating')}
               </span>
             </button>
           ) : isSetUriComplete ? (
@@ -3084,14 +3090,14 @@ export default function TransactionPreview({
               disabled
               className="px-5 py-2 text-sm font-bold border-2 bg-green-500 text-black border-green-500"
             >
-              ✓ Updated
+              ✓ {t('deployment.updated')}
             </button>
           ) : hasSetUriError ? (
             <button
               onClick={handleSetUriClick}
               className="px-5 py-2 text-sm font-bold border-2 bg-red-500 text-white border-red-500 hover:bg-red-600 hover:border-red-600 transition-colors"
             >
-              Retry
+              {t('deployment.retry')}
             </button>
           ) : (
             <button
@@ -3110,7 +3116,7 @@ export default function TransactionPreview({
                     : 'bg-gray-500 text-white border-gray-500 cursor-not-allowed opacity-75'
               }`}
             >
-              {effectiveUserAddress ? (ACTION_BUTTON_LABELS[action] || action) : 'Sign in'}
+              {effectiveUserAddress ? (ACTION_BUTTON_LABEL_KEYS[action] ? t(ACTION_BUTTON_LABEL_KEYS[action]) : action) : t('deployment.signIn')}
             </button>
           )
         ) : (
@@ -3159,7 +3165,7 @@ export default function TransactionPreview({
             }}
             className="px-5 py-2 text-sm font-bold border-2 bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600 transition-colors"
           >
-            {ACTION_BUTTON_LABELS[action] || action}
+            {ACTION_BUTTON_LABEL_KEYS[action] ? t(ACTION_BUTTON_LABEL_KEYS[action]) : action}
           </button>
         )}
       </div>
@@ -3173,7 +3179,7 @@ export default function TransactionPreview({
             className={`flex items-center gap-2 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
           >
             <span className={`transform transition-transform ${showDeploymentDetails ? 'rotate-90' : ''}`}>›</span>
-            {showDeploymentDetails ? 'Hide' : 'Show'} deployment details
+            {showDeploymentDetails ? t('deployment.hideDeploymentDetails') : t('deployment.showDeploymentDetails')}
           </button>
 
           {showDeploymentDetails && (
@@ -3210,16 +3216,16 @@ export default function TransactionPreview({
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      {!chainState && !isPersistedComplete && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Waiting</span>}
+                      {!chainState && !isPersistedComplete && <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>{t('deployment.waiting')}</span>}
                       {chainState?.status === 'pending' && (
                         slowChainIds.includes(cid)
-                          ? <span className="text-amber-500">Slow</span>
-                          : <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Pending</span>
+                          ? <span className="text-amber-500">{t('deployment.slow')}</span>
+                          : <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>{t('deployment.pending')}</span>
                       )}
                       {chainState?.status === 'submitted' && (
                         slowChainIds.includes(cid)
-                          ? <span className="text-amber-500">Slow</span>
-                          : <span className="text-juice-orange">Creating...</span>
+                          ? <span className="text-amber-500">{t('deployment.slow')}</span>
+                          : <span className="text-juice-orange">{t('deployment.creating')}</span>
                       )}
                       {(chainState?.status === 'confirmed' || isPersistedComplete) && (
                         <div className="flex items-center gap-1">
@@ -3236,7 +3242,7 @@ export default function TransactionPreview({
                           )}
                         </div>
                       )}
-                      {chainState?.status === 'failed' && <span className="text-red-400">Failed</span>}
+                      {chainState?.status === 'failed' && <span className="text-red-400">{t('deployment.failed')}</span>}
                     </div>
                   </div>
                 )
@@ -3245,7 +3251,7 @@ export default function TransactionPreview({
               {/* Slow chain banner */}
               {hasSlowChains && (
                 <div className={`mt-2 p-2 text-xs ${isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-700'}`}>
-                  Some chains are taking longer than expected. Confirmed chains are already live. You can safely close.
+                  {t('deployment.chainsSlowNotice')}
                 </div>
               )}
             </div>
