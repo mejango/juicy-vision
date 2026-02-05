@@ -103,6 +103,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
   const [ownedProjects, setOwnedProjects] = useState<Project[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
   const [projectsLoaded, setProjectsLoaded] = useState(false)
+  const projectsLoadingRef = useRef(false)
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const [projectSupporters, setProjectSupporters] = useState<Record<string, ProjectConversation[]>>({})
   const [supportersLoading, setSupportersLoading] = useState<string | null>(null)
@@ -141,7 +142,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
 
   // Load owned projects from all connected addresses (managed + external)
   const loadProjects = useCallback(async (forceRefresh = false) => {
-    if (projectsLoading) return
+    if (projectsLoadingRef.current) return
     const addresses = [
       ...(managedAddress ? [managedAddress] : []),
       ...(wagmiAddress ? [wagmiAddress] : []),
@@ -151,6 +152,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     if (forceRefresh) {
       addresses.forEach(addr => clearProjectsByOwnerCache(addr))
     }
+    projectsLoadingRef.current = true
     setProjectsLoading(true)
     try {
       const results = await Promise.all(addresses.map(addr => fetchProjectsByOwner(addr)))
@@ -171,9 +173,10 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     } catch (error) {
       console.error('Failed to load owned projects:', error)
     } finally {
+      projectsLoadingRef.current = false
       setProjectsLoading(false)
     }
-  }, [managedAddress, wagmiAddress, projectsLoading])
+  }, [managedAddress, wagmiAddress])
 
   // Load supporters for a project
   const loadSupporters = useCallback(async (project: Project) => {
