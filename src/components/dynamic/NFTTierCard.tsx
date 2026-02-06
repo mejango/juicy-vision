@@ -309,12 +309,12 @@ export default function NFTTierCard({
 
         {/* Mint action */}
         {showMintAction && (
-          <div className="flex gap-2">
+          <div className="flex justify-end gap-2">
             {!soldOut && tier.initialSupply > 1 && (
               <select
                 value={quantity}
                 onChange={(e) => setQuantity(Number(e.target.value))}
-                className={`px-2 py-2 text-sm border ${
+                className={`px-2 py-1.5 text-xs border ${
                   isDark
                     ? 'bg-juice-dark border-white/10 text-white'
                     : 'bg-white border-gray-200 text-gray-900'
@@ -328,10 +328,10 @@ export default function NFTTierCard({
             <button
               onClick={handleMint}
               disabled={minting || soldOut}
-              className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
                 minting || soldOut
-                  ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                  : 'bg-green-500 hover:bg-green-600 text-black'
+                  ? 'border-gray-500/50 text-gray-400 cursor-not-allowed'
+                  : 'border-green-500 text-green-500 hover:bg-green-500/10'
               }`}
             >
               {minting ? 'Buying...' : soldOut ? 'Sold Out' : 'Buy'}

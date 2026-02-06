@@ -7,7 +7,7 @@
  * Flat rate: $1.01 per Pay Credit
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { loadStripe } from '@stripe/stripe-js'
 import {
@@ -24,6 +24,7 @@ interface BuyJuiceModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
+  anchorRef?: React.RefObject<HTMLElement | null>
 }
 
 type PurchaseStep = 'amount' | 'checkout' | 'success' | 'error'
@@ -31,7 +32,7 @@ type PurchaseStep = 'amount' | 'checkout' | 'success' | 'error'
 // Preset credit amounts for quick selection
 const PRESET_AMOUNTS = [10, 25, 50, 100]
 
-export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceModalProps) {
+export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }: BuyJuiceModalProps) {
   const { theme } = useThemeStore()
   const { token } = useAuthStore()
   const { t } = useTranslation()
@@ -44,6 +45,60 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
   const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
+
+  // Calculate position relative to anchor element
+  useEffect(() => {
+    if (!isOpen || !anchorRef?.current) {
+      setPosition(null)
+      return
+    }
+
+    const updatePosition = () => {
+      const anchor = anchorRef.current
+      if (!anchor) return
+
+      const rect = anchor.getBoundingClientRect()
+      const modalWidth = 384 // max-w-sm = 24rem = 384px
+      const modalHeight = 500 // approximate modal height
+      const padding = 8
+
+      // Position below the anchor, aligned to left edge
+      let top = rect.bottom + padding
+      let left = rect.left
+
+      // Adjust if modal would go off the right edge
+      if (left + modalWidth > window.innerWidth - padding) {
+        left = window.innerWidth - modalWidth - padding
+      }
+
+      // Adjust if modal would go off the bottom edge
+      if (top + modalHeight > window.innerHeight - padding) {
+        // Position above the anchor instead
+        top = rect.top - modalHeight - padding
+        if (top < padding) {
+          top = padding
+        }
+      }
+
+      // Ensure left doesn't go negative
+      if (left < padding) {
+        left = padding
+      }
+
+      setPosition({ top, left })
+    }
+
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [isOpen, anchorRef])
 
   // Fetch Stripe publishable key on mount
   useEffect(() => {
@@ -134,16 +189,21 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess }: BuyJuiceMo
 
   if (!isOpen) return null
 
+  // Use anchored positioning if position is available, otherwise center
+  const useAnchoredPosition = position !== null
+
   const modalContent = (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className={`fixed z-50 ${useAnchoredPosition ? '' : 'inset-0 flex items-center justify-center p-4'}`}>
       {/* Backdrop - transparent like other popovers */}
       <div
-        className="absolute inset-0"
+        className={useAnchoredPosition ? 'fixed inset-0' : 'absolute inset-0'}
         onClick={step !== 'checkout' ? onClose : undefined}
       />
 
       {/* Modal - matches app popover style */}
       <div
+        ref={modalRef}
+        style={useAnchoredPosition ? { position: 'fixed', top: position.top, left: position.left } : undefined}
         className={`relative w-full max-w-sm border shadow-xl ${
           isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
         }`}

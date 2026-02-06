@@ -3,7 +3,7 @@
 import { createPublicClient, http, zeroAddress } from 'viem'
 import { VIEM_CHAINS, MAINNET_VIEM_CHAINS, RPC_ENDPOINTS, MAINNET_RPC_ENDPOINTS, JB_CONTRACTS, type SupportedChainId, MAINNET_CHAIN_IDS } from '../../constants/chains'
 import { REV_DEPLOYER_ADDRESS, REV_DEPLOYER_TIERED_721_HOOK_ABI } from '../../constants/abis/revDeployer'
-import { resolveIpfsUri, decodeEncodedIPFSUri } from '../../utils/ipfs'
+import { resolveIpfsUri, decodeEncodedIPFSUri, inlineSvgImages } from '../../utils/ipfs'
 import { isRevnet, fetchProject } from '../bendystraw'
 import {
   JB721TierStoreAbi,
@@ -368,11 +368,24 @@ export async function fetchResolvedNFTTiers(
           metadata = await fetchTierMetadata(tier.encodedIPFSUri)
         }
 
+        // Get the image URI from metadata
+        let imageUri = metadata?.image || metadata?.imageUri
+
+        // If the image is an SVG data URI, inline any external images
+        // Browsers block external <image> refs in SVG data URIs for security
+        if (imageUri?.startsWith('data:image/svg+xml')) {
+          try {
+            imageUri = await inlineSvgImages(imageUri)
+          } catch (e) {
+            console.warn(`[NFT] Failed to inline SVG images for tier ${tier.tierId}:`, e)
+          }
+        }
+
         return {
           ...tier,
           name: metadata?.name || tier.name,
           description: metadata?.description,
-          imageUri: metadata?.image || metadata?.imageUri,
+          imageUri,
           metadata: metadata || undefined,
         }
       })

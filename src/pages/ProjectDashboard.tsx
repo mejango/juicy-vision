@@ -27,6 +27,7 @@ import RulesetSchedule from '../components/dynamic/RulesetSchedule'
 import FundsSection from '../components/dynamic/FundsSection'
 import TokensTab from '../components/dynamic/TokensTab'
 import ShopTab from '../components/dynamic/ShopTab'
+import ProjectSummary from '../components/dynamic/ProjectSummary'
 import { hasNFTHook } from '../services/nft'
 
 // Payment modals
@@ -512,6 +513,19 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                         No description available.
                       </p>
                     )}
+
+                    {/* Juicy Summary */}
+                    <ProjectSummary
+                      projectName={project.name}
+                      balance={displayBalance}
+                      volume={displayVolume}
+                      paymentsCount={displayPaymentsCount}
+                      createdAt={project.createdAt}
+                      isRevnet={projectIsRevnet}
+                      hasNftHook={hasNftHook}
+                      connectedChainsCount={connectedChains.length}
+                      ethPrice={ethPrice}
+                    />
                   </>
                 )}
 
@@ -745,6 +759,19 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 No description available.
               </p>
             )}
+
+            {/* Juicy Summary */}
+            <ProjectSummary
+              projectName={project.name}
+              balance={displayBalance}
+              volume={displayVolume}
+              paymentsCount={displayPaymentsCount}
+              createdAt={project.createdAt}
+              isRevnet={projectIsRevnet}
+              hasNftHook={hasNftHook}
+              connectedChainsCount={connectedChains.length}
+              ethPrice={ethPrice}
+            />
 
             {/* Pay button on mobile About tab */}
             <div className={`p-4 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'}`}>
