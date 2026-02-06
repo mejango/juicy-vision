@@ -1,84 +1,68 @@
-# Project Dashboard Layout Reorganization
+# Shop Tab for 721 NFT Projects
 
 ## Status: Complete
 
 ## Changes Made
 
 ### 1. Updated `src/pages/ProjectDashboard.tsx`
-- Changed tab type from `'overview' | 'payments'` to `'about' | 'analytics' | 'rulesets' | 'tokens'`
-- Implemented two-column desktop layout:
-  - **Left column (380px)**: Pay/Cash out panel (sticky) + Activity feed (scrollable)
-  - **Right column**: Tab navigation (sticky at top) + tab content (About, Analytics, Rulesets & Funds, Tokens)
-- Tab navigation with juice-orange underline style
-- Mobile layout: Stacked tabs with horizontal scroll, ProjectCard embedded in About tab
-- Removed old "Pay" button from header (now handled by left sidebar ProjectCard)
-- Removed old activity sidebar column (activity now in left sidebar)
+- Added import for `hasNFTHook` from `services/nft`
+- Added import for `ShopTab` component
+- Added `hasNftHook` state variable
+- Updated `DashboardTab` type to include `'shop'`
+- Modified project load effect to check for NFT hook presence
+- Made tabs array dynamic using `useMemo` - Shop tab only appears when `hasNftHook` is true
+- Added ShopTab rendering in both desktop and mobile tab content sections
 
-### 2. Created `src/components/dynamic/FundsSection.tsx`
-New component for Rulesets & Funds tab showing:
-- Total balance with currency symbol (ETH/USDC)
-- Per-chain balance breakdown with chain icons
-- Available to pay out (from payout limits)
-- Surplus calculation (balance - used payout)
-- Collapsible payout recipients list with ENS resolution
-- "Send Payouts" button for project owners
+### 2. Created `src/components/dynamic/ShopTab.tsx`
+New component for browsing and purchasing NFT tiers:
+- Fetches tiers using `fetchProjectNFTTiers(projectId, chainId)`
+- Fetches ETH price for USD display
+- Category filter bar (horizontal chips: "All", then unique categories)
+- Groups and displays tiers by category when "All" selected
+- Filters to single category when category chip clicked
+- Responsive grid of `NFTTierCard` components (2-3 columns)
+- Loading skeleton during fetch
+- Empty state if no tiers
 
-### 3. Created `src/components/dynamic/TokensTab.tsx`
-New component for Tokens tab showing:
-- User's token balance (when connected)
-- Project token info (symbol, ERC-20 badge, contract address with copy button)
-- Total supply
-- Reserved tokens section:
-  - Chain selector for omnichain projects
-  - Reserved rate percentage
-  - Pending distribution amount
-  - Collapsible recipients list
-  - "Send Reserved Tokens" button for owners
-
-### 4. Updated `src/components/dynamic/ProjectCard.tsx`
-- Added `embedded` prop for sidebar display mode
-- When `embedded=true`: removes outer container styling, hides header/tagline/stats (already shown in dashboard)
-- Keeps full payment functionality
-
-### 5. Updated `src/components/dynamic/ActivityFeed.tsx`
-- Added `compact` prop for sidebar display mode
-- When `compact=true`: removes outer container and header (dashboard provides its own Activity header)
-- Same event list functionality
-
-## Desktop Layout
+## UI Layout
 
 ```
-┌─────────────────────┬─────────────────────────────────────────┐
-│                     │ [About] [Analytics] [Rulesets] [Tokens] │
-│  Pay/Cash out       ├─────────────────────────────────────────┤
-│  Panel              │                                         │
-│  (sticky)           │  Tab Content                            │
-├─────────────────────┤  (scrollable)                           │
-│                     │                                         │
-│  Activity           │                                         │
-│  Feed               │                                         │
-│  (scrollable)       │                                         │
-│                     │                                         │
-└─────────────────────┴─────────────────────────────────────────┘
-     Left (380px)                    Right (flex-1)
+┌─────────────────────────────────────────────────┐
+│ [All] [Category 1] [Category 2] [Category 3]    │  ← Filter chips
+├─────────────────────────────────────────────────┤
+│ Category 1 (if showing all)                     │
+│ ┌─────────┐ ┌─────────┐ ┌─────────┐            │
+│ │ Tier    │ │ Tier    │ │ Tier    │            │
+│ │ Card    │ │ Card    │ │ Card    │            │
+│ └─────────┘ └─────────┘ └─────────┘            │
+│                                                 │
+│ Category 2                                      │
+│ ┌─────────┐ ┌─────────┐                        │
+│ │ Tier    │ │ Tier    │                        │
+│ │ Card    │ │ Card    │                        │
+│ └─────────┘ └─────────┘                        │
+└─────────────────────────────────────────────────┘
 ```
+
+## Mint Integration
+Uses existing `NFTTierCard` mint button which:
+- Checks wallet connection (opens wallet panel if not connected)
+- Dispatches `juice:mint-nft` event
+- Tracks transaction in store
+- Shows quantity selector for multi-mint
 
 ## Verification Steps
 
-1. Navigate to a project dashboard (e.g., `/base:3`)
-2. **Layout**: Two columns visible on desktop - Pay/Activity on LEFT, tabs on RIGHT
-3. **About tab**: Shows project description (default tab)
-4. **Analytics tab**: Shows Volume, Holders, Balance, Price charts in 2x2 grid
-5. **Rulesets & Funds tab**: Shows RulesetSchedule + FundsSection with balance breakdown
-6. **Tokens tab**: Shows token info, user balance, reserved tokens section
-7. **Left sidebar**: Pay/Cash out panel works, Activity scrolls independently
-8. **Mobile**: Falls back to stacked layout with tabs scrollable
+1. Visit `/base:3` (no 721 hooks) → Shop tab should NOT appear
+2. Visit `/eth:4` (Banny Network, has 721 hooks) → Shop tab SHOULD appear
+3. Shop tab shows tiers in grid with category filters
+4. Category filter chips work correctly (shows grouped when All, filtered when category selected)
+5. Mint button opens wallet panel if not connected
+6. Mint initiates transaction when wallet connected
+7. Tests pass (1244 passed), build succeeds
 
 ## Files Modified
-- `src/pages/ProjectDashboard.tsx` - Main layout restructure
-- `src/components/dynamic/ProjectCard.tsx` - Added embedded mode
-- `src/components/dynamic/ActivityFeed.tsx` - Added compact mode
+- `src/pages/ProjectDashboard.tsx` - Added Shop tab logic and rendering
 
 ## Files Created
-- `src/components/dynamic/FundsSection.tsx` - Funds breakdown display
-- `src/components/dynamic/TokensTab.tsx` - Token info and reserved tokens
+- `src/components/dynamic/ShopTab.tsx` - NFT tier browsing and minting

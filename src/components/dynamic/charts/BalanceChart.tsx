@@ -145,45 +145,69 @@ export default function BalanceChart({
 
   // Build chart data based on selection
   const chartData = useMemo(() => {
+    let data: DataPoint[]
+
     if (selectedChains === 'all') {
       // Show aggregated data
-      return filterToRange(aggregatedData, range)
-    }
-
-    // Build merged per-chain data
-    const selectedChainIds = Array.from(selectedChains as Set<number>)
-    const allTimestamps = new Set<number>()
-
-    selectedChainIds.forEach(cid => {
-      const chainData = perChainData.get(cid) || []
-      chainData.forEach(d => allTimestamps.add(d.timestamp))
-    })
-
-    const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b)
-
-    // Create merged data points
-    const merged: DataPoint[] = sortedTimestamps.map(ts => {
-      const point: DataPoint = { timestamp: ts, balance: 0 }
+      data = filterToRange(aggregatedData, range)
+    } else {
+      // Build merged per-chain data
+      const selectedChainIds = Array.from(selectedChains as Set<number>)
+      const allTimestamps = new Set<number>()
 
       selectedChainIds.forEach(cid => {
         const chainData = perChainData.get(cid) || []
-        // Find the closest balance at or before this timestamp
-        let balance = 0
-        for (const d of chainData) {
-          if (d.timestamp <= ts) {
-            balance = d.balance
-          } else {
-            break
-          }
-        }
-        point[`balance_${cid}`] = balance
-        point.balance += balance // Sum for total
+        chainData.forEach(d => allTimestamps.add(d.timestamp))
       })
 
-      return point
-    })
+      const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b)
 
-    return filterToRange(merged, range)
+      // Create merged data points
+      const merged: DataPoint[] = sortedTimestamps.map(ts => {
+        const point: DataPoint = { timestamp: ts, balance: 0 }
+
+        selectedChainIds.forEach(cid => {
+          const chainData = perChainData.get(cid) || []
+          // Find the closest balance at or before this timestamp
+          let balance = 0
+          for (const d of chainData) {
+            if (d.timestamp <= ts) {
+              balance = d.balance
+            } else {
+              break
+            }
+          }
+          point[`balance_${cid}`] = balance
+          point.balance += balance // Sum for total
+        })
+
+        return point
+      })
+
+      data = filterToRange(merged, range)
+    }
+
+    // If only one data point, duplicate it to draw a horizontal line
+    if (data.length === 1) {
+      const point = data[0]
+      const now = Math.floor(Date.now() / 1000)
+      // Create a point at the start of the range and one at end
+      const rangeSeconds: Record<TimeRange, number> = {
+        '7d': 7 * 24 * 60 * 60,
+        '30d': 30 * 24 * 60 * 60,
+        '90d': 90 * 24 * 60 * 60,
+        '3m': 90 * 24 * 60 * 60,
+        '1y': 365 * 24 * 60 * 60,
+        'all': 365 * 24 * 60 * 60,
+      }
+      const rangeStart = now - rangeSeconds[range]
+      return [
+        { ...point, timestamp: rangeStart },
+        { ...point, timestamp: now },
+      ]
+    }
+
+    return data
   }, [aggregatedData, perChainData, selectedChains, range])
 
   // Calculate Y domain - always ground at 0 for balance charts

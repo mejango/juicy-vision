@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import { useThemeStore } from '../stores'
 import { useManagedWallet, useIsMobile } from '../hooks'
 import { CHAINS } from '../constants'
-import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, fetchSuckerGroupBalance, isRevnet, fetchRevnetOperator, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
+import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, fetchSuckerGroupBalance, isRevnet, fetchRevnetOperator, fetchEthPrice, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../utils/ens'
 import { getProjectSupporters, type ProjectConversation } from '../api/projectConversations'
 import { getWalletSession } from '../services/siwe'
@@ -43,17 +43,25 @@ interface ProjectDashboardProps {
   projectId: number
 }
 
-function formatEth(weiString: string): string {
+function weiToEth(weiString: string): number {
   try {
     const wei = BigInt(weiString)
     const eth = formatUnits(wei, 18)
-    const num = parseFloat(eth)
-    if (num === 0) return '0'
-    if (num < 0.001) return '<0.001'
-    return num.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    return parseFloat(eth)
   } catch {
-    return '0'
+    return 0
   }
+}
+
+function formatUsd(weiString: string, ethPrice: number | null): string {
+  if (!ethPrice) return '$--'
+  const eth = weiToEth(weiString)
+  const usd = eth * ethPrice
+  if (usd === 0) return '$0'
+  if (usd < 0.01) return '<$0.01'
+  if (usd >= 1000000) return `$${(usd / 1000000).toFixed(2)}M`
+  if (usd >= 1000) return `$${(usd / 1000).toFixed(2)}K`
+  return `$${usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
 }
 
 function formatTimeAgo(timestamp: string): string {
@@ -102,6 +110,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const [revnetOperator, setRevnetOperator] = useState<string | null>(null)
   const [displayAddressEns, setDisplayAddressEns] = useState<string | null>(null)
   const [hasNftHook, setHasNftHook] = useState(false)
+  const [ethPrice, setEthPrice] = useState<number | null>(null)
 
   // Modal state
   const [activeModal, setActiveModal] = useState<ModalType>(null)
@@ -152,16 +161,18 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     async function loadProject() {
       setProjectLoading(true)
       try {
-        const [data, chains, groupBalance, nftHook] = await Promise.all([
+        const [data, chains, groupBalance, nftHook, price] = await Promise.all([
           fetchProject(String(projectId), chainId),
           fetchConnectedChains(String(projectId), chainId),
           fetchSuckerGroupBalance(String(projectId), chainId),
           hasNFTHook(String(projectId), chainId),
+          fetchEthPrice(),
         ])
         setProject(data)
         setConnectedChains(chains)
         setSuckerGroupBalance(groupBalance)
         setHasNftHook(nftHook)
+        setEthPrice(price)
       } catch (error) {
         console.error('Failed to load project:', error)
       } finally {
@@ -364,23 +375,14 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   </div>
                   {/* Stats row */}
                   <div className={`flex items-center gap-4 mt-1 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                    <span>
-                      <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                        {formatEth(displayBalance)}
-                      </span>
-                      {' '}ETH
+                    <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      {formatUsd(displayBalance, ethPrice)} balance
                     </span>
                     <span>
                       <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                         {displayPaymentsCount.toLocaleString()}
                       </span>
                       {' '}payments
-                    </span>
-                    <span>
-                      <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                        {formatEth(displayVolume)}
-                      </span>
-                      {' '}ETH volume
                     </span>
                   </div>
                   {/* Operator (for revnets) or Owner address */}
@@ -646,23 +648,14 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               </div>
               {/* Stats row */}
               <div className={`flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                <span>
-                  <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {formatEth(displayBalance)}
-                  </span>
-                  {' '}ETH
+                <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {formatUsd(displayBalance, ethPrice)} balance
                 </span>
                 <span>
                   <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {displayPaymentsCount.toLocaleString()}
                   </span>
                   {' '}payments
-                </span>
-                <span>
-                  <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {formatEth(displayVolume)}
-                  </span>
-                  {' '}ETH vol
                 </span>
               </div>
               {/* Operator/Owner address */}
