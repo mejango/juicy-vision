@@ -63,8 +63,9 @@ export default function NFTTierCard({
   useEffect(() => {
     if (ipfsImageUrl || onChainImage || loadingOnChainImage) return
 
-    // Check if this tier might have an on-chain SVG (no IPFS URI)
-    if (!tier.encodedIPFSUri && !tier.imageUri && hookAddress) {
+    // Try on-chain resolver if no IPFS image is available
+    // This handles both: (1) no encodedIPFSUri, (2) failed to resolve IPFS
+    if (hookAddress) {
       setLoadingOnChainImage(true)
       resolveTierUri(hookAddress, tier.tierId, chainId)
         .then((dataUri) => {
@@ -90,10 +91,12 @@ export default function NFTTierCard({
           setLoadingOnChainImage(false)
         })
     }
-  }, [tier.tierId, tier.encodedIPFSUri, tier.imageUri, chainId, hookAddress, ipfsImageUrl, onChainImage, loadingOnChainImage])
+  }, [tier.tierId, chainId, hookAddress, ipfsImageUrl, onChainImage, loadingOnChainImage])
 
   // Use IPFS image, or on-chain image, or nothing
   const imageUrl = ipfsImageUrl || onChainImage
+  // Check if image is an SVG (data URI or .svg extension)
+  const isSvgImage = imageUrl?.startsWith('data:image/svg') || imageUrl?.endsWith('.svg')
   const priceEth = parseFloat(formatEther(tier.price))
   const priceUsd = ethPrice ? priceEth * ethPrice : null
   const soldOut = tier.remainingSupply === 0
@@ -140,7 +143,7 @@ export default function NFTTierCard({
           <img
             src={imageUrl}
             alt={tier.name}
-            className="w-12 h-12 object-cover"
+            className={`w-12 h-12 ${isSvgImage ? 'object-contain bg-white' : 'object-cover'}`}
           />
         ) : (
           <div className={`w-12 h-12 flex items-center justify-center ${
@@ -182,12 +185,12 @@ export default function NFTTierCard({
       isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
     } ${soldOut ? 'opacity-60' : ''}`}>
       {/* Image */}
-      <div className="aspect-square relative overflow-hidden">
+      <div className={`aspect-square relative overflow-hidden ${isSvgImage ? 'bg-white' : ''}`}>
         {imageUrl ? (
           <img
             src={imageUrl}
             alt={tier.name}
-            className="w-full h-full object-cover"
+            className={`w-full h-full ${isSvgImage ? 'object-contain' : 'object-cover'}`}
           />
         ) : (
           <div className={`w-full h-full flex items-center justify-center relative group ${
