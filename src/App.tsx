@@ -381,37 +381,24 @@ const PROJECT_SLUG_REGEX = /^([a-z]+):(\d+)$/i
 // Import chain IDs from environment config for URL routing
 import { CHAIN_IDS, IS_TESTNET } from './config/environment'
 
-// Map chain slugs to chain IDs (uses environment-aware chain IDs)
+// Map chain slugs to chain IDs
 // URL format: /{chain}:{projectId} e.g., /op:83, /opsep:123
-// Canonical slugs: eth, op, base, arb (mainnet) | sep, opsep, basesep, arbsep (testnet)
+// Mainnet slugs (eth, op, base, arb) always work - even in staging mode
+// Testnet slugs (sep, opsep, basesep, arbsep) only available in staging
 const CHAIN_SLUG_TO_ID: Record<string, number> = {
-  eth: CHAIN_IDS.ethereum,
-  op: CHAIN_IDS.optimism,
-  base: CHAIN_IDS.base,
-  arb: CHAIN_IDS.arbitrum,
-  // Testnet-specific slugs (only work when IS_TESTNET is true)
+  // Mainnet chains - always available (hardcoded IDs so they work in staging too)
+  eth: 1,
+  op: 10,
+  base: 8453,
+  arb: 42161,
+  // Testnet chains - only in staging mode
   ...(IS_TESTNET ? {
-    sep: CHAIN_IDS.ethereum,        // Sepolia
-    opsep: CHAIN_IDS.optimism,      // Optimism Sepolia
-    basesep: CHAIN_IDS.base,        // Base Sepolia
-    arbsep: CHAIN_IDS.arbitrum,     // Arbitrum Sepolia
+    sep: 11155111,      // Sepolia
+    opsep: 11155420,    // Optimism Sepolia
+    basesep: 84532,     // Base Sepolia
+    arbsep: 421614,     // Arbitrum Sepolia
   } : {}),
 }
-
-// Map chain IDs to display names (includes both mainnet and testnet names)
-const CHAIN_ID_TO_NAME: Record<number, string> = IS_TESTNET
-  ? {
-      [CHAIN_IDS.ethereum]: 'Sepolia',
-      [CHAIN_IDS.optimism]: 'Optimism Sepolia',
-      [CHAIN_IDS.base]: 'Base Sepolia',
-      [CHAIN_IDS.arbitrum]: 'Arbitrum Sepolia',
-    }
-  : {
-      [CHAIN_IDS.ethereum]: 'Ethereum',
-      [CHAIN_IDS.optimism]: 'Optimism',
-      [CHAIN_IDS.base]: 'Base',
-      [CHAIN_IDS.arbitrum]: 'Arbitrum',
-    }
 
 // Component to show when a chat isn't found
 function ChatNotFound() {
