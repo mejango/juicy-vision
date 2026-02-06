@@ -55,6 +55,7 @@ export default function NFTTierCard({
   const [quantity, setQuantity] = useState(1)
   const [onChainImage, setOnChainImage] = useState<string | null>(null)
   const [loadingOnChainImage, setLoadingOnChainImage] = useState(false)
+  const [imageError, setImageError] = useState(false)
 
   // Resolve IPFS URI first
   const ipfsImageUrl = resolveIpfsUri(tier.imageUri)
@@ -76,16 +77,22 @@ export default function NFTTierCard({
               const base64Data = dataUri.split(',')[1]
               const jsonStr = atob(base64Data)
               const metadata = JSON.parse(jsonStr)
+              // Debug: log what we got
+              console.log(`[NFT] Tier ${tier.tierId} metadata:`, {
+                hasImage: !!metadata.image,
+                imageStart: metadata.image?.substring(0, 50),
+                name: metadata.name
+              })
               if (metadata.image) {
                 setOnChainImage(metadata.image)
               }
-            } catch {
-              // Failed to parse, ignore
+            } catch (e) {
+              console.error(`[NFT] Tier ${tier.tierId} parse error:`, e)
             }
           }
         })
-        .catch(() => {
-          // Failed to resolve, ignore
+        .catch((e) => {
+          console.error(`[NFT] Tier ${tier.tierId} resolve error:`, e)
         })
         .finally(() => {
           setLoadingOnChainImage(false)
@@ -93,8 +100,13 @@ export default function NFTTierCard({
     }
   }, [tier.tierId, chainId, hookAddress, ipfsImageUrl, onChainImage, loadingOnChainImage])
 
-  // Use IPFS image, or on-chain image, or nothing
-  const imageUrl = ipfsImageUrl || onChainImage
+  // Reset error when image URL changes
+  useEffect(() => {
+    setImageError(false)
+  }, [ipfsImageUrl, onChainImage])
+
+  // Use IPFS image, or on-chain image, or nothing (unless error)
+  const imageUrl = imageError ? null : (ipfsImageUrl || onChainImage)
   // Check if image is an SVG (data URI or .svg extension)
   const isSvgImage = imageUrl?.startsWith('data:image/svg') || imageUrl?.endsWith('.svg')
   const priceEth = parseFloat(formatEther(tier.price))
@@ -191,6 +203,10 @@ export default function NFTTierCard({
             src={imageUrl}
             alt={tier.name}
             className={`w-full h-full ${isSvgImage ? 'object-contain' : 'object-cover'}`}
+            onError={(e) => {
+              console.error(`[NFT] Tier ${tier.tierId} image load error`)
+              setImageError(true)
+            }}
           />
         ) : (
           <div className={`w-full h-full flex items-center justify-center relative group ${
