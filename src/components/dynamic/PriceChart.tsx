@@ -21,10 +21,12 @@ import {
   type RevnetStage,
 } from '../../services/bendystraw'
 
+type RangeValue = '3m' | '6m' | '1y' | '2y' | '5y' | '10y' | 'all'
+
 interface PriceChartProps {
   projectId: string
   chainId?: string
-  range?: '1y' | '5y' | '10y' | 'all'
+  range?: RangeValue
 }
 
 interface DataPoint {
@@ -44,16 +46,20 @@ interface StageArea extends Stage {
 }
 
 const RANGE_OPTIONS = [
-  { value: '1y', label: '1Y' },
-  { value: '5y', label: '5Y' },
-  { value: '10y', label: '10Y' },
-  { value: 'all', label: 'All' },
+  { value: '3m', label: '3M', years: 0.25 },
+  { value: '6m', label: '6M', years: 0.5 },
+  { value: '1y', label: '1Y', years: 1 },
+  { value: '2y', label: '2Y', years: 2 },
+  { value: '5y', label: '5Y', years: 5 },
+  { value: '10y', label: '10Y', years: 10 },
+  { value: 'all', label: 'All', years: 50 },
 ]
 
 const SECONDS_PER_DAY = 86400
 
 function getRangeYears(range: string): number {
-  return range === '1y' ? 1 : range === '5y' ? 5 : range === '10y' ? 10 : 50
+  const opt = RANGE_OPTIONS.find(o => o.value === range)
+  return opt?.years ?? 1
 }
 
 // Ruleset type for price calculation
@@ -320,20 +326,59 @@ export default function PriceChart({
               Issuance Price Forecast
             </span>
           </div>
-          <div className="flex gap-1">
-            {RANGE_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setRange(opt.value as typeof range)}
-                className={`px-2 py-0.5 text-xs transition-colors ${
-                  range === opt.value
-                    ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
-                    : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            {/* Zoom out (longer range) */}
+            <button
+              onClick={() => {
+                const idx = RANGE_OPTIONS.findIndex(o => o.value === range)
+                if (idx < RANGE_OPTIONS.length - 1) {
+                  setRange(RANGE_OPTIONS[idx + 1].value as RangeValue)
+                }
+              }}
+              disabled={range === 'all'}
+              className={`w-6 h-6 flex items-center justify-center text-sm transition-colors ${
+                range === 'all'
+                  ? isDark ? 'text-gray-600 cursor-not-allowed' : 'text-gray-300 cursor-not-allowed'
+                  : isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              title="Zoom out"
+            >
+              −
+            </button>
+            {/* Range options */}
+            <div className="flex gap-1">
+              {RANGE_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setRange(opt.value as RangeValue)}
+                  className={`px-2 py-0.5 text-xs transition-colors ${
+                    range === opt.value
+                      ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
+                      : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {/* Zoom in (shorter range) */}
+            <button
+              onClick={() => {
+                const idx = RANGE_OPTIONS.findIndex(o => o.value === range)
+                if (idx > 0) {
+                  setRange(RANGE_OPTIONS[idx - 1].value as RangeValue)
+                }
+              }}
+              disabled={range === '3m'}
+              className={`w-6 h-6 flex items-center justify-center text-sm transition-colors ${
+                range === '3m'
+                  ? isDark ? 'text-gray-600 cursor-not-allowed' : 'text-gray-300 cursor-not-allowed'
+                  : isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              title="Zoom in"
+            >
+              +
+            </button>
           </div>
         </div>
 
@@ -377,12 +422,15 @@ export default function PriceChart({
                     tickMargin={12}
                     tickFormatter={(v) => {
                       const date = new Date(v * 1000)
-                      // For shorter ranges, show month; for longer ranges, show year
-                      if (range === '1y') {
-                        return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-                      } else if (range === '5y') {
+                      // Short ranges: show month + day
+                      if (range === '3m' || range === '6m') {
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                      }
+                      // Medium ranges: show month + year
+                      if (range === '1y' || range === '2y' || range === '5y') {
                         return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
                       }
+                      // Long ranges: show year only
                       return date.getFullYear().toString()
                     }}
                     minTickGap={50}
