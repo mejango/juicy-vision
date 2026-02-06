@@ -125,6 +125,31 @@ export const JB721TierStoreAbi = [
     inputs: [{ name: 'hook', type: 'address' }],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  {
+    name: 'maxTierIdOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'hook', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'flagsOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'hook', type: 'address' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'noNewTiersWithReserves', type: 'bool' },
+          { name: 'noNewTiersWithVotes', type: 'bool' },
+          { name: 'noNewTiersWithOwnerMinting', type: 'bool' },
+          { name: 'preventOverspending', type: 'bool' },
+        ],
+      },
+    ],
+  },
 ] as const
 
 /**

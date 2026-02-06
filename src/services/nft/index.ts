@@ -109,8 +109,12 @@ export async function getProjectDataHook(
   }
 }
 
+// Page size for fetching tiers with resolved URIs (small to handle on-chain SVGs)
+const TIER_PAGE_SIZE = 5
+
 /**
  * Fetch all NFT tiers for a project's 721 hook
+ * Fetches in small batches with resolved URIs to support on-chain SVGs
  */
 export async function fetchNFTTiers(
   hookAddress: `0x${string}`,
@@ -147,41 +151,111 @@ export async function fetchNFTTiers(
       return []
     }
 
-    // Fetch all tiers from the store (without resolved URIs to avoid reverts)
-    console.log('[NFT] Fetching tiers from store:', storeAddress)
-    const tiers = await client.readContract({
+    // Get total number of tiers
+    const maxTierId = await client.readContract({
       address: storeAddress,
       abi: JB721TierStoreAbi,
-      functionName: 'tiersOf',
-      args: [
-        hookAddress,
-        [], // All categories
-        false, // Don't include resolved URI (can cause reverts if resolver not set)
-        0n, // Starting from tier 0
-        BigInt(maxTiers),
-      ],
+      functionName: 'maxTierIdOf',
+      args: [hookAddress],
     })
+    const totalTiers = Math.min(Number(maxTierId), maxTiers)
+    console.log('[NFT] Total tiers:', totalTiers)
 
-    console.log('[NFT] Fetched', tiers.length, 'tiers')
+    if (totalTiers === 0) return []
 
-    // Map raw tier data to our NFTTier type
-    return tiers.map((tier) => ({
-      tierId: Number(tier.id),
-      name: `Tier ${tier.id}`, // Will be replaced by metadata
-      price: BigInt(tier.price),
-      currency: 1, // Default to ETH, can be determined from project config
-      initialSupply: Number(tier.initialSupply),
-      remainingSupply: Number(tier.remainingSupply),
-      reservedRate: Number(tier.reserveFrequency),
-      votingUnits: BigInt(tier.votingUnits),
-      category: Number(tier.category),
-      allowOwnerMint: tier.allowOwnerMint,
-      transfersPausable: tier.transfersPausable,
-      // Use encodedIPFSUri (bytes32) since we don't fetch resolved URIs
-      encodedIPFSUri: tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
-        ? decodeEncodedIPFSUri(tier.encodedIPFSUri) || undefined
-        : undefined,
-    }))
+    // Fetch tiers in small batches with resolved URIs (for on-chain SVGs)
+    const allTiers: NFTTier[] = []
+    let startingId = 0n
+
+    while (allTiers.length < totalTiers) {
+      const remaining = totalTiers - allTiers.length
+      const batchSize = Math.min(TIER_PAGE_SIZE, remaining)
+
+      try {
+        const tiers = await client.readContract({
+          address: storeAddress,
+          abi: JB721TierStoreAbi,
+          functionName: 'tiersOf',
+          args: [
+            hookAddress,
+            [], // All categories
+            true, // Include resolved URI for on-chain SVGs
+            startingId,
+            BigInt(batchSize),
+          ],
+        })
+
+        if (tiers.length === 0) break
+
+        // Map raw tier data to our NFTTier type
+        const mappedTiers = tiers.map((tier) => ({
+          tierId: Number(tier.id),
+          name: `Tier ${tier.id}`,
+          price: BigInt(tier.price),
+          currency: 1,
+          initialSupply: Number(tier.initialSupply),
+          remainingSupply: Number(tier.remainingSupply),
+          reservedRate: Number(tier.reserveFrequency),
+          votingUnits: BigInt(tier.votingUnits),
+          category: Number(tier.category),
+          allowOwnerMint: tier.allowOwnerMint,
+          transfersPausable: tier.transfersPausable,
+          // Use resolvedUri if available (on-chain SVG), otherwise decode encodedIPFSUri
+          encodedIPFSUri: tier.resolvedUri || (
+            tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
+              ? decodeEncodedIPFSUri(tier.encodedIPFSUri) || undefined
+              : undefined
+          ),
+        }))
+
+        allTiers.push(...mappedTiers)
+
+        // Move to next batch (use last tier ID + 1)
+        const lastTierId = tiers[tiers.length - 1].id
+        startingId = BigInt(lastTierId)
+      } catch (batchErr) {
+        // If batch with resolved URIs fails, try without (fallback for projects without resolver)
+        console.warn('[NFT] Batch fetch with resolved URIs failed, trying without:', batchErr)
+        const tiers = await client.readContract({
+          address: storeAddress,
+          abi: JB721TierStoreAbi,
+          functionName: 'tiersOf',
+          args: [
+            hookAddress,
+            [],
+            false, // No resolved URI
+            startingId,
+            BigInt(batchSize),
+          ],
+        })
+
+        if (tiers.length === 0) break
+
+        const mappedTiers = tiers.map((tier) => ({
+          tierId: Number(tier.id),
+          name: `Tier ${tier.id}`,
+          price: BigInt(tier.price),
+          currency: 1,
+          initialSupply: Number(tier.initialSupply),
+          remainingSupply: Number(tier.remainingSupply),
+          reservedRate: Number(tier.reserveFrequency),
+          votingUnits: BigInt(tier.votingUnits),
+          category: Number(tier.category),
+          allowOwnerMint: tier.allowOwnerMint,
+          transfersPausable: tier.transfersPausable,
+          encodedIPFSUri: tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
+            ? decodeEncodedIPFSUri(tier.encodedIPFSUri) || undefined
+            : undefined,
+        }))
+
+        allTiers.push(...mappedTiers)
+        const lastTierId = tiers[tiers.length - 1].id
+        startingId = BigInt(lastTierId)
+      }
+    }
+
+    console.log('[NFT] Fetched', allTiers.length, 'tiers')
+    return allTiers
   } catch (err) {
     console.error('[NFT] Failed to fetch NFT tiers:', err)
     return []
@@ -376,6 +450,7 @@ export async function getNumberOfTiers(
 /**
  * Fetch the hook flags for a JB721TiersHook contract
  * These flags determine what operations are allowed on the collection
+ * Note: Flags are stored on the STORE contract, not the hook itself
  */
 export async function fetchHookFlags(
   hookAddress: `0x${string}`,
@@ -394,10 +469,21 @@ export async function fetchHookFlags(
   })
 
   try {
-    const flags = await client.readContract({
+    // First get the store address from the hook
+    const storeAddress = await client.readContract({
       address: hookAddress,
       abi: JB721TiersHookAbi,
-      functionName: 'FLAGS',
+      functionName: 'STORE',
+    })
+
+    if (!storeAddress || storeAddress === zeroAddress) return null
+
+    // Then get flags from the store using flagsOf(hookAddress)
+    const flags = await client.readContract({
+      address: storeAddress,
+      abi: JB721TierStoreAbi,
+      functionName: 'flagsOf',
+      args: [hookAddress],
     })
 
     return {
