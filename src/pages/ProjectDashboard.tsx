@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAccount } from 'wagmi'
 import { useThemeStore } from '../stores'
+import { useManagedWallet } from '../hooks'
 import { CHAINS } from '../constants'
 import { fetchProject, type Project } from '../services/bendystraw'
 import { getProjectSupporters, type ProjectConversation } from '../api/projectConversations'
+import { getWalletSession } from '../services/siwe'
 import { resolveIpfsUri } from '../utils/ipfs'
 import { formatUnits } from 'viem'
 
@@ -58,6 +61,22 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
   const chain = CHAINS[chainId]
 
+  // Get current user's address from wallet connections
+  const { address: wagmiAddress } = useAccount()
+  const { address: managedAddress } = useManagedWallet()
+  const walletSession = getWalletSession()
+
+  // Current user address: SIWE session > managed wallet > wagmi
+  const currentUserAddress = useMemo(() => {
+    return walletSession?.address || managedAddress || wagmiAddress
+  }, [walletSession?.address, managedAddress, wagmiAddress])
+
+  // Check if current user is the project owner
+  const isOwner = useMemo(() => {
+    if (!currentUserAddress || !project?.owner) return false
+    return currentUserAddress.toLowerCase() === project.owner.toLowerCase()
+  }, [currentUserAddress, project?.owner])
+
   // Load project data
   useEffect(() => {
     async function loadProject() {
@@ -97,6 +116,8 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   }, [activeTab, supportersLoaded, loadSupporters])
 
   const handleSupporterClick = (chatId: string) => {
+    // Only owners can access supporter chats
+    if (!isOwner) return
     navigate(`/chat/${chatId}`)
   }
 
@@ -188,6 +209,30 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   #{projectId}
                 </span>
               </div>
+              {/* Owner address */}
+              {project.owner && (
+                <div className={`flex items-center gap-1.5 mt-2 text-xs ${
+                  theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                }`}>
+                  <span>{t('project.owner', 'Owner')}:</span>
+                  <a
+                    href={chain ? `${chain.explorer}/address/${project.owner}` : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`font-mono hover:underline ${
+                      theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+                    }`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {project.owner.slice(0, 6)}...{project.owner.slice(-4)}
+                  </a>
+                  {isOwner && (
+                    <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
+                      {t('project.you', 'You')}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -306,10 +351,14 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     <div
                       key={supporter.id}
                       onClick={() => handleSupporterClick(supporter.chatId)}
-                      className={`group p-4 border cursor-pointer transition-colors ${
-                        theme === 'dark'
-                          ? 'border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10'
-                          : 'border-gray-200 hover:border-gray-300 bg-gray-50 hover:bg-gray-100'
+                      className={`group p-4 border transition-colors ${
+                        isOwner
+                          ? theme === 'dark'
+                            ? 'border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 cursor-pointer'
+                            : 'border-gray-200 hover:border-gray-300 bg-gray-50 hover:bg-gray-100 cursor-pointer'
+                          : theme === 'dark'
+                            ? 'border-white/10 bg-white/5'
+                            : 'border-gray-200 bg-gray-50'
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -333,16 +382,18 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                               {formatTimeAgo(supporter.lastPaymentAt)}
                             </span>
                           )}
-                          <svg
-                            className={`w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity ${
-                              theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
-                            }`}
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
+                          {isOwner && (
+                            <svg
+                              className={`w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity ${
+                                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          )}
                         </div>
                       </div>
                       {supporter.latestMessage && (
