@@ -54,6 +54,7 @@ export default function NFTTierCard({
   const [minting, setMinting] = useState(false)
   const [quantity, setQuantity] = useState(1)
   const [onChainImage, setOnChainImage] = useState<string | null>(null)
+  const [onChainName, setOnChainName] = useState<string | null>(null)
   const [loadingOnChainImage, setLoadingOnChainImage] = useState(false)
   const [imageError, setImageError] = useState(false)
 
@@ -77,6 +78,10 @@ export default function NFTTierCard({
               const base64Data = dataUri.split(',')[1]
               const jsonStr = atob(base64Data)
               const metadata = JSON.parse(jsonStr)
+              // Extract name from on-chain metadata
+              if (metadata.name) {
+                setOnChainName(metadata.name)
+              }
               if (metadata.image) {
                 let processedImage = metadata.image
 
@@ -305,7 +310,7 @@ export default function NFTTierCard({
               <select
                 value={quantity}
                 onChange={(e) => setQuantity(Number(e.target.value))}
-                className={`px-2 py-1.5 text-xs border ${
+                className={`pl-2 pr-6 py-1.5 text-xs border ${
                   isDark
                     ? 'bg-juice-dark border-white/10 text-white'
                     : 'bg-white border-gray-200 text-gray-900'
