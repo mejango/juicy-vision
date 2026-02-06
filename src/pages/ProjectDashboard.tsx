@@ -6,7 +6,8 @@ import { createPortal } from 'react-dom'
 import { useThemeStore } from '../stores'
 import { useManagedWallet, useIsMobile } from '../hooks'
 import { CHAINS } from '../constants'
-import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, fetchSuckerGroupBalance, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
+import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, fetchSuckerGroupBalance, isRevnet, fetchRevnetOperator, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
+import { resolveEnsName, truncateAddress } from '../utils/ens'
 import { getProjectSupporters, type ProjectConversation } from '../api/projectConversations'
 import { getWalletSession } from '../services/siwe'
 import { resolveIpfsUri } from '../utils/ipfs'
@@ -96,6 +97,8 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const [supportersTotal, setSupportersTotal] = useState(0)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
   const [suckerGroupBalance, setSuckerGroupBalance] = useState<SuckerGroupBalance | null>(null)
+  const [revnetOperator, setRevnetOperator] = useState<string | null>(null)
+  const [displayAddressEns, setDisplayAddressEns] = useState<string | null>(null)
 
   // Modal state
   const [activeModal, setActiveModal] = useState<ModalType>(null)
@@ -162,6 +165,41 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     }
     loadProject()
   }, [projectId, chainId])
+
+  // Determine if revnet and fetch operator, then resolve ENS
+  const projectIsRevnet = useMemo(() => {
+    return project?.owner ? isRevnet(project.owner) : false
+  }, [project?.owner])
+
+  // The address to display: operator for revnets, owner otherwise
+  const displayAddress = useMemo(() => {
+    if (projectIsRevnet && revnetOperator) {
+      return revnetOperator
+    }
+    return project?.owner || null
+  }, [projectIsRevnet, revnetOperator, project?.owner])
+
+  // Fetch revnet operator and resolve ENS for display address
+  useEffect(() => {
+    async function loadDisplayInfo() {
+      if (!project?.owner) return
+
+      // If revnet, fetch the operator
+      if (projectIsRevnet) {
+        const operator = await fetchRevnetOperator(String(projectId), chainId)
+        setRevnetOperator(operator)
+        // Resolve ENS for operator (or owner if no operator)
+        const addressToResolve = operator || project.owner
+        const ensName = await resolveEnsName(addressToResolve)
+        setDisplayAddressEns(ensName)
+      } else {
+        // Resolve ENS for owner
+        const ensName = await resolveEnsName(project.owner)
+        setDisplayAddressEns(ensName)
+      }
+    }
+    loadDisplayInfo()
+  }, [project?.owner, projectIsRevnet, projectId, chainId])
 
   // Load supporters when payments tab is active (kept for compatibility)
   const loadSupporters = useCallback(async () => {
@@ -281,14 +319,15 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
               {/* Project header */}
               <div className="flex items-start gap-4">
+                {/* Square logo */}
                 {project.logoUri ? (
                   <img
                     src={resolveIpfsUri(project.logoUri) || undefined}
                     alt=""
-                    className="w-16 h-16 rounded-full object-cover"
+                    className="w-16 h-16 object-cover"
                   />
                 ) : (
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl ${
+                  <div className={`w-16 h-16 flex items-center justify-center text-2xl ${
                     isDark ? 'bg-white/10' : 'bg-gray-200'
                   }`}>
                     🍊
@@ -300,6 +339,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   }`}>
                     {project.name || `Project #${projectId}`}
                   </h1>
+                  {/* Chain badge + Operator/Owner address */}
                   <div className="flex items-center gap-2 mt-1">
                     {chain && (
                       <span
@@ -309,26 +349,23 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                         {chain.shortName}
                       </span>
                     )}
-                    <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      #{projectId}
-                    </span>
                   </div>
-                  {/* Owner address */}
-                  {project.owner && (
+                  {/* Operator (for revnets) or Owner address */}
+                  {displayAddress && (
                     <div className={`flex items-center gap-1.5 mt-2 text-xs ${
                       isDark ? 'text-gray-500' : 'text-gray-400'
                     }`}>
-                      <span>{t('project.owner', 'Owner')}:</span>
+                      <span>{projectIsRevnet ? t('project.operator', 'Operator') : t('project.owner', 'Owner')}:</span>
                       <a
-                        href={chain ? `${chain.explorer}/address/${project.owner}` : '#'}
+                        href={chain ? `${chain.explorer}/address/${displayAddress}` : '#'}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`font-mono hover:underline ${
+                        className={`hover:underline ${
                           isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-                        }`}
+                        } ${!displayAddressEns ? 'font-mono' : ''}`}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {project.owner.slice(0, 6)}...{project.owner.slice(-4)}
+                        {displayAddressEns || truncateAddress(displayAddress)}
                       </a>
                       {isOwner && (
                         <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
@@ -337,6 +374,18 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       )}
                     </div>
                   )}
+                </div>
+                {/* Top-right metrics */}
+                <div className="shrink-0 text-right">
+                  <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {formatEth(displayBalance)} ETH
+                  </div>
+                  <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {displayPaymentsCount.toLocaleString()} payments
+                  </div>
+                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {formatEth(displayVolume)} ETH volume
+                  </div>
                 </div>
               </div>
             </div>
@@ -533,15 +582,16 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           </button>
 
           {/* Project header */}
-          <div className="flex items-start gap-4">
+          <div className="flex items-start gap-3">
+            {/* Square logo */}
             {project.logoUri ? (
               <img
                 src={resolveIpfsUri(project.logoUri) || undefined}
                 alt=""
-                className="w-14 h-14 rounded-full object-cover"
+                className="w-14 h-14 object-cover"
               />
             ) : (
-              <div className={`w-14 h-14 rounded-full flex items-center justify-center text-xl ${
+              <div className={`w-14 h-14 flex items-center justify-center text-xl ${
                 isDark ? 'bg-white/10' : 'bg-gray-200'
               }`}>
                 🍊
@@ -553,6 +603,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               }`}>
                 {project.name || `Project #${projectId}`}
               </h1>
+              {/* Chain badge */}
               <div className="flex items-center gap-2 mt-1">
                 {chain && (
                   <span
@@ -562,36 +613,47 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     {chain.shortName}
                   </span>
                 )}
-                <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  #{projectId}
-                </span>
               </div>
+              {/* Operator/Owner address */}
+              {displayAddress && (
+                <div className={`flex items-center gap-1.5 mt-1.5 text-xs ${
+                  isDark ? 'text-gray-500' : 'text-gray-400'
+                }`}>
+                  <span>{projectIsRevnet ? t('project.operator', 'Operator') : t('project.owner', 'Owner')}:</span>
+                  <a
+                    href={chain ? `${chain.explorer}/address/${displayAddress}` : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`hover:underline ${
+                      isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+                    } ${!displayAddressEns ? 'font-mono' : ''}`}
+                  >
+                    {displayAddressEns || truncateAddress(displayAddress)}
+                  </a>
+                  {isOwner && (
+                    <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
+                      {t('project.you', 'You')}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Owner info */}
-          {project.owner && (
-            <div className={`flex items-center gap-1.5 mt-3 text-xs ${
-              isDark ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              <span>{t('project.owner', 'Owner')}:</span>
-              <a
-                href={chain ? `${chain.explorer}/address/${project.owner}` : '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`font-mono hover:underline ${
-                  isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                {project.owner.slice(0, 6)}...{project.owner.slice(-4)}
-              </a>
-              {isOwner && (
-                <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
-                  {t('project.you', 'You')}
-                </span>
-              )}
+          {/* Mobile metrics row */}
+          <div className={`flex gap-4 mt-3 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div>
+              <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {formatEth(displayBalance)}
+              </span> ETH
             </div>
-          )}
+            <div>{displayPaymentsCount.toLocaleString()} payments</div>
+            <div>
+              <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {formatEth(displayVolume)}
+              </span> ETH vol
+            </div>
+          </div>
         </div>
 
         {/* Tab navigation */}
