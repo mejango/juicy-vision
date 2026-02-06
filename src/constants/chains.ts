@@ -70,6 +70,46 @@ export const RPC_ENDPOINTS: Record<number, string[]> = IS_TESTNET
 
 export type SupportedChainId = (typeof CHAIN_IDS)[keyof typeof CHAIN_IDS]
 
+// Mainnet chain IDs (always available, even in staging mode for cross-network queries)
+export const MAINNET_CHAIN_IDS = {
+  ethereum: 1,
+  optimism: 10,
+  base: 8453,
+  arbitrum: 42161,
+} as const
+
+// Mainnet viem chain configs (always available for on-chain reads of mainnet data in staging)
+export const MAINNET_VIEM_CHAINS = {
+  [MAINNET_CHAIN_IDS.ethereum]: mainnet,
+  [MAINNET_CHAIN_IDS.optimism]: optimism,
+  [MAINNET_CHAIN_IDS.base]: base,
+  [MAINNET_CHAIN_IDS.arbitrum]: arbitrum,
+} as const
+
+// Mainnet RPC endpoints (always available for on-chain reads of mainnet data in staging)
+export const MAINNET_RPC_ENDPOINTS: Record<number, string[]> = {
+  [MAINNET_CHAIN_IDS.ethereum]: [
+    'https://ethereum.publicnode.com',
+    'https://eth.drpc.org',
+    'https://rpc.ankr.com/eth',
+  ],
+  [MAINNET_CHAIN_IDS.optimism]: [
+    'https://optimism.publicnode.com',
+    'https://mainnet.optimism.io',
+    'https://rpc.ankr.com/optimism',
+  ],
+  [MAINNET_CHAIN_IDS.base]: [
+    'https://base.publicnode.com',
+    'https://mainnet.base.org',
+    'https://rpc.ankr.com/base',
+  ],
+  [MAINNET_CHAIN_IDS.arbitrum]: [
+    'https://arbitrum-one.publicnode.com',
+    'https://arb1.arbitrum.io/rpc',
+    'https://rpc.ankr.com/arbitrum',
+  ],
+}
+
 // USDC contract addresses per chain
 // Testnet uses test USDC tokens (may need faucet or minting)
 export const USDC_ADDRESSES: Record<SupportedChainId, `0x${string}`> = IS_TESTNET

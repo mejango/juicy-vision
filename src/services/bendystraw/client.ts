@@ -1,7 +1,7 @@
 import { GraphQLClient, RequestDocument, Variables } from 'graphql-request'
 import { createPublicClient, http } from 'viem'
 import { useSettingsStore, useDebugStore } from '../../stores'
-import { VIEM_CHAINS, ZERO_ADDRESS, REV_DEPLOYER, JB_CONTRACTS, JB_CONTRACTS_V5, RPC_ENDPOINTS, USDC_ADDRESSES, type SupportedChainId } from '../../constants'
+import { VIEM_CHAINS, ZERO_ADDRESS, REV_DEPLOYER, JB_CONTRACTS, JB_CONTRACTS_V5, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
 import { IS_TESTNET } from '../../config/environment'
 import { createCache, CACHE_DURATIONS, bendystrawCircuit, rpcCircuit } from '../../utils'
 
@@ -205,11 +205,20 @@ async function safeRpcCall<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 // Create a viem public client for on-chain reads with reliable RPC
+// Supports mainnet chains even in staging mode (for cross-network queries)
 function getPublicClient(chainId: number) {
-  const chain = VIEM_CHAINS[chainId as SupportedChainId]
+  // First try environment-specific chains
+  let chain = VIEM_CHAINS[chainId as SupportedChainId]
+  let rpcUrls = RPC_ENDPOINTS[chainId] || []
+
+  // If not found, try mainnet chains (for staging mode querying mainnet data)
+  if (!chain && MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]) {
+    chain = MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
+    rpcUrls = MAINNET_RPC_ENDPOINTS[chainId] || []
+  }
+
   if (!chain) return null
 
-  const rpcUrls = RPC_ENDPOINTS[chainId] || []
   const rpcUrl = rpcUrls[0] // Use first (most reliable) RPC
 
   return createPublicClient({
