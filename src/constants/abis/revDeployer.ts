@@ -3,14 +3,14 @@
 
 export const REV_DEPLOYER_ADDRESS = '0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d' as const
 
-// ABI for hookOf view function - returns the 721 hook for a revnet
-export const REV_DEPLOYER_HOOK_OF_ABI = [
+// ABI for tiered721HookOf view function - returns the 721 hook for a revnet
+export const REV_DEPLOYER_TIERED_721_HOOK_ABI = [
   {
-    name: 'hookOf',
+    name: 'tiered721HookOf',
     type: 'function',
     stateMutability: 'view',
     inputs: [{ name: 'revnetId', type: 'uint256' }],
-    outputs: [{ name: 'hook', type: 'address' }],
+    outputs: [{ name: 'tiered721Hook', type: 'address' }],
   },
 ] as const
 

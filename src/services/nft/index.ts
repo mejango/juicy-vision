@@ -2,7 +2,7 @@
 
 import { createPublicClient, http, zeroAddress } from 'viem'
 import { VIEM_CHAINS, RPC_ENDPOINTS, JB_CONTRACTS, type SupportedChainId } from '../../constants/chains'
-import { REV_DEPLOYER_ADDRESS, REV_DEPLOYER_HOOK_OF_ABI } from '../../constants/abis/revDeployer'
+import { REV_DEPLOYER_ADDRESS, REV_DEPLOYER_TIERED_721_HOOK_ABI } from '../../constants/abis/revDeployer'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { isRevnet, fetchProject } from '../bendystraw'
 import {
@@ -51,12 +51,12 @@ export async function getProjectDataHook(
     const projectIsRevnet = project?.owner ? isRevnet(project.owner) : false
 
     if (projectIsRevnet) {
-      // For revnets, query the REVDeployer's hookOf function
+      // For revnets, query the REVDeployer's tiered721HookOf function
       try {
         const hookAddress = await client.readContract({
           address: REV_DEPLOYER_ADDRESS,
-          abi: REV_DEPLOYER_HOOK_OF_ABI,
-          functionName: 'hookOf',
+          abi: REV_DEPLOYER_TIERED_721_HOOK_ABI,
+          functionName: 'tiered721HookOf',
           args: [BigInt(projectId)],
         })
 
@@ -64,7 +64,7 @@ export async function getProjectDataHook(
           return hookAddress
         }
       } catch (err) {
-        console.error('Failed to get revnet hook:', err)
+        console.error('Failed to get revnet tiered721 hook:', err)
       }
       return null
     }
