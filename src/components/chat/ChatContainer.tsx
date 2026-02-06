@@ -1299,7 +1299,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           </div>
         )}
 
-        {messages.length === 0 && !isWaitingForAi && !pendingNewChat ? (
+        {messages.length === 0 && !isWaitingForAi ? (
           <>
             {/* Welcome screen (recommendations) - fills full area, extends behind dock */}
             {(topOnly || (!topOnly && !bottomOnly)) && (
