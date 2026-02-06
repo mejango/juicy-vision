@@ -47,6 +47,7 @@ export const JB721TiersHookAbi = [
 
 /**
  * JB721TierStore ABI (partial - functions we need)
+ * Must match juice-sdk-core's jb721TiersHookStoreAbi exactly
  */
 export const JB721TierStoreAbi = [
   {
@@ -70,9 +71,11 @@ export const JB721TierStoreAbi = [
           { name: 'remainingSupply', type: 'uint32' },
           { name: 'initialSupply', type: 'uint32' },
           { name: 'votingUnits', type: 'uint104' },
-          { name: 'reservedRate', type: 'uint16' },
           { name: 'reserveFrequency', type: 'uint16' },
+          { name: 'reserveBeneficiary', type: 'address' },
+          { name: 'encodedIPFSUri', type: 'bytes32' },
           { name: 'category', type: 'uint24' },
+          { name: 'discountPercent', type: 'uint8' },
           { name: 'allowOwnerMint', type: 'bool' },
           { name: 'transfersPausable', type: 'bool' },
           { name: 'cannotBeRemoved', type: 'bool' },
@@ -101,9 +104,11 @@ export const JB721TierStoreAbi = [
           { name: 'remainingSupply', type: 'uint32' },
           { name: 'initialSupply', type: 'uint32' },
           { name: 'votingUnits', type: 'uint104' },
-          { name: 'reservedRate', type: 'uint16' },
           { name: 'reserveFrequency', type: 'uint16' },
+          { name: 'reserveBeneficiary', type: 'address' },
+          { name: 'encodedIPFSUri', type: 'bytes32' },
           { name: 'category', type: 'uint24' },
+          { name: 'discountPercent', type: 'uint8' },
           { name: 'allowOwnerMint', type: 'bool' },
           { name: 'transfersPausable', type: 'bool' },
           { name: 'cannotBeRemoved', type: 'bool' },
