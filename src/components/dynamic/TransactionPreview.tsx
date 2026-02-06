@@ -2762,7 +2762,7 @@ export default function TransactionPreview({
                     <ParamRow key="owner" name="owner" value={launchValidation.owner} isDark={isDark} chainId={chainId} />
                   )}
                   {Object.entries(parsedParams)
-                    .filter(([key]) => !['chainConfigs', 'projectMetadata', 'suckerDeploymentConfiguration', 'raw', 'launchProjectConfig'].includes(key)) // Hide fields shown separately
+                    .filter(([key]) => !['chainConfigs', 'projectMetadata', 'suckerDeploymentConfiguration', 'raw'].includes(key)) // Hide fields shown separately
                     .map(([key, value]) => (
                     <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
                   ))}

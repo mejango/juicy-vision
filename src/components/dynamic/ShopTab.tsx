@@ -169,6 +169,7 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
                     ethPrice={ethPrice}
                     isOwner={isOwner}
                     hookAddress={hookAddress}
+                    addToCheckoutMode
                   />
                 ))}
               </div>
@@ -191,6 +192,7 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
                       ethPrice={ethPrice}
                       isOwner={isOwner}
                       hookAddress={hookAddress}
+                      addToCheckoutMode
                     />
                   ))}
                 </div>
@@ -210,6 +212,7 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
               ethPrice={ethPrice}
               isOwner={isOwner}
               hookAddress={hookAddress}
+              addToCheckoutMode
             />
           ))}
         </div>

@@ -347,6 +347,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [nftHookAddress, setNftHookAddress] = useState<`0x${string}` | null>(null)
   const [nftHookFlags, setNftHookFlags] = useState<JB721HookFlags | null>(null)
   const [selectedTierIds, setSelectedTierIds] = useState<number[]>([])
+  // Backward compatibility - first selected tier ID (for single-tier operations)
+  const selectedTierId = selectedTierIds.length > 0 ? selectedTierIds[0] : null
+  const setSelectedTierId = (id: number | null) => setSelectedTierIds(id ? [id] : [])
   const [showAllTiers, setShowAllTiers] = useState(false)
   const { theme } = useThemeStore()
   const { addTransaction, getTransaction } = useTransactionStore()
@@ -452,7 +455,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         setNftHookFlags(null)
       }
       setSelectedTierIds([]) // Reset selection on chain change
-      setShowAllTiers(false) // Reset expanded state
     }
     loadNFTTiers()
   }, [currentProjectId, selectedChainId])
@@ -1209,8 +1211,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Shop
             </div>
-            <div className={`flex flex-wrap gap-2 ${showAllTiers ? 'max-h-72 overflow-y-auto pr-1' : ''}`}>
-              {(showAllTiers ? nftTiers : nftTiers.slice(0, 3)).map(tier => (
+            <div className="flex flex-wrap gap-2">
+              {nftTiers.slice(0, 3).map(tier => (
                 <button
                   key={tier.tierId}
                   onClick={() => !isPaymentLocked && handleTierSelect(tier)}

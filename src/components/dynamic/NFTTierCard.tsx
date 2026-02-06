@@ -288,7 +288,7 @@ export default function NFTTierCard({
       {/* Content */}
       <div className="p-4">
         <h3 className={`font-semibold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          {tier.name}
+          {onChainName || tier.name}
         </h3>
 
         {tier.description && (
@@ -348,7 +348,7 @@ export default function NFTTierCard({
                   : 'border-green-500 text-green-500 hover:bg-green-500/10'
               }`}
             >
-              {minting ? 'Buying...' : soldOut ? 'Sold Out' : 'Buy'}
+              {minting ? 'Buying...' : soldOut ? 'Sold Out' : addToCheckoutMode ? 'Add' : 'Buy'}
             </button>
           </div>
         )}
