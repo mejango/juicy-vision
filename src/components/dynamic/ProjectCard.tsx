@@ -347,10 +347,19 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   }, [persistedPayment?.status]) // Only run when status changes (initial load or update)
 
   // Fetch $JUICY issuance rate when chain changes
+  // Try selected chain first, fall back to mainnet if no data
   useEffect(() => {
-    fetchIssuanceRate(String(JUICY_PROJECT_ID), parseInt(selectedChainId))
-      .then(setJuicyIssuanceRate)
-      .catch(() => setJuicyIssuanceRate(null))
+    async function loadJuicyRate() {
+      const chainId = parseInt(selectedChainId)
+      // Try selected chain first
+      let rate = await fetchIssuanceRate(String(JUICY_PROJECT_ID), chainId).catch(() => null)
+      // If no rate found and not already on mainnet, try mainnet as fallback
+      if (!rate && chainId !== 1) {
+        rate = await fetchIssuanceRate(String(JUICY_PROJECT_ID), 1).catch(() => null)
+      }
+      setJuicyIssuanceRate(rate)
+    }
+    loadJuicyRate()
   }, [selectedChainId])
 
   // Fetch NFT tiers when chain changes
