@@ -24,9 +24,6 @@ import type { JB721TierConfigInput } from '../tiersHook'
 export * from './types'
 export * from './queries'
 
-// JB721TiersHookStore address (same on all chains via CREATE2)
-const JB721_TIER_STORE = '0x4ae9af188c2b63cba768e53f7e6c1b62b2e86ce7' as const
-
 /**
  * Get the 721 data hook address for a project.
  * For revnets, this queries the REVDeployer's hookOf function since the
@@ -120,19 +117,40 @@ export async function fetchNFTTiers(
   chainId: number,
   maxTiers: number = 100
 ): Promise<NFTTier[]> {
-  const chain = VIEM_CHAINS[chainId as SupportedChainId]
-  if (!chain) return []
+  // Support both testnet and mainnet chains
+  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
+    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
+  if (!chain) {
+    console.warn('[NFT] fetchNFTTiers: Unsupported chainId:', chainId)
+    return []
+  }
 
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
+    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
   })
 
   try {
-    // Fetch all tiers with resolved URIs
+    // First, get the store address from the hook contract
+    console.log('[NFT] Fetching STORE() from hook:', hookAddress)
+    const storeAddress = await client.readContract({
+      address: hookAddress,
+      abi: JB721TiersHookAbi,
+      functionName: 'STORE',
+    })
+    console.log('[NFT] Store address:', storeAddress)
+
+    if (!storeAddress || storeAddress === zeroAddress) {
+      console.warn('[NFT] No store address found for hook:', hookAddress)
+      return []
+    }
+
+    // Fetch all tiers with resolved URIs from the store
+    console.log('[NFT] Fetching tiers from store:', storeAddress)
     const tiers = await client.readContract({
-      address: JB721_TIER_STORE,
+      address: storeAddress,
       abi: JB721TierStoreAbi,
       functionName: 'tiersOf',
       args: [
@@ -143,6 +161,8 @@ export async function fetchNFTTiers(
         BigInt(maxTiers),
       ],
     })
+
+    console.log('[NFT] Fetched', tiers.length, 'tiers')
 
     // Map raw tier data to our NFTTier type
     return tiers.map((tier) => ({
@@ -160,7 +180,7 @@ export async function fetchNFTTiers(
       encodedIPFSUri: tier.resolvedUri || undefined,
     }))
   } catch (err) {
-    console.error('Failed to fetch NFT tiers:', err)
+    console.error('[NFT] Failed to fetch NFT tiers:', err)
     return []
   }
 }
@@ -173,18 +193,30 @@ export async function fetchNFTTier(
   tierId: number,
   chainId: number
 ): Promise<NFTTier | null> {
-  const chain = VIEM_CHAINS[chainId as SupportedChainId]
+  // Support both testnet and mainnet chains
+  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
+    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
   if (!chain) return null
 
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
+    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
   })
 
   try {
+    // Get the store address from the hook contract
+    const storeAddress = await client.readContract({
+      address: hookAddress,
+      abi: JB721TiersHookAbi,
+      functionName: 'STORE',
+    })
+
+    if (!storeAddress || storeAddress === zeroAddress) return null
+
     const tier = await client.readContract({
-      address: JB721_TIER_STORE,
+      address: storeAddress,
       abi: JB721TierStoreAbi,
       functionName: 'tierOf',
       args: [hookAddress, BigInt(tierId), true],
@@ -293,18 +325,30 @@ export async function getNumberOfTiers(
   hookAddress: `0x${string}`,
   chainId: number
 ): Promise<number> {
-  const chain = VIEM_CHAINS[chainId as SupportedChainId]
+  // Support both testnet and mainnet chains
+  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
+    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
   if (!chain) return 0
 
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
+    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
   })
 
   try {
+    // Get the store address from the hook contract
+    const storeAddress = await client.readContract({
+      address: hookAddress,
+      abi: JB721TiersHookAbi,
+      functionName: 'STORE',
+    })
+
+    if (!storeAddress || storeAddress === zeroAddress) return 0
+
     const count = await client.readContract({
-      address: JB721_TIER_STORE,
+      address: storeAddress,
       abi: JB721TierStoreAbi,
       functionName: 'numberOfTiersOf',
       args: [hookAddress],
@@ -324,10 +368,13 @@ export async function fetchHookFlags(
   hookAddress: `0x${string}`,
   chainId: number
 ): Promise<JB721HookFlags | null> {
-  const chain = VIEM_CHAINS[chainId as SupportedChainId]
+  // Support both testnet and mainnet chains
+  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
+    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
   if (!chain) return null
 
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
+    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
@@ -360,18 +407,30 @@ export async function fetchNFTTiersWithPermissions(
   chainId: number,
   maxTiers: number = 100
 ): Promise<NFTTierWithPermissions[]> {
-  const chain = VIEM_CHAINS[chainId as SupportedChainId]
+  // Support both testnet and mainnet chains
+  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
+    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
   if (!chain) return []
 
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
+    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
   })
 
   try {
+    // Get the store address from the hook contract
+    const storeAddress = await client.readContract({
+      address: hookAddress,
+      abi: JB721TiersHookAbi,
+      functionName: 'STORE',
+    })
+
+    if (!storeAddress || storeAddress === zeroAddress) return []
+
     const tiers = await client.readContract({
-      address: JB721_TIER_STORE,
+      address: storeAddress,
       abi: JB721TierStoreAbi,
       functionName: 'tiersOf',
       args: [
