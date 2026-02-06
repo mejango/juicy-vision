@@ -1357,10 +1357,12 @@ export async function fetchIssuanceRate(
 // Sucker group balance info
 export interface SuckerGroupBalance {
   totalBalance: string  // Pre-aggregated balance from suckerGroup entity
+  totalVolume: string   // Pre-aggregated volume (total raised) from suckerGroup entity
+  totalVolumeUsd: string // Volume in USD
   totalPaymentsCount: number  // Sum of all payments across the group
   currency: number  // 1 = ETH, 2 = USD
   decimals: number  // Token decimals (18 for ETH, 6 for USDC)
-  projectBalances: Array<{ chainId: number; projectId: number; balance: string; paymentsCount: number; currency?: number; decimals?: number }>
+  projectBalances: Array<{ chainId: number; projectId: number; balance: string; volume?: string; paymentsCount: number; currency?: number; decimals?: number }>
 }
 
 // Get the total balance across all projects in a sucker group
@@ -1391,6 +1393,8 @@ export async function fetchSuckerGroupBalance(
       console.error('[fetchSuckerGroupBalance] Project not found:', projectId, chainId)
       return {
         totalBalance: '0',
+        totalVolume: '0',
+        totalVolumeUsd: '0',
         totalPaymentsCount: 0,
         currency: 1,
         decimals: 18,
@@ -1404,6 +1408,8 @@ export async function fetchSuckerGroupBalance(
     if (!suckerGroupId) {
       return {
         totalBalance: projectData.project.balance,
+        totalVolume: projectData.project.balance, // Use balance as volume fallback
+        totalVolumeUsd: '0',
         totalPaymentsCount: projectData.project.paymentsCount || 0,
         currency: 1,  // Assume ETH for single projects without suckerGroup
         decimals: 18,
@@ -1418,11 +1424,13 @@ export async function fetchSuckerGroupBalance(
       }
     }
 
-    // Query the suckerGroup directly for its pre-aggregated balance
+    // Query the suckerGroup directly for its pre-aggregated balance and volume
     const groupData = await client.request<{
       suckerGroup: {
         id: string
         balance: string  // Pre-aggregated balance across all chains
+        volume: string   // Pre-aggregated volume (total raised) across all chains
+        volumeUsd: string // Volume in USD
         tokenSupply: string
         paymentsCount: number
         contributorsCount: number
@@ -1431,6 +1439,7 @@ export async function fetchSuckerGroupBalance(
             projectId: number
             chainId: number
             balance: string
+            volume: string
             tokenSupply: string
             paymentsCount: number
             decimals: number
@@ -1447,6 +1456,8 @@ export async function fetchSuckerGroupBalance(
       // Fallback to project balance if suckerGroup query fails
       return {
         totalBalance: projectData.project.balance,
+        totalVolume: projectData.project.balance, // Use balance as volume fallback
+        totalVolumeUsd: '0',
         totalPaymentsCount: projectData.project.paymentsCount || 0,
         currency: 1,
         decimals: 18,
@@ -1473,9 +1484,11 @@ export async function fetchSuckerGroupBalance(
     // If decimals is 6, it's definitely USDC regardless of what API says
     const currency = decimals === 6 ? 2 : (rawCurrency ?? 1)
 
-    // Use the pre-aggregated balance from suckerGroup entity
+    // Use the pre-aggregated balance and volume from suckerGroup entity
     return {
       totalBalance: group.balance,
+      totalVolume: group.volume || '0',
+      totalVolumeUsd: group.volumeUsd || '0',
       totalPaymentsCount: group.paymentsCount || 0,
       currency,
       decimals,
@@ -1483,6 +1496,7 @@ export async function fetchSuckerGroupBalance(
         chainId: item.chainId,
         projectId: item.projectId,
         balance: item.balance,
+        volume: item.volume,
         paymentsCount: item.paymentsCount || 0,
         currency: item.currency,
         decimals: item.decimals,
@@ -1492,6 +1506,8 @@ export async function fetchSuckerGroupBalance(
     console.error('Failed to fetch sucker group balance:', err)
     return {
       totalBalance: '0',
+      totalVolume: '0',
+      totalVolumeUsd: '0',
       totalPaymentsCount: 0,
       currency: 1,
       decimals: 18,

@@ -343,12 +343,14 @@ export const PROJECT_SUCKER_GROUP_QUERY = `
   }
 `
 
-// Query to get suckerGroup directly by ID with aggregated balance
+// Query to get suckerGroup directly by ID with aggregated balance and volume
 export const SUCKER_GROUP_BY_ID_QUERY = `
   query SuckerGroupById($id: String!) {
     suckerGroup(id: $id) {
       id
       balance
+      volume
+      volumeUsd
       tokenSupply
       paymentsCount
       contributorsCount
@@ -357,6 +359,7 @@ export const SUCKER_GROUP_BY_ID_QUERY = `
           projectId
           chainId
           balance
+          volume
           tokenSupply
           paymentsCount
           decimals

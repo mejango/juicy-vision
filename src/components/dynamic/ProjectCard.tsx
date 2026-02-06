@@ -462,6 +462,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           })
           setSuckerBalance({
             totalBalance: '0',
+            totalVolume: '0',
+            totalVolumeUsd: '0',
             currency: 1,
             decimals: 18,
             totalPaymentsCount: 0,

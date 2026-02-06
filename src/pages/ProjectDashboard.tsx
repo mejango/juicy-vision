@@ -131,12 +131,13 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     return project?.paymentsCount || 0
   }, [suckerGroupBalance, project?.paymentsCount])
 
-  // Calculate aggregated volume from all chain projects in sucker group
+  // Use aggregated volume from sucker group when available (for omnichain projects)
   const displayVolume = useMemo(() => {
-    // For now, use single project volume - aggregated volume would require summing from all chain projects
-    // The suckerGroup API doesn't currently expose volume
+    if (suckerGroupBalance && suckerGroupBalance.totalVolume !== '0') {
+      return suckerGroupBalance.totalVolume
+    }
     return project?.volume || '0'
-  }, [project?.volume])
+  }, [suckerGroupBalance, project?.volume])
 
   // Load project data
   useEffect(() => {
