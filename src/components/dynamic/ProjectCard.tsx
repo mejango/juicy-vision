@@ -31,6 +31,7 @@ interface ProjectCardProps {
   projectId: string
   chainId?: string
   messageId?: string // For persisting payment state to server (visible to all chat users)
+  embedded?: boolean // For sidebar display mode - removes outer container styling
 }
 
 const CHAIN_INFO: Record<string, { name: string; slug: string }> = {
@@ -230,7 +231,7 @@ function PaymentProgress({
   )
 }
 
-export default function ProjectCard({ projectId, chainId: initialChainId = '1', messageId }: ProjectCardProps) {
+export default function ProjectCard({ projectId, chainId: initialChainId = '1', messageId, embedded = false }: ProjectCardProps) {
   // Persistent payment state (visible to all chat users)
   const { state: persistedPayment, updateState: updatePersistedPayment } = useProjectCardPaymentState(messageId)
 
@@ -974,13 +975,14 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const projectUrl = `https://juicebox.money/v5/${selectedChainInfo.slug}:${currentProjectId}`
 
   return (
-    <div className="w-full">
-      {/* Card with border - constrained width */}
-      <div className={`max-w-md border p-4 ${
-        isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
-      }`}>
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-2">
+    <div className={embedded ? '' : 'w-full'}>
+      {/* Card with border - constrained width (skip outer styles in embedded mode) */}
+      <div className={embedded
+        ? 'p-4'
+        : `max-w-md border p-4 ${isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'}`
+      }>
+      {/* Header - hide in embedded mode since dashboard already shows it */}
+      {!embedded && <div className="flex items-center gap-3 mb-2">
         {logoUrl ? (
           <img src={logoUrl} alt={project.name} className="w-14 h-14 object-cover" />
         ) : (
@@ -1001,17 +1003,17 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             Project #{currentProjectId}
           </a>
         </div>
-      </div>
+      </div>}
 
-      {/* Tagline - inside card near name */}
-      {(fullMetadata?.tagline || fullMetadata?.projectTagline) && (
+      {/* Tagline - inside card near name (hide in embedded mode) */}
+      {!embedded && (fullMetadata?.tagline || fullMetadata?.projectTagline) && (
         <p className={`text-sm italic mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
           {fullMetadata.tagline || fullMetadata.projectTagline}
         </p>
       )}
 
-      {/* Stats - inline, no background */}
-      <div className="flex gap-6 mb-3 text-sm">
+      {/* Stats - inline, no background (hide in embedded mode) */}
+      {!embedded && <div className="flex gap-6 mb-3 text-sm">
         <div
           className="relative"
           onMouseEnter={() => setShowBalanceTooltip(true)}
@@ -1092,12 +1094,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* Pay form */}
-      <div className={`mb-3 p-3  ${
-        isDark ? 'bg-white/5' : 'bg-gray-50'
-      }`}>
+      <div className={embedded ? '' : `mb-3 p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
         {/* Chain selector */}
         <div className="relative mb-3">
           <button

@@ -14,6 +14,7 @@ interface ActivityFeedProps {
   projectId: string
   chainId?: string
   limit?: number
+  compact?: boolean // For sidebar display mode - removes outer container styling
 }
 
 type ActivityEvent = {
@@ -78,7 +79,8 @@ function formatCurrencyAmount(wei: string, decimals: number, currency: number): 
 export default function ActivityFeed({
   projectId,
   chainId = '1',
-  limit = 5
+  limit = 5,
+  compact = false
 }: ActivityFeedProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -173,6 +175,84 @@ export default function ActivityFeed({
       case 'pay': return 'text-emerald-400'
       case 'cashout': return 'text-amber-400'
     }
+  }
+
+  // Compact mode for sidebar - no outer container
+  if (compact) {
+    return (
+      <div className={`divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
+        {loading ? (
+          <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            Loading activity...
+          </div>
+        ) : displayedEvents.length === 0 ? (
+          <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            No activity yet
+          </div>
+        ) : (
+          displayedEvents.map((event, idx) => (
+            <div
+              key={`${event.txHash}-${idx}`}
+              className={`px-4 py-3 flex items-start gap-3 ${
+                isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'
+              }`}
+            >
+              <span className="text-lg">{getEventIcon(event.type)}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <a
+                    href={`${explorerUrl}/address/${event.from}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`text-sm font-medium font-mono hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
+                  >
+                    {formatAddress(event.from)}
+                  </a>
+                  <span className={`text-sm ${getEventColor(event.type)}`}>
+                    {event.type === 'pay' && 'paid'}
+                    {event.type === 'cashout' && 'cashed out'}
+                  </span>
+                  <a
+                    href={`${explorerUrl}/tx/${event.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`text-sm font-medium hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
+                  >
+                    {event.amount}
+                  </a>
+                </div>
+                {event.tokenAmount && (
+                  <div className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {event.type === 'pay' ? 'Received' : 'Burned'} {event.tokenAmount} tokens
+                  </div>
+                )}
+                {event.memo && (
+                  <div className={`text-xs mt-1 italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    "{event.memo}"
+                  </div>
+                )}
+              </div>
+              <span className={`text-xs whitespace-nowrap ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                {formatTimeAgo(event.timestamp)}
+              </span>
+            </div>
+          ))
+        )}
+        {/* Load more */}
+        {events.length > limit && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className={`w-full px-4 py-2 text-sm text-center transition-colors ${
+              isDark
+                ? 'text-gray-400 hover:text-white hover:bg-white/5'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {expanded ? 'Show less' : `Show ${events.length - limit} more`}
+          </button>
+        )}
+      </div>
+    )
   }
 
   return (

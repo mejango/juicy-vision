@@ -23,6 +23,8 @@ import PriceChart from '../components/dynamic/PriceChart'
 import ActivityFeed from '../components/dynamic/ActivityFeed'
 import ProjectCard from '../components/dynamic/ProjectCard'
 import RulesetSchedule from '../components/dynamic/RulesetSchedule'
+import FundsSection from '../components/dynamic/FundsSection'
+import TokensTab from '../components/dynamic/TokensTab'
 
 // Payment modals
 import CashOutModal from '../components/payment/CashOutModal'
@@ -30,7 +32,7 @@ import SendPayoutsModal from '../components/payment/SendPayoutsModal'
 // Note: QueueRulesetForm is used for ruleset changes - it has its own modal internally
 import QueueRulesetForm from '../components/dynamic/QueueRulesetForm'
 
-type DashboardTab = 'overview' | 'payments'
+type DashboardTab = 'about' | 'analytics' | 'rulesets' | 'tokens'
 type ModalType = 'pay' | 'cashout' | 'payouts' | 'ruleset' | null
 
 interface ProjectDashboardProps {
@@ -85,7 +87,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const isMobile = useIsMobile()
   const isDark = theme === 'dark'
 
-  const [activeTab, setActiveTab] = useState<DashboardTab>('overview')
+  const [activeTab, setActiveTab] = useState<DashboardTab>('about')
   const [project, setProject] = useState<Project | null>(null)
   const [projectLoading, setProjectLoading] = useState(true)
   const [supporters, setSupporters] = useState<ProjectConversation[]>([])
@@ -161,7 +163,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     loadProject()
   }, [projectId, chainId])
 
-  // Load supporters when payments tab is active
+  // Load supporters when payments tab is active (kept for compatibility)
   const loadSupporters = useCallback(async () => {
     if (supportersLoading || supportersLoaded) return
     setSupportersLoading(true)
@@ -176,12 +178,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
       setSupportersLoading(false)
     }
   }, [projectId, chainId, supportersLoading, supportersLoaded])
-
-  useEffect(() => {
-    if (activeTab === 'payments' && !supportersLoaded) {
-      loadSupporters()
-    }
-  }, [activeTab, supportersLoaded, loadSupporters])
 
   const handleSupporterClick = (chatId: string) => {
     // Only owners can access supporter chats
@@ -246,7 +242,15 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     )
   }
 
-  // Desktop layout with 3-column structure
+  // Tab configuration
+  const tabs: Array<{ id: DashboardTab; label: string }> = [
+    { id: 'about', label: 'About' },
+    { id: 'analytics', label: 'Analytics' },
+    { id: 'rulesets', label: 'Rulesets & Funds' },
+    { id: 'tokens', label: 'Tokens' },
+  ]
+
+  // Desktop layout with two-column structure
   if (!isMobile) {
     return (
       <div className={`h-screen flex overflow-hidden ${isDark ? 'bg-juice-dark' : 'bg-white'}`}>
@@ -275,7 +279,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 {t('ui.back', 'Back')}
               </button>
 
-              {/* Project header with Pay button */}
+              {/* Project header */}
               <div className="flex items-start gap-4">
                 {project.logoUri ? (
                   <img
@@ -291,19 +295,11 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3">
-                    <h1 className={`text-xl font-semibold truncate ${
-                      isDark ? 'text-white' : 'text-gray-900'
-                    }`}>
-                      {project.name || `Project #${projectId}`}
-                    </h1>
-                    <button
-                      onClick={() => setActiveModal('pay')}
-                      className="px-4 py-1.5 bg-green-500 text-black text-sm font-medium hover:bg-green-400 transition-colors shrink-0"
-                    >
-                      Pay
-                    </button>
-                  </div>
+                  <h1 className={`text-xl font-semibold truncate ${
+                    isDark ? 'text-white' : 'text-gray-900'
+                  }`}>
+                    {project.name || `Project #${projectId}`}
+                  </h1>
                   <div className="flex items-center gap-2 mt-1">
                     {chain && (
                       <span
@@ -342,173 +338,118 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     </div>
                   )}
                 </div>
+              </div>
 
-                {/* Stats row */}
-                <div className="flex gap-6 text-sm shrink-0">
-                  <div>
-                    <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Volume</div>
-                    <div className={`font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {formatEth(displayVolume)} ETH
-                    </div>
-                  </div>
-                  <div>
-                    <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Payments</div>
-                    <div className={`font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {displayPaymentsCount}
-                    </div>
-                  </div>
-                  <div>
-                    <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Balance</div>
-                    <div className={`font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {formatEth(displayBalance)} ETH
-                    </div>
-                  </div>
-                </div>
+              {/* Tab navigation */}
+              <div className={`flex gap-6 mt-4 border-b -mb-px ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                {tabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`pb-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                      activeTab === tab.id
+                        ? 'border-juice-orange text-juice-orange'
+                        : isDark
+                          ? 'border-transparent text-gray-400 hover:text-gray-200'
+                          : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* Scrollable main content */}
-          <div className="flex-1 overflow-y-auto">
-            <div className="px-6 py-6 space-y-6">
-              {/* Description */}
-              {project.description && (
-                <p className={`text-sm whitespace-pre-line ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  {stripHtmlTags(project.description)}
-                </p>
-              )}
+          {/* Two-column layout */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left: Main content (scrollable) */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-6 py-6 space-y-6">
+                {/* About Tab */}
+                {activeTab === 'about' && (
+                  <>
+                    {project.description ? (
+                      <p className={`text-sm whitespace-pre-line ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        {stripHtmlTags(project.description)}
+                      </p>
+                    ) : (
+                      <p className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                        No description available.
+                      </p>
+                    )}
+                  </>
+                )}
 
-              {/* Charts grid - 2x2 */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
-                <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
-                <PriceChart projectId={String(projectId)} chainId={String(chainId)} />
-                <HoldersChart projectId={String(projectId)} chainId={String(chainId)} />
+                {/* Analytics Tab */}
+                {activeTab === 'analytics' && (
+                  <>
+                    {/* Charts grid - 2x2 */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
+                      <HoldersChart projectId={String(projectId)} chainId={String(chainId)} />
+                      <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
+                      <PriceChart projectId={String(projectId)} chainId={String(chainId)} />
+                    </div>
+                  </>
+                )}
+
+                {/* Rulesets & Funds Tab */}
+                {activeTab === 'rulesets' && (
+                  <>
+                    {/* Ruleset Schedule */}
+                    <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+
+                    {/* Funds Section */}
+                    <FundsSection
+                      projectId={String(projectId)}
+                      chainId={String(chainId)}
+                      isOwner={isOwner}
+                      onSendPayouts={() => setActiveModal('payouts')}
+                    />
+                  </>
+                )}
+
+                {/* Tokens Tab */}
+                {activeTab === 'tokens' && (
+                  <TokensTab
+                    projectId={String(projectId)}
+                    chainId={String(chainId)}
+                    isOwner={isOwner}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Right: Sticky sidebar */}
+            <div className={`w-[380px] shrink-0 border-l flex flex-col ${
+              isDark ? 'border-white/10' : 'border-gray-200'
+            }`}>
+              {/* Pay/Cash out panel - sticky at top */}
+              <div className={`shrink-0 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                <ProjectCard
+                  projectId={String(projectId)}
+                  chainId={String(chainId)}
+                  embedded
+                />
               </div>
 
-              {/* Ruleset Schedule */}
-              <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
-
-              {/* Activity Feed */}
-              <ActivityFeed projectId={String(projectId)} chainId={String(chainId)} limit={10} />
-
-              {/* Owner Actions */}
-              {isOwner && (
-                <div className={`p-4 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'}`}>
-                  <h3 className={`text-sm font-semibold mb-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    Owner Actions
-                  </h3>
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      onClick={() => setActiveModal('payouts')}
-                      className={`px-4 py-2 text-sm font-medium transition-colors ${
-                        isDark
-                          ? 'bg-juice-orange/20 text-juice-orange hover:bg-juice-orange/30'
-                          : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-                      }`}
-                    >
-                      Send Payouts
-                    </button>
-                    <button
-                      onClick={() => setActiveModal('ruleset')}
-                      className={`px-4 py-2 text-sm font-medium transition-colors ${
-                        isDark
-                          ? 'bg-juice-cyan/20 text-juice-cyan hover:bg-juice-cyan/30'
-                          : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'
-                      }`}
-                    >
-                      Queue Ruleset
-                    </button>
-                  </div>
+              {/* Activity Feed - scrollable */}
+              <div className="flex-1 overflow-y-auto">
+                <div className={`px-4 py-3 border-b sticky top-0 ${
+                  isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
+                }`}>
+                  <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    Activity
+                  </span>
                 </div>
-              )}
-
-              {/* Payments received tab content */}
-              {activeTab === 'payments' && (
-                <div className={`p-4 border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                  {supportersLoading ? (
-                    <div className={`p-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      <div className="w-6 h-6 border-2 border-juice-orange border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                      <p className="text-sm">{t('ui.loading', 'Loading...')}</p>
-                    </div>
-                  ) : supporters.length === 0 ? (
-                    <div className={`p-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      <p className="text-sm">{t('project.noSupporters', 'No payments yet')}</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between mb-4">
-                        <span className={`text-xs font-medium ${
-                          isDark ? 'text-gray-500' : 'text-gray-400'
-                        }`}>
-                          {t('project.supporters', 'Supporters')} ({supportersTotal})
-                        </span>
-                      </div>
-
-                      <div className="space-y-2">
-                        {supporters.map(supporter => (
-                          <div
-                            key={supporter.id}
-                            onClick={() => handleSupporterClick(supporter.chatId)}
-                            className={`group p-4 border transition-colors ${
-                              isOwner
-                                ? isDark
-                                  ? 'border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 cursor-pointer'
-                                  : 'border-gray-200 hover:border-gray-300 bg-gray-50 hover:bg-gray-100 cursor-pointer'
-                                : isDark
-                                  ? 'border-white/10 bg-white/5'
-                                  : 'border-gray-200 bg-gray-50'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1 min-w-0">
-                                <div className={`text-sm font-medium truncate ${
-                                  isDark ? 'text-white' : 'text-gray-900'
-                                }`}>
-                                  {supporter.supporterAddress.slice(0, 6)}...{supporter.supporterAddress.slice(-4)}
-                                </div>
-                                <div className={`text-xs mt-0.5 ${
-                                  isDark ? 'text-gray-400' : 'text-gray-500'
-                                }`}>
-                                  {supporter.paymentCount} {supporter.paymentCount === 1 ? 'payment' : 'payments'}
-                                  {' · '}
-                                  {formatEth(supporter.totalPaidWei)} ETH
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                {supporter.lastPaymentAt && (
-                                  <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                                    {formatTimeAgo(supporter.lastPaymentAt)}
-                                  </span>
-                                )}
-                                {isOwner && (
-                                  <svg
-                                    className={`w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity ${
-                                      isDark ? 'text-gray-400' : 'text-gray-500'
-                                    }`}
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                  </svg>
-                                )}
-                              </div>
-                            </div>
-                            {supporter.latestMessage && (
-                              <p className={`text-xs mt-2 truncate ${
-                                isDark ? 'text-gray-500' : 'text-gray-400'
-                              }`}>
-                                "{supporter.latestMessage.content}"
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
+                <ActivityFeed
+                  projectId={String(projectId)}
+                  chainId={String(chainId)}
+                  limit={15}
+                  compact
+                />
+              </div>
             </div>
           </div>
 
@@ -526,51 +467,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           <div className="h-[4px] bg-juice-orange shrink-0" />
         </div>
 
-        {/* Activity sidebar - desktop only */}
-        <div className="hidden lg:flex w-[calc(38%*0.38)] min-w-[200px] h-full border-4 border-juice-orange flex-col">
-          {/* Header */}
-          <div className={`px-3 py-2 border-b flex items-center justify-between shrink-0 ${
-            isDark ? 'border-white/10' : 'border-gray-200'
-          }`}>
-            <h2 className={`text-sm font-semibold whitespace-nowrap ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>
-              Live juicy activity
-            </h2>
-          </div>
-
-          {/* Activity list */}
-          <div className="flex-1 overflow-y-auto px-4 hide-scrollbar">
-            <ProtocolActivity onProjectClick={handleActivityProjectClick} />
-          </div>
-        </div>
-
         {/* Modals */}
-        {activeModal === 'pay' && createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-              onClick={() => setActiveModal(null)}
-            />
-            <div className={`relative w-full max-w-md max-h-[90vh] overflow-y-auto ${
-              isDark ? 'bg-juice-dark' : 'bg-white'
-            }`}>
-              <button
-                onClick={() => setActiveModal(null)}
-                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
-                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-                }`}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-              <ProjectCard projectId={String(projectId)} chainId={String(chainId)} />
-            </div>
-          </div>,
-          document.body
-        )}
-
         {activeModal === 'payouts' && (
           <SendPayoutsModal
             isOpen
@@ -666,13 +563,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 </span>
               </div>
             </div>
-            {/* Pay button */}
-            <button
-              onClick={() => setActiveModal('pay')}
-              className="px-4 py-2 bg-green-500 text-black text-sm font-medium hover:bg-green-400 transition-colors shrink-0"
-            >
-              Pay
-            </button>
           </div>
 
           {/* Owner info */}
@@ -699,223 +589,85 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             </div>
           )}
         </div>
-      </div>
 
-      {/* Tab navigation */}
-      <div className="px-4">
-        <div className={`flex border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'overview'
-                ? isDark
-                  ? 'text-white border-b-2 border-juice-orange'
-                  : 'text-gray-900 border-b-2 border-juice-orange'
-                : isDark
-                  ? 'text-gray-400 hover:text-gray-200'
-                  : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t('project.overview', 'Overview')}
-          </button>
-          <button
-            onClick={() => setActiveTab('payments')}
-            className={`px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'payments'
-                ? isDark
-                  ? 'text-white border-b-2 border-juice-orange'
-                  : 'text-gray-900 border-b-2 border-juice-orange'
-                : isDark
-                  ? 'text-gray-400 hover:text-gray-200'
-                  : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t('project.paymentsReceived', 'Payments received')}
-          </button>
+        {/* Tab navigation */}
+        <div className="px-4 overflow-x-auto">
+          <div className={`flex gap-4 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`pb-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
+                  activeTab === tab.id
+                    ? 'border-juice-orange text-juice-orange'
+                    : isDark
+                      ? 'border-transparent text-gray-400 hover:text-gray-200'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Main content */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
-        {/* Overview tab */}
-        {activeTab === 'overview' && (
+        {/* About tab */}
+        {activeTab === 'about' && (
           <>
-            {project.description && (
+            {project.description ? (
               <p className={`text-sm whitespace-pre-line ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                 {stripHtmlTags(project.description)}
               </p>
+            ) : (
+              <p className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                No description available.
+              </p>
             )}
 
-            {/* Stats cards */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className={`p-3 border ${
-                isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
-              }`}>
-                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {t('project.volume', 'Volume')}
-                </div>
-                <div className={`text-sm font-semibold mt-0.5 ${
-                  isDark ? 'text-white' : 'text-gray-900'
-                }`}>
-                  {formatEth(displayVolume)} ETH
-                </div>
-              </div>
-              <div className={`p-3 border ${
-                isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
-              }`}>
-                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {t('project.paymentsCount', 'Payments')}
-                </div>
-                <div className={`text-sm font-semibold mt-0.5 ${
-                  isDark ? 'text-white' : 'text-gray-900'
-                }`}>
-                  {displayPaymentsCount}
-                </div>
-              </div>
-              <div className={`p-3 border ${
-                isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
-              }`}>
-                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {t('project.balance', 'Balance')}
-                </div>
-                <div className={`text-sm font-semibold mt-0.5 ${
-                  isDark ? 'text-white' : 'text-gray-900'
-                }`}>
-                  {formatEth(displayBalance)} ETH
-                </div>
-              </div>
+            {/* Pay button on mobile About tab */}
+            <div className={`p-4 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'}`}>
+              <ProjectCard
+                projectId={String(projectId)}
+                chainId={String(chainId)}
+                embedded
+              />
             </div>
-
-            {/* Charts - stacked on mobile */}
-            <div className="space-y-4">
-              <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
-              <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
-            </div>
-
-            {/* Ruleset Schedule */}
-            <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
-
-            {/* Activity Feed */}
-            <ActivityFeed projectId={String(projectId)} chainId={String(chainId)} limit={5} />
-
-            {/* Owner Actions */}
-            {isOwner && (
-              <div className={`p-4 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'}`}>
-                <h3 className={`text-sm font-semibold mb-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Owner Actions
-                </h3>
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={() => setActiveModal('payouts')}
-                    className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                      isDark
-                        ? 'bg-juice-orange/20 text-juice-orange hover:bg-juice-orange/30'
-                        : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-                    }`}
-                  >
-                    Send Payouts
-                  </button>
-                  <button
-                    onClick={() => setActiveModal('ruleset')}
-                    className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                      isDark
-                        ? 'bg-juice-cyan/20 text-juice-cyan hover:bg-juice-cyan/30'
-                        : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'
-                    }`}
-                  >
-                    Queue Ruleset
-                  </button>
-                </div>
-              </div>
-            )}
           </>
         )}
 
-        {/* Payments received tab */}
-        {activeTab === 'payments' && (
-          <>
-            {supportersLoading ? (
-              <div className={`p-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                <div className="w-6 h-6 border-2 border-juice-orange border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-sm">{t('ui.loading', 'Loading...')}</p>
-              </div>
-            ) : supporters.length === 0 ? (
-              <div className={`p-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                <p className="text-sm">{t('project.noSupporters', 'No payments yet')}</p>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <span className={`text-xs font-medium ${
-                    isDark ? 'text-gray-500' : 'text-gray-400'
-                  }`}>
-                    {t('project.supporters', 'Supporters')} ({supportersTotal})
-                  </span>
-                </div>
+        {/* Analytics tab */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-4">
+            <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
+            <HoldersChart projectId={String(projectId)} chainId={String(chainId)} />
+            <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
+            <PriceChart projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        )}
 
-                <div className="space-y-2">
-                  {supporters.map(supporter => (
-                    <div
-                      key={supporter.id}
-                      onClick={() => handleSupporterClick(supporter.chatId)}
-                      className={`group p-4 border transition-colors ${
-                        isOwner
-                          ? isDark
-                            ? 'border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 cursor-pointer'
-                            : 'border-gray-200 hover:border-gray-300 bg-gray-50 hover:bg-gray-100 cursor-pointer'
-                          : isDark
-                            ? 'border-white/10 bg-white/5'
-                            : 'border-gray-200 bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className={`text-sm font-medium truncate ${
-                            isDark ? 'text-white' : 'text-gray-900'
-                          }`}>
-                            {supporter.supporterAddress.slice(0, 6)}...{supporter.supporterAddress.slice(-4)}
-                          </div>
-                          <div className={`text-xs mt-0.5 ${
-                            isDark ? 'text-gray-400' : 'text-gray-500'
-                          }`}>
-                            {supporter.paymentCount} {supporter.paymentCount === 1 ? 'payment' : 'payments'}
-                            {' · '}
-                            {formatEth(supporter.totalPaidWei)} ETH
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {supporter.lastPaymentAt && (
-                            <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                              {formatTimeAgo(supporter.lastPaymentAt)}
-                            </span>
-                          )}
-                          {isOwner && (
-                            <svg
-                              className={`w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity ${
-                                isDark ? 'text-gray-400' : 'text-gray-500'
-                              }`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          )}
-                        </div>
-                      </div>
-                      {supporter.latestMessage && (
-                        <p className={`text-xs mt-2 truncate ${
-                          isDark ? 'text-gray-500' : 'text-gray-400'
-                        }`}>
-                          "{supporter.latestMessage.content}"
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
+        {/* Rulesets & Funds tab */}
+        {activeTab === 'rulesets' && (
+          <>
+            <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+            <FundsSection
+              projectId={String(projectId)}
+              chainId={String(chainId)}
+              isOwner={isOwner}
+              onSendPayouts={() => setActiveModal('payouts')}
+            />
           </>
+        )}
+
+        {/* Tokens tab */}
+        {activeTab === 'tokens' && (
+          <TokensTab
+            projectId={String(projectId)}
+            chainId={String(chainId)}
+            isOwner={isOwner}
+          />
         )}
       </div>
 
@@ -930,31 +682,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
       </div>
 
       {/* Mobile modals */}
-      {activeModal === 'pay' && createPortal(
-        <div className="fixed inset-0 z-50 flex items-end justify-center">
-          <div
-            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            onClick={() => setActiveModal(null)}
-          />
-          <div className={`relative w-full max-h-[90vh] overflow-y-auto ${
-            isDark ? 'bg-juice-dark' : 'bg-white'
-          }`}>
-            <button
-              onClick={() => setActiveModal(null)}
-              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
-                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <ProjectCard projectId={String(projectId)} chainId={String(chainId)} />
-          </div>
-        </div>,
-        document.body
-      )}
-
       {activeModal === 'payouts' && (
         <SendPayoutsModal
           isOpen

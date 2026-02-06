@@ -9,6 +9,8 @@ vi.mock('../../../services/bendystraw', () => ({
   fetchProject: vi.fn(),
   fetchProjectSuckerGroupId: vi.fn(),
   fetchSuckerGroupMoments: vi.fn(),
+  fetchConnectedChains: vi.fn(),
+  fetchProjectMoments: vi.fn(),
 }))
 
 // Mock recharts to avoid rendering issues in tests
@@ -16,10 +18,10 @@ vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="responsive-container">{children}</div>
   ),
-  AreaChart: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="area-chart">{children}</div>
+  LineChart: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="line-chart">{children}</div>
   ),
-  Area: () => <div data-testid="area" />,
+  Line: () => <div data-testid="line" />,
   XAxis: () => <div data-testid="x-axis" />,
   YAxis: () => <div data-testid="y-axis" />,
   CartesianGrid: () => <div data-testid="cartesian-grid" />,
@@ -58,6 +60,9 @@ describe('BalanceChart', () => {
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
     vi.clearAllMocks()
+    // Default mock for new dependencies
+    vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([])
+    vi.mocked(bendystraw.fetchProjectMoments).mockResolvedValue([])
   })
 
   describe('loading state', () => {
@@ -110,7 +115,7 @@ describe('BalanceChart', () => {
       render(<BalanceChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByTestId('area-chart')).toBeInTheDocument()
+        expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
     })
 
@@ -134,7 +139,7 @@ describe('BalanceChart', () => {
       render(<BalanceChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByTestId('area-chart')).toBeInTheDocument()
+        expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
 
       // Labels are uppercase: 7D, 30D, 90D, 1Y, All
@@ -149,7 +154,7 @@ describe('BalanceChart', () => {
       render(<BalanceChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByTestId('area-chart')).toBeInTheDocument()
+        expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
 
       const button30d = screen.getByText('30D')
@@ -160,7 +165,7 @@ describe('BalanceChart', () => {
       render(<BalanceChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByTestId('area-chart')).toBeInTheDocument()
+        expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
 
       fireEvent.click(screen.getByText('7D'))
@@ -173,7 +178,7 @@ describe('BalanceChart', () => {
       render(<BalanceChart projectId="1" range="90d" />)
 
       await waitFor(() => {
-        expect(screen.getByTestId('area-chart')).toBeInTheDocument()
+        expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
 
       const button90d = screen.getByText('90D')
@@ -189,7 +194,7 @@ describe('BalanceChart', () => {
       render(<BalanceChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByTestId('area-chart')).toBeInTheDocument()
+        expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
     })
 
@@ -201,7 +206,7 @@ describe('BalanceChart', () => {
       render(<BalanceChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByTestId('area-chart')).toBeInTheDocument()
+        expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
     })
   })
@@ -218,7 +223,7 @@ describe('BalanceChart', () => {
 
       // Should render chart even with single point
       await waitFor(() => {
-        expect(screen.getByTestId('area-chart')).toBeInTheDocument()
+        expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
     })
   })
@@ -255,7 +260,7 @@ describe('BalanceChart', () => {
       render(<BalanceChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByTestId('area-chart')).toBeInTheDocument()
+        expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
 
       const button30d = screen.getByText('30D')

@@ -10,6 +10,7 @@ vi.mock('../../../services/bendystraw', () => ({
   fetchProject: vi.fn(),
   fetchProjectSuckerGroupId: vi.fn(),
   fetchAggregatedParticipants: vi.fn(),
+  fetchConnectedChains: vi.fn(),
 }))
 
 // Mock ENS utility
@@ -73,6 +74,8 @@ describe('HoldersChart', () => {
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
     vi.clearAllMocks()
+    // Default mock for fetchConnectedChains - returns single chain
+    vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([])
   })
 
   describe('loading state', () => {

@@ -5,6 +5,22 @@ import ConversationHistory from './ConversationHistory'
 import { useChatStore, useThemeStore, type Chat, type ChatMessage, type ChatFolder } from '../../stores'
 import * as chatApi from '../../services/chat'
 
+// Mock wagmi
+vi.mock('wagmi', () => ({
+  useAccount: vi.fn(() => ({
+    address: undefined,
+    isConnected: false,
+  })),
+}))
+
+// Mock useManagedWallet hook
+vi.mock('../../hooks', () => ({
+  useManagedWallet: vi.fn(() => ({
+    address: undefined,
+    isManagedMode: false,
+  })),
+}))
+
 // Mock services
 vi.mock('../../services/chat', () => ({
   pinChat: vi.fn(),

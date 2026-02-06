@@ -1,35 +1,66 @@
-# Deploy ForwardableSimpleAccount with ERC2771Context
+# Project Dashboard Layout Reorganization
 
-## Completed
+## Status: Complete
 
-- [x] Create Foundry project with contracts
-  - `contracts/src/ForwardableSimpleAccount.sol` - extends SimpleAccount + ERC2771Context
-  - `contracts/src/ForwardableSimpleAccountFactory.sol` - permissionless factory
-  - `contracts/foundry.toml` - Solidity 0.8.28
-  - Git submodules: account-abstraction, openzeppelin-contracts
-- [x] Deploy factory to 4 testnet chains via CREATE2 (deterministic deployer)
-  - Factory: `0x69a05d911af23501ff9d6b811a97cac972dade05` (all chains)
-  - Implementation: `0x605Cb84933FE2C28B56089912e8428DaC417495B` (all chains)
-  - Sepolia: tx `0x029dc5f01fe8973bfb29761f739830384bdffde7311b08331083a38419b426d8`
-  - Base Sepolia: tx `0x6abbda440cfda4bfcf893ae1d27132877bfb258319d121fb0d33f9252dc814f6`
-  - OP Sepolia: tx `0x55423cc8e4f96f30ca0391e7ce667e6b1d59788d485f87166929db94ffcf4538`
-  - Arb Sepolia: tx `0x3b36fb8dd96a62e0dd7e8e0cc3e48ac7a264d5885938bee7932ba1eafc16227a`
-- [x] Update backend config
-  - `smartAccounts.ts`: factory address + async `computeSmartAccountAddress` via factory `getAddress()`
-  - `relayrBundle.ts`: restored ERC-2771 wrapping for smart account routing (removed direct execution)
-  - `smartAccounts.test.ts`: updated factory address
-  - `ARCHITECTURE.md`: updated factory address (2 places)
-- [x] Update frontend
-  - `useOmnichainSetUri.ts`: removed direct txHashes path, all bundles go through Relayr polling
-  - `useManagedWallet.ts`: removed txHashes from return type
-- [x] Verify
-  - `forge build`: compiles successfully
-  - `npx tsc --noEmit` (frontend): clean
-  - `npx tsc --noEmit` (backend): clean
-  - `isTrustedForwarder(forwarder)`: returns true on deployed contracts
+## Changes Made
 
-## Still needed
+### 1. Updated `src/pages/ProjectDashboard.tsx`
+- Changed tab type from `'overview' | 'payments'` to `'about' | 'analytics' | 'rulesets' | 'tokens'`
+- Implemented two-column desktop layout:
+  - Left column: Main content with tab navigation (About, Analytics, Rulesets & Funds, Tokens)
+  - Right column: Sticky sidebar (380px width) with ProjectCard and ActivityFeed
+- Tab navigation with juice-orange underline style
+- Mobile layout: Stacked tabs with horizontal scroll, ProjectCard embedded in About tab
+- Removed old "Pay" button from header (now handled by sidebar ProjectCard)
+- Removed old activity sidebar column (activity now in right sidebar)
 
-- [ ] Clear `user_smart_accounts` table (addresses will change with new factory)
-- [ ] Set RELAYR env vars in backend deployment for server-side bundle creation
-- [ ] End-to-end test: full setUriOf flow through the app
+### 2. Created `src/components/dynamic/FundsSection.tsx`
+New component for Rulesets & Funds tab showing:
+- Total balance with currency symbol (ETH/USDC)
+- Per-chain balance breakdown with chain icons
+- Available to pay out (from payout limits)
+- Surplus calculation (balance - used payout)
+- Collapsible payout recipients list with ENS resolution
+- "Send Payouts" button for project owners
+
+### 3. Created `src/components/dynamic/TokensTab.tsx`
+New component for Tokens tab showing:
+- User's token balance (when connected)
+- Project token info (symbol, ERC-20 badge, contract address with copy button)
+- Total supply
+- Reserved tokens section:
+  - Chain selector for omnichain projects
+  - Reserved rate percentage
+  - Pending distribution amount
+  - Collapsible recipients list
+  - "Send Reserved Tokens" button for owners
+
+### 4. Updated `src/components/dynamic/ProjectCard.tsx`
+- Added `embedded` prop for sidebar display mode
+- When `embedded=true`: removes outer container styling, hides header/tagline/stats (already shown in dashboard)
+- Keeps full payment functionality
+
+### 5. Updated `src/components/dynamic/ActivityFeed.tsx`
+- Added `compact` prop for sidebar display mode
+- When `compact=true`: removes outer container and header (dashboard provides its own Activity header)
+- Same event list functionality
+
+## Verification Steps
+
+1. Navigate to a project dashboard (e.g., `/base:3`)
+2. **Layout**: Two columns visible on desktop, right sidebar sticky
+3. **About tab**: Shows project description (default tab)
+4. **Analytics tab**: Shows Volume, Holders, Balance, Price charts in 2x2 grid
+5. **Rulesets & Funds tab**: Shows RulesetSchedule + FundsSection with balance breakdown
+6. **Tokens tab**: Shows token info, user balance, reserved tokens section
+7. **Right sidebar**: Pay/Cash out panel works, Activity scrolls independently
+8. **Mobile**: Falls back to stacked layout with tabs scrollable
+
+## Files Modified
+- `src/pages/ProjectDashboard.tsx` - Main layout restructure
+- `src/components/dynamic/ProjectCard.tsx` - Added embedded mode
+- `src/components/dynamic/ActivityFeed.tsx` - Added compact mode
+
+## Files Created
+- `src/components/dynamic/FundsSection.tsx` - Funds breakdown display
+- `src/components/dynamic/TokensTab.tsx` - Token info and reserved tokens

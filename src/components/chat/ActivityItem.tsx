@@ -3,7 +3,7 @@ import { useThemeStore } from '../../stores'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { getEventInfo, formatTimeAgo } from '../../utils/activityEvents'
-import { CHAINS } from '../../constants'
+import { MAINNET_CHAINS } from '../../constants'
 import type { ActivityEvent } from '../../services/bendystraw/client'
 
 interface ActivityItemProps {
@@ -14,7 +14,8 @@ interface ActivityItemProps {
 export default function ActivityItem({ event, onProjectClick }: ActivityItemProps) {
   const { theme } = useThemeStore()
   const { action, amount, txHash, from } = getEventInfo(event)
-  const chain = CHAINS[event.chainId] || { name: '?', color: '#888', explorer: 'https://etherscan.io' }
+  // Activity feed always shows mainnet data, so always use MAINNET_CHAINS
+  const chain = MAINNET_CHAINS[event.chainId] || { name: '?', color: '#888', explorer: 'https://etherscan.io' }
   const projectName = event.project?.name || 'Unknown Project'
   const logoUri = resolveIpfsUri(event.project?.logoUri)
   const [ensName, setEnsName] = useState<string | null>(null)
@@ -28,8 +29,10 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
 
   const handleClick = () => {
     if (onProjectClick && event.project?.name) {
-      const chainName = CHAINS[event.chainId]?.name || 'unknown chain'
-      onProjectClick(`Tell me about "${event.project.name}" on ${chainName}. What's the project's current state, treasury balance, and recent activity?`)
+      // Activity comes from mainnet, so use MAINNET_CHAINS for chain name
+      // Include chain ID so the AI knows to query mainnet regardless of staging mode
+      const chainName = MAINNET_CHAINS[event.chainId]?.name || 'Ethereum'
+      onProjectClick(`Tell me about "${event.project.name}" on ${chainName} (chain ID ${event.chainId}). What's the project's current state, treasury balance, and recent activity?`)
     }
   }
 

@@ -79,85 +79,92 @@ export const IPFS_FALLBACK_GATEWAY = 'https://ipfs.io/ipfs/'
 export const ACTIVITY_PAGE_SIZE = PAGINATION.ACTIVITY_PAGE_SIZE
 export const ACTIVITY_POLL_INTERVAL = 30000 // 30 seconds
 
-// Comprehensive chain configurations - environment aware (testnet/mainnet)
-export const CHAINS: Record<number, {
+// Chain config type
+type ChainConfig = {
   name: string        // Full name: "Ethereum", "Optimism"
   shortName: string   // Short display: "ETH", "OP"
   slug: string        // URL slug: "eth", "op"
   color: string       // Brand color
   explorer: string    // Block explorer base URL
   explorerTx: string  // Transaction URL prefix
-}> = IS_TESTNET
-  ? {
-      // Sepolia testnets
-      [CHAIN_IDS.ethereum]: {
-        name: 'Sepolia',
-        shortName: 'SEP',
-        slug: 'sep',
-        color: '#627EEA',
-        explorer: 'https://sepolia.etherscan.io',
-        explorerTx: 'https://sepolia.etherscan.io/tx/',
-      },
-      [CHAIN_IDS.optimism]: {
-        name: 'OP Sepolia',
-        shortName: 'OP-SEP',
-        slug: 'op-sep',
-        color: '#FF0420',
-        explorer: 'https://sepolia-optimism.etherscan.io',
-        explorerTx: 'https://sepolia-optimism.etherscan.io/tx/',
-      },
-      [CHAIN_IDS.base]: {
-        name: 'Base Sepolia',
-        shortName: 'BASE-SEP',
-        slug: 'base-sep',
-        color: '#0052FF',
-        explorer: 'https://sepolia.basescan.org',
-        explorerTx: 'https://sepolia.basescan.org/tx/',
-      },
-      [CHAIN_IDS.arbitrum]: {
-        name: 'Arb Sepolia',
-        shortName: 'ARB-SEP',
-        slug: 'arb-sep',
-        color: '#28A0F0',
-        explorer: 'https://sepolia.arbiscan.io',
-        explorerTx: 'https://sepolia.arbiscan.io/tx/',
-      },
-    }
-  : {
-      // Mainnets
-      [CHAIN_IDS.ethereum]: {
-        name: 'Ethereum',
-        shortName: 'ETH',
-        slug: 'eth',
-        color: '#627EEA',
-        explorer: 'https://etherscan.io',
-        explorerTx: 'https://etherscan.io/tx/',
-      },
-      [CHAIN_IDS.optimism]: {
-        name: 'Optimism',
-        shortName: 'OP',
-        slug: 'op',
-        color: '#FF0420',
-        explorer: 'https://optimistic.etherscan.io',
-        explorerTx: 'https://optimistic.etherscan.io/tx/',
-      },
-      [CHAIN_IDS.base]: {
-        name: 'Base',
-        shortName: 'BASE',
-        slug: 'base',
-        color: '#0052FF',
-        explorer: 'https://basescan.org',
-        explorerTx: 'https://basescan.org/tx/',
-      },
-      [CHAIN_IDS.arbitrum]: {
-        name: 'Arbitrum',
-        shortName: 'ARB',
-        slug: 'arb',
-        color: '#28A0F0',
-        explorer: 'https://arbiscan.io',
-        explorerTx: 'https://arbiscan.io/tx/',
-      },
-    }
+}
+
+// Mainnet chain configurations - ALWAYS available, even in staging
+// Used for displaying activity feed (which always shows mainnet data)
+export const MAINNET_CHAINS: Record<number, ChainConfig> = {
+  1: {
+    name: 'Ethereum',
+    shortName: 'ETH',
+    slug: 'eth',
+    color: '#627EEA',
+    explorer: 'https://etherscan.io',
+    explorerTx: 'https://etherscan.io/tx/',
+  },
+  10: {
+    name: 'Optimism',
+    shortName: 'OP',
+    slug: 'op',
+    color: '#FF0420',
+    explorer: 'https://optimistic.etherscan.io',
+    explorerTx: 'https://optimistic.etherscan.io/tx/',
+  },
+  8453: {
+    name: 'Base',
+    shortName: 'BASE',
+    slug: 'base',
+    color: '#0052FF',
+    explorer: 'https://basescan.org',
+    explorerTx: 'https://basescan.org/tx/',
+  },
+  42161: {
+    name: 'Arbitrum',
+    shortName: 'ARB',
+    slug: 'arb',
+    color: '#28A0F0',
+    explorer: 'https://arbiscan.io',
+    explorerTx: 'https://arbiscan.io/tx/',
+  },
+}
+
+// Testnet chain configurations
+const TESTNET_CHAINS: Record<number, ChainConfig> = {
+  11155111: {
+    name: 'Sepolia',
+    shortName: 'SEP',
+    slug: 'sep',
+    color: '#627EEA',
+    explorer: 'https://sepolia.etherscan.io',
+    explorerTx: 'https://sepolia.etherscan.io/tx/',
+  },
+  11155420: {
+    name: 'OP Sepolia',
+    shortName: 'OP-SEP',
+    slug: 'op-sep',
+    color: '#FF0420',
+    explorer: 'https://sepolia-optimism.etherscan.io',
+    explorerTx: 'https://sepolia-optimism.etherscan.io/tx/',
+  },
+  84532: {
+    name: 'Base Sepolia',
+    shortName: 'BASE-SEP',
+    slug: 'base-sep',
+    color: '#0052FF',
+    explorer: 'https://sepolia.basescan.org',
+    explorerTx: 'https://sepolia.basescan.org/tx/',
+  },
+  421614: {
+    name: 'Arb Sepolia',
+    shortName: 'ARB-SEP',
+    slug: 'arb-sep',
+    color: '#28A0F0',
+    explorer: 'https://sepolia.arbiscan.io',
+    explorerTx: 'https://sepolia.arbiscan.io/tx/',
+  },
+}
+
+// Comprehensive chain configurations - environment aware (testnet/mainnet)
+// Use MAINNET_CHAINS directly when you need mainnet info regardless of environment
+export const CHAINS: Record<number, ChainConfig> = IS_TESTNET ? TESTNET_CHAINS : MAINNET_CHAINS
 
 // All supported chain IDs as array (environment-aware)
 export const ALL_CHAIN_IDS = SUPPORTED_CHAIN_IDS

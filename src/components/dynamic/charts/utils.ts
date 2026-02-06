@@ -138,11 +138,34 @@ export const CHAIN_COLORS: Record<number, string> = {
   10: '#FF0420',     // Optimism
   8453: '#0052FF',   // Base
   42161: '#28A0F0',  // Arbitrum
+  // Testnets
+  11155111: '#627EEA',  // Sepolia
+  11155420: '#FF0420',  // OP Sepolia
+  84532: '#0052FF',     // Base Sepolia
+  421614: '#28A0F0',    // Arbitrum Sepolia
+}
+
+// Chain short names for display
+export const CHAIN_NAMES: Record<number, string> = {
+  1: 'ETH',
+  10: 'OP',
+  8453: 'Base',
+  42161: 'Arb',
+  // Testnets
+  11155111: 'Sep',
+  11155420: 'OP Sep',
+  84532: 'Base Sep',
+  421614: 'Arb Sep',
 }
 
 // Get chain color with fallback
 export function getChainColor(chainId: number): string {
   return CHAIN_COLORS[chainId] || '#888888'
+}
+
+// Get chain name with fallback
+export function getChainName(chainId: number): string {
+  return CHAIN_NAMES[chainId] || `Chain ${chainId}`
 }
 
 // Pie chart color palette
