@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAccount } from 'wagmi'
 import { useChatStore, useThemeStore } from '../../stores'
 import type { Chat, ChatFolder, ChatMember } from '../../stores/chatStore'
 import ParticipantAvatars, { getEmojiFromAddress } from './ParticipantAvatars'
@@ -19,6 +20,17 @@ import {
   pinFolder,
   deleteChat as deleteChatApi,
 } from '../../services/chat'
+import { fetchProjectsByOwner, type Project } from '../../services/bendystraw'
+import { useManagedWallet } from '../../hooks'
+import { resolveIpfsUri } from '../../utils/ipfs'
+import { CHAINS } from '../../constants'
+import {
+  getOwnerConversations,
+  getSupporterConversations,
+  type ProjectConversation,
+} from '../../api/projectConversations'
+
+type DashboardTab = 'chats' | 'projects' | 'payments'
 
 function formatTimeAgo(timestamp: string): string {
   const now = Date.now()
@@ -449,11 +461,28 @@ export default function ConversationHistory() {
   const [folderMenu, setFolderMenu] = useState<{ folderId: string; x: number; y: number } | null>(null)
   const [folderChatMenu, setFolderChatMenu] = useState<{ chatId: string; folderId: string; x: number; y: number } | null>(null)
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<DashboardTab>('chats')
+
   // Pagination state
   const [totalChats, setTotalChats] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const loadMoreRef = useRef<HTMLDivElement>(null)
+
+  // Projects tab state
+  const { address: wagmiAddress, isConnected: wagmiConnected } = useAccount()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const hasWalletAccess = wagmiConnected || isManagedMode
+  const [ownedProjects, setOwnedProjects] = useState<Project[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
+  const [projectsLoaded, setProjectsLoaded] = useState(false)
+  const projectsLoadingRef = useRef(false)
+
+  // Payments tab state
+  const [supporterConversations, setSupporterConversations] = useState<ProjectConversation[]>([])
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [paymentsLoaded, setPaymentsLoaded] = useState(false)
 
   // Load chats with pagination
   const loadChats = useCallback(async (offset: number, append: boolean = false) => {
@@ -490,11 +519,71 @@ export default function ConversationHistory() {
     }
   }, [isLoading, setChats, chats])
 
+  // Load owned projects
+  const loadProjects = useCallback(async () => {
+    if (projectsLoadingRef.current) return
+    const addresses = [
+      ...(managedAddress ? [managedAddress] : []),
+      ...(wagmiAddress ? [wagmiAddress] : []),
+    ].filter((addr, i, arr) => arr.indexOf(addr) === i)
+    if (addresses.length === 0) return
+
+    projectsLoadingRef.current = true
+    setProjectsLoading(true)
+    try {
+      const results = await Promise.all(addresses.map(addr => fetchProjectsByOwner(addr)))
+      const seen = new Set<string>()
+      const merged: Project[] = []
+      for (const projects of results) {
+        for (const p of projects) {
+          const key = `${p.projectId}-${p.chainId}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            merged.push(p)
+          }
+        }
+      }
+      setOwnedProjects(merged)
+      setProjectsLoaded(true)
+    } catch (error) {
+      console.error('Failed to load projects:', error)
+    } finally {
+      projectsLoadingRef.current = false
+      setProjectsLoading(false)
+    }
+  }, [managedAddress, wagmiAddress])
+
+  // Load supporter conversations (payments)
+  const loadPayments = useCallback(async () => {
+    if (paymentsLoading) return
+
+    setPaymentsLoading(true)
+    try {
+      const result = await getSupporterConversations()
+      setSupporterConversations(result.conversations)
+      setPaymentsLoaded(true)
+    } catch (error) {
+      console.error('Failed to load payments:', error)
+    } finally {
+      setPaymentsLoading(false)
+    }
+  }, [paymentsLoading])
+
   // Load initial data
   useEffect(() => {
     fetchFolders().then(setFolders).catch(console.error)
     loadChats(0)
   }, [setFolders]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load projects/payments when tab changes
+  useEffect(() => {
+    if (activeTab === 'projects' && hasWalletAccess && !projectsLoaded) {
+      loadProjects()
+    }
+    if (activeTab === 'payments' && hasWalletAccess && !paymentsLoaded) {
+      loadPayments()
+    }
+  }, [activeTab, hasWalletAccess, projectsLoaded, paymentsLoaded, loadProjects, loadPayments])
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -982,26 +1071,81 @@ export default function ConversationHistory() {
     )
   }
 
+  // Helper to get chain name
+  const getChainName = (chainId: number) => {
+    const chain = CHAINS[chainId]
+    return chain?.name || `Chain ${chainId}`
+  }
+
   return (
     <div className="px-6 mt-8">
-      {/* Header with create folder button on right */}
-      <div className="flex items-center justify-between mb-2">
-        <span className={`text-xs font-medium ${
-          theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-        }`}>
-          {t('ui.recent', 'Recent')} ({totalChats || chats.length})
-        </span>
+      {/* Tab navigation */}
+      <div className={`flex mb-4 border-b ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
         <button
-          onClick={openFolderPopover}
-          className={`text-xs px-2 py-1 border transition-colors ${
-            theme === 'dark'
-              ? 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
-              : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          onClick={() => setActiveTab('chats')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'chats'
+              ? theme === 'dark'
+                ? 'text-white border-b-2 border-juice-orange'
+                : 'text-gray-900 border-b-2 border-juice-orange'
+              : theme === 'dark'
+                ? 'text-gray-400 hover:text-gray-200'
+                : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          {t('ui.newFolder', 'New folder')}
+          {t('ui.chats', 'Chats')}
+        </button>
+        <button
+          onClick={() => setActiveTab('projects')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'projects'
+              ? theme === 'dark'
+                ? 'text-white border-b-2 border-juice-orange'
+                : 'text-gray-900 border-b-2 border-juice-orange'
+              : theme === 'dark'
+                ? 'text-gray-400 hover:text-gray-200'
+                : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {t('ui.myProjects', 'My Projects')}
+        </button>
+        <button
+          onClick={() => setActiveTab('payments')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'payments'
+              ? theme === 'dark'
+                ? 'text-white border-b-2 border-juice-orange'
+                : 'text-gray-900 border-b-2 border-juice-orange'
+              : theme === 'dark'
+                ? 'text-gray-400 hover:text-gray-200'
+                : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {t('ui.payments', 'Payments')}
         </button>
       </div>
+
+      {/* Chats Tab Content */}
+      {activeTab === 'chats' && (
+        <>
+          {/* Header with create folder button on right */}
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-xs font-medium ${
+              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              {t('ui.recent', 'Recent')} ({totalChats || chats.length})
+            </span>
+            <button
+              onClick={openFolderPopover}
+              className={`text-xs px-2 py-1 border transition-colors ${
+                theme === 'dark'
+                  ? 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+                  : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {t('ui.newFolder', 'New folder')}
+            </button>
+          </div>
 
       {/* Folder creation popover - rendered via portal to escape backdrop-blur containing block */}
       {folderPopover && createPortal(
@@ -1066,15 +1210,153 @@ export default function ConversationHistory() {
         {rootChats.map(chat => renderChatCard(chat))}
       </div>
 
-      {/* Load more trigger */}
-      {hasMore && (
-        <div
-          ref={loadMoreRef}
-          className={`py-6 text-center text-xs ${
-            theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-          }`}
-        >
-          {isLoading ? 'Loading...' : ''}
+          {/* Load more trigger */}
+          {hasMore && (
+            <div
+              ref={loadMoreRef}
+              className={`py-6 text-center text-xs ${
+                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+              }`}
+            >
+              {isLoading ? 'Loading...' : ''}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Projects Tab Content */}
+      {activeTab === 'projects' && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-xs font-medium ${
+              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              {t('ui.projectsYouOwn', 'Projects you own')} ({ownedProjects.length})
+            </span>
+          </div>
+          {!hasWalletAccess ? (
+            <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p className="text-sm">{t('wallet.connectToSeeProjects', 'Connect wallet to see your projects')}</p>
+            </div>
+          ) : projectsLoading ? (
+            <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p className="text-sm">{t('ui.loading', 'Loading...')}</p>
+            </div>
+          ) : ownedProjects.length === 0 ? (
+            <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p className="text-sm">{t('projects.noOwned', "You don't own any projects yet")}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {ownedProjects.map(project => (
+                <div
+                  key={project.id}
+                  onClick={() => navigate(`/chat/new?projectId=${project.projectId}&chainId=${project.chainId}`)}
+                  className={`group p-4 border cursor-pointer transition-colors ${
+                    theme === 'dark'
+                      ? 'border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10'
+                      : 'border-gray-200 hover:border-gray-300 bg-gray-50 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {project.logoUri ? (
+                      <img
+                        src={resolveIpfsUri(project.logoUri) || undefined}
+                        alt=""
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
+                        theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'
+                      }`}>
+                        🍊
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className={`font-medium text-sm truncate ${
+                        theme === 'dark' ? 'text-white' : 'text-gray-900'
+                      }`}>
+                        {project.name || `Project #${project.projectId}`}
+                      </h3>
+                      <p className={`text-xs truncate ${
+                        theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                      }`}>
+                        {getChainName(project.chainId)} · #{project.projectId}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Payments Tab Content */}
+      {activeTab === 'payments' && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-xs font-medium ${
+              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              {t('ui.projectsYouSupport', 'Projects you support')} ({supporterConversations.length})
+            </span>
+          </div>
+          {!hasWalletAccess ? (
+            <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p className="text-sm">{t('wallet.connectToSeePayments', 'Connect wallet to see your payments')}</p>
+            </div>
+          ) : paymentsLoading ? (
+            <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p className="text-sm">{t('ui.loading', 'Loading...')}</p>
+            </div>
+          ) : supporterConversations.length === 0 ? (
+            <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p className="text-sm">{t('payments.noPayments', "You haven't supported any projects yet")}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {supporterConversations.map(conv => (
+                <div
+                  key={conv.chatId}
+                  onClick={() => navigate(`/chat/${conv.chatId}`)}
+                  className={`group p-4 border cursor-pointer transition-colors ${
+                    theme === 'dark'
+                      ? 'border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10'
+                      : 'border-gray-200 hover:border-gray-300 bg-gray-50 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {conv.projectLogoUri ? (
+                      <img
+                        src={resolveIpfsUri(conv.projectLogoUri) || undefined}
+                        alt=""
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
+                        theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'
+                      }`}>
+                        🍊
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className={`font-medium text-sm truncate ${
+                        theme === 'dark' ? 'text-white' : 'text-gray-900'
+                      }`}>
+                        {conv.projectName || `Project #${conv.projectId}`}
+                      </h3>
+                      <p className={`text-xs truncate ${
+                        theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                      }`}>
+                        {getChainName(conv.chainId)} · #{conv.projectId}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
