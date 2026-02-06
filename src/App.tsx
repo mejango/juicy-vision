@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import { shouldShowAdminDashboard } from './utils/subdomain'
+import ProjectDashboard from './pages/ProjectDashboard'
 
 // Lazy load admin app
 const AdminApp = lazy(() => import('./admin/AdminApp'))
@@ -381,7 +382,7 @@ const PROJECT_SLUG_REGEX = /^([a-z]+):(\d+)$/i
 import { CHAIN_IDS, IS_TESTNET } from './config/environment'
 
 // Map chain slugs to chain IDs (uses environment-aware chain IDs)
-// Supports both canonical slugs (eth, op, base, arb) and testnet-specific aliases (sep, opsep, etc.)
+// Supports both canonical slugs (eth, op, base, arb) and testnet-specific aliases (sep, op-sep, etc.)
 const CHAIN_SLUG_TO_ID: Record<string, number> = {
   eth: CHAIN_IDS.ethereum,
   op: CHAIN_IDS.optimism,
@@ -389,10 +390,13 @@ const CHAIN_SLUG_TO_ID: Record<string, number> = {
   arb: CHAIN_IDS.arbitrum,
   // Testnet-specific slugs (only work when IS_TESTNET is true, otherwise map to mainnet which won't match)
   ...(IS_TESTNET ? {
-    sep: CHAIN_IDS.ethereum,      // Sepolia
-    opsep: CHAIN_IDS.optimism,    // Optimism Sepolia
-    basesep: CHAIN_IDS.base,      // Base Sepolia
-    arbsep: CHAIN_IDS.arbitrum,   // Arbitrum Sepolia
+    sep: CHAIN_IDS.ethereum,        // Sepolia
+    opsep: CHAIN_IDS.optimism,      // Optimism Sepolia (no hyphen)
+    'op-sep': CHAIN_IDS.optimism,   // Optimism Sepolia (with hyphen)
+    basesep: CHAIN_IDS.base,        // Base Sepolia (no hyphen)
+    'base-sep': CHAIN_IDS.base,     // Base Sepolia (with hyphen)
+    arbsep: CHAIN_IDS.arbitrum,     // Arbitrum Sepolia (no hyphen)
+    'arb-sep': CHAIN_IDS.arbitrum,  // Arbitrum Sepolia (with hyphen)
   } : {}),
 }
 
@@ -535,6 +539,38 @@ function ChatRouteHandler() {
   // Render the main app content - pass chatId directly to ensure it's used
   // Use key to force re-mount when chatId changes
   return <AppContent key={chatId} forceActiveChatId={chatId} />
+}
+
+// Component to handle /project/:chainSlug/:projectId routes - shows project dashboard
+function ProjectDashboardRouteHandler() {
+  const { chainSlug, projectId } = useParams<{ chainSlug: string; projectId: string }>()
+  const navigate = useNavigate()
+
+  // Map chain slug to chain ID
+  const chainId = chainSlug ? CHAIN_SLUG_TO_ID[chainSlug.toLowerCase()] : undefined
+  const parsedProjectId = projectId ? parseInt(projectId, 10) : NaN
+
+  // Validate parameters
+  if (!chainId || isNaN(parsedProjectId)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-juice-dark">
+        <div className="text-center max-w-md px-4">
+          <h1 className="text-xl font-semibold mb-2 text-white">Invalid project URL</h1>
+          <p className="text-sm mb-6 text-gray-400">
+            The chain or project ID in the URL is not valid.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
+          >
+            Go home
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return <ProjectDashboard chainId={chainId} projectId={parsedProjectId} />
 }
 
 function AppProviders({ children }: { children: React.ReactNode }) {
@@ -891,6 +927,7 @@ function MainApp() {
           <Routes>
             <Route path="/join/:code" element={<JoinChatPage />} />
             <Route path="/chat/:chatId" element={<ChatRouteHandler />} />
+            <Route path="/project/:chainSlug/:projectId" element={<ProjectDashboardRouteHandler />} />
             <Route path="/:projectSlug" element={<ProjectRouteHandler />} />
             <Route path="/" element={<HomeRouteHandler />} />
             <Route path="*" element={<HomeRouteHandler />} />

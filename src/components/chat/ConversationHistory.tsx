@@ -1251,7 +1251,12 @@ export default function ConversationHistory() {
               {ownedProjects.map(project => (
                 <div
                   key={project.id}
-                  onClick={() => navigate(`/chat/new?projectId=${project.projectId}&chainId=${project.chainId}`)}
+                  onClick={() => {
+                    const chain = CHAINS[project.chainId]
+                    if (chain) {
+                      navigate(`/project/${chain.slug}/${project.projectId}`)
+                    }
+                  }}
                   className={`group p-4 border cursor-pointer transition-colors ${
                     theme === 'dark'
                       ? 'border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10'
