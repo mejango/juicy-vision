@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useThemeStore } from '../../stores'
-import { fetchProjectNFTTiers, type ResolvedNFTTier } from '../../services/nft'
+import { fetchProjectNFTTiers, getProjectDataHook, type ResolvedNFTTier } from '../../services/nft'
 import { fetchEthPrice } from '../../services/bendystraw'
 import NFTTierCard from './NFTTierCard'
 
@@ -18,20 +18,23 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
   const [loading, setLoading] = useState(true)
   const [ethPrice, setEthPrice] = useState<number | undefined>()
   const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all')
+  const [hookAddress, setHookAddress] = useState<`0x${string}` | null>(null)
 
   const chainIdNum = parseInt(chainId)
 
-  // Fetch tiers and ETH price
+  // Fetch tiers, ETH price, and hook address
   useEffect(() => {
     async function load() {
       setLoading(true)
       try {
-        const [tiersData, price] = await Promise.all([
+        const [tiersData, price, hook] = await Promise.all([
           fetchProjectNFTTiers(projectId, chainIdNum),
           fetchEthPrice(),
+          getProjectDataHook(projectId, chainIdNum),
         ])
         setTiers(tiersData)
         setEthPrice(price)
+        setHookAddress(hook)
       } catch (error) {
         console.error('Failed to load NFT tiers:', error)
       } finally {
@@ -166,6 +169,7 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
                     chainId={chainIdNum}
                     ethPrice={ethPrice}
                     isOwner={isOwner}
+                    hookAddress={hookAddress}
                   />
                 ))}
               </div>
@@ -187,6 +191,7 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
                       chainId={chainIdNum}
                       ethPrice={ethPrice}
                       isOwner={isOwner}
+                      hookAddress={hookAddress}
                     />
                   ))}
                 </div>
@@ -205,6 +210,7 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
               chainId={chainIdNum}
               ethPrice={ethPrice}
               isOwner={isOwner}
+              hookAddress={hookAddress}
             />
           ))}
         </div>

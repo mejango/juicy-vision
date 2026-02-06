@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { formatEther } from 'viem'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import { resolveIpfsUri } from '../../utils/ipfs'
-import type { ResolvedNFTTier } from '../../services/nft'
+import { resolveTierUri, type ResolvedNFTTier } from '../../services/nft'
 import GenerateImageButton from '../ui/GenerateImageButton'
 
 interface NFTTierCardProps {
@@ -23,6 +23,8 @@ interface NFTTierCardProps {
   onImageGenerated?: (tierId: number, ipfsUri: string, httpUrl: string) => void
   /** Optional project context for image generation prompts */
   projectContext?: string
+  /** Hook address for resolving on-chain SVGs */
+  hookAddress?: `0x${string}` | null
 }
 
 // Dispatch event to open wallet panel
@@ -42,6 +44,7 @@ export default function NFTTierCard({
   showGenerateImage = false,
   onImageGenerated,
   projectContext,
+  hookAddress,
 }: NFTTierCardProps) {
   const { theme } = useThemeStore()
   const { addTransaction } = useTransactionStore()
@@ -50,8 +53,47 @@ export default function NFTTierCard({
 
   const [minting, setMinting] = useState(false)
   const [quantity, setQuantity] = useState(1)
+  const [onChainImage, setOnChainImage] = useState<string | null>(null)
+  const [loadingOnChainImage, setLoadingOnChainImage] = useState(false)
 
-  const imageUrl = resolveIpfsUri(tier.imageUri)
+  // Resolve IPFS URI first
+  const ipfsImageUrl = resolveIpfsUri(tier.imageUri)
+
+  // Lazy load on-chain SVG if no IPFS image
+  useEffect(() => {
+    if (ipfsImageUrl || onChainImage || loadingOnChainImage) return
+
+    // Check if this tier might have an on-chain SVG (no IPFS URI)
+    if (!tier.encodedIPFSUri && !tier.imageUri && hookAddress) {
+      setLoadingOnChainImage(true)
+      resolveTierUri(hookAddress, tier.tierId, chainId)
+        .then((dataUri) => {
+          if (dataUri) {
+            // Parse the data URI to extract the image
+            try {
+              // dataUri is data:application/json;base64,{...}
+              const base64Data = dataUri.split(',')[1]
+              const jsonStr = atob(base64Data)
+              const metadata = JSON.parse(jsonStr)
+              if (metadata.image) {
+                setOnChainImage(metadata.image)
+              }
+            } catch {
+              // Failed to parse, ignore
+            }
+          }
+        })
+        .catch(() => {
+          // Failed to resolve, ignore
+        })
+        .finally(() => {
+          setLoadingOnChainImage(false)
+        })
+    }
+  }, [tier.tierId, tier.encodedIPFSUri, tier.imageUri, chainId, hookAddress, ipfsImageUrl, onChainImage, loadingOnChainImage])
+
+  // Use IPFS image, or on-chain image, or nothing
+  const imageUrl = ipfsImageUrl || onChainImage
   const priceEth = parseFloat(formatEther(tier.price))
   const priceUsd = ethPrice ? priceEth * ethPrice : null
   const soldOut = tier.remainingSupply === 0
