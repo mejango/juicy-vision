@@ -19,11 +19,12 @@ import {
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { VIEM_CHAINS, RPC_ENDPOINTS, CHAINS, type SupportedChainId } from '../../constants'
 import { SendReservedTokensModal } from '../payment'
+import HoldersChart from './charts/HoldersChart'
 
 interface TokensTabProps {
   projectId: string
   chainId: string
-  isOwner: boolean
+  isOwner?: boolean // Unused but kept for interface compatibility
 }
 
 // Chain info for display
@@ -400,9 +401,23 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
             }`}>
               Pending Distribution
             </span>
-            <span className={`font-mono text-sm ${hasPendingTokens ? 'text-amber-400' : isDark ? 'text-white' : 'text-gray-900'}`}>
-              {pendingTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${tokenSymbol}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`font-mono text-sm ${hasPendingTokens ? 'text-amber-400' : isDark ? 'text-white' : 'text-gray-900'}`}>
+                {pendingTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${tokenSymbol}
+              </span>
+              {hasPendingTokens && (
+                <button
+                  onClick={() => setShowModal(true)}
+                  className={`px-2 py-0.5 text-xs font-medium transition-colors ${
+                    isDark
+                      ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
+                      : 'bg-amber-200 text-amber-800 hover:bg-amber-300'
+                  }`}
+                >
+                  Distribute
+                </button>
+              )}
+            </div>
           </div>
           {hasPendingTokens && (
             <div className={`text-xs mt-1 ${isDark ? 'text-amber-400/70' : 'text-amber-600'}`}>
@@ -458,20 +473,10 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           </div>
         )}
 
-        {/* Send reserved tokens button (owner only) */}
-        {isOwner && hasPendingTokens && (
-          <button
-            onClick={() => setShowModal(true)}
-            className={`w-full mt-4 px-4 py-2 text-sm font-medium transition-colors ${
-              isDark
-                ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
-                : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-            }`}
-          >
-            Send Reserved Tokens
-          </button>
-        )}
       </div>
+
+      {/* Token Holders Chart */}
+      <HoldersChart projectId={projectId} chainId={chainId} limit={10} />
 
       {/* Send Reserved Tokens Modal */}
       {showModal && activeChainData && (

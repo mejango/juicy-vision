@@ -62,7 +62,7 @@ function formatCurrency(value: string, decimals: number, currency: number): stri
   return currency === 2 ? `$${formatted}` : `${formatted} ETH`
 }
 
-export default function FundsSection({ projectId, chainId, isOwner, onSendPayouts }: FundsSectionProps) {
+export default function FundsSection({ projectId, chainId, isOwner, onSendPayouts, isRevnet = false }: FundsSectionProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -267,17 +267,19 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         </div>
       )}
 
-      {/* Available to pay out */}
-      <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-        <div className="flex items-center justify-between">
-          <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Available to pay out
-          </span>
-          <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {formatCurrency(totalAvailable.toString(), decimals, currency)}
-          </span>
+      {/* Available to pay out - hidden for revnets since they don't have payouts by design */}
+      {!isRevnet && (
+        <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <div className="flex items-center justify-between">
+            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Available to pay out
+            </span>
+            <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {formatCurrency(totalAvailable.toString(), decimals, currency)}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Surplus */}
       <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
@@ -291,8 +293,8 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         </div>
       </div>
 
-      {/* Payouts configuration */}
-      {activeChainData && activeChainData.payoutSplits.length > 0 && (
+      {/* Payouts configuration - hidden for revnets */}
+      {!isRevnet && activeChainData && activeChainData.payoutSplits.length > 0 && (
         <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <button
             onClick={() => setShowSplits(!showSplits)}
@@ -338,8 +340,8 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         </div>
       )}
 
-      {/* Send Payouts button (owner only) */}
-      {isOwner && totalAvailable > 0n && (
+      {/* Send Payouts button (owner only) - hidden for revnets */}
+      {!isRevnet && isOwner && totalAvailable > 0n && (
         <button
           onClick={onSendPayouts}
           className={`w-full mt-4 px-4 py-2 text-sm font-medium transition-colors ${

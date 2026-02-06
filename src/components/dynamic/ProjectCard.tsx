@@ -34,12 +34,16 @@ function TierPreviewImage({
   hookAddress,
   chainId,
   isDark,
+  size = 'default',
 }: {
   tier: ResolvedNFTTier
   hookAddress: `0x${string}` | null
   chainId: number
   isDark: boolean
+  size?: 'default' | 'small'
 }) {
+  const sizeClass = size === 'small' ? 'w-5 h-5' : 'w-6 h-6'
+  const spinnerSize = size === 'small' ? 'w-2.5 h-2.5' : 'w-3 h-3'
   const [onChainImage, setOnChainImage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -77,18 +81,18 @@ function TierPreviewImage({
 
   if (loading) {
     return (
-      <div className={`w-6 h-6 flex items-center justify-center ${isDark ? 'bg-white/10' : 'bg-gray-100'}`}>
-        <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin opacity-50" />
+      <div className={`${sizeClass} flex items-center justify-center ${isDark ? 'bg-white/10' : 'bg-gray-100'}`}>
+        <div className={`${spinnerSize} border border-current border-t-transparent rounded-full animate-spin opacity-50`} />
       </div>
     )
   }
 
   if (imageUrl) {
-    return <img src={imageUrl} alt="" className="w-6 h-6 object-cover bg-white" />
+    return <img src={imageUrl} alt="" className={`${sizeClass} object-cover bg-white`} />
   }
 
   return (
-    <div className={`w-6 h-6 flex items-center justify-center text-[8px] ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
+    <div className={`${sizeClass} flex items-center justify-center text-[8px] ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
       #{tier.tierId}
     </div>
   )
@@ -1476,13 +1480,13 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   if (!tier) return null
                   return (
                     <span key={tierId} className="flex items-center gap-1.5">
-                      {tier.imageUri ? (
-                        <img src={resolveIpfsUri(tier.imageUri) || undefined} alt="" className="w-5 h-5 object-cover bg-white inline-block" />
-                      ) : (
-                        <span className={`w-5 h-5 flex items-center justify-center text-[8px] inline-flex ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
-                          #{tier.tierId}
-                        </span>
-                      )}
+                      <TierPreviewImage
+                        tier={tier}
+                        hookAddress={nftHookAddress}
+                        chainId={parseInt(selectedChainId)}
+                        isDark={isDark}
+                        size="small"
+                      />
                       <span>{tier.name}</span>
                     </span>
                   )

@@ -560,6 +560,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       chainId={String(chainId)}
                       isOwner={isOwner}
                       onSendPayouts={() => setActiveModal('payouts')}
+                      isRevnet={projectIsRevnet}
                     />
                   </>
                 )}
@@ -812,6 +813,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               chainId={String(chainId)}
               isOwner={isOwner}
               onSendPayouts={() => setActiveModal('payouts')}
+              isRevnet={projectIsRevnet}
             />
           </>
         )}
