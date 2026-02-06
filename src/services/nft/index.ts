@@ -46,8 +46,17 @@ export async function getProjectDataHook(
   })
 
   try {
+    console.log('[NFT] getProjectDataHook starting:', { projectId, chainId })
+
     // First check if this is a revnet by fetching the project owner
-    const project = await fetchProject(projectId, chainId)
+    let project
+    try {
+      project = await fetchProject(projectId, chainId)
+      console.log('[NFT] fetchProject result:', { owner: project?.owner })
+    } catch (fetchErr) {
+      console.error('[NFT] fetchProject failed:', fetchErr)
+    }
+
     const projectIsRevnet = project?.owner ? isRevnet(project.owner) : false
 
     console.log('[NFT] getProjectDataHook:', { projectId, chainId, owner: project?.owner, projectIsRevnet })
