@@ -123,10 +123,11 @@ export default function MultiChainCashOutChart({
         }
 
         // Fetch aggregated moments, tax snapshots, and project balance (for currency/decimals)
+        const chainIdNum = parseInt(chainId)
         const [moments, taxes, balanceInfo] = await Promise.all([
-          fetchSuckerGroupMoments(suckerGroupId),
-          fetchCashOutTaxSnapshots(suckerGroupId),
-          fetchSuckerGroupBalance(projectId, parseInt(chainId)),
+          fetchSuckerGroupMoments(suckerGroupId, 1000, chainIdNum),
+          fetchCashOutTaxSnapshots(suckerGroupId, 1000, chainIdNum),
+          fetchSuckerGroupBalance(projectId, chainIdNum),
         ])
 
         setAggregatedMoments(moments)

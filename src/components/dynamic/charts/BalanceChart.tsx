@@ -78,7 +78,7 @@ export default function BalanceChart({
           return
         }
 
-        const moments = await fetchSuckerGroupMoments(suckerGroupId)
+        const moments = await fetchSuckerGroupMoments(suckerGroupId, 1000, parseInt(chainId))
 
         if (moments.length === 0) {
           // Fallback: create a single point with current balance

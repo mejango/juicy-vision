@@ -186,10 +186,11 @@ export default function TokenPriceChart({
         const suckerGroupId = await fetchProjectSuckerGroupId(projectId, parseInt(chainId))
 
         let hasSuckerGroupData = false
+        const chainIdNum = parseInt(chainId)
         if (suckerGroupId) {
           const [momentsData, taxData] = await Promise.all([
-            fetchSuckerGroupMoments(suckerGroupId),
-            fetchCashOutTaxSnapshots(suckerGroupId),
+            fetchSuckerGroupMoments(suckerGroupId, 1000, chainIdNum),
+            fetchCashOutTaxSnapshots(suckerGroupId, 1000, chainIdNum),
           ])
           if (momentsData.length > 0 && taxData.length > 0) {
             setMoments(momentsData)

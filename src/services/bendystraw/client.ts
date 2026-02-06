@@ -2683,9 +2683,10 @@ export interface CashOutEventHistoryItem {
 // Fetch cash out tax snapshots for floor price calculation
 export async function fetchCashOutTaxSnapshots(
   suckerGroupId: string,
-  limit: number = 1000
+  limit: number = 1000,
+  chainId?: number
 ): Promise<CashOutTaxSnapshot[]> {
-  const client = getClient()
+  const client = getClient(chainId ? getNetworkOption(chainId) : undefined)
   const allSnapshots: CashOutTaxSnapshot[] = []
   let cursor: string | null = null
 
@@ -2720,9 +2721,10 @@ export async function fetchCashOutTaxSnapshots(
 // Fetch sucker group moments (balance/supply over time)
 export async function fetchSuckerGroupMoments(
   suckerGroupId: string,
-  limit: number = 1000
+  limit: number = 1000,
+  chainId?: number
 ): Promise<SuckerGroupMoment[]> {
-  const client = getClient()
+  const client = getClient(chainId ? getNetworkOption(chainId) : undefined)
   const allMoments: SuckerGroupMoment[] = []
   let cursor: string | null = null
 
