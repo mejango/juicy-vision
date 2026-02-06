@@ -3,7 +3,7 @@
 import { createPublicClient, http, zeroAddress } from 'viem'
 import { VIEM_CHAINS, MAINNET_VIEM_CHAINS, RPC_ENDPOINTS, MAINNET_RPC_ENDPOINTS, JB_CONTRACTS, type SupportedChainId, MAINNET_CHAIN_IDS } from '../../constants/chains'
 import { REV_DEPLOYER_ADDRESS, REV_DEPLOYER_TIERED_721_HOOK_ABI } from '../../constants/abis/revDeployer'
-import { resolveIpfsUri } from '../../utils/ipfs'
+import { resolveIpfsUri, decodeEncodedIPFSUri } from '../../utils/ipfs'
 import { isRevnet, fetchProject } from '../bendystraw'
 import {
   JB721TierStoreAbi,
@@ -147,7 +147,7 @@ export async function fetchNFTTiers(
       return []
     }
 
-    // Fetch all tiers with resolved URIs from the store
+    // Fetch all tiers from the store (without resolved URIs to avoid reverts)
     console.log('[NFT] Fetching tiers from store:', storeAddress)
     const tiers = await client.readContract({
       address: storeAddress,
@@ -156,7 +156,7 @@ export async function fetchNFTTiers(
       args: [
         hookAddress,
         [], // All categories
-        true, // Include resolved URI
+        false, // Don't include resolved URI (can cause reverts if resolver not set)
         0n, // Starting from tier 0
         BigInt(maxTiers),
       ],
@@ -177,7 +177,10 @@ export async function fetchNFTTiers(
       category: Number(tier.category),
       allowOwnerMint: tier.allowOwnerMint,
       transfersPausable: tier.transfersPausable,
-      encodedIPFSUri: tier.resolvedUri || undefined,
+      // Use encodedIPFSUri (bytes32) since we don't fetch resolved URIs
+      encodedIPFSUri: tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
+        ? decodeEncodedIPFSUri(tier.encodedIPFSUri) || undefined
+        : undefined,
     }))
   } catch (err) {
     console.error('[NFT] Failed to fetch NFT tiers:', err)
@@ -219,7 +222,7 @@ export async function fetchNFTTier(
       address: storeAddress,
       abi: JB721TierStoreAbi,
       functionName: 'tierOf',
-      args: [hookAddress, BigInt(tierId), true],
+      args: [hookAddress, BigInt(tierId), false], // Don't include resolved URI
     })
 
     return {
@@ -234,7 +237,9 @@ export async function fetchNFTTier(
       category: Number(tier.category),
       allowOwnerMint: tier.allowOwnerMint,
       transfersPausable: tier.transfersPausable,
-      encodedIPFSUri: tier.resolvedUri || undefined,
+      encodedIPFSUri: tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
+        ? decodeEncodedIPFSUri(tier.encodedIPFSUri) || undefined
+        : undefined,
     }
   } catch (err) {
     console.error('Failed to fetch NFT tier:', err)
@@ -436,7 +441,7 @@ export async function fetchNFTTiersWithPermissions(
       args: [
         hookAddress,
         [], // All categories
-        true, // Include resolved URI
+        false, // Don't include resolved URI (can cause reverts)
         0n, // Starting from tier 0
         BigInt(maxTiers),
       ],
@@ -454,7 +459,9 @@ export async function fetchNFTTiersWithPermissions(
       category: Number(tier.category),
       allowOwnerMint: tier.allowOwnerMint,
       transfersPausable: tier.transfersPausable,
-      encodedIPFSUri: tier.resolvedUri || undefined,
+      encodedIPFSUri: tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
+        ? decodeEncodedIPFSUri(tier.encodedIPFSUri) || undefined
+        : undefined,
       permissions: {
         cannotBeRemoved: tier.cannotBeRemoved,
         cannotIncreaseDiscountPercent: tier.cannotIncreaseDiscountPercent,
