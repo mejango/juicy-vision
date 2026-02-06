@@ -1370,7 +1370,7 @@ export async function fetchSuckerGroupBalance(
   chainId: number,
   version: number = 5
 ): Promise<SuckerGroupBalance> {
-  const client = getClient()
+  const client = getClient(getNetworkOption(chainId))
 
   try {
     // First, get the suckerGroupId for this project
@@ -1506,7 +1506,7 @@ export async function fetchProjectSuckerGroupId(
   chainId: number,
   version: number = 5
 ): Promise<string | null> {
-  const client = getClient()
+  const client = getClient(getNetworkOption(chainId))
 
   try {
     const projectData = await client.request<{
@@ -1531,7 +1531,7 @@ export async function fetchOwnersCount(
   chainId: number,
   version: number = 5
 ): Promise<number> {
-  const client = getClient()
+  const client = getClient(getNetworkOption(chainId))
 
   // Helper to fetch single-chain participants
   const fetchSingleChain = async (): Promise<number> => {
@@ -1968,7 +1968,7 @@ export async function fetchRevnetOperator(
   const cached = revnetOperatorCache.get(cacheKey)
   if (cached) return cached
 
-  const client = getClient()
+  const client = getClient(getNetworkOption(chainId))
 
   try {
     // Query permissionHolders for this project where isRevnetOperator is true
@@ -2736,7 +2736,7 @@ export async function fetchPayEventsHistory(
   version: number = 5,
   limit: number = 1000
 ): Promise<PayEventHistoryItem[]> {
-  const client = getClient()
+  const client = getClient(getNetworkOption(chainId))
   const allEvents: PayEventHistoryItem[] = []
   let cursor: string | null = null
 
@@ -2777,7 +2777,7 @@ export async function fetchCashOutEventsHistory(
   version: number = 5,
   limit: number = 1000
 ): Promise<CashOutEventHistoryItem[]> {
-  const client = getClient()
+  const client = getClient(getNetworkOption(chainId))
   const allEvents: CashOutEventHistoryItem[] = []
   let cursor: string | null = null
 
@@ -2853,7 +2853,7 @@ export async function fetchAggregatedParticipants(
   fallbackProjectId?: string,
   fallbackChainId?: number
 ): Promise<{ participants: AggregatedParticipant[]; totalSupply: bigint }> {
-  const client = getClient()
+  const client = getClient(fallbackChainId ? getNetworkOption(fallbackChainId) : undefined)
 
   // Helper to process participants into aggregated format
   const processParticipants = (
@@ -2952,7 +2952,7 @@ export async function fetchProjectMoments(
   version: number = 5,
   limit: number = 1000
 ): Promise<ProjectMoment[]> {
-  const client = getClient()
+  const client = getClient(getNetworkOption(chainId))
 
   type ProjectMomentsResponse = {
     projectMoments: {

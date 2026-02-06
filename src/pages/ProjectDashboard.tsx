@@ -66,6 +66,18 @@ function formatTimeAgo(timestamp: string): string {
   return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+// Strip HTML tags from description for plain text display
+function stripHtmlTags(html: string): string {
+  // Replace <br>, <br/>, </p> with newlines for proper line breaks
+  const withLineBreaks = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+  // Remove all remaining HTML tags
+  const text = withLineBreaks.replace(/<[^>]*>/g, '')
+  // Clean up multiple newlines and trim
+  return text.replace(/\n{3,}/g, '\n\n').trim()
+}
+
 export default function ProjectDashboard({ chainId, projectId }: ProjectDashboardProps) {
   const { theme } = useThemeStore()
   const { t } = useTranslation()
@@ -335,8 +347,8 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             <div className="px-6 py-6 space-y-6">
               {/* Description */}
               {project.description && (
-                <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  {project.description}
+                <p className={`text-sm whitespace-pre-line ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  {stripHtmlTags(project.description)}
                 </p>
               )}
 
@@ -703,8 +715,8 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         {activeTab === 'overview' && (
           <>
             {project.description && (
-              <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                {project.description}
+              <p className={`text-sm whitespace-pre-line ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                {stripHtmlTags(project.description)}
               </p>
             )}
 
