@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
@@ -246,6 +246,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [chainDropdownOpen, setChainDropdownOpen] = useState(false)
   const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false)
   const [showBuyJuiceModal, setShowBuyJuiceModal] = useState(false)
+  const buyMoreButtonRef = useRef<HTMLButtonElement>(null)
   // Connected chains with their project IDs (may differ per chain)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
   // Current issuance rate for token calculation
@@ -1357,6 +1358,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             <span>Balance: ${juiceBalance.balance.toFixed(2)}</span>
             {juiceBalance.balance < totalAmount && (
               <button
+                ref={buyMoreButtonRef}
                 onClick={() => setShowBuyJuiceModal(true)}
                 className={`underline ${isDark ? 'text-juice-cyan hover:text-juice-cyan/80' : 'text-cyan-600 hover:text-cyan-700'}`}
               >
@@ -1465,6 +1467,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           refetchJuiceBalance()
           setShowBuyJuiceModal(false)
         }}
+        anchorRef={buyMoreButtonRef}
       />
 
       {/* Funding Options Popover - shown when user has zero balance */}
