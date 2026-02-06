@@ -1254,7 +1254,9 @@ export default function ConversationHistory() {
                   onClick={() => {
                     const chain = CHAINS[project.chainId]
                     if (chain) {
-                      navigate(`/project/${chain.slug}/${project.projectId}`)
+                      // Use simple slug format without hyphens (e.g., opsep instead of op-sep)
+                      const urlSlug = chain.slug.replace(/-/g, '')
+                      navigate(`/${urlSlug}:${project.projectId}`)
                     }
                   }}
                   className={`group p-4 border cursor-pointer transition-colors ${

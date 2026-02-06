@@ -382,21 +382,19 @@ const PROJECT_SLUG_REGEX = /^([a-z]+):(\d+)$/i
 import { CHAIN_IDS, IS_TESTNET } from './config/environment'
 
 // Map chain slugs to chain IDs (uses environment-aware chain IDs)
-// Supports both canonical slugs (eth, op, base, arb) and testnet-specific aliases (sep, op-sep, etc.)
+// URL format: /{chain}:{projectId} e.g., /op:83, /opsep:123
+// Canonical slugs: eth, op, base, arb (mainnet) | sep, opsep, basesep, arbsep (testnet)
 const CHAIN_SLUG_TO_ID: Record<string, number> = {
   eth: CHAIN_IDS.ethereum,
   op: CHAIN_IDS.optimism,
   base: CHAIN_IDS.base,
   arb: CHAIN_IDS.arbitrum,
-  // Testnet-specific slugs (only work when IS_TESTNET is true, otherwise map to mainnet which won't match)
+  // Testnet-specific slugs (only work when IS_TESTNET is true)
   ...(IS_TESTNET ? {
     sep: CHAIN_IDS.ethereum,        // Sepolia
-    opsep: CHAIN_IDS.optimism,      // Optimism Sepolia (no hyphen)
-    'op-sep': CHAIN_IDS.optimism,   // Optimism Sepolia (with hyphen)
-    basesep: CHAIN_IDS.base,        // Base Sepolia (no hyphen)
-    'base-sep': CHAIN_IDS.base,     // Base Sepolia (with hyphen)
-    arbsep: CHAIN_IDS.arbitrum,     // Arbitrum Sepolia (no hyphen)
-    'arb-sep': CHAIN_IDS.arbitrum,  // Arbitrum Sepolia (with hyphen)
+    opsep: CHAIN_IDS.optimism,      // Optimism Sepolia
+    basesep: CHAIN_IDS.base,        // Base Sepolia
+    arbsep: CHAIN_IDS.arbitrum,     // Arbitrum Sepolia
   } : {}),
 }
 
@@ -441,59 +439,39 @@ function ChatNotFound() {
   )
 }
 
-// Component to handle project deep links like /eth:3 or /base:123
+// Component to handle project deep links like /eth:3 or /base:123 - shows project dashboard
 function ProjectRouteHandler() {
   const { projectSlug } = useParams<{ projectSlug: string }>()
   const navigate = useNavigate()
-  const { setActiveChat } = useChatStore()
-  const [dispatched, setDispatched] = useState(false)
 
-  useEffect(() => {
-    if (!projectSlug || dispatched) return
+  // Parse the project slug
+  const match = projectSlug?.match(PROJECT_SLUG_REGEX)
+  const chainSlug = match?.[1]?.toLowerCase()
+  const projectIdStr = match?.[2]
+  const chainId = chainSlug ? CHAIN_SLUG_TO_ID[chainSlug] : undefined
+  const projectId = projectIdStr ? parseInt(projectIdStr, 10) : NaN
 
-    const match = projectSlug.match(PROJECT_SLUG_REGEX)
-    if (!match) {
-      // Not a valid project slug, go home
-      navigate('/')
-      return
-    }
+  // Invalid slug - show error
+  if (!match || !chainId || isNaN(projectId)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-juice-dark">
+        <div className="text-center max-w-md px-4">
+          <h1 className="text-xl font-semibold mb-2 text-white">Invalid project URL</h1>
+          <p className="text-sm mb-6 text-gray-400">
+            Use format: /{'{chain}'}:{'{projectId}'} (e.g., /op:83, /eth:3)
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
+          >
+            Go home
+          </button>
+        </div>
+      </div>
+    )
+  }
 
-    const [, chainSlug, projectId] = match
-    const chainId = CHAIN_SLUG_TO_ID[chainSlug.toLowerCase()]
-
-    if (!chainId) {
-      // Unknown chain, go home
-      navigate('/')
-      return
-    }
-
-    const chainName = CHAIN_ID_TO_NAME[chainId]
-
-    // Clear any active chat to start fresh
-    setActiveChat(null)
-
-    // Navigate to home first, then dispatch the message
-    navigate('/')
-
-    // Small delay to ensure navigation completes before dispatching
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('juice:send-message', {
-        detail: {
-          message: `Tell me about project #${projectId} on ${chainName}. What's the project's current state, treasury balance, and recent activity?`,
-          newChat: true
-        }
-      }))
-    }, 100)
-
-    setDispatched(true)
-  }, [projectSlug, navigate, setActiveChat, dispatched])
-
-  // Show loading while redirecting
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-juice-dark">
-      <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
+  return <ProjectDashboard chainId={chainId} projectId={projectId} />
 }
 
 // Component to handle /chat/:chatId routes - sets activeChatId and renders AppContent
@@ -539,38 +517,6 @@ function ChatRouteHandler() {
   // Render the main app content - pass chatId directly to ensure it's used
   // Use key to force re-mount when chatId changes
   return <AppContent key={chatId} forceActiveChatId={chatId} />
-}
-
-// Component to handle /project/:chainSlug/:projectId routes - shows project dashboard
-function ProjectDashboardRouteHandler() {
-  const { chainSlug, projectId } = useParams<{ chainSlug: string; projectId: string }>()
-  const navigate = useNavigate()
-
-  // Map chain slug to chain ID
-  const chainId = chainSlug ? CHAIN_SLUG_TO_ID[chainSlug.toLowerCase()] : undefined
-  const parsedProjectId = projectId ? parseInt(projectId, 10) : NaN
-
-  // Validate parameters
-  if (!chainId || isNaN(parsedProjectId)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-juice-dark">
-        <div className="text-center max-w-md px-4">
-          <h1 className="text-xl font-semibold mb-2 text-white">Invalid project URL</h1>
-          <p className="text-sm mb-6 text-gray-400">
-            The chain or project ID in the URL is not valid.
-          </p>
-          <button
-            onClick={() => navigate('/')}
-            className="px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
-          >
-            Go home
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return <ProjectDashboard chainId={chainId} projectId={parsedProjectId} />
 }
 
 function AppProviders({ children }: { children: React.ReactNode }) {
@@ -927,7 +873,6 @@ function MainApp() {
           <Routes>
             <Route path="/join/:code" element={<JoinChatPage />} />
             <Route path="/chat/:chatId" element={<ChatRouteHandler />} />
-            <Route path="/project/:chainSlug/:projectId" element={<ProjectDashboardRouteHandler />} />
             <Route path="/:projectSlug" element={<ProjectRouteHandler />} />
             <Route path="/" element={<HomeRouteHandler />} />
             <Route path="*" element={<HomeRouteHandler />} />
