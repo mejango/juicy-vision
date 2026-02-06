@@ -98,7 +98,34 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const isMobile = useIsMobile()
   const isDark = theme === 'dark'
 
-  const [activeTab, setActiveTab] = useState<DashboardTab>('about')
+  // Initialize tab from URL hash (e.g., #shop, #tokens)
+  const getInitialTab = (): DashboardTab => {
+    const hash = window.location.hash.slice(1) // Remove #
+    const validTabs: DashboardTab[] = ['about', 'analytics', 'rulesets', 'tokens', 'shop']
+    return validTabs.includes(hash as DashboardTab) ? (hash as DashboardTab) : 'about'
+  }
+
+  const [activeTab, setActiveTabState] = useState<DashboardTab>(getInitialTab)
+
+  // Wrapper to update both state and URL hash
+  const setActiveTab = useCallback((tab: DashboardTab) => {
+    setActiveTabState(tab)
+    window.history.replaceState(null, '', `#${tab}`)
+  }, [])
+
+  // Listen for hash changes (browser back/forward)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1)
+      const validTabs: DashboardTab[] = ['about', 'analytics', 'rulesets', 'tokens', 'shop']
+      if (validTabs.includes(hash as DashboardTab)) {
+        setActiveTabState(hash as DashboardTab)
+      }
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
+
   const [project, setProject] = useState<Project | null>(null)
   const [projectLoading, setProjectLoading] = useState(true)
   const [supporters, setSupporters] = useState<ProjectConversation[]>([])
@@ -490,15 +517,12 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
                 {/* Analytics Tab */}
                 {activeTab === 'analytics' && (
-                  <>
-                    {/* Charts grid - 2x2 */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
-                      <HoldersChart projectId={String(projectId)} chainId={String(chainId)} />
-                      <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
-                      <PriceChart projectId={String(projectId)} chainId={String(chainId)} />
-                    </div>
-                  </>
+                  <div className="space-y-6">
+                    <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
+                    <HoldersChart projectId={String(projectId)} chainId={String(chainId)} />
+                    <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
+                    <PriceChart projectId={String(projectId)} chainId={String(chainId)} />
+                  </div>
                 )}
 
                 {/* Rulesets & Funds Tab */}
@@ -735,7 +759,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
         {/* Analytics tab */}
         {activeTab === 'analytics' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
             <HoldersChart projectId={String(projectId)} chainId={String(chainId)} />
             <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
