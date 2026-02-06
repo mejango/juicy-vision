@@ -5,6 +5,7 @@ import { useThemeStore, useTransactionStore } from '../../stores'
 import { resolveIpfsUri, inlineSvgImages } from '../../utils/ipfs'
 import { resolveTierUri, type ResolvedNFTTier } from '../../services/nft'
 import GenerateImageButton from '../ui/GenerateImageButton'
+import SupplyBadge from '../ui/SupplyBadge'
 
 interface NFTTierCardProps {
   tier: ResolvedNFTTier
@@ -27,6 +28,10 @@ interface NFTTierCardProps {
   hookAddress?: `0x${string}` | null
   /** If true, Buy button adds to checkout instead of minting directly */
   addToCheckoutMode?: boolean
+  /** Called when on-chain metadata is loaded (productName, categoryName) */
+  onMetadataLoaded?: (tierId: number, metadata: { productName?: string; categoryName?: string }) => void
+  /** Connected chains for multi-chain supply display */
+  connectedChains?: Array<{ chainId: number; projectId: number }>
 }
 
 // Dispatch event to open wallet panel
@@ -48,6 +53,8 @@ export default function NFTTierCard({
   projectContext,
   hookAddress,
   addToCheckoutMode = false,
+  onMetadataLoaded,
+  connectedChains,
 }: NFTTierCardProps) {
   const { theme } = useThemeStore()
   const { addTransaction } = useTransactionStore()
@@ -57,7 +64,8 @@ export default function NFTTierCard({
   const [minting, setMinting] = useState(false)
   const [quantity, setQuantity] = useState(1)
   const [onChainImage, setOnChainImage] = useState<string | null>(null)
-  const [onChainName, setOnChainName] = useState<string | null>(null)
+  const [onChainProductName, setOnChainProductName] = useState<string | null>(null)
+  const [onChainCategoryName, setOnChainCategoryName] = useState<string | null>(null)
   const [loadingOnChainImage, setLoadingOnChainImage] = useState(false)
   const [imageError, setImageError] = useState(false)
 
@@ -81,9 +89,21 @@ export default function NFTTierCard({
               const base64Data = dataUri.split(',')[1]
               const jsonStr = atob(base64Data)
               const metadata = JSON.parse(jsonStr)
-              // Extract name from on-chain metadata
-              if (metadata.name) {
-                setOnChainName(metadata.name)
+              // Extract productName and categoryName from on-chain metadata
+              // productName is the simple label like "Hay Field", "Work Station"
+              // categoryName is the category label like "Background"
+              if (metadata.productName) {
+                setOnChainProductName(metadata.productName)
+              }
+              if (metadata.categoryName) {
+                setOnChainCategoryName(metadata.categoryName)
+              }
+              // Report metadata to parent
+              if (onMetadataLoaded && (metadata.productName || metadata.categoryName)) {
+                onMetadataLoaded(tier.tierId, {
+                  productName: metadata.productName,
+                  categoryName: metadata.categoryName,
+                })
               }
               if (metadata.image) {
                 let processedImage = metadata.image
@@ -108,7 +128,7 @@ export default function NFTTierCard({
           setLoadingOnChainImage(false)
         })
     }
-  }, [tier.tierId, chainId, hookAddress, ipfsImageUrl, onChainImage, loadingOnChainImage])
+  }, [tier.tierId, chainId, hookAddress, ipfsImageUrl, onChainImage, loadingOnChainImage, onMetadataLoaded])
 
   // Reset error when image URL changes
   useEffect(() => {
@@ -259,12 +279,13 @@ export default function NFTTierCard({
         )}
 
         {/* Supply badge */}
-        <div className={`absolute top-2 right-2 px-2 py-0.5 text-xs font-medium ${
-          soldOut
-            ? 'bg-red-500/90 text-white'
-            : isDark ? 'bg-black/70 text-white' : 'bg-white/90 text-gray-900'
-        }`}>
-          {soldOut ? 'Sold Out' : `${tier.remainingSupply} left`}
+        <div className="absolute top-2 right-2">
+          <SupplyBadge
+            tierId={tier.tierId}
+            currentRemaining={tier.remainingSupply}
+            connectedChains={connectedChains}
+            isDark={isDark}
+          />
         </div>
 
         {/* Edit button (owner only) */}
@@ -288,7 +309,8 @@ export default function NFTTierCard({
       {/* Content */}
       <div className="p-4">
         <h3 className={`font-semibold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          {onChainName || tier.name}
+          {/* Use tier.name (from IPFS) unless it's a placeholder, then fall back to on-chain productName */}
+          {/^Tier \d+$/.test(tier.name) ? (onChainProductName || tier.name) : tier.name}
         </h3>
 
         {tier.description && (
@@ -328,7 +350,7 @@ export default function NFTTierCard({
               <select
                 value={quantity}
                 onChange={(e) => setQuantity(Number(e.target.value))}
-                className={`pl-2 pr-6 py-1.5 text-xs border ${
+                className={`pl-3 pr-8 py-1.5 text-xs border ${
                   isDark
                     ? 'bg-juice-dark border-white/10 text-white'
                     : 'bg-white border-gray-200 text-gray-900'

@@ -1,16 +1,23 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useThemeStore } from '../../stores'
 import { fetchProjectNFTTiers, getProjectDataHook, type ResolvedNFTTier } from '../../services/nft'
 import { fetchEthPrice } from '../../services/bendystraw'
 import NFTTierCard from './NFTTierCard'
 
+// Metadata extracted from on-chain resolver
+interface TierMetadata {
+  productName?: string
+  categoryName?: string
+}
+
 interface ShopTabProps {
   projectId: string
   chainId: string
   isOwner?: boolean
+  connectedChains?: Array<{ chainId: number; projectId: number }>
 }
 
-export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
+export default function ShopTab({ projectId, chainId, isOwner, connectedChains }: ShopTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -19,6 +26,10 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
   const [ethPrice, setEthPrice] = useState<number | undefined>()
   const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all')
   const [hookAddress, setHookAddress] = useState<`0x${string}` | null>(null)
+  // Cache for on-chain metadata (productName, categoryName) by tierId
+  const [tierMetadata, setTierMetadata] = useState<Record<number, TierMetadata>>({})
+  // Category names extracted from on-chain metadata (category number -> name)
+  const [categoryNames, setCategoryNames] = useState<Record<number, string>>({})
 
   const chainIdNum = parseInt(chainId)
 
@@ -74,10 +85,28 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
     return tiers.filter(tier => tier.category === selectedCategory)
   }, [tiers, selectedCategory])
 
-  // Category names (could be extended with metadata)
-  const getCategoryName = (cat: number) => {
-    return `Category ${cat}`
-  }
+  // Handle metadata loaded from NFTTierCard (extracts category names)
+  const handleTierMetadataLoaded = useCallback((tierId: number, metadata: TierMetadata) => {
+    setTierMetadata(prev => ({
+      ...prev,
+      [tierId]: metadata,
+    }))
+    // Extract category name from any tier that has it
+    if (metadata.categoryName) {
+      const tier = tiers.find(t => t.tierId === tierId)
+      if (tier && tier.category > 0) {
+        setCategoryNames(prev => ({
+          ...prev,
+          [tier.category]: metadata.categoryName!,
+        }))
+      }
+    }
+  }, [tiers])
+
+  // Get category display name (from on-chain metadata or fallback)
+  const getCategoryName = useCallback((cat: number) => {
+    return categoryNames[cat] || `Category ${cat}`
+  }, [categoryNames])
 
   if (loading) {
     return (
@@ -170,6 +199,8 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
                     isOwner={isOwner}
                     hookAddress={hookAddress}
                     addToCheckoutMode
+                    onMetadataLoaded={handleTierMetadataLoaded}
+                    connectedChains={connectedChains}
                   />
                 ))}
               </div>
@@ -193,6 +224,8 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
                       isOwner={isOwner}
                       hookAddress={hookAddress}
                       addToCheckoutMode
+                      onMetadataLoaded={handleTierMetadataLoaded}
+                      connectedChains={connectedChains}
                     />
                   ))}
                 </div>
@@ -213,6 +246,8 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
               isOwner={isOwner}
               hookAddress={hookAddress}
               addToCheckoutMode
+              onMetadataLoaded={handleTierMetadataLoaded}
+              connectedChains={connectedChains}
             />
           ))}
         </div>

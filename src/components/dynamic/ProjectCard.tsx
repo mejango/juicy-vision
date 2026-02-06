@@ -28,6 +28,12 @@ function parseDescription(html: string): string[] {
     .filter(p => p.length > 0)
 }
 
+// Metadata extracted from on-chain resolver
+interface OnChainTierMetadata {
+  productName?: string
+  categoryName?: string
+}
+
 // Small component for tier preview images with on-chain fallback
 function TierPreviewImage({
   tier,
@@ -35,12 +41,14 @@ function TierPreviewImage({
   chainId,
   isDark,
   size = 'default',
+  onMetadataLoaded,
 }: {
   tier: ResolvedNFTTier
   hookAddress: `0x${string}` | null
   chainId: number
   isDark: boolean
   size?: 'default' | 'small'
+  onMetadataLoaded?: (tierId: number, metadata: OnChainTierMetadata) => void
 }) {
   const sizeClass = size === 'small' ? 'w-5 h-5' : 'w-6 h-6'
   const spinnerSize = size === 'small' ? 'w-2.5 h-2.5' : 'w-3 h-3'
@@ -68,6 +76,13 @@ function TierPreviewImage({
               }
               setOnChainImage(processedImage)
             }
+            // Extract and report productName and categoryName
+            if (onMetadataLoaded && (metadata.productName || metadata.categoryName)) {
+              onMetadataLoaded(tier.tierId, {
+                productName: metadata.productName,
+                categoryName: metadata.categoryName,
+              })
+            }
           } catch (e) {
             console.error(`[NFT] Tier ${tier.tierId} parse error:`, e)
           }
@@ -75,7 +90,7 @@ function TierPreviewImage({
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [ipfsImageUrl, onChainImage, loading, hookAddress, tier.tierId, chainId])
+  }, [ipfsImageUrl, onChainImage, loading, hookAddress, tier.tierId, chainId, onMetadataLoaded])
 
   const imageUrl = ipfsImageUrl || onChainImage
 
@@ -355,6 +370,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const selectedTierId = selectedTierIds.length > 0 ? selectedTierIds[0] : null
   const setSelectedTierId = (id: number | null) => setSelectedTierIds(id ? [id] : [])
   const [showAllTiers, setShowAllTiers] = useState(false)
+  // Cache for on-chain metadata (productName, categoryName) by tierId
+  const [tierMetadata, setTierMetadata] = useState<Record<number, OnChainTierMetadata>>({})
   const { theme } = useThemeStore()
   const { addTransaction, getTransaction } = useTransactionStore()
   const isDark = theme === 'dark'
@@ -783,6 +800,25 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       return newIds
     })
   }, [nftTiers, selectedToken, ethPrice])
+
+  // Handle on-chain metadata loaded for a tier
+  const handleTierMetadataLoaded = useCallback((tierId: number, metadata: OnChainTierMetadata) => {
+    setTierMetadata(prev => ({
+      ...prev,
+      [tierId]: metadata,
+    }))
+  }, [])
+
+  // Get display name for a tier (productName from on-chain, or tier.name)
+  const getTierDisplayName = useCallback((tier: ResolvedNFTTier) => {
+    // If tier.name is not a placeholder "Tier X", use it directly
+    if (!/^Tier \d+$/.test(tier.name)) {
+      return tier.name
+    }
+    // Otherwise, check for productName from on-chain metadata
+    const metadata = tierMetadata[tier.tierId]
+    return metadata?.productName || tier.name
+  }, [tierMetadata])
 
   // Listen for add-to-checkout events from Shop tab
   useEffect(() => {
@@ -1232,10 +1268,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     hookAddress={nftHookAddress}
                     chainId={parseInt(selectedChainId)}
                     isDark={isDark}
+                    onMetadataLoaded={handleTierMetadataLoaded}
                   />
                   <div className="text-left">
                     <div className={`text-xs font-medium truncate max-w-[80px] ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {tier.name}
+                      {getTierDisplayName(tier)}
                     </div>
                     <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                       {formatEther(tier.price)} ETH
@@ -1280,59 +1317,59 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
                 placeholder="0.00"
                 disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
-                className={`flex-1 px-3 py-2 text-sm bg-transparent outline-none ${
+                className={`w-20 px-3 py-2 text-sm bg-transparent outline-none ${
                   isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
                 } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
               />
-              {/* Token selector */}
-              <div className="relative">
-              <button
-                onClick={() => {
-                  if (!isPaymentLocked) {
-                    setTokenDropdownOpen(!tokenDropdownOpen)
-                    setChainDropdownOpen(false)
-                  }
-                }}
-                disabled={isPaymentLocked}
-                className={`flex items-center justify-between w-20 px-2 py-2 text-sm font-medium border-l ${
-                  isDark ? 'border-white/10 text-white hover:bg-white/5' : 'border-gray-200 text-gray-900 hover:bg-gray-50'
-                } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-              >
-                <span>{selectedToken === 'PAY_CREDITS' ? '$' : selectedToken}</span>
-                <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {tokenDropdownOpen && (
-                <div className={`absolute top-full right-0 mt-1 py-1  shadow-lg z-10 min-w-[140px] ${
-                  isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
-                }`}>
-                  {TOKENS.map(token => (
-                    <button
-                      key={token.symbol}
-                      onClick={() => {
-                        setSelectedToken(token.symbol as PaymentToken)
-                        setTokenDropdownOpen(false)
-                      }}
-                      className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
-                        token.symbol === selectedToken
-                          ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
-                          : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      <span className="flex justify-between items-center gap-2">
-                        <span>{token.symbol === 'PAY_CREDITS' ? 'Pay Credits' : token.symbol}</span>
-                        {token.symbol === 'PAY_CREDITS' && juiceBalance && (
-                          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                            ${juiceBalance.balance.toFixed(2)}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+              {/* Token selector - inline after input */}
+              <div className="relative flex-1">
+                <button
+                  onClick={() => {
+                    if (!isPaymentLocked) {
+                      setTokenDropdownOpen(!tokenDropdownOpen)
+                      setChainDropdownOpen(false)
+                    }
+                  }}
+                  disabled={isPaymentLocked}
+                  className={`flex items-center gap-1 py-2 text-sm font-medium ${
+                    isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
+                  } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  <span>{selectedToken === 'PAY_CREDITS' ? 'USD' : selectedToken}</span>
+                  <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {tokenDropdownOpen && (
+                  <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
+                    isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+                  }`}>
+                    {TOKENS.map(token => (
+                      <button
+                        key={token.symbol}
+                        onClick={() => {
+                          setSelectedToken(token.symbol as PaymentToken)
+                          setTokenDropdownOpen(false)
+                        }}
+                        className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
+                          token.symbol === selectedToken
+                            ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
+                            : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="flex justify-between items-center gap-2">
+                          <span>{token.symbol === 'PAY_CREDITS' ? 'USD' : token.symbol}</span>
+                          {token.symbol === 'PAY_CREDITS' && juiceBalance && (
+                            <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                              ${juiceBalance.balance.toFixed(2)}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             {/* Chain selector - only show for ETH/USDC */}
             {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
@@ -1486,8 +1523,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                         chainId={parseInt(selectedChainId)}
                         isDark={isDark}
                         size="small"
+                        onMetadataLoaded={handleTierMetadataLoaded}
                       />
-                      <span>{tier.name}</span>
+                      <span>{getTierDisplayName(tier)}</span>
                     </span>
                   )
                 })}

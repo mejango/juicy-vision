@@ -580,6 +580,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     projectId={String(projectId)}
                     chainId={String(chainId)}
                     isOwner={isOwner}
+                    connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
                   />
                 )}
               </div>
@@ -833,6 +834,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             projectId={String(projectId)}
             chainId={String(chainId)}
             isOwner={isOwner}
+            connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
           />
         )}
       </div>
