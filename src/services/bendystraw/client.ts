@@ -2,7 +2,22 @@ import { GraphQLClient, RequestDocument, Variables } from 'graphql-request'
 import { createPublicClient, http } from 'viem'
 import { useSettingsStore, useDebugStore } from '../../stores'
 import { VIEM_CHAINS, ZERO_ADDRESS, REV_DEPLOYER, JB_CONTRACTS, JB_CONTRACTS_V5, RPC_ENDPOINTS, USDC_ADDRESSES, type SupportedChainId } from '../../constants'
+import { IS_TESTNET } from '../../config/environment'
 import { createCache, CACHE_DURATIONS, bendystrawCircuit, rpcCircuit } from '../../utils'
+
+// Mainnet chain IDs - used to detect when to route to mainnet API in staging
+const MAINNET_CHAIN_IDS = [1, 10, 8453, 42161] as const
+
+/**
+ * Get network option for API routing.
+ * In staging (IS_TESTNET mode), mainnet chain IDs need to route to mainnet API.
+ */
+function getNetworkOption(chainId: number): { network: 'mainnet' } | undefined {
+  if (IS_TESTNET && MAINNET_CHAIN_IDS.includes(chainId as typeof MAINNET_CHAIN_IDS[number])) {
+    return { network: 'mainnet' }
+  }
+  return undefined
+}
 import {
   PROJECT_QUERY,
   PROJECTS_QUERY,
@@ -355,7 +370,8 @@ export async function getProjectIdsFromReceipts(
 export async function fetchProject(projectId: string, chainId: number = 1, version: number = 5): Promise<Project> {
   const data = await safeRequest<{ project: Project & { metadata: ProjectMetadata | string } }>(
     PROJECT_QUERY,
-    { projectId: parseFloat(projectId), chainId: parseFloat(String(chainId)), version: parseFloat(String(version)) }
+    { projectId: parseFloat(projectId), chainId: parseFloat(String(chainId)), version: parseFloat(String(version)) },
+    getNetworkOption(chainId)
   )
 
   const project = data.project
@@ -403,7 +419,7 @@ export async function fetchParticipants(
       totalCount: number
       items: Participant[]
     }
-  }>(PARTICIPANTS_QUERY, { projectId: parseInt(projectId), chainId, limit })
+  }>(PARTICIPANTS_QUERY, { projectId: parseInt(projectId), chainId, limit }, getNetworkOption(chainId))
 
   return data.participants?.items || []
 }
@@ -901,7 +917,7 @@ export async function fetchProjectWithRuleset(
       projectId: parseFloat(projectId),
       chainId: parseFloat(String(chainId)),
       version: parseFloat(String(version))
-    })
+    }, getNetworkOption(chainId))
 
     if (!data.project) {
       return null
@@ -1261,7 +1277,7 @@ export async function fetchConnectedChains(
       projectId: parseFloat(projectId),
       chainId: parseFloat(String(chainId)),
       version: parseFloat(String(version)),
-    })
+    }, getNetworkOption(chainId))
 
     const items = data.project?.suckerGroup?.projects?.items
     if (!items || items.length === 0) {
