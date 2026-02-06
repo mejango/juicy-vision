@@ -22,6 +22,8 @@ interface FundsSectionProps {
   chainId: string
   isOwner: boolean
   onSendPayouts: () => void
+  /** If true, hides payout-related UI since revnets don't have payouts by design */
+  isRevnet?: boolean
 }
 
 // Chain info for display
