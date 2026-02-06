@@ -334,7 +334,7 @@ export default function NFTTierCard({
                   : 'bg-green-500 hover:bg-green-600 text-black'
               }`}
             >
-              {minting ? 'Minting...' : soldOut ? 'Sold Out' : 'Mint'}
+              {minting ? 'Buying...' : soldOut ? 'Sold Out' : 'Buy'}
             </button>
           </div>
         )}

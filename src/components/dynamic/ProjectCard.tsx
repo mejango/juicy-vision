@@ -242,7 +242,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [memo, setMemo] = useState('')
   const [paying, setPaying] = useState(false)
   const [selectedChainId, setSelectedChainId] = useState(initialChainId)
-  const [selectedToken, setSelectedToken] = useState<PaymentToken>('USDC')
+  const [selectedToken, setSelectedToken] = useState<PaymentToken>('PAY_CREDITS')
   const [chainDropdownOpen, setChainDropdownOpen] = useState(false)
   const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false)
   const [showBuyJuiceModal, setShowBuyJuiceModal] = useState(false)
@@ -1163,7 +1163,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         {nftTiers.length > 0 && (
           <div className="mb-3">
             <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Buy a reward
+              Buy from store
             </div>
             <div className={`flex flex-wrap gap-2 ${showAllTiers ? 'max-h-72 overflow-y-auto pr-1' : ''}`}>
               {(showAllTiers ? nftTiers : nftTiers.slice(0, 3)).map(tier => (
@@ -1177,11 +1177,15 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       : isDark ? 'border-white/10 hover:border-white/20' : 'border-gray-200 hover:border-gray-300'
                   } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
-                  {tier.imageUri && (
-                    <img src={resolveIpfsUri(tier.imageUri) || undefined} alt="" className="w-8 h-8 object-cover" />
+                  {tier.imageUri ? (
+                    <img src={resolveIpfsUri(tier.imageUri) || undefined} alt="" className="w-6 h-6 object-cover bg-white" />
+                  ) : (
+                    <div className={`w-6 h-6 flex items-center justify-center text-[8px] ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
+                      #{tier.tierId}
+                    </div>
                   )}
                   <div className="text-left">
-                    <div className={`text-xs font-medium truncate max-w-[100px] ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    <div className={`text-xs font-medium truncate max-w-[80px] ${isDark ? 'text-white' : 'text-gray-900'}`}>
                       {tier.name}
                     </div>
                     <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -1361,14 +1365,33 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         )}
 
         {/* Token preview */}
-        {amountNum > 0 && expectedTokens !== null && (
+        {(amountNum > 0 && expectedTokens !== null) || selectedTierId ? (
           <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            You get ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}
+            <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>You get:</span>
+            {amountNum > 0 && expectedTokens !== null && (
+              <span> ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
+            )}
             {payUs && estimatedJuicyTokens > 0 && (
               <span> + {estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} $JUICY</span>
             )}
+            {selectedTierId && (() => {
+              const selectedTier = nftTiers.find(t => t.tierId === selectedTierId)
+              if (!selectedTier) return null
+              return (
+                <span className="flex items-center gap-1.5 mt-1">
+                  {selectedTier.imageUri ? (
+                    <img src={resolveIpfsUri(selectedTier.imageUri) || undefined} alt="" className="w-5 h-5 object-cover bg-white inline-block" />
+                  ) : (
+                    <span className={`w-5 h-5 flex items-center justify-center text-[8px] inline-flex ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
+                      #{selectedTier.tierId}
+                    </span>
+                  )}
+                  <span>{selectedTier.name}</span>
+                </span>
+              )
+            })()}
           </div>
-        )}
+        ) : null}
 
         {/* Memo input */}
         <input
