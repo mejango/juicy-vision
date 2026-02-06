@@ -1156,7 +1156,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Buy a reward
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className={`flex flex-wrap gap-2 ${showAllTiers ? 'max-h-72 overflow-y-auto pr-1' : ''}`}>
               {(showAllTiers ? nftTiers : nftTiers.slice(0, 3)).map(tier => (
                 <button
                   key={tier.tierId}
@@ -1187,6 +1187,14 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   className={`px-2 py-1.5 text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
                 >
                   +{nftTiers.length - 3} more
+                </button>
+              )}
+              {showAllTiers && nftTiers.length > 3 && (
+                <button
+                  onClick={() => setShowAllTiers(false)}
+                  className={`px-2 py-1.5 text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Show less
                 </button>
               )}
             </div>
