@@ -3,6 +3,17 @@
 
 export const REV_DEPLOYER_ADDRESS = '0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d' as const
 
+// ABI for hookOf view function - returns the 721 hook for a revnet
+export const REV_DEPLOYER_HOOK_OF_ABI = [
+  {
+    name: 'hookOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'revnetId', type: 'uint256' }],
+    outputs: [{ name: 'hook', type: 'address' }],
+  },
+] as const
+
 export const REV_DEPLOYER_ABI = [
   {
     name: 'deployFor',

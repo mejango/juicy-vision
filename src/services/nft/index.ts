@@ -2,7 +2,9 @@
 
 import { createPublicClient, http, zeroAddress } from 'viem'
 import { VIEM_CHAINS, RPC_ENDPOINTS, JB_CONTRACTS, type SupportedChainId } from '../../constants/chains'
+import { REV_DEPLOYER_ADDRESS, REV_DEPLOYER_HOOK_OF_ABI } from '../../constants/abis/revDeployer'
 import { resolveIpfsUri } from '../../utils/ipfs'
+import { isRevnet, fetchProject } from '../bendystraw'
 import {
   JB721TierStoreAbi,
   JB721TiersHookAbi,
@@ -26,7 +28,9 @@ export * from './queries'
 const JB721_TIER_STORE = '0x4ae9af188c2b63cba768e53f7e6c1b62b2e86ce7' as const
 
 /**
- * Get the 721 data hook address for a project from its current ruleset
+ * Get the 721 data hook address for a project.
+ * For revnets, this queries the REVDeployer's hookOf function since the
+ * ruleset's data hook points to the REVDeployer, not the 721 hook directly.
  */
 export async function getProjectDataHook(
   projectId: string,
@@ -42,7 +46,30 @@ export async function getProjectDataHook(
   })
 
   try {
-    // Get current ruleset from controller to check for data hook
+    // First check if this is a revnet by fetching the project owner
+    const project = await fetchProject(projectId, chainId)
+    const projectIsRevnet = project?.owner ? isRevnet(project.owner) : false
+
+    if (projectIsRevnet) {
+      // For revnets, query the REVDeployer's hookOf function
+      try {
+        const hookAddress = await client.readContract({
+          address: REV_DEPLOYER_ADDRESS,
+          abi: REV_DEPLOYER_HOOK_OF_ABI,
+          functionName: 'hookOf',
+          args: [BigInt(projectId)],
+        })
+
+        if (hookAddress && hookAddress !== zeroAddress) {
+          return hookAddress
+        }
+      } catch (err) {
+        console.error('Failed to get revnet hook:', err)
+      }
+      return null
+    }
+
+    // For non-revnets, get data hook from ruleset
     const result = await client.readContract({
       address: JB_CONTRACTS.JBController,
       abi: JBControllerRulesetAbi,
