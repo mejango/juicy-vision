@@ -109,8 +109,9 @@ export default function BalanceChart({
   // Filter data to selected range
   const filteredData = filterToRange(data, range)
 
-  // Calculate Y domain
-  const yDomain = calculateYDomain(filteredData.map(d => d.balance))
+  // Calculate Y domain - always ground at 0 for balance charts
+  const [, maxY] = calculateYDomain(filteredData.map(d => d.balance))
+  const yDomain: [number, number] = [0, maxY]
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload }: any) => {
