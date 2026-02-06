@@ -80,7 +80,7 @@ export default function NFTTierCard({
               if (metadata.image) {
                 let processedImage = metadata.image
 
-                // If it's an SVG data URI, check for embedded ipfs:// URLs and replace with gateway
+                // If it's an SVG data URI, fix embedded IPFS URLs
                 if (metadata.image.startsWith('data:image/svg+xml')) {
                   try {
                     let svgContent: string
@@ -94,11 +94,21 @@ export default function NFTTierCard({
                       svgContent = decodeURIComponent(metadata.image.split(',')[1])
                     }
 
-                    // Replace ipfs:// URLs with gateway URLs in the SVG
-                    // Match full IPFS paths including subdirectories
+                    let modified = false
+
+                    // Replace bannyverse.infura-ipfs.io with ipfs.io (CORS fix)
+                    if (svgContent.includes('bannyverse.infura-ipfs.io')) {
+                      svgContent = svgContent.replace(/https:\/\/bannyverse\.infura-ipfs\.io\/ipfs\//g, 'https://ipfs.io/ipfs/')
+                      modified = true
+                    }
+
+                    // Also replace any other ipfs:// URLs
                     if (svgContent.includes('ipfs://')) {
-                      console.log(`[NFT] Tier ${tier.tierId} found ipfs:// in SVG, replacing with gateway`)
                       svgContent = svgContent.replace(/ipfs:\/\/([a-zA-Z0-9/._-]+)/g, 'https://ipfs.io/ipfs/$1')
+                      modified = true
+                    }
+
+                    if (modified) {
                       // Re-encode as base64, handling UTF-8 properly
                       const utf8Bytes = new TextEncoder().encode(svgContent)
                       const binaryStr = Array.from(utf8Bytes, byte => String.fromCharCode(byte)).join('')
