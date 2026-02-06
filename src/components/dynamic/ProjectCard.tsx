@@ -931,8 +931,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             <div className={`h-4 w-28 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
           </div>
 
-          {/* More link skeleton */}
-          <div className={`h-3 w-12 mt-4 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
         </div>
       </div>
     )
@@ -1317,7 +1315,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
                 placeholder="0.00"
                 disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
-                className={`w-20 px-3 py-2 text-sm bg-transparent outline-none ${
+                className={`w-14 pl-3 pr-1 py-2 text-sm bg-transparent outline-none text-right ${
                   isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
                 } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
               />
@@ -1576,24 +1574,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         )}
       </div>
 
-      {/* About section - collapsible, inside card */}
-      {fullMetadata?.description && (
-        <details className="mt-4 group">
-          <summary className={`text-xs font-medium cursor-pointer list-none flex items-center gap-1 ${
-            isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
-          }`}>
-            <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            More
-          </summary>
-          <div className={`mt-2 text-sm space-y-2 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            {parseDescription(fullMetadata.description).map((paragraph, i) => (
-              <p key={i}>{paragraph}</p>
-            ))}
-          </div>
-        </details>
-      )}
       </div>
 
       {/* BuyJuiceModal for purchasing Pay Credits */}
