@@ -177,7 +177,9 @@ export interface ProjectCardPaymentState extends ComponentState {
   token?: 'ETH' | 'USDC' | 'PAY_CREDITS'
   memo?: string
   selectedChainId?: string
-  // NFT tier selection
+  // NFT tier selection (multi-select)
+  selectedTierIds?: number[]
+  /** @deprecated Use selectedTierIds instead */
   selectedTierId?: number | null
   // Transaction details
   txHash?: string

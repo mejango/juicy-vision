@@ -346,7 +346,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [nftTiers, setNftTiers] = useState<ResolvedNFTTier[]>([])
   const [nftHookAddress, setNftHookAddress] = useState<`0x${string}` | null>(null)
   const [nftHookFlags, setNftHookFlags] = useState<JB721HookFlags | null>(null)
-  const [selectedTierId, setSelectedTierId] = useState<number | null>(null)
+  const [selectedTierIds, setSelectedTierIds] = useState<number[]>([])
   const [showAllTiers, setShowAllTiers] = useState(false)
   const { theme } = useThemeStore()
   const { addTransaction, getTransaction } = useTransactionStore()
@@ -410,7 +410,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       if (persistedPayment.token) setSelectedToken(persistedPayment.token)
       if (persistedPayment.memo) setMemo(persistedPayment.memo)
       if (persistedPayment.selectedChainId) setSelectedChainId(persistedPayment.selectedChainId)
-      if (persistedPayment.selectedTierId !== undefined) setSelectedTierId(persistedPayment.selectedTierId)
+      if (persistedPayment.selectedTierIds) setSelectedTierIds(persistedPayment.selectedTierIds)
+      else if (persistedPayment.selectedTierId != null) setSelectedTierIds([persistedPayment.selectedTierId])
     }
   }, [persistedPayment?.status]) // Only run when status changes (initial load or update)
 
@@ -450,7 +451,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         setNftHookAddress(null)
         setNftHookFlags(null)
       }
-      setSelectedTierId(null) // Reset selection on chain change
+      setSelectedTierIds([]) // Reset selection on chain change
       setShowAllTiers(false) // Reset expanded state
     }
     loadNFTTiers()
@@ -745,24 +746,51 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     return { sufficient: true }
   }, [amount, feeAmount, selectedToken, walletEthBalance, walletUsdcBalance, balanceLoading, juiceBalance])
 
-  // Handle NFT tier selection
+  // Handle NFT tier selection (multi-select)
   const handleTierSelect = useCallback((tier: ResolvedNFTTier) => {
-    if (selectedTierId === tier.tierId) {
-      // Deselect
-      setSelectedTierId(null)
-      setAmount('')
-    } else {
-      // Select tier and auto-fill amount
-      setSelectedTierId(tier.tierId)
-      const priceEth = parseFloat(formatEther(tier.price))
-      if (selectedToken === 'ETH') {
-        setAmount(priceEth.toFixed(6).replace(/\.?0+$/, ''))
-      } else if (ethPrice) {
-        // Convert to USD for USDC/Pay Credits
-        setAmount((priceEth * ethPrice).toFixed(2))
+    setSelectedTierIds(prev => {
+      const isSelected = prev.includes(tier.tierId)
+      let newIds: number[]
+
+      if (isSelected) {
+        newIds = prev.filter(id => id !== tier.tierId)
+      } else {
+        newIds = [...prev, tier.tierId]
+      }
+
+      // Calculate total price from all selected tiers
+      if (newIds.length === 0) {
+        setAmount('')
+      } else {
+        const totalPriceEth = newIds.reduce((sum, id) => {
+          const t = nftTiers.find(t => t.tierId === id)
+          return sum + (t ? parseFloat(formatEther(t.price)) : 0)
+        }, 0)
+
+        if (selectedToken === 'ETH') {
+          setAmount(totalPriceEth.toFixed(6).replace(/\.?0+$/, ''))
+        } else if (ethPrice) {
+          setAmount((totalPriceEth * ethPrice).toFixed(2))
+        }
+      }
+
+      return newIds
+    })
+  }, [nftTiers, selectedToken, ethPrice])
+
+  // Listen for add-to-checkout events from Shop tab
+  useEffect(() => {
+    const handleAddToCheckout = (e: CustomEvent<{ tierId: number; price: string }>) => {
+      const { tierId, price } = e.detail
+      const tier = nftTiers.find(t => t.tierId === tierId)
+      if (tier) {
+        handleTierSelect(tier)
       }
     }
-  }, [selectedTierId, selectedToken, ethPrice])
+
+    window.addEventListener('juice:add-to-checkout', handleAddToCheckout as EventListener)
+    return () => window.removeEventListener('juice:add-to-checkout', handleAddToCheckout as EventListener)
+  }, [nftTiers, handleTierSelect])
 
   // Handle payment status updates
   // Keep form values and payment status visible after submission (similar to project deployment)
@@ -954,7 +982,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         token: selectedToken,
         memo,
         selectedChainId,
-        selectedTierId,
+        selectedTierIds,
         txId,
         submittedAt: new Date().toISOString(),
       })
@@ -971,10 +999,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           feeAmount: feeAmount.toString(),
           juicyProjectId: JUICY_PROJECT_ID,
           totalAmount: totalAmount.toString(),
-          tierId: selectedTierId,
+          tierIds: selectedTierIds,
           hookAddress: nftHookAddress,
           preventOverspending: nftHookFlags?.preventOverspending ?? false,
-          tierPrice: selectedTierId ? nftTiers.find(t => t.tierId === selectedTierId)?.price?.toString() : undefined,
+          tierPrices: selectedTierIds.map(id => nftTiers.find(t => t.tierId === id)?.price?.toString()).filter(Boolean),
         }
       }))
       return
@@ -1021,7 +1049,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       token: selectedToken,
       memo,
       selectedChainId,
-      selectedTierId,
+      selectedTierIds,
       txId,
       submittedAt: new Date().toISOString(),
     })
@@ -1039,10 +1067,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         feeAmount: feeAmount.toString(),
         juicyProjectId: JUICY_PROJECT_ID,
         totalAmount: totalAmount.toString(),
-        tierId: selectedTierId,
+        tierIds: selectedTierIds,
         hookAddress: nftHookAddress,
         preventOverspending: nftHookFlags?.preventOverspending ?? false,
-        tierPrice: selectedTierId ? nftTiers.find(t => t.tierId === selectedTierId)?.price?.toString() : undefined,
+        tierPrices: selectedTierIds.map(id => nftTiers.find(t => t.tierId === id)?.price?.toString()).filter(Boolean),
       }
     }))
     // Don't clear form here - wait for transaction result
@@ -1179,7 +1207,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         {nftTiers.length > 0 && (
           <div className="mb-3">
             <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Buy from store
+              Shop
             </div>
             <div className={`flex flex-wrap gap-2 ${showAllTiers ? 'max-h-72 overflow-y-auto pr-1' : ''}`}>
               {(showAllTiers ? nftTiers : nftTiers.slice(0, 3)).map(tier => (
@@ -1188,7 +1216,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   onClick={() => !isPaymentLocked && handleTierSelect(tier)}
                   disabled={isPaymentLocked}
                   className={`flex items-center gap-2 px-2 py-1.5 border transition-colors ${
-                    selectedTierId === tier.tierId
+                    selectedTierIds.includes(tier.tierId)
                       ? 'border-green-500 bg-green-500/10'
                       : isDark ? 'border-white/10 hover:border-white/20' : 'border-gray-200 hover:border-gray-300'
                   } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
@@ -1209,26 +1237,18 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   </div>
                 </button>
               ))}
-              {!showAllTiers && nftTiers.length > 3 && (
+              {nftTiers.length > 3 && (
                 <button
-                  onClick={() => setShowAllTiers(true)}
+                  onClick={() => window.dispatchEvent(new CustomEvent('juice:open-shop'))}
                   className={`px-2 py-1.5 text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
                 >
                   +{nftTiers.length - 3} more
                 </button>
               )}
-              {showAllTiers && nftTiers.length > 3 && (
-                <button
-                  onClick={() => setShowAllTiers(false)}
-                  className={`px-2 py-1.5 text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  Show less
-                </button>
-              )}
             </div>
-            {selectedTierId && (
+            {selectedTierIds.length > 0 && !nftHookFlags?.preventOverspending && (
               <button
-                onClick={() => { setSelectedTierId(null); setAmount('') }}
+                onClick={() => { setSelectedTierIds([]); setAmount('') }}
                 className={`mt-2 text-xs ${isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
               >
                 Or pay a custom amount
@@ -1253,10 +1273,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 onChange={(e) => setAmount(e.target.value)}
                 onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
                 placeholder="0.00"
-                disabled={isPaymentLocked}
+                disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
                 className={`flex-1 px-3 py-2 text-sm bg-transparent outline-none ${
                   isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
-                } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+                } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
               />
               {/* Token selector */}
               <div className="relative">
@@ -1402,22 +1422,24 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           </div>
         )}
 
-        {/* Quick amount options */}
-        <div className="flex gap-2 mt-2">
-          {(selectedToken === 'USDC' || selectedToken === 'PAY_CREDITS' ? ['10', '25', '50', '100'] : ['0.01', '0.05', '0.1', '0.5']).map(val => (
-            <button
-              key={val}
-              onClick={() => setAmount(val)}
-              className={`min-w-[3rem] px-2 py-1 text-xs transition-colors ${
-                amount === val
-                  ? isDark ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-900'
-                  : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-500 hover:bg-gray-150'
-              }`}
-            >
-              {val}
-            </button>
-          ))}
-        </div>
+        {/* Quick amount options - hide when overspending is prevented and NFT tiers exist */}
+        {!(nftHookFlags?.preventOverspending && nftTiers.length > 0) && (
+          <div className="flex gap-2 mt-2">
+            {(selectedToken === 'USDC' || selectedToken === 'PAY_CREDITS' ? ['10', '25', '50', '100'] : ['0.01', '0.05', '0.1', '0.5']).map(val => (
+              <button
+                key={val}
+                onClick={() => setAmount(val)}
+                className={`min-w-[3rem] px-2 py-1 text-xs transition-colors ${
+                  amount === val
+                    ? isDark ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-900'
+                    : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-500 hover:bg-gray-150'
+                }`}
+              >
+                {val}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Pay Credits balance indicator */}
         {selectedToken === 'PAY_CREDITS' && juiceBalance && (
@@ -1436,7 +1458,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         )}
 
         {/* Token preview */}
-        {(amountNum > 0 && expectedTokens !== null) || selectedTierId ? (
+        {(amountNum > 0 && expectedTokens !== null) || selectedTierIds.length > 0 ? (
           <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
             <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>You get:</span>
             {amountNum > 0 && expectedTokens !== null && (
@@ -1445,22 +1467,26 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             {payUs && estimatedJuicyTokens > 0 && (
               <span> + {estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} $JUICY</span>
             )}
-            {selectedTierId && (() => {
-              const selectedTier = nftTiers.find(t => t.tierId === selectedTierId)
-              if (!selectedTier) return null
-              return (
-                <span className="flex items-center gap-1.5 mt-1">
-                  {selectedTier.imageUri ? (
-                    <img src={resolveIpfsUri(selectedTier.imageUri) || undefined} alt="" className="w-5 h-5 object-cover bg-white inline-block" />
-                  ) : (
-                    <span className={`w-5 h-5 flex items-center justify-center text-[8px] inline-flex ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
-                      #{selectedTier.tierId}
+            {selectedTierIds.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-1">
+                {selectedTierIds.map(tierId => {
+                  const tier = nftTiers.find(t => t.tierId === tierId)
+                  if (!tier) return null
+                  return (
+                    <span key={tierId} className="flex items-center gap-1.5">
+                      {tier.imageUri ? (
+                        <img src={resolveIpfsUri(tier.imageUri) || undefined} alt="" className="w-5 h-5 object-cover bg-white inline-block" />
+                      ) : (
+                        <span className={`w-5 h-5 flex items-center justify-center text-[8px] inline-flex ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
+                          #{tier.tierId}
+                        </span>
+                      )}
+                      <span>{tier.name}</span>
                     </span>
-                  )}
-                  <span>{selectedTier.name}</span>
-                </span>
-              )
-            })()}
+                  )
+                })}
+              </div>
+            )}
           </div>
         ) : null}
 

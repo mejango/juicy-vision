@@ -127,6 +127,15 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
 
+  // Listen for open-shop event from ProjectCard
+  useEffect(() => {
+    const handleOpenShop = () => {
+      setActiveTab('shop')
+    }
+    window.addEventListener('juice:open-shop', handleOpenShop)
+    return () => window.removeEventListener('juice:open-shop', handleOpenShop)
+  }, [setActiveTab])
+
   const [project, setProject] = useState<Project | null>(null)
   const [projectLoading, setProjectLoading] = useState(true)
   const [supporters, setSupporters] = useState<ProjectConversation[]>([])

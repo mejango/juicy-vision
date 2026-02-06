@@ -25,6 +25,8 @@ interface NFTTierCardProps {
   projectContext?: string
   /** Hook address for resolving on-chain SVGs */
   hookAddress?: `0x${string}` | null
+  /** If true, Buy button adds to checkout instead of minting directly */
+  addToCheckoutMode?: boolean
 }
 
 // Dispatch event to open wallet panel
@@ -45,6 +47,7 @@ export default function NFTTierCard({
   onImageGenerated,
   projectContext,
   hookAddress,
+  addToCheckoutMode = false,
 }: NFTTierCardProps) {
   const { theme } = useThemeStore()
   const { addTransaction } = useTransactionStore()
@@ -120,7 +123,22 @@ export default function NFTTierCard({
   const priceUsd = ethPrice ? priceEth * ethPrice : null
   const soldOut = tier.remainingSupply === 0
 
+  const handleAddToCheckout = () => {
+    window.dispatchEvent(new CustomEvent('juice:add-to-checkout', {
+      detail: {
+        tierId: tier.tierId,
+        price: tier.price.toString(),
+      }
+    }))
+  }
+
   const handleMint = async () => {
+    // In add-to-checkout mode, dispatch event instead of minting directly
+    if (addToCheckoutMode) {
+      handleAddToCheckout()
+      return
+    }
+
     if (!isConnected) {
       openWalletPanel()
       return
