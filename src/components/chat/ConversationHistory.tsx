@@ -1121,7 +1121,7 @@ export default function ConversationHistory() {
                 : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          {t('ui.payments', 'Payments')}
+          {t('ui.paymentsMade', 'Payments made')}
         </button>
       </div>
 
