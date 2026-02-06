@@ -254,6 +254,21 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     navigate('/')
   }
 
+  // Tab configuration - dynamic based on project features
+  // Must be called before early returns to satisfy React hooks rules
+  const tabs: Array<{ id: DashboardTab; label: string }> = useMemo(() => {
+    const baseTabs: Array<{ id: DashboardTab; label: string }> = [
+      { id: 'about', label: 'About' },
+      { id: 'analytics', label: 'Analytics' },
+      { id: 'rulesets', label: 'Rulesets & Funds' },
+      { id: 'tokens', label: 'Tokens' },
+    ]
+    if (hasNftHook) {
+      baseTabs.push({ id: 'shop', label: 'Shop' })
+    }
+    return baseTabs
+  }, [hasNftHook])
+
   if (projectLoading) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${
@@ -284,20 +299,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
       </div>
     )
   }
-
-  // Tab configuration - dynamic based on project features
-  const tabs: Array<{ id: DashboardTab; label: string }> = useMemo(() => {
-    const baseTabs: Array<{ id: DashboardTab; label: string }> = [
-      { id: 'about', label: 'About' },
-      { id: 'analytics', label: 'Analytics' },
-      { id: 'rulesets', label: 'Rulesets & Funds' },
-      { id: 'tokens', label: 'Tokens' },
-    ]
-    if (hasNftHook) {
-      baseTabs.push({ id: 'shop', label: 'Shop' })
-    }
-    return baseTabs
-  }, [hasNftHook])
 
   // Desktop layout with two-column structure
   if (!isMobile) {
