@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { formatEther } from 'viem'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useTransactionStore } from '../../stores'
-import { resolveIpfsUri } from '../../utils/ipfs'
+import { resolveIpfsUri, inlineSvgImages } from '../../utils/ipfs'
 import { resolveTierUri, type ResolvedNFTTier } from '../../services/nft'
 import GenerateImageButton from '../ui/GenerateImageButton'
 
@@ -69,7 +69,7 @@ export default function NFTTierCard({
     if (hookAddress) {
       setLoadingOnChainImage(true)
       resolveTierUri(hookAddress, tier.tierId, chainId)
-        .then((dataUri) => {
+        .then(async (dataUri) => {
           if (dataUri) {
             // Parse the data URI to extract the image
             try {
@@ -80,43 +80,10 @@ export default function NFTTierCard({
               if (metadata.image) {
                 let processedImage = metadata.image
 
-                // If it's an SVG data URI, fix embedded IPFS URLs
+                // If it's an SVG data URI, inline any external images
+                // Browsers don't load external <image> elements in SVG data URIs
                 if (metadata.image.startsWith('data:image/svg+xml')) {
-                  try {
-                    let svgContent: string
-
-                    // Handle both base64 and URL-encoded SVGs
-                    if (metadata.image.includes(';base64,')) {
-                      const svgBase64 = metadata.image.split(',')[1]
-                      svgContent = atob(svgBase64)
-                    } else {
-                      // URL-encoded SVG
-                      svgContent = decodeURIComponent(metadata.image.split(',')[1])
-                    }
-
-                    let modified = false
-
-                    // Replace bannyverse.infura-ipfs.io with ipfs.io (CORS fix)
-                    if (svgContent.includes('bannyverse.infura-ipfs.io')) {
-                      svgContent = svgContent.replace(/https:\/\/bannyverse\.infura-ipfs\.io\/ipfs\//g, 'https://ipfs.io/ipfs/')
-                      modified = true
-                    }
-
-                    // Also replace any other ipfs:// URLs
-                    if (svgContent.includes('ipfs://')) {
-                      svgContent = svgContent.replace(/ipfs:\/\/([a-zA-Z0-9/._-]+)/g, 'https://ipfs.io/ipfs/$1')
-                      modified = true
-                    }
-
-                    if (modified) {
-                      // Re-encode as base64, handling UTF-8 properly
-                      const utf8Bytes = new TextEncoder().encode(svgContent)
-                      const binaryStr = Array.from(utf8Bytes, byte => String.fromCharCode(byte)).join('')
-                      processedImage = 'data:image/svg+xml;base64,' + btoa(binaryStr)
-                    }
-                  } catch (e) {
-                    console.error(`[NFT] Tier ${tier.tierId} SVG processing error:`, e)
-                  }
+                  processedImage = await inlineSvgImages(metadata.image)
                 }
 
                 setOnChainImage(processedImage)

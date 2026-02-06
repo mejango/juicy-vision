@@ -486,3 +486,116 @@ export async function testPinataConnection(jwt: string): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * Fetch an image and convert to a base64 data URI
+ * @param url - Image URL to fetch
+ * @returns base64 data URI or null if failed
+ */
+async function fetchImageAsDataUri(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url)
+    if (!response.ok) return null
+
+    const blob = await response.blob()
+    const mimeType = blob.type || 'image/png'
+
+    return new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Process an SVG data URI to inline all external image references
+ *
+ * Browsers don't load external <image> elements in SVGs when loaded as data URIs.
+ * This function fetches all referenced images and embeds them as base64 data URIs.
+ *
+ * @param svgDataUri - SVG data URI (data:image/svg+xml;base64,... or data:image/svg+xml,...)
+ * @returns Processed SVG data URI with inlined images, or original if no changes needed
+ */
+export async function inlineSvgImages(svgDataUri: string): Promise<string> {
+  if (!svgDataUri.startsWith('data:image/svg+xml')) {
+    return svgDataUri
+  }
+
+  try {
+    // Decode the SVG content
+    let svgContent: string
+    if (svgDataUri.includes(';base64,')) {
+      const base64 = svgDataUri.split(',')[1]
+      svgContent = atob(base64)
+    } else {
+      svgContent = decodeURIComponent(svgDataUri.split(',')[1])
+    }
+
+    // Find all image hrefs (both href and xlink:href attributes)
+    // Match patterns like: href="https://..." or xlink:href="ipfs://..."
+    const imageUrlRegex = /(xlink:href|href)=["']([^"']+)["']/g
+    const matches = [...svgContent.matchAll(imageUrlRegex)]
+
+    if (matches.length === 0) {
+      return svgDataUri
+    }
+
+    // Collect unique URLs that need to be fetched
+    const urlsToFetch = new Map<string, string>()
+    for (const match of matches) {
+      const url = match[2]
+      // Skip if already a data URI
+      if (url.startsWith('data:')) continue
+
+      // Resolve the URL to HTTP
+      let httpUrl = url
+      if (url.includes('bannyverse.infura-ipfs.io')) {
+        httpUrl = url.replace('https://bannyverse.infura-ipfs.io/ipfs/', 'https://ipfs.io/ipfs/')
+      } else if (url.startsWith('ipfs://')) {
+        httpUrl = url.replace('ipfs://', 'https://ipfs.io/ipfs/')
+      }
+
+      urlsToFetch.set(url, httpUrl)
+    }
+
+    if (urlsToFetch.size === 0) {
+      return svgDataUri
+    }
+
+    // Fetch all images in parallel
+    const fetchedImages = new Map<string, string>()
+    await Promise.all(
+      Array.from(urlsToFetch.entries()).map(async ([originalUrl, httpUrl]) => {
+        const dataUri = await fetchImageAsDataUri(httpUrl)
+        if (dataUri) {
+          fetchedImages.set(originalUrl, dataUri)
+        }
+      })
+    )
+
+    if (fetchedImages.size === 0) {
+      // No images could be fetched, return original
+      return svgDataUri
+    }
+
+    // Replace URLs in SVG content with data URIs
+    let modifiedSvg = svgContent
+    for (const [originalUrl, dataUri] of fetchedImages) {
+      // Escape special regex characters in the URL
+      const escapedUrl = originalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      modifiedSvg = modifiedSvg.replace(new RegExp(escapedUrl, 'g'), dataUri)
+    }
+
+    // Re-encode as base64 data URI
+    const utf8Bytes = new TextEncoder().encode(modifiedSvg)
+    const binaryStr = Array.from(utf8Bytes, byte => String.fromCharCode(byte)).join('')
+    return 'data:image/svg+xml;base64,' + btoa(binaryStr)
+  } catch (e) {
+    console.error('[SVG] Failed to inline images:', e)
+    return svgDataUri
+  }
+}
