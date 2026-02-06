@@ -1,6 +1,7 @@
 // IPFS gateway resolution and pinning utilities
 
-const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/'
+// Use ipfs.io gateway for reads (better CORS support)
+const IPFS_GATEWAY = 'https://ipfs.io/ipfs/'
 const PINATA_API_URL = 'https://api.pinata.cloud'
 
 /**

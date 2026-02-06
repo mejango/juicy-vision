@@ -266,6 +266,7 @@ export async function fetchTierMetadata(uri: string): Promise<NFTTierMetadata | 
 
 /**
  * Fetch NFT tiers with resolved metadata
+ * Uses batched fetching to avoid rate limiting
  */
 export async function fetchResolvedNFTTiers(
   hookAddress: `0x${string}`,
@@ -274,24 +275,31 @@ export async function fetchResolvedNFTTiers(
 ): Promise<ResolvedNFTTier[]> {
   const tiers = await fetchNFTTiers(hookAddress, chainId, maxTiers)
 
-  // Fetch metadata for all tiers in parallel
-  const resolvedTiers = await Promise.all(
-    tiers.map(async (tier) => {
-      let metadata: NFTTierMetadata | null = null
+  // Batch metadata fetches to avoid rate limiting (5 concurrent requests)
+  const BATCH_SIZE = 5
+  const resolvedTiers: ResolvedNFTTier[] = []
 
-      if (tier.encodedIPFSUri) {
-        metadata = await fetchTierMetadata(tier.encodedIPFSUri)
-      }
+  for (let i = 0; i < tiers.length; i += BATCH_SIZE) {
+    const batch = tiers.slice(i, i + BATCH_SIZE)
+    const batchResults = await Promise.all(
+      batch.map(async (tier) => {
+        let metadata: NFTTierMetadata | null = null
 
-      return {
-        ...tier,
-        name: metadata?.name || tier.name,
-        description: metadata?.description,
-        imageUri: metadata?.image || metadata?.imageUri,
-        metadata: metadata || undefined,
-      }
-    })
-  )
+        if (tier.encodedIPFSUri) {
+          metadata = await fetchTierMetadata(tier.encodedIPFSUri)
+        }
+
+        return {
+          ...tier,
+          name: metadata?.name || tier.name,
+          description: metadata?.description,
+          imageUri: metadata?.image || metadata?.imageUri,
+          metadata: metadata || undefined,
+        }
+      })
+    )
+    resolvedTiers.push(...batchResults)
+  }
 
   return resolvedTiers
 }
