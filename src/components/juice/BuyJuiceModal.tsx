@@ -328,7 +328,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
                       {t('wallet.loading', 'Loading...')}
                     </span>
                   ) : (
-                    `${t('wallet.buy', 'Buy')} ${amount.toLocaleString()} ${t('wallet.credits', 'Credits')} - $${(amount * PAY_CREDITS_RATE).toFixed(2)}`
+                    t('wallet.buy', 'Buy')
                   )}
                 </button>
               </div>
