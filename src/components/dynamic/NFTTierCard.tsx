@@ -77,14 +77,27 @@ export default function NFTTierCard({
               const base64Data = dataUri.split(',')[1]
               const jsonStr = atob(base64Data)
               const metadata = JSON.parse(jsonStr)
-              // Debug: log what we got
-              console.log(`[NFT] Tier ${tier.tierId} metadata:`, {
-                hasImage: !!metadata.image,
-                imageStart: metadata.image?.substring(0, 50),
-                name: metadata.name
-              })
               if (metadata.image) {
-                setOnChainImage(metadata.image)
+                let processedImage = metadata.image
+
+                // If it's an SVG data URI, check for embedded ipfs:// URLs and replace with gateway
+                if (metadata.image.startsWith('data:image/svg+xml;base64,')) {
+                  try {
+                    const svgBase64 = metadata.image.split(',')[1]
+                    let svgContent = atob(svgBase64)
+
+                    // Replace ipfs:// URLs with gateway URLs in the SVG
+                    if (svgContent.includes('ipfs://')) {
+                      svgContent = svgContent.replace(/ipfs:\/\/([a-zA-Z0-9]+)/g, 'https://ipfs.io/ipfs/$1')
+                      // Re-encode the modified SVG
+                      processedImage = 'data:image/svg+xml;base64,' + btoa(svgContent)
+                    }
+                  } catch (e) {
+                    console.error(`[NFT] Tier ${tier.tierId} SVG processing error:`, e)
+                  }
+                }
+
+                setOnChainImage(processedImage)
               }
             } catch (e) {
               console.error(`[NFT] Tier ${tier.tierId} parse error:`, e)
