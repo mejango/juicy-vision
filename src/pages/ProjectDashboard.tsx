@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import { useThemeStore } from '../stores'
 import { useManagedWallet, useIsMobile } from '../hooks'
 import { CHAINS } from '../constants'
-import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, type Project, type ConnectedChain } from '../services/bendystraw'
+import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, fetchSuckerGroupBalance, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
 import { getProjectSupporters, type ProjectConversation } from '../api/projectConversations'
 import { getWalletSession } from '../services/siwe'
 import { resolveIpfsUri } from '../utils/ipfs'
@@ -93,6 +93,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const [supportersLoaded, setSupportersLoaded] = useState(false)
   const [supportersTotal, setSupportersTotal] = useState(0)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
+  const [suckerGroupBalance, setSuckerGroupBalance] = useState<SuckerGroupBalance | null>(null)
 
   // Modal state
   const [activeModal, setActiveModal] = useState<ModalType>(null)
@@ -115,17 +116,41 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     return currentUserAddress.toLowerCase() === project.owner.toLowerCase()
   }, [currentUserAddress, project?.owner])
 
+  // Use aggregated sucker group balance when available (for omnichain projects)
+  const displayBalance = useMemo(() => {
+    if (suckerGroupBalance && suckerGroupBalance.totalBalance !== '0') {
+      return suckerGroupBalance.totalBalance
+    }
+    return project?.balance || '0'
+  }, [suckerGroupBalance, project?.balance])
+
+  const displayPaymentsCount = useMemo(() => {
+    if (suckerGroupBalance && suckerGroupBalance.totalPaymentsCount > 0) {
+      return suckerGroupBalance.totalPaymentsCount
+    }
+    return project?.paymentsCount || 0
+  }, [suckerGroupBalance, project?.paymentsCount])
+
+  // Calculate aggregated volume from all chain projects in sucker group
+  const displayVolume = useMemo(() => {
+    // For now, use single project volume - aggregated volume would require summing from all chain projects
+    // The suckerGroup API doesn't currently expose volume
+    return project?.volume || '0'
+  }, [project?.volume])
+
   // Load project data
   useEffect(() => {
     async function loadProject() {
       setProjectLoading(true)
       try {
-        const [data, chains] = await Promise.all([
+        const [data, chains, groupBalance] = await Promise.all([
           fetchProject(String(projectId), chainId),
           fetchConnectedChains(String(projectId), chainId),
+          fetchSuckerGroupBalance(String(projectId), chainId),
         ])
         setProject(data)
         setConnectedChains(chains)
+        setSuckerGroupBalance(groupBalance)
       } catch (error) {
         console.error('Failed to load project:', error)
       } finally {
@@ -322,19 +347,19 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   <div>
                     <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Volume</div>
                     <div className={`font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {formatEth(project.volume || '0')} ETH
+                      {formatEth(displayVolume)} ETH
                     </div>
                   </div>
                   <div>
                     <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Payments</div>
                     <div className={`font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {project.paymentsCount || 0}
+                      {displayPaymentsCount}
                     </div>
                   </div>
                   <div>
                     <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Balance</div>
                     <div className={`font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {formatEth(project.balance || '0')} ETH
+                      {formatEth(displayBalance)} ETH
                     </div>
                   </div>
                 </div>
@@ -731,7 +756,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 <div className={`text-sm font-semibold mt-0.5 ${
                   isDark ? 'text-white' : 'text-gray-900'
                 }`}>
-                  {formatEth(project.volume || '0')} ETH
+                  {formatEth(displayVolume)} ETH
                 </div>
               </div>
               <div className={`p-3 border ${
@@ -743,7 +768,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 <div className={`text-sm font-semibold mt-0.5 ${
                   isDark ? 'text-white' : 'text-gray-900'
                 }`}>
-                  {project.paymentsCount || 0}
+                  {displayPaymentsCount}
                 </div>
               </div>
               <div className={`p-3 border ${
@@ -755,7 +780,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 <div className={`text-sm font-semibold mt-0.5 ${
                   isDark ? 'text-white' : 'text-gray-900'
                 }`}>
-                  {formatEth(project.balance || '0')} ETH
+                  {formatEth(displayBalance)} ETH
                 </div>
               </div>
             </div>
