@@ -47,11 +47,11 @@ function TierPreviewImage({
   hookAddress: `0x${string}` | null
   chainId: number
   isDark: boolean
-  size?: 'default' | 'small'
+  size?: 'default' | 'small' | 'large'
   onMetadataLoaded?: (tierId: number, metadata: OnChainTierMetadata) => void
 }) {
-  const sizeClass = size === 'small' ? 'w-5 h-5' : 'w-6 h-6'
-  const spinnerSize = size === 'small' ? 'w-2.5 h-2.5' : 'w-3 h-3'
+  const sizeClass = size === 'large' ? 'w-full h-full' : size === 'small' ? 'w-5 h-5' : 'w-6 h-6'
+  const spinnerSize = size === 'large' ? 'w-6 h-6' : size === 'small' ? 'w-2.5 h-2.5' : 'w-3 h-3'
   const [onChainImage, setOnChainImage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -103,11 +103,11 @@ function TierPreviewImage({
   }
 
   if (imageUrl) {
-    return <img src={imageUrl} alt="" className={`${sizeClass} object-cover bg-white`} />
+    return <img src={imageUrl} alt="" className={`${sizeClass} object-contain bg-white`} />
   }
 
   return (
-    <div className={`${sizeClass} flex items-center justify-center text-[8px] ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
+    <div className={`${sizeClass} flex items-center justify-center ${size === 'large' ? 'text-lg' : 'text-[8px]'} ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
       #{tier.tierId}
     </div>
   )
@@ -1243,47 +1243,50 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
       {/* Pay form */}
       <div className={embedded ? '' : `mb-3 p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-        {/* NFT Tier selector */}
+        {/* NFT Tier selector - horizontal carousel */}
         {nftTiers.length > 0 && (
           <div className="mb-3">
             <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Shop
             </div>
-            <div className="flex flex-wrap gap-2">
-              {nftTiers.slice(0, 3).map(tier => (
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-3 px-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {nftTiers.slice(0, 6).map(tier => (
                 <button
                   key={tier.tierId}
                   onClick={() => !isPaymentLocked && handleTierSelect(tier)}
                   disabled={isPaymentLocked}
-                  className={`flex items-center gap-2 px-2 py-1.5 border transition-colors ${
+                  className={`flex-shrink-0 w-24 border transition-colors ${
                     selectedTierIds.includes(tier.tierId)
                       ? 'border-green-500 bg-green-500/10'
                       : isDark ? 'border-white/10 hover:border-white/20' : 'border-gray-200 hover:border-gray-300'
                   } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
-                  <TierPreviewImage
-                    tier={tier}
-                    hookAddress={nftHookAddress}
-                    chainId={parseInt(selectedChainId)}
-                    isDark={isDark}
-                    onMetadataLoaded={handleTierMetadataLoaded}
-                  />
-                  <div className="text-left">
-                    <div className={`text-xs font-medium truncate max-w-[80px] ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  <div className="w-full aspect-square overflow-hidden bg-white">
+                    <TierPreviewImage
+                      tier={tier}
+                      hookAddress={nftHookAddress}
+                      chainId={parseInt(selectedChainId)}
+                      isDark={isDark}
+                      size="large"
+                      onMetadataLoaded={handleTierMetadataLoaded}
+                    />
+                  </div>
+                  <div className="p-1.5 text-left">
+                    <div className={`text-[10px] font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
                       {getTierDisplayName(tier)}
                     </div>
-                    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                       {formatEther(tier.price)} ETH
                     </div>
                   </div>
                 </button>
               ))}
-              {nftTiers.length > 3 && (
+              {nftTiers.length > 6 && (
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent('juice:open-shop'))}
-                  className={`px-2 py-1.5 text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`flex-shrink-0 w-24 flex items-center justify-center text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                  +{nftTiers.length - 3} more
+                  +{nftTiers.length - 6} more
                 </button>
               )}
             </div>
