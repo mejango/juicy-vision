@@ -2809,10 +2809,6 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
       {/* Amount Selection Step */}
       {step === 'amount' && (
         <div className="space-y-3">
-          <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Pay Credits let you pay Juicebox projects with your credit card.
-          </p>
-
           {/* Flat rate display */}
           <div className={`px-3 py-2 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
             <div className="flex justify-between items-center">

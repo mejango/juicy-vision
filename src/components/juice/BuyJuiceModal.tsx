@@ -233,10 +233,6 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
           {/* Amount Selection Step */}
           {step === 'amount' && (
             <div className="space-y-4">
-              <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {t('wallet.payCreditsDescription', 'Pay Credits let you pay Juicebox projects with your credit card.')}
-              </p>
-
               {/* Flat rate display */}
               <div className={`px-3 py-2 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-100 bg-gray-50'}`}>
                 <div className="flex justify-between items-center">
@@ -257,7 +253,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
                     onClick={() => handleAmountSelect(preset)}
                     className={`py-2 px-2 text-sm font-medium transition-all border ${
                       amount === preset && !customAmount
-                        ? 'bg-juice-orange text-black border-juice-orange'
+                        ? 'bg-green-500 text-black border-green-500'
                         : isDark
                           ? 'bg-transparent border-white/10 text-gray-300 hover:border-white/30'
                           : 'bg-transparent border-gray-200 text-gray-700 hover:border-gray-400'
@@ -316,24 +312,26 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
                 </div>
               )}
 
-              <button
-                onClick={startCheckout}
-                disabled={loading || !stripePromise || amount < 1}
-                className={`w-full py-2.5 text-sm font-bold transition-all ${
-                  loading || !stripePromise || amount < 1
-                    ? isDark ? 'bg-white/10 text-gray-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-juice-orange text-black hover:bg-juice-orange/90'
-                }`}
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    {t('wallet.loading', 'Loading...')}
-                  </span>
-                ) : (
-                  `${t('wallet.buy', 'Buy')} ${amount.toLocaleString()} ${t('wallet.credits', 'Credits')} - $${(amount * PAY_CREDITS_RATE).toFixed(2)}`
-                )}
-              </button>
+              <div className="flex justify-end">
+                <button
+                  onClick={startCheckout}
+                  disabled={loading || !stripePromise || amount < 1}
+                  className={`px-4 py-2 text-sm font-medium transition-all ${
+                    loading || !stripePromise || amount < 1
+                      ? isDark ? 'bg-white/10 text-gray-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-green-500 text-black hover:bg-green-600'
+                  }`}
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      {t('wallet.loading', 'Loading...')}
+                    </span>
+                  ) : (
+                    `${t('wallet.buy', 'Buy')} ${amount.toLocaleString()} ${t('wallet.credits', 'Credits')} - $${(amount * PAY_CREDITS_RATE).toFixed(2)}`
+                  )}
+                </button>
+              </div>
             </div>
           )}
 
