@@ -76,7 +76,6 @@ export default function ShopTab({ projectId, chainId, isOwner }: ShopTabProps) {
 
   // Category names (could be extended with metadata)
   const getCategoryName = (cat: number) => {
-    if (cat === 0) return 'Uncategorized'
     return `Category ${cat}`
   }
 
