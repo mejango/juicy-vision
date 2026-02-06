@@ -4,7 +4,8 @@ import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroupBalance, fetchOwnersCount, fetchEthPrice, fetchProjectTokenSymbol, fetchProjectWithRuleset, type Project, type ConnectedChain, type IssuanceRate, type SuckerGroupBalance } from '../../services/bendystraw'
 import { resolveIpfsUri, fetchIpfsMetadata, type IpfsProjectMetadata } from '../../utils/ipfs'
-import { getProjectDataHook, fetchResolvedNFTTiers, fetchHookFlags, type ResolvedNFTTier, type JB721HookFlags } from '../../services/nft'
+import { getProjectDataHook, fetchResolvedNFTTiers, fetchHookFlags, resolveTierUri, type ResolvedNFTTier, type JB721HookFlags } from '../../services/nft'
+import { inlineSvgImages } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore, type PaymentStage, type TransactionStatus } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, CHAINS, type SupportedChainId } from '../../constants'
 import { useJuiceBalance } from '../../hooks/useJuiceBalance'
@@ -25,6 +26,72 @@ function parseDescription(html: string): string[] {
     .split(/\n\n+/)
     .map(p => p.trim())
     .filter(p => p.length > 0)
+}
+
+// Small component for tier preview images with on-chain fallback
+function TierPreviewImage({
+  tier,
+  hookAddress,
+  chainId,
+  isDark,
+}: {
+  tier: ResolvedNFTTier
+  hookAddress: `0x${string}` | null
+  chainId: number
+  isDark: boolean
+}) {
+  const [onChainImage, setOnChainImage] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const ipfsImageUrl = resolveIpfsUri(tier.imageUri)
+
+  // Lazy load on-chain SVG if no IPFS image
+  useEffect(() => {
+    if (ipfsImageUrl || onChainImage || loading || !hookAddress) return
+
+    setLoading(true)
+    resolveTierUri(hookAddress, tier.tierId, chainId)
+      .then(async (dataUri) => {
+        if (dataUri) {
+          try {
+            const base64Data = dataUri.split(',')[1]
+            const jsonStr = atob(base64Data)
+            const metadata = JSON.parse(jsonStr)
+            if (metadata.image) {
+              let processedImage = metadata.image
+              if (metadata.image.startsWith('data:image/svg+xml')) {
+                processedImage = await inlineSvgImages(metadata.image)
+              }
+              setOnChainImage(processedImage)
+            }
+          } catch (e) {
+            console.error(`[NFT] Tier ${tier.tierId} parse error:`, e)
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [ipfsImageUrl, onChainImage, loading, hookAddress, tier.tierId, chainId])
+
+  const imageUrl = ipfsImageUrl || onChainImage
+
+  if (loading) {
+    return (
+      <div className={`w-6 h-6 flex items-center justify-center ${isDark ? 'bg-white/10' : 'bg-gray-100'}`}>
+        <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin opacity-50" />
+      </div>
+    )
+  }
+
+  if (imageUrl) {
+    return <img src={imageUrl} alt="" className="w-6 h-6 object-cover bg-white" />
+  }
+
+  return (
+    <div className={`w-6 h-6 flex items-center justify-center text-[8px] ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
+      #{tier.tierId}
+    </div>
+  )
 }
 
 interface ProjectCardProps {
@@ -1126,13 +1193,12 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       : isDark ? 'border-white/10 hover:border-white/20' : 'border-gray-200 hover:border-gray-300'
                   } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
-                  {tier.imageUri ? (
-                    <img src={resolveIpfsUri(tier.imageUri) || undefined} alt="" className="w-6 h-6 object-cover bg-white" />
-                  ) : (
-                    <div className={`w-6 h-6 flex items-center justify-center text-[8px] ${isDark ? 'bg-white/10 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
-                      #{tier.tierId}
-                    </div>
-                  )}
+                  <TierPreviewImage
+                    tier={tier}
+                    hookAddress={nftHookAddress}
+                    chainId={parseInt(selectedChainId)}
+                    isDark={isDark}
+                  />
                   <div className="text-left">
                     <div className={`text-xs font-medium truncate max-w-[80px] ${isDark ? 'text-white' : 'text-gray-900'}`}>
                       {tier.name}

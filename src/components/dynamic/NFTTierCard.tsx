@@ -244,15 +244,6 @@ export default function NFTTierCard({
           {soldOut ? 'Sold Out' : `${tier.remainingSupply} left`}
         </div>
 
-        {/* Category badge */}
-        {tier.category > 0 && (
-          <div className={`absolute top-2 left-2 px-2 py-0.5 text-xs font-medium ${
-            isDark ? 'bg-juice-orange/90 text-black' : 'bg-juice-orange text-white'
-          }`}>
-            Category {tier.category}
-          </div>
-        )}
-
         {/* Edit button (owner only) */}
         {isOwner && onEdit && (
           <button
