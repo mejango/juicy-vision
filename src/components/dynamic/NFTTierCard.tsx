@@ -81,16 +81,28 @@ export default function NFTTierCard({
                 let processedImage = metadata.image
 
                 // If it's an SVG data URI, check for embedded ipfs:// URLs and replace with gateway
-                if (metadata.image.startsWith('data:image/svg+xml;base64,')) {
+                if (metadata.image.startsWith('data:image/svg+xml')) {
                   try {
-                    const svgBase64 = metadata.image.split(',')[1]
-                    let svgContent = atob(svgBase64)
+                    let svgContent: string
+
+                    // Handle both base64 and URL-encoded SVGs
+                    if (metadata.image.includes(';base64,')) {
+                      const svgBase64 = metadata.image.split(',')[1]
+                      svgContent = atob(svgBase64)
+                    } else {
+                      // URL-encoded SVG
+                      svgContent = decodeURIComponent(metadata.image.split(',')[1])
+                    }
 
                     // Replace ipfs:// URLs with gateway URLs in the SVG
+                    // Match full IPFS paths including subdirectories
                     if (svgContent.includes('ipfs://')) {
-                      svgContent = svgContent.replace(/ipfs:\/\/([a-zA-Z0-9]+)/g, 'https://ipfs.io/ipfs/$1')
-                      // Re-encode the modified SVG
-                      processedImage = 'data:image/svg+xml;base64,' + btoa(svgContent)
+                      console.log(`[NFT] Tier ${tier.tierId} found ipfs:// in SVG, replacing with gateway`)
+                      svgContent = svgContent.replace(/ipfs:\/\/([a-zA-Z0-9/._-]+)/g, 'https://ipfs.io/ipfs/$1')
+                      // Re-encode as base64, handling UTF-8 properly
+                      const utf8Bytes = new TextEncoder().encode(svgContent)
+                      const binaryStr = Array.from(utf8Bytes, byte => String.fromCharCode(byte)).join('')
+                      processedImage = 'data:image/svg+xml;base64,' + btoa(binaryStr)
                     }
                   } catch (e) {
                     console.error(`[NFT] Tier ${tier.tierId} SVG processing error:`, e)
