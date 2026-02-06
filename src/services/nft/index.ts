@@ -1,7 +1,7 @@
 // NFT tier fetching service for Juicebox 721 hooks
 
 import { createPublicClient, http, zeroAddress } from 'viem'
-import { VIEM_CHAINS, RPC_ENDPOINTS, JB_CONTRACTS, type SupportedChainId } from '../../constants/chains'
+import { VIEM_CHAINS, MAINNET_VIEM_CHAINS, RPC_ENDPOINTS, MAINNET_RPC_ENDPOINTS, JB_CONTRACTS, type SupportedChainId, MAINNET_CHAIN_IDS } from '../../constants/chains'
 import { REV_DEPLOYER_ADDRESS, REV_DEPLOYER_TIERED_721_HOOK_ABI } from '../../constants/abis/revDeployer'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { isRevnet, fetchProject } from '../bendystraw'
@@ -36,10 +36,16 @@ export async function getProjectDataHook(
   projectId: string,
   chainId: number
 ): Promise<`0x${string}` | null> {
-  const chain = VIEM_CHAINS[chainId as SupportedChainId]
-  if (!chain) return null
+  // Support both testnet and mainnet chains
+  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
+    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
+  if (!chain) {
+    console.warn('[NFT] Unsupported chainId:', chainId)
+    return null
+  }
 
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
+    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
