@@ -1107,58 +1107,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
       {/* Pay form */}
       <div className={embedded ? '' : `mb-3 p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-        {/* Chain selector */}
-        <div className="relative mb-3">
-          <button
-            onClick={() => {
-              if (!isPaymentLocked) {
-                setChainDropdownOpen(!chainDropdownOpen)
-                setTokenDropdownOpen(false)
-              }
-            }}
-            disabled={isPaymentLocked}
-            className={`flex items-center gap-1 text-sm font-medium ${
-              isDark ? 'text-white' : 'text-gray-900'
-            } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-          >
-            Pay on <span className="underline">{selectedChainInfo.name}</span>
-            <svg className={`w-4 h-4 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {chainDropdownOpen && (
-            <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
-              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
-            }`}>
-              {availableChains.map(chain => {
-                const info = CHAIN_INFO[chain.chainId.toString()]
-                if (!info) return null
-                return (
-                  <button
-                    key={chain.chainId}
-                    onClick={() => {
-                      setSelectedChainId(chain.chainId.toString())
-                      setChainDropdownOpen(false)
-                    }}
-                    className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
-                      chain.chainId.toString() === selectedChainId
-                        ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
-                        : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {info.name}
-                    {chain.projectId !== 0 && chain.projectId.toString() !== projectId && (
-                      <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        (#{chain.projectId})
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
         {/* NFT Tier selector */}
         {nftTiers.length > 0 && (
           <div className="mb-3">
@@ -1256,7 +1204,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   isDark ? 'border-white/10 text-white hover:bg-white/5' : 'border-gray-200 text-gray-900 hover:bg-gray-50'
                 } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
               >
-                <span>{selectedToken === 'PAY_CREDITS' ? 'Credits' : selectedToken}</span>
+                <span>{selectedToken === 'PAY_CREDITS' ? '$' : selectedToken}</span>
                 <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
@@ -1304,6 +1252,60 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
           </button>
         </div>
+
+        {/* Chain selector - only show for ETH/USDC */}
+        {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
+          <div className="relative mt-1 flex justify-end">
+            <button
+              onClick={() => {
+                if (!isPaymentLocked) {
+                  setChainDropdownOpen(!chainDropdownOpen)
+                  setTokenDropdownOpen(false)
+                }
+              }}
+              disabled={isPaymentLocked}
+              className={`flex items-center gap-1 text-xs ${
+                isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
+              } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+            >
+              Pay on <span className="underline">{selectedChainInfo.name}</span>
+              <svg className={`w-3 h-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {chainDropdownOpen && (
+              <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
+                isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+              }`}>
+                {availableChains.map(chain => {
+                  const info = CHAIN_INFO[chain.chainId.toString()]
+                  if (!info) return null
+                  return (
+                    <button
+                      key={chain.chainId}
+                      onClick={() => {
+                        setSelectedChainId(chain.chainId.toString())
+                        setChainDropdownOpen(false)
+                      }}
+                      className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
+                        chain.chainId.toString() === selectedChainId
+                          ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
+                          : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {info.name}
+                      {chain.projectId !== 0 && chain.projectId.toString() !== projectId && (
+                        <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                          (#{chain.projectId})
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Payment progress indicator - show from local state or persisted state */}
         {(activePayment || (persistedPayment && persistedPayment.status !== 'pending')) && (
