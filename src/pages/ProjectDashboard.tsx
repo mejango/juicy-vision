@@ -26,6 +26,8 @@ import ProjectCard from '../components/dynamic/ProjectCard'
 import RulesetSchedule from '../components/dynamic/RulesetSchedule'
 import FundsSection from '../components/dynamic/FundsSection'
 import TokensTab from '../components/dynamic/TokensTab'
+import ShopTab from '../components/dynamic/ShopTab'
+import { hasNFTHook } from '../services/nft'
 
 // Payment modals
 import CashOutModal from '../components/payment/CashOutModal'
@@ -33,7 +35,7 @@ import SendPayoutsModal from '../components/payment/SendPayoutsModal'
 // Note: QueueRulesetForm is used for ruleset changes - it has its own modal internally
 import QueueRulesetForm from '../components/dynamic/QueueRulesetForm'
 
-type DashboardTab = 'about' | 'analytics' | 'rulesets' | 'tokens'
+type DashboardTab = 'about' | 'analytics' | 'rulesets' | 'tokens' | 'shop'
 type ModalType = 'pay' | 'cashout' | 'payouts' | 'ruleset' | null
 
 interface ProjectDashboardProps {
@@ -99,6 +101,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const [suckerGroupBalance, setSuckerGroupBalance] = useState<SuckerGroupBalance | null>(null)
   const [revnetOperator, setRevnetOperator] = useState<string | null>(null)
   const [displayAddressEns, setDisplayAddressEns] = useState<string | null>(null)
+  const [hasNftHook, setHasNftHook] = useState(false)
 
   // Modal state
   const [activeModal, setActiveModal] = useState<ModalType>(null)
@@ -149,14 +152,16 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     async function loadProject() {
       setProjectLoading(true)
       try {
-        const [data, chains, groupBalance] = await Promise.all([
+        const [data, chains, groupBalance, nftHook] = await Promise.all([
           fetchProject(String(projectId), chainId),
           fetchConnectedChains(String(projectId), chainId),
           fetchSuckerGroupBalance(String(projectId), chainId),
+          hasNFTHook(String(projectId), chainId),
         ])
         setProject(data)
         setConnectedChains(chains)
         setSuckerGroupBalance(groupBalance)
+        setHasNftHook(nftHook)
       } catch (error) {
         console.error('Failed to load project:', error)
       } finally {
@@ -280,13 +285,19 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     )
   }
 
-  // Tab configuration
-  const tabs: Array<{ id: DashboardTab; label: string }> = [
-    { id: 'about', label: 'About' },
-    { id: 'analytics', label: 'Analytics' },
-    { id: 'rulesets', label: 'Rulesets & Funds' },
-    { id: 'tokens', label: 'Tokens' },
-  ]
+  // Tab configuration - dynamic based on project features
+  const tabs: Array<{ id: DashboardTab; label: string }> = useMemo(() => {
+    const baseTabs: Array<{ id: DashboardTab; label: string }> = [
+      { id: 'about', label: 'About' },
+      { id: 'analytics', label: 'Analytics' },
+      { id: 'rulesets', label: 'Rulesets & Funds' },
+      { id: 'tokens', label: 'Tokens' },
+    ]
+    if (hasNftHook) {
+      baseTabs.push({ id: 'shop', label: 'Shop' })
+    }
+    return baseTabs
+  }, [hasNftHook])
 
   // Desktop layout with two-column structure
   if (!isMobile) {
@@ -497,6 +508,15 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 {/* Tokens Tab */}
                 {activeTab === 'tokens' && (
                   <TokensTab
+                    projectId={String(projectId)}
+                    chainId={String(chainId)}
+                    isOwner={isOwner}
+                  />
+                )}
+
+                {/* Shop Tab */}
+                {activeTab === 'shop' && (
+                  <ShopTab
                     projectId={String(projectId)}
                     chainId={String(chainId)}
                     isOwner={isOwner}
@@ -730,6 +750,15 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         {/* Tokens tab */}
         {activeTab === 'tokens' && (
           <TokensTab
+            projectId={String(projectId)}
+            chainId={String(chainId)}
+            isOwner={isOwner}
+          />
+        )}
+
+        {/* Shop tab */}
+        {activeTab === 'shop' && (
+          <ShopTab
             projectId={String(projectId)}
             chainId={String(chainId)}
             isOwner={isOwner}
