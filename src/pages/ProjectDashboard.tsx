@@ -345,25 +345,46 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <h1 className={`text-xl font-semibold truncate ${
-                    isDark ? 'text-white' : 'text-gray-900'
-                  }`}>
-                    {project.name || `Project #${projectId}`}
-                  </h1>
-                  {/* Chain badge + Operator/Owner address */}
-                  <div className="flex items-center gap-2 mt-1">
+                  {/* Title row with chain badge */}
+                  <div className="flex items-center gap-2">
+                    <h1 className={`text-xl font-semibold truncate ${
+                      isDark ? 'text-white' : 'text-gray-900'
+                    }`}>
+                      {project.name || `Project #${projectId}`}
+                    </h1>
                     {chain && (
                       <span
-                        className="px-2 py-0.5 text-xs font-medium rounded-full"
+                        className="px-2 py-0.5 text-xs font-medium rounded-full shrink-0"
                         style={{ backgroundColor: chain.color + '20', color: chain.color }}
                       >
                         {chain.shortName}
                       </span>
                     )}
                   </div>
+                  {/* Stats row */}
+                  <div className={`flex items-center gap-4 mt-1 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <span>
+                      <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        {formatEth(displayBalance)}
+                      </span>
+                      {' '}ETH
+                    </span>
+                    <span>
+                      <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        {displayPaymentsCount.toLocaleString()}
+                      </span>
+                      {' '}payments
+                    </span>
+                    <span>
+                      <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        {formatEth(displayVolume)}
+                      </span>
+                      {' '}ETH volume
+                    </span>
+                  </div>
                   {/* Operator (for revnets) or Owner address */}
                   {displayAddress && (
-                    <div className={`flex items-center gap-1.5 mt-2 text-xs ${
+                    <div className={`flex items-center gap-1.5 mt-1.5 text-xs ${
                       isDark ? 'text-gray-500' : 'text-gray-400'
                     }`}>
                       <span>{projectIsRevnet ? t('project.operator', 'Operator') : t('project.owner', 'Owner')}:</span>
@@ -385,18 +406,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       )}
                     </div>
                   )}
-                </div>
-                {/* Top-right metrics */}
-                <div className="shrink-0 text-right">
-                  <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {formatEth(displayBalance)} ETH
-                  </div>
-                  <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {displayPaymentsCount.toLocaleString()} payments
-                  </div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {formatEth(displayVolume)} ETH volume
-                  </div>
                 </div>
               </div>
             </div>
@@ -618,21 +627,42 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <h1 className={`text-lg font-semibold truncate ${
-                isDark ? 'text-white' : 'text-gray-900'
-              }`}>
-                {project.name || `Project #${projectId}`}
-              </h1>
-              {/* Chain badge */}
-              <div className="flex items-center gap-2 mt-1">
+              {/* Title row with chain badge */}
+              <div className="flex items-center gap-2">
+                <h1 className={`text-lg font-semibold truncate ${
+                  isDark ? 'text-white' : 'text-gray-900'
+                }`}>
+                  {project.name || `Project #${projectId}`}
+                </h1>
                 {chain && (
                   <span
-                    className="px-2 py-0.5 text-xs font-medium rounded-full"
+                    className="px-2 py-0.5 text-xs font-medium rounded-full shrink-0"
                     style={{ backgroundColor: chain.color + '20', color: chain.color }}
                   >
                     {chain.shortName}
                   </span>
                 )}
+              </div>
+              {/* Stats row */}
+              <div className={`flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                <span>
+                  <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {formatEth(displayBalance)}
+                  </span>
+                  {' '}ETH
+                </span>
+                <span>
+                  <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {displayPaymentsCount.toLocaleString()}
+                  </span>
+                  {' '}payments
+                </span>
+                <span>
+                  <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {formatEth(displayVolume)}
+                  </span>
+                  {' '}ETH vol
+                </span>
               </div>
               {/* Operator/Owner address */}
               {displayAddress && (
@@ -657,21 +687,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   )}
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* Mobile metrics row */}
-          <div className={`flex gap-4 mt-3 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            <div>
-              <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {formatEth(displayBalance)}
-              </span> ETH
-            </div>
-            <div>{displayPaymentsCount.toLocaleString()} payments</div>
-            <div>
-              <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {formatEth(displayVolume)}
-              </span> ETH vol
             </div>
           </div>
         </div>
