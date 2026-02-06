@@ -755,7 +755,7 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
 
 function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   const { theme } = useThemeStore()
-  const { activeChatId: storeActiveChatId, getActiveChat, pendingNewChat, pendingMessage } = useChatStore()
+  const { activeChatId: storeActiveChatId, getActiveChat } = useChatStore()
   const isMobile = useIsMobile()
   const [showMobileActivity, setShowMobileActivity] = useState(false)
 
@@ -763,9 +763,10 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   const activeChatId = forceActiveChatId || storeActiveChatId
   const activeChat = getActiveChat()
 
-  // Show chat mode if there's an active chat with messages OR if we're creating a new chat
-  // pendingNewChat prevents flickering during the API call to create a new chat
-  const hasMessages = pendingNewChat || (activeChat && activeChat.messages && activeChat.messages.length > 0)
+  // Show chat mode if there's an active chat with messages
+  // Note: We don't include pendingNewChat here - the dock stays in WelcomeLayout until messages arrive
+  // This prevents the layout from switching prematurely and causing a visual glitch
+  const hasMessages = activeChat && activeChat.messages && activeChat.messages.length > 0
 
   useEffect(() => {
     document.documentElement.className = theme
