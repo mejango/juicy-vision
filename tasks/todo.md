@@ -7,12 +7,12 @@
 ### 1. Updated `src/pages/ProjectDashboard.tsx`
 - Changed tab type from `'overview' | 'payments'` to `'about' | 'analytics' | 'rulesets' | 'tokens'`
 - Implemented two-column desktop layout:
-  - Left column: Main content with tab navigation (About, Analytics, Rulesets & Funds, Tokens)
-  - Right column: Sticky sidebar (380px width) with ProjectCard and ActivityFeed
+  - **Left column (380px)**: Pay/Cash out panel (sticky) + Activity feed (scrollable)
+  - **Right column**: Tab navigation (sticky at top) + tab content (About, Analytics, Rulesets & Funds, Tokens)
 - Tab navigation with juice-orange underline style
 - Mobile layout: Stacked tabs with horizontal scroll, ProjectCard embedded in About tab
-- Removed old "Pay" button from header (now handled by sidebar ProjectCard)
-- Removed old activity sidebar column (activity now in right sidebar)
+- Removed old "Pay" button from header (now handled by left sidebar ProjectCard)
+- Removed old activity sidebar column (activity now in left sidebar)
 
 ### 2. Created `src/components/dynamic/FundsSection.tsx`
 New component for Rulesets & Funds tab showing:
@@ -45,15 +45,33 @@ New component for Tokens tab showing:
 - When `compact=true`: removes outer container and header (dashboard provides its own Activity header)
 - Same event list functionality
 
+## Desktop Layout
+
+```
+┌─────────────────────┬─────────────────────────────────────────┐
+│                     │ [About] [Analytics] [Rulesets] [Tokens] │
+│  Pay/Cash out       ├─────────────────────────────────────────┤
+│  Panel              │                                         │
+│  (sticky)           │  Tab Content                            │
+├─────────────────────┤  (scrollable)                           │
+│                     │                                         │
+│  Activity           │                                         │
+│  Feed               │                                         │
+│  (scrollable)       │                                         │
+│                     │                                         │
+└─────────────────────┴─────────────────────────────────────────┘
+     Left (380px)                    Right (flex-1)
+```
+
 ## Verification Steps
 
 1. Navigate to a project dashboard (e.g., `/base:3`)
-2. **Layout**: Two columns visible on desktop, right sidebar sticky
+2. **Layout**: Two columns visible on desktop - Pay/Activity on LEFT, tabs on RIGHT
 3. **About tab**: Shows project description (default tab)
 4. **Analytics tab**: Shows Volume, Holders, Balance, Price charts in 2x2 grid
 5. **Rulesets & Funds tab**: Shows RulesetSchedule + FundsSection with balance breakdown
 6. **Tokens tab**: Shows token info, user balance, reserved tokens section
-7. **Right sidebar**: Pay/Cash out panel works, Activity scrolls independently
+7. **Left sidebar**: Pay/Cash out panel works, Activity scrolls independently
 8. **Mobile**: Falls back to stacked layout with tabs scrollable
 
 ## Files Modified

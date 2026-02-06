@@ -339,32 +339,67 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   )}
                 </div>
               </div>
-
-              {/* Tab navigation */}
-              <div className={`flex gap-6 mt-4 border-b -mb-px ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                {tabs.map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`pb-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                      activeTab === tab.id
-                        ? 'border-juice-orange text-juice-orange'
-                        : isDark
-                          ? 'border-transparent text-gray-400 hover:text-gray-200'
-                          : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 
           {/* Two-column layout */}
           <div className="flex-1 flex overflow-hidden">
-            {/* Left: Main content (scrollable) */}
+            {/* Left: Pay/Activity sidebar */}
+            <div className={`w-[380px] shrink-0 border-r flex flex-col ${
+              isDark ? 'border-white/10' : 'border-gray-200'
+            }`}>
+              {/* Pay/Cash out panel - sticky at top */}
+              <div className={`shrink-0 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                <ProjectCard
+                  projectId={String(projectId)}
+                  chainId={String(chainId)}
+                  embedded
+                />
+              </div>
+
+              {/* Activity Feed - scrollable */}
+              <div className="flex-1 overflow-y-auto">
+                <div className={`px-4 py-3 border-b sticky top-0 ${
+                  isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
+                }`}>
+                  <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    Activity
+                  </span>
+                </div>
+                <ActivityFeed
+                  projectId={String(projectId)}
+                  chainId={String(chainId)}
+                  limit={15}
+                  compact
+                />
+              </div>
+            </div>
+
+            {/* Right: Main content (scrollable) */}
             <div className="flex-1 overflow-y-auto">
+              {/* Tab navigation */}
+              <div className={`sticky top-0 z-10 px-6 pt-4 pb-0 ${
+                isDark ? 'bg-juice-dark' : 'bg-white'
+              }`}>
+                <div className={`flex gap-6 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                  {tabs.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`pb-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
+                        activeTab === tab.id
+                          ? 'border-juice-orange text-juice-orange'
+                          : isDark
+                            ? 'border-transparent text-gray-400 hover:text-gray-200'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="px-6 py-6 space-y-6">
                 {/* About Tab */}
                 {activeTab === 'about' && (
@@ -418,37 +453,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     isOwner={isOwner}
                   />
                 )}
-              </div>
-            </div>
-
-            {/* Right: Sticky sidebar */}
-            <div className={`w-[380px] shrink-0 border-l flex flex-col ${
-              isDark ? 'border-white/10' : 'border-gray-200'
-            }`}>
-              {/* Pay/Cash out panel - sticky at top */}
-              <div className={`shrink-0 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <ProjectCard
-                  projectId={String(projectId)}
-                  chainId={String(chainId)}
-                  embedded
-                />
-              </div>
-
-              {/* Activity Feed - scrollable */}
-              <div className="flex-1 overflow-y-auto">
-                <div className={`px-4 py-3 border-b sticky top-0 ${
-                  isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
-                }`}>
-                  <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    Activity
-                  </span>
-                </div>
-                <ActivityFeed
-                  projectId={String(projectId)}
-                  chainId={String(chainId)}
-                  limit={15}
-                  compact
-                />
               </div>
             </div>
           </div>
