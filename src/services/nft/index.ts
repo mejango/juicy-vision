@@ -50,21 +50,25 @@ export async function getProjectDataHook(
     const project = await fetchProject(projectId, chainId)
     const projectIsRevnet = project?.owner ? isRevnet(project.owner) : false
 
+    console.log('[NFT] getProjectDataHook:', { projectId, chainId, owner: project?.owner, projectIsRevnet })
+
     if (projectIsRevnet) {
       // For revnets, query the REVDeployer's tiered721HookOf function
       try {
+        console.log('[NFT] Querying tiered721HookOf for revnet:', projectId)
         const hookAddress = await client.readContract({
           address: REV_DEPLOYER_ADDRESS,
           abi: REV_DEPLOYER_TIERED_721_HOOK_ABI,
           functionName: 'tiered721HookOf',
           args: [BigInt(projectId)],
         })
+        console.log('[NFT] tiered721HookOf result:', hookAddress)
 
         if (hookAddress && hookAddress !== zeroAddress) {
           return hookAddress
         }
       } catch (err) {
-        console.error('Failed to get revnet tiered721 hook:', err)
+        console.error('[NFT] Failed to get revnet tiered721 hook:', err)
       }
       return null
     }
@@ -261,7 +265,9 @@ export async function hasNFTHook(
   projectId: string,
   chainId: number
 ): Promise<boolean> {
+  console.log('[NFT] hasNFTHook called:', { projectId, chainId })
   const hookAddress = await getProjectDataHook(projectId, chainId)
+  console.log('[NFT] hasNFTHook result:', { projectId, hookAddress, hasHook: hookAddress !== null })
   return hookAddress !== null
 }
 
