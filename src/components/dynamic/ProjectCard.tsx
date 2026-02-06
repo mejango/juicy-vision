@@ -1173,26 +1173,27 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
         {/* Amount input with token selector and pay button */}
         <div className="flex gap-2">
-          <div className={`flex-1 flex items-center ${
-            isDark
-              ? 'bg-juice-dark border border-white/10'
-              : 'bg-white border border-gray-200'
-          }`}>
-            <input
-              type="number"
-              step="0.001"
-              min="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
-              placeholder="0.00"
-              disabled={isPaymentLocked}
-              className={`flex-1 px-3 py-2 text-sm bg-transparent outline-none ${
-                isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
-              } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-            />
-            {/* Token selector */}
-            <div className="relative">
+          <div className="flex-1">
+            <div className={`flex items-center ${
+              isDark
+                ? 'bg-juice-dark border border-white/10'
+                : 'bg-white border border-gray-200'
+            }`}>
+              <input
+                type="number"
+                step="0.001"
+                min="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
+                placeholder="0.00"
+                disabled={isPaymentLocked}
+                className={`flex-1 px-3 py-2 text-sm bg-transparent outline-none ${
+                  isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
+                } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+              />
+              {/* Token selector */}
+              <div className="relative">
               <button
                 onClick={() => {
                   if (!isPaymentLocked) {
@@ -1240,11 +1241,65 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 </div>
               )}
             </div>
+            </div>
+            {/* Chain selector - only show for ETH/USDC */}
+            {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
+              <div className="relative mt-1 flex justify-end">
+                <button
+                  onClick={() => {
+                    if (!isPaymentLocked) {
+                      setChainDropdownOpen(!chainDropdownOpen)
+                      setTokenDropdownOpen(false)
+                    }
+                  }}
+                  disabled={isPaymentLocked}
+                  className={`flex items-center gap-1 text-xs ${
+                    isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
+                  } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  Pay on <span className="underline">{selectedChainInfo.name}</span>
+                  <svg className={`w-3 h-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {chainDropdownOpen && (
+                  <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
+                    isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+                  }`}>
+                    {availableChains.map(chain => {
+                      const info = CHAIN_INFO[chain.chainId.toString()]
+                      if (!info) return null
+                      return (
+                        <button
+                          key={chain.chainId}
+                          onClick={() => {
+                            setSelectedChainId(chain.chainId.toString())
+                            setChainDropdownOpen(false)
+                          }}
+                          className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
+                            chain.chainId.toString() === selectedChainId
+                              ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
+                              : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {info.name}
+                          {chain.projectId !== 0 && chain.projectId.toString() !== projectId && (
+                            <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                              (#{chain.projectId})
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <button
             onClick={(e) => handlePay(e)}
             disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
+            className={`px-4 py-2 text-sm font-medium transition-colors self-start ${
               paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
                 ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                 : 'bg-green-500 hover:bg-green-600 text-black'
@@ -1253,60 +1308,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
           </button>
         </div>
-
-        {/* Chain selector - only show for ETH/USDC */}
-        {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
-          <div className="relative mt-1 flex justify-end">
-            <button
-              onClick={() => {
-                if (!isPaymentLocked) {
-                  setChainDropdownOpen(!chainDropdownOpen)
-                  setTokenDropdownOpen(false)
-                }
-              }}
-              disabled={isPaymentLocked}
-              className={`flex items-center gap-1 text-xs ${
-                isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
-              } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-            >
-              Pay on <span className="underline">{selectedChainInfo.name}</span>
-              <svg className={`w-3 h-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {chainDropdownOpen && (
-              <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
-                isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
-              }`}>
-                {availableChains.map(chain => {
-                  const info = CHAIN_INFO[chain.chainId.toString()]
-                  if (!info) return null
-                  return (
-                    <button
-                      key={chain.chainId}
-                      onClick={() => {
-                        setSelectedChainId(chain.chainId.toString())
-                        setChainDropdownOpen(false)
-                      }}
-                      className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
-                        chain.chainId.toString() === selectedChainId
-                          ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
-                          : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      {info.name}
-                      {chain.projectId !== 0 && chain.projectId.toString() !== projectId && (
-                        <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                          (#{chain.projectId})
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Payment progress indicator - show from local state or persisted state */}
         {(activePayment || (persistedPayment && persistedPayment.status !== 'pending')) && (
