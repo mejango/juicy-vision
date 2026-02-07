@@ -75,9 +75,8 @@ export async function resolveEnsName(address: string): Promise<string | null> {
     saveCache(ensCache)
 
     return ensName
-  } catch (err) {
-    console.warn('[ENS] Failed to resolve name for', address, err)
-    // Cache error result with shorter TTL
+  } catch {
+    // Cache error result with shorter TTL (silently - ENS failures are common)
     ensCache[normalizedAddr] = {
       name: null,
       timestamp: Date.now(),
@@ -86,6 +85,22 @@ export async function resolveEnsName(address: string): Promise<string | null> {
     saveCache(ensCache)
     return null
   }
+}
+
+// Batch resolve ENS names with rate limiting to avoid RPC throttling
+export async function resolveEnsNames(addresses: string[]): Promise<(string | null)[]> {
+  const results: (string | null)[] = []
+
+  for (const address of addresses) {
+    const name = await resolveEnsName(address)
+    results.push(name)
+    // Small delay between requests to avoid rate limiting
+    if (results.length < addresses.length) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+  }
+
+  return results
 }
 
 // Truncate address for display

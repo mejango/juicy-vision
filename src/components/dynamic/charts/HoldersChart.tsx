@@ -14,7 +14,7 @@ import {
   fetchProjectSuckerGroupId,
   fetchConnectedChains,
 } from '../../../services/bendystraw'
-import { resolveEnsName, truncateAddress } from '../../../utils/ens'
+import { resolveEnsNames, truncateAddress } from '../../../utils/ens'
 import { formatPercentage, PIE_COLORS, CHAIN_NAMES } from './utils'
 import ChainToggleBar from './ChainToggleBar'
 
@@ -93,9 +93,9 @@ export default function HoldersChart({
           return
         }
 
-        // Resolve ENS names in parallel
-        const ensNames = await Promise.all(
-          participants.map(p => resolveEnsName(p.address))
+        // Resolve ENS names with rate limiting
+        const ensNames = await resolveEnsNames(
+          participants.map(p => p.address)
         )
 
         // Transform to chart data
