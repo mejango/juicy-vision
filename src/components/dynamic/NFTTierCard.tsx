@@ -349,32 +349,36 @@ export default function NFTTierCard({
 
         {/* Mint action */}
         {showMintAction && (
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end items-center gap-2">
             {!soldOut && tier.initialSupply > 1 && (
-              <div className="relative">
-                <select
-                  value={quantity}
-                  onChange={(e) => setQuantity(Number(e.target.value))}
-                  className={`appearance-none pl-3 pr-7 py-1.5 text-xs border cursor-pointer ${
-                    isDark
-                      ? 'bg-juice-dark border-white/10 text-white'
-                      : 'bg-white border-gray-200 text-gray-900'
+              <div className="flex items-center">
+                <button
+                  onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                  disabled={quantity <= 1}
+                  className={`w-7 h-7 flex items-center justify-center text-sm font-medium transition-colors border-y border-l ${
+                    quantity <= 1
+                      ? isDark ? 'border-white/10 text-gray-600 cursor-not-allowed' : 'border-gray-200 text-gray-300 cursor-not-allowed'
+                      : isDark ? 'border-white/10 text-white hover:bg-white/10' : 'border-gray-200 text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  {Array.from({ length: Math.min(tier.remainingSupply, 10) }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-                <svg
-                  className={`absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none ${
-                    isDark ? 'text-gray-400' : 'text-gray-500'
+                  −
+                </button>
+                <div className={`w-8 h-7 flex items-center justify-center text-xs font-medium border-y ${
+                  isDark ? 'border-white/10 text-white' : 'border-gray-200 text-gray-900'
+                }`}>
+                  {quantity}
+                </div>
+                <button
+                  onClick={() => setQuantity(q => Math.min(tier.remainingSupply, q + 1))}
+                  disabled={quantity >= tier.remainingSupply}
+                  className={`w-7 h-7 flex items-center justify-center text-sm font-medium transition-colors border-y border-r ${
+                    quantity >= tier.remainingSupply
+                      ? isDark ? 'border-white/10 text-gray-600 cursor-not-allowed' : 'border-gray-200 text-gray-300 cursor-not-allowed'
+                      : isDark ? 'border-white/10 text-white hover:bg-white/10' : 'border-gray-200 text-gray-700 hover:bg-gray-100'
                   }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+                  +
+                </button>
               </div>
             )}
             <button

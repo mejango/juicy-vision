@@ -471,7 +471,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       </span>
                       {/* Per-chain balance breakdown tooltip */}
                       {showBalanceTooltip && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
-                        <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-20 min-w-[200px] text-xs ${
+                        <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-50 min-w-[200px] text-xs ${
                           isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
                         }`}>
                           {suckerGroupBalance.projectBalances.map(pb => {
@@ -841,7 +841,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   </span>
                   {/* Per-chain balance breakdown tooltip */}
                   {showBalanceTooltip && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
-                    <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-20 min-w-[200px] text-xs ${
+                    <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-50 min-w-[200px] text-xs ${
                       isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
                     }`}>
                       {suckerGroupBalance.projectBalances.map(pb => {
