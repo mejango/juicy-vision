@@ -880,10 +880,17 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
   // Listen for add-to-checkout events from Shop tab
   useEffect(() => {
-    const handleAddToCheckout = (e: CustomEvent<{ tierId: number; price: string }>) => {
-      const { tierId, price } = e.detail
+    const handleAddToCheckout = (e: CustomEvent<{ tierId: number; price: string; name?: string }>) => {
+      const { tierId, name } = e.detail
       const tier = nftTiers.find(t => t.tierId === tierId)
       if (tier) {
+        // Store the tier name in metadata if provided (so it displays correctly in "You get")
+        if (name && /^Tier \d+$/.test(tier.name)) {
+          setTierMetadata(prev => ({
+            ...prev,
+            [tierId]: { ...prev[tierId], productName: name },
+          }))
+        }
         handleTierSelect(tier)
       }
     }
@@ -1479,7 +1486,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             </div>
             {/* Chain selector - only show for ETH/USDC */}
             {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
-              <div className="relative mt-1 flex justify-end">
+              <div className="relative mt-1">
                 <button
                   onClick={() => {
                     if (!isPaymentLocked) {
@@ -1498,7 +1505,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   </svg>
                 </button>
                 {chainDropdownOpen && (
-                  <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
+                  <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
                     isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
                   }`}>
                     {availableChains.map(chain => {
