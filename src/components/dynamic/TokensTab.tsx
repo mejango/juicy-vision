@@ -11,6 +11,7 @@ import {
   fetchConnectedChains,
   fetchProjectSplits,
   fetchPendingReservedTokens,
+  calculateFloorPrice,
   type Project,
   type ConnectedChain,
   type JBSplitData,
@@ -45,6 +46,11 @@ interface ChainTokenData {
   reservedSplits: JBSplitData[]
   reservedPercent: number
   ruleset: ProjectRuleset | null
+  balance: string           // Project treasury balance
+  baseCurrency: number      // 1 = ETH, 2 = USDC
+  decimals: number          // 18 for ETH, 6 for USDC
+  cashOutPerToken: number   // Calculated floor price
+  cashOutTaxRate: number    // From ruleset
 }
 
 function formatTokenAmount(wei: string): string {
@@ -135,6 +141,14 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
               reservedSplits = splitsData.reservedSplits
             }
 
+            // Calculate cash out value per token
+            const cashOutTaxRate = chainProject?.currentRuleset?.cashOutTaxRate ?? 10000
+            const balance = BigInt(chainProject?.balance || '0')
+            const supplyBigInt = BigInt(supply || '0')
+            const baseCurrency = chainProject?.currentRuleset?.baseCurrency || 1
+            const decimals = baseCurrency === 2 ? 6 : 18
+            const cashOutPerToken = calculateFloorPrice(balance, supplyBigInt, cashOutTaxRate, decimals)
+
             return {
               chainId: chain.chainId,
               projectId: chain.projectId,
@@ -144,6 +158,11 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
               reservedSplits,
               reservedPercent: chainProject?.currentRuleset?.reservedPercent || 0,
               ruleset: chainProject?.currentRuleset || null,
+              balance: chainProject?.balance || '0',
+              baseCurrency,
+              decimals,
+              cashOutPerToken,
+              cashOutTaxRate,
             }
           } catch (err) {
             console.error(`Failed to fetch token data for chain ${chain.chainId}:`, err)
@@ -156,6 +175,11 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
               reservedSplits: [],
               reservedPercent: 0,
               ruleset: null,
+              balance: '0',
+              baseCurrency: 1,
+              decimals: 18,
+              cashOutPerToken: 0,
+              cashOutTaxRate: 10000,
             }
           }
         })
@@ -261,12 +285,51 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         <div className={`p-4 border ${
           isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
         }`}>
-          <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          <div className={`text-xs mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             Your membership
           </div>
-          <div className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {formatTokenAmount(userBalance)} ${tokenSymbol}
+          <div className="flex items-center justify-between">
+            <div className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {formatTokenAmount(userBalance)} ${tokenSymbol}
+            </div>
+            {(() => {
+              const userBalanceNum = parseFloat(userBalance) / 1e18
+              const currencySymbol = activeChainData?.baseCurrency === 2 ? 'USDC' : 'ETH'
+              const cashOutValue = userBalanceNum * (activeChainData?.cashOutPerToken || 0)
+              const isCashOutDisabled = activeChainData?.cashOutTaxRate === 10000
+
+              if (userBalanceNum > 0 && activeChainData) {
+                if (isCashOutDisabled) {
+                  return (
+                    <div className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      No cash out
+                    </div>
+                  )
+                } else if (cashOutValue > 0) {
+                  return (
+                    <div className={`text-sm font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                      ~{cashOutValue < 0.0001 ? '<0.0001' : cashOutValue.toFixed(4)} {currencySymbol}
+                    </div>
+                  )
+                }
+              }
+              return null
+            })()}
           </div>
+          {(() => {
+            const userBalanceNum = parseFloat(userBalance) / 1e18
+            const isCashOutDisabled = activeChainData?.cashOutTaxRate === 10000
+            const cashOutValue = userBalanceNum * (activeChainData?.cashOutPerToken || 0)
+
+            if (userBalanceNum > 0 && !isCashOutDisabled && cashOutValue > 0) {
+              return (
+                <div className={`text-xs mt-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                  Cash out value at current rate
+                </div>
+              )
+            }
+            return null
+          })()}
         </div>
       )}
 
