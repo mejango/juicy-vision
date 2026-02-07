@@ -502,27 +502,50 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       {' '}payments
                     </span>
                   </div>
-                  {/* Operator (for revnets) or Owner address */}
-                  {displayAddress && (
-                    <div className={`flex items-center gap-1.5 mt-1.5 text-xs ${
+                  {/* Operator/Owner and Website */}
+                  {(displayAddress || project.metadata?.infoUri) && (
+                    <div className={`flex items-center flex-wrap gap-x-1.5 gap-y-1 mt-1.5 text-xs ${
                       isDark ? 'text-gray-500' : 'text-gray-400'
                     }`}>
-                      <span>{projectIsRevnet ? t('project.operator', 'Operator') : t('project.owner', 'Owner')}:</span>
-                      <a
-                        href={chain ? `${chain.explorer}/address/${displayAddress}` : '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`hover:underline ${
-                          isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-                        } ${!displayAddressEns ? 'font-mono' : ''}`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {displayAddressEns || truncateAddress(displayAddress)}
-                      </a>
-                      {isOwner && (
-                        <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
-                          {t('project.you', 'You')}
-                        </span>
+                      {displayAddress && (
+                        <>
+                          <span>{projectIsRevnet ? t('project.operator', 'Operator') : t('project.owner', 'Owner')}:</span>
+                          <a
+                            href={chain ? `${chain.explorer}/address/${displayAddress}` : '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`hover:underline ${
+                              isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+                            } ${!displayAddressEns ? 'font-mono' : ''}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {displayAddressEns || truncateAddress(displayAddress)}
+                          </a>
+                          {isOwner && (
+                            <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
+                              {t('project.you', 'You')}
+                            </span>
+                          )}
+                        </>
+                      )}
+                      {displayAddress && project.metadata?.infoUri && (
+                        <span className="opacity-50">|</span>
+                      )}
+                      {project.metadata?.infoUri && (
+                        <>
+                          <span>Site:</span>
+                          <a
+                            href={project.metadata.infoUri.startsWith('http') ? project.metadata.infoUri : `https://${project.metadata.infoUri}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`hover:underline ${
+                              isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+                            }`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {project.metadata.infoUri.replace(/^https?:\/\//, '')}
+                          </a>
+                        </>
                       )}
                     </div>
                   )}
@@ -537,17 +560,15 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             <div className={`w-[380px] shrink-0 border-r overflow-y-auto ${
               isDark ? 'border-white/10' : 'border-gray-200'
             }`}>
-              {/* Pay/Cash out panel - sticky at top */}
-              <div className={`sticky top-0 z-10 border-b ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
-                <ProjectCard
-                  projectId={String(projectId)}
-                  chainId={String(chainId)}
-                  embedded
-                />
-              </div>
+              {/* Pay/Cash out panel - pay field inside is sticky */}
+              <ProjectCard
+                projectId={String(projectId)}
+                chainId={String(chainId)}
+                embedded
+              />
 
               {/* Activity Feed */}
-              <div className={`px-4 pt-3 pb-2 ${isDark ? 'bg-juice-dark' : 'bg-white'}`}>
+              <div className={`px-4 pt-3 pb-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
                 <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   Activity
                 </span>
@@ -851,26 +872,48 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   {' '}payments
                 </span>
               </div>
-              {/* Operator/Owner address */}
-              {displayAddress && (
-                <div className={`flex items-center gap-1.5 mt-1.5 text-xs ${
+              {/* Operator/Owner and Website */}
+              {(displayAddress || project.metadata?.infoUri) && (
+                <div className={`flex items-center flex-wrap gap-x-1.5 gap-y-1 mt-1.5 text-xs ${
                   isDark ? 'text-gray-500' : 'text-gray-400'
                 }`}>
-                  <span>{projectIsRevnet ? t('project.operator', 'Operator') : t('project.owner', 'Owner')}:</span>
-                  <a
-                    href={chain ? `${chain.explorer}/address/${displayAddress}` : '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`hover:underline ${
-                      isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-                    } ${!displayAddressEns ? 'font-mono' : ''}`}
-                  >
-                    {displayAddressEns || truncateAddress(displayAddress)}
-                  </a>
-                  {isOwner && (
-                    <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
-                      {t('project.you', 'You')}
-                    </span>
+                  {displayAddress && (
+                    <>
+                      <span>{projectIsRevnet ? t('project.operator', 'Operator') : t('project.owner', 'Owner')}:</span>
+                      <a
+                        href={chain ? `${chain.explorer}/address/${displayAddress}` : '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`hover:underline ${
+                          isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+                        } ${!displayAddressEns ? 'font-mono' : ''}`}
+                      >
+                        {displayAddressEns || truncateAddress(displayAddress)}
+                      </a>
+                      {isOwner && (
+                        <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
+                          {t('project.you', 'You')}
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {displayAddress && project.metadata?.infoUri && (
+                    <span className="opacity-50">|</span>
+                  )}
+                  {project.metadata?.infoUri && (
+                    <>
+                      <span>Site:</span>
+                      <a
+                        href={project.metadata.infoUri.startsWith('http') ? project.metadata.infoUri : `https://${project.metadata.infoUri}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`hover:underline ${
+                          isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+                        }`}
+                      >
+                        {project.metadata.infoUri.replace(/^https?:\/\//, '')}
+                      </a>
+                    </>
                   )}
                 </div>
               )}

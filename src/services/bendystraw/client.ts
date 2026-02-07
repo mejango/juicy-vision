@@ -393,6 +393,7 @@ export async function fetchProject(projectId: string, chainId: number = 1, versi
 
   return {
     ...project,
+    metadata,
     name: metadata?.name || `Project #${projectId}`,
     description: metadata?.description,
     logoUri: metadata?.logoUri,
