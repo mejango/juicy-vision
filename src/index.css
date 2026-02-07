@@ -159,7 +159,7 @@
 
 /* Markdown styling - Dark mode */
 .dark .prose-juice {
-  @apply text-gray-200 leading-relaxed;
+  @apply text-gray-200 leading-relaxed text-sm md:text-base;
 }
 
 .dark .prose-juice h1,
@@ -182,7 +182,7 @@
 
 /* Markdown styling - Light mode */
 .light .prose-juice {
-  @apply text-gray-700 leading-relaxed;
+  @apply text-gray-700 leading-relaxed text-sm md:text-base;
 }
 
 .light .prose-juice h1,

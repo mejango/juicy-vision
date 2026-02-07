@@ -764,6 +764,135 @@ function SuckerConfigSection({
   )
 }
 
+// Component to display 721 tier hook configuration with per-chain view
+function TiersHookConfigSection({
+  allChainIds,
+  baseConfig,
+  chainConfigs,
+  isDark
+}: {
+  allChainIds: number[];
+  baseConfig: Record<string, unknown>;
+  chainConfigs?: Array<{ chainId: string; overrides?: Record<string, unknown> }>;
+  isDark: boolean
+}) {
+  const [expanded, setExpanded] = useState(true)
+  const [selectedChain, setSelectedChain] = useState<number>(allChainIds[0])
+
+  // Get config for selected chain (merge base with any overrides)
+  const getChainConfig = (chainId: number): Record<string, unknown> => {
+    const override = chainConfigs?.find(c => Number(c.chainId) === chainId)
+    if (override?.overrides?.deployTiersHookConfig) {
+      return { ...baseConfig, ...override.overrides.deployTiersHookConfig as Record<string, unknown> }
+    }
+    return baseConfig
+  }
+
+  const selectedConfig = getChainConfig(selectedChain)
+
+  // Count meaningful fields for display
+  const tiersConfig = selectedConfig.tiersConfig as { tiers?: unknown[] } | undefined
+  const tierCount = tiersConfig?.tiers?.length || 0
+
+  return (
+    <div className="py-0.5">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={`flex items-center gap-1.5 w-full text-left py-0.5 ${isDark ? 'text-gray-300 hover:text-gray-200' : 'text-gray-600 hover:text-gray-700'}`}
+      >
+        <svg
+          className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="font-medium">NFT Tier Hook Configuration</span>
+        <span className={`ml-auto text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          {tierCount} tier{tierCount !== 1 ? 's' : ''}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className={`mt-0.5 space-y-1 border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
+          {/* Chain selector - shows that configs vary per chain */}
+          <div className={`flex items-center gap-2 py-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <span className="shrink-0">View Config</span>
+            <div className="flex items-center gap-1 ml-auto">
+              <select
+                value={selectedChain}
+                onChange={(e) => setSelectedChain(Number(e.target.value))}
+                className={`text-xs px-2 py-0.5 rounded border ${
+                  isDark
+                    ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-300'
+                    : 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                }`}
+              >
+                {allChainIds.map(chainId => (
+                  <option key={chainId} value={chainId}>
+                    {CHAIN_NAMES[chainId.toString()] || `Chain ${chainId}`}
+                  </option>
+                ))}
+              </select>
+              <span className={`text-[9px] px-1 py-0.5 rounded ${
+                isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+              }`}>
+                per-network
+              </span>
+            </div>
+          </div>
+
+          {/* Basic hook info */}
+          <div className={`space-y-0.5 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            {Boolean(selectedConfig.name) && (
+              <div className="flex justify-between">
+                <span>Collection Name</span>
+                <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>{String(selectedConfig.name)}</span>
+              </div>
+            )}
+            {Boolean(selectedConfig.symbol) && (
+              <div className="flex justify-between">
+                <span>Symbol</span>
+                <span className="font-mono">{String(selectedConfig.symbol)}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Tiers summary */}
+          {tiersConfig?.tiers && Array.isArray(tiersConfig.tiers) && tiersConfig.tiers.length > 0 && (
+            <div className={`pt-1 mt-1 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+              <div className={`text-xs py-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                Tiers ({tiersConfig.tiers.length})
+              </div>
+              <div className={`space-y-1 mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {(tiersConfig.tiers as Array<{ price?: string | bigint; initialSupply?: number }>).slice(0, 5).map((tier, idx) => (
+                  <div key={idx} className="flex justify-between text-xs">
+                    <span>Tier {idx + 1}</span>
+                    <span className="font-mono">
+                      {tier.initialSupply || '?'} × {tier.price ? `${(Number(tier.price) / 1e18).toFixed(4)} ETH` : '?'}
+                    </span>
+                  </div>
+                ))}
+                {tiersConfig.tiers.length > 5 && (
+                  <div className={`text-xs italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    +{tiersConfig.tiers.length - 5} more tier{tiersConfig.tiers.length - 5 > 1 ? 's' : ''}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Note about per-chain supply */}
+          <div className={`pt-1.5 mt-1 text-[10px] leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            Supply is set per network. {allChainIds.length} networks × {tierCount > 0 ? `${(tiersConfig?.tiers as Array<{ initialSupply?: number }>)?.[0]?.initialSupply || '?'} supply` : 'tiers'} = separate supplies on each.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Section header with optional edit button
 function SectionHeader({ title, isDark, onEdit }: { title: string; isDark: boolean; onEdit?: () => void }) {
   return (
@@ -2762,7 +2891,13 @@ export default function TransactionPreview({
                     <ParamRow key="owner" name="owner" value={launchValidation.owner} isDark={isDark} chainId={chainId} />
                   )}
                   {Object.entries(parsedParams)
-                    .filter(([key]) => !['chainConfigs', 'projectMetadata', 'suckerDeploymentConfiguration', 'raw'].includes(key)) // Hide fields shown separately
+                    .filter(([key]) => {
+                      // Always hide these fields (shown separately)
+                      if (['chainConfigs', 'projectMetadata', 'suckerDeploymentConfiguration', 'raw'].includes(key)) return false
+                      // Hide deployTiersHookConfig for multi-chain 721 projects (shown in dedicated section)
+                      if (key === 'deployTiersHookConfig' && action === 'launch721Project' && (launchValidation?.chainIds?.length ?? 0) > 1) return false
+                      return true
+                    })
                     .map(([key, value]) => (
                     <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainId} />
                   ))}
@@ -2772,6 +2907,15 @@ export default function TransactionPreview({
                       allChainIds={launchValidation.chainIds}
                       tokenAddresses={launchValidation.tokenAddresses}
                       salt={launchValidation.suckerDeploymentConfiguration?.salt || '0x0000000000000000000000000000000000000000000000000000000000000000'}
+                      isDark={isDark}
+                    />
+                  )}
+                  {/* For 721 launch actions, show deployTiersHookConfig with per-chain view */}
+                  {action === 'launch721Project' && (launchValidation?.chainIds?.length ?? 0) > 1 && parsedParams.deployTiersHookConfig && launchValidation && (
+                    <TiersHookConfigSection
+                      allChainIds={launchValidation.chainIds!}
+                      baseConfig={parsedParams.deployTiersHookConfig as Record<string, unknown>}
+                      chainConfigs={parsedParams.chainConfigs as Array<{ chainId: string; overrides?: Record<string, unknown> }> | undefined}
                       isDark={isDark}
                     />
                   )}

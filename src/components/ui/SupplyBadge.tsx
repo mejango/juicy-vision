@@ -11,7 +11,7 @@ interface SupplyBadgeProps {
 
 /**
  * Supply badge that shows remaining NFT supply.
- * For multi-chain projects, clicking reveals a popover with per-chain breakdown.
+ * For multi-chain projects, shows total across all chains with click for breakdown.
  */
 export default function SupplyBadge({
   tierId,
@@ -23,11 +23,36 @@ export default function SupplyBadge({
   const [loading, setLoading] = useState(false)
   const [supplyData, setSupplyData] = useState<MultiChainTierSupply | null>(null)
   const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({})
+  const [isNearViewport, setIsNearViewport] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
 
-  const soldOut = currentRemaining === 0
   const isMultiChain = connectedChains && connectedChains.length > 1
+
+  // For multi-chain, use total; otherwise use current chain
+  const displayRemaining = supplyData ? supplyData.totalRemaining : currentRemaining
+  const soldOut = displayRemaining === 0
+
+  // Intersection Observer to detect when badge is near viewport
+  useEffect(() => {
+    if (!isMultiChain || !buttonRef.current) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsNearViewport(true)
+          observer.disconnect() // Only need to trigger once
+        }
+      },
+      {
+        rootMargin: '200px', // Trigger 200px before entering viewport
+        threshold: 0,
+      }
+    )
+
+    observer.observe(buttonRef.current)
+    return () => observer.disconnect()
+  }, [isMultiChain])
 
   // Close on click outside or scroll
   useEffect(() => {
@@ -49,16 +74,16 @@ export default function SupplyBadge({
     }
   }, [isOpen])
 
-  // Fetch multi-chain data lazily when popover opens
+  // Fetch multi-chain data when near viewport
   useEffect(() => {
-    if (!isOpen || !isMultiChain || supplyData) return
+    if (!isMultiChain || !isNearViewport || supplyData) return
 
     setLoading(true)
     fetchMultiChainTierSupply(tierId, connectedChains)
       .then(setSupplyData)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [isOpen, isMultiChain, tierId, connectedChains, supplyData])
+  }, [isMultiChain, isNearViewport, tierId, connectedChains, supplyData])
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -187,9 +212,18 @@ export default function SupplyBadge({
         } ${isMultiChain ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
         title={isMultiChain ? 'Click to see supply by network' : undefined}
       >
-        {soldOut ? 'Sold Out' : `${currentRemaining} left`}
-        {isMultiChain && !soldOut && (
-          <span className="ml-1 opacity-60">+</span>
+        {loading && isMultiChain ? (
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 border border-current border-t-transparent rounded-full animate-spin" />
+            <span>left</span>
+          </span>
+        ) : soldOut ? (
+          'Sold Out'
+        ) : (
+          <>
+            {displayRemaining} left
+            {isMultiChain && <span className="ml-1 opacity-60">+</span>}
+          </>
         )}
       </button>
 

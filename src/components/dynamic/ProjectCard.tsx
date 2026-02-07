@@ -333,6 +333,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false)
   const [showBuyJuiceModal, setShowBuyJuiceModal] = useState(false)
   const buyMoreButtonRef = useRef<HTMLButtonElement>(null)
+  const amountInputRef = useRef<HTMLInputElement>(null)
   // Connected chains with their project IDs (may differ per chain)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
   // Current issuance rate for token calculation
@@ -1321,12 +1322,15 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         {/* Amount input with token selector and pay button */}
         <div className="flex gap-2">
           <div className="flex-1">
-            <div className={`flex items-center ${
+            <div
+              onClick={() => amountInputRef.current?.focus()}
+              className={`flex items-center cursor-text ${
               isDark
                 ? 'bg-juice-dark border border-white/10'
                 : 'bg-white border border-gray-200'
             }`}>
               <input
+                ref={amountInputRef}
                 type="number"
                 step="0.001"
                 min="0"

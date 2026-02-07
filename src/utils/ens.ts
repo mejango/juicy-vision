@@ -6,14 +6,16 @@ import { STORAGE_KEYS, ENS_RPC_ENDPOINT } from '../constants'
 interface EnsCacheEntry {
   name: string | null
   timestamp: number
+  isError?: boolean // Track if this was an error result
 }
 
 interface EnsCache {
   [address: string]: EnsCacheEntry
 }
 
-// Cache TTL: 24 hours
+// Cache TTL: 24 hours for successful lookups, 5 minutes for errors
 const CACHE_TTL = 24 * 60 * 60 * 1000
+const ERROR_CACHE_TTL = 5 * 60 * 1000
 
 // Load cache from localStorage
 function loadCache(): EnsCache {
@@ -48,12 +50,15 @@ const client = createPublicClient({
 export async function resolveEnsName(address: string): Promise<string | null> {
   if (!address) return null
 
-  const normalized = address.toLowerCase()
+  const normalizedAddr = address.toLowerCase()
 
   // Check cache first
-  const cached = ensCache[normalized]
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.name
+  const cached = ensCache[normalizedAddr]
+  if (cached) {
+    const ttl = cached.isError ? ERROR_CACHE_TTL : CACHE_TTL
+    if (Date.now() - cached.timestamp < ttl) {
+      return cached.name
+    }
   }
 
   try {
@@ -62,18 +67,21 @@ export async function resolveEnsName(address: string): Promise<string | null> {
     })
 
     // Update cache
-    ensCache[normalized] = {
+    ensCache[normalizedAddr] = {
       name: ensName,
       timestamp: Date.now(),
+      isError: false,
     }
     saveCache(ensCache)
 
     return ensName
-  } catch {
-    // Cache null result to avoid repeated failed lookups
-    ensCache[normalized] = {
+  } catch (err) {
+    console.warn('[ENS] Failed to resolve name for', address, err)
+    // Cache error result with shorter TTL
+    ensCache[normalizedAddr] = {
       name: null,
       timestamp: Date.now(),
+      isError: true,
     }
     saveCache(ensCache)
     return null

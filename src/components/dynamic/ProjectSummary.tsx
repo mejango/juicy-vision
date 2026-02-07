@@ -141,17 +141,12 @@ export default function ProjectSummary({
 
   return (
     <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-      <div className="flex items-start gap-2">
-        <span className="text-lg">✨</span>
-        <div>
-          <p className={`text-sm font-medium mb-1 ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
-            Juicy Summary
-          </p>
-          <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            {summary}
-          </p>
-        </div>
-      </div>
+      <p className={`text-sm font-medium mb-1 ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
+        Juicy Summary
+      </p>
+      <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+        {summary}
+      </p>
     </div>
   )
 }

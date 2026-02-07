@@ -23,6 +23,7 @@ import type { JB721TierConfigInput } from '../tiersHook'
 
 export * from './types'
 export * from './queries'
+export * from './multichain'
 
 /**
  * Get the 721 data hook address for a project.
