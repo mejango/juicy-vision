@@ -36,7 +36,7 @@ import SendPayoutsModal from '../components/payment/SendPayoutsModal'
 // Note: QueueRulesetForm is used for ruleset changes - it has its own modal internally
 import QueueRulesetForm from '../components/dynamic/QueueRulesetForm'
 
-type DashboardTab = 'about' | 'analytics' | 'rulesets' | 'tokens' | 'shop'
+type DashboardTab = 'about' | 'analytics' | 'rulesets' | 'funds' | 'tokens' | 'shop'
 type ModalType = 'pay' | 'cashout' | 'payouts' | 'ruleset' | null
 
 interface ProjectDashboardProps {
@@ -148,7 +148,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   // Initialize tab from URL hash (e.g., #shop, #tokens)
   const getInitialTab = (): DashboardTab => {
     const hash = window.location.hash.slice(1) // Remove #
-    const validTabs: DashboardTab[] = ['about', 'analytics', 'rulesets', 'tokens', 'shop']
+    const validTabs: DashboardTab[] = ['about', 'analytics', 'rulesets', 'funds', 'tokens', 'shop']
     return validTabs.includes(hash as DashboardTab) ? (hash as DashboardTab) : 'about'
   }
 
@@ -164,7 +164,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1)
-      const validTabs: DashboardTab[] = ['about', 'analytics', 'rulesets', 'tokens', 'shop']
+      const validTabs: DashboardTab[] = ['about', 'analytics', 'rulesets', 'funds', 'tokens', 'shop']
       if (validTabs.includes(hash as DashboardTab)) {
         setActiveTabState(hash as DashboardTab)
       }
@@ -354,7 +354,8 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     const baseTabs: Array<{ id: DashboardTab; label: string }> = [
       { id: 'about', label: 'About' },
       { id: 'analytics', label: 'Analytics' },
-      { id: 'rulesets', label: 'Rulesets & Funds' },
+      { id: 'rulesets', label: 'Rulesets' },
+      { id: 'funds', label: 'Funds' },
       { id: 'tokens', label: 'Tokens' },
     ]
     if (hasNftHook) {
@@ -625,21 +626,20 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   </div>
                 )}
 
-                {/* Rulesets & Funds Tab */}
+                {/* Rulesets Tab */}
                 {activeTab === 'rulesets' && (
-                  <>
-                    {/* Ruleset Schedule */}
-                    <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+                  <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+                )}
 
-                    {/* Funds Section */}
-                    <FundsSection
-                      projectId={String(projectId)}
-                      chainId={String(chainId)}
-                      isOwner={isOwner}
-                      onSendPayouts={() => setActiveModal('payouts')}
-                      isRevnet={projectIsRevnet}
-                    />
-                  </>
+                {/* Funds Tab */}
+                {activeTab === 'funds' && (
+                  <FundsSection
+                    projectId={String(projectId)}
+                    chainId={String(chainId)}
+                    isOwner={isOwner}
+                    onSendPayouts={() => setActiveModal('payouts')}
+                    isRevnet={projectIsRevnet}
+                  />
                 )}
 
                 {/* Tokens Tab */}
@@ -917,18 +917,20 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           </div>
         )}
 
-        {/* Rulesets & Funds tab */}
+        {/* Rulesets tab */}
         {activeTab === 'rulesets' && (
-          <>
-            <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
-            <FundsSection
-              projectId={String(projectId)}
-              chainId={String(chainId)}
-              isOwner={isOwner}
-              onSendPayouts={() => setActiveModal('payouts')}
-              isRevnet={projectIsRevnet}
-            />
-          </>
+          <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+        )}
+
+        {/* Funds tab */}
+        {activeTab === 'funds' && (
+          <FundsSection
+            projectId={String(projectId)}
+            chainId={String(chainId)}
+            isOwner={isOwner}
+            onSendPayouts={() => setActiveModal('payouts')}
+            isRevnet={projectIsRevnet}
+          />
         )}
 
         {/* Tokens tab */}
