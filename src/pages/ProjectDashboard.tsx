@@ -701,6 +701,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           <div className="h-[4px] bg-juice-orange shrink-0" />
         </div>
 
+        {/* Right border */}
+        <div className="w-[4px] bg-juice-orange shrink-0" />
+
         {/* Modals */}
         {activeModal === 'payouts' && (
           <SendPayoutsModal
