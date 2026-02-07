@@ -1435,7 +1435,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     }
                   }}
                   disabled={isPaymentLocked}
-                  className={`flex items-center gap-1 py-2 pr-3 text-sm font-medium ${
+                  className={`flex items-center gap-1 py-2 pl-2 pr-3 text-sm font-medium ${
                     isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
                   } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
