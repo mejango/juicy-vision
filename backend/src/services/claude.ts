@@ -6,68 +6,118 @@ import { SYSTEM_PROMPT } from '@shared/prompts.ts';
 import { recordToolUsage, recordInvocation } from './aiMetrics.ts';
 
 // ============================================================================
-// Rate Limiting (Simple in-memory implementation)
+// Rate Limiting (PostgreSQL-based - see rateLimit.ts)
 // ============================================================================
 
-interface RateLimitEntry {
-  tokens: number;
-  requests: number;
-  windowStart: number;
-}
+import { checkRateLimit as checkDbRateLimit, RATE_LIMITS } from './rateLimit.ts';
 
-const rateLimits = new Map<string, RateLimitEntry>();
-
-// Rate limit config (per user, per hour)
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const MAX_REQUESTS_PER_WINDOW = 100;
-const MAX_TOKENS_PER_WINDOW = 500_000; // Input + output tokens (increased for testing)
-
-function getRateLimitKey(userId: string): string {
-  return `rate:${userId}`;
-}
-
-function checkRateLimit(userId: string): { allowed: boolean; remaining: { requests: number; tokens: number } } {
-  const key = getRateLimitKey(userId);
-  const now = Date.now();
-
-  let entry = rateLimits.get(key);
-
-  // Reset if window expired
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
-    entry = { tokens: 0, requests: 0, windowStart: now };
-    rateLimits.set(key, entry);
-  }
-
-  const remainingRequests = MAX_REQUESTS_PER_WINDOW - entry.requests;
-  const remainingTokens = MAX_TOKENS_PER_WINDOW - entry.tokens;
-
-  return {
-    allowed: remainingRequests > 0 && remainingTokens > 0,
-    remaining: {
-      requests: Math.max(0, remainingRequests),
-      tokens: Math.max(0, remainingTokens),
-    },
-  };
-}
-
-function recordUsage(userId: string, tokensUsed: number): void {
-  const key = getRateLimitKey(userId);
-  const entry = rateLimits.get(key);
-
-  if (entry) {
-    entry.requests++;
-    entry.tokens += tokensUsed;
-  }
-}
-
-// Cleanup old rate limit entries periodically
+// Legacy cleanup function - now a no-op since PostgreSQL handles cleanup
 export function cleanupRateLimits(): void {
-  const now = Date.now();
-  for (const [key, entry] of rateLimits.entries()) {
-    if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS * 2) {
-      rateLimits.delete(key);
+  // Rate limits now handled by PostgreSQL, see cleanupExpiredRateLimits in rateLimit.ts
+}
+
+// ============================================================================
+// Model Selection & Costs
+// ============================================================================
+
+// Available Claude models with cost per 1M tokens
+export const MODEL_COSTS = {
+  'claude-3-5-haiku-20241022': { inputPer1M: 1.00, outputPer1M: 5.00 },
+  'claude-sonnet-4-20250514': { inputPer1M: 3.00, outputPer1M: 15.00 },
+} as const;
+
+export type ClaudeModel = keyof typeof MODEL_COSTS;
+
+// Default models for different use cases
+const DEFAULT_MODEL: ClaudeModel = 'claude-sonnet-4-20250514';
+const FAST_MODEL: ClaudeModel = 'claude-3-5-haiku-20241022';
+
+// Patterns that indicate complex queries needing Sonnet
+const COMPLEX_INTENT_PATTERNS = [
+  /\b(explain|analyze|compare|implement|design|architect|debug|refactor)\b/i,
+  /\b(why|how does|what if|trade-?offs?)\b/i,
+  /\b(transaction|bridge|deploy|cash.?out|swap)\b/i,
+  /\b(ruleset|terminal|controller|split)\b/i,
+  /\b(write|create|generate|build)\s+(a|the|some)?\s*(code|contract|function)\b/i,
+];
+
+// Simple queries that can use Haiku
+const SIMPLE_INTENT_PATTERNS = [
+  /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure)\b/i,
+  /\b(what is|what's)\s+(the\s+)?(address|balance|price|rate)\b/i,
+  /\b(show|list|get)\s+(me\s+)?(the\s+)?(projects?|chats?|messages?)\b/i,
+  /\bconfirm\b/i,
+];
+
+/**
+ * Estimate token count for a message (rough approximation)
+ */
+function estimateTokens(content: string | ChatMessage['content']): number {
+  const text = typeof content === 'string'
+    ? content
+    : JSON.stringify(content);
+  // Rough estimate: ~4 characters per token
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Select the appropriate model based on query complexity and context
+ */
+export function selectModel(
+  messages: ChatMessage[],
+  tools: ToolDefinition[] | undefined,
+  forceModel?: ClaudeModel
+): ClaudeModel {
+  // Allow explicit model override
+  if (forceModel && forceModel in MODEL_COSTS) {
+    return forceModel;
+  }
+
+  // Get the last user message for intent detection
+  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+  if (!lastUserMessage) {
+    return DEFAULT_MODEL;
+  }
+
+  const content = typeof lastUserMessage.content === 'string'
+    ? lastUserMessage.content
+    : JSON.stringify(lastUserMessage.content);
+
+  // Check for simple patterns first (use Haiku)
+  for (const pattern of SIMPLE_INTENT_PATTERNS) {
+    if (pattern.test(content)) {
+      // Only use Haiku if query is short and no tools needed
+      if (estimateTokens(content) < 100 && (!tools || tools.length === 0)) {
+        return FAST_MODEL;
+      }
     }
   }
+
+  // Check for complex patterns (use Sonnet)
+  for (const pattern of COMPLEX_INTENT_PATTERNS) {
+    if (pattern.test(content)) {
+      return DEFAULT_MODEL;
+    }
+  }
+
+  // Default: use Sonnet if tools are involved or long context
+  if (tools && tools.length > 0) {
+    return DEFAULT_MODEL;
+  }
+
+  // For medium-length queries, use context to decide
+  const tokenEstimate = estimateTokens(content);
+  if (tokenEstimate > 500) {
+    return DEFAULT_MODEL;
+  }
+
+  // Short queries without clear intent: try Haiku
+  if (tokenEstimate < 50) {
+    return FAST_MODEL;
+  }
+
+  // Default to Sonnet for safety
+  return DEFAULT_MODEL;
 }
 
 // ============================================================================
@@ -265,11 +315,11 @@ export async function sendMessage(
   userId: string,
   request: ClaudeRequest
 ): Promise<ClaudeResponse> {
-  // Check rate limit
-  const rateLimit = checkRateLimit(userId);
+  // Check rate limit via PostgreSQL
+  const rateLimit = await checkDbRateLimit('aiInvoke', userId);
   if (!rateLimit.allowed) {
     throw new Error(
-      `Rate limit exceeded. Remaining: ${rateLimit.remaining.requests} requests, ${rateLimit.remaining.tokens} tokens`
+      `Rate limit exceeded. Resets at ${new Date(rateLimit.resetAt * 1000).toISOString()}`
     );
   }
 
@@ -284,6 +334,9 @@ export async function sendMessage(
   const allTools = includeOmnichain
     ? getAllTools(request.tools)
     : request.tools ?? [];
+
+  // Select appropriate model based on query complexity
+  const model = selectModel(request.messages, allTools);
 
   // Build message request with multimodal support
   const messages = request.messages.map((m) => ({
@@ -319,7 +372,7 @@ export async function sendMessage(
   })) as unknown as Anthropic.MessageParam[];
 
   const messageRequest: Anthropic.MessageCreateParams = {
-    model: 'claude-sonnet-4-20250514',
+    model, // Dynamic model selection
     max_tokens: request.maxTokens ?? 4096,
     messages,
     system: systemPrompt,
@@ -339,10 +392,6 @@ export async function sendMessage(
 
   // Make API call
   const response = await client.messages.create(messageRequest);
-
-  // Record usage
-  const totalTokens = response.usage.input_tokens + response.usage.output_tokens;
-  recordUsage(userId, totalTokens);
 
   // Extract content
   let textContent = '';
@@ -383,10 +432,10 @@ export async function* streamMessage(
 ): AsyncGenerator<{ type: 'text' | 'tool_use' | 'usage'; data: unknown }> {
   // Skip server rate limiting if user provides their own key
   if (!userApiKey) {
-    const rateLimit = checkRateLimit(userId);
+    const rateLimit = await checkDbRateLimit('aiInvoke', userId);
     if (!rateLimit.allowed) {
       throw new Error(
-        `Rate limit exceeded. Remaining: ${rateLimit.remaining.requests} requests, ${rateLimit.remaining.tokens} tokens`
+        `Rate limit exceeded. Resets at ${new Date(rateLimit.resetAt * 1000).toISOString()}`
       );
     }
   }
@@ -405,6 +454,9 @@ export async function* streamMessage(
   const allTools = includeOmnichain
     ? getAllTools(request.tools)
     : request.tools ?? [];
+
+  // Select appropriate model based on query complexity
+  const model = selectModel(request.messages, allTools);
 
   // Build message request with multimodal support
   // Using 'as unknown as Anthropic.MessageParam[]' to handle dynamic content types
@@ -457,7 +509,7 @@ export async function* streamMessage(
   })) as unknown as Anthropic.MessageParam[];
 
   const messageRequest: Anthropic.MessageCreateParams = {
-    model: 'claude-sonnet-4-20250514',
+    model, // Dynamic model selection
     max_tokens: request.maxTokens ?? 4096,
     messages,
     system: systemPrompt,
@@ -536,12 +588,7 @@ export async function* streamMessage(
     }
   }
 
-  // Only record usage for server key (not user's own key)
-  const totalTokens = inputTokens + outputTokens;
-  if (!userApiKey) {
-    recordUsage(userId, totalTokens);
-  }
-
+  // Rate limit already checked at start; usage tracked via aiMetrics
   yield {
     type: 'usage',
     data: { inputTokens, outputTokens, stopReason },
@@ -741,35 +788,25 @@ export async function* streamMessageWithTools(
 // Usage Stats
 // ============================================================================
 
-export function getUserUsageStats(userId: string): {
+/**
+ * Get user's AI usage stats via PostgreSQL rate limits
+ */
+export async function getUserUsageStats(userId: string): Promise<{
   windowStart: Date;
   requests: number;
-  tokens: number;
-  remaining: { requests: number; tokens: number };
-} {
-  const key = getRateLimitKey(userId);
-  const entry = rateLimits.get(key);
-
-  if (!entry) {
-    return {
-      windowStart: new Date(),
-      requests: 0,
-      tokens: 0,
-      remaining: {
-        requests: MAX_REQUESTS_PER_WINDOW,
-        tokens: MAX_TOKENS_PER_WINDOW,
-      },
-    };
-  }
+  remaining: { requests: number };
+  resetAt: Date;
+}> {
+  const rateLimit = await checkDbRateLimit('aiInvoke', userId);
+  const config = RATE_LIMITS.aiInvoke;
 
   return {
-    windowStart: new Date(entry.windowStart),
-    requests: entry.requests,
-    tokens: entry.tokens,
+    windowStart: new Date((rateLimit.resetAt - config.windowSeconds) * 1000),
+    requests: rateLimit.current,
     remaining: {
-      requests: Math.max(0, MAX_REQUESTS_PER_WINDOW - entry.requests),
-      tokens: Math.max(0, MAX_TOKENS_PER_WINDOW - entry.tokens),
+      requests: rateLimit.remaining,
     },
+    resetAt: new Date(rateLimit.resetAt * 1000),
   };
 }
 

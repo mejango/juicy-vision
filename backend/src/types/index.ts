@@ -296,6 +296,7 @@ export interface EnvConfig {
 
   // AI Provider
   aiProvider: 'anthropic' | 'moonshot';
+  aiFreeMode: boolean; // Beta: AI is free when true
 
   // Anthropic
   anthropicApiKey: string;

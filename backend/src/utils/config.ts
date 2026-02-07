@@ -53,6 +53,7 @@ export function loadConfig(): EnvConfig {
 
     // AI Provider
     aiProvider: getEnv('AI_PROVIDER', 'anthropic') as 'anthropic' | 'moonshot',
+    aiFreeMode: getEnv('AI_FREE_MODE', 'true') === 'true', // Beta: AI is free by default
 
     // Anthropic
     anthropicApiKey: getEnv('ANTHROPIC_API_KEY', ''),

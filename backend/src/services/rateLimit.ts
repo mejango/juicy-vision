@@ -62,6 +62,12 @@ export const RATE_LIMITS = {
 
   // AI operations
   aiInvoke: { limit: 20, windowSeconds: 60 }, // 20 AI calls/min
+
+  // AI Tool-specific limits (per user, per hour) - abuse prevention
+  toolPinToIpfs: { limit: 10, windowSeconds: 3600 }, // 10 IPFS pins/hour
+  toolExecuteBridge: { limit: 5, windowSeconds: 3600 }, // 5 bridge executions/hour
+  toolPrepareBridge: { limit: 20, windowSeconds: 3600 }, // 20 bridge prepares/hour
+  toolClaimBridge: { limit: 20, windowSeconds: 3600 }, // 20 bridge claims/hour
 } as const;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;
@@ -197,4 +203,39 @@ export async function cleanupExpiredRateLimits(): Promise<number> {
   );
 
   return deleted;
+}
+
+// ============================================================================
+// Tool Rate Limiting
+// ============================================================================
+
+/**
+ * Map AI tool names to rate limit keys
+ */
+const TOOL_RATE_LIMIT_MAP: Record<string, RateLimitKey> = {
+  'pin_to_ipfs': 'toolPinToIpfs',
+  'execute_bridge_transaction': 'toolExecuteBridge',
+  'prepare_bridge_transaction': 'toolPrepareBridge',
+  'claim_bridge_transaction': 'toolClaimBridge',
+};
+
+/**
+ * Check rate limit for an AI tool invocation
+ *
+ * @param toolName - The name of the AI tool being invoked
+ * @param identifier - User identifier (wallet address, user ID, etc.)
+ * @returns RateLimitResult or null if tool has no specific limit
+ */
+export async function checkToolRateLimit(
+  toolName: string,
+  identifier: string
+): Promise<RateLimitResult | null> {
+  const rateLimitKey = TOOL_RATE_LIMIT_MAP[toolName];
+
+  // If no specific limit for this tool, allow it
+  if (!rateLimitKey) {
+    return null;
+  }
+
+  return checkRateLimit(rateLimitKey, identifier);
 }

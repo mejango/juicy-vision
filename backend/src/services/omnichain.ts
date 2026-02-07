@@ -279,6 +279,19 @@ export async function getProjectData(params: {
 }
 
 /**
+ * Sanitize a string for safe use in GraphQL query interpolation
+ * Removes/escapes characters that could be used for injection
+ */
+function sanitizeForGraphQL(input: string): string {
+  // Remove quotes, backslashes, and control characters
+  return input
+    .replace(/[\\"]/g, '') // Remove quotes and backslashes
+    .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+    .trim()
+    .slice(0, 100); // Limit length to prevent abuse
+}
+
+/**
  * Search for projects by name, description, or tags
  */
 export async function searchProjects(params: {
@@ -302,16 +315,22 @@ export async function searchProjects(params: {
   const apiKey = config.bendystrawApiKey;
   const limit = Math.min(params.limit ?? 10, 50);
 
+  // Sanitize input to prevent GraphQL injection
+  const searchText = sanitizeForGraphQL(params.query);
+
+  if (!searchText) {
+    return { projects: [], count: 0 };
+  }
+
   // Generate case variations for case-insensitive search
   // Bendystraw's name_contains is case-sensitive, so we search multiple variations
-  const searchText = params.query.trim();
   const caseVariations = [
     searchText,
     searchText.toLowerCase(),
     searchText.charAt(0).toUpperCase() + searchText.slice(1).toLowerCase(), // Title case
   ].filter((v, i, arr) => arr.indexOf(v) === i); // Deduplicate
 
-  // Build OR conditions for all case variations
+  // Build OR conditions for all case variations (sanitized)
   const nameConditions = caseVariations.map(v => `{ name_contains: "${v}" }`).join(', ');
   const descConditions = caseVariations.map(v => `{ description_contains: "${v}" }`).join(', ');
   const tagConditions = caseVariations.map(v => `{ tags_has: "${v}" }`).join(', ');

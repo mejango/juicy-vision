@@ -167,7 +167,29 @@ app.route('/images', imagesRouter);
 // Error Handling
 // ============================================================================
 
+import { AppError, isAppError } from './src/errors/AppError.ts';
+
 app.onError((err, c) => {
+  // Handle structured AppErrors
+  if (isAppError(err)) {
+    // Log all errors for debugging
+    console.error(`[${err.code}] ${err.message}`, err.metadata);
+
+    // Set rate limit headers if applicable
+    if (err.code === 'RATE_LIMIT_EXCEEDED' && err.metadata?.retryAfter) {
+      c.header('Retry-After', String(err.metadata.retryAfter));
+    }
+
+    return c.json(
+      {
+        success: false,
+        ...err.toJSON(),
+      },
+      err.statusCode as 400 | 401 | 402 | 403 | 404 | 409 | 429 | 500 | 502 | 503
+    );
+  }
+
+  // Handle unknown errors
   console.error('Unhandled error:', err);
 
   // Don't expose internal errors in production
@@ -180,7 +202,8 @@ app.onError((err, c) => {
   return c.json(
     {
       success: false,
-      error: message,
+      error: 'INTERNAL_ERROR',
+      message,
     },
     500
   );

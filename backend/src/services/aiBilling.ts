@@ -17,6 +17,8 @@
 import { query, queryOne, execute, transaction } from '../db/index.ts';
 import { createPublicClient, http, parseUnits, formatUnits, type Address } from 'viem';
 import { mainnet, optimism, base, arbitrum } from 'viem/chains';
+import { getConfig } from '../utils/config.ts';
+import { MODEL_COSTS, type ClaudeModel } from './claude.ts';
 
 // ============================================================================
 // Constants
@@ -120,17 +122,17 @@ export async function getAiBalanceStatus(chatId: string): Promise<AiBalanceStatu
 /**
  * Check if chat has enough balance for an AI request
  *
- * NOTE: Currently free - squeeze-to-pay disabled for beta
+ * Controlled by AI_FREE_MODE env var (default: true for beta)
  */
 export async function canInvokeAi(chatId: string): Promise<{
   allowed: boolean;
   reason?: string;
   balance?: AiBalanceStatus;
 }> {
-  // Beta: AI is free for now
-  const FREE_MODE = true;
+  const config = getConfig();
 
-  if (FREE_MODE) {
+  // Beta: AI is free by default
+  if (config.aiFreeMode) {
     return { allowed: true };
   }
 
@@ -275,28 +277,62 @@ export async function confirmPayment(confirmation: PaymentConfirmation): Promise
 }
 
 /**
+ * Calculate the cost in wei for an AI request based on model and token usage
+ */
+export function calculateTokenCost(
+  model: ClaudeModel,
+  inputTokens: number,
+  outputTokens: number
+): bigint {
+  const costs = MODEL_COSTS[model];
+  if (!costs) {
+    // Fallback to fixed pricing if model unknown
+    return AI_PRICING.costPerRequest;
+  }
+
+  // Calculate cost in USD (costs are per 1M tokens)
+  const inputCostUsd = (inputTokens / 1_000_000) * costs.inputPer1M;
+  const outputCostUsd = (outputTokens / 1_000_000) * costs.outputPer1M;
+  const totalCostUsd = inputCostUsd + outputCostUsd;
+
+  // Convert to ETH (assume 1 ETH = $2500 for simplicity, adjust with oracle in production)
+  const ethPerUsd = 0.0004; // 1 / 2500
+  const costEth = totalCostUsd * ethPerUsd;
+
+  // Convert to wei
+  return parseUnits(costEth.toFixed(18), 18);
+}
+
+/**
  * Deduct cost for an AI request
  *
- * NOTE: Currently free - no deductions in beta
+ * Controlled by AI_FREE_MODE env var (default: true for beta)
  */
 export async function deductAiCost(
   chatId: string,
   messageId: string,
   model: string,
-  tokensUsed: number
-): Promise<{ success: boolean; newBalance: bigint }> {
-  // Beta: AI is free, skip deductions
-  const FREE_MODE = true;
-  if (FREE_MODE) {
-    return { success: true, newBalance: 0n };
+  inputTokens: number,
+  outputTokens: number
+): Promise<{ success: boolean; newBalance: bigint; costWei: bigint }> {
+  const config = getConfig();
+
+  // Beta: AI is free by default
+  if (config.aiFreeMode) {
+    return { success: true, newBalance: 0n, costWei: 0n };
   }
 
-  const cost = AI_PRICING.costPerRequest;
+  // Calculate actual cost based on model and tokens
+  const cost = calculateTokenCost(
+    model as ClaudeModel,
+    inputTokens,
+    outputTokens
+  );
 
   // Check balance first
   const balance = await getAiBalanceStatus(chatId);
-  if (!balance || balance.isEmpty) {
-    return { success: false, newBalance: 0n };
+  if (!balance || balance.balanceWei < cost) {
+    return { success: false, newBalance: balance?.balanceWei ?? 0n, costWei: cost };
   }
 
   await transaction(async (client) => {
@@ -308,15 +344,15 @@ export async function deductAiCost(
       WHERE id = ${chatId}
     `;
 
-    // Record usage
+    // Record usage with token details
     await client.queryObject`
       INSERT INTO ai_billing (chat_id, type, amount_wei, message_id, model, tokens_used)
-      VALUES (${chatId}, 'usage', ${cost.toString()}, ${messageId}, ${model}, ${tokensUsed})
+      VALUES (${chatId}, 'usage', ${cost.toString()}, ${messageId}, ${model}, ${inputTokens + outputTokens})
     `;
   });
 
   const newBalance = await getAiBalanceStatus(chatId);
-  return { success: true, newBalance: newBalance?.balanceWei ?? 0n };
+  return { success: true, newBalance: newBalance?.balanceWei ?? 0n, costWei: cost };
 }
 
 // ============================================================================
