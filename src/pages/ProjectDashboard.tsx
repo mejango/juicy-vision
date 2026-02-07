@@ -631,6 +631,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       chainId={String(chainId)}
                       isOwner={isOwner}
                       onSendPayouts={() => setActiveModal('payouts')}
+                      onCashOut={() => setActiveModal('cashout')}
                       isRevnet={projectIsRevnet}
                     />
                     <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
@@ -685,6 +686,39 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             amount="0"
             allChainProjects={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
           />
+        )}
+
+        {activeModal === 'cashout' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-md max-h-[90vh] overflow-y-auto ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <div className="p-4">
+                <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  Cash Out {project.name} Tokens
+                </h2>
+                <CashOutForm
+                  projectId={String(projectId)}
+                  chainId={String(chainId)}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body
         )}
 
         {activeModal === 'ruleset' && createPortal(
@@ -892,12 +926,25 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               ethPrice={ethPrice}
             />
 
-            {/* Pay button on mobile About tab */}
-            <div className={`p-4 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'}`}>
-              <ProjectCard
+            {/* Pay section on mobile About tab */}
+            <ProjectCard
+              projectId={String(projectId)}
+              chainId={String(chainId)}
+              embedded
+            />
+
+            {/* Activity Feed */}
+            <div>
+              <div className={`pb-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  Activity
+                </span>
+              </div>
+              <ActivityFeed
                 projectId={String(projectId)}
                 chainId={String(chainId)}
-                embedded
+                limit={15}
+                compact
               />
             </div>
           </>
@@ -919,6 +966,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               chainId={String(chainId)}
               isOwner={isOwner}
               onSendPayouts={() => setActiveModal('payouts')}
+              onCashOut={() => setActiveModal('cashout')}
               isRevnet={projectIsRevnet}
             />
             <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
