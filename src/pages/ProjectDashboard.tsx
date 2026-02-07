@@ -19,7 +19,6 @@ import { ChatInput, ProtocolActivity } from '../components/chat'
 // Dynamic components
 import BalanceChart from '../components/dynamic/charts/BalanceChart'
 import VolumeChart from '../components/dynamic/charts/VolumeChart'
-import HoldersChart from '../components/dynamic/charts/HoldersChart'
 import PriceChart from '../components/dynamic/PriceChart'
 import ActivityFeed from '../components/dynamic/ActivityFeed'
 import ProjectCard from '../components/dynamic/ProjectCard'
@@ -36,7 +35,7 @@ import SendPayoutsModal from '../components/payment/SendPayoutsModal'
 // Note: QueueRulesetForm is used for ruleset changes - it has its own modal internally
 import QueueRulesetForm from '../components/dynamic/QueueRulesetForm'
 
-type DashboardTab = 'about' | 'analytics' | 'rulesets' | 'funds' | 'tokens' | 'shop'
+type DashboardTab = 'about' | 'rulesets' | 'funds' | 'tokens' | 'shop'
 type ModalType = 'pay' | 'cashout' | 'payouts' | 'ruleset' | null
 
 interface ProjectDashboardProps {
@@ -148,7 +147,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   // Initialize tab from URL hash (e.g., #shop, #tokens)
   const getInitialTab = (): DashboardTab => {
     const hash = window.location.hash.slice(1) // Remove #
-    const validTabs: DashboardTab[] = ['about', 'analytics', 'rulesets', 'funds', 'tokens', 'shop']
+    const validTabs: DashboardTab[] = ['about', 'rulesets', 'funds', 'tokens', 'shop']
     return validTabs.includes(hash as DashboardTab) ? (hash as DashboardTab) : 'about'
   }
 
@@ -164,7 +163,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1)
-      const validTabs: DashboardTab[] = ['about', 'analytics', 'rulesets', 'funds', 'tokens', 'shop']
+      const validTabs: DashboardTab[] = ['about', 'rulesets', 'funds', 'tokens', 'shop']
       if (validTabs.includes(hash as DashboardTab)) {
         setActiveTabState(hash as DashboardTab)
       }
@@ -353,7 +352,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const tabs: Array<{ id: DashboardTab; label: string }> = useMemo(() => {
     const baseTabs: Array<{ id: DashboardTab; label: string }> = [
       { id: 'about', label: 'About' },
-      { id: 'analytics', label: 'Analytics' },
       { id: 'rulesets', label: 'Rulesets' },
       { id: 'funds', label: 'Funds' },
       { id: 'tokens', label: 'Tokens' },
@@ -616,30 +614,28 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   </>
                 )}
 
-                {/* Analytics Tab */}
-                {activeTab === 'analytics' && (
-                  <div className="space-y-6">
-                    <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
-                    <HoldersChart projectId={String(projectId)} chainId={String(chainId)} />
-                    <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
-                    <PriceChart projectId={String(projectId)} chainId={String(chainId)} />
-                  </div>
-                )}
-
                 {/* Rulesets Tab */}
                 {activeTab === 'rulesets' && (
-                  <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+                  <div className="space-y-6">
+                    <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+                    {/* Price forecast for revnets, issuance history for regular projects */}
+                    <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
+                  </div>
                 )}
 
                 {/* Funds Tab */}
                 {activeTab === 'funds' && (
-                  <FundsSection
-                    projectId={String(projectId)}
-                    chainId={String(chainId)}
-                    isOwner={isOwner}
-                    onSendPayouts={() => setActiveModal('payouts')}
-                    isRevnet={projectIsRevnet}
-                  />
+                  <div className="space-y-6">
+                    <FundsSection
+                      projectId={String(projectId)}
+                      chainId={String(chainId)}
+                      isOwner={isOwner}
+                      onSendPayouts={() => setActiveModal('payouts')}
+                      isRevnet={projectIsRevnet}
+                    />
+                    <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
+                    <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
+                  </div>
                 )}
 
                 {/* Tokens Tab */}
@@ -907,30 +903,27 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           </>
         )}
 
-        {/* Analytics tab */}
-        {activeTab === 'analytics' && (
-          <div className="space-y-6">
-            <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
-            <HoldersChart projectId={String(projectId)} chainId={String(chainId)} />
-            <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
-            <PriceChart projectId={String(projectId)} chainId={String(chainId)} />
-          </div>
-        )}
-
         {/* Rulesets tab */}
         {activeTab === 'rulesets' && (
-          <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+          <div className="space-y-6">
+            <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+            <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
+          </div>
         )}
 
         {/* Funds tab */}
         {activeTab === 'funds' && (
-          <FundsSection
-            projectId={String(projectId)}
-            chainId={String(chainId)}
-            isOwner={isOwner}
-            onSendPayouts={() => setActiveModal('payouts')}
-            isRevnet={projectIsRevnet}
-          />
+          <div className="space-y-6">
+            <FundsSection
+              projectId={String(projectId)}
+              chainId={String(chainId)}
+              isOwner={isOwner}
+              onSendPayouts={() => setActiveModal('payouts')}
+              isRevnet={projectIsRevnet}
+            />
+            <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
+            <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
         )}
 
         {/* Tokens tab */}

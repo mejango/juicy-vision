@@ -27,6 +27,7 @@ interface PriceChartProps {
   projectId: string
   chainId?: string
   range?: RangeValue
+  showHistory?: boolean // If true, show "Issuance History" title instead of "Forecast"
 }
 
 interface DataPoint {
@@ -95,6 +96,7 @@ export default function PriceChart({
   projectId,
   chainId = '1',
   range: initialRange = '1y',
+  showHistory = false,
 }: PriceChartProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -323,7 +325,7 @@ export default function PriceChart({
         }`}>
           <div>
             <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Issuance Price Forecast
+              {showHistory ? 'Issuance History' : 'Issuance Price Forecast'}
             </span>
           </div>
           <div className="flex items-center gap-2">
