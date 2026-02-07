@@ -552,6 +552,32 @@ export const useAuthStore = create<AuthState>()(
 )
 
 // ============================================================================
+// Cross-tab Sync
+// ============================================================================
+
+// Listen for storage changes from other tabs to keep auth state in sync
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'juice-auth' && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue)
+        if (parsed.state) {
+          // Update store with state from other tab
+          useAuthStore.setState({
+            mode: parsed.state.mode,
+            privacyMode: parsed.state.privacyMode,
+            user: parsed.state.user,
+            token: parsed.state.token,
+          })
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  })
+}
+
+// ============================================================================
 // Event Logging Helper
 // ============================================================================
 
