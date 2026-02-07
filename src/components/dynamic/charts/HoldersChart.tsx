@@ -89,7 +89,7 @@ export default function HoldersChart({
         setTotalHolders(participants.length)
 
         if (participants.length === 0) {
-          setError('No token holders found')
+          setError('No members found')
           return
         }
 
@@ -123,7 +123,7 @@ export default function HoldersChart({
 
         setData(chartData)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load holder data')
+        setError(err instanceof Error ? err.message : 'Failed to load member data')
       } finally {
         setLoading(false)
       }
@@ -279,12 +279,12 @@ export default function HoldersChart({
           <div className="flex items-center justify-between mb-2">
             <div>
               <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                Token Holders
+                Top Members
               </span>
             </div>
             {totalHolders > 0 && (
               <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                Top {Math.min(limit, totalHolders)} holders
+                Top {Math.min(limit, totalHolders)} by ownership
               </span>
             )}
           </div>
@@ -314,7 +314,7 @@ export default function HoldersChart({
             <div className={`h-[300px] flex items-center justify-center ${
               isDark ? 'text-gray-500' : 'text-gray-400'
             }`}>
-              No holder data available
+              No member data available
             </div>
           ) : (
             <div className="h-[300px]">

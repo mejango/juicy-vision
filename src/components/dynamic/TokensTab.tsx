@@ -262,7 +262,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
         }`}>
           <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Your Balance
+            Your membership
           </div>
           <div className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
             {formatTokenAmount(userBalance)} ${tokenSymbol}
@@ -275,7 +275,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
       }`}>
         <h3 className={`text-sm font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Project Token
+          Membership
         </h3>
 
         <div className="space-y-3">
@@ -324,7 +324,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           {/* Total supply */}
           <div className="flex items-center justify-between">
             <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Total Supply
+              Total issued
             </span>
             <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {formatTokenAmount(totalSupply)}
@@ -338,7 +338,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
       }`}>
         <h3 className={`text-sm font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Reserved Tokens
+          Contributor Rewards
         </h3>
 
         {/* Chain selector for omnichain */}
@@ -380,7 +380,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         {/* Reserved rate */}
         <div className="flex items-center justify-between mb-3">
           <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Reserved Rate
+            Reserved for contributors
           </span>
           <span className={`text-sm font-mono ${reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-white' : 'text-gray-900'}`}>
             {(reservedPercent / 100).toFixed(1)}%
@@ -421,7 +421,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           </div>
           {hasPendingTokens && (
             <div className={`text-xs mt-1 ${isDark ? 'text-amber-400/70' : 'text-amber-600'}`}>
-              Reserved ${tokenSymbol} waiting to be sent to recipients
+              Membership rewards waiting to be sent to contributors
             </div>
           )}
         </div>

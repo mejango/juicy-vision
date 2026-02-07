@@ -334,19 +334,10 @@ export default function NFTTierCard({
           )}
         </div>
 
-        {/* Stats - only show supply if low stock, always show votes if present */}
-        {(tier.remainingSupply <= 10 || tier.votingUnits > 0n) && (
-          <div className={`flex gap-4 text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            {tier.remainingSupply <= 10 && (
-              <div className={tier.remainingSupply === 0 ? 'text-red-400' : 'text-orange-400'}>
-                <span className="font-medium">{tier.remainingSupply === 0 ? 'Sold out' : `${tier.remainingSupply} left`}</span>
-              </div>
-            )}
-            {tier.votingUnits > 0n && (
-              <div>
-                <span className="font-medium">Votes:</span> {tier.votingUnits.toString()}
-              </div>
-            )}
+        {/* Stats - only show supply if low stock */}
+        {tier.remainingSupply <= 10 && (
+          <div className={`text-xs mb-3 ${tier.remainingSupply === 0 ? 'text-red-400' : 'text-orange-400'}`}>
+            <span className="font-medium">{tier.remainingSupply === 0 ? 'Sold out' : `${tier.remainingSupply} left`}</span>
           </div>
         )}
 

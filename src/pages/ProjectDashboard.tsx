@@ -360,7 +360,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     baseTabs.push(
       { id: 'rulesets', label: 'Rulesets' },
       { id: 'funds', label: 'Funds' },
-      { id: 'tokens', label: 'Tokens' },
+      { id: 'tokens', label: 'Members' },
     )
     return baseTabs
   }, [hasNftHook])
