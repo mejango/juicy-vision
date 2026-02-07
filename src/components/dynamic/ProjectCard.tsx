@@ -1181,8 +1181,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           className="relative"
           onMouseEnter={() => setShowBalanceTooltip(true)}
           onMouseLeave={() => setShowBalanceTooltip(false)}
+          onClick={() => setShowBalanceTooltip(prev => !prev)}
         >
-          <span className={`font-mono cursor-help ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          <span className={`font-mono cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
             {totalBalanceUsd ? `$${totalBalanceUsd}` : `${formatBalance(suckerBalance?.totalBalance || project.balance, suckerBalance?.decimals || 18)} ${suckerBalance?.currency === 2 ? 'USDC' : 'ETH'}`}
           </span>
           <span className={isDark ? 'text-gray-400' : 'text-gray-500'}> balance</span>
@@ -1209,9 +1210,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               <div className={`flex justify-between gap-4 pt-1 mt-1 border-t ${
                 isDark ? 'border-white/10' : 'border-gray-100'
               }`}>
-                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>[All chains]</span>
-                <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {totalBalanceUsd ? `$${totalBalanceUsd}` : `${formatBalance(suckerBalance.totalBalance, suckerBalance.decimals)} ${suckerBalance.currency === 2 ? 'USDC' : 'ETH'}`}
+                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
+                <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {suckerBalance.currency === 2 ? `$${formatBalance(suckerBalance.totalBalance, suckerBalance.decimals)}` : `${formatBalance(suckerBalance.totalBalance, suckerBalance.decimals)} ETH`}
                 </span>
               </div>
             </div>
@@ -1323,7 +1324,12 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         <div className="flex gap-2">
           <div className="flex-1">
             <div
-              onClick={() => amountInputRef.current?.focus()}
+              onClick={(e) => {
+                // Focus input when clicking anywhere in the container (except the dropdown button)
+                if (!(e.target as HTMLElement).closest('button')) {
+                  amountInputRef.current?.focus()
+                }
+              }}
               className={`flex items-center cursor-text ${
               isDark
                 ? 'bg-juice-dark border border-white/10'
@@ -1339,14 +1345,15 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
                 placeholder="0.00"
                 disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
-                className={`flex-1 min-w-0 px-3 py-2 text-sm bg-transparent outline-none ${
+                className={`w-16 min-w-0 px-3 py-2 text-sm bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                   isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
                 } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
               />
               {/* Token selector - inline after input */}
               <div className="relative flex-shrink-0">
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation()
                     if (!isPaymentLocked) {
                       setTokenDropdownOpen(!tokenDropdownOpen)
                       setChainDropdownOpen(false)
@@ -1392,6 +1399,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   </div>
                 )}
               </div>
+              {/* Spacer to fill remaining width - clicking focuses input */}
+              <div className="flex-1" />
             </div>
             {/* Chain selector - only show for ETH/USDC */}
             {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
@@ -1487,24 +1496,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           </div>
         )}
 
-        {/* Quick amount options - hide when overspending is prevented and NFT tiers exist */}
-        {!(nftHookFlags?.preventOverspending && nftTiers.length > 0) && (
-          <div className="flex gap-2 mt-2">
-            {(selectedToken === 'USDC' || selectedToken === 'PAY_CREDITS' ? ['10', '25', '50', '100'] : ['0.01', '0.05', '0.1', '0.5']).map(val => (
-              <button
-                key={val}
-                onClick={() => setAmount(val)}
-                className={`min-w-[3rem] px-2 py-1 text-xs transition-colors ${
-                  amount === val
-                    ? isDark ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-900'
-                    : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-500 hover:bg-gray-150'
-                }`}
-              >
-                {val}
-              </button>
-            ))}
-          </div>
-        )}
 
         {/* Token preview */}
         {(amountNum > 0 && expectedTokens !== null) || selectedTierIds.length > 0 ? (
@@ -1537,7 +1528,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           onChange={(e) => setMemo(e.target.value)}
           placeholder="Add a memo (optional)"
           disabled={isPaymentLocked}
-          className={`w-full mt-4 px-3 py-2 text-sm outline-none ${
+          className={`w-full mt-4 py-2 text-sm outline-none ${
             isDark
               ? 'bg-transparent text-white placeholder-gray-500'
               : 'bg-transparent text-gray-900 placeholder-gray-400'

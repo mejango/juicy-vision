@@ -123,6 +123,7 @@ interface ChatState {
   waitingForAiChatId: string | null  // Track which chat is waiting for AI response (persists across navigation)
   pendingNewChat: boolean  // True when creating a new chat - keeps UI in chat mode during transition
   pendingMessage: string | null  // Message content for pending new chat (for optimistic display)
+  queuedNewChatMessage: string | null  // Message queued from another page (e.g., project page) to send on mount
   isLoading: boolean
   isConnected: boolean
   error: string | null
@@ -171,6 +172,7 @@ interface ChatState {
   incrementUnread: (chatId: string) => void
   setWaitingForAiChatId: (chatId: string | null) => void
   setPendingNewChat: (pending: boolean, message?: string | null) => void
+  setQueuedNewChatMessage: (message: string | null) => void
 }
 
 export const useChatStore = create<ChatState>()(
@@ -182,6 +184,7 @@ export const useChatStore = create<ChatState>()(
       waitingForAiChatId: null,
       pendingNewChat: false,
       pendingMessage: null,
+      queuedNewChatMessage: null,
       isLoading: false,
       isConnected: false,
       error: null,
@@ -426,6 +429,7 @@ export const useChatStore = create<ChatState>()(
 
       setWaitingForAiChatId: (chatId) => set({ waitingForAiChatId: chatId }),
       setPendingNewChat: (pending, message = null) => set({ pendingNewChat: pending, pendingMessage: message }),
+      setQueuedNewChatMessage: (message) => set({ queuedNewChatMessage: message }),
     }),
     {
       name: 'juice-chat',

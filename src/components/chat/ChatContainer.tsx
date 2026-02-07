@@ -70,6 +70,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     setPendingNewChat,
     pendingNewChat,
     pendingMessage,
+    queuedNewChatMessage,
+    setQueuedNewChatMessage,
   } = useChatStore()
 
   // Use forceActiveChatId (from URL) over store value to prevent race conditions
@@ -1129,6 +1131,21 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     window.addEventListener('juice:identity-changed', handleIdentityChange)
     return () => window.removeEventListener('juice:identity-changed', handleIdentityChange)
   }, [activeChatId, setMembers])
+
+  // Process queued message from navigation (e.g., from project page chat dock)
+  // This handles messages that were queued before navigating to this page
+  useEffect(() => {
+    if (topOnly) return // Only process in the instance with input
+    if (!queuedNewChatMessage) return
+
+    // Clear the queue immediately to prevent re-processing
+    const message = queuedNewChatMessage
+    setQueuedNewChatMessage(null)
+
+    // Send the message to create a new chat
+    console.log('[ChatContainer] Processing queued new chat message:', message)
+    handleSend(message)
+  }, [queuedNewChatMessage, setQueuedNewChatMessage, handleSend, topOnly])
 
   // Listen for messages from dynamic components (e.g., recommendation chips)
   // Only listen if we're the instance with the input (bottomOnly or neither specified)

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAccount } from 'wagmi'
 import { createPortal } from 'react-dom'
-import { useThemeStore } from '../stores'
+import { useThemeStore, useChatStore } from '../stores'
 import { useManagedWallet, useIsMobile } from '../hooks'
 import { CHAINS } from '../constants'
 import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, fetchSuckerGroupBalance, isRevnet, fetchRevnetOperator, fetchEthPrice, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
@@ -71,6 +71,35 @@ function formatBalanceUsd(
     return `$${usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
   } catch {
     return '$0'
+  }
+}
+
+// Format balance in native currency (ETH or USDC)
+function formatBalanceNative(
+  balanceString: string,
+  currency: number = 1, // 1 = ETH, 2 = USD/USDC
+  decimals: number = 18
+): string {
+  try {
+    const balance = BigInt(balanceString)
+    const value = parseFloat(formatUnits(balance, decimals))
+
+    if (currency === 2) {
+      // USDC - show as dollar amount
+      if (value === 0) return '$0'
+      if (value < 0.01) return '<$0.01'
+      if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`
+      if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`
+      return `$${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+    } else {
+      // ETH - show as ETH amount
+      if (value === 0) return '0 ETH'
+      if (value < 0.001) return '<0.001 ETH'
+      if (value >= 1000) return `${(value / 1000).toFixed(2)}K ETH`
+      return `${value.toLocaleString(undefined, { maximumFractionDigits: 3 })} ETH`
+    }
+  } catch {
+    return currency === 2 ? '$0' : '0 ETH'
   }
 }
 
@@ -305,13 +334,10 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     const projectName = project?.name || `Project #${projectId}`
     const contextMessage = `[Re: ${projectName} on ${chain?.name || 'Unknown'}] ${message}`
 
-    window.dispatchEvent(new CustomEvent('juice:send-message', {
-      detail: {
-        message: contextMessage,
-        newChat: true
-      }
-    }))
-    navigate('/') // Go to home to see chat
+    // Queue the message in the store so ChatContainer can pick it up on mount
+    useChatStore.getState().setActiveChat(null)
+    useChatStore.getState().setQueuedNewChatMessage(contextMessage)
+    navigate('/') // Go to home where ChatContainer will process the queued message
   }
 
   // Handle activity project click
@@ -436,8 +462,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       className="relative"
                       onMouseEnter={() => setShowBalanceTooltip(true)}
                       onMouseLeave={() => setShowBalanceTooltip(false)}
+                      onClick={() => setShowBalanceTooltip(prev => !prev)}
                     >
-                      <span className={`font-semibold cursor-help ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      <span className={`font-semibold cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
                         {formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance
                       </span>
                       {/* Per-chain balance breakdown tooltip */}
@@ -453,7 +480,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                               <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
                                 <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainName}</span>
                                 <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                                  {formatBalanceUsd(pb.balance, ethPrice, pbCurrency, pbDecimals)}
+                                  {formatBalanceNative(pb.balance, pbCurrency, pbDecimals)}
                                 </span>
                               </div>
                             )
@@ -463,7 +490,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                           }`}>
                             <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
                             <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                              {formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)}
+                              {formatBalanceNative(displayBalance, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)}
                             </span>
                           </div>
                         </div>
@@ -507,12 +534,12 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
           {/* Two-column layout */}
           <div className="flex-1 flex overflow-hidden">
-            {/* Left: Pay/Activity sidebar */}
-            <div className={`w-[380px] shrink-0 border-r flex flex-col ${
+            {/* Left: Pay/Activity sidebar - scrolls together */}
+            <div className={`w-[380px] shrink-0 border-r overflow-y-auto ${
               isDark ? 'border-white/10' : 'border-gray-200'
             }`}>
               {/* Pay/Cash out panel - sticky at top */}
-              <div className={`shrink-0 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+              <div className={`sticky top-0 z-10 border-b ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
                 <ProjectCard
                   projectId={String(projectId)}
                   chainId={String(chainId)}
@@ -520,22 +547,18 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 />
               </div>
 
-              {/* Activity Feed - scrollable */}
-              <div className="flex-1 overflow-y-auto">
-                <div className={`px-4 py-3 border-b sticky top-0 ${
-                  isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
-                }`}>
-                  <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    Activity
-                  </span>
-                </div>
-                <ActivityFeed
-                  projectId={String(projectId)}
-                  chainId={String(chainId)}
-                  limit={15}
-                  compact
-                />
+              {/* Activity Feed */}
+              <div className={`px-4 pt-4 pb-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  Activity
+                </span>
               </div>
+              <ActivityFeed
+                projectId={String(projectId)}
+                chainId={String(chainId)}
+                limit={15}
+                compact
+              />
             </div>
 
             {/* Right: Main content (scrollable) */}
@@ -755,8 +778,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   className="relative"
                   onMouseEnter={() => setShowBalanceTooltip(true)}
                   onMouseLeave={() => setShowBalanceTooltip(false)}
+                  onClick={() => setShowBalanceTooltip(prev => !prev)}
                 >
-                  <span className={`font-semibold cursor-help ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  <span className={`font-semibold cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance
                   </span>
                   {/* Per-chain balance breakdown tooltip */}
@@ -772,7 +796,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                           <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
                             <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainName}</span>
                             <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                              {formatBalanceUsd(pb.balance, ethPrice, pbCurrency, pbDecimals)}
+                              {formatBalanceNative(pb.balance, pbCurrency, pbDecimals)}
                             </span>
                           </div>
                         )
@@ -782,7 +806,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       }`}>
                         <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
                         <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                          {formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)}
+                          {formatBalanceNative(displayBalance, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)}
                         </span>
                       </div>
                     </div>

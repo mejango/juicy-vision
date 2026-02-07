@@ -334,6 +334,7 @@ export default function HoldersChart({
                     paddingAngle={1}
                     dataKey="value"
                     nameKey="name"
+                    isAnimationActive={false}
                   >
                     {filteredData.map((_, index) => (
                       <Cell

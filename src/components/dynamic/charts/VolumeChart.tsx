@@ -420,6 +420,7 @@ export default function VolumeChart({
                     <Bar
                       dataKey="count"
                       fill={CHART_COLORS.secondary}
+                      isAnimationActive={false}
                     />
                   ) : (
                     Array.from(selectedChains as Set<number>).map(cid => (
@@ -428,6 +429,7 @@ export default function VolumeChart({
                         dataKey={`count_${cid}`}
                         stackId="a"
                         fill={getChainColor(cid)}
+                        isAnimationActive={false}
                       />
                     ))
                   )}
