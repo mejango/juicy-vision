@@ -2933,8 +2933,8 @@ export async function fetchAggregatedParticipants(
       if (data.participants?.items && data.participants.items.length > 0) {
         return processParticipants(data.participants.items)
       }
-    } catch (err) {
-      console.error('SuckerGroup participants query failed, trying fallback:', err)
+    } catch {
+      // Expected for projects without sucker groups - silently fall back to single-chain
     }
   }
 
@@ -2955,8 +2955,8 @@ export async function fetchAggregatedParticipants(
       if (data.participants?.items && data.participants.items.length > 0) {
         return processParticipants(data.participants.items, fallbackChainId)
       }
-    } catch (err) {
-      console.error('Fallback participants query also failed:', err)
+    } catch {
+      // Fallback query also failed - will return empty results
     }
   }
 

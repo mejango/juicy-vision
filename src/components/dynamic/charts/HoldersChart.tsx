@@ -281,11 +281,6 @@ export default function HoldersChart({
               <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 Token Holders
               </span>
-              {projectName && (
-                <span className={`ml-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {projectName}
-                </span>
-              )}
             </div>
             {totalHolders > 0 && (
               <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

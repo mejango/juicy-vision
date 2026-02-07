@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
-import { formatEther, formatUnits } from 'viem'
+import { formatUnits } from 'viem'
+import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import {
-  fetchProject,
   fetchSuckerGroupBalance,
   fetchDistributablePayout,
   fetchConnectedChains,
   fetchProjectWithRuleset,
   fetchProjectSplits,
-  type Project,
+  fetchProjectTokenSupply,
+  calculateFloorPrice,
   type SuckerGroupBalance,
   type DistributablePayout,
   type ConnectedChain,
@@ -24,6 +25,8 @@ interface FundsSectionProps {
   onSendPayouts: () => void
   /** If true, hides payout-related UI since revnets don't have payouts by design */
   isRevnet?: boolean
+  /** Callback when user wants to cash out tokens */
+  onCashOut?: () => void
 }
 
 // Chain info for display
@@ -44,6 +47,10 @@ interface ChainFundsData {
   fundAccessLimits: FundAccessLimits | null
   baseCurrency: number
   decimals: number
+  // Cash out related data
+  tokenSupply: string // Total token supply on this chain
+  cashOutTaxRate: number // 0-10000 basis points (10000 = 100% = no cash out)
+  cashOutPerToken: number // Calculated floor price per token
 }
 
 function formatBalance(value: string, decimals: number = 18): string {
@@ -62,9 +69,10 @@ function formatCurrency(value: string, decimals: number, currency: number): stri
   return currency === 2 ? `$${formatted}` : `${formatted} ETH`
 }
 
-export default function FundsSection({ projectId, chainId, isOwner, onSendPayouts, isRevnet = false }: FundsSectionProps) {
+export default function FundsSection({ projectId, chainId, isOwner, onSendPayouts, isRevnet = false, onCashOut }: FundsSectionProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+  const { isConnected } = useAccount()
 
   const [loading, setLoading] = useState(true)
   const [suckerBalance, setSuckerBalance] = useState<SuckerGroupBalance | null>(null)
@@ -97,17 +105,28 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
           : [{ chainId: chainIdNum, projectId: parseInt(projectId) }]
 
         // Fetch payout data from all chains in parallel
+        // Skip payout-related fetches for revnets since they don't have payouts
         const chainDataPromises = chainsToFetch.map(async (chain): Promise<ChainFundsData> => {
           try {
-            const [payoutData, chainProject] = await Promise.all([
-              fetchDistributablePayout(String(chain.projectId), chain.chainId),
+            // Fetch project with ruleset and token supply
+            const [chainProject, tokenSupply] = await Promise.all([
               fetchProjectWithRuleset(String(chain.projectId), chain.chainId),
+              fetchProjectTokenSupply(String(chain.projectId), chain.chainId),
             ])
 
-            // Fetch splits if we have a ruleset
+            let payoutData: DistributablePayout | null = null
+            if (!isRevnet) {
+              try {
+                payoutData = await fetchDistributablePayout(String(chain.projectId), chain.chainId)
+              } catch {
+                // Silently ignore payout fetch errors (expected for some project types)
+              }
+            }
+
+            // Fetch splits if we have a ruleset (skip for revnets)
             let payoutSplits: JBSplitData[] = []
             let fundAccessLimits: FundAccessLimits | null = null
-            if (chainProject?.currentRuleset?.id) {
+            if (!isRevnet && chainProject?.currentRuleset?.id) {
               const splitsData = await fetchProjectSplits(
                 String(chain.projectId),
                 chain.chainId,
@@ -117,6 +136,15 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               fundAccessLimits = splitsData.fundAccessLimits || null
             }
 
+            // Get cash out tax rate from ruleset (10000 = 100% tax = no cash out allowed)
+            const cashOutTaxRate = chainProject?.currentRuleset?.cashOutTaxRate ?? 10000
+            const balance = BigInt(chainProject?.balance || '0')
+            const supply = BigInt(tokenSupply || '0')
+            const chainDecimals = groupBalance.decimals
+
+            // Calculate floor price per token using bonding curve
+            const cashOutPerToken = calculateFloorPrice(balance, supply, cashOutTaxRate, chainDecimals)
+
             return {
               chainId: chain.chainId,
               projectId: chain.projectId,
@@ -125,7 +153,10 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               payoutSplits,
               fundAccessLimits,
               baseCurrency: chainProject?.currentRuleset?.baseCurrency || 1,
-              decimals: groupBalance.decimals,
+              decimals: chainDecimals,
+              tokenSupply: tokenSupply || '0',
+              cashOutTaxRate,
+              cashOutPerToken,
             }
           } catch (err) {
             console.error(`Failed to fetch funds data for chain ${chain.chainId}:`, err)
@@ -138,6 +169,9 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               fundAccessLimits: null,
               baseCurrency: 1,
               decimals: 18,
+              tokenSupply: '0',
+              cashOutTaxRate: 10000,
+              cashOutPerToken: 0,
             }
           }
         })
@@ -174,7 +208,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
       }
     }
     load()
-  }, [projectId, chainId, chainIdNum])
+  }, [projectId, chainId, chainIdNum, isRevnet])
 
   // Calculate totals
   const totalBalance = suckerBalance?.totalBalance || '0'
@@ -292,6 +326,127 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
           </span>
         </div>
       </div>
+
+      {/* Cash Out Section - shows when surplus > 0 and cash outs are enabled */}
+      {(() => {
+        // Check if any chain has cash outs enabled (tax rate < 10000 = 100%)
+        const cashOutEnabledChains = chainFundsData.filter(cd => cd.cashOutTaxRate < 10000)
+        const hasCashOutsEnabled = cashOutEnabledChains.length > 0 && surplus > 0n
+
+        // Get the active chain's data for display
+        const activeCashOut = chainFundsData.find(cd => cd.chainId === chainIdNum)
+        const cashOutTaxPercent = activeCashOut ? (activeCashOut.cashOutTaxRate / 100).toFixed(1) : '100'
+        const retentionPercent = activeCashOut ? ((10000 - activeCashOut.cashOutTaxRate) / 100).toFixed(1) : '0'
+
+        // Check for surplus allowance
+        const activeFundLimits = activeCashOut?.fundAccessLimits
+        const activeSurplusAllowance = activeFundLimits?.surplusAllowances?.[0]
+        const hasSurplusAllowance = activeSurplusAllowance && BigInt(activeSurplusAllowance.amount) > 0n
+
+        if (!hasCashOutsEnabled) return null
+
+        return (
+          <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+            {/* Cash out rate header */}
+            <div className="mb-3">
+              <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                Token Cash Out Value
+              </div>
+              <div className={`text-lg font-mono font-semibold ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+                {activeCashOut && activeCashOut.cashOutPerToken > 0
+                  ? `${activeCashOut.cashOutPerToken.toFixed(6)} ${currency === 2 ? 'USDC' : 'ETH'}/token`
+                  : 'No value'
+                }
+              </div>
+            </div>
+
+            {/* Explanation */}
+            <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Token holders can cash out for a share of the surplus.
+              {activeCashOut && activeCashOut.cashOutTaxRate > 0 && (
+                <span> A {cashOutTaxPercent}% exit tax applies, meaning you receive {retentionPercent}% of the linear value.</span>
+              )}
+              {activeCashOut && activeCashOut.cashOutTaxRate === 0 && (
+                <span> No exit tax — full linear value redemption.</span>
+              )}
+            </div>
+
+            {/* Per-chain cash out breakdown (if multi-chain) */}
+            {cashOutEnabledChains.length > 1 && (
+              <div className="mb-3">
+                <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Per-chain cash out rates
+                </div>
+                <div className="space-y-1">
+                  {cashOutEnabledChains.map(cd => {
+                    const chainInfo = CHAIN_INFO[cd.chainId]
+                    if (!chainInfo) return null
+                    const chainTax = (cd.cashOutTaxRate / 100).toFixed(1)
+                    return (
+                      <div key={cd.chainId} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
+                            style={{ backgroundColor: chainInfo.color }}
+                          >
+                            {chainInfo.icon}
+                          </span>
+                          <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                            {chainInfo.shortName}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-xs font-mono ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+                            {cd.cashOutPerToken > 0 ? cd.cashOutPerToken.toFixed(6) : '0'} {cd.baseCurrency === 2 ? 'USDC' : 'ETH'}
+                          </span>
+                          <span className={`text-[10px] ml-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                            ({chainTax}% tax)
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className={`text-[10px] mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Cash outs use each chain's balance and token supply.
+                </div>
+              </div>
+            )}
+
+            {/* Surplus Allowance info */}
+            {hasSurplusAllowance && activeFundLimits && (
+              <div className={`p-2 mb-3 ${isDark ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-yellow-50 border border-yellow-200'}`}>
+                <div className={`text-xs font-medium ${isDark ? 'text-yellow-400' : 'text-yellow-700'}`}>
+                  Surplus Allowance Active
+                </div>
+                <div className={`text-xs mt-1 ${isDark ? 'text-yellow-300/80' : 'text-yellow-600'}`}>
+                  The project operator can withdraw up to {formatBalance(activeSurplusAllowance!.amount, decimals)} {currencySymbol} from surplus this cycle.
+                  This reduces the funds available for token cash outs.
+                </div>
+              </div>
+            )}
+
+            {/* Cash Out button */}
+            {onCashOut && isConnected && (
+              <button
+                onClick={onCashOut}
+                className={`w-full px-4 py-2 text-sm font-medium transition-colors ${
+                  isDark
+                    ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                    : 'bg-green-100 text-green-700 hover:bg-green-200'
+                }`}
+              >
+                Cash Out Tokens
+              </button>
+            )}
+            {onCashOut && !isConnected && (
+              <div className={`text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                Connect wallet to cash out tokens
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Payouts configuration - hidden for revnets */}
       {!isRevnet && activeChainData && activeChainData.payoutSplits.length > 0 && (

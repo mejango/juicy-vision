@@ -30,7 +30,7 @@ import ProjectSummary from '../components/dynamic/ProjectSummary'
 import { hasNFTHook } from '../services/nft'
 
 // Payment modals
-import CashOutModal from '../components/payment/CashOutModal'
+import CashOutForm from '../components/dynamic/CashOutForm'
 import SendPayoutsModal from '../components/payment/SendPayoutsModal'
 // Note: QueueRulesetForm is used for ruleset changes - it has its own modal internally
 import QueueRulesetForm from '../components/dynamic/QueueRulesetForm'

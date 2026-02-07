@@ -311,11 +311,6 @@ export default function BalanceChart({
               <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 Balance
               </span>
-              {projectName && (
-                <span className={`ml-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {projectName}
-                </span>
-              )}
             </div>
             <div className="flex gap-1">
               {RANGE_OPTIONS.map(opt => (
