@@ -338,7 +338,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
       }`}>
         <h3 className={`text-sm font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Contributor Rewards
+          Reserved membership
         </h3>
 
         {/* Chain selector for omnichain */}
@@ -380,7 +380,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         {/* Reserved rate */}
         <div className="flex items-center justify-between mb-3">
           <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Reserved for contributors
+            Reserved for admin
           </span>
           <span className={`text-sm font-mono ${reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-white' : 'text-gray-900'}`}>
             {(reservedPercent / 100).toFixed(1)}%
