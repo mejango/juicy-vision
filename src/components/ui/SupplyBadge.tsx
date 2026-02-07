@@ -32,6 +32,10 @@ export default function SupplyBadge({
   // For multi-chain, use total; otherwise use current chain
   const displayRemaining = supplyData ? supplyData.totalRemaining : currentRemaining
   const soldOut = displayRemaining === 0
+  const isLowStock = displayRemaining <= 10
+
+  // Only show badge if sold out or running low
+  const shouldShow = soldOut || isLowStock
 
   // Intersection Observer to detect when badge is near viewport
   useEffect(() => {
@@ -200,6 +204,9 @@ export default function SupplyBadge({
     </div>
   ) : null
 
+  // Don't render if plenty of stock available
+  if (!shouldShow) return null
+
   return (
     <>
       <button
@@ -208,7 +215,7 @@ export default function SupplyBadge({
         className={`px-2 py-0.5 text-xs font-medium ${
           soldOut
             ? 'bg-red-500/90 text-white'
-            : isDark ? 'bg-black/70 text-white' : 'bg-white/90 text-gray-900'
+            : 'bg-orange-500/90 text-white'
         } ${isMultiChain ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}`}
         title={isMultiChain ? 'Click to see supply by network' : undefined}
       >
