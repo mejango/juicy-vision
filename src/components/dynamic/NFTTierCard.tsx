@@ -144,10 +144,13 @@ export default function NFTTierCard({
   const soldOut = tier.remainingSupply === 0
 
   const handleAddToCheckout = () => {
+    // Use the resolved name: prefer onChainProductName if tier.name is a placeholder
+    const displayName = /^Tier \d+$/.test(tier.name) ? (onChainProductName || tier.name) : tier.name
     window.dispatchEvent(new CustomEvent('juice:add-to-checkout', {
       detail: {
         tierId: tier.tierId,
         price: tier.price.toString(),
+        name: displayName,
       }
     }))
   }

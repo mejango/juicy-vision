@@ -1181,7 +1181,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     <div className={embedded ? '' : 'w-full'}>
       {/* Card with border - constrained width (skip outer styles in embedded mode) */}
       <div className={embedded
-        ? 'p-3'
+        ? ''
         : `max-w-md border p-4 ${isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'}`
       }>
       {/* Header - hide in embedded mode since dashboard already shows it */}
@@ -1301,7 +1301,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       </div>}
 
       {/* Pay form */}
-      <div className={embedded ? '' : `mb-3 p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+      <div className={embedded ? 'px-3 pt-3' : `mb-3 p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
         {/* NFT Tier selector - horizontal carousel */}
         {nftTiers.length > 0 && (
           <div className="mb-3">
@@ -1394,7 +1394,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         )}
 
         {/* Amount input with token selector and pay button - sticky when embedded */}
-        <div className={embedded ? `sticky top-0 z-20 py-2 -mx-3 px-3 ${isDark ? 'bg-juice-dark' : 'bg-white'}` : ''}>
+        <div className={embedded ? `sticky top-0 z-20 py-2 px-3 ${isDark ? 'bg-juice-dark' : 'bg-white'}` : ''}>
         <div className="flex gap-2">
           <div className="flex-1">
             <div
@@ -1545,6 +1545,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         </div>
         </div>
 
+        {/* Content after sticky pay field - needs padding in embedded mode */}
+        <div className={embedded ? 'px-3 pb-3' : ''}>
+
         {/* Payment progress indicator - show from local state or persisted state */}
         {(activePayment || (persistedPayment && persistedPayment.status !== 'pending')) && (
           <PaymentProgress
@@ -1643,6 +1646,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             {JUICY_FEE_PERCENT}% of your payment supports Juicy development
           </div>
         </label>
+      </div>
+
+      {/* Close padding wrapper for content after sticky */}
       </div>
 
       </div>
