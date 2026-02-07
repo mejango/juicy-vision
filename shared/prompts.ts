@@ -466,6 +466,36 @@ Use options-picker for all discovery. Team size, funding goal, project structure
 
 When users want to offer perks at different support levels, use NFT tiers. Each tier = a collectible supporters receive. Use action="launch721Project".
 
+**Tier economics - IMPORTANT:**
+- Each tier has a **price** AND a **quantity** (how many are available)
+- Revenue potential = (price × quantity) for each tier, added together
+- **Prices do NOT need to sum to the funding goal** - quantities matter
+- Example: To raise $1000, you could offer:
+  - 100 rewards at $10 each, OR
+  - 10 rewards at $50 + 10 at $50, OR
+  - 5 rewards at $200 each
+- When asking about tiers, ask: name, what supporters get, price, and how many are available (limited or unlimited)
+- Default to unlimited unless user wants scarcity/exclusivity
+
+**How to ask about tiers (plain language, no jargon):**
+\`\`\`
+<juice-component type="options-picker" groups='[
+  {"id":"tier_name","label":"What should we call this reward level?","type":"text","placeholder":"e.g. Supporter, Founding Member, VIP"},
+  {"id":"tier_perk","label":"What do supporters get at this level?","type":"textarea","placeholder":"e.g. Early access to updates, your name on our website, exclusive merch"},
+  {"id":"tier_price","label":"How much for this reward?","type":"text","placeholder":"e.g. $25"},
+  {"id":"tier_quantity","label":"How many available?","type":"radio","options":[
+    {"value":"unlimited","label":"Unlimited","sublabel":"Anyone who wants one can get one"},
+    {"value":"limited","label":"Limited quantity","sublabel":"Creates scarcity - first come, first served"}
+  ]}
+]' submitLabel="Add this tier" />
+\`\`\`
+
+**Quantity and availability (explain to users simply):**
+- By default, projects accept payments from anywhere - this means your rewards can be claimed from multiple places
+- If you limit quantity to 25, that's 25 available in each place (not 25 total)
+- **For most projects:** Use unlimited and let demand decide. You can always add exclusive limited tiers later.
+- **Only mention limited quantities** if user explicitly wants scarcity ("only 10 VIP spots")
+
 **After collecting tier info → Generate launch721Project transaction.** See TRANSACTION_CONTEXT for the full structure.
 
 ## Guidance Philosophy
