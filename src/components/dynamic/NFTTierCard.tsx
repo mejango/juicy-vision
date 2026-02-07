@@ -32,6 +32,8 @@ interface NFTTierCardProps {
   onMetadataLoaded?: (tierId: number, metadata: { productName?: string; categoryName?: string }) => void
   /** Connected chains for multi-chain supply display */
   connectedChains?: Array<{ chainId: number; projectId: number }>
+  /** Current checkout quantity for this tier (when in addToCheckoutMode) */
+  checkoutQuantity?: number
 }
 
 // Dispatch event to open wallet panel
@@ -55,6 +57,7 @@ export default function NFTTierCard({
   addToCheckoutMode = false,
   onMetadataLoaded,
   connectedChains,
+  checkoutQuantity = 0,
 }: NFTTierCardProps) {
   const { theme } = useThemeStore()
   const { addTransaction } = useTransactionStore()
@@ -150,6 +153,17 @@ export default function NFTTierCard({
       detail: {
         tierId: tier.tierId,
         price: tier.price.toString(),
+        name: displayName,
+      }
+    }))
+  }
+
+  const handleAdjustCheckoutQuantity = (delta: number) => {
+    const displayName = /^Tier \d+$/.test(tier.name) ? (onChainProductName || tier.name) : tier.name
+    window.dispatchEvent(new CustomEvent('juice:adjust-checkout-quantity', {
+      detail: {
+        tierId: tier.tierId,
+        delta,
         name: displayName,
       }
     }))
@@ -346,33 +360,43 @@ export default function NFTTierCard({
           <div className="flex justify-end items-center">
             {!soldOut ? (
               <div className="flex items-center">
-                <button
-                  onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                  disabled={quantity <= 1}
-                  className={`w-7 h-7 flex items-center justify-center text-sm font-medium transition-colors border-y border-l ${
-                    quantity <= 1
-                      ? isDark ? 'border-white/10 text-gray-600 cursor-not-allowed' : 'border-gray-200 text-gray-300 cursor-not-allowed'
-                      : isDark ? 'border-white/10 text-white hover:bg-white/10' : 'border-gray-200 text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  −
-                </button>
-                <div className={`w-8 h-7 flex items-center justify-center text-xs font-medium border-y ${
-                  isDark ? 'border-white/10 text-white' : 'border-gray-200 text-gray-900'
-                }`}>
-                  {quantity}
-                </div>
-                <button
-                  onClick={handleMint}
-                  disabled={minting || quantity >= tier.remainingSupply}
-                  className={`w-7 h-7 flex items-center justify-center text-sm font-medium transition-colors border border-green-500 ${
-                    minting || quantity >= tier.remainingSupply
-                      ? 'text-gray-500 cursor-not-allowed opacity-50'
-                      : 'text-green-500 hover:bg-green-500/10'
-                  }`}
-                >
-                  +
-                </button>
+                {/* In checkout mode, use checkoutQuantity; otherwise use local quantity */}
+                {(() => {
+                  const displayQty = addToCheckoutMode ? checkoutQuantity : quantity
+                  const canDecrement = addToCheckoutMode ? displayQty > 0 : displayQty > 1
+                  const canIncrement = displayQty < tier.remainingSupply
+                  return (
+                    <>
+                      <button
+                        onClick={() => addToCheckoutMode ? handleAdjustCheckoutQuantity(-1) : setQuantity(q => Math.max(1, q - 1))}
+                        disabled={!canDecrement}
+                        className={`w-7 h-7 flex items-center justify-center text-sm font-medium transition-colors border-y border-l ${
+                          !canDecrement
+                            ? isDark ? 'border-white/10 text-gray-600 cursor-not-allowed' : 'border-gray-200 text-gray-300 cursor-not-allowed'
+                            : isDark ? 'border-white/10 text-white hover:bg-white/10' : 'border-gray-200 text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        −
+                      </button>
+                      <div className={`w-8 h-7 flex items-center justify-center text-xs font-medium border-y ${
+                        isDark ? 'border-white/10 text-white' : 'border-gray-200 text-gray-900'
+                      }`}>
+                        {displayQty}
+                      </div>
+                      <button
+                        onClick={() => addToCheckoutMode ? handleAdjustCheckoutQuantity(1) : handleMint()}
+                        disabled={minting || !canIncrement}
+                        className={`w-7 h-7 flex items-center justify-center text-sm font-medium transition-colors border border-green-500 ${
+                          minting || !canIncrement
+                            ? 'text-gray-500 cursor-not-allowed opacity-50'
+                            : 'text-green-500 hover:bg-green-500/10'
+                        }`}
+                      >
+                        +
+                      </button>
+                    </>
+                  )
+                })()}
               </div>
             ) : (
               <span className={`text-xs font-medium ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

@@ -30,8 +30,20 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
   const [tierMetadata, setTierMetadata] = useState<Record<number, TierMetadata>>({})
   // Category names extracted from on-chain metadata (category number -> name)
   const [categoryNames, setCategoryNames] = useState<Record<number, string>>({})
+  // Checkout quantities from ProjectCard (synced via event)
+  const [checkoutQuantities, setCheckoutQuantities] = useState<Record<number, number>>({})
 
   const chainIdNum = parseInt(chainId)
+
+  // Listen for checkout quantity updates from ProjectCard
+  useEffect(() => {
+    const handleCheckoutQuantities = (e: CustomEvent<{ quantities: Record<number, number> }>) => {
+      setCheckoutQuantities(e.detail.quantities)
+    }
+
+    window.addEventListener('juice:checkout-quantities', handleCheckoutQuantities as EventListener)
+    return () => window.removeEventListener('juice:checkout-quantities', handleCheckoutQuantities as EventListener)
+  }, [])
 
   // Fetch tiers, ETH price, and hook address
   useEffect(() => {
@@ -201,6 +213,7 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                     addToCheckoutMode
                     onMetadataLoaded={handleTierMetadataLoaded}
                     connectedChains={connectedChains}
+                    checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
                   />
                 ))}
               </div>
@@ -226,6 +239,7 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                       addToCheckoutMode
                       onMetadataLoaded={handleTierMetadataLoaded}
                       connectedChains={connectedChains}
+                      checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
                     />
                   ))}
                 </div>
@@ -248,6 +262,7 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
               addToCheckoutMode
               onMetadataLoaded={handleTierMetadataLoaded}
               connectedChains={connectedChains}
+              checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
             />
           ))}
         </div>

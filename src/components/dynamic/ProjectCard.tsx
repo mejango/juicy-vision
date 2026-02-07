@@ -378,6 +378,14 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [showAllTiers, setShowAllTiers] = useState(false)
   // Cache for on-chain metadata (productName, categoryName) by tierId
   const [tierMetadata, setTierMetadata] = useState<Record<number, OnChainTierMetadata>>({})
+
+  // Emit event when checkout quantities change (for ShopTab to sync)
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('juice:checkout-quantities', {
+      detail: { quantities: tierQuantities }
+    }))
+  }, [tierQuantities])
+
   const { theme } = useThemeStore()
   const { addTransaction, getTransaction } = useTransactionStore()
   const isDark = theme === 'dark'
@@ -899,6 +907,27 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     return () => window.removeEventListener('juice:add-to-checkout', handleAddToCheckout as EventListener)
   }, [nftTiers, handleTierSelect])
 
+  // Listen for quantity adjustment events from Shop tab
+  useEffect(() => {
+    const handleAdjustQuantity = (e: CustomEvent<{ tierId: number; delta: number; name?: string }>) => {
+      const { tierId, delta, name } = e.detail
+      // Store the tier name in metadata if provided
+      if (name) {
+        const tier = nftTiers.find(t => t.tierId === tierId)
+        if (tier && /^Tier \d+$/.test(tier.name)) {
+          setTierMetadata(prev => ({
+            ...prev,
+            [tierId]: { ...prev[tierId], productName: name },
+          }))
+        }
+      }
+      adjustTierQuantity(tierId, delta)
+    }
+
+    window.addEventListener('juice:adjust-checkout-quantity', handleAdjustQuantity as EventListener)
+    return () => window.removeEventListener('juice:adjust-checkout-quantity', handleAdjustQuantity as EventListener)
+  }, [nftTiers, adjustTierQuantity])
+
   // Handle payment status updates
   // Keep form values and payment status visible after submission (similar to project deployment)
   // This allows all chat users to see the transaction details
@@ -1401,7 +1430,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         )}
 
         {/* Amount input with token selector and pay button - sticky when embedded */}
-        <div className={embedded ? `sticky top-0 z-20 py-2 px-3 ${isDark ? 'bg-juice-dark' : 'bg-white'}` : ''}>
+        <div className={embedded ? `sticky top-0 z-20 py-2 -mx-3 px-4 ${isDark ? 'bg-juice-dark' : 'bg-white'}` : ''}>
         <div className="flex gap-2">
           <div className="flex-1">
             <div
