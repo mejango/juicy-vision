@@ -352,13 +352,16 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const tabs: Array<{ id: DashboardTab; label: string }> = useMemo(() => {
     const baseTabs: Array<{ id: DashboardTab; label: string }> = [
       { id: 'about', label: 'About' },
-      { id: 'rulesets', label: 'Rulesets' },
-      { id: 'funds', label: 'Funds' },
-      { id: 'tokens', label: 'Tokens' },
     ]
+    // Shop tab goes right after About (if project has NFT hook)
     if (hasNftHook) {
       baseTabs.push({ id: 'shop', label: 'Shop' })
     }
+    baseTabs.push(
+      { id: 'rulesets', label: 'Rulesets' },
+      { id: 'funds', label: 'Funds' },
+      { id: 'tokens', label: 'Tokens' },
+    )
     return baseTabs
   }, [hasNftHook])
 
