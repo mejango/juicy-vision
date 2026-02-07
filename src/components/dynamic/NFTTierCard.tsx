@@ -352,8 +352,8 @@ export default function NFTTierCard({
 
         {/* Mint action */}
         {showMintAction && (
-          <div className="flex justify-end items-center gap-2">
-            {!soldOut && tier.initialSupply > 1 && (
+          <div className="flex justify-end items-center">
+            {!soldOut ? (
               <div className="flex items-center">
                 <button
                   onClick={() => setQuantity(q => Math.max(1, q - 1))}
@@ -372,29 +372,22 @@ export default function NFTTierCard({
                   {quantity}
                 </div>
                 <button
-                  onClick={() => setQuantity(q => Math.min(tier.remainingSupply, q + 1))}
-                  disabled={quantity >= tier.remainingSupply}
-                  className={`w-7 h-7 flex items-center justify-center text-sm font-medium transition-colors border-y border-r ${
-                    quantity >= tier.remainingSupply
-                      ? isDark ? 'border-white/10 text-gray-600 cursor-not-allowed' : 'border-gray-200 text-gray-300 cursor-not-allowed'
-                      : isDark ? 'border-white/10 text-white hover:bg-white/10' : 'border-gray-200 text-gray-700 hover:bg-gray-100'
+                  onClick={handleMint}
+                  disabled={minting || quantity >= tier.remainingSupply}
+                  className={`w-7 h-7 flex items-center justify-center text-sm font-medium transition-colors border border-green-500 ${
+                    minting || quantity >= tier.remainingSupply
+                      ? 'text-gray-500 cursor-not-allowed opacity-50'
+                      : 'text-green-500 hover:bg-green-500/10'
                   }`}
                 >
                   +
                 </button>
               </div>
+            ) : (
+              <span className={`text-xs font-medium ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                Sold Out
+              </span>
             )}
-            <button
-              onClick={handleMint}
-              disabled={minting || soldOut}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors border ${
-                minting || soldOut
-                  ? 'border-gray-500/50 text-gray-400 cursor-not-allowed'
-                  : 'border-green-500 text-green-500 hover:bg-green-500/10'
-              }`}
-            >
-              {minting ? 'Buying...' : soldOut ? 'Sold Out' : addToCheckoutMode ? 'Add' : 'Buy'}
-            </button>
           </div>
         )}
       </div>
