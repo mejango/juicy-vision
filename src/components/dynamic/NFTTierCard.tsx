@@ -347,19 +347,31 @@ export default function NFTTierCard({
         {showMintAction && (
           <div className="flex justify-end gap-2">
             {!soldOut && tier.initialSupply > 1 && (
-              <select
-                value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))}
-                className={`pl-3 pr-8 py-1.5 text-xs border ${
-                  isDark
-                    ? 'bg-juice-dark border-white/10 text-white'
-                    : 'bg-white border-gray-200 text-gray-900'
-                }`}
-              >
-                {Array.from({ length: Math.min(tier.remainingSupply, 10) }, (_, i) => i + 1).map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={quantity}
+                  onChange={(e) => setQuantity(Number(e.target.value))}
+                  className={`appearance-none pl-3 pr-7 py-1.5 text-xs border cursor-pointer ${
+                    isDark
+                      ? 'bg-juice-dark border-white/10 text-white'
+                      : 'bg-white border-gray-200 text-gray-900'
+                  }`}
+                >
+                  {Array.from({ length: Math.min(tier.remainingSupply, 10) }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <svg
+                  className={`absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none ${
+                    isDark ? 'text-gray-400' : 'text-gray-500'
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             )}
             <button
               onClick={handleMint}

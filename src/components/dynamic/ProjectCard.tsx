@@ -771,6 +771,15 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
   // Handle NFT tier selection (multi-select)
   const handleTierSelect = useCallback((tier: ResolvedNFTTier) => {
+    // Auto-switch payment token based on tier currency
+    // ETH-denominated tiers (currency=1) → ETH
+    // USD-denominated tiers (currency=2) → PAY_CREDITS (USD)
+    if (tier.currency === 1) {
+      setSelectedToken('ETH')
+    } else if (tier.currency === 2) {
+      setSelectedToken('PAY_CREDITS')
+    }
+
     setSelectedTierIds(prev => {
       const isSelected = prev.includes(tier.tierId)
       let newIds: number[]
@@ -785,15 +794,23 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       if (newIds.length === 0) {
         setAmount('')
       } else {
-        const totalPriceEth = newIds.reduce((sum, id) => {
+        // Sum prices - formatEther works for both ETH and USD (both use 18 decimals)
+        const totalPrice = newIds.reduce((sum, id) => {
           const t = nftTiers.find(t => t.tierId === id)
           return sum + (t ? parseFloat(formatEther(t.price)) : 0)
         }, 0)
 
-        if (selectedToken === 'ETH') {
-          setAmount(totalPriceEth.toFixed(6).replace(/\.?0+$/, ''))
+        // Use the tier's currency to determine amount format
+        if (tier.currency === 1) {
+          // ETH-denominated: show in ETH
+          setAmount(totalPrice.toFixed(6).replace(/\.?0+$/, ''))
+        } else if (tier.currency === 2) {
+          // USD-denominated: price is already in USD (no conversion needed)
+          setAmount(totalPrice.toFixed(2))
+        } else if (selectedToken === 'ETH') {
+          setAmount(totalPrice.toFixed(6).replace(/\.?0+$/, ''))
         } else if (ethPrice) {
-          setAmount((totalPriceEth * ethPrice).toFixed(2))
+          setAmount((totalPrice * ethPrice).toFixed(2))
         }
       }
 
@@ -1318,12 +1335,12 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
                 placeholder="0.00"
                 disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
-                className={`w-14 pl-3 pr-1 py-2 text-sm bg-transparent outline-none text-right ${
+                className={`flex-1 min-w-0 px-3 py-2 text-sm bg-transparent outline-none ${
                   isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
                 } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
               />
               {/* Token selector - inline after input */}
-              <div className="relative flex-1">
+              <div className="relative flex-shrink-0">
                 <button
                   onClick={() => {
                     if (!isPaymentLocked) {
@@ -1485,22 +1502,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           </div>
         )}
 
-        {/* Pay Credits balance indicator */}
-        {selectedToken === 'PAY_CREDITS' && juiceBalance && (
-          <div className={`mt-2 text-xs flex items-center gap-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            <span>Balance: ${juiceBalance.balance.toFixed(2)}</span>
-            {juiceBalance.balance < totalAmount && (
-              <button
-                ref={buyMoreButtonRef}
-                onClick={() => setShowBuyJuiceModal(true)}
-                className={`underline ${isDark ? 'text-juice-cyan hover:text-juice-cyan/80' : 'text-cyan-600 hover:text-cyan-700'}`}
-              >
-                Buy more
-              </button>
-            )}
-          </div>
-        )}
-
         {/* Token preview */}
         {(amountNum > 0 && expectedTokens !== null) || selectedTierIds.length > 0 ? (
           <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -1512,22 +1513,12 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               <span> + {estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} $JUICY</span>
             )}
             {selectedTierIds.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-1">
+              <div className="mt-1">
                 {selectedTierIds.map(tierId => {
                   const tier = nftTiers.find(t => t.tierId === tierId)
                   if (!tier) return null
                   return (
-                    <span key={tierId} className="flex items-center gap-1.5">
-                      <TierPreviewImage
-                        tier={tier}
-                        hookAddress={nftHookAddress}
-                        chainId={parseInt(selectedChainId)}
-                        isDark={isDark}
-                        size="small"
-                        onMetadataLoaded={handleTierMetadataLoaded}
-                      />
-                      <span>{getTierDisplayName(tier)}</span>
-                    </span>
+                    <div key={tierId}>{getTierDisplayName(tier)}</div>
                   )
                 })}
               </div>

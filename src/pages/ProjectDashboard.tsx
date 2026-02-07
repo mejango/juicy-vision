@@ -44,25 +44,42 @@ interface ProjectDashboardProps {
   projectId: number
 }
 
-function weiToEth(weiString: string): number {
+function formatBalanceUsd(
+  balanceString: string,
+  ethPrice: number | null,
+  currency: number = 1, // 1 = ETH, 2 = USD
+  decimals: number = 18
+): string {
   try {
-    const wei = BigInt(weiString)
-    const eth = formatUnits(wei, 18)
-    return parseFloat(eth)
+    const balance = BigInt(balanceString)
+    const value = parseFloat(formatUnits(balance, decimals))
+
+    let usd: number
+    if (currency === 2) {
+      // Balance is already in USD (USDC project)
+      usd = value
+    } else {
+      // Balance is in ETH, convert to USD
+      if (!ethPrice) return '$--'
+      usd = value * ethPrice
+    }
+
+    if (usd === 0) return '$0'
+    if (usd < 0.01) return '<$0.01'
+    if (usd >= 1000000) return `$${(usd / 1000000).toFixed(2)}M`
+    if (usd >= 1000) return `$${(usd / 1000).toFixed(2)}K`
+    return `$${usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
   } catch {
-    return 0
+    return '$0'
   }
 }
 
-function formatUsd(weiString: string, ethPrice: number | null): string {
-  if (!ethPrice) return '$--'
-  const eth = weiToEth(weiString)
-  const usd = eth * ethPrice
-  if (usd === 0) return '$0'
-  if (usd < 0.01) return '<$0.01'
-  if (usd >= 1000000) return `$${(usd / 1000000).toFixed(2)}M`
-  if (usd >= 1000) return `$${(usd / 1000).toFixed(2)}K`
-  return `$${usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+// Chain info for balance tooltip
+const CHAIN_DISPLAY: Record<number, string> = {
+  1: 'Ethereum',
+  10: 'Optimism',
+  8453: 'Base',
+  42161: 'Arbitrum',
 }
 
 function formatTimeAgo(timestamp: string): string {
@@ -151,6 +168,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
   // Modal state
   const [activeModal, setActiveModal] = useState<ModalType>(null)
+
+  // Balance tooltip state
+  const [showBalanceTooltip, setShowBalanceTooltip] = useState(false)
 
   const chain = CHAINS[chainId]
 
@@ -412,9 +432,43 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   </div>
                   {/* Stats row */}
                   <div className={`flex items-center gap-4 mt-1 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                    <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {formatUsd(displayBalance, ethPrice)} balance
-                    </span>
+                    <div
+                      className="relative"
+                      onMouseEnter={() => setShowBalanceTooltip(true)}
+                      onMouseLeave={() => setShowBalanceTooltip(false)}
+                    >
+                      <span className={`font-semibold cursor-help ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        {formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance
+                      </span>
+                      {/* Per-chain balance breakdown tooltip */}
+                      {showBalanceTooltip && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
+                        <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-20 min-w-[200px] text-xs ${
+                          isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                        }`}>
+                          {suckerGroupBalance.projectBalances.map(pb => {
+                            const chainName = CHAIN_DISPLAY[pb.chainId] || `Chain ${pb.chainId}`
+                            const pbCurrency = pb.currency ?? suckerGroupBalance.currency
+                            const pbDecimals = pb.decimals ?? suckerGroupBalance.decimals
+                            return (
+                              <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
+                                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainName}</span>
+                                <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                  {formatBalanceUsd(pb.balance, ethPrice, pbCurrency, pbDecimals)}
+                                </span>
+                              </div>
+                            )
+                          })}
+                          <div className={`flex justify-between gap-4 pt-1 mt-1 border-t ${
+                            isDark ? 'border-white/10' : 'border-gray-100'
+                          }`}>
+                            <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
+                            <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                              {formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <span>
                       <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                         {displayPaymentsCount.toLocaleString()}
@@ -697,9 +751,43 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               </div>
               {/* Stats row */}
               <div className={`flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {formatUsd(displayBalance, ethPrice)} balance
-                </span>
+                <div
+                  className="relative"
+                  onMouseEnter={() => setShowBalanceTooltip(true)}
+                  onMouseLeave={() => setShowBalanceTooltip(false)}
+                >
+                  <span className={`font-semibold cursor-help ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance
+                  </span>
+                  {/* Per-chain balance breakdown tooltip */}
+                  {showBalanceTooltip && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
+                    <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-20 min-w-[200px] text-xs ${
+                      isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                    }`}>
+                      {suckerGroupBalance.projectBalances.map(pb => {
+                        const chainName = CHAIN_DISPLAY[pb.chainId] || `Chain ${pb.chainId}`
+                        const pbCurrency = pb.currency ?? suckerGroupBalance.currency
+                        const pbDecimals = pb.decimals ?? suckerGroupBalance.decimals
+                        return (
+                          <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
+                            <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainName}</span>
+                            <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                              {formatBalanceUsd(pb.balance, ethPrice, pbCurrency, pbDecimals)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                      <div className={`flex justify-between gap-4 pt-1 mt-1 border-t ${
+                        isDark ? 'border-white/10' : 'border-gray-100'
+                      }`}>
+                        <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
+                        <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                          {formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <span>
                   <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {displayPaymentsCount.toLocaleString()}
