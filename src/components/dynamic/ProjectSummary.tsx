@@ -4,23 +4,33 @@ import { formatUnits } from 'viem'
 
 interface ProjectSummaryProps {
   projectName: string
-  balance: string // wei
-  volume: string // wei
+  balance: string // in project's native currency units
+  volume: string // in project's native currency units
   paymentsCount: number
   createdAt?: number // Unix timestamp
   isRevnet?: boolean
   hasNftHook?: boolean
   connectedChainsCount?: number
   ethPrice?: number | null
+  currency?: number // 1 = ETH, 2 = USD
+  decimals?: number // 18 for ETH, 6 for USDC
 }
 
-function formatUsd(weiString: string, ethPrice: number | null): string {
-  if (!ethPrice) return ''
+function formatUsd(
+  weiString: string,
+  ethPrice: number | null,
+  currency: number = 1,
+  decimals: number = 18
+): string {
   try {
     const wei = BigInt(weiString)
-    const eth = parseFloat(formatUnits(wei, 18))
-    const usd = eth * ethPrice
+    const value = parseFloat(formatUnits(wei, decimals))
+
+    // If already USD (currency=2), no conversion needed
+    const usd = currency === 2 ? value : (ethPrice ? value * ethPrice : 0)
+
     if (usd === 0) return '$0'
+    if (!ethPrice && currency !== 2) return '' // Can't convert ETH without price
     if (usd < 1) return '<$1'
     if (usd >= 1000000) return `$${(usd / 1000000).toFixed(1)}M`
     if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}K`
@@ -54,13 +64,15 @@ export default function ProjectSummary({
   hasNftHook,
   connectedChainsCount,
   ethPrice,
+  currency = 1,
+  decimals = 18,
 }: ProjectSummaryProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
   const summary = useMemo(() => {
-    const balanceUsd = formatUsd(balance, ethPrice ?? null)
-    const volumeUsd = formatUsd(volume, ethPrice ?? null)
+    const balanceUsd = formatUsd(balance, ethPrice ?? null, currency, decimals)
+    const volumeUsd = formatUsd(volume, ethPrice ?? null, currency, decimals)
     const age = createdAt ? getProjectAge(createdAt) : null
 
     const parts: string[] = []
@@ -83,8 +95,8 @@ export default function ProjectSummary({
     }
 
     // Financial snapshot
-    const balanceNum = parseFloat(formatUnits(BigInt(balance), 18))
-    const volumeNum = parseFloat(formatUnits(BigInt(volume), 18))
+    const balanceNum = parseFloat(formatUnits(BigInt(balance), decimals))
+    const volumeNum = parseFloat(formatUnits(BigInt(volume), decimals))
 
     if (volumeNum > 0 || paymentsCount > 0) {
       let financialPart = ''
@@ -137,7 +149,7 @@ export default function ProjectSummary({
     }
 
     return result
-  }, [projectName, balance, volume, paymentsCount, createdAt, isRevnet, hasNftHook, connectedChainsCount, ethPrice])
+  }, [projectName, balance, volume, paymentsCount, createdAt, isRevnet, hasNftHook, connectedChainsCount, ethPrice, currency, decimals])
 
   return (
     <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
