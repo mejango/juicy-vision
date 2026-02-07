@@ -1181,7 +1181,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     <div className={embedded ? '' : 'w-full'}>
       {/* Card with border - constrained width (skip outer styles in embedded mode) */}
       <div className={embedded
-        ? 'p-4'
+        ? 'p-3'
         : `max-w-md border p-4 ${isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'}`
       }>
       {/* Header - hide in embedded mode since dashboard already shows it */}
@@ -1394,7 +1394,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         )}
 
         {/* Amount input with token selector and pay button - sticky when embedded */}
-        <div className={embedded ? `sticky top-0 z-20 py-2 -mx-4 px-4 ${isDark ? 'bg-juice-dark' : 'bg-white'}` : ''}>
+        <div className={embedded ? `sticky top-0 z-20 py-2 -mx-3 px-3 ${isDark ? 'bg-juice-dark' : 'bg-white'}` : ''}>
         <div className="flex gap-2">
           <div className="flex-1">
             <div

@@ -537,8 +537,8 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             <div className={`w-[380px] shrink-0 border-r overflow-y-auto ${
               isDark ? 'border-white/10' : 'border-gray-200'
             }`}>
-              {/* Pay/Cash out panel - sticky at top */}
-              <div className={`sticky top-0 z-10 border-b ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
+              {/* Pay/Cash out panel */}
+              <div className={`border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
                 <ProjectCard
                   projectId={String(projectId)}
                   chainId={String(chainId)}
@@ -546,8 +546,8 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 />
               </div>
 
-              {/* Activity Feed */}
-              <div className={`px-4 pt-4 pb-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+              {/* Activity Feed - header is sticky */}
+              <div className={`sticky top-0 z-10 px-4 pt-2 pb-2 ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
                 <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   Activity
                 </span>
