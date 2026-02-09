@@ -89,11 +89,6 @@ export default function ProjectSummary({
       parts[0] += ` launched ${age.label}`
     }
 
-    // Omnichain context
-    if (connectedChainsCount && connectedChainsCount > 1) {
-      parts.push(`operating across ${connectedChainsCount} chains`)
-    }
-
     // Financial snapshot
     const balanceNum = parseFloat(formatUnits(BigInt(balance), decimals))
     const volumeNum = parseFloat(formatUnits(BigInt(volume), decimals))
@@ -123,10 +118,8 @@ export default function ProjectSummary({
     }
 
     // Features
-    const features: string[] = []
-    if (hasNftHook) features.push('NFT rewards')
-    if (features.length > 0) {
-      parts.push(`featuring ${features.join(' and ')}`)
+    if (hasNftHook) {
+      parts.push(`has got things for sale`)
     }
 
     // Combine into sentences
@@ -149,7 +142,7 @@ export default function ProjectSummary({
     }
 
     return result
-  }, [projectName, balance, volume, paymentsCount, createdAt, isRevnet, hasNftHook, connectedChainsCount, ethPrice, currency, decimals])
+  }, [projectName, balance, volume, paymentsCount, createdAt, isRevnet, hasNftHook, ethPrice, currency, decimals])
 
   return (
     <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>

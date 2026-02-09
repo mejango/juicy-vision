@@ -28,6 +28,7 @@ import { hooksRouter } from './src/routes/hooks.ts';
 import projectConversationsRouter from './src/routes/projectConversations.ts';
 import { imagesRouter } from './src/routes/images.ts';
 import { terminalRouter } from './src/routes/terminal.ts';
+import { rulesetsRouter } from './src/routes/rulesets.ts';
 import { getConfig, validateConfigForAuth, validateConfigForEncryption, validateConfigForReserves } from './src/utils/config.ts';
 import { getPrimaryChainId } from '@shared/chains.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
@@ -40,6 +41,7 @@ import {
   processCashOuts as processJuiceCashOuts,
 } from './src/services/juice.ts';
 import { expireSessions as expireTerminalSessions } from './src/services/terminal.ts';
+import { cleanupExpiredCache as cleanupRulesetCache } from './src/services/rulesetCache.ts';
 import { runMigrations } from './src/db/migrate.ts';
 import { recoverOrphanedJobs } from './src/services/forge.ts';
 
@@ -160,6 +162,7 @@ app.route('/hooks', hooksRouter);
 app.route('/project-conversations', projectConversationsRouter);
 app.route('/images', imagesRouter);
 app.route('/terminal', terminalRouter);
+app.route('/rulesets', rulesetsRouter);
 
 // ============================================================================
 // Static File Serving (disabled - frontend served separately in production)
@@ -316,6 +319,18 @@ if (config.env === 'development') {
       console.error('[Dev] Failed to expire terminal sessions:', error);
     }
   }, 60 * 1000);
+
+  // Cleanup expired ruleset cache every 5 minutes
+  setInterval(async () => {
+    try {
+      const result = await cleanupRulesetCache();
+      if (result.rulesets > 0 || result.splits > 0 || result.shop > 0) {
+        console.log(`[Dev] Cleaned up ${result.rulesets} rulesets, ${result.splits} splits, ${result.shop} shop entries from cache`);
+      }
+    } catch (error) {
+      console.error('[Dev] Failed to cleanup ruleset cache:', error);
+    }
+  }, 5 * 60 * 1000);
 } else {
   console.log('Production mode: Use GCP Cloud Scheduler for cron jobs');
 }

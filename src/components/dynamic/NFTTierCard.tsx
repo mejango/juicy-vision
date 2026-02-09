@@ -348,8 +348,8 @@ export default function NFTTierCard({
           )}
         </div>
 
-        {/* Stats - only show supply if low stock */}
-        {tier.remainingSupply <= 10 && (
+        {/* Stats - only show supply if low stock and NOT multi-chain (badge handles multi-chain with breakdown) */}
+        {tier.remainingSupply <= 10 && !(connectedChains && connectedChains.length > 1) && (
           <div className={`text-xs mb-3 ${tier.remainingSupply === 0 ? 'text-red-400' : 'text-orange-400'}`}>
             <span className="font-medium">{tier.remainingSupply === 0 ? 'Sold out' : `${tier.remainingSupply} left`}</span>
           </div>

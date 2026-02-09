@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useThemeStore } from '../../stores'
 import { fetchProjectNFTTiers, getProjectDataHook, type ResolvedNFTTier } from '../../services/nft'
 import { fetchEthPrice } from '../../services/bendystraw'
+import { rulesetKeys, getShopStaleTime } from '../../hooks/useRulesetCache'
 import NFTTierCard from './NFTTierCard'
 
 // Metadata extracted from on-chain resolver
@@ -20,12 +22,9 @@ interface ShopTabProps {
 export default function ShopTab({ projectId, chainId, isOwner, connectedChains }: ShopTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+  const queryClient = useQueryClient()
 
-  const [tiers, setTiers] = useState<ResolvedNFTTier[]>([])
-  const [loading, setLoading] = useState(true)
-  const [ethPrice, setEthPrice] = useState<number | undefined>()
   const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all')
-  const [hookAddress, setHookAddress] = useState<`0x${string}` | null>(null)
   // Cache for on-chain metadata (productName, categoryName) by tierId
   const [tierMetadata, setTierMetadata] = useState<Record<number, TierMetadata>>({})
   // Category names extracted from on-chain metadata (category number -> name)
@@ -34,6 +33,29 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
   const [checkoutQuantities, setCheckoutQuantities] = useState<Record<number, number>>({})
 
   const chainIdNum = parseInt(chainId)
+
+  // Fetch tiers with React Query (30 minute stale time)
+  const { data: shopData, isLoading: loading, isFetching, refetch } = useQuery({
+    queryKey: rulesetKeys.shop(chainIdNum, parseInt(projectId)),
+    queryFn: async () => {
+      const [tiersData, price, hook] = await Promise.all([
+        fetchProjectNFTTiers(projectId, chainIdNum),
+        fetchEthPrice(),
+        getProjectDataHook(projectId, chainIdNum),
+      ])
+      return { tiers: tiersData, ethPrice: price, hookAddress: hook }
+    },
+    staleTime: getShopStaleTime(),
+  })
+
+  const tiers = shopData?.tiers ?? []
+  const ethPrice = shopData?.ethPrice
+  const hookAddress = shopData?.hookAddress ?? null
+
+  // Handle refresh button click
+  const handleRefresh = useCallback(() => {
+    refetch()
+  }, [refetch])
 
   // Listen for checkout quantity updates from ProjectCard
   useEffect(() => {
@@ -44,28 +66,6 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
     window.addEventListener('juice:checkout-quantities', handleCheckoutQuantities as EventListener)
     return () => window.removeEventListener('juice:checkout-quantities', handleCheckoutQuantities as EventListener)
   }, [])
-
-  // Fetch tiers, ETH price, and hook address
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      try {
-        const [tiersData, price, hook] = await Promise.all([
-          fetchProjectNFTTiers(projectId, chainIdNum),
-          fetchEthPrice(),
-          getProjectDataHook(projectId, chainIdNum),
-        ])
-        setTiers(tiersData)
-        setEthPrice(price)
-        setHookAddress(hook)
-      } catch (error) {
-        console.error('Failed to load NFT tiers:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [projectId, chainIdNum])
 
   // Extract unique categories
   const categories = useMemo(() => {
@@ -156,7 +156,31 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Refresh button - subtle top right */}
+      <button
+        onClick={handleRefresh}
+        disabled={isFetching}
+        className={`absolute -top-1 right-0 p-1.5 rounded transition-all ${
+          isFetching ? 'opacity-50' : 'opacity-30 hover:opacity-100'
+        } ${isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+        title="Refresh shop data"
+      >
+        <svg
+          className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          />
+        </svg>
+      </button>
+
       {/* Category filter chips */}
       {categories.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -202,19 +226,20 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
               </h3>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                 {tiersByCategory[0].map(tier => (
-                  <NFTTierCard
-                    key={tier.tierId}
-                    tier={tier}
-                    projectId={projectId}
-                    chainId={chainIdNum}
-                    ethPrice={ethPrice}
-                    isOwner={isOwner}
-                    hookAddress={hookAddress}
-                    addToCheckoutMode
-                    onMetadataLoaded={handleTierMetadataLoaded}
-                    connectedChains={connectedChains}
-                    checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
-                  />
+                  <div key={tier.tierId} id={`shop-tier-${tier.tierId}`}>
+                    <NFTTierCard
+                      tier={tier}
+                      projectId={projectId}
+                      chainId={chainIdNum}
+                      ethPrice={ethPrice}
+                      isOwner={isOwner}
+                      hookAddress={hookAddress}
+                      addToCheckoutMode
+                      onMetadataLoaded={handleTierMetadataLoaded}
+                      connectedChains={connectedChains}
+                      checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
+                    />
+                  </div>
                 ))}
               </div>
             </div>
@@ -228,19 +253,20 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                 </h3>
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                   {tiersByCategory[cat].map(tier => (
-                    <NFTTierCard
-                      key={tier.tierId}
-                      tier={tier}
-                      projectId={projectId}
-                      chainId={chainIdNum}
-                      ethPrice={ethPrice}
-                      isOwner={isOwner}
-                      hookAddress={hookAddress}
-                      addToCheckoutMode
-                      onMetadataLoaded={handleTierMetadataLoaded}
-                      connectedChains={connectedChains}
-                      checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
-                    />
+                    <div key={tier.tierId} id={`shop-tier-${tier.tierId}`}>
+                      <NFTTierCard
+                        tier={tier}
+                        projectId={projectId}
+                        chainId={chainIdNum}
+                        ethPrice={ethPrice}
+                        isOwner={isOwner}
+                        hookAddress={hookAddress}
+                        addToCheckoutMode
+                        onMetadataLoaded={handleTierMetadataLoaded}
+                        connectedChains={connectedChains}
+                        checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
@@ -251,19 +277,20 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
         // Simple grid when filtered or no categories
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredTiers.map(tier => (
-            <NFTTierCard
-              key={tier.tierId}
-              tier={tier}
-              projectId={projectId}
-              chainId={chainIdNum}
-              ethPrice={ethPrice}
-              isOwner={isOwner}
-              hookAddress={hookAddress}
-              addToCheckoutMode
-              onMetadataLoaded={handleTierMetadataLoaded}
-              connectedChains={connectedChains}
-              checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
-            />
+            <div key={tier.tierId} id={`shop-tier-${tier.tierId}`}>
+              <NFTTierCard
+                tier={tier}
+                projectId={projectId}
+                chainId={chainIdNum}
+                ethPrice={ethPrice}
+                isOwner={isOwner}
+                hookAddress={hookAddress}
+                addToCheckoutMode
+                onMetadataLoaded={handleTierMetadataLoaded}
+                connectedChains={connectedChains}
+                checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
+              />
+            </div>
           ))}
         </div>
       )}

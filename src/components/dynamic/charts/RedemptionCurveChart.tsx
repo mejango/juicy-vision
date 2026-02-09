@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useThemeStore } from '../../../stores'
 
 interface RedemptionCurveChartProps {
@@ -109,23 +109,59 @@ export default function RedemptionCurveChart({
     }
   }, [userTokens, supply, r])
 
+  // Hover state
+  const [hoverFraction, setHoverFraction] = useState<number | null>(null)
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const svg = e.currentTarget
+    const rect = svg.getBoundingClientRect()
+    const x = e.clientX - rect.left
+
+    // Convert pixel position to fraction (0-1)
+    const fraction = (x - padding.left) / chartWidth
+    if (fraction >= 0 && fraction <= 1) {
+      setHoverFraction(fraction)
+    } else {
+      setHoverFraction(null)
+    }
+  }, [padding.left, chartWidth])
+
+  const handleMouseLeave = useCallback(() => {
+    setHoverFraction(null)
+  }, [])
+
+  // Calculate hover point values
+  const hoverPoint = useMemo(() => {
+    if (hoverFraction === null) return null
+    const valuePerToken = (1 - r) + (r * hoverFraction)
+    return {
+      x: scaleX(hoverFraction),
+      y: scaleY(valuePerToken),
+      fraction: hoverFraction,
+      valuePerToken,
+    }
+  }, [hoverFraction, r])
+
   // Colors
   const curveColor = isDark ? '#22c55e' : '#16a34a' // green-500/green-600
   const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
   const textColor = isDark ? '#9ca3af' : '#6b7280' // gray-400/gray-500
   const userDotColor = '#22c55e'
+  const hoverColor = isDark ? '#ffffff' : '#000000'
 
   // Calculate the retention percentage (what you get per token if cashing out 1 token)
   const minRetention = (1 - r) * 100 // At smallest redemption
   const maxRetention = 100 // At 100% redemption
 
   return (
-    <div className="flex flex-col">
+    <div className="relative flex flex-col">
       <svg
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
-        className="select-none"
+        className="select-none cursor-crosshair"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
       >
         {/* Grid lines */}
         <line
@@ -188,6 +224,32 @@ export default function RedemptionCurveChart({
           />
         )}
 
+        {/* Hover indicator */}
+        {hoverPoint && (
+          <>
+            {/* Vertical line */}
+            <line
+              x1={hoverPoint.x}
+              y1={padding.top}
+              x2={hoverPoint.x}
+              y2={padding.top + chartHeight}
+              stroke={hoverColor}
+              strokeWidth={1}
+              strokeOpacity={0.3}
+              strokeDasharray="2,2"
+            />
+            {/* Dot on curve */}
+            <circle
+              cx={hoverPoint.x}
+              cy={hoverPoint.y}
+              r={4}
+              fill={curveColor}
+              stroke={isDark ? '#000' : '#fff'}
+              strokeWidth={1.5}
+            />
+          </>
+        )}
+
         {/* X-axis labels */}
         <text
           x={padding.left}
@@ -231,10 +293,28 @@ export default function RedemptionCurveChart({
         </text>
       </svg>
 
-      {/* Legend */}
-      <div className={`flex items-center justify-between text-[10px] px-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+      {/* Tooltip */}
+      {hoverPoint && (
+        <div
+          className={`absolute text-[10px] px-1.5 py-1 rounded shadow-lg pointer-events-none whitespace-nowrap ${
+            isDark ? 'bg-gray-800 text-white' : 'bg-white text-gray-900 border border-gray-200'
+          }`}
+          style={{
+            left: Math.min(hoverPoint.x, width - 80),
+            top: hoverPoint.y - 36,
+          }}
+        >
+          <div className="font-medium">{(hoverPoint.fraction * 100).toFixed(0)}% redeemed</div>
+          <div className="text-gray-400">{(hoverPoint.valuePerToken * 100).toFixed(1)}% value/token</div>
+        </div>
+      )}
+
+      {/* Legend - aligned with graph origin */}
+      <div
+        className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+        style={{ paddingLeft: padding.left }}
+      >
         <span>% of supply redeemed →</span>
-        <span>value/token ↑</span>
       </div>
     </div>
   )

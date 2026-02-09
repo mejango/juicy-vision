@@ -28,6 +28,7 @@ import TokensTab from '../components/dynamic/TokensTab'
 import ShopTab from '../components/dynamic/ShopTab'
 import ProjectSummary from '../components/dynamic/ProjectSummary'
 import { hasNFTHook } from '../services/nft'
+import { ExplainerMessage } from '../components/ui/ExplainerMessage'
 
 // Payment modals
 import CashOutForm from '../components/dynamic/CashOutForm'
@@ -174,8 +175,19 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
   // Listen for open-shop event from ProjectCard
   useEffect(() => {
-    const handleOpenShop = () => {
+    const handleOpenShop = (e: Event) => {
+      const customEvent = e as CustomEvent<{ tierId?: number }>
+      const tierId = customEvent.detail?.tierId
       setActiveTab('shop')
+      // Scroll to the tier after tab switch (need small delay for tab content to render)
+      if (tierId !== undefined) {
+        setTimeout(() => {
+          const element = document.getElementById(`shop-tier-${tierId}`)
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+        }, 100)
+      }
     }
     window.addEventListener('juice:open-shop', handleOpenShop)
     return () => window.removeEventListener('juice:open-shop', handleOpenShop)
@@ -442,21 +454,40 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  {/* Title row with chain badge */}
+                  {/* Title row with chain badges */}
                   <div className="flex items-center gap-2">
                     <h1 className={`text-xl font-semibold truncate ${
                       isDark ? 'text-white' : 'text-gray-900'
                     }`}>
                       {project.name || `Project #${projectId}`}
                     </h1>
-                    {chain && (
-                      <span
-                        className="px-2 py-0.5 text-xs font-medium rounded-full shrink-0"
-                        style={{ backgroundColor: chain.color + '20', color: chain.color }}
-                      >
-                        {chain.shortName}
-                      </span>
-                    )}
+                    {/* Show all connected chains, or just current chain if no connections */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {(connectedChains.length > 0 ? connectedChains : chain ? [{ chainId, projectId }] : []).map(cc => {
+                        const ccChain = CHAINS[cc.chainId] || MAINNET_CHAINS[cc.chainId]
+                        if (!ccChain) return null
+                        const isCurrentChain = cc.chainId === chainId
+                        return (
+                          <button
+                            key={cc.chainId}
+                            onClick={() => navigate(`/${ccChain.slug}:${cc.projectId}`)}
+                            className={`px-2 py-0.5 text-xs font-medium rounded-full transition-all ${
+                              isCurrentChain
+                                ? 'ring-1 ring-offset-1 ring-offset-transparent'
+                                : 'opacity-60 hover:opacity-100'
+                            }`}
+                            style={{
+                              backgroundColor: ccChain.color + (isCurrentChain ? '30' : '20'),
+                              color: ccChain.color,
+                              ['--tw-ring-color' as string]: isCurrentChain ? ccChain.color : undefined
+                            }}
+                            title={`View on ${ccChain.name}`}
+                          >
+                            {ccChain.shortName}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
                   {/* Stats row */}
                   <div className={`flex items-center gap-4 mt-1 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -638,7 +669,13 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 {/* Rulesets Tab */}
                 {activeTab === 'rulesets' && (
                   <div className="space-y-6">
+                    <ExplainerMessage>
+                      This shows the current ruleset cycle and its parameters. Rulesets define how the project handles payments, token issuance, and cash outs.
+                    </ExplainerMessage>
                     <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+                    <ExplainerMessage>
+                      The issuance price forecast shows how token prices change over time based on the decay rate. Earlier contributors get more tokens per payment.
+                    </ExplainerMessage>
                     {/* Price forecast for revnets, issuance history for regular projects */}
                     <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
                   </div>
@@ -647,6 +684,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 {/* Funds Tab */}
                 {activeTab === 'funds' && (
                   <div className="space-y-6">
+                    <ExplainerMessage>
+                      Here's the project treasury. You can see the total balance, available payouts, and cash out value for token holders.
+                    </ExplainerMessage>
                     <FundsSection
                       projectId={String(projectId)}
                       chainId={String(chainId)}
@@ -655,7 +695,13 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       onCashOut={() => setActiveModal('cashout')}
                       isRevnet={projectIsRevnet}
                     />
+                    <ExplainerMessage>
+                      Payment volume shows how much has been contributed to the project over time.
+                    </ExplainerMessage>
                     <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
+                    <ExplainerMessage>
+                      Treasury balance tracks how the project's funds have changed over time.
+                    </ExplainerMessage>
                     <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
                   </div>
                 )}
@@ -810,21 +856,40 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               </div>
             )}
             <div className="flex-1 min-w-0">
-              {/* Title row with chain badge */}
+              {/* Title row with chain badges */}
               <div className="flex items-center gap-2">
                 <h1 className={`text-lg font-semibold truncate ${
                   isDark ? 'text-white' : 'text-gray-900'
                 }`}>
                   {project.name || `Project #${projectId}`}
                 </h1>
-                {chain && (
-                  <span
-                    className="px-2 py-0.5 text-xs font-medium rounded-full shrink-0"
-                    style={{ backgroundColor: chain.color + '20', color: chain.color }}
-                  >
-                    {chain.shortName}
-                  </span>
-                )}
+                {/* Show all connected chains, or just current chain if no connections */}
+                <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                  {(connectedChains.length > 0 ? connectedChains : chain ? [{ chainId, projectId }] : []).map(cc => {
+                    const ccChain = CHAINS[cc.chainId] || MAINNET_CHAINS[cc.chainId]
+                    if (!ccChain) return null
+                    const isCurrentChain = cc.chainId === chainId
+                    return (
+                      <button
+                        key={cc.chainId}
+                        onClick={() => navigate(`/${ccChain.slug}:${cc.projectId}`)}
+                        className={`px-2 py-0.5 text-xs font-medium rounded-full transition-all ${
+                          isCurrentChain
+                            ? 'ring-1 ring-offset-1 ring-offset-transparent'
+                            : 'opacity-60 hover:opacity-100'
+                        }`}
+                        style={{
+                          backgroundColor: ccChain.color + (isCurrentChain ? '30' : '20'),
+                          color: ccChain.color,
+                          ['--tw-ring-color' as string]: isCurrentChain ? ccChain.color : undefined
+                        }}
+                        title={`View on ${ccChain.name}`}
+                      >
+                        {ccChain.shortName}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
               {/* Stats row */}
               <div className={`flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -1001,7 +1066,13 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         {/* Rulesets tab */}
         {activeTab === 'rulesets' && (
           <div className="space-y-6">
+            <ExplainerMessage>
+              This shows the current ruleset cycle and its parameters. Rulesets define how the project handles payments, token issuance, and cash outs.
+            </ExplainerMessage>
             <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
+            <ExplainerMessage>
+              The issuance price forecast shows how token prices change over time based on the decay rate. Earlier contributors get more tokens per payment.
+            </ExplainerMessage>
             <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
           </div>
         )}
@@ -1009,6 +1080,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         {/* Funds tab */}
         {activeTab === 'funds' && (
           <div className="space-y-6">
+            <ExplainerMessage>
+              Here's the project treasury. You can see the total balance, available payouts, and cash out value for token holders.
+            </ExplainerMessage>
             <FundsSection
               projectId={String(projectId)}
               chainId={String(chainId)}
@@ -1017,7 +1091,13 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               onCashOut={() => setActiveModal('cashout')}
               isRevnet={projectIsRevnet}
             />
+            <ExplainerMessage>
+              Payment volume shows how much has been contributed to the project over time.
+            </ExplainerMessage>
             <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
+            <ExplainerMessage>
+              Treasury balance tracks how the project's funds have changed over time.
+            </ExplainerMessage>
             <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
           </div>
         )}

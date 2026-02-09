@@ -21,6 +21,7 @@ import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { VIEM_CHAINS, RPC_ENDPOINTS, CHAINS, MAINNET_CHAINS, type SupportedChainId } from '../../constants'
 import { SendReservedTokensModal } from '../payment'
 import HoldersChart from './charts/HoldersChart'
+import { ExplainerMessage } from '../ui/ExplainerMessage'
 
 interface TokensTabProps {
   projectId: string
@@ -280,6 +281,10 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
 
   return (
     <div className="space-y-4">
+      <ExplainerMessage>
+        Project membership is represented by tokens. Token holders can cash out their share of the treasury or vote on governance.
+      </ExplainerMessage>
+
       {/* Your Balance */}
       {isConnected && (
         <div className={`p-4 border ${
@@ -539,6 +544,9 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
       </div>
 
       {/* Token Holders Chart */}
+      <ExplainerMessage>
+        This shows the distribution of tokens among members. A more distributed ownership means broader participation.
+      </ExplainerMessage>
       <HoldersChart projectId={projectId} chainId={chainId} limit={10} />
 
       {/* Send Reserved Tokens Modal */}

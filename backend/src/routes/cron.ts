@@ -11,6 +11,7 @@ import {
   processCashOuts as processJuiceCashOuts,
 } from '../services/juice.ts';
 import { cleanupExpiredJobs, cancelStaleJobs } from '../services/forge.ts';
+import { cleanupExpiredCache } from '../services/rulesetCache.ts';
 
 export const cronRouter = new Hono();
 
@@ -311,6 +312,21 @@ cronRouter.post('/maintenance', async (c) => {
     };
   }
 
+  // Cleanup expired ruleset cache entries
+  try {
+    const cacheResult = await cleanupExpiredCache();
+    results.rulesetCache = {
+      success: true,
+      count: cacheResult.rulesets + cacheResult.splits + cacheResult.shop,
+    };
+  } catch (error) {
+    console.error('Ruleset cache cleanup failed:', error);
+    results.rulesetCache = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+
   const allSuccess = Object.values(results).every((r) => r.success);
 
   return c.json(
@@ -439,6 +455,40 @@ cronRouter.post('/forge/cleanup', async (c) => {
     });
   } catch (error) {
     console.error('Cron Forge cleanup failed:', error);
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        durationMs: Date.now() - startTime,
+      },
+      500
+    );
+  }
+});
+
+// ============================================================================
+// Ruleset Cache Cron Endpoints
+// ============================================================================
+
+// Cleanup expired ruleset cache entries
+cronRouter.post('/rulesets/cleanup', async (c) => {
+  const startTime = Date.now();
+
+  try {
+    const result = await cleanupExpiredCache();
+
+    return c.json({
+      success: true,
+      data: {
+        rulesets: result.rulesets,
+        splits: result.splits,
+        shop: result.shop,
+        total: result.rulesets + result.splits + result.shop,
+        durationMs: Date.now() - startTime,
+      },
+    });
+  } catch (error) {
+    console.error('Cron ruleset cache cleanup failed:', error);
     return c.json(
       {
         success: false,

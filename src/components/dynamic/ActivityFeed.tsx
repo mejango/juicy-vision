@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { formatEther, formatUnits } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
@@ -33,6 +33,8 @@ const CHAIN_EXPLORER: Record<number, string> = {
   8453: 'https://basescan.org',
   42161: 'https://arbiscan.io',
 }
+
+const PAGE_SIZE = 15
 
 function formatAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`
@@ -79,7 +81,7 @@ function formatCurrencyAmount(wei: string, decimals: number, currency: number): 
 export default function ActivityFeed({
   projectId,
   chainId = '1',
-  limit = 5,
+  limit: _limit,
   compact = false
 }: ActivityFeedProps) {
   const { theme } = useThemeStore()
@@ -91,7 +93,10 @@ export default function ActivityFeed({
   const [currency, setCurrency] = useState<number>(1) // 1 = ETH, 2 = USDC
   const [decimals, setDecimals] = useState<number>(18)
   const [loading, setLoading] = useState(true)
-  const [expanded, setExpanded] = useState(false)
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const displayCountRef = useRef(displayCount)
 
   const chainIdNum = parseInt(chainId)
   const explorerUrl = CHAIN_EXPLORER[chainIdNum] || CHAIN_EXPLORER[1]
@@ -99,6 +104,7 @@ export default function ActivityFeed({
   useEffect(() => {
     async function loadActivity() {
       setLoading(true)
+      setDisplayCount(PAGE_SIZE)
       try {
         // Fetch project info, currency info, and events in parallel
         const [project, balanceInfo, pays, cashOuts] = await Promise.all([
@@ -161,7 +167,59 @@ export default function ActivityFeed({
     return combined.sort((a, b) => b.timestamp - a.timestamp)
   }, [payEvents, cashOutEvents, decimals, currency])
 
-  const displayedEvents = expanded ? events : events.slice(0, limit)
+  const displayedEvents = events.slice(0, displayCount)
+  const hasMore = displayCount < events.length
+
+  // Keep ref in sync
+  useEffect(() => {
+    displayCountRef.current = displayCount
+  }, [displayCount])
+
+  // Load more function
+  const loadMore = useCallback(() => {
+    setDisplayCount(prev => Math.min(prev + PAGE_SIZE, events.length))
+  }, [events.length])
+
+  // Scroll-based infinite loading
+  useEffect(() => {
+    if (loading || events.length === 0) return
+
+    const container = containerRef.current
+    if (!container) return
+
+    // Find the scrollable parent (traverse up looking for overflow-y-auto)
+    let scrollParent: HTMLElement | null = container.parentElement
+    while (scrollParent) {
+      const style = window.getComputedStyle(scrollParent)
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+        break
+      }
+      scrollParent = scrollParent.parentElement
+    }
+
+    if (!scrollParent) return
+
+    const handleScroll = () => {
+      if (displayCountRef.current >= events.length) return
+
+      const { scrollTop, scrollHeight, clientHeight } = scrollParent!
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+      // Load more when 150px from bottom
+      if (distanceFromBottom < 150) {
+        loadMore()
+      }
+    }
+
+    scrollParent.addEventListener('scroll', handleScroll, { passive: true })
+
+    // Check immediately in case content is already scrolled
+    handleScroll()
+
+    return () => {
+      scrollParent?.removeEventListener('scroll', handleScroll)
+    }
+  }, [loading, events.length, loadMore])
 
   const getEventIcon = (type: ActivityEvent['type']) => {
     switch (type) {
@@ -177,10 +235,58 @@ export default function ActivityFeed({
     }
   }
 
+  const EventRow = ({ event, idx }: { event: ActivityEvent; idx: number }) => (
+    <div
+      key={`${event.txHash}-${idx}`}
+      className={`px-4 py-3 flex items-start gap-3 ${
+        isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'
+      }`}
+    >
+      <span className="text-lg">{getEventIcon(event.type)}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <a
+            href={`${explorerUrl}/address/${event.from}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-sm font-medium font-mono hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
+          >
+            {formatAddress(event.from)}
+          </a>
+          <span className={`text-sm ${getEventColor(event.type)}`}>
+            {event.type === 'pay' && 'paid'}
+            {event.type === 'cashout' && 'cashed out'}
+          </span>
+          <a
+            href={`${explorerUrl}/tx/${event.txHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-sm font-medium hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
+          >
+            {event.amount}
+          </a>
+        </div>
+        {event.tokenAmount && (
+          <div className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            {event.type === 'pay' ? 'Received' : 'Burned'} {event.tokenAmount} tokens
+          </div>
+        )}
+        {event.memo && (
+          <div className={`text-xs mt-1 italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            "{event.memo}"
+          </div>
+        )}
+      </div>
+      <span className={`text-xs whitespace-nowrap ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+        {formatTimeAgo(event.timestamp)}
+      </span>
+    </div>
+  )
+
   // Compact mode for sidebar - no outer container
   if (compact) {
     return (
-      <div className={`divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
+      <div ref={containerRef} className={`divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
         {loading ? (
           <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             Loading activity...
@@ -190,73 +296,29 @@ export default function ActivityFeed({
             No activity yet
           </div>
         ) : (
-          displayedEvents.map((event, idx) => (
-            <div
-              key={`${event.txHash}-${idx}`}
-              className={`px-4 py-3 flex items-start gap-3 ${
-                isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'
-              }`}
-            >
-              <span className="text-lg">{getEventIcon(event.type)}</span>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <a
-                    href={`${explorerUrl}/address/${event.from}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`text-sm font-medium font-mono hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
-                  >
-                    {formatAddress(event.from)}
-                  </a>
-                  <span className={`text-sm ${getEventColor(event.type)}`}>
-                    {event.type === 'pay' && 'paid'}
-                    {event.type === 'cashout' && 'cashed out'}
-                  </span>
-                  <a
-                    href={`${explorerUrl}/tx/${event.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`text-sm font-medium hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
-                  >
-                    {event.amount}
-                  </a>
-                </div>
-                {event.tokenAmount && (
-                  <div className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {event.type === 'pay' ? 'Received' : 'Burned'} {event.tokenAmount} tokens
-                  </div>
-                )}
-                {event.memo && (
-                  <div className={`text-xs mt-1 italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    "{event.memo}"
-                  </div>
-                )}
+          <>
+            {displayedEvents.map((event, idx) => (
+              <EventRow key={`${event.txHash}-${idx}`} event={event} idx={idx} />
+            ))}
+            {/* Infinite scroll indicator */}
+            {hasMore && (
+              <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                <span className="text-xs">Loading more...</span>
               </div>
-              <span className={`text-xs whitespace-nowrap ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                {formatTimeAgo(event.timestamp)}
-              </span>
-            </div>
-          ))
-        )}
-        {/* Load more */}
-        {events.length > limit && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className={`w-full px-4 py-2 text-sm text-center transition-colors ${
-              isDark
-                ? 'text-gray-400 hover:text-white hover:bg-white/5'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            {expanded ? 'Show less' : `Show ${events.length - limit} more`}
-          </button>
+            )}
+            {!hasMore && events.length > PAGE_SIZE && (
+              <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                <span className="text-xs">End of activity</span>
+              </div>
+            )}
+          </>
         )}
       </div>
     )
   }
 
   return (
-    <div className="w-full">
+    <div ref={containerRef} className="w-full">
       <div className={`max-w-md border overflow-hidden ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
@@ -283,69 +345,24 @@ export default function ActivityFeed({
               No activity yet
             </div>
           ) : (
-            displayedEvents.map((event, idx) => (
-              <div
-                key={`${event.txHash}-${idx}`}
-                className={`px-4 py-3 flex items-start gap-3 ${
-                  isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'
-                }`}
-              >
-                <span className="text-lg">{getEventIcon(event.type)}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <a
-                      href={`${explorerUrl}/address/${event.from}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`text-sm font-medium font-mono hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
-                    >
-                      {formatAddress(event.from)}
-                    </a>
-                    <span className={`text-sm ${getEventColor(event.type)}`}>
-                      {event.type === 'pay' && 'paid'}
-                      {event.type === 'cashout' && 'cashed out'}
-                    </span>
-                    <a
-                      href={`${explorerUrl}/tx/${event.txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`text-sm font-medium hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
-                    >
-                      {event.amount}
-                    </a>
-                  </div>
-                  {event.tokenAmount && (
-                    <div className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {event.type === 'pay' ? 'Received' : 'Burned'} {event.tokenAmount} tokens
-                    </div>
-                  )}
-                  {event.memo && (
-                    <div className={`text-xs mt-1 italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      "{event.memo}"
-                    </div>
-                  )}
+            <>
+              {displayedEvents.map((event, idx) => (
+                <EventRow key={`${event.txHash}-${idx}`} event={event} idx={idx} />
+              ))}
+              {/* Infinite scroll indicator */}
+              {hasMore && (
+                <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <span className="text-xs">Loading more...</span>
                 </div>
-                <span className={`text-xs whitespace-nowrap ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {formatTimeAgo(event.timestamp)}
-                </span>
-              </div>
-            ))
+              )}
+              {!hasMore && events.length > PAGE_SIZE && (
+                <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                  <span className="text-xs">End of activity</span>
+                </div>
+              )}
+            </>
           )}
         </div>
-
-        {/* Load more */}
-        {events.length > limit && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className={`w-full px-4 py-2 text-sm text-center border-t transition-colors ${
-              isDark
-                ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/5'
-                : 'border-gray-100 text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            {expanded ? 'Show less' : `Show ${events.length - limit} more`}
-          </button>
-        )}
       </div>
     </div>
   )

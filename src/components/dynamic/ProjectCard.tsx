@@ -1244,7 +1244,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                           ? exceedsSupply ? 'border-orange-500 bg-orange-500/10' : 'border-green-500 bg-green-500/10'
                           : isDark ? 'border-white/10 hover:border-white/20' : 'border-gray-200 hover:border-gray-300'
                       } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                      onClick={() => !isPaymentLocked && handleTierSelect(tier)}
+                      onClick={() => {
+                        if (isPaymentLocked) return
+                        handleTierSelect(tier)
+                        window.dispatchEvent(new CustomEvent('juice:open-shop', { detail: { tierId: tier.tierId } }))
+                      }}
                     >
                       {/* Quantity badge */}
                       {isSelected && (
@@ -1831,7 +1835,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                         ? exceedsSupply ? 'border-orange-500 bg-orange-500/10' : 'border-green-500 bg-green-500/10'
                         : isDark ? 'border-white/10 hover:border-white/20' : 'border-gray-200 hover:border-gray-300'
                     } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                    onClick={() => !isPaymentLocked && handleTierSelect(tier)}
+                    onClick={() => {
+                      if (isPaymentLocked) return
+                      handleTierSelect(tier)
+                      window.dispatchEvent(new CustomEvent('juice:open-shop', { detail: { tierId: tier.tierId } }))
+                    }}
                   >
                     {/* Quantity badge */}
                     {isSelected && (

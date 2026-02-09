@@ -225,7 +225,7 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
 
           {/* Amount input */}
           <div className="flex gap-2">
-            <div className={`flex-1 flex items-center ${
+            <div className={`flex-1 min-w-0 flex items-center ${
               isDark
                 ? 'bg-juice-dark border border-white/10'
                 : 'bg-white border border-gray-200'

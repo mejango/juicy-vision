@@ -2868,6 +2868,49 @@ export async function fetchPayEventsHistory(
   }
 }
 
+// Paginated version - returns single page with cursor info
+export type PayEventsPage = {
+  items: PayEventHistoryItem[]
+  hasNextPage: boolean
+  endCursor: string | null
+}
+
+export async function fetchPayEventsPage(
+  projectId: string,
+  chainId: number,
+  version: number = 5,
+  limit: number = 15,
+  after?: string | null
+): Promise<PayEventsPage> {
+  const client = getClient(getNetworkOption(chainId))
+
+  type PayEventsResponse = {
+    payEvents: {
+      items: PayEventHistoryItem[]
+      pageInfo: { hasNextPage: boolean; endCursor: string }
+    }
+  }
+
+  try {
+    const data: PayEventsResponse = await client.request<PayEventsResponse>(PAY_EVENTS_HISTORY_QUERY, {
+      projectId: parseInt(projectId),
+      chainId,
+      version,
+      limit,
+      after: after || null,
+    })
+
+    return {
+      items: data.payEvents.items,
+      hasNextPage: data.payEvents.pageInfo.hasNextPage,
+      endCursor: data.payEvents.pageInfo.hasNextPage ? data.payEvents.pageInfo.endCursor : null,
+    }
+  } catch (err) {
+    console.error('Failed to fetch pay events page:', err)
+    return { items: [], hasNextPage: false, endCursor: null }
+  }
+}
+
 // Fetch cash out events history for redemption visualization
 export async function fetchCashOutEventsHistory(
   projectId: string,
@@ -2906,6 +2949,49 @@ export async function fetchCashOutEventsHistory(
   } catch (err) {
     console.error('Failed to fetch cash out events history:', err)
     return []
+  }
+}
+
+// Paginated version - returns single page with cursor info
+export type CashOutEventsPage = {
+  items: CashOutEventHistoryItem[]
+  hasNextPage: boolean
+  endCursor: string | null
+}
+
+export async function fetchCashOutEventsPage(
+  projectId: string,
+  chainId: number,
+  version: number = 5,
+  limit: number = 15,
+  after?: string | null
+): Promise<CashOutEventsPage> {
+  const client = getClient(getNetworkOption(chainId))
+
+  type CashOutEventsResponse = {
+    cashOutTokensEvents: {
+      items: CashOutEventHistoryItem[]
+      pageInfo: { hasNextPage: boolean; endCursor: string }
+    }
+  }
+
+  try {
+    const data: CashOutEventsResponse = await client.request<CashOutEventsResponse>(CASH_OUT_EVENTS_HISTORY_QUERY, {
+      projectId: parseInt(projectId),
+      chainId,
+      version,
+      limit,
+      after: after || null,
+    })
+
+    return {
+      items: data.cashOutTokensEvents.items,
+      hasNextPage: data.cashOutTokensEvents.pageInfo.hasNextPage,
+      endCursor: data.cashOutTokensEvents.pageInfo.hasNextPage ? data.cashOutTokensEvents.pageInfo.endCursor : null,
+    }
+  } catch (err) {
+    console.error('Failed to fetch cash out events page:', err)
+    return { items: [], hasNextPage: false, endCursor: null }
   }
 }
 
