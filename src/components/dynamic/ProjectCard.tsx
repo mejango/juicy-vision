@@ -1371,6 +1371,97 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
         {/* Scrollable content area */}
         <div className="flex-1 overflow-y-auto">
+          {/* NFT Tier selector - horizontal carousel */}
+          {nftTiers.length > 0 && (
+            <div className="px-4 mb-3">
+              <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Shop
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {nftTiers.slice(0, 6).map(tier => {
+                  const quantity = tierQuantities[tier.tierId] || 0
+                  const isSelected = quantity > 0
+                  const exceedsSupply = quantity > tier.remainingSupply
+                  return (
+                    <div
+                      key={tier.tierId}
+                      className={`relative flex-shrink-0 w-24 border transition-colors ${
+                        isSelected
+                          ? exceedsSupply ? 'border-orange-500 bg-orange-500/10' : 'border-green-500 bg-green-500/10'
+                          : isDark ? 'border-white/10 hover:border-white/20' : 'border-gray-200 hover:border-gray-300'
+                      } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      onClick={() => !isPaymentLocked && handleTierSelect(tier)}
+                    >
+                      {/* Quantity badge */}
+                      {isSelected && (
+                        <div className={`absolute -top-2 -right-2 z-10 min-w-[20px] h-5 px-1 flex items-center justify-center text-xs font-bold rounded-full ${
+                          exceedsSupply ? 'bg-orange-500 text-white' : 'bg-green-500 text-white'
+                        }`}>
+                          {quantity}
+                        </div>
+                      )}
+                      <div className="w-full aspect-square overflow-hidden bg-white">
+                        <TierPreviewImage
+                          tier={tier}
+                          hookAddress={nftHookAddress}
+                          chainId={parseInt(selectedChainId)}
+                          isDark={isDark}
+                          size="large"
+                          onMetadataLoaded={handleTierMetadataLoaded}
+                        />
+                      </div>
+                      <div className="p-1.5 text-left">
+                        <div className={`text-[10px] font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                          {getTierDisplayName(tier)}
+                        </div>
+                        <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {tier.currency === 2 ? `$${formatEther(tier.price)}` : `${formatEther(tier.price)} ETH`}
+                        </div>
+                      </div>
+                      {/* Quantity controls when selected */}
+                      {isSelected && (
+                        <div
+                          className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-1 py-0.5 bg-black/60"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={() => adjustTierQuantity(tier.tierId, -1)}
+                            className="w-5 h-5 flex items-center justify-center text-white hover:bg-white/20 rounded"
+                          >
+                            −
+                          </button>
+                          <span className="text-xs text-white font-medium">{quantity}</span>
+                          <button
+                            onClick={() => adjustTierQuantity(tier.tierId, 1)}
+                            className="w-5 h-5 flex items-center justify-center text-white hover:bg-white/20 rounded"
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {nftTiers.length > 6 && (
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('juice:open-shop'))}
+                    className={`flex-shrink-0 w-24 flex items-center justify-center text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    +{nftTiers.length - 6} more
+                  </button>
+                )}
+              </div>
+              {selectedTierIds.length > 0 && !nftHookFlags?.preventOverspending && (
+                <button
+                  onClick={() => { setTierQuantities({}); setAmount('') }}
+                  className={`mt-2 text-xs ${isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  Or pay a custom amount
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="px-4">
             {/* Token preview */}
             {(amountNum > 0 && expectedTokens !== null) || selectedTierIds.length > 0 ? (
