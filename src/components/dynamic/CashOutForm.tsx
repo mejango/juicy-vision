@@ -187,7 +187,7 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
                   isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
                 }`}>
                   {availableChains.map(chain => {
-                    const info = CHAINS[chain.chainId]
+                    const info = CHAINS[chain.chainId] || MAINNET_CHAINS[chain.chainId]
                     if (!info) return null
                     return (
                       <button
@@ -251,7 +251,7 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
             <button
               onClick={handleCashOut}
               disabled={!tokenAmount || parseFloat(tokenAmount) <= 0 || isLocked}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
+              className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
                 !tokenAmount || parseFloat(tokenAmount) <= 0 || isLocked
                   ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                   : 'bg-juice-cyan hover:bg-juice-cyan/90 text-black'
