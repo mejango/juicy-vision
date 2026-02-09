@@ -5,7 +5,7 @@ import { useAccount } from 'wagmi'
 import { createPortal } from 'react-dom'
 import { useThemeStore, useChatStore } from '../stores'
 import { useManagedWallet, useIsMobile } from '../hooks'
-import { CHAINS } from '../constants'
+import { CHAINS, MAINNET_CHAINS } from '../constants'
 import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, fetchSuckerGroupBalance, isRevnet, fetchRevnetOperator, fetchEthPrice, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../utils/ens'
 import { getProjectSupporters, type ProjectConversation } from '../api/projectConversations'
@@ -200,7 +200,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   // Balance tooltip state
   const [showBalanceTooltip, setShowBalanceTooltip] = useState(false)
 
-  const chain = CHAINS[chainId]
+  const chain = CHAINS[chainId] || MAINNET_CHAINS[chainId]
 
   // Get current user's address from wallet connections
   const { address: wagmiAddress } = useAccount()
