@@ -418,6 +418,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   // $JUICY project ID (using NANA as placeholder until real deployment)
   const JUICY_PROJECT_ID = 1
   const JUICY_FEE_PERCENT = 2.5
+  // Fallback issuance rate for NANA (~1M tokens per ETH) when rate can't be fetched
+  const NANA_FALLBACK_RATE = 1000000
 
   // Use connected chains if available, otherwise fall back to all chains
   // Detect if this is a testnet project based on initial chainId
@@ -744,12 +746,15 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
   // Calculate $JUICY tokens from fee (convert to ETH equivalent if USDC)
   const estimatedJuicyTokens = useMemo(() => {
-    if (!payUs || !juicyIssuanceRate || feeAmount <= 0) return 0
+    if (!payUs || feeAmount <= 0) return 0
+    // Use fetched rate or fallback to NANA_FALLBACK_RATE
+    const rate = juicyIssuanceRate?.tokensPerEth || NANA_FALLBACK_RATE
     let feeEthEquivalent = feeAmount
-    if (selectedToken === 'USDC' && ethPrice) {
-      feeEthEquivalent = feeAmount / ethPrice
+    if (selectedToken === 'USDC' || selectedToken === 'PAY_CREDITS') {
+      // Convert USD to ETH equivalent
+      feeEthEquivalent = ethPrice ? feeAmount / ethPrice : feeAmount / 2500 // fallback ~$2500/ETH
     }
-    return feeEthEquivalent * juicyIssuanceRate.tokensPerEth
+    return feeEthEquivalent * rate
   }, [payUs, juicyIssuanceRate, feeAmount, selectedToken, ethPrice])
 
   // Check if form should be locked due to active/completed payment
