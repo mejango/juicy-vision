@@ -466,20 +466,14 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       {(connectedChains.length > 0 ? connectedChains : chain ? [{ chainId, projectId }] : []).map(cc => {
                         const ccChain = CHAINS[cc.chainId] || MAINNET_CHAINS[cc.chainId]
                         if (!ccChain) return null
-                        const isCurrentChain = cc.chainId === chainId
                         return (
                           <button
                             key={cc.chainId}
                             onClick={() => navigate(`/${ccChain.slug}:${cc.projectId}`)}
-                            className={`px-2 py-0.5 text-xs font-medium rounded-full transition-all ${
-                              isCurrentChain
-                                ? 'ring-1 ring-offset-1 ring-offset-transparent'
-                                : 'opacity-60 hover:opacity-100'
-                            }`}
+                            className="px-2 py-0.5 text-xs font-medium rounded-full transition-opacity hover:opacity-80"
                             style={{
-                              backgroundColor: ccChain.color + (isCurrentChain ? '30' : '20'),
+                              backgroundColor: ccChain.color + '20',
                               color: ccChain.color,
-                              ['--tw-ring-color' as string]: isCurrentChain ? ccChain.color : undefined
                             }}
                             title={`View on ${ccChain.name}`}
                           >
@@ -868,20 +862,14 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   {(connectedChains.length > 0 ? connectedChains : chain ? [{ chainId, projectId }] : []).map(cc => {
                     const ccChain = CHAINS[cc.chainId] || MAINNET_CHAINS[cc.chainId]
                     if (!ccChain) return null
-                    const isCurrentChain = cc.chainId === chainId
                     return (
                       <button
                         key={cc.chainId}
                         onClick={() => navigate(`/${ccChain.slug}:${cc.projectId}`)}
-                        className={`px-2 py-0.5 text-xs font-medium rounded-full transition-all ${
-                          isCurrentChain
-                            ? 'ring-1 ring-offset-1 ring-offset-transparent'
-                            : 'opacity-60 hover:opacity-100'
-                        }`}
+                        className="px-2 py-0.5 text-xs font-medium rounded-full transition-opacity hover:opacity-80"
                         style={{
-                          backgroundColor: ccChain.color + (isCurrentChain ? '30' : '20'),
+                          backgroundColor: ccChain.color + '20',
                           color: ccChain.color,
-                          ['--tw-ring-color' as string]: isCurrentChain ? ccChain.color : undefined
                         }}
                         title={`View on ${ccChain.name}`}
                       >
