@@ -279,10 +279,13 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
     )
   }
 
+  // Check if cash outs are enabled on any chain (tax rate < 10000 = 100%)
+  const cashOutsEnabled = chainTokenData.some(cd => cd.cashOutTaxRate < 10000)
+
   return (
     <div className="space-y-4">
       <ExplainerMessage>
-        Project membership is represented by tokens. Token holders can cash out their share of the treasury.
+        Project membership is represented by tokens.{cashOutsEnabled && ' Token holders can cash out their share of the treasury.'}
       </ExplainerMessage>
 
       {/* Your Balance */}
@@ -402,6 +405,9 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
       </div>
 
       {/* Reserved Tokens Section */}
+      <ExplainerMessage>
+        A portion of tokens from each payment can be reserved for the project admin and split among recipients.
+      </ExplainerMessage>
       <div className={`p-4 border ${
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
       }`}>
@@ -456,42 +462,27 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         </div>
 
         {/* Pending reserved tokens */}
-        <div className={`p-3 mb-3 ${
-          hasPendingTokens
-            ? isDark ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-amber-50 border border-amber-200'
-            : isDark ? 'bg-white/5' : 'bg-gray-100'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span className={`text-xs font-medium ${
-              hasPendingTokens
-                ? isDark ? 'text-amber-300' : 'text-amber-700'
-                : isDark ? 'text-gray-400' : 'text-gray-500'
-            }`}>
-              Pending Distribution
+        <div className="flex items-center justify-between mb-3">
+          <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            Pending distribution
+          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {pendingTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${tokenSymbol}
             </span>
-            <div className="flex items-center gap-2">
-              <span className={`font-mono text-sm ${hasPendingTokens ? 'text-amber-400' : isDark ? 'text-white' : 'text-gray-900'}`}>
-                {pendingTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${tokenSymbol}
-              </span>
-              {hasPendingTokens && (
-                <button
-                  onClick={() => setShowModal(true)}
-                  className={`px-2 py-0.5 text-xs font-medium transition-colors ${
-                    isDark
-                      ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
-                      : 'bg-amber-200 text-amber-800 hover:bg-amber-300'
-                  }`}
-                >
-                  Distribute
-                </button>
-              )}
-            </div>
+            {hasPendingTokens && (
+              <button
+                onClick={() => setShowModal(true)}
+                className={`px-2 py-0.5 text-xs font-medium transition-colors ${
+                  isDark
+                    ? 'bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white'
+                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                }`}
+              >
+                Distribute
+              </button>
+            )}
           </div>
-          {hasPendingTokens && (
-            <div className={`text-xs mt-1 ${isDark ? 'text-amber-400/70' : 'text-amber-600'}`}>
-              Membership rewards waiting to be sent to contributors
-            </div>
-          )}
         </div>
 
         {/* Reserved token recipients */}
