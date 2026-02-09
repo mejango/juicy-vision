@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import { useWalletBalances } from '../../hooks'
-import { CHAINS } from '../../constants'
+import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import type { PaymentOption } from '../../services/relayr'
 
 interface ChainPaymentSelectorProps {
@@ -114,11 +114,11 @@ export default function ChainPaymentSelector({
           <div className="flex items-center gap-3">
             <span
               className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: CHAINS[selectedOption.chainId]?.color || '#888' }}
+              style={{ backgroundColor: (CHAINS[selectedOption.chainId] || MAINNET_CHAINS[selectedOption.chainId])?.color || '#888' }}
             />
             <div className="text-left">
               <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {CHAINS[selectedOption.chainId]?.name || `Chain ${selectedOption.chainId}`}
+                {(CHAINS[selectedOption.chainId] || MAINNET_CHAINS[selectedOption.chainId])?.name || `Chain ${selectedOption.chainId}`}
               </div>
               <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 {formatAmount(selectedOption.amount)}
@@ -152,7 +152,7 @@ export default function ChainPaymentSelector({
             isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
           }`}>
             {sortedOptions.map((option, idx) => {
-              const chainInfo = CHAINS[option.chainId]
+              const chainInfo = CHAINS[option.chainId] || MAINNET_CHAINS[option.chainId]
               const balance = getChainBalance(option.chainId)
               const hasEnough = balance >= BigInt(option.amount)
               const isSelected = option.chainId === selectedChainId

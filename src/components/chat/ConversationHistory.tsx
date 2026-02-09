@@ -23,7 +23,7 @@ import {
 import { fetchProjectsByOwner, type Project } from '../../services/bendystraw'
 import { useManagedWallet } from '../../hooks'
 import { resolveIpfsUri } from '../../utils/ipfs'
-import { CHAINS } from '../../constants'
+import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import {
   getOwnerConversations,
   getSupporterConversations,
@@ -1073,7 +1073,7 @@ export default function ConversationHistory() {
 
   // Helper to get chain name
   const getChainName = (chainId: number) => {
-    const chain = CHAINS[chainId]
+    const chain = CHAINS[chainId] || MAINNET_CHAINS[chainId]
     return chain?.name || `Chain ${chainId}`
   }
 
@@ -1252,7 +1252,7 @@ export default function ConversationHistory() {
                 <div
                   key={project.id}
                   onClick={() => {
-                    const chain = CHAINS[project.chainId]
+                    const chain = CHAINS[project.chainId] || MAINNET_CHAINS[project.chainId]
                     if (chain) {
                       // Use simple slug format without hyphens (e.g., opsep instead of op-sep)
                       const urlSlug = chain.slug.replace(/-/g, '')

@@ -18,7 +18,7 @@ import {
   type ProjectRuleset,
 } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
-import { VIEM_CHAINS, RPC_ENDPOINTS, CHAINS, type SupportedChainId } from '../../constants'
+import { VIEM_CHAINS, RPC_ENDPOINTS, CHAINS, MAINNET_CHAINS, type SupportedChainId } from '../../constants'
 import { SendReservedTokensModal } from '../payment'
 import HoldersChart from './charts/HoldersChart'
 
@@ -84,7 +84,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
 
   const chainIdNum = parseInt(chainId)
-  const chain = CHAINS[chainIdNum]
+  const chain = CHAINS[chainIdNum] || MAINNET_CHAINS[chainIdNum]
 
   // Get active chain data
   const activeChainData = chainTokenData.find(cd => cd.chainId === selectedChainId) || chainTokenData[0]
