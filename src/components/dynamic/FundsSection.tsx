@@ -428,16 +428,18 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
 
             {/* Cash Out button */}
             {onCashOut && isConnected && (
-              <button
-                onClick={onCashOut}
-                className={`w-full px-4 py-2 text-sm font-medium transition-colors ${
-                  isDark
-                    ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                    : 'bg-green-100 text-green-700 hover:bg-green-200'
-                }`}
-              >
-                Cash Out Tokens
-              </button>
+              <div className="flex justify-end">
+                <button
+                  onClick={onCashOut}
+                  className={`px-2 py-1 text-xs transition-colors ${
+                    isDark
+                      ? 'text-green-400 hover:text-green-300'
+                      : 'text-green-600 hover:text-green-700'
+                  }`}
+                >
+                  cash out
+                </button>
+              </div>
             )}
             {onCashOut && !isConnected && (
               <div className={`text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
