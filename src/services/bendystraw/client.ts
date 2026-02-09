@@ -2385,26 +2385,27 @@ export async function fetchQueuedRulesets(
   }
 }
 
-// Upcoming ruleset info with decoded metadata
-export interface UpcomingRulesetInfo {
+// Queued ruleset info with decoded metadata
+export interface QueuedRulesetInfo {
   cycleNumber: number
   id: string
   start: number
   duration: number
   weight: string
   weightCutPercent: number
-  cashOutTaxRate: number
+  cashOutTaxRate: number // 0-10000 basis points
   reservedPercent: number
   baseCurrency: number
   pausePay: boolean
 }
 
-// Fetch the upcoming ruleset with its fully decoded metadata
-// This is useful for showing warnings about upcoming changes (e.g., cash out tax rate changes)
+// Fetch the latest QUEUED ruleset with its fully decoded metadata
+// This only returns a ruleset if one has been explicitly queued (different from current)
+// Use this for showing warnings about upcoming parameter changes
 export async function fetchUpcomingRulesetWithMetadata(
   projectId: string,
   chainId: number
-): Promise<UpcomingRulesetInfo | null> {
+): Promise<QueuedRulesetInfo | null> {
   const publicClient = getPublicClient(chainId)
   if (!publicClient) return null
 
@@ -2412,36 +2413,44 @@ export async function fetchUpcomingRulesetWithMetadata(
     // Get the correct contracts for this project
     const contracts = await getContractsForProject(projectId, chainId)
 
-    // Fetch the upcoming ruleset from JBRulesets
-    const upcomingRuleset = await publicClient.readContract({
+    // Use latestQueuedOf to get explicitly QUEUED rulesets only
+    // This won't return anything if the project is just cycling through the same config
+    const [queuedRuleset, _approvalStatus] = await publicClient.readContract({
       address: contracts.JBRulesets,
       abi: JB_RULESETS_ABI,
-      functionName: 'upcomingOf',
+      functionName: 'latestQueuedOf',
       args: [BigInt(projectId)],
     })
 
-    // If no upcoming ruleset, return null
-    if (!upcomingRuleset || Number(upcomingRuleset.cycleNumber) === 0) {
+    // If no queued ruleset, return null
+    if (!queuedRuleset || Number(queuedRuleset.cycleNumber) === 0) {
       return null
     }
 
     // Decode the packed metadata
-    const decodedMetadata = decodeRulesetMetadata(upcomingRuleset.metadata)
+    const decodedMetadata = decodeRulesetMetadata(queuedRuleset.metadata)
+
+    // Validate cash out tax rate is within bounds (0-10000)
+    const cashOutTaxRate = decodedMetadata.cashOutTaxRate
+    if (cashOutTaxRate < 0 || cashOutTaxRate > 10000) {
+      console.warn(`Invalid cashOutTaxRate ${cashOutTaxRate} for queued ruleset, ignoring`)
+      return null
+    }
 
     return {
-      cycleNumber: Number(upcomingRuleset.cycleNumber),
-      id: String(upcomingRuleset.id),
-      start: Number(upcomingRuleset.start),
-      duration: Number(upcomingRuleset.duration),
-      weight: String(upcomingRuleset.weight),
-      weightCutPercent: Number(upcomingRuleset.weightCutPercent),
-      cashOutTaxRate: decodedMetadata.cashOutTaxRate,
+      cycleNumber: Number(queuedRuleset.cycleNumber),
+      id: String(queuedRuleset.id),
+      start: Number(queuedRuleset.start),
+      duration: Number(queuedRuleset.duration),
+      weight: String(queuedRuleset.weight),
+      weightCutPercent: Number(queuedRuleset.weightCutPercent),
+      cashOutTaxRate,
       reservedPercent: decodedMetadata.reservedPercent,
       baseCurrency: decodedMetadata.baseCurrency,
       pausePay: decodedMetadata.pausePay,
     }
   } catch (err) {
-    console.error('Failed to fetch upcoming ruleset with metadata:', err)
+    console.error('Failed to fetch queued ruleset with metadata:', err)
     return null
   }
 }

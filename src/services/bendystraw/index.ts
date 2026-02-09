@@ -61,7 +61,7 @@ export {
   type RevnetStage,
   type RulesetHistoryEntry,
   type SimpleRuleset,
-  type UpcomingRulesetInfo,
+  type QueuedRulesetInfo,
   type JBSplitData,
   type FundAccessLimits,
   type ProjectSplitsData,

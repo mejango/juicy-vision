@@ -16,7 +16,7 @@ import {
   type ConnectedChain,
   type JBSplitData,
   type FundAccessLimits,
-  type UpcomingRulesetInfo,
+  type QueuedRulesetInfo,
 } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import RedemptionCurveChart from './charts/RedemptionCurveChart'
@@ -80,7 +80,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   const [loading, setLoading] = useState(true)
   const [suckerBalance, setSuckerBalance] = useState<SuckerGroupBalance | null>(null)
   const [chainFundsData, setChainFundsData] = useState<ChainFundsData[]>([])
-  const [upcomingRuleset, setUpcomingRuleset] = useState<UpcomingRulesetInfo | null>(null)
+  const [upcomingRuleset, setUpcomingRuleset] = useState<QueuedRulesetInfo | null>(null)
   const [showSplits, setShowSplits] = useState(false)
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
 
@@ -447,8 +447,9 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               if (currentTax === upcomingTax) return null
 
               const isIncreasing = upcomingTax > currentTax
-              const currentTaxPercent = (currentTax / 100).toFixed(1)
-              const upcomingTaxPercent = (upcomingTax / 100).toFixed(1)
+              // Display as decimal (0-1) not percentage
+              const currentTaxDecimal = (currentTax / 10000).toFixed(2)
+              const upcomingTaxDecimal = (upcomingTax / 10000).toFixed(2)
               const effectiveDate = new Date(upcomingRuleset.start * 1000)
               const dateStr = effectiveDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
@@ -477,7 +478,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                       ? isDark ? 'text-purple-300/80' : 'text-purple-600'
                       : isDark ? 'text-green-300/80' : 'text-green-600'
                   }`}>
-                    Tax changing from {currentTaxPercent}% to {upcomingTaxPercent}% on {dateStr}.
+                    Tax changing from {currentTaxDecimal} to {upcomingTaxDecimal} on {dateStr}.
                     {isIncreasing
                       ? ` Your tokens will be worth ~${Math.abs(parseInt(valueChange))}% less after this change.`
                       : ` Your tokens will be worth ~${valueChange}% more after this change.`
