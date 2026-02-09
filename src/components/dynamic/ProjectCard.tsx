@@ -1473,10 +1473,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                 <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>You get:</span>
                 {amountNum > 0 && expectedTokens !== null && (
-                  <span> ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
+                  <span> ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
                 )}
                 {payUs && estimatedJuicyTokens > 0 && (
-                  <span> + {estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} $JUICY</span>
+                  <span> + {estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} JUICY</span>
                 )}
                 {Object.keys(tierQuantities).length > 0 && (
                   <div className="mt-1">
@@ -2086,10 +2086,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
             <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>You get:</span>
             {amountNum > 0 && expectedTokens !== null && (
-              <span> ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
+              <span> ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
             )}
             {payUs && estimatedJuicyTokens > 0 && (
-              <span> + {estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} $JUICY</span>
+              <span> + {estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} JUICY</span>
             )}
             {Object.keys(tierQuantities).length > 0 && (
               <div className="mt-1">
