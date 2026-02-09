@@ -1232,9 +1232,9 @@ export default function RulesetSchedule({
                           <span className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                             Cycle #{displayRuleset?.cycleNumber || 1}
                           </span>
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                          <span className={`px-1.5 py-0.5 text-[10px] rounded ${
                             isViewingCurrent
-                              ? 'border border-juice-orange text-juice-orange'
+                              ? isDark ? 'text-gray-500' : 'text-gray-400'
                               : isViewingUpcoming
                                 ? 'bg-purple-500/20 text-purple-400'
                                 : isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'
@@ -1649,9 +1649,9 @@ export default function RulesetSchedule({
                           <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
                             Stage {stage.stageNumber}
                           </span>
-                          <span className={`text-xs px-2 py-0.5 rounded ${
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                             isCurrent
-                              ? 'border border-juice-orange text-juice-orange'
+                              ? isDark ? 'text-gray-500' : 'text-gray-400'
                               : isPast
                                 ? isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'
                                 : 'bg-purple-500/20 text-purple-400'
