@@ -1417,7 +1417,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             />
 
             {/* Join Juicy checkbox - with padding below */}
-            <div className="mt-2 pb-4">
+            <div className="mt-2 pb-10">
               <label className={`group relative flex items-center gap-2 cursor-pointer ${
                 isDark ? 'text-gray-300' : 'text-gray-600'
               }`}>
@@ -1429,8 +1429,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 />
                 <span className="text-sm">
                   {amountNum > 0 && estimatedJuicyTokens > 0
-                    ? `Join Juicy and get ~${estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })} $NANA`
-                    : `Join Juicy (+${JUICY_FEE_PERCENT}%)`
+                    ? `Join Juicy (${JUICY_FEE_PERCENT}%, get ~${estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })} $NANA)`
+                    : `Join Juicy (${JUICY_FEE_PERCENT}%)`
                   }
                 </span>
                 {/* Hover tooltip */}
@@ -2047,8 +2047,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           />
           <span className="text-sm">
             {amountNum > 0 && estimatedJuicyTokens > 0
-              ? `Join Juicy and get ~${estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })} $NANA`
-              : `Join Juicy (+${JUICY_FEE_PERCENT}%)`
+              ? `Join Juicy (${JUICY_FEE_PERCENT}%, get ~${estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })} $NANA)`
+              : `Join Juicy (${JUICY_FEE_PERCENT}%)`
             }
           </span>
           {/* Hover tooltip */}
