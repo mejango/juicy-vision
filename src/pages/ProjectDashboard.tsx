@@ -559,29 +559,24 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
           {/* Two-column layout */}
           <div className="flex-1 flex overflow-hidden">
-            {/* Left: Pay/Activity sidebar */}
-            <div className={`w-[380px] shrink-0 border-r overflow-y-auto ${
+            {/* Left: Pay/Activity sidebar - flex column with sticky header */}
+            <div className={`w-[380px] shrink-0 border-r flex flex-col ${
               isDark ? 'border-white/10' : 'border-gray-200'
             }`}>
-              {/* Pay/Cash out panel - pay field inside is sticky */}
+              {/* Pay/Cash out panel - outputs sticky header + scrollable content */}
               <ProjectCard
                 projectId={String(projectId)}
                 chainId={String(chainId)}
                 embedded
-              />
-
-              {/* Activity Feed */}
-              <div className={`px-4 pt-3 pb-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Activity
-                </span>
-              </div>
-              <ActivityFeed
-                projectId={String(projectId)}
-                chainId={String(chainId)}
-                limit={15}
-                compact
-              />
+              >
+                {/* Activity Feed - rendered inside ProjectCard's scrollable area */}
+                <ActivityFeed
+                  projectId={String(projectId)}
+                  chainId={String(chainId)}
+                  limit={15}
+                  compact
+                />
+              </ProjectCard>
             </div>
 
             {/* Right: Main content (scrollable) */}
