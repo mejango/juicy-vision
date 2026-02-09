@@ -1530,7 +1530,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 <div className={`absolute left-0 bottom-full mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap ${
                   isDark ? 'bg-juice-dark border border-white/20 text-gray-300' : 'bg-white border border-gray-200 text-gray-600 shadow-sm'
                 }`}>
-                  {JUICY_FEE_PERCENT}% of your payment supports Juicy development
+                  Help grow the network
                 </div>
               </label>
             </div>
@@ -2145,7 +2145,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           <div className={`absolute left-0 bottom-full mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap ${
             isDark ? 'bg-juice-dark border border-white/20 text-gray-300' : 'bg-white border border-gray-200 text-gray-600 shadow-sm'
           }`}>
-            {JUICY_FEE_PERCENT}% of your payment supports Juicy development
+            Help grow the network
           </div>
         </label>
       </div>
