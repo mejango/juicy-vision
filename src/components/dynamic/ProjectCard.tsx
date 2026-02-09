@@ -1244,7 +1244,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
                   placeholder="0.00"
                   disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
-                  style={{ width: `${Math.max(4, (amount || '0.00').toString().length + 1)}ch` }}
+                  style={{ width: `${Math.max(5, (amount || '0.00').toString().length + 2)}ch` }}
                   className={`min-w-[4ch] pl-3 py-2 text-sm bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                     isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
                   } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
@@ -1926,7 +1926,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
                 placeholder="0.00"
                 disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
-                style={{ width: `${Math.max(4, (amount || '0.00').toString().length + 1)}ch` }}
+                style={{ width: `${Math.max(5, (amount || '0.00').toString().length + 2)}ch` }}
                 className={`min-w-[4ch] pl-3 py-2 text-sm bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                   isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
                 } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
