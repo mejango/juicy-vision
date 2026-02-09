@@ -2385,6 +2385,67 @@ export async function fetchQueuedRulesets(
   }
 }
 
+// Upcoming ruleset info with decoded metadata
+export interface UpcomingRulesetInfo {
+  cycleNumber: number
+  id: string
+  start: number
+  duration: number
+  weight: string
+  weightCutPercent: number
+  cashOutTaxRate: number
+  reservedPercent: number
+  baseCurrency: number
+  pausePay: boolean
+}
+
+// Fetch the upcoming ruleset with its fully decoded metadata
+// This is useful for showing warnings about upcoming changes (e.g., cash out tax rate changes)
+export async function fetchUpcomingRulesetWithMetadata(
+  projectId: string,
+  chainId: number
+): Promise<UpcomingRulesetInfo | null> {
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) return null
+
+  try {
+    // Get the correct contracts for this project
+    const contracts = await getContractsForProject(projectId, chainId)
+
+    // Fetch the upcoming ruleset from JBRulesets
+    const upcomingRuleset = await publicClient.readContract({
+      address: contracts.JBRulesets,
+      abi: JB_RULESETS_ABI,
+      functionName: 'upcomingOf',
+      args: [BigInt(projectId)],
+    })
+
+    // If no upcoming ruleset, return null
+    if (!upcomingRuleset || Number(upcomingRuleset.cycleNumber) === 0) {
+      return null
+    }
+
+    // Decode the packed metadata
+    const decodedMetadata = decodeRulesetMetadata(upcomingRuleset.metadata)
+
+    return {
+      cycleNumber: Number(upcomingRuleset.cycleNumber),
+      id: String(upcomingRuleset.id),
+      start: Number(upcomingRuleset.start),
+      duration: Number(upcomingRuleset.duration),
+      weight: String(upcomingRuleset.weight),
+      weightCutPercent: Number(upcomingRuleset.weightCutPercent),
+      cashOutTaxRate: decodedMetadata.cashOutTaxRate,
+      reservedPercent: decodedMetadata.reservedPercent,
+      baseCurrency: decodedMetadata.baseCurrency,
+      pausePay: decodedMetadata.pausePay,
+    }
+  } catch (err) {
+    console.error('Failed to fetch upcoming ruleset with metadata:', err)
+    return null
+  }
+}
+
 // ============================================================================
 // SPLITS AND FUND ACCESS
 // ============================================================================

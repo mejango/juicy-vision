@@ -9,14 +9,17 @@ import {
   fetchProjectWithRuleset,
   fetchProjectSplits,
   fetchProjectTokenSupply,
+  fetchUpcomingRulesetWithMetadata,
   calculateFloorPrice,
   type SuckerGroupBalance,
   type DistributablePayout,
   type ConnectedChain,
   type JBSplitData,
   type FundAccessLimits,
+  type UpcomingRulesetInfo,
 } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
+import RedemptionCurveChart from './charts/RedemptionCurveChart'
 
 interface FundsSectionProps {
   projectId: string
@@ -77,6 +80,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   const [loading, setLoading] = useState(true)
   const [suckerBalance, setSuckerBalance] = useState<SuckerGroupBalance | null>(null)
   const [chainFundsData, setChainFundsData] = useState<ChainFundsData[]>([])
+  const [upcomingRuleset, setUpcomingRuleset] = useState<UpcomingRulesetInfo | null>(null)
   const [showSplits, setShowSplits] = useState(false)
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
 
@@ -178,6 +182,14 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
 
         const allChainData = await Promise.all(chainDataPromises)
         setChainFundsData(allChainData)
+
+        // Fetch upcoming ruleset to check for cash out tax changes
+        try {
+          const upcoming = await fetchUpcomingRulesetWithMetadata(projectId, chainIdNum)
+          setUpcomingRuleset(upcoming)
+        } catch {
+          // Silently ignore - upcoming ruleset is optional
+        }
 
         // Resolve ENS names for split beneficiaries
         const allBeneficiaries = new Set<string>()
@@ -371,6 +383,17 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               )}
             </div>
 
+            {/* Redemption curve visualization */}
+            {activeCashOut && activeCashOut.cashOutTaxRate > 0 && activeCashOut.cashOutTaxRate < 10000 && (
+              <div className="mb-3">
+                <RedemptionCurveChart
+                  cashOutTaxRate={activeCashOut.cashOutTaxRate}
+                  balance={BigInt(activeCashOut.balance)}
+                  supply={BigInt(activeCashOut.tokenSupply)}
+                />
+              </div>
+            )}
+
             {/* Per-chain cash out breakdown (if multi-chain) */}
             {cashOutEnabledChains.length > 1 && (
               <div className="mb-3">
@@ -412,6 +435,57 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                 </div>
               </div>
             )}
+
+            {/* Upcoming cash out tax change warning */}
+            {(() => {
+              if (!upcomingRuleset || !activeCashOut) return null
+
+              const currentTax = activeCashOut.cashOutTaxRate
+              const upcomingTax = upcomingRuleset.cashOutTaxRate
+
+              // Only show if tax rate is changing
+              if (currentTax === upcomingTax) return null
+
+              const isIncreasing = upcomingTax > currentTax
+              const currentTaxPercent = (currentTax / 100).toFixed(1)
+              const upcomingTaxPercent = (upcomingTax / 100).toFixed(1)
+              const effectiveDate = new Date(upcomingRuleset.start * 1000)
+              const dateStr = effectiveDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+              // Calculate approximate value impact
+              // Current retention = (10000 - currentTax) / 10000
+              // Upcoming retention = (10000 - upcomingTax) / 10000
+              const currentRetention = (10000 - currentTax) / 10000
+              const upcomingRetention = (10000 - upcomingTax) / 10000
+              const valueChange = ((upcomingRetention - currentRetention) / currentRetention * 100).toFixed(0)
+
+              return (
+                <div className={`p-2 mb-3 ${
+                  isIncreasing
+                    ? isDark ? 'bg-purple-500/10 border border-purple-500/20' : 'bg-purple-50 border border-purple-200'
+                    : isDark ? 'bg-green-500/10 border border-green-500/20' : 'bg-green-50 border border-green-200'
+                }`}>
+                  <div className={`text-xs font-medium ${
+                    isIncreasing
+                      ? isDark ? 'text-purple-400' : 'text-purple-700'
+                      : isDark ? 'text-green-400' : 'text-green-700'
+                  }`}>
+                    {isIncreasing ? 'Cash Out Tax Increasing' : 'Cash Out Tax Decreasing'}
+                  </div>
+                  <div className={`text-xs mt-1 ${
+                    isIncreasing
+                      ? isDark ? 'text-purple-300/80' : 'text-purple-600'
+                      : isDark ? 'text-green-300/80' : 'text-green-600'
+                  }`}>
+                    Tax changing from {currentTaxPercent}% to {upcomingTaxPercent}% on {dateStr}.
+                    {isIncreasing
+                      ? ` Your tokens will be worth ~${Math.abs(parseInt(valueChange))}% less after this change.`
+                      : ` Your tokens will be worth ~${valueChange}% more after this change.`
+                    }
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Surplus Allowance info */}
             {hasSurplusAllowance && activeFundLimits && (
