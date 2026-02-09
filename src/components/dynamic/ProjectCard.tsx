@@ -1524,10 +1524,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   className="w-3.5 h-3.5 rounded border-gray-300 text-juice-orange focus:ring-juice-orange"
                 />
                 <span className="text-sm">
-                  {amountNum > 0 && estimatedJuicyTokens > 0
-                    ? `Join Juicy (${JUICY_FEE_PERCENT}%, get ~${estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })} $NANA)`
-                    : `Join Juicy (${JUICY_FEE_PERCENT}%)`
-                  }
+                  Join Juicy ({JUICY_FEE_PERCENT}%)
                 </span>
                 {/* Hover tooltip */}
                 <div className={`absolute left-0 bottom-full mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap ${
@@ -2142,10 +2139,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             className="w-3.5 h-3.5 rounded border-gray-300 text-juice-orange focus:ring-juice-orange"
           />
           <span className="text-sm">
-            {amountNum > 0 && estimatedJuicyTokens > 0
-              ? `Join Juicy (${JUICY_FEE_PERCENT}%, get ~${estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })} $NANA)`
-              : `Join Juicy (${JUICY_FEE_PERCENT}%)`
-            }
+            Join Juicy ({JUICY_FEE_PERCENT}%)
           </span>
           {/* Hover tooltip */}
           <div className={`absolute left-0 bottom-full mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap ${
