@@ -14,6 +14,8 @@ import { QueryErrorPanel } from './components/debug/QueryErrorPanel'
 import { ChatContainer, ProtocolActivity, MascotPanel } from './components/chat'
 import ParticipantAvatars from './components/chat/ParticipantAvatars'
 import JoinChatPage from './components/JoinChatPage'
+import PaymentPage from './pages/pay/PaymentPage'
+import TerminalsPage from './pages/merchant/TerminalsPage'
 import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import { useChatStore, useThemeStore, type ChatMember } from './stores'
@@ -858,6 +860,9 @@ function MainApp() {
       <AppProviders>
         <BrowserRouter>
           <Routes>
+            <Route path="/pay/:sessionId" element={<PaymentPage />} />
+            <Route path="/merchant" element={<TerminalsPage />} />
+            <Route path="/merchant/terminals" element={<TerminalsPage />} />
             <Route path="/join/:code" element={<JoinChatPage />} />
             <Route path="/chat/:chatId" element={<ChatRouteHandler />} />
             <Route path="/:projectSlug" element={<ProjectRouteHandler />} />

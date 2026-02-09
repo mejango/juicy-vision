@@ -27,6 +27,7 @@ import { adminRouter } from './src/routes/admin.ts';
 import { hooksRouter } from './src/routes/hooks.ts';
 import projectConversationsRouter from './src/routes/projectConversations.ts';
 import { imagesRouter } from './src/routes/images.ts';
+import { terminalRouter } from './src/routes/terminal.ts';
 import { getConfig, validateConfigForAuth, validateConfigForEncryption, validateConfigForReserves } from './src/utils/config.ts';
 import { getPrimaryChainId } from '@shared/chains.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
@@ -38,6 +39,7 @@ import {
   processSpends as processJuiceSpends,
   processCashOuts as processJuiceCashOuts,
 } from './src/services/juice.ts';
+import { expireSessions as expireTerminalSessions } from './src/services/terminal.ts';
 import { runMigrations } from './src/db/migrate.ts';
 import { recoverOrphanedJobs } from './src/services/forge.ts';
 
@@ -90,7 +92,7 @@ app.use(
     },
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Session-ID', 'X-Wallet-Session'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Session-ID', 'X-Wallet-Session', 'X-Terminal-Key'],
   })
 );
 
@@ -157,6 +159,7 @@ app.route('/admin', adminRouter);
 app.route('/hooks', hooksRouter);
 app.route('/project-conversations', projectConversationsRouter);
 app.route('/images', imagesRouter);
+app.route('/terminal', terminalRouter);
 
 // ============================================================================
 // Static File Serving (disabled - frontend served separately in production)
@@ -301,6 +304,18 @@ if (config.env === 'development') {
       console.error('[Dev] Failed to process Juice cash outs:', error);
     }
   }, 5 * 60 * 1000);
+
+  // Expire old terminal payment sessions every minute
+  setInterval(async () => {
+    try {
+      const count = await expireTerminalSessions();
+      if (count > 0) {
+        console.log(`[Dev] Expired ${count} terminal payment sessions`);
+      }
+    } catch (error) {
+      console.error('[Dev] Failed to expire terminal sessions:', error);
+    }
+  }, 60 * 1000);
 } else {
   console.log('Production mode: Use GCP Cloud Scheduler for cron jobs');
 }
@@ -366,6 +381,15 @@ import {
   handleWsMessage,
   type WsClient,
 } from './src/services/websocket.ts';
+
+// Import Terminal WebSocket handler functions
+import {
+  registerSessionConnection,
+  removeSessionConnection,
+  handleTerminalWsMessage,
+  type TerminalWsClient,
+} from './src/services/terminalWs.ts';
+import { getSession } from './src/services/terminal.ts';
 import { checkPermission } from './src/services/chat.ts';
 import { queryOne } from './src/db/index.ts';
 import { generatePseudoAddress } from './src/utils/crypto.ts';
@@ -478,6 +502,56 @@ async function handleRequest(req: Request): Promise<Response> {
     socket.onerror = (err) => {
       console.error('[WS] Error:', err);
       if (client) removeConnection(client);
+    };
+
+    return response;
+  }
+
+  // Check if this is a WebSocket upgrade request for terminal sessions
+  const terminalWsMatch = url.pathname.match(/^\/terminal\/session\/([^\/]+)\/ws$/);
+  if (isWsUpgrade && terminalWsMatch) {
+    const sessionId = terminalWsMatch[1];
+    const role = url.searchParams.get('role') as 'terminal' | 'consumer' || 'consumer';
+
+    // Verify session exists
+    const session = await getSession(sessionId);
+    if (!session) {
+      return new Response('Session not found', { status: 404 });
+    }
+
+    // Only allow WebSocket for pending/paying sessions
+    if (!['pending', 'paying'].includes(session.status)) {
+      return new Response('Session not active', { status: 400 });
+    }
+
+    const { socket, response } = Deno.upgradeWebSocket(req);
+    let client: TerminalWsClient | null = null;
+
+    socket.onopen = () => {
+      client = {
+        socket,
+        sessionId,
+        role,
+        connectedAt: new Date(),
+      };
+      registerSessionConnection(client);
+      console.log(`[TerminalWS] ${role} connected to session ${sessionId}`);
+    };
+
+    socket.onmessage = (event) => {
+      if (client) handleTerminalWsMessage(client, event.data.toString());
+    };
+
+    socket.onclose = () => {
+      if (client) {
+        removeSessionConnection(client);
+        console.log(`[TerminalWS] ${role} disconnected from session ${sessionId}`);
+      }
+    };
+
+    socket.onerror = (err) => {
+      console.error('[TerminalWS] Error:', err);
+      if (client) removeSessionConnection(client);
     };
 
     return response;

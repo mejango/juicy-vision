@@ -5,6 +5,11 @@ import { getPasskeyWallet, getStoredCredentialId } from '../services/passkeyWall
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 const SMART_ACCOUNT_CACHE_KEY = 'juice-smart-account-address'
 
+// Log API URL once on load (even in production) to help diagnose connection issues
+if (!API_BASE_URL) {
+  console.warn('[ManagedWallet] VITE_API_URL not set - API calls will go to current origin')
+}
+
 // Debug logging - only log once per unique message to avoid spam
 const DEBUG = import.meta.env.DEV
 const loggedMessages = new Set<string>()
@@ -185,6 +190,8 @@ export function useManagedWallet(): ManagedWalletData & { isManagedMode: boolean
       setError(null) // Clear any previous error
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to fetch wallet data'
+      // Log in production to help diagnose issues
+      console.error('[ManagedWallet] API error:', errorMsg, { apiUrl: API_BASE_URL, hasCachedAddress: !!cachedAddress })
       log('API error: ' + errorMsg + (cachedAddress ? ' (using cached fallback)' : ' (no fallback)'))
       // Only set error if we don't have a cached fallback address
       if (!cachedAddress) {

@@ -1361,7 +1361,7 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }:
   const { t } = useTranslation()
   const isDark = theme === 'dark'
   const { user, token, passkeys, loadPasskeys, registerPasskey, deletePasskey, isPasskeyAvailable, isLoading } = useAuthStore()
-  const { address, balances, loading } = useManagedWallet()
+  const { address, balances, loading, error: walletError, refetch: refetchWallet } = useManagedWallet()
   const { balance: juiceBalance, loading: juiceLoading } = useJuiceBalance()
   const [copied, setCopied] = useState(false)
   const [showPasskeys, setShowPasskeys] = useState(false)
@@ -1518,6 +1518,13 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }:
             >
               {shortenAddress(address, 6)}
             </button>
+          ) : walletError ? (
+            <button
+              onClick={refetchWallet}
+              className={`text-sm ${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'} transition-colors`}
+            >
+              Failed to load. Tap to retry.
+            </button>
           ) : (
             <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Loading...</span>
           )}
@@ -1537,6 +1544,13 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }:
           <div className={`px-3 py-3 text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             Loading...
           </div>
+        ) : walletError ? (
+          <button
+            onClick={refetchWallet}
+            className={`w-full px-3 py-3 text-xs text-center ${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'} transition-colors`}
+          >
+            Failed to load balances. Tap to retry.
+          </button>
         ) : (
           <div className={`divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
             {/* Pay Credits - fiat payment balance */}

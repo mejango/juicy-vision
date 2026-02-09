@@ -1,0 +1,23 @@
+[Unit]
+Description=PayTerm Payment Terminal
+After=graphical.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/payterm/terminal
+Environment=DISPLAY=:0
+Environment=ELECTRON_NO_SANDBOX=1
+ExecStart=/usr/bin/npm start -- --kiosk
+Restart=always
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/pi/.config/payterm-terminal
+
+[Install]
+WantedBy=graphical.target

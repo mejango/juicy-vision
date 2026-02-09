@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAM_ID.app.juicyvision.payterm",
+        "paths": [
+          "/s/*",
+          "/pay/*"
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "TEAM_ID.app.juicyvision.payterm"
+    ]
+  }
+}

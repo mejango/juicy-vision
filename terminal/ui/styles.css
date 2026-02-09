@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* PayTerm Terminal Styles */
+:root {
+  --juice-cyan: #5CEBDF;
+  --juice-orange: #F5A623;
+  --juice-dark: #1a1a1a;
+  --juice-dark-lighter: #2a2a2a;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--juice-dark);
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+/* Keypad button styles */
+.keypad-button {
+  @apply w-full aspect-square flex items-center justify-center text-2xl font-semibold
+         bg-white/5 hover:bg-white/10 active:bg-white/20
+         border border-white/10 transition-all duration-150;
+}
+
+.keypad-button:active {
+  transform: scale(0.95);
+}
+
+/* QR code container */
+.qr-container {
+  @apply bg-white p-4 rounded-lg;
+}
+
+/* Success animation */
+@keyframes success-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.9; }
+}
+
+.success-animation {
+  animation: success-pulse 1s ease-in-out infinite;
+}
+
+/* Amount display */
+.amount-display {
+  @apply text-5xl font-bold text-white tracking-tight;
+}
+
+/* Status indicator */
+.status-dot {
+  @apply w-2 h-2 rounded-full;
+}
+
+.status-dot.online {
+  @apply bg-green-500;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+}
+
+.status-dot.offline {
+  @apply bg-red-500;
+}
+
+/* Touch-friendly scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}

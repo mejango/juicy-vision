@@ -1,68 +1,81 @@
-# Shop Tab for 721 NFT Projects
+# Cost Management, Vibeengineering, and Security Hardening
 
-## Status: Complete
+## Completed Tasks
 
-## Changes Made
+### Phase 1: Cost Management
 
-### 1. Updated `src/pages/ProjectDashboard.tsx`
-- Added import for `hasNFTHook` from `services/nft`
-- Added import for `ShopTab` component
-- Added `hasNftHook` state variable
-- Updated `DashboardTab` type to include `'shop'`
-- Modified project load effect to check for NFT hook presence
-- Made tabs array dynamic using `useMemo` - Shop tab only appears when `hasNftHook` is true
-- Added ShopTab rendering in both desktop and mobile tab content sections
+- [x] **Dynamic Model Selection** (`claude.ts`)
+  - Added `selectModel()` function that chooses between Haiku 3.5 ($1/1M) and Sonnet 4 ($15/1M)
+  - Uses intent detection patterns: complex queries → Sonnet, simple queries → Haiku
+  - Considers tool usage and token count in decision
 
-### 2. Created `src/components/dynamic/ShopTab.tsx`
-New component for browsing and purchasing NFT tiers:
-- Fetches tiers using `fetchProjectNFTTiers(projectId, chainId)`
-- Fetches ETH price for USD display
-- Category filter bar (horizontal chips: "All", then unique categories)
-- Groups and displays tiers by category when "All" selected
-- Filters to single category when category chip clicked
-- Responsive grid of `NFTTierCard` components (2-3 columns)
-- Loading skeleton during fetch
-- Empty state if no tiers
+- [x] **PostgreSQL Rate Limiting** (`claude.ts`, `rateLimit.ts`)
+  - Removed in-memory rate limits from `claude.ts`
+  - Now uses existing `rateLimit.ts` PostgreSQL implementation
+  - Survives restarts, works across instances
 
-## UI Layout
+- [x] **Token-Based Billing** (`aiBilling.ts`, `config.ts`, `types/index.ts`)
+  - Added `AI_FREE_MODE` environment variable (default: `true` for beta)
+  - Added `calculateTokenCost()` for per-model cost calculation
+  - Updated `deductAiCost()` to use actual token counts
 
-```
-┌─────────────────────────────────────────────────┐
-│ [All] [Category 1] [Category 2] [Category 3]    │  ← Filter chips
-├─────────────────────────────────────────────────┤
-│ Category 1 (if showing all)                     │
-│ ┌─────────┐ ┌─────────┐ ┌─────────┐            │
-│ │ Tier    │ │ Tier    │ │ Tier    │            │
-│ │ Card    │ │ Card    │ │ Card    │            │
-│ └─────────┘ └─────────┘ └─────────┘            │
-│                                                 │
-│ Category 2                                      │
-│ ┌─────────┐ ┌─────────┐                        │
-│ │ Tier    │ │ Tier    │                        │
-│ │ Card    │ │ Card    │                        │
-│ └─────────┘ └─────────┘                        │
-└─────────────────────────────────────────────────┘
-```
+### Phase 2: Security Hardening
 
-## Mint Integration
-Uses existing `NFTTierCard` mint button which:
-- Checks wallet connection (opens wallet panel if not connected)
-- Dispatches `juice:mint-nft` event
-- Tracks transaction in store
-- Shows quantity selector for multi-mint
+- [x] **Per-Tool Rate Limits** (`rateLimit.ts`)
+  - Added limits for sensitive AI tools:
+    - `pin_to_ipfs`: 10/hour
+    - `execute_bridge_transaction`: 5/hour
+    - `prepare_bridge_transaction`: 20/hour
+    - `claim_bridge_transaction`: 20/hour
+  - Added `checkToolRateLimit()` helper function
 
-## Verification Steps
+- [x] **GraphQL Query Sanitization** (`omnichain.ts`)
+  - Added `sanitizeForGraphQL()` function
+  - Removes quotes, backslashes, and control characters
+  - Limits query length to 100 chars
 
-1. Visit `/base:3` (no 721 hooks) → Shop tab should NOT appear
-2. Visit `/eth:4` (Banny Network, has 721 hooks) → Shop tab SHOULD appear
-3. Shop tab shows tiers in grid with category filters
-4. Category filter chips work correctly (shows grouped when All, filtered when category selected)
-5. Mint button opens wallet panel if not connected
-6. Mint initiates transaction when wallet connected
-7. Tests pass (1244 passed), build succeeds
+- [x] **Structured Error Types** (`errors/AppError.ts`)
+  - Created `AppError` base class with code, message, statusCode
+  - Added specialized errors: `RateLimitError`, `AuthError`, `ForbiddenError`, `NotFoundError`, `ValidationError`, `ConflictError`, `ExternalServiceError`, `CircuitBreakerError`, `InsufficientBalanceError`
+  - Added `isAppError()` type guard
+
+- [x] **Global Error Handler** (`main.ts`)
+  - Updated `app.onError()` to detect `AppError` instances
+  - Returns structured JSON with error code and proper status
+  - Sets `Retry-After` header for rate limits
+
+### Phase 3: Code Hardening
+
+- [x] **Circuit Breaker** (`utils/circuitBreaker.ts`)
+  - Created `CircuitBreaker` class with closed/open/half-open states
+  - Pre-configured breakers for: Bendystraw, IPFS, Juicerkle, MCP Docs
+  - Added `getAllCircuitStats()` for monitoring
+
+## Deferred Tasks
+
+- [ ] Split `chat.ts` (1,484 lines) → 4 files
+- [ ] Split `smartAccounts.ts` (1,783 lines) → 3 files
+
+## Verification Results
+
+- [x] TypeScript compiles: `deno check main.ts` ✓
+- [x] All modified files pass type check ✓
 
 ## Files Modified
-- `src/pages/ProjectDashboard.tsx` - Added Shop tab logic and rendering
 
-## Files Created
-- `src/components/dynamic/ShopTab.tsx` - NFT tier browsing and minting
+| File | Changes |
+|------|---------|
+| `services/claude.ts` | Model selection, PostgreSQL rate limits |
+| `services/aiBilling.ts` | Token-based billing, env var control |
+| `services/rateLimit.ts` | Tool-specific rate limits |
+| `services/omnichain.ts` | GraphQL sanitization |
+| `utils/config.ts` | Added `aiFreeMode` config |
+| `types/index.ts` | Added `aiFreeMode` to `EnvConfig` |
+| `main.ts` | Structured error handling |
+
+## New Files
+
+| File | Purpose |
+|------|---------|
+| `errors/AppError.ts` | Structured error types |
+| `utils/circuitBreaker.ts` | Circuit breaker for external services |
