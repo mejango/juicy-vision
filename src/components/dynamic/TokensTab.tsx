@@ -282,7 +282,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   return (
     <div className="space-y-4">
       <ExplainerMessage>
-        Project membership is represented by tokens. Token holders can cash out their share of the treasury or vote on governance.
+        Project membership is represented by tokens. Token holders can cash out their share of the treasury.
       </ExplainerMessage>
 
       {/* Your Balance */}
