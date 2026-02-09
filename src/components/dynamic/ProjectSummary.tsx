@@ -153,7 +153,7 @@ export default function ProjectSummary({
 
   return (
     <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-      <p className={`text-sm font-medium mb-1 ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
+      <p className={`text-sm font-medium mb-1 ${isDark ? 'text-juice-cyan' : 'text-cyan-600'}`}>
         Juicy Summary
       </p>
       <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>

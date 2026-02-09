@@ -1057,21 +1057,21 @@ export default function RulesetSchedule({
               return (
                 <div className={`mx-3 my-3 border transition-all ${
                   isDark
-                    ? 'border-juice-orange/30 bg-juice-orange/5'
-                    : 'border-orange-200 bg-orange-50/50'
+                    ? 'border-juice-cyan/30 bg-juice-cyan/5'
+                    : 'border-cyan-200 bg-cyan-50/50'
                 }`}>
                   <button
                     onClick={() => setExpandedSection(isExpanded ? null : 'summary')}
                     className={`w-full px-3 py-2 flex items-center justify-between text-left ${
-                      isDark ? 'hover:bg-juice-orange/10' : 'hover:bg-orange-100/50'
+                      isDark ? 'hover:bg-juice-cyan/10' : 'hover:bg-cyan-100/50'
                     }`}
                   >
                     <span className={`text-xs font-medium ${
-                      isDark ? 'text-juice-orange' : 'text-orange-600'
+                      isDark ? 'text-juice-cyan' : 'text-cyan-600'
                     }`}>
                       Juicy Summary
                     </span>
-                    <span className={`text-xs ${isDark ? 'text-juice-orange/60' : 'text-orange-400'}`}>
+                    <span className={`text-xs ${isDark ? 'text-juice-cyan/60' : 'text-cyan-400'}`}>
                       {isExpanded ? '−' : '+'}
                     </span>
                   </button>
@@ -1232,9 +1232,9 @@ export default function RulesetSchedule({
                           <span className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                             Cycle #{displayRuleset?.cycleNumber || 1}
                           </span>
-                          <span className={`px-2 py-0.5 text-xs font-medium ${
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded ${
                             isViewingCurrent
-                              ? 'bg-juice-orange/20 text-juice-orange'
+                              ? 'border border-juice-orange text-juice-orange'
                               : isViewingUpcoming
                                 ? 'bg-purple-500/20 text-purple-400'
                                 : isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'
@@ -1649,9 +1649,9 @@ export default function RulesetSchedule({
                           <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
                             Stage {stage.stageNumber}
                           </span>
-                          <span className={`text-xs px-2 py-0.5 ${
+                          <span className={`text-xs px-2 py-0.5 rounded ${
                             isCurrent
-                              ? 'bg-juice-orange/20 text-juice-orange'
+                              ? 'border border-juice-orange text-juice-orange'
                               : isPast
                                 ? isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'
                                 : 'bg-purple-500/20 text-purple-400'

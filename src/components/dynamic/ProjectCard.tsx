@@ -1223,162 +1223,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   if (embedded) {
     return (
       <>
-        {/* Sticky pay controls - direct child of flex sidebar */}
-        <div className={`shrink-0 sticky top-0 z-20 px-4 py-3 ${isDark ? 'bg-juice-dark' : 'bg-white'}`}>
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <div
-                onClick={(e) => {
-                  if (!(e.target as HTMLElement).closest('button')) {
-                    amountInputRef.current?.focus()
-                  }
-                }}
-                className={`flex items-center cursor-text ${
-                  isDark
-                    ? 'bg-juice-dark border border-white/10'
-                    : 'bg-white border border-gray-200'
-                }`}
-              >
-                <input
-                  ref={amountInputRef}
-                  type="number"
-                  step="0.001"
-                  min="0"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
-                  placeholder="0.00"
-                  disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
-                  style={{ width: `${Math.max(5, (amount || '0.00').toString().length + 2)}ch` }}
-                  className={`min-w-[4ch] pl-3 py-2 text-sm bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                    isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
-                  } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
-                />
-                {/* Token selector - inline after input */}
-                <div className="relative flex-shrink-0">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (!isPaymentLocked) {
-                        setTokenDropdownOpen(!tokenDropdownOpen)
-                        setChainDropdownOpen(false)
-                      }
-                    }}
-                    disabled={isPaymentLocked}
-                    className={`flex items-center gap-1 py-2 pl-2 pr-3 text-sm font-medium ${
-                      isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
-                    } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-                  >
-                    <span>{selectedToken === 'PAY_CREDITS' ? 'USD' : selectedToken}</span>
-                    <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {tokenDropdownOpen && (
-                    <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
-                      isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
-                    }`}>
-                      {TOKENS.map(token => (
-                        <button
-                          key={token.symbol}
-                          onClick={() => {
-                            setSelectedToken(token.symbol as PaymentToken)
-                            setTokenDropdownOpen(false)
-                          }}
-                          className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
-                            token.symbol === selectedToken
-                              ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
-                              : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          <span className="flex justify-between items-center gap-2">
-                            <span>{token.symbol === 'PAY_CREDITS' ? 'USD' : token.symbol}</span>
-                            {token.symbol === 'PAY_CREDITS' && juiceBalance && (
-                              <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                                ${juiceBalance.balance.toFixed(2)}
-                              </span>
-                            )}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1" />
-              </div>
-              {/* Chain selector - only show for ETH/USDC */}
-              {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
-                <div className="relative mt-1">
-                  <button
-                    onClick={() => {
-                      if (!isPaymentLocked) {
-                        setChainDropdownOpen(!chainDropdownOpen)
-                        setTokenDropdownOpen(false)
-                      }
-                    }}
-                    disabled={isPaymentLocked}
-                    className={`flex items-center gap-1 text-xs ${
-                      isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
-                    } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-                  >
-                    Pay on <span className="underline">{selectedChainInfo.name}</span>
-                    <svg className={`w-3 h-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {chainDropdownOpen && (
-                    <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
-                      isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
-                    }`}>
-                      {availableChains.map(chain => {
-                        const info = CHAIN_INFO[chain.chainId.toString()]
-                        if (!info) return null
-                        return (
-                          <button
-                            key={chain.chainId}
-                            onClick={() => {
-                              setSelectedChainId(chain.chainId.toString())
-                              setChainDropdownOpen(false)
-                            }}
-                            className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
-                              chain.chainId.toString() === selectedChainId
-                                ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
-                                : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            {info.name}
-                            {chain.projectId !== 0 && chain.projectId.toString() !== projectId && (
-                              <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                                (#{chain.projectId})
-                              </span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <button
-              onClick={(e) => handlePay(e)}
-              disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
-              className={`px-4 py-2 text-sm font-medium transition-colors self-start ${
-                paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
-                  ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                  : 'bg-green-500 hover:bg-green-600 text-black'
-              }`}
-            >
-              {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
-            </button>
-          </div>
-        </div>
-
-        {/* Scrollable content area */}
+        {/* Single scrollable container */}
         <div className="flex-1 overflow-y-auto">
-          {/* NFT Tier selector - horizontal carousel */}
+          {/* NFT Shop - scrolls away */}
           {nftTiers.length > 0 && (
-            <div className="px-4 mb-3">
+            <div className="px-4 pt-3 mb-3">
               <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 Shop
               </div>
@@ -1466,6 +1315,157 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               )}
             </div>
           )}
+
+          {/* Sticky pay controls - sticks to top when scrolling */}
+          <div className={`sticky top-0 z-20 px-4 py-3 ${isDark ? 'bg-juice-dark' : 'bg-white'}`}>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <div
+                  onClick={(e) => {
+                    if (!(e.target as HTMLElement).closest('button')) {
+                      amountInputRef.current?.focus()
+                    }
+                  }}
+                  className={`flex items-center cursor-text ${
+                    isDark
+                      ? 'bg-juice-dark border border-white/10'
+                      : 'bg-white border border-gray-200'
+                  }`}
+                >
+                  <input
+                    ref={amountInputRef}
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    onFocus={() => { setChainDropdownOpen(false); setTokenDropdownOpen(false) }}
+                    placeholder="0.00"
+                    disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
+                    style={{ width: `${Math.max(5, (amount || '0.00').toString().length + 2)}ch` }}
+                    className={`min-w-[4ch] pl-3 py-2 text-sm bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                      isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
+                    } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
+                  />
+                  {/* Token selector - inline after input */}
+                  <div className="relative flex-shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (!isPaymentLocked) {
+                          setTokenDropdownOpen(!tokenDropdownOpen)
+                          setChainDropdownOpen(false)
+                        }
+                      }}
+                      disabled={isPaymentLocked}
+                      className={`flex items-center gap-1 py-2 pl-2 pr-3 text-sm font-medium ${
+                        isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
+                      } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+                    >
+                      <span>{selectedToken === 'PAY_CREDITS' ? 'USD' : selectedToken}</span>
+                      <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {tokenDropdownOpen && (
+                      <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
+                        isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+                      }`}>
+                        {TOKENS.map(token => (
+                          <button
+                            key={token.symbol}
+                            onClick={() => {
+                              setSelectedToken(token.symbol as PaymentToken)
+                              setTokenDropdownOpen(false)
+                            }}
+                            className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
+                              token.symbol === selectedToken
+                                ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
+                                : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            <span className="flex justify-between items-center gap-2">
+                              <span>{token.symbol === 'PAY_CREDITS' ? 'USD' : token.symbol}</span>
+                              {token.symbol === 'PAY_CREDITS' && juiceBalance && (
+                                <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                  ${juiceBalance.balance.toFixed(2)}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1" />
+                </div>
+                {/* Chain selector - only show for ETH/USDC */}
+                {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
+                  <div className="relative mt-1">
+                    <button
+                      onClick={() => {
+                        if (!isPaymentLocked) {
+                          setChainDropdownOpen(!chainDropdownOpen)
+                          setTokenDropdownOpen(false)
+                        }
+                      }}
+                      disabled={isPaymentLocked}
+                      className={`flex items-center gap-1 text-xs ${
+                        isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
+                      } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+                    >
+                      Pay on <span className="underline">{selectedChainInfo.name}</span>
+                      <svg className={`w-3 h-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {chainDropdownOpen && (
+                      <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
+                        isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+                      }`}>
+                        {availableChains.map(chain => {
+                          const info = CHAIN_INFO[chain.chainId.toString()]
+                          if (!info) return null
+                          return (
+                            <button
+                              key={chain.chainId}
+                              onClick={() => {
+                                setSelectedChainId(chain.chainId.toString())
+                                setChainDropdownOpen(false)
+                              }}
+                              className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
+                                chain.chainId.toString() === selectedChainId
+                                  ? isDark ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-900'
+                                  : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50'
+                              }`}
+                            >
+                              {info.name}
+                              {chain.projectId !== 0 && chain.projectId.toString() !== projectId && (
+                                <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                  (#{chain.projectId})
+                                </span>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={(e) => handlePay(e)}
+                disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
+                className={`px-4 py-2 text-sm font-medium transition-colors self-start ${
+                  paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
+                    ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                    : 'bg-green-500 hover:bg-green-600 text-black'
+                }`}
+              >
+                {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
+              </button>
+            </div>
+          </div>
 
           <div className="px-4">
             {/* Token preview */}
