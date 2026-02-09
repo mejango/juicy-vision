@@ -9,8 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useThemeStore, useAuthStore } from '../../stores'
 import Button from '../../components/ui/Button'
-import { getChainById } from '@shared/chains'
-import { IS_TESTNET } from '../../config/environment'
+import { getChainName } from '../../components/dynamic/charts/utils'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -358,7 +357,7 @@ export default function TerminalsPage() {
                           </span>
                         </div>
                         <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          Project #{device.projectId} on {getChainById(device.chainId, IS_TESTNET)?.name || 'Unknown'}
+                          Project #{device.projectId} on {getChainName(device.chainId)}
                         </p>
                         <p className={`text-xs mt-1 font-mono ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                           API Key: {device.apiKeyPrefix}...

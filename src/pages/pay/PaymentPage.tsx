@@ -16,8 +16,7 @@ import { useAccount, useConnect, useWalletClient, useSwitchChain } from 'wagmi'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import Button from '../../components/ui/Button'
-import { getChainById } from '@shared/chains'
-import { IS_TESTNET } from '../../config/environment'
+import { getChainName } from '../../components/dynamic/charts/utils'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -701,7 +700,7 @@ export default function PaymentPage() {
                 ${session.amountUsd.toFixed(2)}
               </p>
               <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                {getChainById(session.chainId, IS_TESTNET)?.name || 'Unknown'} &middot; Project #{session.projectId}
+                {getChainName(session.chainId)} &middot; Project #{session.projectId}
               </p>
             </div>
 
