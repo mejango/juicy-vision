@@ -5,7 +5,7 @@ import { parseUnits, encodeFunctionData, createPublicClient, http, type Hex, typ
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
-import { CHAINS as CHAIN_INFO, NATIVE_TOKEN, RPC_ENDPOINTS } from '../../constants'
+import { CHAINS as CHAIN_INFO, MAINNET_CHAINS, NATIVE_TOKEN, RPC_ENDPOINTS } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
@@ -93,7 +93,7 @@ export default function CashOutModal({
   const [terminalAddress, setTerminalAddress] = useState<Address | null>(null)
   const [terminalLoading, setTerminalLoading] = useState(false)
 
-  const chainInfo = CHAIN_INFO[chainId] || CHAIN_INFO[1]
+  const chainInfo = CHAIN_INFO[chainId] || MAINNET_CHAINS[chainId] || MAINNET_CHAINS[1]
   const chainName = chainInfo.name
   const tokenNum = parseFloat(tokenAmount) || 0
   const taxPercent = cashOutTaxRate / 100

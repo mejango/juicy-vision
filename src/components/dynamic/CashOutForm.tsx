@@ -5,7 +5,7 @@ import { useCashOutFormState } from '../../hooks/useComponentState'
 import { fetchProject, fetchIssuanceRate, fetchConnectedChains, type Project, type IssuanceRate, type ConnectedChain } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { CashOutModal } from '../payment'
-import { CHAINS, ALL_CHAIN_IDS, CURRENCIES } from '../../constants'
+import { CHAINS, MAINNET_CHAINS, ALL_CHAIN_IDS, CURRENCIES } from '../../constants'
 
 interface CashOutFormProps {
   projectId: string
@@ -57,7 +57,7 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
     })
   }, [updatePersistedState])
 
-  const chainInfo = CHAINS[parseInt(selectedChainId)] || CHAINS[1]
+  const chainInfo = CHAINS[parseInt(selectedChainId)] || MAINNET_CHAINS[parseInt(selectedChainId)] || MAINNET_CHAINS[1]
 
   // Determine currency from project's baseCurrency (if available)
   const baseCurrency = (project as { baseCurrency?: number } | null)?.baseCurrency || 1
