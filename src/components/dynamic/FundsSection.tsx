@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { formatUnits } from 'viem'
 import { useAccount } from 'wagmi'
-import { useThemeStore } from '../../stores'
+import { useThemeStore, useAuthStore } from '../../stores'
+import { useManagedWallet } from '../../hooks'
+import { hasValidWalletSession } from '../../services/siwe'
 import {
   fetchSuckerGroupBalance,
   fetchDistributablePayout,
@@ -10,6 +12,7 @@ import {
   fetchProjectSplits,
   fetchProjectTokenSupply,
   fetchUpcomingRulesetWithMetadata,
+  fetchUserTokenBalance,
   calculateFloorPrice,
   type SuckerGroupBalance,
   type DistributablePayout,
@@ -142,7 +145,7 @@ function CashOutCalculator({
                 <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                   Chain
                 </label>
-                <div className="flex gap-1.5 mt-1">
+                <div className="flex gap-1 mt-1">
                   {chainFundsData.filter(cd => cd.cashOutTaxRate < 10000).map(cd => {
                     const info = CHAIN_INFO[cd.chainId]
                     if (!info) return null
@@ -151,20 +154,20 @@ function CashOutCalculator({
                       <button
                         key={cd.chainId}
                         onClick={() => setSelectedChainId(cd.chainId)}
-                        className={`flex items-center gap-1.5 px-2 py-1 text-xs transition-colors border ${
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors ${
                           isSelected
-                            ? 'border-juice-orange text-juice-orange'
+                            ? isDark
+                              ? 'bg-white/20 text-white'
+                              : 'bg-gray-200 text-gray-900'
                             : isDark
-                              ? 'border-white/10 text-gray-400 hover:border-juice-orange hover:text-juice-orange'
-                              : 'border-gray-200 text-gray-500 hover:border-juice-orange hover:text-juice-orange'
+                              ? 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                              : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
                         }`}
                       >
                         <span
-                          className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
+                          className="w-1.5 h-1.5 rounded-full"
                           style={{ backgroundColor: info.color }}
-                        >
-                          {info.icon}
-                        </span>
+                        />
                         {info.shortName}
                       </button>
                     )
@@ -229,10 +232,141 @@ function CashOutCalculator({
   )
 }
 
+// Collapsible per-chain balance breakdown
+function PerChainBreakdown({
+  projectBalances,
+  defaultCurrency,
+  defaultDecimals,
+  isDark,
+}: {
+  projectBalances: Array<{ chainId: number; balance: string; currency?: number; decimals?: number }>
+  defaultCurrency: number
+  defaultDecimals: number
+  isDark: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+      >
+        <span>Per-chain breakdown</span>
+        <svg
+          className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-1">
+          {projectBalances.map(pb => {
+            const chainInfo = CHAIN_INFO[pb.chainId]
+            if (!chainInfo) return null
+            const pbCurrency = pb.currency ?? defaultCurrency
+            const pbDecimals = pb.decimals ?? defaultDecimals
+            return (
+              <div key={pb.chainId} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ backgroundColor: chainInfo.color }}
+                  />
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {chainInfo.shortName}
+                  </span>
+                </div>
+                <span className={`text-xs font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  {formatCurrency(pb.balance, pbDecimals, pbCurrency)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Collapsible per-chain cash out values breakdown
+function PerChainCashOutBreakdown({
+  cashOutEnabledChains,
+  isDark,
+}: {
+  cashOutEnabledChains: ChainFundsData[]
+  isDark: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div className="mb-3">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+      >
+        <span>Per-chain cash out values</span>
+        <svg
+          className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-1">
+          {cashOutEnabledChains.map(cd => {
+            const chainInfo = CHAIN_INFO[cd.chainId]
+            if (!chainInfo) return null
+            const chainRate = (cd.cashOutTaxRate / 10000).toFixed(2)
+            return (
+              <div key={cd.chainId} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ backgroundColor: chainInfo.color }}
+                  />
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {chainInfo.shortName}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className={`text-xs font-mono ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+                    {cd.cashOutPerToken > 0 ? cd.cashOutPerToken.toFixed(6) : '0'} {cd.baseCurrency === 2 ? 'USDC' : 'ETH'}
+                  </span>
+                  <span className={`text-[10px] ml-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    (rate {chainRate})
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+          <div className={`text-[10px] mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            Cash outs use each chain's balance and token supply.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function FundsSection({ projectId, chainId, isOwner, onSendPayouts, isRevnet = false, onCashOut }: FundsSectionProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { isConnected } = useAccount()
+  const { isConnected, address: wagmiAddress } = useAccount()
+  const { mode, isAuthenticated } = useAuthStore()
+  const { address: managedAddress } = useManagedWallet()
+
+  // Check if user is signed in
+  const isSelfCustodySignedIn = mode === 'self_custody' && hasValidWalletSession()
+  const isManagedSignedIn = mode === 'managed' && isAuthenticated()
+  const isSignedIn = isSelfCustodySignedIn || isManagedSignedIn
+  const userAddress = managedAddress || wagmiAddress
 
   const [loading, setLoading] = useState(true)
   const [suckerBalance, setSuckerBalance] = useState<SuckerGroupBalance | null>(null)
@@ -240,6 +374,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   const [upcomingRuleset, setUpcomingRuleset] = useState<QueuedRulesetInfo | null>(null)
   const [showSplits, setShowSplits] = useState(false)
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
+  const [userTokenBalance, setUserTokenBalance] = useState<bigint>(0n)
 
   const chainIdNum = parseInt(chainId)
 
@@ -379,6 +514,36 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
     load()
   }, [projectId, chainId, chainIdNum, isRevnet])
 
+  // Fetch user's token balance across all connected chains when signed in
+  useEffect(() => {
+    async function loadUserTokenBalance() {
+      if (!isSignedIn || !userAddress || chainFundsData.length === 0) {
+        setUserTokenBalance(0n)
+        return
+      }
+
+      try {
+        // Fetch balance from all chains and sum them
+        const balancePromises = chainFundsData.map(async cd => {
+          const result = await fetchUserTokenBalance(
+            String(cd.projectId),
+            cd.chainId,
+            userAddress
+          )
+          return result?.balance ? BigInt(result.balance) : 0n
+        })
+
+        const balances = await Promise.all(balancePromises)
+        const totalBalance = balances.reduce((sum, b) => sum + b, 0n)
+        setUserTokenBalance(totalBalance)
+      } catch (err) {
+        console.error('Failed to fetch user token balance:', err)
+        setUserTokenBalance(0n)
+      }
+    }
+    loadUserTokenBalance()
+  }, [isSignedIn, userAddress, chainFundsData])
+
   // Calculate totals
   const totalBalance = suckerBalance?.totalBalance || '0'
   const decimals = suckerBalance?.decimals || 18
@@ -435,39 +600,14 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         </div>
       </div>
 
-      {/* Per-chain breakdown */}
+      {/* Per-chain breakdown (collapsible) */}
       {suckerBalance && suckerBalance.projectBalances.length > 1 && (
-        <div className="mb-4">
-          <div className={`text-xs mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Per-chain breakdown
-          </div>
-          <div className="space-y-1">
-            {suckerBalance.projectBalances.map(pb => {
-              const chainInfo = CHAIN_INFO[pb.chainId]
-              if (!chainInfo) return null
-              const pbCurrency = pb.currency ?? currency
-              const pbDecimals = pb.decimals ?? decimals
-              return (
-                <div key={pb.chainId} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-                      style={{ backgroundColor: chainInfo.color }}
-                    >
-                      {chainInfo.icon}
-                    </span>
-                    <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                      {chainInfo.name}
-                    </span>
-                  </div>
-                  <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {formatCurrency(pb.balance, pbDecimals, pbCurrency)}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <PerChainBreakdown
+          projectBalances={suckerBalance.projectBalances}
+          defaultCurrency={currency}
+          defaultDecimals={decimals}
+          isDark={isDark}
+        />
       )}
 
       {/* Available to pay out - hidden for revnets since they don't have payouts by design */}
@@ -496,11 +636,12 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         </div>
       </div>
 
-      {/* Cash Out Section - shows when surplus > 0 and cash outs are enabled */}
+      {/* Cash Out Section - shows when cash outs are enabled (tax rate < 100%) */}
       {(() => {
         // Check if any chain has cash outs enabled (tax rate < 10000 = 100%)
         const cashOutEnabledChains = chainFundsData.filter(cd => cd.cashOutTaxRate < 10000)
-        const hasCashOutsEnabled = cashOutEnabledChains.length > 0 && surplus > 0n
+        const hasCashOutsEnabled = cashOutEnabledChains.length > 0
+        const hasSurplus = surplus > 0n
 
         // Get the active chain's data for display
         const activeCashOut = chainFundsData.find(cd => cd.chainId === chainIdNum)
@@ -521,74 +662,47 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                 Token Cash Out Value
               </div>
-              <div className={`text-lg font-mono font-semibold ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                {activeCashOut && activeCashOut.cashOutPerToken > 0
+              <div className={`text-lg font-mono font-semibold ${
+                hasSurplus && activeCashOut && activeCashOut.cashOutPerToken > 0
+                  ? isDark ? 'text-green-400' : 'text-green-600'
+                  : isDark ? 'text-gray-500' : 'text-gray-400'
+              }`}>
+                {hasSurplus && activeCashOut && activeCashOut.cashOutPerToken > 0
                   ? `${activeCashOut.cashOutPerToken.toFixed(6)} ${currency === 2 ? 'USDC' : 'ETH'}/token`
-                  : 'No value'
+                  : 'No surplus'
                 }
               </div>
             </div>
 
             {/* Explanation */}
             <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Token holders can cash out for a share of the surplus.
+              Token holders may be able to cash out for a share of the surplus.
               {activeCashOut && activeCashOut.cashOutTaxRate > 0 && (
-                <span> A bonding curve (rate {cashOutTaxDecimal}) determines value — cashing out more tokens at once yields better value per token.</span>
+                <span> A {((activeCashOut.cashOutTaxRate / 10000) * 100).toFixed(0)}% cash out tax rate determines value — cashing out after others yields more.</span>
               )}
               {activeCashOut && activeCashOut.cashOutTaxRate === 0 && (
-                <span> Linear redemption — each token returns equal value.</span>
+                <span> No cash out tax — each token returns equal value.</span>
+              )}
+              {surplus === 0n && (
+                <span className={isDark ? 'text-yellow-400' : 'text-yellow-600'}> Currently no surplus available for cash outs.</span>
               )}
             </div>
 
-            {/* Cash out calculator (collapsible) */}
-            {activeCashOut && (
+            {/* Per-chain cash out breakdown (collapsible) */}
+            {hasSurplus && cashOutEnabledChains.length > 1 && (
+              <PerChainCashOutBreakdown
+                cashOutEnabledChains={cashOutEnabledChains}
+                isDark={isDark}
+              />
+            )}
+
+            {/* Cash out calculator (collapsible) - only show when there's surplus */}
+            {hasSurplus && activeCashOut && (
               <CashOutCalculator
                 chainFundsData={cashOutEnabledChains}
                 initialChainId={chainIdNum}
                 isDark={isDark}
               />
-            )}
-
-            {/* Per-chain cash out breakdown (if multi-chain) */}
-            {cashOutEnabledChains.length > 1 && (
-              <div className="mb-3">
-                <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  Per-chain cash out values
-                </div>
-                <div className="space-y-1">
-                  {cashOutEnabledChains.map(cd => {
-                    const chainInfo = CHAIN_INFO[cd.chainId]
-                    if (!chainInfo) return null
-                    const chainRate = (cd.cashOutTaxRate / 10000).toFixed(2)
-                    return (
-                      <div key={cd.chainId} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
-                            style={{ backgroundColor: chainInfo.color }}
-                          >
-                            {chainInfo.icon}
-                          </span>
-                          <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                            {chainInfo.shortName}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className={`text-xs font-mono ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                            {cd.cashOutPerToken > 0 ? cd.cashOutPerToken.toFixed(6) : '0'} {cd.baseCurrency === 2 ? 'USDC' : 'ETH'}
-                          </span>
-                          <span className={`text-[10px] ml-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                            (rate {chainRate})
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-                <div className={`text-[10px] mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  Cash outs use each chain's balance and token supply.
-                </div>
-              </div>
             )}
 
             {/* Upcoming cash out tax change warning */}
@@ -656,24 +770,56 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               </div>
             )}
 
-            {/* Cash Out button */}
-            {onCashOut && isConnected && (
-              <div className="flex justify-end">
-                <button
-                  onClick={onCashOut}
-                  className={`px-3 py-1.5 text-xs transition-colors border ${
-                    isDark
-                      ? 'text-green-400 hover:text-green-300 border-green-400 hover:border-green-300'
-                      : 'text-green-600 hover:text-green-700 border-green-600 hover:border-green-700'
-                  }`}
-                >
-                  cash out
-                </button>
-              </div>
-            )}
-            {onCashOut && !isConnected && (
-              <div className={`text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                Connect wallet to cash out tokens
+            {/* Cash Out button and user balance */}
+            {onCashOut && (
+              <div className="flex items-center justify-between mt-3">
+                <div className="flex items-center gap-3">
+                  {!isSignedIn ? (
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))}
+                      className={`px-3 py-1.5 text-xs transition-colors border ${
+                        isDark
+                          ? 'text-white hover:text-gray-200 border-white/40 hover:border-white/60'
+                          : 'text-gray-700 hover:text-gray-900 border-gray-400 hover:border-gray-600'
+                      }`}
+                    >
+                      Sign in
+                    </button>
+                  ) : (
+                    <div className="relative group">
+                      <button
+                        onClick={userTokenBalance > 0n && hasSurplus ? onCashOut : undefined}
+                        className={`px-3 py-1.5 text-xs transition-colors border ${
+                          userTokenBalance > 0n && hasSurplus
+                            ? isDark
+                              ? 'text-green-400 hover:text-green-300 border-green-400 hover:border-green-300'
+                              : 'text-green-600 hover:text-green-700 border-green-600 hover:border-green-700'
+                            : isDark
+                              ? 'text-gray-500 border-gray-600 cursor-not-allowed'
+                              : 'text-gray-400 border-gray-300 cursor-not-allowed'
+                        }`}
+                      >
+                        Cash out
+                      </button>
+                      {/* Tooltip for disabled state */}
+                      {(userTokenBalance === 0n || !hasSurplus) && (
+                        <div className={`absolute bottom-full left-0 mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap ${
+                          isDark ? 'bg-juice-dark border border-white/20 text-gray-300' : 'bg-white border border-gray-200 text-gray-600 shadow-sm'
+                        }`}>
+                          {userTokenBalance === 0n ? "You don't have tokens" : 'No surplus available'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* User token balance */}
+                  {isSignedIn && (
+                    <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Your balance: <span className={`font-mono ${userTokenBalance > 0n ? (isDark ? 'text-white' : 'text-gray-900') : ''}`}>
+                        {formatBalance(userTokenBalance.toString(), 18)}
+                      </span> tokens
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>

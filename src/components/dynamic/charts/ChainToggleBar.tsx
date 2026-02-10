@@ -25,14 +25,14 @@ export default function ChainToggleBar({
       <button
         onClick={onSelectAll}
         className={`
-          flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border transition-all cursor-pointer
-          ${isAllSelected
-            ? isDark
-              ? 'border-juice-orange/40 bg-juice-orange/10'
-              : 'border-juice-orange/40 bg-juice-orange/10'
-            : isDark
-              ? 'border-white/10 hover:border-white/20'
-              : 'border-gray-200 hover:border-gray-300'
+          flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-medium transition-colors cursor-pointer ${
+            isAllSelected
+              ? isDark
+                ? 'bg-white/20 text-white'
+                : 'bg-gray-200 text-gray-900'
+              : isDark
+                ? 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
           }
         `}
       >
@@ -40,9 +40,7 @@ export default function ChainToggleBar({
           className="w-2 h-2 rounded-full"
           style={{ backgroundColor: isAllSelected ? CHART_COLORS.primary : isDark ? '#666' : '#ccc' }}
         />
-        <span className={isAllSelected ? 'text-juice-orange' : (isDark ? 'text-gray-500' : 'text-gray-400')}>
-          All
-        </span>
+        <span>All</span>
       </button>
 
       {/* Per-chain toggles */}
@@ -56,24 +54,22 @@ export default function ChainToggleBar({
             key={chainId}
             onClick={() => onToggle(chainId)}
             className={`
-              flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border transition-all cursor-pointer
-              ${isSelected
-                ? isDark
-                  ? 'border-white/20 bg-white/5'
-                  : 'border-gray-300 bg-gray-50'
-                : isDark
-                  ? 'border-white/10 hover:border-white/20'
-                  : 'border-gray-200 hover:border-gray-300'
+              inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors cursor-pointer ${
+                isSelected
+                  ? isDark
+                    ? 'bg-white/20 text-white'
+                    : 'bg-gray-200 text-gray-900'
+                  : isDark
+                    ? 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
               }
             `}
           >
             <span
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: isSelected ? color : isDark ? '#666' : '#ccc' }}
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: color }}
             />
-            <span className={isSelected ? (isDark ? 'text-white' : 'text-gray-900') : (isDark ? 'text-gray-500' : 'text-gray-400')}>
-              {name}
-            </span>
+            <span>{name}</span>
           </button>
         )
       })}

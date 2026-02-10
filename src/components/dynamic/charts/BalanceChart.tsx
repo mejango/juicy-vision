@@ -420,7 +420,7 @@ export default function BalanceChart({
           }`}>
             {selectedChains === 'all' ? (
               <span className="flex items-center gap-2">
-                <span className="w-2 h-2" style={{ backgroundColor: CHART_COLORS.primary }} />
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART_COLORS.primary }} />
                 Current: {formatEthValue(chartData[chartData.length - 1]?.balance || 0)}
               </span>
             ) : (
@@ -429,7 +429,7 @@ export default function BalanceChart({
                 const value = lastPoint?.[`balance_${cid}`] || 0
                 return (
                   <span key={cid} className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getChainColor(cid) }} />
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getChainColor(cid) }} />
                     {getChainName(cid)}: {formatEthValue(value)}
                   </span>
                 )
