@@ -73,14 +73,16 @@ export default function TierDetailModal({
   const displayName = /^Tier \d+$/.test(tier.name) ? (productName || tier.name) : tier.name
   const isSvgImage = imageUrl?.startsWith('data:image/svg') || imageUrl?.endsWith('.svg')
 
-  // Use multi-chain totals if available, otherwise fall back to single chain
-  const remainingSupply = multiChainSupply?.totalRemaining ?? tier.remainingSupply
-  const initialSupply = multiChainSupply?.totalInitial ?? tier.initialSupply
+  // For multi-chain projects, only show inventory once cross-chain data is loaded
+  // For single-chain, use tier data directly
+  const inventoryLoading = isMultiChain && !multiChainSupply
+  const remainingSupply = isMultiChain ? multiChainSupply?.totalRemaining : tier.remainingSupply
+  const initialSupply = isMultiChain ? multiChainSupply?.totalInitial : tier.initialSupply
   const soldOut = remainingSupply === 0
-  const isLowStock = remainingSupply > 0 && remainingSupply <= 10
+  const isLowStock = remainingSupply !== undefined && remainingSupply > 0 && remainingSupply <= 10
 
   // Calculate supply percentage for visual indicator
-  const supplyPercent = initialSupply > 0
+  const supplyPercent = initialSupply && initialSupply > 0 && remainingSupply !== undefined
     ? (remainingSupply / initialSupply) * 100
     : 0
 
@@ -157,7 +159,13 @@ export default function TierDetailModal({
           )}
 
           {/* Inventory - prominent only when low/sold out */}
-          {(soldOut || isLowStock) ? (
+          {inventoryLoading ? (
+            /* Loading state for multi-chain inventory */
+            <div className={`mb-6 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Inventory</span>{' '}
+              <span className={`font-mono ${isDark ? 'text-gray-600' : 'text-gray-300'}`}>loading...</span>
+            </div>
+          ) : (soldOut || isLowStock) ? (
             <div className={`mb-6 p-4 ${
               soldOut
                 ? 'bg-red-500/10 border border-red-500/30'
