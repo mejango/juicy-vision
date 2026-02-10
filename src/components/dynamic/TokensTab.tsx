@@ -422,7 +422,6 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
               const chainInfo = CHAIN_INFO[cd.chainId]
               if (!chainInfo) return null
               const isSelected = selectedChainId === cd.chainId
-              const hasPending = BigInt(cd.pendingReserved) > 0n
               return (
                 <button
                   key={cd.chainId}
@@ -442,9 +441,6 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                     style={{ backgroundColor: chainInfo.color }}
                   />
                   {chainInfo.shortName}
-                  {hasPending && (
-                    <span className="w-1.5 h-1.5 bg-amber-400 rounded-full" title="Has pending tokens" />
-                  )}
                 </button>
               )
             })}
