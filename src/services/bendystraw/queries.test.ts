@@ -91,8 +91,7 @@ describe('GraphQL Query Structure', () => {
     it('requests participant fields', () => {
       expect(PARTICIPANTS_QUERY).toContain('address')
       expect(PARTICIPANTS_QUERY).toContain('balance')
-      expect(PARTICIPANTS_QUERY).toContain('volume')
-      expect(PARTICIPANTS_QUERY).toContain('stakedBalance')
+      expect(PARTICIPANTS_QUERY).toContain('chainId')
     })
   })
 

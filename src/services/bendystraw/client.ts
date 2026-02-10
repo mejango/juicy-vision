@@ -113,13 +113,10 @@ export interface Project {
 }
 
 export interface Participant {
-  id: string
   address: string
   wallet?: string // Legacy alias for address
+  chainId?: number
   balance: string
-  volume: string
-  stakedBalance: string
-  lastPaidTimestamp?: number
 }
 
 function getClient(options?: { network?: 'mainnet' }): GraphQLClient {
@@ -680,7 +677,7 @@ export async function fetchUserTokenBalance(
   projectId: string,
   chainId: number,
   wallet: string
-): Promise<{ balance: string; volume: string } | null> {
+): Promise<{ balance: string } | null> {
   const data = await safeRequest<{
     participants: {
       totalCount: number
@@ -698,7 +695,6 @@ export async function fetchUserTokenBalance(
 
   return {
     balance: data.participants.items[0].balance,
-    volume: data.participants.items[0].volume,
   }
 }
 

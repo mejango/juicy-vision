@@ -114,19 +114,16 @@ export const PROJECTS_QUERY = `
 export const PARTICIPANTS_QUERY = `
   query Participants($projectId: Int!, $chainId: Int!, $limit: Int) {
     participants(
-      where: { projectId: $projectId, chainId: $chainId }
+      where: { projectId: $projectId, chainId: $chainId, balance_gt: "0" }
       limit: $limit
       orderBy: "balance"
       orderDirection: "desc"
     ) {
       totalCount
       items {
-        id
         address
+        chainId
         balance
-        volume
-        stakedBalance
-        lastPaidTimestamp
       }
     }
   }
@@ -202,12 +199,9 @@ export const USER_PARTICIPANT_QUERY = `
     ) {
       totalCount
       items {
-        id
         address
+        chainId
         balance
-        volume
-        stakedBalance
-        lastPaidTimestamp
       }
     }
   }
