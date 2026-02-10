@@ -46,7 +46,7 @@ interface DataPoint {
 export default function BalanceChart({
   projectId,
   chainId = '1',
-  range: initialRange = '30d',
+  range: initialRange = '1y',
 }: BalanceChartProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'

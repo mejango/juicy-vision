@@ -1648,7 +1648,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   scrollContainerRef={messagesScrollRef}
                 />
                 {/* Bottom padding - larger when waiting for AI or streaming to create space for response */}
-                <div className={(isWaitingForAi || pendingNewChat || hasStreamingMessage) ? "h-[70vh]" : "h-[14.44vh]"} />
+                <div className={`transition-all duration-200 ease-out ${(isWaitingForAi || pendingNewChat || hasStreamingMessage) ? "h-[70vh]" : "h-[14.44vh]"}`} />
               </div>
             )}
 

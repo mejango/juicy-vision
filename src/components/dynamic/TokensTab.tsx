@@ -612,7 +612,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                   const displayName = splitEnsNames[beneficiary] || truncateAddress(split.beneficiary || '')
 
                   return (
-                    <div key={idx} className="flex items-center justify-between text-sm">
+                    <div key={idx} className="flex items-center gap-3 text-sm">
                       <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                         {split.projectId > 0 ? (
                           `Project #${split.projectId}`
@@ -654,7 +654,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                                 const beneficiary = split.beneficiary?.toLowerCase() || ''
                                 const displayName = splitEnsNames[beneficiary] || truncateAddress(split.beneficiary || '')
                                 return (
-                                  <div key={idx} className="flex items-center justify-between text-xs">
+                                  <div key={idx} className="flex items-center gap-3 text-xs">
                                     <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                                       {split.projectId > 0 ? `Project #${split.projectId}` : displayName}
                                     </span>
