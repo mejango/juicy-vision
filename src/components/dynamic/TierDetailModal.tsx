@@ -222,74 +222,60 @@ export default function TierDetailModal({
 
             {showTechnical && (
               <div className={`pt-2 text-[11px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                <div className="grid grid-cols-2 gap-2">
-                  <DetailRow label="Tier ID" value={`#${tier.tierId}`} isDark={isDark} />
-                  <DetailRow label="Category" value={`${tier.category}`} isDark={isDark} />
-                  <DetailRow
-                    label="Currency"
-                    value={tier.currency === 1 ? 'ETH' : tier.currency === 2 ? 'USD' : `${tier.currency}`}
-                    isDark={isDark}
-                  />
-                  <DetailRow
-                    label="Reserved Rate"
-                    value={tier.reservedRate > 0 ? `1 per ${tier.reservedRate}` : '0'}
-                    isDark={isDark}
-                  />
-                  <DetailRow
-                    label="Voting Units"
-                    value={tier.votingUnits > 0n ? tier.votingUnits.toString() : '0'}
-                    isDark={isDark}
-                  />
-                  <DetailRow
-                    label="Discount %"
-                    value={tier.discountPercent !== undefined ? `${tier.discountPercent}%` : '0%'}
-                    isDark={isDark}
-                  />
-
-                  {/* Per-chain breakdown for multi-chain projects */}
-                  {isMultiChain && multiChainSupply && multiChainSupply.perChain.length > 1 && (
-                    <div className="col-span-2 mt-2 pt-2 border-t border-dashed border-gray-700/50">
-                      <div className={`text-[10px] uppercase tracking-wider mb-1.5 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                        Inventory by Network
-                      </div>
-                      <div className="space-y-0.5">
-                        {multiChainSupply.perChain.map((chain) => (
-                          <div key={chain.chainId} className="flex justify-between">
-                            <span>{chain.chainName}</span>
-                            <span className={`font-mono ${chain.remaining === 0 ? 'text-red-400' : ''}`}>
-                              {chain.remaining} / {chain.initial}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                {/* Compact key:value layout */}
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Tier</span> #{tier.tierId}</span>
+                  <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Category</span> {tier.category}</span>
+                  <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Currency</span> {tier.currency === 1 ? 'ETH' : tier.currency === 2 ? 'USD' : tier.currency}</span>
+                  {tier.reservedRate > 0 && (
+                    <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Reserved</span> 1/{tier.reservedRate}</span>
                   )}
-
-                  {/* Flags section */}
-                  <div className="col-span-2 mt-2 pt-2 border-t border-dashed border-gray-700/50">
-                    <div className={`text-[10px] uppercase tracking-wider mb-1.5 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                      Flags
-                    </div>
-                    <div className="grid grid-cols-2 gap-y-0.5 gap-x-4">
-                      <FlagRow label="Owner Can Mint" enabled={tier.allowOwnerMint} isDark={isDark} />
-                      <FlagRow label="Transfers Pausable" enabled={tier.transfersPausable} isDark={isDark} />
-                      <FlagRow label="Cannot Be Removed" enabled={tier.cannotBeRemoved ?? false} isDark={isDark} />
-                      <FlagRow label="Cannot Increase Discount" enabled={tier.cannotIncreaseDiscountPercent ?? false} isDark={isDark} />
-                    </div>
-                  </div>
-
-                  {/* IPFS info */}
-                  {tier.encodedIPFSUri && (
-                    <div className="col-span-2 mt-2 pt-2 border-t border-dashed border-gray-700/50">
-                      <div className={`text-[10px] uppercase tracking-wider mb-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                        IPFS URI
-                      </div>
-                      <div className={`font-mono text-[10px] break-all ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                        {tier.encodedIPFSUri}
-                      </div>
-                    </div>
+                  {tier.votingUnits > 0n && (
+                    <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Votes</span> {tier.votingUnits.toString()}</span>
+                  )}
+                  {(tier.discountPercent ?? 0) > 0 && (
+                    <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Discount</span> {tier.discountPercent}%</span>
                   )}
                 </div>
+
+                {/* Per-chain breakdown for multi-chain projects */}
+                {isMultiChain && multiChainSupply && multiChainSupply.perChain.length > 1 && (
+                  <div className="mt-2 pt-2 border-t border-dashed border-gray-700/30">
+                    <span className={`text-[10px] uppercase tracking-wider ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                      Inventory by Network
+                    </span>
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
+                      {multiChainSupply.perChain.map((chain) => (
+                        <span key={chain.chainId}>
+                          <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>{chain.chainName}</span>{' '}
+                          <span className={`font-mono ${chain.remaining === 0 ? 'text-red-400' : ''}`}>
+                            {chain.remaining}/{chain.initial}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Flags - compact inline */}
+                <div className="mt-2 pt-2 border-t border-dashed border-gray-700/30">
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                    <FlagRow label="Owner Mint" enabled={tier.allowOwnerMint} isDark={isDark} />
+                    <FlagRow label="Pausable" enabled={tier.transfersPausable} isDark={isDark} />
+                    <FlagRow label="Locked" enabled={tier.cannotBeRemoved ?? false} isDark={isDark} />
+                    <FlagRow label="Discount Locked" enabled={tier.cannotIncreaseDiscountPercent ?? false} isDark={isDark} />
+                  </div>
+                </div>
+
+                {/* IPFS info */}
+                {tier.encodedIPFSUri && (
+                  <div className="mt-2 pt-2 border-t border-dashed border-gray-700/30">
+                    <span className={`text-[10px] uppercase tracking-wider ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>IPFS</span>{' '}
+                    <span className={`font-mono text-[10px] ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                      {tier.encodedIPFSUri}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -300,24 +286,14 @@ export default function TierDetailModal({
   )
 }
 
-// Helper component for detail rows
-function DetailRow({ label, value, isDark }: { label: string; value: string; isDark: boolean }) {
-  return (
-    <div className="flex justify-between">
-      <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>{label}</span>
-      <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{value}</span>
-    </div>
-  )
-}
-
-// Helper component for flag rows
+// Helper component for flag rows - compact inline format
 function FlagRow({ label, enabled, isDark }: { label: string; enabled: boolean; isDark: boolean }) {
   return (
-    <div className="flex justify-between">
-      <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>{label}</span>
-      <span className={`font-mono ${enabled ? (isDark ? 'text-green-500/70' : 'text-green-600') : (isDark ? 'text-gray-700' : 'text-gray-300')}`}>
+    <span>
+      <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>{label}</span>{' '}
+      <span className={enabled ? (isDark ? 'text-green-500/70' : 'text-green-600') : (isDark ? 'text-gray-700' : 'text-gray-300')}>
         {enabled ? 'on' : 'off'}
       </span>
-    </div>
+    </span>
   )
 }
