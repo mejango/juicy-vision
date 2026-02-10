@@ -103,13 +103,14 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
       ...prev,
       [tierId]: metadata,
     }))
-    // Extract category name from any tier that has it
+    // Extract category name from any tier that has it (including category 0)
     if (metadata.categoryName) {
       const tier = tiers.find(t => t.tierId === tierId)
-      if (tier && tier.category > 0) {
+      if (tier !== undefined) {
+        const cat = tier.category ?? 0
         setCategoryNames(prev => ({
           ...prev,
-          [tier.category]: metadata.categoryName!,
+          [cat]: metadata.categoryName!,
         }))
       }
     }
