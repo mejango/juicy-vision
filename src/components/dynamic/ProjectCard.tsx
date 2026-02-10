@@ -1313,7 +1313,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           )}
 
           {/* Sticky pay controls - sticks to top when scrolling */}
-          <div className={`sticky top-0 z-20 px-4 py-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
+          <div className={`sticky top-0 z-20 px-4 ${nftTiers.length > 0 ? 'py-3' : 'pt-4 pb-3'} ${isDark ? 'bg-[#222]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
               <div className="flex gap-2">
               <div className="flex-1">
                 <div
@@ -1922,10 +1922,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   amountInputRef.current?.focus()
                 }
               }}
-              className={`flex items-center cursor-text ${
+              className={`flex items-center cursor-text border border-green-500 ${
               isDark
-                ? 'bg-juice-dark border border-white/10'
-                : 'bg-white border border-gray-200'
+                ? 'bg-juice-dark'
+                : 'bg-white'
             }`}>
               <input
                 ref={amountInputRef}
