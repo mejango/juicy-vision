@@ -423,131 +423,115 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
       </div>
 
       {/* Reserved Tokens Section */}
-      <ExplainerMessage>
-        A portion of membership can be reserved for the project admin to split among recipients.
-      </ExplainerMessage>
       <div className={`p-4 border ${
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
       }`}>
-        <h3 className={`text-sm font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Reserved membership
-        </h3>
+        {/* Header with reserved rate */}
+        <div className="flex items-center justify-between mb-1">
+          <h3 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            Membership
+          </h3>
+          <span className={`text-lg font-mono font-semibold ${reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            {(reservedPercent / 100).toFixed(0)}% Reserved
+          </span>
+        </div>
 
-        {/* Chain breakdown toggle - only show if rates differ across chains */}
+        {/* Description */}
+        <p className={`text-xs mb-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          Portion of new membership set aside for recipients below.
+        </p>
+
+        {/* Check for chain differences */}
         {(() => {
-          // Check if reserved rates differ across chains
           const rates = chainTokenData.map(cd => cd.reservedPercent)
-          const ratesDiffer = rates.length > 1 && !rates.every(r => r === rates[0])
+          const ratesDiffer = isOmnichain && rates.length > 1 && !rates.every(r => r === rates[0])
 
-          if (!isOmnichain || !ratesDiffer) return null
+          // Check if recipients differ across chains
+          const recipientCounts = chainTokenData.map(cd => cd.reservedSplits.length)
+          const recipientsDiffer = isOmnichain && recipientCounts.length > 1 && !recipientCounts.every(c => c === recipientCounts[0])
+
+          const hasDifferences = ratesDiffer || recipientsDiffer
 
           return (
-            <div className="mb-4">
-              <button
-                onClick={() => setSelectedChainId(selectedChainId === chainIdNum ? chainTokenData[0]?.chainId || chainIdNum : chainIdNum)}
-                className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
-              >
-                <span>Breakdown</span>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              <div className="flex items-center gap-1 flex-wrap mt-2">
-                {chainTokenData.map(cd => {
-                  const chainInfo = CHAIN_INFO[cd.chainId]
-                  if (!chainInfo) return null
-                  const isSelected = selectedChainId === cd.chainId
-                  return (
-                    <button
-                      key={cd.chainId}
-                      onClick={() => setSelectedChainId(cd.chainId)}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                        isSelected
-                          ? isDark
-                            ? 'bg-white/20 text-white'
-                            : 'bg-gray-200 text-gray-900'
-                          : isDark
-                            ? 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-                      }`}
+            <>
+              {/* Warning about chain differences */}
+              {hasDifferences && (
+                <div className={`flex items-center gap-2 mb-3 px-2 py-1.5 text-xs ${
+                  isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-600'
+                }`}>
+                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span>
+                    {ratesDiffer && recipientsDiffer
+                      ? 'Reserved rates and recipients vary by chain'
+                      : ratesDiffer
+                        ? 'Reserved rates vary by chain'
+                        : 'Recipients vary by chain'}
+                  </span>
+                </div>
+              )}
+
+              {/* Per-chain breakdown (collapsible) */}
+              {isOmnichain && (
+                <div className="mb-3">
+                  <button
+                    onClick={() => setShowReservedBreakdown(!showReservedBreakdown)}
+                    className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+                  >
+                    <span>Breakdown</span>
+                    <svg
+                      className={`w-3 h-3 transition-transform ${showReservedBreakdown ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
                     >
-                      <span
-                        className="w-1.5 h-1.5 rounded-full"
-                        style={{ backgroundColor: chainInfo.color }}
-                      />
-                      {chainInfo.shortName}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showReservedBreakdown && (
+                    <div className="mt-2 space-y-1">
+                      {chainTokenData.map(cd => {
+                        const chainInfo = CHAIN_INFO[cd.chainId]
+                        if (!chainInfo) return null
+                        const pendingOnChain = parseFloat(cd.pendingReserved) / 1e18
+                        return (
+                          <div key={cd.chainId} className="flex items-center gap-3">
+                            <span
+                              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: chainInfo.color }}
+                            />
+                            <span className={`text-xs w-10 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {chainInfo.shortName}
+                            </span>
+                            <span className={`text-xs font-mono ${cd.reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                              {(cd.reservedPercent / 100).toFixed(0)}%
+                            </span>
+                            {pendingOnChain > 0 && (
+                              <span className={`text-xs font-mono ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                ({pendingOnChain.toLocaleString(undefined, { maximumFractionDigits: 1 })} pending)
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )
         })()}
 
-        {/* Reserved rate */}
-        <div className="mb-3">
-          <div className="flex items-center gap-2">
-            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Reserved for admin
+        {/* Pending tokens to distribute */}
+        {totalPendingAcrossChains > 0 && (
+          <div className="flex items-center gap-2 mb-3">
+            <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {totalPendingAcrossChains.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
             </span>
-            <span className={`text-sm font-mono ${reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-white' : 'text-gray-900'}`}>
-              {(reservedPercent / 100).toFixed(1)}%
+            <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              ready to distribute
             </span>
-          </div>
-          {/* Per-chain breakdown for reserved rate */}
-          {isOmnichain && (
-            <div className="mt-1">
-              <button
-                onClick={() => setShowReservedBreakdown(!showReservedBreakdown)}
-                className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
-              >
-                <span>Breakdown</span>
-                <svg
-                  className={`w-3 h-3 transition-transform ${showReservedBreakdown ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {showReservedBreakdown && (
-                <div className="mt-2 space-y-1">
-                  {chainTokenData.map(cd => {
-                    const chainInfo = CHAIN_INFO[cd.chainId]
-                    if (!chainInfo) return null
-                    return (
-                      <div key={cd.chainId} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-1.5 h-1.5 rounded-full"
-                            style={{ backgroundColor: chainInfo.color }}
-                          />
-                          <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {chainInfo.shortName}
-                          </span>
-                        </div>
-                        <span className={`text-xs font-mono ${cd.reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                          {(cd.reservedPercent / 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Pending reserved tokens - show total across all chains */}
-        <div className="flex items-center gap-2 mb-3">
-          <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Pending distribution
-          </span>
-          <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {totalPendingAcrossChains.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
-          </span>
-          {totalPendingAcrossChains > 0 && (
             <button
               onClick={() => setShowModal(true)}
               className={`px-2 py-0.5 text-xs font-medium transition-colors ${
@@ -558,8 +542,8 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
             >
               Distribute
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Reserved token recipients */}
         {activeChainData && activeChainData.reservedSplits.length > 0 && (
