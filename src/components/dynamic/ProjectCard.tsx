@@ -1996,7 +1996,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               <div className="flex-1" />
             </div>
           </div>
-          <div className="flex flex-col items-end">
+          <div className="relative">
             <button
               onClick={(e) => handlePay(e)}
               disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
@@ -2008,9 +2008,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             >
               {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
             </button>
-            {/* Chain selector - only show for ETH/USDC */}
+            {/* Chain selector - only show for ETH/USDC, positioned absolutely */}
             {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
-              <div className="relative mt-1">
+              <div className="absolute top-full right-0 mt-1">
                 <button
                   onClick={() => {
                     if (!isPaymentLocked) {
