@@ -524,6 +524,14 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     <div className={`flex items-center flex-wrap gap-x-1.5 gap-y-1 mt-1.5 text-xs ${
                       isDark ? 'text-gray-500' : 'text-gray-400'
                     }`}>
+                      {projectIsRevnet && (
+                        <>
+                          <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] font-medium">
+                            Revnet
+                          </span>
+                          <span className="opacity-50">|</span>
+                        </>
+                      )}
                       {displayAddress && (
                         <>
                           <span>{projectIsRevnet ? t('project.operator', 'Operator') : t('project.owner', 'Owner')}:</span>
@@ -895,6 +903,14 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 <div className={`flex items-center flex-wrap gap-x-1.5 gap-y-1 mt-1.5 text-xs ${
                   isDark ? 'text-gray-500' : 'text-gray-400'
                 }`}>
+                  {projectIsRevnet && (
+                    <>
+                      <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] font-medium">
+                        Revnet
+                      </span>
+                      <span className="opacity-50">|</span>
+                    </>
+                  )}
                   {displayAddress && (
                     <>
                       <span>{projectIsRevnet ? t('project.operator', 'Operator') : t('project.owner', 'Owner')}:</span>

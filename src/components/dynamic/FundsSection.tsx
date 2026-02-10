@@ -75,50 +75,64 @@ function formatCurrency(value: string, decimals: number, currency: number): stri
   return currency === 2 ? `$${formatted}` : `${formatted} ETH`
 }
 
-// Collapsible cash out calculator with chain selector
+// Collapsible cash out calculator - calculates best return across all chains
 function CashOutCalculator({
   chainFundsData,
-  initialChainId,
   isDark,
   tokenSymbol,
 }: {
   chainFundsData: ChainFundsData[]
   tokenSymbol?: string | null
-  initialChainId: number
   isDark: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [tokenAmount, setTokenAmount] = useState('')
-  const [selectedChainId, setSelectedChainId] = useState(initialChainId)
+  const [showBreakdown, setShowBreakdown] = useState(false)
 
-  // Get selected chain data
-  const selectedChain = chainFundsData.find(cd => cd.chainId === selectedChainId) || chainFundsData[0]
-  const chainInfo = CHAIN_INFO[selectedChain.chainId]
-  const currencySymbol = selectedChain.baseCurrency === 2 ? 'USDC' : 'ETH'
-
-  // Token decimals (typically 18)
   const TOKEN_DECIMALS = 18
+  const tokensNum = parseFloat(tokenAmount) || 0
 
-  // Convert supply from raw (wei) to human-readable
-  const supplyHuman = Number(BigInt(selectedChain.tokenSupply)) / Math.pow(10, TOKEN_DECIMALS)
-  const balance = BigInt(selectedChain.balance)
+  // Calculate return for a specific chain
+  const calculateChainReturn = (chain: ChainFundsData, tokensHuman: number): { returnAmount: number; exceedsSupply: boolean; supplyHuman: number } => {
+    const supplyHuman = Number(BigInt(chain.tokenSupply)) / Math.pow(10, TOKEN_DECIMALS)
+    const balance = BigInt(chain.balance)
+    const r = chain.cashOutTaxRate / 10000
 
-  // Bonding curve formula: y = x * ((1 - r) + r * x)
-  // Where x = fraction of supply, r = rate, y = fraction of funds
-  const r = selectedChain.cashOutTaxRate / 10000
+    if (supplyHuman === 0 || tokensHuman <= 0) {
+      return { returnAmount: 0, exceedsSupply: false, supplyHuman }
+    }
 
-  // Calculate return for human-readable token amount
-  const calculateReturn = (tokensHuman: number): number => {
-    if (supplyHuman === 0 || tokensHuman <= 0) return 0
-    const x = tokensHuman / supplyHuman // fraction of supply
-    if (x > 1) return Number(balance) / Math.pow(10, selectedChain.decimals) // Can't cash out more than supply
+    const exceedsSupply = tokensHuman > supplyHuman
+    const x = Math.min(tokensHuman / supplyHuman, 1) // Cap at 100% of supply
     const y = x * ((1 - r) + r * x)
-    return (y * Number(balance)) / Math.pow(10, selectedChain.decimals)
+    const returnAmount = (y * Number(balance)) / Math.pow(10, chain.decimals)
+
+    return { returnAmount, exceedsSupply, supplyHuman }
   }
 
-  const tokensNum = parseFloat(tokenAmount) || 0
-  const estimatedReturn = calculateReturn(tokensNum)
-  const exceedsSupply = tokensNum > supplyHuman && supplyHuman > 0
+  // Calculate returns for all chains
+  const chainResults = chainFundsData.map(chain => {
+    const { returnAmount, exceedsSupply, supplyHuman } = calculateChainReturn(chain, tokensNum)
+    const chainInfo = CHAIN_INFO[chain.chainId]
+    return {
+      chain,
+      chainInfo,
+      returnAmount,
+      exceedsSupply,
+      supplyHuman,
+      currencySymbol: chain.baseCurrency === 2 ? 'USDC' : 'ETH',
+    }
+  }).filter(r => r.chainInfo) // Filter out unknown chains
+
+  // Find the best chain (highest return that doesn't exceed supply)
+  const validResults = chainResults.filter(r => !r.exceedsSupply && r.returnAmount > 0)
+  const bestResult = validResults.length > 0
+    ? validResults.reduce((best, current) => current.returnAmount > best.returnAmount ? current : best)
+    : chainResults[0]
+
+  // Check if any chain can handle the full amount
+  const anyExceedsSupply = chainResults.some(r => r.exceedsSupply)
+  const allExceedSupply = chainResults.every(r => r.exceedsSupply)
 
   return (
     <div className={`mb-3 border max-w-sm ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
@@ -142,43 +156,6 @@ function CashOutCalculator({
       {expanded && (
         <div className={`px-3 pb-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <div className="pt-3 space-y-3">
-            {/* Chain selector (only show if multi-chain) */}
-            {chainFundsData.length > 1 && (
-              <div>
-                <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  Chain
-                </label>
-                <div className="flex gap-1 mt-1">
-                  {chainFundsData.filter(cd => cd.cashOutTaxRate < 10000).map(cd => {
-                    const info = CHAIN_INFO[cd.chainId]
-                    if (!info) return null
-                    const isSelected = cd.chainId === selectedChainId
-                    return (
-                      <button
-                        key={cd.chainId}
-                        onClick={() => setSelectedChainId(cd.chainId)}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                          isSelected
-                            ? isDark
-                              ? 'bg-white/20 text-white'
-                              : 'bg-gray-200 text-gray-900'
-                            : isDark
-                              ? 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                              : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-                        }`}
-                      >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ backgroundColor: info.color }}
-                        />
-                        {info.shortName}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
             {/* Token input */}
             <div>
               <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -190,44 +167,87 @@ function CashOutCalculator({
                 onChange={(e) => setTokenAmount(e.target.value)}
                 placeholder="0"
                 className={`w-full mt-1 px-2 py-1.5 text-sm font-mono border ${
-                  exceedsSupply
-                    ? 'border-red-500'
-                    : isDark
-                      ? 'bg-white/5 border-white/10 text-white placeholder-gray-600'
-                      : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
-                } ${isDark ? 'bg-white/5 text-white placeholder-gray-600' : 'bg-gray-50 text-gray-900 placeholder-gray-400'} focus:outline-none ${!exceedsSupply ? 'focus:border-green-500' : ''}`}
+                  isDark
+                    ? 'bg-white/5 border-white/10 text-white placeholder-gray-600'
+                    : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                } focus:outline-none focus:border-green-500`}
               />
-              {supplyHuman > 0 && (
-                <div className={`mt-1 text-[10px] ${exceedsSupply ? 'text-red-400' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {exceedsSupply
-                    ? `Exceeds ${chainInfo?.shortName || 'chain'} supply of ${supplyHuman.toLocaleString()} tokens`
-                    : tokensNum > 0
-                      ? `${((tokensNum / supplyHuman) * 100).toFixed(2)}% of supply (${supplyHuman.toLocaleString()} total)`
-                      : `Total supply: ${supplyHuman.toLocaleString()}`
-                  }
-                </div>
-              )}
             </div>
 
-            {/* Result */}
-            <div className={`p-2 ${exceedsSupply ? (isDark ? 'bg-red-500/10' : 'bg-red-50') : (isDark ? 'bg-green-500/10' : 'bg-green-50')}`}>
-              <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                {exceedsSupply ? `Max you could receive on ${chainInfo?.shortName || 'this chain'}` : 'You would receive'}
-              </div>
-              <div className={`text-lg font-mono font-semibold ${exceedsSupply ? (isDark ? 'text-red-400' : 'text-red-600') : (isDark ? 'text-green-400' : 'text-green-600')}`}>
-                {estimatedReturn > 0 ? estimatedReturn.toFixed(6) : '0'} {currencySymbol}
-              </div>
-              {tokensNum > 0 && estimatedReturn > 0 && !exceedsSupply && (
+            {/* Best result */}
+            {bestResult && (
+              <div className={`p-2 ${allExceedSupply ? (isDark ? 'bg-red-500/10' : 'bg-red-50') : (isDark ? 'bg-green-500/10' : 'bg-green-50')}`}>
                 <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  ≈ {(estimatedReturn / tokensNum).toFixed(8)} {currencySymbol}/{tokenSymbol || 'token'}
+                  {tokensNum > 0 && chainFundsData.length > 1 && !allExceedSupply
+                    ? `Best return (${bestResult.chainInfo?.shortName})`
+                    : 'You would receive'
+                  }
                 </div>
-              )}
-              {exceedsSupply && (
-                <div className={`text-[10px] mt-1 ${isDark ? 'text-red-400' : 'text-red-500'}`}>
-                  This chain only has {supplyHuman.toLocaleString()} tokens available
+                <div className={`text-lg font-mono font-semibold ${allExceedSupply ? (isDark ? 'text-red-400' : 'text-red-600') : (isDark ? 'text-green-400' : 'text-green-600')}`}>
+                  {bestResult.returnAmount > 0 ? bestResult.returnAmount.toFixed(6) : '0'} {bestResult.currencySymbol}
                 </div>
-              )}
-            </div>
+                {tokensNum > 0 && bestResult.returnAmount > 0 && !bestResult.exceedsSupply && (
+                  <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    ≈ {(bestResult.returnAmount / tokensNum).toFixed(8)} {bestResult.currencySymbol}/{tokenSymbol || 'token'}
+                  </div>
+                )}
+                {allExceedSupply && tokensNum > 0 && (
+                  <div className={`text-[10px] mt-1 ${isDark ? 'text-red-400' : 'text-red-500'}`}>
+                    Amount exceeds supply on all chains
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Breakdown dropdown for multi-chain */}
+            {chainFundsData.length > 1 && tokensNum > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowBreakdown(!showBreakdown)}
+                  className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+                >
+                  <span>Breakdown</span>
+                  <svg
+                    className={`w-3 h-3 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showBreakdown && (
+                  <div className="mt-2 space-y-2">
+                    {chainResults.map(result => (
+                      <div key={result.chain.chainId} className={`flex items-center justify-between text-xs ${result === bestResult ? (isDark ? 'text-green-400' : 'text-green-600') : ''}`}>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: result.chainInfo?.color }}
+                          />
+                          <span className={result === bestResult ? '' : (isDark ? 'text-gray-400' : 'text-gray-500')}>
+                            {result.chainInfo?.shortName}
+                          </span>
+                          {result === bestResult && (
+                            <span className={`text-[10px] ${isDark ? 'text-green-400' : 'text-green-600'}`}>Best</span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <span className={`font-mono ${result.exceedsSupply ? (isDark ? 'text-red-400' : 'text-red-500') : (result === bestResult ? '' : (isDark ? 'text-gray-300' : 'text-gray-600'))}`}>
+                            {result.returnAmount > 0 ? result.returnAmount.toFixed(6) : '0'} {result.currencySymbol}
+                          </span>
+                          {result.exceedsSupply && (
+                            <div className={`text-[10px] ${isDark ? 'text-red-400' : 'text-red-500'}`}>
+                              Exceeds supply
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -309,7 +329,7 @@ function PerChainCashOutBreakdown({
         onClick={() => setExpanded(!expanded)}
         className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
       >
-        <span>Per-chain cash out values</span>
+        <span>Breakdown</span>
         <svg
           className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
           fill="none"
@@ -836,7 +856,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                   : isDark ? 'text-gray-500' : 'text-gray-400'
               }`}>
                 {hasSurplus && activeCashOut && activeCashOut.cashOutPerToken > 0
-                  ? `${activeCashOut.cashOutPerToken.toFixed(6)} ${currency === 2 ? 'USDC' : 'ETH'}/${tokenSymbol || 'token'}`
+                  ? `${activeCashOut.cashOutPerToken.toFixed(6)} ${currency === 2 ? 'USDC' : 'ETH'}`
                   : 'No surplus'
                 }
               </div>
@@ -869,7 +889,6 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
             {hasSurplus && activeCashOut && (
               <CashOutCalculator
                 chainFundsData={cashOutEnabledChains}
-                initialChainId={chainIdNum}
                 isDark={isDark}
                 tokenSymbol={tokenSymbol}
               />
