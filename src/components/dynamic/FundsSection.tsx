@@ -121,7 +121,7 @@ function CashOutCalculator({
   const exceedsSupply = tokensNum > supplyHuman && supplyHuman > 0
 
   return (
-    <div className={`mb-3 border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+    <div className={`mb-3 border max-w-sm ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
       <button
         onClick={() => setExpanded(!expanded)}
         className={`w-full px-3 py-2 flex items-center justify-between text-xs ${
