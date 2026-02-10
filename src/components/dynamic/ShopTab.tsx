@@ -157,7 +157,7 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
   }
 
   return (
-    <div className="space-y-6 relative">
+    <div className="relative">
       {/* Refresh button - subtle top right */}
       <button
         onClick={handleRefresh}
@@ -184,7 +184,7 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
 
       {/* Category filter chips */}
       {categories.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 mb-6">
           <button
             onClick={() => setSelectedCategory('all')}
             className={`px-3 py-1.5 text-sm font-medium transition-colors border ${

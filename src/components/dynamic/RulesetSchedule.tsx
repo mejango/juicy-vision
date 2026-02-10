@@ -967,14 +967,11 @@ export default function RulesetSchedule({
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
         {/* Header */}
-        <div className={`px-4 py-3 border-b flex items-center justify-between ${
+        <div className={`px-4 py-3 border-b ${
           isDark ? 'border-white/10' : 'border-gray-100'
         }`}>
           <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
             Ruleset
-          </span>
-          <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            {projectName || `Project #${projectId}`}
           </span>
         </div>
 
@@ -1602,23 +1599,6 @@ export default function RulesetSchedule({
                         </div>
                       )}
 
-                      {/* Buttons */}
-                      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                        <button
-                          onClick={() => {
-                            window.dispatchEvent(new CustomEvent('juice:send-message', {
-                              detail: { message: `Show me a token price chart for project ${projectId} on ${getChainName(parseInt(chainId))}` }
-                            }))
-                          }}
-                          className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                            isDark
-                              ? 'text-teal-400 border border-teal-400/30 hover:bg-teal-500/10 rounded'
-                              : 'text-teal-600 border border-teal-300 hover:bg-teal-50 rounded'
-                          }`}
-                        >
-                          View price chart
-                        </button>
-                      </div>
                     </div>
                   </Section>
                 </>
@@ -2179,11 +2159,56 @@ export default function RulesetSchedule({
                               Change project name, description, and logo
                             </div>
                           </div>
+
+                          {/* 721 Hook Powers - only shown for revnets with NFT hooks */}
+                          <div className={`text-xs font-medium pt-2 mt-2 border-t ${isDark ? 'text-gray-300 border-gray-700' : 'text-gray-600 border-gray-200'}`}>
+                            721 Hook Powers
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between text-xs">
+                              <span>Adjust NFT tiers</span>
+                              <span className="text-emerald-400">Allowed</span>
+                            </div>
+                            <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                              Add new tiers or remove removable tiers
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between text-xs">
+                              <span>Update NFT metadata</span>
+                              <span className="text-emerald-400">Allowed</span>
+                            </div>
+                            <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                              Change NFT collection and tier metadata
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between text-xs">
+                              <span>Mint NFTs</span>
+                              <span className="text-emerald-400">Allowed</span>
+                            </div>
+                            <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                              Mint from tiers that allow operator minting
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between text-xs">
+                              <span>Increase tier discounts</span>
+                              <span className="text-emerald-400">Allowed</span>
+                            </div>
+                            <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                              Increase discount percentage on NFT tiers
+                            </div>
+                          </div>
                         </div>
 
                         {/* Operator explanation */}
                         <div className={`text-xs p-2 ${isDark ? 'bg-blue-500/10 text-blue-300' : 'bg-blue-50 text-blue-700'}`}>
-                          The operator can configure reserved token splits and deploy cross-chain bridges. They cannot change core tokenomics or access project funds.
+                          The operator can configure reserved token splits, deploy cross-chain bridges, and manage NFT tiers. They cannot change core tokenomics or access project funds.
                         </div>
                       </div>
                     ) : (

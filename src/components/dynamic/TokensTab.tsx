@@ -287,7 +287,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   return (
     <div className="space-y-4">
       <ExplainerMessage>
-        Members are represented on blockchains to make agreements permanent.
+        Membership is represented on blockchains to make agreements permanent.
       </ExplainerMessage>
 
       {/* Your Balance */}

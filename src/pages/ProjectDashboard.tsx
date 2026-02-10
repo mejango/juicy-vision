@@ -657,7 +657,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     </ExplainerMessage>
                     <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
                     <ExplainerMessage>
-                      Here's how membership changes over time based on issuance cuts. Contributors from earlier windows get more than later ones.
+                      Here's how access to membership changes over time based on issuance cuts. Contributors from earlier windows get more than later ones.
                     </ExplainerMessage>
                     {/* Price forecast for revnets, issuance history for regular projects */}
                     <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
@@ -668,7 +668,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 {activeTab === 'funds' && (
                   <div className="space-y-6">
                     <ExplainerMessage>
-                      Here's the project money. You can see the total balance, available payouts, and cash out value for members.
+                      Here's the project's money. You can see the total balance, available payouts, and cash out value for members.
                     </ExplainerMessage>
                     <FundsSection
                       projectId={String(projectId)}
@@ -1023,7 +1023,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             </ExplainerMessage>
             <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
             <ExplainerMessage>
-              Here's how membership changes over time based on issuance cuts. Contributors from earlier windows get more than later ones.
+              Here's how access to membership changes over time based on issuance cuts. Contributors from earlier windows get more than later ones.
             </ExplainerMessage>
             <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
           </div>
@@ -1033,7 +1033,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         {activeTab === 'funds' && (
           <div className="space-y-6">
             <ExplainerMessage>
-              Here's the project money. You can see the total balance, available payouts, and cash out value for members.
+              Here's the project's money. You can see the total balance, available payouts, and cash out value for members.
             </ExplainerMessage>
             <FundsSection
               projectId={String(projectId)}
