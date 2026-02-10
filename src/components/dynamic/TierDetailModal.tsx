@@ -30,19 +30,17 @@ export default function TierDetailModal({
   const isDark = theme === 'dark'
   const [showTechnical, setShowTechnical] = useState(false)
   const [multiChainSupply, setMultiChainSupply] = useState<MultiChainTierSupply | null>(null)
-  const [loadingSupply, setLoadingSupply] = useState(false)
 
   const isMultiChain = connectedChains && connectedChains.length > 1
 
-  // Fetch multi-chain supply when modal opens
+  // Fetch multi-chain supply when modal opens (background update, no loading state)
   useEffect(() => {
     if (!isOpen || !isMultiChain || multiChainSupply) return
 
-    setLoadingSupply(true)
+    // Fetch in background - we already have tier data to show
     fetchMultiChainTierSupply(tier.tierId, connectedChains)
       .then(setMultiChainSupply)
       .catch(console.error)
-      .finally(() => setLoadingSupply(false))
   }, [isOpen, isMultiChain, tier.tierId, connectedChains, multiChainSupply])
 
   // Reset multi-chain data when modal closes
@@ -170,11 +168,7 @@ export default function TierDetailModal({
                   {soldOut ? 'Sold Out' : 'Running Low!'}
                 </span>
                 <span className={`font-mono text-lg font-semibold ${soldOut ? 'text-red-400' : 'text-orange-400'}`}>
-                  {loadingSupply ? (
-                    <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
-                  ) : (
-                    `${remainingSupply} / ${initialSupply}`
-                  )}
+                  {remainingSupply} / {initialSupply}
                 </span>
               </div>
               {/* Progress bar */}
@@ -189,13 +183,7 @@ export default function TierDetailModal({
             /* Subtle inventory display when plenty in stock */
             <div className={`mb-6 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Inventory</span>{' '}
-              <span className="font-mono">
-                {loadingSupply ? (
-                  <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" />
-                ) : (
-                  `${remainingSupply} / ${initialSupply}`
-                )}
-              </span>
+              <span className="font-mono">{remainingSupply} / {initialSupply}</span>
             </div>
           )}
 

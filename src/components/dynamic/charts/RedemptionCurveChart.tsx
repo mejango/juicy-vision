@@ -67,10 +67,10 @@ export default function RedemptionCurveChart({
     return points
   }, [r])
 
-  // Chart dimensions
-  const width = 200
-  const height = 80
-  const padding = { top: 8, right: 8, bottom: 16, left: 24 }
+  // Chart dimensions - using viewBox for responsive scaling
+  const width = 300
+  const height = 100
+  const padding = { top: 8, right: 8, bottom: 20, left: 32 }
   const chartWidth = width - padding.left - padding.right
   const chartHeight = height - padding.top - padding.bottom
 
@@ -117,14 +117,18 @@ export default function RedemptionCurveChart({
     const rect = svg.getBoundingClientRect()
     const x = e.clientX - rect.left
 
-    // Convert pixel position to fraction (0-1)
-    const fraction = (x - padding.left) / chartWidth
+    // Scale from rendered size to viewBox coordinates
+    const scale = width / rect.width
+    const viewBoxX = x * scale
+
+    // Convert viewBox position to fraction (0-1)
+    const fraction = (viewBoxX - padding.left) / chartWidth
     if (fraction >= 0 && fraction <= 1) {
       setHoverFraction(fraction)
     } else {
       setHoverFraction(null)
     }
-  }, [padding.left, chartWidth])
+  }, [padding.left, chartWidth, width])
 
   const handleMouseLeave = useCallback(() => {
     setHoverFraction(null)
@@ -154,12 +158,11 @@ export default function RedemptionCurveChart({
   const maxRetention = 100 // At 100% redemption
 
   return (
-    <div className="relative flex flex-col">
+    <div className="relative flex flex-col w-full">
       <svg
-        width={width}
-        height={height}
         viewBox={`0 0 ${width} ${height}`}
-        className="select-none cursor-crosshair"
+        className="w-full select-none cursor-crosshair"
+        style={{ height: 'auto', aspectRatio: `${width}/${height}` }}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
@@ -300,8 +303,8 @@ export default function RedemptionCurveChart({
             isDark ? 'bg-gray-800 text-white' : 'bg-white text-gray-900 border border-gray-200'
           }`}
           style={{
-            left: Math.min(hoverPoint.x, width - 80),
-            top: hoverPoint.y - 36,
+            left: `${Math.min((hoverPoint.x / width) * 100, 75)}%`,
+            top: `${((hoverPoint.y - 30) / height) * 100}%`,
           }}
         >
           <div className="font-medium">{(hoverPoint.fraction * 100).toFixed(0)}% redeemed</div>
@@ -312,7 +315,7 @@ export default function RedemptionCurveChart({
       {/* Legend - aligned with graph origin */}
       <div
         className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
-        style={{ paddingLeft: padding.left }}
+        style={{ paddingLeft: `${(padding.left / width) * 100}%` }}
       >
         <span>% of supply redeemed →</span>
       </div>
