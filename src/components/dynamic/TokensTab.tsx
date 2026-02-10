@@ -424,7 +424,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
 
       {/* Reserved Tokens Section */}
       <ExplainerMessage>
-        A portion of membership can be reserved for the project admin and split among recipients.
+        A portion of membership can be reserved for the project admin to split among recipients.
       </ExplainerMessage>
       <div className={`p-4 border ${
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
