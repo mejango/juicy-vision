@@ -668,6 +668,7 @@ export default function RulesetSchedule({
 
   // Inline chain selector for splits sections (used when rulesets match but project is omnichain)
   const [splitsChainId, setSplitsChainId] = useState<number | null>(null)
+  const [showSplitsBreakdown, setShowSplitsBreakdown] = useState(false)
 
   // Determine which chain's splits to show
   // If rulesets differ, use omnichainState.selectedChainId (top-level tabs)
@@ -2518,27 +2519,8 @@ export default function RulesetSchedule({
                 {/* Reserved Token Splits */}
                 {activeSplits.reservedSplits.length > 0 ? (
                   <div>
-                    <div className={`text-xs font-medium mb-2 flex items-center gap-2 flex-wrap ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <div className={`text-xs font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                       <span>{tokenSymbol} Recipients</span>
-                      {/* When rulesets differ, show chain badge from top-level tabs */}
-                      {!omnichainState.rulesetsMatch && omnichainState.selectedChainId && (
-                        <ChainBadge chainId={omnichainState.selectedChainId} isDark={isDark} />
-                      )}
-                      {/* When rulesets match but project is omnichain, show inline chain selector */}
-                      {omnichainState.rulesetsMatch && omnichainState.isOmnichain && (
-                        <InlineChainSelector
-                          chainRulesets={omnichainState.chainRulesets}
-                          selectedChainId={splitsChainId}
-                          onSelect={setSplitsChainId}
-                          isDark={isDark}
-                        />
-                      )}
-                      {/* When unified view with differences, show warning */}
-                      {!omnichainState.rulesetsMatch && !omnichainState.selectedChainId && omnichainState.isOmnichain && splitsDifferAcrossChains() && (
-                        <span className="text-amber-400 text-[10px]" title="Splits vary across chains">
-                          ⚠ varies by chain
-                        </span>
-                      )}
                     </div>
                     <div className="space-y-2">
                       {(() => {
@@ -2612,6 +2594,73 @@ export default function RulesetSchedule({
                         return null
                       })()}
                     </div>
+
+                    {/* Per-chain breakdown dropdown for omnichain projects */}
+                    {omnichainState.isOmnichain && omnichainState.chainRulesets.length > 1 && (
+                      <div className="mt-3">
+                        <button
+                          onClick={() => setShowSplitsBreakdown(!showSplitsBreakdown)}
+                          className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+                        >
+                          <span>Breakdown</span>
+                          <svg
+                            className={`w-3 h-3 transition-transform ${showSplitsBreakdown ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        {showSplitsBreakdown && (
+                          <div className="mt-2 space-y-3">
+                            {omnichainState.chainRulesets.map(cr => {
+                              const chainInfo = CHAIN_INFO[cr.chainId]
+                              if (!chainInfo) return null
+                              const chainSplits = cr.splits?.reservedSplits || []
+                              const chainReservedRate = (cr.ruleset?.reservedPercent || 0) / 100
+                              return (
+                                <div key={cr.chainId}>
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                      style={{ backgroundColor: chainInfo.color }}
+                                    />
+                                    <span className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                      {chainInfo.shortName}
+                                    </span>
+                                  </div>
+                                  <div className="pl-3 space-y-1">
+                                    {chainSplits.length > 0 ? (
+                                      chainSplits.map((split, idx) => {
+                                        const splitPercent = (split.percent / 1e9) * 100
+                                        const actualPercent = (chainReservedRate * splitPercent) / 100
+                                        const beneficiaryKey = split.beneficiary.toLowerCase()
+                                        const displayName = splitEnsNames[beneficiaryKey] || truncateAddress(split.beneficiary)
+                                        return (
+                                          <div key={idx} className="flex items-center justify-between text-xs">
+                                            <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                              {split.projectId > 0 ? `Project #${split.projectId}` : displayName}
+                                            </span>
+                                            <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                                              {actualPercent.toFixed(0)}%
+                                            </span>
+                                          </div>
+                                        )
+                                      })
+                                    ) : (
+                                      <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                        No recipients configured
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
