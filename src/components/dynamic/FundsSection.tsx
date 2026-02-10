@@ -356,6 +356,77 @@ function PerChainCashOutBreakdown({
   )
 }
 
+// Cash out tax rate display with per-chain breakdown
+function CashOutTaxRateDisplay({
+  cashOutEnabledChains,
+  unifiedTaxRate,
+  isDark,
+}: {
+  cashOutEnabledChains: ChainFundsData[]
+  unifiedTaxRate: number | null
+  isDark: boolean
+}) {
+  const [showBreakdown, setShowBreakdown] = useState(false)
+
+  // Format tax rate as percentage
+  const formatTaxRate = (rate: number) => `${((rate / 10000) * 100).toFixed(0)}%`
+
+  return (
+    <div className="mb-3">
+      <div className="flex items-center gap-2">
+        <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          Current cash out tax rate:
+        </span>
+        {unifiedTaxRate !== null ? (
+          <span className={`text-xs font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {formatTaxRate(unifiedTaxRate)}
+          </span>
+        ) : (
+          <button
+            onClick={() => setShowBreakdown(!showBreakdown)}
+            className={`flex items-center gap-1 text-xs font-mono font-medium ${isDark ? 'text-white hover:text-gray-300' : 'text-gray-900 hover:text-gray-600'}`}
+          >
+            <span>Varies by chain</span>
+            <svg
+              className={`w-3 h-3 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {/* Per-chain breakdown when rates differ */}
+      {unifiedTaxRate === null && showBreakdown && (
+        <div className="mt-2 space-y-1">
+          {cashOutEnabledChains.map(cd => {
+            const chainInfo = CHAIN_INFO[cd.chainId]
+            if (!chainInfo) return null
+            return (
+              <div key={cd.chainId} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ backgroundColor: chainInfo.color }}
+                  />
+                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {chainInfo.shortName}
+                  </span>
+                </div>
+                <span className={`text-xs font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {formatTaxRate(cd.cashOutTaxRate)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function FundsSection({ projectId, chainId, isOwner, onSendPayouts, isRevnet = false, onCashOut }: FundsSectionProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -685,12 +756,17 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         const activeCashOut = chainFundsData.find(cd => cd.chainId === chainIdNum)
         if (!hasCashOutsEnabled) return null
 
+        // Check if all chains have the same tax rate
+        const taxRates = cashOutEnabledChains.map(cd => cd.cashOutTaxRate)
+        const allSameTaxRate = taxRates.every(rate => rate === taxRates[0])
+        const unifiedTaxRate = allSameTaxRate ? taxRates[0] : null
+
         return (
           <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-            {/* Cash out rate header */}
+            {/* Cash out value header */}
             <div className="mb-3">
               <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                Token Cash Out Value
+                Membership cash out value
               </div>
               <div className={`text-lg font-mono font-semibold ${
                 hasSurplus && activeCashOut && activeCashOut.cashOutPerToken > 0
@@ -706,17 +782,18 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
 
             {/* Explanation */}
             <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Token holders may be able to cash out for a share of the surplus.
-              {activeCashOut && activeCashOut.cashOutTaxRate > 0 && (
-                <span> A {((activeCashOut.cashOutTaxRate / 10000) * 100).toFixed(0)}% cash out tax rate determines value — cashing out after others yields more.</span>
-              )}
-              {activeCashOut && activeCashOut.cashOutTaxRate === 0 && (
-                <span> No cash out tax — each token returns equal value.</span>
-              )}
+              Members may be able to cash out for a share of the surplus. A cash out tax rate determines value — with a tax, cashing out after others yields more.
               {surplus === 0n && (
                 <span className={isDark ? 'text-yellow-400' : 'text-yellow-600'}> Currently no surplus available for cash outs.</span>
               )}
             </div>
+
+            {/* Current cash out tax rate */}
+            <CashOutTaxRateDisplay
+              cashOutEnabledChains={cashOutEnabledChains}
+              unifiedTaxRate={unifiedTaxRate}
+              isDark={isDark}
+            />
 
             {/* Per-chain cash out breakdown (collapsible) */}
             {hasSurplus && cashOutEnabledChains.length > 1 && (
@@ -834,7 +911,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                     <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                       Your balance: <span className={`font-mono ${userTokenBalance > 0n ? (isDark ? 'text-white' : 'text-gray-900') : ''}`}>
                         {formatBalance(userTokenBalance.toString(), 18)}
-                      </span> tokens
+                      </span> {tokenSymbol || 'tokens'}
                     </span>
                   )}
                 </div>
