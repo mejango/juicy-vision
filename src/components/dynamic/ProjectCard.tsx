@@ -1824,7 +1824,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       </div>
 
       {/* Pay form */}
-      <div className={`mb-3 p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+      <div className={`mb-3 px-3 pb-3 ${nftTiers.length > 0 ? 'pt-3' : 'pt-4'} ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
         {/* NFT Tier selector - horizontal carousel */}
         {nftTiers.length > 0 && (
           <div className="mb-3">
