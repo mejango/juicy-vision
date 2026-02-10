@@ -1320,9 +1320,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             </div>
           )}
 
-          {/* Sticky pay controls - sticks to top when scrolling */}
-          <div className={`sticky top-0 z-20 px-4 py-3 ${isDark ? 'bg-juice-dark' : 'bg-white'}`}>
-            <div className="flex gap-2">
+          {/* Pay section wrapper with subtle background */}
+          <div className={isDark ? 'bg-white/[0.02]' : 'bg-gray-50/50'}>
+            {/* Sticky pay controls - sticks to top when scrolling */}
+            <div className={`sticky top-0 z-20 px-4 py-3 ${isDark ? 'bg-[#131313]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
+              <div className="flex gap-2">
               <div className="flex-1">
                 <div
                   onClick={(e) => {
@@ -1469,9 +1471,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 )}
               </div>
             </div>
-          </div>
+            </div>
 
-          <div className="px-4">
+            <div className="px-4">
             {/* Token preview */}
             {(amountNum > 0 && expectedTokens !== null) || selectedTierIds.length > 0 ? (
               <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -1563,6 +1565,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 </div>
               </div>
             )}
+            </div>
           </div>
 
           {/* Activity section header */}
