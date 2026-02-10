@@ -657,7 +657,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     </ExplainerMessage>
                     <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
                     <ExplainerMessage>
-                      The issuance price forecast shows how token prices change over time based on the decay rate. Earlier contributors get more tokens per payment.
+                      Here's how membership changes over time based on issuance cuts. Contributors from earlier windows get more than later ones.
                     </ExplainerMessage>
                     {/* Price forecast for revnets, issuance history for regular projects */}
                     <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
@@ -1023,7 +1023,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             </ExplainerMessage>
             <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
             <ExplainerMessage>
-              The issuance price forecast shows how token prices change over time based on the decay rate. Earlier contributors get more tokens per payment.
+              Here's how membership changes over time based on issuance cuts. Contributors from earlier windows get more than later ones.
             </ExplainerMessage>
             <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
           </div>
