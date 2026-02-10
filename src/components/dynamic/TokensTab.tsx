@@ -286,7 +286,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   return (
     <div className="space-y-4">
       <ExplainerMessage>
-        Members own a share of the project.
+        Members are represented on blockchains to make agreements permanent.
       </ExplainerMessage>
 
       {/* Your Balance */}
@@ -427,14 +427,9 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
       }`}>
         {/* Header with reserved rate */}
-        <div className="flex items-center gap-2 mb-1">
-          <h3 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Reserved membership
-          </h3>
-          <span className={`text-sm font-mono font-semibold ${reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            {(reservedPercent / 100).toFixed(0)}%
-          </span>
-        </div>
+        <h3 className={`text-sm font-semibold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          Reserved membership: <span className={`font-mono ${reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>{(reservedPercent / 100).toFixed(0)}%</span>
+        </h3>
 
         {/* Description */}
         <p className={`text-xs mb-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

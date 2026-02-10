@@ -9,7 +9,7 @@ import {
 } from 'recharts'
 import { useThemeStore } from '../../../stores'
 import {
-  fetchAggregatedParticipants,
+  fetchMultiChainParticipants,
   fetchProject,
   fetchProjectSuckerGroupId,
   fetchConnectedChains,
@@ -76,16 +76,21 @@ export default function HoldersChart({
           : [parseInt(chainId)]
         setConnectedChains(chainIds)
 
-        // Fetch the actual suckerGroupId from the project
-        const suckerGroupId = await fetchProjectSuckerGroupId(projectId, parseInt(chainId))
-        console.log('[HoldersChart] suckerGroupId:', suckerGroupId, 'for project', projectId, 'chain', chainId)
+        // Build the connected chains array for multi-chain fetch
+        // If we have connected chains from suckerGroup, use those; otherwise use current chain
+        const connectedChainsArray = chains.length > 0
+          ? chains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))
+          : [{ chainId: parseInt(chainId), projectId: parseInt(projectId) }]
 
-        // Fetch aggregated participants (with fallback to single-chain if no suckerGroup or query fails)
-        const { participants, totalSupply } = await fetchAggregatedParticipants(
-          suckerGroupId || '',
+        // Fetch the suckerGroupId for accurate total supply calculation
+        const suckerGroupId = await fetchProjectSuckerGroupId(projectId, parseInt(chainId))
+        console.log('[HoldersChart] suckerGroupId:', suckerGroupId, 'connectedChains:', connectedChainsArray.length)
+
+        // Fetch participants from all connected chains and aggregate them
+        const { participants, totalSupply } = await fetchMultiChainParticipants(
+          connectedChainsArray,
           limit,
-          projectId,
-          parseInt(chainId)
+          suckerGroupId || undefined
         )
         console.log('[HoldersChart] participants:', participants.length, 'totalSupply:', totalSupply.toString())
         if (participants.length > 0) {

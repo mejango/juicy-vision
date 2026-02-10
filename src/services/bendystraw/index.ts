@@ -30,6 +30,7 @@ export {
   fetchCashOutEventsPage,
   fetchProjectMoments,
   fetchAggregatedParticipants,
+  fetchMultiChainParticipants,
   calculateFloorPrice,
   isRevnet,
   getContractsForProject,

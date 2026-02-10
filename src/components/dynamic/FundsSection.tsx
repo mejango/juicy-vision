@@ -324,26 +324,22 @@ function PerChainCashOutBreakdown({
           {cashOutEnabledChains.map(cd => {
             const chainInfo = CHAIN_INFO[cd.chainId]
             if (!chainInfo) return null
-            const chainRate = (cd.cashOutTaxRate / 10000).toFixed(2)
+            const chainRate = (cd.cashOutTaxRate / 10000).toFixed(2).replace(/\.?0+$/, '') || '0'
             return (
-              <div key={cd.chainId} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: chainInfo.color }}
-                  />
-                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {chainInfo.shortName}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className={`text-xs font-mono ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                    {cd.cashOutPerToken > 0 ? cd.cashOutPerToken.toFixed(6) : '0'} {cd.baseCurrency === 2 ? 'USDC' : 'ETH'}
-                  </span>
-                  <span className={`text-[10px] ml-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    (rate {chainRate})
-                  </span>
-                </div>
+              <div key={cd.chainId} className="flex items-center gap-2">
+                <span
+                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: chainInfo.color }}
+                />
+                <span className={`text-xs w-10 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {chainInfo.shortName}
+                </span>
+                <span className={`text-xs font-mono ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+                  {cd.cashOutPerToken > 0 ? cd.cashOutPerToken.toFixed(6) : '0'} {cd.baseCurrency === 2 ? 'USDC' : 'ETH'}
+                </span>
+                <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  (rate {chainRate})
+                </span>
               </div>
             )
           })}
@@ -782,7 +778,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
 
             {/* Explanation */}
             <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Members may be able to cash out for a share of the surplus. A cash out tax rate determines value — with a tax, cashing out after others yields more.
+              If there is a surplus and cash out tax rate, members can cash out for a share of the surplus.
               {surplus === 0n && (
                 <span className={isDark ? 'text-yellow-400' : 'text-yellow-600'}> Currently no surplus available for cash outs.</span>
               )}

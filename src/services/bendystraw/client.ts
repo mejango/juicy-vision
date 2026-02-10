@@ -3206,6 +3206,106 @@ export async function fetchAggregatedParticipants(
   return { participants: [], totalSupply: 0n }
 }
 
+// Fetch participants from all connected chains and aggregate them
+// This is a more reliable approach than querying by suckerGroupId when the indexer
+// doesn't have cross-chain participant data indexed correctly
+export async function fetchMultiChainParticipants(
+  connectedChains: Array<{ chainId: number; projectId: number }>,
+  limit: number = 100,
+  suckerGroupId?: string
+): Promise<{ participants: AggregatedParticipant[]; totalSupply: bigint }> {
+  if (connectedChains.length === 0) {
+    return { participants: [], totalSupply: 0n }
+  }
+
+  // Fetch participants from all chains in parallel
+  const chainResults = await Promise.all(
+    connectedChains.map(async ({ chainId, projectId }) => {
+      const client = getClient(getNetworkOption(chainId))
+      try {
+        const [participantsData, projectData] = await Promise.all([
+          client.request<{
+            participants: {
+              totalCount: number
+              items: Array<{ address: string; chainId: number; balance: string }>
+            }
+          }>(TOKEN_HOLDERS_QUERY, {
+            projectId,
+            chainId,
+            limit: 1000,
+          }),
+          client.request<{
+            project: { tokenSupply?: string } | null
+          }>(PROJECT_QUERY, {
+            projectId,
+            chainId,
+            version: 5
+          })
+        ])
+
+        return {
+          chainId,
+          items: participantsData.participants?.items || [],
+          tokenSupply: BigInt(projectData.project?.tokenSupply || '0')
+        }
+      } catch (err) {
+        console.log(`[fetchMultiChainParticipants] Failed to fetch from chain ${chainId}:`, err)
+        return { chainId, items: [], tokenSupply: 0n }
+      }
+    })
+  )
+
+  // Also try to get the total tokenSupply from suckerGroup if available (more accurate)
+  let totalSupply = 0n
+  if (suckerGroupId) {
+    try {
+      const client = getClient(getNetworkOption(connectedChains[0].chainId))
+      const suckerGroupData = await client.request<{
+        suckerGroup: { tokenSupply: string } | null
+      }>(SUCKER_GROUP_BY_ID_QUERY, { id: suckerGroupId })
+      totalSupply = BigInt(suckerGroupData.suckerGroup?.tokenSupply || '0')
+    } catch {
+      // Fall back to summing per-chain supplies
+    }
+  }
+
+  // If we couldn't get suckerGroup totalSupply, sum up per-chain supplies
+  if (totalSupply === 0n) {
+    totalSupply = chainResults.reduce((sum, r) => sum + r.tokenSupply, 0n)
+  }
+
+  // Aggregate all participants across chains
+  const aggregated: Record<string, { balance: bigint; chains: number[] }> = {}
+
+  for (const result of chainResults) {
+    for (const p of result.items) {
+      const addr = p.address.toLowerCase()
+      if (!addr) continue
+      const existing = aggregated[addr] ?? { balance: 0n, chains: [] }
+      aggregated[addr] = {
+        balance: existing.balance + BigInt(p.balance || '0'),
+        chains: [...existing.chains, result.chainId],
+      }
+    }
+  }
+
+  const participants = Object.entries(aggregated)
+    .map(([address, data]) => ({
+      address,
+      balance: data.balance,
+      chains: [...new Set(data.chains)],
+      percentage: totalSupply > 0n
+        ? Number((data.balance * 10000n) / totalSupply) / 100
+        : 0,
+    }))
+    .sort((a, b) => (b.balance > a.balance ? 1 : -1))
+    .slice(0, limit)
+
+  console.log('[fetchMultiChainParticipants] Aggregated', participants.length, 'participants from', connectedChains.length, 'chains, totalSupply:', totalSupply.toString())
+
+  return { participants, totalSupply }
+}
+
 // Historical per-chain balance snapshot
 export interface ProjectMoment {
   timestamp: number
