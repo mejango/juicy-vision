@@ -59,6 +59,7 @@ export default function BalanceChart({
   const [projectName, setProjectName] = useState<string>('')
   const [connectedChains, setConnectedChains] = useState<number[]>([])
   const [selectedChains, setSelectedChains] = useState<Set<number> | 'all'>('all')
+  const [showBreakdown, setShowBreakdown] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -329,12 +330,32 @@ export default function BalanceChart({
             </div>
           </div>
           {connectedChains.length > 1 && (
-            <ChainToggleBar
-              availableChains={connectedChains}
-              selectedChains={selectedChains}
-              onToggle={handleChainToggle}
-              onSelectAll={handleSelectAll}
-            />
+            <div>
+              <button
+                onClick={() => setShowBreakdown(!showBreakdown)}
+                className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+              >
+                <span>Breakdown</span>
+                <svg
+                  className={`w-3 h-3 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showBreakdown && (
+                <div className="mt-2">
+                  <ChainToggleBar
+                    availableChains={connectedChains}
+                    selectedChains={selectedChains}
+                    onToggle={handleChainToggle}
+                    onSelectAll={handleSelectAll}
+                  />
+                </div>
+              )}
+            </div>
           )}
         </div>
 

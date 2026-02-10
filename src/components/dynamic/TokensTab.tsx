@@ -29,7 +29,7 @@ interface TokensTabProps {
   isOwner?: boolean // Unused but kept for interface compatibility
 }
 
-// Chain info for display
+// Chain info for display (ALL CAPS for symbols)
 const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
   1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
   10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
@@ -415,37 +415,56 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           Reserved membership
         </h3>
 
-        {/* Chain selector for omnichain */}
-        {isOmnichain && (
-          <div className="flex items-center gap-1 flex-wrap mb-4">
-            {chainTokenData.map(cd => {
-              const chainInfo = CHAIN_INFO[cd.chainId]
-              if (!chainInfo) return null
-              const isSelected = selectedChainId === cd.chainId
-              return (
-                <button
-                  key={cd.chainId}
-                  onClick={() => setSelectedChainId(cd.chainId)}
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                    isSelected
-                      ? isDark
-                        ? 'bg-white/20 text-white'
-                        : 'bg-gray-200 text-gray-900'
-                      : isDark
-                        ? 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                        : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-                  }`}
-                >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: chainInfo.color }}
-                  />
-                  {chainInfo.shortName}
-                </button>
-              )
-            })}
-          </div>
-        )}
+        {/* Chain breakdown toggle - only show if rates differ across chains */}
+        {(() => {
+          // Check if reserved rates differ across chains
+          const rates = chainTokenData.map(cd => cd.reservedPercent)
+          const ratesDiffer = rates.length > 1 && !rates.every(r => r === rates[0])
+
+          if (!isOmnichain || !ratesDiffer) return null
+
+          return (
+            <div className="mb-4">
+              <button
+                onClick={() => setSelectedChainId(selectedChainId === chainIdNum ? chainTokenData[0]?.chainId || chainIdNum : chainIdNum)}
+                className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+              >
+                <span>Breakdown</span>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              <div className="flex items-center gap-1 flex-wrap mt-2">
+                {chainTokenData.map(cd => {
+                  const chainInfo = CHAIN_INFO[cd.chainId]
+                  if (!chainInfo) return null
+                  const isSelected = selectedChainId === cd.chainId
+                  return (
+                    <button
+                      key={cd.chainId}
+                      onClick={() => setSelectedChainId(cd.chainId)}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                        isSelected
+                          ? isDark
+                            ? 'bg-white/20 text-white'
+                            : 'bg-gray-200 text-gray-900'
+                          : isDark
+                            ? 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                      }`}
+                    >
+                      <span
+                        className="w-1.5 h-1.5 rounded-full"
+                        style={{ backgroundColor: chainInfo.color }}
+                      />
+                      {chainInfo.shortName}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Reserved rate */}
         <div className="flex items-center justify-between mb-3">
@@ -457,16 +476,16 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           </span>
         </div>
 
-        {/* Pending reserved tokens */}
+        {/* Pending reserved tokens - show total across all chains */}
         <div className="flex items-center justify-between mb-3">
           <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             Pending distribution
           </span>
           <div className="flex items-center gap-2">
             <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {pendingTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${tokenSymbol}
+              {totalPendingAcrossChains.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${tokenSymbol}
             </span>
-            {hasPendingTokens && (
+            {totalPendingAcrossChains > 0 && (
               <button
                 onClick={() => setShowModal(true)}
                 className={`px-2 py-0.5 text-xs font-medium transition-colors ${

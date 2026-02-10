@@ -145,17 +145,17 @@ export const CHAIN_COLORS: Record<number, string> = {
   421614: '#28A0F0',    // Arbitrum Sepolia
 }
 
-// Chain short names for display
+// Chain short names for display (ALL CAPS)
 export const CHAIN_NAMES: Record<number, string> = {
   1: 'ETH',
   10: 'OP',
-  8453: 'Base',
-  42161: 'Arb',
+  8453: 'BASE',
+  42161: 'ARB',
   // Testnets
-  11155111: 'Sep',
-  11155420: 'OP Sep',
-  84532: 'Base Sep',
-  421614: 'Arb Sep',
+  11155111: 'SEP',
+  11155420: 'OP SEP',
+  84532: 'BASE SEP',
+  421614: 'ARB SEP',
 }
 
 // Get chain color with fallback

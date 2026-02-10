@@ -34,12 +34,12 @@ interface FundsSectionProps {
   onCashOut?: () => void
 }
 
-// Chain info for display
-const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string; icon: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA', icon: 'Ξ' },
-  10: { name: 'Optimism', shortName: 'OP', color: '#FF0420', icon: 'OP' },
-  8453: { name: 'Base', shortName: 'BASE', color: '#0052FF', icon: 'B' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0', icon: 'A' },
+// Chain info for display (ALL CAPS for symbols)
+const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
+  1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
+  10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
+  8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
+  42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
 }
 
 // Per-chain funds data
