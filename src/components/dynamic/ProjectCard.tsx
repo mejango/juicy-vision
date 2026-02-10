@@ -1309,14 +1309,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   </button>
                 )}
               </div>
-              {selectedTierIds.length > 0 && !nftHookFlags?.preventOverspending && (
-                <button
-                  onClick={() => { setTierQuantities({}); setAmount('') }}
-                  className={`mt-2 text-xs ${isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
-                >
-                  Or pay a custom amount
-                </button>
-              )}
             </div>
           )}
 
@@ -1474,15 +1466,13 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           {/* Content below sticky with lighter background */}
           <div className={isDark ? 'bg-[#222]' : 'bg-gray-50'}>
             <div className="px-4">
-            {/* Token preview */}
-            {(amountNum > 0 && expectedTokens !== null) || selectedTierIds.length > 0 ? (
+            {/* Token preview - always show */}
+            {expectedTokens !== null ? (
               <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                 <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>You get:</span>
-                {amountNum > 0 && expectedTokens !== null && (
-                  <span> ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
-                )}
-                {payUs && estimatedJuicyTokens > 0 && (
-                  <span> + {estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} JUICY</span>
+                <span> ~{(amountNum > 0 ? expectedTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
+                {payUs && (
+                  <span> + {(amountNum > 0 ? estimatedJuicyTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} JUICY</span>
                 )}
                 {Object.keys(tierQuantities).length > 0 && (
                   <div className="mt-1">
@@ -1903,14 +1893,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 </button>
               )}
             </div>
-            {selectedTierIds.length > 0 && !nftHookFlags?.preventOverspending && (
-              <button
-                onClick={() => { setTierQuantities({}); setAmount('') }}
-                className={`mt-2 text-xs ${isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
-              >
-                Or pay a custom amount
-              </button>
-            )}
           </div>
         )}
 
@@ -2094,15 +2076,13 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         )}
 
 
-        {/* Token preview */}
-        {(amountNum > 0 && expectedTokens !== null) || selectedTierIds.length > 0 ? (
+        {/* Token preview - always show */}
+        {expectedTokens !== null ? (
           <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
             <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>You get:</span>
-            {amountNum > 0 && expectedTokens !== null && (
-              <span> ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
-            )}
-            {payUs && estimatedJuicyTokens > 0 && (
-              <span> + {estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} JUICY</span>
+            <span> ~{(amountNum > 0 ? expectedTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
+            {payUs && (
+              <span> + {(amountNum > 0 ? estimatedJuicyTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} JUICY</span>
             )}
             {Object.keys(tierQuantities).length > 0 && (
               <div className="mt-1">
