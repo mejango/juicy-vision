@@ -84,6 +84,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   const [showModal, setShowModal] = useState(false)
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
   const [showReservedBreakdown, setShowReservedBreakdown] = useState(false)
+  const [showIssuedBreakdown, setShowIssuedBreakdown] = useState(false)
 
   const chainIdNum = parseInt(chainId)
   const chain = CHAINS[chainIdNum] || MAINNET_CHAINS[chainIdNum]
@@ -411,13 +412,56 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           )}
 
           {/* Total supply */}
-          <div className="flex items-center gap-2">
-            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Total issued
-            </span>
-            <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {formatTokenAmount(totalSupply)}
-            </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Total issued
+              </span>
+              <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {formatTokenAmount(totalSupply)}
+              </span>
+            </div>
+            {/* Per-chain breakdown */}
+            {isOmnichain && (
+              <div className="mt-2">
+                <button
+                  onClick={() => setShowIssuedBreakdown(!showIssuedBreakdown)}
+                  className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+                >
+                  <span>Breakdown</span>
+                  <svg
+                    className={`w-3 h-3 transition-transform ${showIssuedBreakdown ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showIssuedBreakdown && (
+                  <div className="mt-2 space-y-1">
+                    {chainTokenData.map(cd => {
+                      const chainInfo = CHAIN_INFO[cd.chainId]
+                      if (!chainInfo) return null
+                      return (
+                        <div key={cd.chainId} className="flex items-center gap-3">
+                          <span
+                            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: chainInfo.color }}
+                          />
+                          <span className={`text-xs w-10 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {chainInfo.shortName}
+                          </span>
+                          <span className={`text-xs font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                            {formatTokenAmount(cd.totalSupply)}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -504,7 +548,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                             </span>
                             {pendingOnChain > 0 && (
                               <span className={`text-xs font-mono ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                                ({pendingOnChain.toLocaleString(undefined, { maximumFractionDigits: 1 })} pending)
+                                {pendingOnChain.toLocaleString(undefined, { maximumFractionDigits: 1 })} pending
                               </span>
                             )}
                           </div>

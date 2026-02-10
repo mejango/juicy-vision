@@ -255,7 +255,7 @@ function PerChainBreakdown({
         onClick={() => setExpanded(!expanded)}
         className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
       >
-        <span>Per-chain breakdown</span>
+        <span>Breakdown</span>
         <svg
           className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
           fill="none"
@@ -346,6 +346,76 @@ function PerChainCashOutBreakdown({
           <div className={`text-[10px] mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             Cash outs use each chain's balance and token supply.
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Collapsible per-chain payout splits breakdown
+function PayoutSplitsBreakdown({
+  chainFundsData,
+  splitEnsNames,
+  isDark,
+}: {
+  chainFundsData: ChainFundsData[]
+  splitEnsNames: Record<string, string>
+  isDark: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div className="mt-3 pt-2 border-t border-dashed" style={{ borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+      >
+        <span>Breakdown</span>
+        <svg
+          className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-3">
+          {chainFundsData.filter(cd => cd.payoutSplits.length > 0).map(cd => {
+            const chainInfo = CHAIN_INFO[cd.chainId]
+            if (!chainInfo) return null
+            return (
+              <div key={cd.chainId}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: chainInfo.color }}
+                  />
+                  <span className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                    {chainInfo.shortName}
+                  </span>
+                </div>
+                <div className="ml-3.5 space-y-1">
+                  {cd.payoutSplits.map((split, idx) => {
+                    const percent = (split.percent / 10000000).toFixed(2)
+                    const beneficiary = split.beneficiary?.toLowerCase() || ''
+                    const displayName = splitEnsNames[beneficiary] || (split.beneficiary ? `${split.beneficiary.slice(0, 6)}...${split.beneficiary.slice(-4)}` : '')
+                    return (
+                      <div key={idx} className="flex items-center gap-2 text-xs">
+                        <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {split.projectId > 0 ? `Project #${split.projectId}` : displayName}
+                        </span>
+                        <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                          {percent}%
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -663,15 +733,11 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
     <div className={`p-4 border ${
       isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
     }`}>
-      <h3 className={`text-sm font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-        Project's money
-      </h3>
-
-      {/* Total Balance */}
+      {/* Balance */}
       <div className="mb-4">
-        <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          Total Balance
-        </div>
+        <h3 className={`text-sm font-semibold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          Balance
+        </h3>
         <div className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
           {formatCurrency(totalBalance, decimals, currency)}
         </div>
@@ -1007,7 +1073,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                 const displayName = splitEnsNames[beneficiary] || truncateAddress(split.beneficiary || '')
 
                 return (
-                  <div key={idx} className="flex items-center justify-between text-sm">
+                  <div key={idx} className="flex items-center gap-3 text-sm">
                     <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                       {split.projectId > 0 ? (
                         `Project #${split.projectId}`
@@ -1021,6 +1087,14 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                   </div>
                 )
               })}
+              {/* Per-chain breakdown for multi-chain projects */}
+              {chainFundsData.length > 1 && (
+                <PayoutSplitsBreakdown
+                  chainFundsData={chainFundsData}
+                  splitEnsNames={splitEnsNames}
+                  isDark={isDark}
+                />
+              )}
             </div>
           )}
         </div>
