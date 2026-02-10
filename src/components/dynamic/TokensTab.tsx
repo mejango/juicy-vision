@@ -346,7 +346,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
       }`}>
         <h3 className={`text-sm font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Membership
+          Membership accounting
         </h3>
 
         <div className="space-y-3">
