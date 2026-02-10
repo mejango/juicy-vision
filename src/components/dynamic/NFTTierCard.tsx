@@ -257,9 +257,9 @@ export default function NFTTierCard({
   }
 
   return (
-    <div className={`border overflow-hidden ${
+    <div className={`border overflow-hidden transition-all ${
       isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
-    } ${soldOut ? 'opacity-60' : ''}`}>
+    } ${soldOut ? 'opacity-60' : 'hover:border-juice-orange hover:border-4 hover:-m-[3px]'}`}>
       {/* Image - clickable to open detail modal */}
       <div
         className={`aspect-square relative overflow-hidden cursor-pointer ${isSvgImage ? 'bg-white' : ''}`}
