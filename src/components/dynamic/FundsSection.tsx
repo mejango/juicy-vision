@@ -620,23 +620,51 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         />
       )}
 
-      {/* Available to pay out - hidden for revnets since they don't have payouts by design */}
-      {!isRevnet && (
-        <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          <div className="flex items-center justify-between">
-            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Available to pay out
-            </span>
-            <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {formatCurrency(totalAvailable.toString(), decimals, currency)}
-            </span>
-          </div>
+      {/* Payouts Section */}
+      <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+        <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          Payouts
         </div>
-      )}
+        {isRevnet ? (
+          <>
+            <div className={`text-sm font-mono ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              0 {currencySymbol}
+            </div>
+            <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Revnets don't have payouts by design. All funds remain in the treasury for member cash outs and loans.
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <div className={`text-sm font-mono ${totalAvailable > 0n ? (isDark ? 'text-white' : 'text-gray-900') : (isDark ? 'text-gray-500' : 'text-gray-400')}`}>
+                {formatCurrency(totalAvailable.toString(), decimals, currency)} available
+              </div>
+              {totalAvailable > 0n && (
+                <button
+                  onClick={onSendPayouts}
+                  className={`px-2 py-1 text-xs font-medium transition-colors border ${
+                    isDark
+                      ? 'text-juice-orange hover:text-orange-300 border-juice-orange/50 hover:border-orange-300'
+                      : 'text-orange-600 hover:text-orange-700 border-orange-500 hover:border-orange-600'
+                  }`}
+                >
+                  Distribute
+                </button>
+              )}
+            </div>
+            {totalAvailable === 0n && (
+              <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                No payouts available this cycle. The payout limit has been fully distributed or is set to zero.
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Surplus */}
       <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
           <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             Surplus
           </span>
@@ -655,14 +683,6 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
 
         // Get the active chain's data for display
         const activeCashOut = chainFundsData.find(cd => cd.chainId === chainIdNum)
-        // Cash out tax rate as decimal (0-1) for display - NOT a percentage
-        const cashOutTaxDecimal = activeCashOut ? (activeCashOut.cashOutTaxRate / 10000).toFixed(2) : '1'
-
-        // Check for surplus allowance
-        const activeFundLimits = activeCashOut?.fundAccessLimits
-        const activeSurplusAllowance = activeFundLimits?.surplusAllowances?.[0]
-        const hasSurplusAllowance = activeSurplusAllowance && BigInt(activeSurplusAllowance.amount) > 0n
-
         if (!hasCashOutsEnabled) return null
 
         return (
@@ -768,19 +788,6 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               )
             })()}
 
-            {/* Surplus Allowance info */}
-            {hasSurplusAllowance && activeFundLimits && (
-              <div className={`p-2 mb-3 ${isDark ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-yellow-50 border border-yellow-200'}`}>
-                <div className={`text-xs font-medium ${isDark ? 'text-yellow-400' : 'text-yellow-700'}`}>
-                  Surplus Allowance Active
-                </div>
-                <div className={`text-xs mt-1 ${isDark ? 'text-yellow-300/80' : 'text-yellow-600'}`}>
-                  The project operator can withdraw up to {formatBalance(activeSurplusAllowance!.amount, decimals)} {currencySymbol} from surplus this cycle.
-                  This reduces the funds available for token cash outs.
-                </div>
-              </div>
-            )}
-
             {/* Cash Out button and user balance */}
             {onCashOut && (
               <div className="flex items-center justify-between mt-3">
@@ -837,6 +844,68 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         )
       })()}
 
+      {/* Surplus Allowance Section */}
+      {(() => {
+        // For revnets, show the unlimited surplus allowance for loans
+        if (isRevnet) {
+          return (
+            <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+              <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                Surplus Allowance
+              </div>
+              <div className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                Unlimited
+              </div>
+              <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Revnets have unlimited surplus allowance that facilitates loans only. Funds cannot be withdrawn directly.
+              </div>
+            </div>
+          )
+        }
+
+        // For regular projects, show the surplus allowance from fundAccessLimits
+        const activeFundLimits = activeChainData?.fundAccessLimits
+        const surplusAllowance = activeFundLimits?.surplusAllowances?.[0]
+        const allowanceAmount = surplusAllowance ? BigInt(surplusAllowance.amount) : 0n
+
+        // Only show if there's a surplus allowance configured
+        if (!surplusAllowance || allowanceAmount === 0n) return null
+
+        return (
+          <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+            <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              Surplus Allowance
+            </div>
+            <div className="flex items-center justify-between">
+              <div className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {formatBalance(allowanceAmount.toString(), decimals)} {currencySymbol}
+              </div>
+              {isOwner && surplus > 0n && (
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('juice:use-surplus-allowance', {
+                    detail: {
+                      projectId,
+                      chainId: chainIdNum,
+                      allowance: allowanceAmount.toString(),
+                    }
+                  }))}
+                  className={`px-2 py-1 text-xs font-medium transition-colors border ${
+                    isDark
+                      ? 'text-yellow-400 hover:text-yellow-300 border-yellow-400/50 hover:border-yellow-300'
+                      : 'text-yellow-600 hover:text-yellow-700 border-yellow-500 hover:border-yellow-600'
+                  }`}
+                >
+                  Use allowance
+                </button>
+              )}
+            </div>
+            <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              The project owner can withdraw up to this amount from surplus this cycle.
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Payouts configuration - hidden for revnets */}
       {!isRevnet && activeChainData && activeChainData.payoutSplits.length > 0 && (
         <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
@@ -884,19 +953,6 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         </div>
       )}
 
-      {/* Send Payouts button (owner only) - hidden for revnets */}
-      {!isRevnet && isOwner && totalAvailable > 0n && (
-        <button
-          onClick={onSendPayouts}
-          className={`w-full mt-4 px-4 py-2 text-sm font-medium transition-colors ${
-            isDark
-              ? 'bg-juice-orange/20 text-juice-orange hover:bg-juice-orange/30'
-              : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-          }`}
-        >
-          Send Payouts
-        </button>
-      )}
     </div>
   )
 }
