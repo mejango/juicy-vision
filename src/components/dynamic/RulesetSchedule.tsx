@@ -1746,7 +1746,7 @@ export default function RulesetSchedule({
                 <div className={`flex items-center gap-4 text-[10px] pb-2 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
                   <div className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Safe for holders</span>
+                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Safe for members</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-amber-400"></span>
@@ -2341,9 +2341,19 @@ export default function RulesetSchedule({
                           </div>
                           <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                             {cashOutsEnabled
-                              ? 'Token holders can redeem tokens for treasury funds'
-                              : 'Token holders cannot redeem tokens for funds'}
+                              ? 'Members can redeem tokens for treasury funds'
+                              : 'Members cannot redeem tokens for funds'}
                           </div>
+                          {/* Cash out tax rate and curve when enabled */}
+                          {cashOutsEnabled && ruleset && (
+                            <div className="mt-3 space-y-2">
+                              <div className="flex justify-between text-xs">
+                                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Cash Out Tax Rate</span>
+                                <span className="font-mono">{((ruleset.cashOutTaxRate || 0) / 10000).toFixed(2).replace(/\.?0+$/, '') || '0'}</span>
+                              </div>
+                              <CashOutCurve taxRate={ruleset.cashOutTaxRate || 0} isDark={isDark} />
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -2483,98 +2493,19 @@ export default function RulesetSchedule({
                         </div>
                       )}
 
-                      {/* Buttons */}
-                      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                        {/* Actions first */}
-                        {hasPayoutLimit && (
-                          <button
-                            onClick={() => {
-                              window.dispatchEvent(new CustomEvent('juice:send-message', {
-                                detail: { message: `Help me send payouts for project ${projectId} on ${getChainName(parseInt(chainId))}` }
-                              }))
-                            }}
-                            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                              isDark
-                                ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                                : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                            }`}
-                          >
-                            Distribute payouts
-                          </button>
-                        )}
-                        {canManage && (
-                          <button
-                            onClick={() => {
-                              window.dispatchEvent(new CustomEvent('juice:send-message', {
-                                detail: { message: `Help me change the payout splits for project ${projectId} on ${getChainName(parseInt(chainId))}` }
-                              }))
-                            }}
-                            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                              isDark
-                                ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                                : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                            }`}
-                          >
-                            Change splits
-                          </button>
-                        )}
-                        {/* Prompts second */}
-                        <button
-                          onClick={() => {
-                            window.dispatchEvent(new CustomEvent('juice:send-message', {
-                              detail: { message: `Show me the cash out price chart for project ${projectId} on ${getChainName(parseInt(chainId))}` }
-                            }))
-                          }}
-                          className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                            isDark
-                              ? 'text-teal-400 border border-teal-400/30 hover:bg-teal-500/10 rounded'
-                              : 'text-teal-600 border border-teal-300 hover:bg-teal-50 rounded'
-                          }`}
-                        >
-                          View cash out prices
-                        </button>
-                        <button
-                          onClick={() => {
-                            window.dispatchEvent(new CustomEvent('juice:send-message', {
-                              detail: { message: `Help me simulate a cash out for project ${projectId} on ${getChainName(parseInt(chainId))}` }
-                            }))
-                          }}
-                          className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                            isDark
-                              ? 'text-teal-400 border border-teal-400/30 hover:bg-teal-500/10 rounded'
-                              : 'text-teal-600 border border-teal-300 hover:bg-teal-50 rounded'
-                          }`}
-                        >
-                          View cash out simulation
-                        </button>
-                        <button
-                          onClick={() => {
-                            window.dispatchEvent(new CustomEvent('juice:send-message', {
-                              detail: { message: `Check my ${tokenSymbol} token balance for project ${projectId} on ${getChainName(parseInt(chainId))} and show me my cash out scenarios` }
-                            }))
-                          }}
-                          className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                            isDark
-                              ? 'text-teal-400 border border-teal-400/30 hover:bg-teal-500/10 rounded'
-                              : 'text-teal-600 border border-teal-300 hover:bg-teal-50 rounded'
-                          }`}
-                        >
-                          View my balance & cash out
-                        </button>
-                      </div>
                     </>
                   )
                 })()}
               </div>
             </Section>
 
-            {/* Tokens Section - Reserved token splits */}
-            <Section id="tokens" title={tokenSymbol !== 'tokens' ? `${tokenSymbol} token distribution` : 'Token credit distribution'}>
+            {/* Membership Section - Reserved token splits */}
+            <Section id="tokens" title="Membership">
               <div className="space-y-4 text-sm">
                 {/* Reserved Rate */}
                 <div>
                   <div className="flex justify-between">
-                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{tokenSymbol} Reserved Rate</span>
+                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Reserved membership</span>
                     <span className="font-mono">{formatPercent(ruleset?.reservedPercent || 0)}</span>
                   </div>
                   <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -2583,38 +2514,6 @@ export default function RulesetSchedule({
                       : `All minted ${tokenSymbol} go directly to contributors`}
                   </div>
                 </div>
-
-                {/* Pending Reserved Tokens */}
-                {BigInt(activeSplits.pendingReserved) > 0n && (
-                  <div className={`p-3 ${isDark ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-amber-50 border border-amber-200'}`}>
-                    <div className="flex justify-between items-center flex-wrap gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs font-medium ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>
-                          Pending Distribution
-                        </span>
-                        {/* When rulesets match but project is omnichain, show inline chain selector */}
-                        {omnichainState.rulesetsMatch && omnichainState.isOmnichain && (
-                          <InlineChainSelector
-                            chainRulesets={omnichainState.chainRulesets}
-                            selectedChainId={splitsChainId}
-                            onSelect={setSplitsChainId}
-                            isDark={isDark}
-                          />
-                        )}
-                        {/* When rulesets differ, show chain badge from top-level tabs */}
-                        {!omnichainState.rulesetsMatch && omnichainState.selectedChainId && (
-                          <ChainBadge chainId={omnichainState.selectedChainId} isDark={isDark} />
-                        )}
-                      </div>
-                      <span className={`font-mono text-amber-400`}>
-                        {(parseFloat(activeSplits.pendingReserved) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
-                      </span>
-                    </div>
-                    <div className={`text-xs mt-1 ${isDark ? 'text-amber-400/70' : 'text-amber-600'}`}>
-                      Reserved {tokenSymbol} waiting to be sent to recipients
-                    </div>
-                  </div>
-                )}
 
                 {/* Reserved Token Splits */}
                 {activeSplits.reservedSplits.length > 0 ? (
@@ -2723,57 +2622,6 @@ export default function RulesetSchedule({
                   </div>
                 )}
 
-                {/* Buttons */}
-                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                  {/* Actions first */}
-                  {BigInt(activeSplits.pendingReserved) > 0n && (
-                    <button
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('juice:send-message', {
-                          detail: { message: `Help me distribute reserved tokens for project ${projectId} on ${getChainName(parseInt(chainId))}` }
-                        }))
-                      }}
-                      className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                        isDark
-                          ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                          : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                      }`}
-                    >
-                      Distribute reserved
-                    </button>
-                  )}
-                  {canManage && (
-                    <button
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('juice:send-message', {
-                          detail: { message: `Help me change the reserved token splits for project ${projectId} on ${getChainName(parseInt(chainId))}` }
-                        }))
-                      }}
-                      className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                        isDark
-                          ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                          : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                      }`}
-                    >
-                      Change splits
-                    </button>
-                  )}
-                  {/* Prompts second */}
-                  <button
-                    onClick={() => {
-                      window.dispatchEvent(new CustomEvent('juice:send-message', {
-                        detail: { message: `Show me a token holder pie chart for project ${projectId} on ${getChainName(parseInt(chainId))}` }
-                      }))
-                    }}
-                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                      isDark
-                        ? 'text-teal-400 border border-teal-400/30 hover:bg-teal-500/10 rounded'
-                        : 'text-teal-600 border border-teal-300 hover:bg-teal-50 rounded'
-                    }`}
-                  >
-                    View token holders
-                  </button>
-                </div>
               </div>
             </Section>
 
