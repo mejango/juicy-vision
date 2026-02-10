@@ -96,7 +96,7 @@ export default function TierDetailModal({
 
       {/* Content */}
       <div
-        className={`relative w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto ${
+        className={`relative w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto border-4 border-juice-orange ${
           isDark ? 'bg-juice-dark' : 'bg-white'
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -134,21 +134,21 @@ export default function TierDetailModal({
 
         {/* Info section */}
         <div className="p-6">
-          {/* Name and price */}
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <h2 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {displayName}
-            </h2>
-            <div className="text-right shrink-0">
-              <div className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {priceEth.toFixed(4)} ETH
-              </div>
-              {priceUsd && (
-                <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  ~${priceUsd.toFixed(2)}
-                </div>
-              )}
-            </div>
+          {/* Name */}
+          <h2 className={`text-2xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {displayName}
+          </h2>
+
+          {/* Price */}
+          <div className="mb-4">
+            <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {priceEth.toFixed(4)} ETH
+            </span>
+            {priceUsd && (
+              <span className={`text-sm ml-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                ~${priceUsd.toFixed(2)}
+              </span>
+            )}
           </div>
 
           {/* Description */}
