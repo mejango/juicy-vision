@@ -683,7 +683,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     </ExplainerMessage>
                     <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
                     <ExplainerMessage>
-                      Treasury balance tracks how the project's funds have changed over time.
+                      Here's how the project's funds have changed over time.
                     </ExplainerMessage>
                     <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
                   </div>
@@ -1048,7 +1048,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             </ExplainerMessage>
             <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
             <ExplainerMessage>
-              Treasury balance tracks how the project's funds have changed over time.
+              Here's how the project's funds have changed over time.
             </ExplainerMessage>
             <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
           </div>
