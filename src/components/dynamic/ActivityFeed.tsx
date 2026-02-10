@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { formatEther, formatUnits } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
-  fetchPayEventsHistory,
-  fetchCashOutEventsHistory,
+  fetchPayEventsPage,
+  fetchCashOutEventsPage,
   fetchProject,
   fetchSuckerGroupBalance,
   type PayEventHistoryItem,
@@ -93,7 +93,14 @@ export default function ActivityFeed({
   const [currency, setCurrency] = useState<number>(1) // 1 = ETH, 2 = USDC
   const [decimals, setDecimals] = useState<number>(18)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
+
+  // Cursor-based pagination state
+  const [payCursor, setPayCursor] = useState<string | null>(null)
+  const [cashOutCursor, setCashOutCursor] = useState<string | null>(null)
+  const [payHasMore, setPayHasMore] = useState(true)
+  const [cashOutHasMore, setCashOutHasMore] = useState(true)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const displayCountRef = useRef(displayCount)
@@ -105,13 +112,20 @@ export default function ActivityFeed({
     async function loadActivity() {
       setLoading(true)
       setDisplayCount(PAGE_SIZE)
+      setPayCursor(null)
+      setCashOutCursor(null)
+      setPayHasMore(true)
+      setCashOutHasMore(true)
+      setPayEvents([])
+      setCashOutEvents([])
+
       try {
-        // Fetch project info, currency info, and events in parallel
-        const [project, balanceInfo, pays, cashOuts] = await Promise.all([
+        // Fetch project info, currency info, and first page of events in parallel
+        const [project, balanceInfo, payPage, cashOutPage] = await Promise.all([
           fetchProject(projectId, chainIdNum),
           fetchSuckerGroupBalance(projectId, chainIdNum),
-          fetchPayEventsHistory(projectId, chainIdNum, 5, 100),
-          fetchCashOutEventsHistory(projectId, chainIdNum, 5, 100),
+          fetchPayEventsPage(projectId, chainIdNum, 5, PAGE_SIZE * 2),
+          fetchCashOutEventsPage(projectId, chainIdNum, 5, PAGE_SIZE * 2),
         ])
 
         if (project?.name) {
@@ -122,8 +136,13 @@ export default function ActivityFeed({
         setCurrency(balanceInfo.currency)
         setDecimals(balanceInfo.decimals)
 
-        setPayEvents(pays)
-        setCashOutEvents(cashOuts)
+        setPayEvents(payPage.items)
+        setPayCursor(payPage.endCursor)
+        setPayHasMore(payPage.hasNextPage)
+
+        setCashOutEvents(cashOutPage.items)
+        setCashOutCursor(cashOutPage.endCursor)
+        setCashOutHasMore(cashOutPage.hasNextPage)
       } catch (err) {
         console.error('Failed to load activity:', err)
       } finally {
@@ -168,17 +187,68 @@ export default function ActivityFeed({
   }, [payEvents, cashOutEvents, decimals, currency])
 
   const displayedEvents = events.slice(0, displayCount)
-  const hasMore = displayCount < events.length
+  // Has more if there are more events to display OR if server has more data
+  const hasMoreToDisplay = displayCount < events.length
+  const hasMoreFromServer = payHasMore || cashOutHasMore
+  const hasMore = hasMoreToDisplay || hasMoreFromServer
+  // Reached end when nothing more to display and server is exhausted
+  const reachedEnd = !hasMore && events.length > 0
 
   // Keep ref in sync
   useEffect(() => {
     displayCountRef.current = displayCount
   }, [displayCount])
 
-  // Load more function
+  // Fetch more events from server
+  const fetchMoreFromServer = useCallback(async () => {
+    if (loadingMore || (!payHasMore && !cashOutHasMore)) return
+
+    setLoadingMore(true)
+    try {
+      const [payPage, cashOutPage] = await Promise.all([
+        payHasMore
+          ? fetchPayEventsPage(projectId, chainIdNum, 5, PAGE_SIZE, payCursor)
+          : Promise.resolve(null),
+        cashOutHasMore
+          ? fetchCashOutEventsPage(projectId, chainIdNum, 5, PAGE_SIZE, cashOutCursor)
+          : Promise.resolve(null),
+      ])
+
+      if (payPage) {
+        setPayEvents(prev => [...prev, ...payPage.items])
+        setPayCursor(payPage.endCursor)
+        setPayHasMore(payPage.hasNextPage)
+      }
+
+      if (cashOutPage) {
+        setCashOutEvents(prev => [...prev, ...cashOutPage.items])
+        setCashOutCursor(cashOutPage.endCursor)
+        setCashOutHasMore(cashOutPage.hasNextPage)
+      }
+    } catch (err) {
+      console.error('Failed to load more activity:', err)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [loadingMore, payHasMore, cashOutHasMore, projectId, chainIdNum, payCursor, cashOutCursor])
+
+  // Load more function - first show more from loaded events, then fetch from server
   const loadMore = useCallback(() => {
-    setDisplayCount(prev => Math.min(prev + PAGE_SIZE, events.length))
-  }, [events.length])
+    if (displayCount < events.length) {
+      // Show more of what we have
+      setDisplayCount(prev => Math.min(prev + PAGE_SIZE, events.length))
+    } else if (hasMoreFromServer && !loadingMore) {
+      // Need to fetch more from server
+      fetchMoreFromServer()
+    }
+  }, [events.length, displayCount, hasMoreFromServer, loadingMore, fetchMoreFromServer])
+
+  // Auto-increase displayCount when new events are fetched from server
+  useEffect(() => {
+    if (events.length > displayCount) {
+      setDisplayCount(events.length)
+    }
+  }, [events.length, displayCount])
 
   // Scroll-based infinite loading
   useEffect(() => {
@@ -200,7 +270,8 @@ export default function ActivityFeed({
     if (!scrollParent) return
 
     const handleScroll = () => {
-      if (displayCountRef.current >= events.length) return
+      // Don't trigger if already loading more
+      if (loadingMore) return
 
       const { scrollTop, scrollHeight, clientHeight } = scrollParent!
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight
@@ -219,7 +290,7 @@ export default function ActivityFeed({
     return () => {
       scrollParent?.removeEventListener('scroll', handleScroll)
     }
-  }, [loading, events.length, loadMore])
+  }, [loading, loadingMore, events.length, loadMore])
 
   const getEventIcon = (type: ActivityEvent['type']) => {
     switch (type) {
@@ -301,14 +372,14 @@ export default function ActivityFeed({
               <EventRow key={`${event.txHash}-${idx}`} event={event} idx={idx} />
             ))}
             {/* Infinite scroll indicator */}
-            {hasMore && (
+            {loadingMore && (
               <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                 <span className="text-xs">Loading more...</span>
               </div>
             )}
-            {!hasMore && events.length > PAGE_SIZE && (
-              <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                <span className="text-xs">End of activity</span>
+            {reachedEnd && (
+              <div className={`px-4 py-4 text-center ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                <span className="text-xs opacity-60">That's all the activity</span>
               </div>
             )}
           </>
@@ -350,14 +421,14 @@ export default function ActivityFeed({
                 <EventRow key={`${event.txHash}-${idx}`} event={event} idx={idx} />
               ))}
               {/* Infinite scroll indicator */}
-              {hasMore && (
+              {loadingMore && (
                 <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                   <span className="text-xs">Loading more...</span>
                 </div>
               )}
-              {!hasMore && events.length > PAGE_SIZE && (
-                <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                  <span className="text-xs">End of activity</span>
+              {reachedEnd && (
+                <div className={`px-4 py-4 text-center ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                  <span className="text-xs opacity-60">That's all the activity</span>
                 </div>
               )}
             </>

@@ -1,6 +1,21 @@
-import { createPublicClient, http } from 'viem'
+import { createPublicClient, http, getAddress } from 'viem'
 import { mainnet } from 'viem/chains'
-import { STORAGE_KEYS, ENS_RPC_ENDPOINT } from '../constants'
+import { STORAGE_KEYS } from '../constants'
+
+// Use PublicNode's free RPC - no auth required, CORS-friendly, same as useEnsName hook
+const ENS_RPC = 'https://ethereum-rpc.publicnode.com'
+
+// Classic ENS reverse registrar - fallback if getEnsName fails
+const REVERSE_REGISTRAR = '0x084b1c3C81545d370f3634392De611CaaBFf8148' as const
+const reverseResolverAbi = [
+  {
+    inputs: [{ name: 'addr', type: 'address' }],
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
 
 // Cache structure with expiry
 interface EnsCacheEntry {
@@ -44,7 +59,7 @@ let ensCache: EnsCache = loadCache()
 
 const client = createPublicClient({
   chain: mainnet,
-  transport: http(ENS_RPC_ENDPOINT),
+  transport: http(ENS_RPC),
 })
 
 export async function resolveEnsName(address: string): Promise<string | null> {
@@ -62,8 +77,9 @@ export async function resolveEnsName(address: string): Promise<string | null> {
   }
 
   try {
+    // Try viem's built-in getEnsName first
     const ensName = await client.getEnsName({
-      address: address as `0x${string}`,
+      address: getAddress(address),
     })
 
     // Update cache
@@ -76,6 +92,28 @@ export async function resolveEnsName(address: string): Promise<string | null> {
 
     return ensName
   } catch {
+    // Fallback to classic reverse resolver contract
+    try {
+      const name = await client.readContract({
+        address: REVERSE_REGISTRAR,
+        abi: reverseResolverAbi,
+        functionName: 'name',
+        args: [getAddress(address)],
+      })
+
+      if (name) {
+        ensCache[normalizedAddr] = {
+          name,
+          timestamp: Date.now(),
+          isError: false,
+        }
+        saveCache(ensCache)
+        return name
+      }
+    } catch {
+      // Both methods failed
+    }
+
     // Cache error result with shorter TTL (silently - ENS failures are common)
     ensCache[normalizedAddr] = {
       name: null,

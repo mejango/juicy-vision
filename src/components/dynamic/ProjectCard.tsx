@@ -1405,7 +1405,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 </div>
                 {/* Chain selector - only show for ETH/USDC */}
                 {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
-                  <div className="relative mt-1">
+                  <div className="relative mt-1 flex justify-end">
                     <button
                       onClick={() => {
                         if (!isPaymentLocked) {
@@ -1424,7 +1424,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       </svg>
                     </button>
                     {chainDropdownOpen && (
-                      <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
+                      <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
                         isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
                       }`}>
                         {availableChains.map(chain => {
@@ -1996,7 +1996,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             </div>
             {/* Chain selector - only show for ETH/USDC */}
             {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
-              <div className="relative mt-1">
+              <div className="relative mt-1 flex justify-end">
                 <button
                   onClick={() => {
                     if (!isPaymentLocked) {
@@ -2015,7 +2015,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   </svg>
                 </button>
                 {chainDropdownOpen && (
-                  <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
+                  <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
                     isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
                   }`}>
                     {availableChains.map(chain => {
