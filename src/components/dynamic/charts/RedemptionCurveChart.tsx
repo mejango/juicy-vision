@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback } from 'react'
 import { useThemeStore } from '../../../stores'
 
 interface RedemptionCurveChartProps {
-  /** Cash out tax rate in basis points (0-10000). 0 = no tax, 10000 = 100% tax */
+  /** Cash out tax rate in basis points (0-10000). 0 = linear, 10000 = full curve */
   cashOutTaxRate: number
   /** Total treasury balance in smallest unit */
   balance?: bigint
@@ -13,71 +13,60 @@ interface RedemptionCurveChartProps {
 }
 
 /**
- * Mini inline SVG chart showing the redemption curve.
+ * Bonding curve chart showing % tokens cashed out vs % funds received.
  *
- * The bonding curve formula:
- * y = (o * x / s) * ((1 - r) + (r * x / s))
+ * Formula: y = x * ((1 - r) + r * x)
  *
  * Where:
- * - o = treasury balance
- * - s = total supply
- * - x = tokens being cashed out
- * - r = cash out tax rate (0-1, where 1 means 100% tax = no redemption)
+ * - x = fraction of tokens cashed out (0-1)
+ * - r = cash out tax rate (0-1)
+ * - y = fraction of funds received (0-1)
  *
- * This visualizes how cashing out many tokens at once returns less per token
- * than cashing out one at a time (due to the bonding curve mechanics).
+ * At r=0 (linear): y = x (straight diagonal)
+ * At r=1 (full curve): y = x² (quadratic)
+ *
+ * The curve always starts at (0,0) and ends at (1,1).
  */
 export default function RedemptionCurveChart({
   cashOutTaxRate,
-  balance,
-  supply,
   userTokens,
+  supply,
 }: RedemptionCurveChartProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
   // Convert tax rate from basis points (0-10000) to decimal (0-1)
-  // r = 0 means linear (no tax), r = 1 means 100% tax (no redemption)
   const r = cashOutTaxRate / 10000
 
-  // Generate curve points
+  // Bonding curve formula: y = x * ((1 - r) + r * x)
+  const calculateY = useCallback((x: number) => {
+    return x * ((1 - r) + r * x)
+  }, [r])
+
+  // Generate curve points from origin to top-right
   const curvePoints = useMemo(() => {
     const points: { x: number; y: number }[] = []
     const STEPS = 50
 
-    // For each percentage of supply cashed out (0% to 100%)
     for (let i = 0; i <= STEPS; i++) {
-      const fraction = i / STEPS // 0 to 1 (percentage of supply)
-
-      // Calculate value per token at this point using the bonding curve formula
-      // Simplified: when cashing out fraction f of supply, you get:
-      // valuePerToken = (1 - r) + (r * f)
-      // where r is the tax rate
-      //
-      // At f=0 (cashing out tiny amount): valuePerToken = 1 - r
-      // At f=1 (cashing out everything): valuePerToken = 1
-      const valuePerToken = (1 - r) + (r * fraction)
-
-      points.push({
-        x: fraction,
-        y: valuePerToken,
-      })
+      const x = i / STEPS
+      const y = calculateY(x)
+      points.push({ x, y })
     }
 
     return points
-  }, [r])
+  }, [calculateY])
 
-  // Chart dimensions - using viewBox for responsive scaling
-  // Larger viewBox = smaller scaled text when rendered
-  const width = 800
-  const height = 100
-  const padding = { top: 8, right: 8, bottom: 12, left: 32 }
+  // Chart dimensions
+  const width = 200
+  const height = 200
+  const padding = { top: 4, right: 4, bottom: 4, left: 4 }
   const chartWidth = width - padding.left - padding.right
   const chartHeight = height - padding.top - padding.bottom
 
-  // Scale functions
+  // Scale functions (Y is inverted in SVG)
   const scaleX = (x: number) => padding.left + x * chartWidth
-  const scaleY = (y: number) => padding.top + chartHeight - (y * chartHeight)
+  const scaleY = (y: number) => padding.top + chartHeight - y * chartHeight
 
   // Generate SVG path
   const pathD = useMemo(() => {
@@ -101,14 +90,14 @@ export default function RedemptionCurveChart({
     const fraction = Number(userTokens) / Number(supply)
     if (fraction <= 0 || fraction > 1) return null
 
-    const valuePerToken = (1 - r) + (r * fraction)
+    const fundsReceived = calculateY(fraction)
     return {
       x: scaleX(fraction),
-      y: scaleY(valuePerToken),
-      fraction,
-      valuePerToken,
+      y: scaleY(fundsReceived),
+      tokenPercent: fraction * 100,
+      fundsPercent: fundsReceived * 100,
     }
-  }, [userTokens, supply, r])
+  }, [userTokens, supply, calculateY])
 
   // Hover state
   const [hoverFraction, setHoverFraction] = useState<number | null>(null)
@@ -118,56 +107,56 @@ export default function RedemptionCurveChart({
     const rect = svg.getBoundingClientRect()
     const x = e.clientX - rect.left
 
-    // Scale from rendered size to viewBox coordinates
     const scale = width / rect.width
     const viewBoxX = x * scale
-
-    // Convert viewBox position to fraction (0-1)
     const fraction = (viewBoxX - padding.left) / chartWidth
+
     if (fraction >= 0 && fraction <= 1) {
       setHoverFraction(fraction)
     } else {
       setHoverFraction(null)
     }
-  }, [padding.left, chartWidth, width])
+  }, [])
 
   const handleMouseLeave = useCallback(() => {
     setHoverFraction(null)
   }, [])
 
-  // Calculate hover point values
+  // Calculate hover point
   const hoverPoint = useMemo(() => {
     if (hoverFraction === null) return null
-    const valuePerToken = (1 - r) + (r * hoverFraction)
+    const fundsReceived = calculateY(hoverFraction)
     return {
       x: scaleX(hoverFraction),
-      y: scaleY(valuePerToken),
-      fraction: hoverFraction,
-      valuePerToken,
+      y: scaleY(fundsReceived),
+      tokenPercent: hoverFraction * 100,
+      fundsPercent: fundsReceived * 100,
     }
-  }, [hoverFraction, r])
+  }, [hoverFraction, calculateY])
 
   // Colors
-  const curveColor = isDark ? '#22c55e' : '#16a34a' // green-500/green-600
+  const curveColor = isDark ? '#22c55e' : '#16a34a'
   const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
-  const textColor = isDark ? '#9ca3af' : '#6b7280' // gray-400/gray-500
-  const userDotColor = '#22c55e'
-  const hoverColor = isDark ? '#ffffff' : '#000000'
-
-  // Calculate the retention percentage (what you get per token if cashing out 1 token)
-  const minRetention = (1 - r) * 100 // At smallest redemption
-  const maxRetention = 100 // At 100% redemption
+  const textColor = isDark ? '#6b7280' : '#9ca3af'
 
   return (
-    <div className="relative flex flex-col w-full">
+    <div className="relative w-full max-w-[120px]">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="w-full select-none cursor-crosshair"
-        style={{ height: 'auto', aspectRatio: `${width}/${height}` }}
+        style={{ height: 'auto', aspectRatio: '1' }}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
-        {/* Baseline */}
+        {/* Axes */}
+        <line
+          x1={padding.left}
+          y1={padding.top}
+          x2={padding.left}
+          y2={padding.top + chartHeight}
+          stroke={gridColor}
+          strokeWidth={1}
+        />
         <line
           x1={padding.left}
           y1={padding.top + chartHeight}
@@ -177,9 +166,22 @@ export default function RedemptionCurveChart({
           strokeWidth={1}
         />
 
-        {/* Fill under the curve */}
+        {/* Diagonal reference (linear case) */}
+        {r > 0.01 && (
+          <line
+            x1={scaleX(0)}
+            y1={scaleY(0)}
+            x2={scaleX(1)}
+            y2={scaleY(1)}
+            stroke={gridColor}
+            strokeWidth={1}
+            strokeDasharray="4,4"
+          />
+        )}
+
+        {/* Fill under curve */}
         <path
-          d={`${pathD} L ${scaleX(1)} ${padding.top + chartHeight} L ${scaleX(0)} ${padding.top + chartHeight} Z`}
+          d={`${pathD} L ${scaleX(1)} ${scaleY(0)} L ${scaleX(0)} ${scaleY(0)} Z`}
           fill={curveColor}
           fillOpacity={0.15}
         />
@@ -199,77 +201,33 @@ export default function RedemptionCurveChart({
           <circle
             cx={userPosition.x}
             cy={userPosition.y}
-            r={5}
-            fill={userDotColor}
+            r={6}
+            fill={curveColor}
             stroke={isDark ? '#000' : '#fff'}
-            strokeWidth={1.5}
+            strokeWidth={2}
           />
         )}
 
         {/* Hover indicator */}
         {hoverPoint && (
-          <>
-            {/* Vertical line */}
-            <line
-              x1={hoverPoint.x}
-              y1={padding.top}
-              x2={hoverPoint.x}
-              y2={padding.top + chartHeight}
-              stroke={hoverColor}
-              strokeWidth={1}
-              strokeOpacity={0.2}
-            />
-            {/* Dot on curve */}
-            <circle
-              cx={hoverPoint.x}
-              cy={hoverPoint.y}
-              r={5}
-              fill={curveColor}
-              stroke={isDark ? '#000' : '#fff'}
-              strokeWidth={1.5}
-            />
-          </>
+          <circle
+            cx={hoverPoint.x}
+            cy={hoverPoint.y}
+            r={5}
+            fill={curveColor}
+            stroke={isDark ? '#000' : '#fff'}
+            strokeWidth={1.5}
+          />
         )}
 
-        {/* Y-axis labels */}
-        <text
-          x={padding.left - 6}
-          y={padding.top + chartHeight}
-          fontSize={11}
-          fill={textColor}
-          textAnchor="end"
-          dominantBaseline="middle"
-        >
-          {minRetention.toFixed(0)}%
+        {/* Corner labels */}
+        <text x={padding.left + 2} y={padding.top + 10} fontSize={12} fill={textColor}>
+          100%
         </text>
-        <text
-          x={padding.left - 6}
-          y={padding.top}
-          fontSize={11}
-          fill={textColor}
-          textAnchor="end"
-          dominantBaseline="middle"
-        >
-          {maxRetention.toFixed(0)}%
+        <text x={padding.left + 2} y={height - padding.bottom - 2} fontSize={12} fill={textColor}>
+          0
         </text>
-
-        {/* X-axis labels inside SVG for proper positioning */}
-        <text
-          x={padding.left}
-          y={height - 2}
-          fontSize={10}
-          fill={textColor}
-          textAnchor="start"
-        >
-          0%
-        </text>
-        <text
-          x={padding.left + chartWidth}
-          y={height - 2}
-          fontSize={10}
-          fill={textColor}
-          textAnchor="end"
-        >
+        <text x={width - padding.right - 2} y={height - padding.bottom - 2} fontSize={12} fill={textColor} textAnchor="end">
           100%
         </text>
       </svg>
@@ -277,19 +235,18 @@ export default function RedemptionCurveChart({
       {/* Tooltip */}
       {hoverPoint && (
         <div
-          className={`absolute text-[9px] px-1.5 py-0.5 rounded shadow-lg pointer-events-none whitespace-nowrap -translate-y-full ${
+          className={`absolute text-[9px] px-1.5 py-0.5 rounded shadow-lg pointer-events-none whitespace-nowrap ${
             isDark ? 'bg-gray-800 text-white' : 'bg-white text-gray-900 border border-gray-200'
           }`}
           style={{
-            left: `${Math.min((hoverPoint.x / width) * 100, 70)}%`,
+            left: `${(hoverPoint.x / width) * 100}%`,
             top: `${(hoverPoint.y / height) * 100}%`,
+            transform: 'translate(-50%, -120%)',
           }}
         >
-          <span className="font-medium">{(hoverPoint.fraction * 100).toFixed(0)}% out</span>
-          <span className="text-gray-400 ml-1">→ {(hoverPoint.valuePerToken * 100).toFixed(1)}% value</span>
+          {hoverPoint.tokenPercent.toFixed(0)}% tokens → {hoverPoint.fundsPercent.toFixed(0)}% funds
         </div>
       )}
-
     </div>
   )
 }
