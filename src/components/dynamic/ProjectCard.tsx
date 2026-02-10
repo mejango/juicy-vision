@@ -1403,9 +1403,22 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   </div>
                   <div className="flex-1" />
                 </div>
+              </div>
+              <div className="flex flex-col items-end">
+                <button
+                  onClick={(e) => handlePay(e)}
+                  disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
+                  className={`px-4 py-2 text-sm font-medium transition-colors ${
+                    paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
+                      ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                      : 'bg-green-500 hover:bg-green-600 text-black'
+                  }`}
+                >
+                  {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
+                </button>
                 {/* Chain selector - only show for ETH/USDC */}
                 {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
-                  <div className="relative mt-1 flex justify-end">
+                  <div className="relative mt-1">
                     <button
                       onClick={() => {
                         if (!isPaymentLocked) {
@@ -1418,7 +1431,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                         isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
                       } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
-                      Pay on <span className="underline">{selectedChainInfo.name}</span>
+                      on <span className="underline">{selectedChainInfo.name}</span>
                       <svg className={`w-3 h-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
@@ -1457,17 +1470,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   </div>
                 )}
               </div>
-              <button
-                onClick={(e) => handlePay(e)}
-                disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
-                className={`px-4 py-2 text-sm font-medium transition-colors self-start ${
-                  paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
-                    ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                    : 'bg-green-500 hover:bg-green-600 text-black'
-                }`}
-              >
-                {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
-              </button>
             </div>
           </div>
 
@@ -1994,9 +1996,22 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               {/* Spacer to fill remaining width - clicking focuses input */}
               <div className="flex-1" />
             </div>
+          </div>
+          <div className="flex flex-col items-end">
+            <button
+              onClick={(e) => handlePay(e)}
+              disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
+                paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
+                  ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                  : 'bg-green-500 hover:bg-green-600 text-black'
+              }`}
+            >
+              {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
+            </button>
             {/* Chain selector - only show for ETH/USDC */}
             {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
-              <div className="relative mt-1 flex justify-end">
+              <div className="relative mt-1">
                 <button
                   onClick={() => {
                     if (!isPaymentLocked) {
@@ -2009,7 +2024,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
                   } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
-                  Pay on <span className="underline">{selectedChainInfo.name}</span>
+                  on <span className="underline">{selectedChainInfo.name}</span>
                   <svg className={`w-3 h-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -2048,17 +2063,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               </div>
             )}
           </div>
-          <button
-            onClick={(e) => handlePay(e)}
-            disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
-            className={`px-4 py-2 text-sm font-medium transition-colors self-start ${
-              paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
-                ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                : 'bg-green-500 hover:bg-green-600 text-black'
-            }`}
-          >
-            {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
-          </button>
         </div>
 
         {/* Payment progress indicator - show from local state or persisted state */}

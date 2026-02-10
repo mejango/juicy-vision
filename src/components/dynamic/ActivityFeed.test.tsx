@@ -6,8 +6,8 @@ import * as bendystraw from '../../services/bendystraw'
 
 // Mock bendystraw service
 vi.mock('../../services/bendystraw', () => ({
-  fetchPayEventsHistory: vi.fn(),
-  fetchCashOutEventsHistory: vi.fn(),
+  fetchPayEventsPage: vi.fn(),
+  fetchCashOutEventsPage: vi.fn(),
   fetchProject: vi.fn(),
   fetchSuckerGroupBalance: vi.fn(),
 }))
@@ -69,10 +69,10 @@ describe('ActivityFeed', () => {
       vi.mocked(bendystraw.fetchSuckerGroupBalance).mockImplementation(
         () => new Promise(() => {})
       )
-      vi.mocked(bendystraw.fetchPayEventsHistory).mockImplementation(
+      vi.mocked(bendystraw.fetchPayEventsPage).mockImplementation(
         () => new Promise(() => {})
       )
-      vi.mocked(bendystraw.fetchCashOutEventsHistory).mockImplementation(
+      vi.mocked(bendystraw.fetchCashOutEventsPage).mockImplementation(
         () => new Promise(() => {})
       )
 
@@ -85,8 +85,8 @@ describe('ActivityFeed', () => {
     it('shows no activity message when no events', async () => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue(mockBalanceInfo as any)
-      vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue([])
-      vi.mocked(bendystraw.fetchCashOutEventsHistory).mockResolvedValue([])
+      vi.mocked(bendystraw.fetchPayEventsPage).mockResolvedValue({ items: [], hasNextPage: false, endCursor: null })
+      vi.mocked(bendystraw.fetchCashOutEventsPage).mockResolvedValue({ items: [], hasNextPage: false, endCursor: null })
 
       render(<ActivityFeed projectId="1" />)
 
@@ -100,8 +100,8 @@ describe('ActivityFeed', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue(mockBalanceInfo as any)
-      vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue(mockPayEvents as any)
-      vi.mocked(bendystraw.fetchCashOutEventsHistory).mockResolvedValue(mockCashOutEvents as any)
+      vi.mocked(bendystraw.fetchPayEventsPage).mockResolvedValue({ items: mockPayEvents as any, hasNextPage: false, endCursor: null })
+      vi.mocked(bendystraw.fetchCashOutEventsPage).mockResolvedValue({ items: mockCashOutEvents as any, hasNextPage: false, endCursor: null })
     })
 
     it('renders activity header', async () => {
@@ -188,57 +188,37 @@ describe('ActivityFeed', () => {
     })
   })
 
-  describe('expand/collapse', () => {
+  describe('infinite scroll', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue(mockBalanceInfo as any)
-      vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue([
-        ...mockPayEvents,
-        ...mockPayEvents.map((e, i) => ({ ...e, txHash: `0xpay${i + 10}` })),
-        ...mockPayEvents.map((e, i) => ({ ...e, txHash: `0xpay${i + 20}` })),
-      ] as any)
-      vi.mocked(bendystraw.fetchCashOutEventsHistory).mockResolvedValue(mockCashOutEvents as any)
+      vi.mocked(bendystraw.fetchPayEventsPage).mockResolvedValue({
+        items: [
+          ...mockPayEvents,
+          ...mockPayEvents.map((e, i) => ({ ...e, txHash: `0xpay${i + 10}` })),
+          ...mockPayEvents.map((e, i) => ({ ...e, txHash: `0xpay${i + 20}` })),
+        ] as any,
+        hasNextPage: false,
+        endCursor: null,
+      })
+      vi.mocked(bendystraw.fetchCashOutEventsPage).mockResolvedValue({ items: mockCashOutEvents as any, hasNextPage: false, endCursor: null })
     })
 
-    it('shows "Show more" button when there are more events than limit', async () => {
-      render(<ActivityFeed projectId="1" limit={3} />)
+    it('shows all activity message when no more events to load', async () => {
+      render(<ActivityFeed projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Show .* more/)).toBeInTheDocument()
-      })
-    })
-
-    it('expands to show all events when clicking "Show more"', async () => {
-      render(<ActivityFeed projectId="1" limit={3} />)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Show .* more/)).toBeInTheDocument()
-      })
-
-      fireEvent.click(screen.getByText(/Show .* more/))
-
-      await waitFor(() => {
-        expect(screen.getByText('Show less')).toBeInTheDocument()
+        expect(screen.getByText("That's all the activity")).toBeInTheDocument()
       })
     })
 
-    it('collapses back when clicking "Show less"', async () => {
-      render(<ActivityFeed projectId="1" limit={3} />)
+    it('renders all events when hasNextPage is false', async () => {
+      render(<ActivityFeed projectId="1" />)
 
+      // Should show all 7 events (6 pay + 1 cashout)
       await waitFor(() => {
-        expect(screen.getByText(/Show .* more/)).toBeInTheDocument()
-      })
-
-      fireEvent.click(screen.getByText(/Show .* more/))
-
-      await waitFor(() => {
-        expect(screen.getByText('Show less')).toBeInTheDocument()
-      })
-
-      fireEvent.click(screen.getByText('Show less'))
-
-      await waitFor(() => {
-        expect(screen.getByText(/Show .* more/)).toBeInTheDocument()
+        expect(screen.getAllByText('💰').length).toBe(6)
+        expect(screen.getByText('🔄')).toBeInTheDocument()
       })
     })
   })
@@ -247,8 +227,8 @@ describe('ActivityFeed', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue(mockBalanceInfo as any)
-      vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue(mockPayEvents as any)
-      vi.mocked(bendystraw.fetchCashOutEventsHistory).mockResolvedValue(mockCashOutEvents as any)
+      vi.mocked(bendystraw.fetchPayEventsPage).mockResolvedValue({ items: mockPayEvents as any, hasNextPage: false, endCursor: null })
+      vi.mocked(bendystraw.fetchCashOutEventsPage).mockResolvedValue({ items: mockCashOutEvents as any, hasNextPage: false, endCursor: null })
     })
 
     it('uses Ethereum explorer by default', async () => {
@@ -287,17 +267,21 @@ describe('ActivityFeed', () => {
         currency: 2, // USDC
         decimals: 6,
       } as any)
-      vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue([
-        {
-          txHash: '0xpay1',
-          timestamp: Math.floor(Date.now() / 1000) - 60,
-          from: '0x1234567890abcdef1234567890abcdef12345678',
-          amount: '1000000', // 1 USDC (6 decimals)
-          newlyIssuedTokenCount: '100000000000000000000',
-          memo: null,
-        },
-      ] as any)
-      vi.mocked(bendystraw.fetchCashOutEventsHistory).mockResolvedValue([])
+      vi.mocked(bendystraw.fetchPayEventsPage).mockResolvedValue({
+        items: [
+          {
+            txHash: '0xpay1',
+            timestamp: Math.floor(Date.now() / 1000) - 60,
+            from: '0x1234567890abcdef1234567890abcdef12345678',
+            amount: '1000000', // 1 USDC (6 decimals)
+            newlyIssuedTokenCount: '100000000000000000000',
+            memo: null,
+          },
+        ] as any,
+        hasNextPage: false,
+        endCursor: null,
+      })
+      vi.mocked(bendystraw.fetchCashOutEventsPage).mockResolvedValue({ items: [], hasNextPage: false, endCursor: null })
     })
 
     it('displays USDC amounts correctly', async () => {
@@ -313,8 +297,8 @@ describe('ActivityFeed', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue(mockBalanceInfo as any)
-      vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue(mockPayEvents as any)
-      vi.mocked(bendystraw.fetchCashOutEventsHistory).mockResolvedValue(mockCashOutEvents as any)
+      vi.mocked(bendystraw.fetchPayEventsPage).mockResolvedValue({ items: mockPayEvents as any, hasNextPage: false, endCursor: null })
+      vi.mocked(bendystraw.fetchCashOutEventsPage).mockResolvedValue({ items: mockCashOutEvents as any, hasNextPage: false, endCursor: null })
     })
 
     it('applies dark theme styles', async () => {
@@ -346,8 +330,8 @@ describe('ActivityFeed', () => {
     it('handles fetch errors gracefully', async () => {
       vi.mocked(bendystraw.fetchProject).mockRejectedValue(new Error('API error'))
       vi.mocked(bendystraw.fetchSuckerGroupBalance).mockRejectedValue(new Error('API error'))
-      vi.mocked(bendystraw.fetchPayEventsHistory).mockRejectedValue(new Error('API error'))
-      vi.mocked(bendystraw.fetchCashOutEventsHistory).mockRejectedValue(new Error('API error'))
+      vi.mocked(bendystraw.fetchPayEventsPage).mockRejectedValue(new Error('API error'))
+      vi.mocked(bendystraw.fetchCashOutEventsPage).mockRejectedValue(new Error('API error'))
 
       render(<ActivityFeed projectId="1" />)
 
@@ -362,8 +346,8 @@ describe('ActivityFeed', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue(mockBalanceInfo as any)
-      vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue(mockPayEvents as any)
-      vi.mocked(bendystraw.fetchCashOutEventsHistory).mockResolvedValue(mockCashOutEvents as any)
+      vi.mocked(bendystraw.fetchPayEventsPage).mockResolvedValue({ items: mockPayEvents as any, hasNextPage: false, endCursor: null })
+      vi.mocked(bendystraw.fetchCashOutEventsPage).mockResolvedValue({ items: mockCashOutEvents as any, hasNextPage: false, endCursor: null })
     })
 
     it('links to address on explorer', async () => {

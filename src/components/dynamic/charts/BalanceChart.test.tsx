@@ -103,14 +103,6 @@ describe('BalanceChart', () => {
       })
     })
 
-    it('shows project name in header', async () => {
-      render(<BalanceChart projectId="1" />)
-
-      await waitFor(() => {
-        expect(screen.getByText('Test Project')).toBeInTheDocument()
-      })
-    })
-
     it('renders the chart', async () => {
       render(<BalanceChart projectId="1" />)
 

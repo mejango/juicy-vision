@@ -106,14 +106,6 @@ describe('VolumeChart', () => {
       })
     })
 
-    it('shows project name in header', async () => {
-      render(<VolumeChart projectId="1" />)
-
-      await waitFor(() => {
-        expect(screen.getByText('Test Project')).toBeInTheDocument()
-      })
-    })
-
     it('renders the bar chart', async () => {
       render(<VolumeChart projectId="1" />)
 

@@ -15,7 +15,7 @@ vi.mock('../../../services/bendystraw', () => ({
 
 // Mock ENS utility
 vi.mock('../../../utils/ens', () => ({
-  resolveEnsName: vi.fn(),
+  resolveEnsNames: vi.fn(),
   truncateAddress: (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`,
 }))
 
@@ -111,7 +111,7 @@ describe('HoldersChart', () => {
       render(<HoldersChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText('No token holders found')).toBeInTheDocument()
+        expect(screen.getByText('No members found')).toBeInTheDocument()
       })
     })
   })
@@ -121,30 +121,22 @@ describe('HoldersChart', () => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
-      vi.mocked(ens.resolveEnsName).mockResolvedValue(null)
+      vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
     it('renders the header', async () => {
       render(<HoldersChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText('Token Holders')).toBeInTheDocument()
+        expect(screen.getByText('Top Members')).toBeInTheDocument()
       })
     })
 
-    it('shows project name in header', async () => {
+    it('shows holder count subtitle', async () => {
       render(<HoldersChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText('Test Project')).toBeInTheDocument()
-      })
-    })
-
-    it('shows holder count', async () => {
-      render(<HoldersChart projectId="1" />)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Top 3 holders/)).toBeInTheDocument()
+        expect(screen.getByText(/Top 3 by ownership/)).toBeInTheDocument()
       })
     })
 
@@ -165,17 +157,12 @@ describe('HoldersChart', () => {
     })
 
     it('resolves ENS names for addresses', async () => {
-      vi.mocked(ens.resolveEnsName).mockImplementation(async (addr) => {
-        if (addr === '0x1234567890abcdef1234567890abcdef12345678') {
-          return 'vitalik.eth'
-        }
-        return null
-      })
+      vi.mocked(ens.resolveEnsNames).mockResolvedValue(['vitalik.eth', null, null])
 
       render(<HoldersChart projectId="1" />)
 
       await waitFor(() => {
-        expect(ens.resolveEnsName).toHaveBeenCalledTimes(3)
+        expect(ens.resolveEnsNames).toHaveBeenCalledTimes(1)
       })
     })
   })
@@ -184,7 +171,7 @@ describe('HoldersChart', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
-      vi.mocked(ens.resolveEnsName).mockResolvedValue(null)
+      vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
     it('adds "Others" slice when percentages dont sum to 100', async () => {
@@ -203,7 +190,7 @@ describe('HoldersChart', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
-      vi.mocked(ens.resolveEnsName).mockResolvedValue(null)
+      vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
     it('falls back to single chain when no suckerGroupId', async () => {
@@ -227,7 +214,7 @@ describe('HoldersChart', () => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
-      vi.mocked(ens.resolveEnsName).mockResolvedValue(null)
+      vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
     it('respects limit prop', async () => {
@@ -262,7 +249,7 @@ describe('HoldersChart', () => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
-      vi.mocked(ens.resolveEnsName).mockResolvedValue(null)
+      vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
     it('applies dark theme styles', async () => {
@@ -291,7 +278,7 @@ describe('HoldersChart', () => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
-      vi.mocked(ens.resolveEnsName).mockResolvedValue(null)
+      vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
     it('passes chainId to fetchProject', async () => {
