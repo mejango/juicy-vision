@@ -383,7 +383,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
       baseTabs.push({ id: 'shop', label: 'Shop' })
     }
     baseTabs.push(
-      { id: 'rulesets', label: 'Rulesets' },
+      { id: 'rulesets', label: 'Rules' },
       { id: 'funds', label: 'Funds' },
       { id: 'tokens', label: 'Members' },
     )
