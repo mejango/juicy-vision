@@ -6,6 +6,7 @@ import { resolveIpfsUri, inlineSvgImages } from '../../utils/ipfs'
 import { resolveTierUri, type ResolvedNFTTier } from '../../services/nft'
 import GenerateImageButton from '../ui/GenerateImageButton'
 import SupplyBadge from '../ui/SupplyBadge'
+import TierDetailModal from './TierDetailModal'
 
 interface NFTTierCardProps {
   tier: ResolvedNFTTier
@@ -71,6 +72,7 @@ export default function NFTTierCard({
   const [onChainCategoryName, setOnChainCategoryName] = useState<string | null>(null)
   const [loadingOnChainImage, setLoadingOnChainImage] = useState(false)
   const [imageError, setImageError] = useState(false)
+  const [showDetailModal, setShowDetailModal] = useState(false)
 
   // Resolve IPFS URI first
   const ipfsImageUrl = resolveIpfsUri(tier.imageUri)
@@ -258,8 +260,11 @@ export default function NFTTierCard({
     <div className={`border overflow-hidden ${
       isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
     } ${soldOut ? 'opacity-60' : ''}`}>
-      {/* Image */}
-      <div className={`aspect-square relative overflow-hidden ${isSvgImage ? 'bg-white' : ''}`}>
+      {/* Image - clickable to open detail modal */}
+      <div
+        className={`aspect-square relative overflow-hidden cursor-pointer ${isSvgImage ? 'bg-white' : ''}`}
+        onClick={() => setShowDetailModal(true)}
+      >
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -279,7 +284,10 @@ export default function NFTTierCard({
             </span>
             {/* AI image generation overlay (owner only) */}
             {showGenerateImage && onImageGenerated && (
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <div
+                className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <GenerateImageButton
                   context={{
                     name: tier.name,
@@ -296,7 +304,7 @@ export default function NFTTierCard({
         )}
 
         {/* Supply badge */}
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2" onClick={(e) => e.stopPropagation()}>
           <SupplyBadge
             tierId={tier.tierId}
             currentRemaining={tier.remainingSupply}
@@ -308,7 +316,7 @@ export default function NFTTierCard({
         {/* Edit button (owner only) */}
         {isOwner && onEdit && (
           <button
-            onClick={() => onEdit(tier.tierId)}
+            onClick={(e) => { e.stopPropagation(); onEdit(tier.tierId) }}
             className={`absolute bottom-2 right-2 p-2 transition-colors ${
               isDark
                 ? 'bg-black/70 text-white hover:bg-black/90'
@@ -406,6 +414,17 @@ export default function NFTTierCard({
           </div>
         )}
       </div>
+
+      {/* Detail modal */}
+      <TierDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        tier={tier}
+        imageUrl={imageUrl}
+        ethPrice={ethPrice}
+        productName={onChainProductName || undefined}
+        connectedChains={connectedChains}
+      />
     </div>
   )
 }
