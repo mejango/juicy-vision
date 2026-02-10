@@ -158,7 +158,7 @@ export default function TierDetailModal({
             </p>
           )}
 
-          {/* Supply indicator - prominent only when low/sold out */}
+          {/* Inventory - prominent only when low/sold out */}
           {(soldOut || isLowStock) ? (
             <div className={`mb-6 p-4 ${
               soldOut
@@ -168,7 +168,6 @@ export default function TierDetailModal({
               <div className="flex items-center justify-between mb-2">
                 <span className={`text-sm font-medium ${soldOut ? 'text-red-400' : 'text-orange-400'}`}>
                   {soldOut ? 'Sold Out' : 'Running Low!'}
-                  {isMultiChain && <span className="opacity-60 ml-1">(all chains)</span>}
                 </span>
                 <span className={`font-mono text-lg font-semibold ${soldOut ? 'text-red-400' : 'text-orange-400'}`}>
                   {loadingSupply ? (
@@ -185,28 +184,11 @@ export default function TierDetailModal({
                   style={{ width: `${supplyPercent}%` }}
                 />
               </div>
-              {/* Per-chain breakdown */}
-              {isMultiChain && multiChainSupply && multiChainSupply.perChain.length > 1 && (
-                <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                  <div className="space-y-1">
-                    {multiChainSupply.perChain.map((chain) => (
-                      <div key={chain.chainId} className="flex justify-between text-xs">
-                        <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chain.chainName}</span>
-                        <span className={`font-mono ${chain.remaining === 0 ? 'text-red-400' : ''}`}>
-                          {chain.remaining} / {chain.initial}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           ) : (
-            /* Subtle supply display when plenty in stock */
+            /* Subtle inventory display when plenty in stock */
             <div className={`mb-6 flex items-center justify-between text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              <span>
-                Supply{isMultiChain && ' (all chains)'}
-              </span>
+              <span>Inventory</span>
               <span className="font-mono">
                 {loadingSupply ? (
                   <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" />
@@ -217,19 +199,19 @@ export default function TierDetailModal({
             </div>
           )}
 
-          {/* Technical Details dropdown - subtle styling */}
+          {/* Technical Details dropdown */}
           <div>
             <button
               onClick={() => setShowTechnical(!showTechnical)}
-              className={`w-full flex items-center justify-between py-3 transition-colors ${
-                isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+              className={`w-full flex items-center justify-between py-2 transition-colors ${
+                isDark ? 'text-gray-600 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'
               }`}
             >
-              <span className="text-xs uppercase tracking-wide">
+              <span className="text-[10px] uppercase tracking-wider">
                 Technical Details
               </span>
               <svg
-                className={`w-4 h-4 transition-transform ${showTechnical ? 'rotate-180' : ''}`}
+                className={`w-3 h-3 transition-transform ${showTechnical ? 'rotate-180' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -239,9 +221,8 @@ export default function TierDetailModal({
             </button>
 
             {showTechnical && (
-              <div className={`pt-3 border-t text-xs ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Basic info */}
+              <div className={`pt-2 text-[11px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                <div className="grid grid-cols-2 gap-2">
                   <DetailRow label="Tier ID" value={`#${tier.tierId}`} isDark={isDark} />
                   <DetailRow label="Category" value={`${tier.category}`} isDark={isDark} />
                   <DetailRow
@@ -265,12 +246,31 @@ export default function TierDetailModal({
                     isDark={isDark}
                   />
 
+                  {/* Per-chain breakdown for multi-chain projects */}
+                  {isMultiChain && multiChainSupply && multiChainSupply.perChain.length > 1 && (
+                    <div className="col-span-2 mt-2 pt-2 border-t border-dashed border-gray-700/50">
+                      <div className={`text-[10px] uppercase tracking-wider mb-1.5 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                        Inventory by Network
+                      </div>
+                      <div className="space-y-0.5">
+                        {multiChainSupply.perChain.map((chain) => (
+                          <div key={chain.chainId} className="flex justify-between">
+                            <span>{chain.chainName}</span>
+                            <span className={`font-mono ${chain.remaining === 0 ? 'text-red-400' : ''}`}>
+                              {chain.remaining} / {chain.initial}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Flags section */}
-                  <div className={`col-span-2 mt-3 pt-3 border-t ${isDark ? 'border-white/5' : 'border-gray-100'}`}>
-                    <div className={`text-[10px] uppercase tracking-wider mb-2 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                  <div className="col-span-2 mt-2 pt-2 border-t border-dashed border-gray-700/50">
+                    <div className={`text-[10px] uppercase tracking-wider mb-1.5 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
                       Flags
                     </div>
-                    <div className="grid grid-cols-2 gap-y-1.5 gap-x-4">
+                    <div className="grid grid-cols-2 gap-y-0.5 gap-x-4">
                       <FlagRow label="Owner Can Mint" enabled={tier.allowOwnerMint} isDark={isDark} />
                       <FlagRow label="Transfers Pausable" enabled={tier.transfersPausable} isDark={isDark} />
                       <FlagRow label="Cannot Be Removed" enabled={tier.cannotBeRemoved ?? false} isDark={isDark} />
@@ -280,11 +280,11 @@ export default function TierDetailModal({
 
                   {/* IPFS info */}
                   {tier.encodedIPFSUri && (
-                    <div className={`col-span-2 mt-3 pt-3 border-t ${isDark ? 'border-white/5' : 'border-gray-100'}`}>
+                    <div className="col-span-2 mt-2 pt-2 border-t border-dashed border-gray-700/50">
                       <div className={`text-[10px] uppercase tracking-wider mb-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
                         IPFS URI
                       </div>
-                      <div className={`font-mono text-[10px] break-all ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      <div className={`font-mono text-[10px] break-all ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
                         {tier.encodedIPFSUri}
                       </div>
                     </div>
@@ -304,8 +304,8 @@ export default function TierDetailModal({
 function DetailRow({ label, value, isDark }: { label: string; value: string; isDark: boolean }) {
   return (
     <div className="flex justify-between">
-      <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>{label}</span>
-      <span className={`font-mono ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{value}</span>
+      <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>{label}</span>
+      <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{value}</span>
     </div>
   )
 }
@@ -314,8 +314,8 @@ function DetailRow({ label, value, isDark }: { label: string; value: string; isD
 function FlagRow({ label, enabled, isDark }: { label: string; enabled: boolean; isDark: boolean }) {
   return (
     <div className="flex justify-between">
-      <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>{label}</span>
-      <span className={`font-mono ${enabled ? (isDark ? 'text-green-400' : 'text-green-600') : (isDark ? 'text-gray-600' : 'text-gray-300')}`}>
+      <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>{label}</span>
+      <span className={`font-mono ${enabled ? (isDark ? 'text-green-500/70' : 'text-green-600') : (isDark ? 'text-gray-700' : 'text-gray-300')}`}>
         {enabled ? 'on' : 'off'}
       </span>
     </div>
