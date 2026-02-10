@@ -187,8 +187,8 @@ export default function TierDetailModal({
             </div>
           ) : (
             /* Subtle inventory display when plenty in stock */
-            <div className={`mb-6 flex items-center justify-between text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              <span>Inventory</span>
+            <div className={`mb-6 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Inventory</span>{' '}
               <span className="font-mono">
                 {loadingSupply ? (
                   <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" />
