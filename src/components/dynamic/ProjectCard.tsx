@@ -1406,7 +1406,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 <button
                   onClick={(e) => handlePay(e)}
                   disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
-                  className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  className={`px-4 py-2 text-sm font-medium transition-colors border border-transparent ${
                     paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
                       ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                       : 'bg-green-500 hover:bg-green-600 text-black'
@@ -1999,7 +1999,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             <button
               onClick={(e) => handlePay(e)}
               disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
+              className={`px-4 py-2 text-sm font-medium transition-colors border border-transparent ${
                 paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
                   ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                   : 'bg-green-500 hover:bg-green-600 text-black'
