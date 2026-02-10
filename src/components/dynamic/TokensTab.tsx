@@ -626,6 +626,51 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                     </div>
                   )
                 })}
+
+                {/* Per-chain breakdown for omnichain projects */}
+                {isOmnichain && chainTokenData.some(cd => cd.reservedSplits.length > 0) && (
+                  <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/5' : 'border-gray-100'}`}>
+                    <div className={`text-[10px] uppercase tracking-wider mb-2 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                      Per-chain recipients
+                    </div>
+                    <div className="space-y-3">
+                      {chainTokenData.map(cd => {
+                        const chainInfo = CHAIN_INFO[cd.chainId]
+                        if (!chainInfo || cd.reservedSplits.length === 0) return null
+                        return (
+                          <div key={cd.chainId}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span
+                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: chainInfo.color }}
+                              />
+                              <span className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {chainInfo.shortName}
+                              </span>
+                            </div>
+                            <div className="pl-3 space-y-1">
+                              {cd.reservedSplits.map((split, idx) => {
+                                const percent = (split.percent / 10000000).toFixed(2)
+                                const beneficiary = split.beneficiary?.toLowerCase() || ''
+                                const displayName = splitEnsNames[beneficiary] || truncateAddress(split.beneficiary || '')
+                                return (
+                                  <div key={idx} className="flex items-center justify-between text-xs">
+                                    <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                      {split.projectId > 0 ? `Project #${split.projectId}` : displayName}
+                                    </span>
+                                    <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                                      {percent}%
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
