@@ -198,10 +198,10 @@ export default function RedemptionCurveChart({
           <circle
             cx={userPosition.x}
             cy={userPosition.y}
-            r={4}
+            r={3}
             fill={userDotColor}
             stroke={isDark ? '#000' : '#fff'}
-            strokeWidth={1.5}
+            strokeWidth={1}
           />
         )}
 
@@ -216,17 +216,16 @@ export default function RedemptionCurveChart({
               y2={padding.top + chartHeight}
               stroke={hoverColor}
               strokeWidth={1}
-              strokeOpacity={0.3}
-              strokeDasharray="2,2"
+              strokeOpacity={0.2}
             />
             {/* Dot on curve */}
             <circle
               cx={hoverPoint.x}
               cy={hoverPoint.y}
-              r={4}
+              r={3}
               fill={curveColor}
               stroke={isDark ? '#000' : '#fff'}
-              strokeWidth={1.5}
+              strokeWidth={1}
             />
           </>
         )}
@@ -257,16 +256,16 @@ export default function RedemptionCurveChart({
       {/* Tooltip */}
       {hoverPoint && (
         <div
-          className={`absolute text-[10px] px-1.5 py-1 rounded shadow-lg pointer-events-none whitespace-nowrap ${
+          className={`absolute text-[9px] px-1.5 py-0.5 rounded shadow-lg pointer-events-none whitespace-nowrap -translate-y-full ${
             isDark ? 'bg-gray-800 text-white' : 'bg-white text-gray-900 border border-gray-200'
           }`}
           style={{
-            left: `${Math.min((hoverPoint.x / width) * 100, 75)}%`,
-            top: `${((hoverPoint.y - 30) / height) * 100}%`,
+            left: `${Math.min((hoverPoint.x / width) * 100, 70)}%`,
+            top: `${(hoverPoint.y / height) * 100}%`,
           }}
         >
-          <div className="font-medium">{(hoverPoint.fraction * 100).toFixed(0)}% cashed out</div>
-          <div className="text-gray-400">{(hoverPoint.valuePerToken * 100).toFixed(1)}% value/token</div>
+          <span className="font-medium">{(hoverPoint.fraction * 100).toFixed(0)}% out</span>
+          <span className="text-gray-400 ml-1">→ {(hoverPoint.valuePerToken * 100).toFixed(1)}% value</span>
         </div>
       )}
 
