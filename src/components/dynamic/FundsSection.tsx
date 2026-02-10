@@ -71,46 +71,48 @@ function formatCurrency(value: string, decimals: number, currency: number): stri
   return currency === 2 ? `$${formatted}` : `${formatted} ETH`
 }
 
-// Collapsible cash out calculator
+// Collapsible cash out calculator with chain selector
 function CashOutCalculator({
-  cashOutTaxRate,
-  balance,
-  supply,
-  decimals,
-  currencySymbol,
+  chainFundsData,
+  initialChainId,
   isDark,
 }: {
-  cashOutTaxRate: number
-  balance: bigint
-  supply: bigint
-  decimals: number
-  currencySymbol: string
+  chainFundsData: ChainFundsData[]
+  initialChainId: number
   isDark: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [tokenAmount, setTokenAmount] = useState('')
+  const [selectedChainId, setSelectedChainId] = useState(initialChainId)
+
+  // Get selected chain data
+  const selectedChain = chainFundsData.find(cd => cd.chainId === selectedChainId) || chainFundsData[0]
+  const chainInfo = CHAIN_INFO[selectedChain.chainId]
+  const currencySymbol = selectedChain.baseCurrency === 2 ? 'USDC' : 'ETH'
 
   // Token decimals (typically 18)
   const TOKEN_DECIMALS = 18
 
   // Convert supply from raw (wei) to human-readable
-  const supplyHuman = Number(supply) / Math.pow(10, TOKEN_DECIMALS)
+  const supplyHuman = Number(BigInt(selectedChain.tokenSupply)) / Math.pow(10, TOKEN_DECIMALS)
+  const balance = BigInt(selectedChain.balance)
 
   // Bonding curve formula: y = x * ((1 - r) + r * x)
   // Where x = fraction of supply, r = rate, y = fraction of funds
-  const r = cashOutTaxRate / 10000
+  const r = selectedChain.cashOutTaxRate / 10000
 
   // Calculate return for human-readable token amount
   const calculateReturn = (tokensHuman: number): number => {
     if (supplyHuman === 0 || tokensHuman <= 0) return 0
     const x = tokensHuman / supplyHuman // fraction of supply
-    if (x > 1) return Number(balance) / Math.pow(10, decimals) // Can't cash out more than supply
+    if (x > 1) return Number(balance) / Math.pow(10, selectedChain.decimals) // Can't cash out more than supply
     const y = x * ((1 - r) + r * x)
-    return (y * Number(balance)) / Math.pow(10, decimals)
+    return (y * Number(balance)) / Math.pow(10, selectedChain.decimals)
   }
 
   const tokensNum = parseFloat(tokenAmount) || 0
   const estimatedReturn = calculateReturn(tokensNum)
+  const exceedsSupply = tokensNum > supplyHuman && supplyHuman > 0
 
   return (
     <div className={`mb-3 border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
@@ -134,6 +136,43 @@ function CashOutCalculator({
       {expanded && (
         <div className={`px-3 pb-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <div className="pt-3 space-y-3">
+            {/* Chain selector (only show if multi-chain) */}
+            {chainFundsData.length > 1 && (
+              <div>
+                <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Chain
+                </label>
+                <div className="flex gap-1.5 mt-1">
+                  {chainFundsData.filter(cd => cd.cashOutTaxRate < 10000).map(cd => {
+                    const info = CHAIN_INFO[cd.chainId]
+                    if (!info) return null
+                    const isSelected = cd.chainId === selectedChainId
+                    return (
+                      <button
+                        key={cd.chainId}
+                        onClick={() => setSelectedChainId(cd.chainId)}
+                        className={`flex items-center gap-1.5 px-2 py-1 text-xs transition-colors border ${
+                          isSelected
+                            ? 'border-juice-orange text-juice-orange'
+                            : isDark
+                              ? 'border-white/10 text-gray-400 hover:border-juice-orange hover:text-juice-orange'
+                              : 'border-gray-200 text-gray-500 hover:border-juice-orange hover:text-juice-orange'
+                        }`}
+                      >
+                        <span
+                          className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
+                          style={{ backgroundColor: info.color }}
+                        >
+                          {info.icon}
+                        </span>
+                        {info.shortName}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Token input */}
             <div>
               <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -145,29 +184,41 @@ function CashOutCalculator({
                 onChange={(e) => setTokenAmount(e.target.value)}
                 placeholder="0"
                 className={`w-full mt-1 px-2 py-1.5 text-sm font-mono border ${
-                  isDark
-                    ? 'bg-white/5 border-white/10 text-white placeholder-gray-600'
-                    : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
-                } focus:outline-none focus:border-green-500`}
+                  exceedsSupply
+                    ? 'border-red-500'
+                    : isDark
+                      ? 'bg-white/5 border-white/10 text-white placeholder-gray-600'
+                      : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                } ${isDark ? 'bg-white/5 text-white placeholder-gray-600' : 'bg-gray-50 text-gray-900 placeholder-gray-400'} focus:outline-none ${!exceedsSupply ? 'focus:border-green-500' : ''}`}
               />
               {supplyHuman > 0 && (
-                <div className={`mt-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {tokensNum > 0 ? `${((tokensNum / supplyHuman) * 100).toFixed(2)}% of supply (${supplyHuman.toLocaleString()} total)` : `Total supply: ${supplyHuman.toLocaleString()}`}
+                <div className={`mt-1 text-[10px] ${exceedsSupply ? 'text-red-400' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  {exceedsSupply
+                    ? `Exceeds ${chainInfo?.shortName || 'chain'} supply of ${supplyHuman.toLocaleString()} tokens`
+                    : tokensNum > 0
+                      ? `${((tokensNum / supplyHuman) * 100).toFixed(2)}% of supply (${supplyHuman.toLocaleString()} total)`
+                      : `Total supply: ${supplyHuman.toLocaleString()}`
+                  }
                 </div>
               )}
             </div>
 
             {/* Result */}
-            <div className={`p-2 ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
+            <div className={`p-2 ${exceedsSupply ? (isDark ? 'bg-red-500/10' : 'bg-red-50') : (isDark ? 'bg-green-500/10' : 'bg-green-50')}`}>
               <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                You would receive
+                {exceedsSupply ? `Max you could receive on ${chainInfo?.shortName || 'this chain'}` : 'You would receive'}
               </div>
-              <div className={`text-lg font-mono font-semibold ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+              <div className={`text-lg font-mono font-semibold ${exceedsSupply ? (isDark ? 'text-red-400' : 'text-red-600') : (isDark ? 'text-green-400' : 'text-green-600')}`}>
                 {estimatedReturn > 0 ? estimatedReturn.toFixed(6) : '0'} {currencySymbol}
               </div>
-              {tokensNum > 0 && estimatedReturn > 0 && (
+              {tokensNum > 0 && estimatedReturn > 0 && !exceedsSupply && (
                 <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                   ≈ {(estimatedReturn / tokensNum).toFixed(8)} {currencySymbol}/token
+                </div>
+              )}
+              {exceedsSupply && (
+                <div className={`text-[10px] mt-1 ${isDark ? 'text-red-400' : 'text-red-500'}`}>
+                  This chain only has {supplyHuman.toLocaleString()} tokens available
                 </div>
               )}
             </div>
@@ -492,11 +543,8 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
             {/* Cash out calculator (collapsible) */}
             {activeCashOut && (
               <CashOutCalculator
-                cashOutTaxRate={activeCashOut.cashOutTaxRate}
-                balance={BigInt(activeCashOut.balance)}
-                supply={BigInt(activeCashOut.tokenSupply)}
-                decimals={activeCashOut.decimals}
-                currencySymbol={activeCashOut.baseCurrency === 2 ? 'USDC' : 'ETH'}
+                chainFundsData={cashOutEnabledChains}
+                initialChainId={chainIdNum}
                 isDark={isDark}
               />
             )}
