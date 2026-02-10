@@ -3077,6 +3077,7 @@ export async function fetchAggregatedParticipants(
   // Try suckerGroup query first (if we have a valid suckerGroupId)
   if (suckerGroupId) {
     try {
+      console.log('[fetchAggregatedParticipants] Querying with suckerGroupId:', suckerGroupId)
       const data = await client.request<{
         participants: {
           totalCount: number
@@ -3087,17 +3088,20 @@ export async function fetchAggregatedParticipants(
         limit: 10000,
       })
 
+      console.log('[fetchAggregatedParticipants] Got', data.participants?.items?.length || 0, 'participants from suckerGroup query')
       if (data.participants?.items && data.participants.items.length > 0) {
         return processParticipants(data.participants.items)
       }
-    } catch {
+    } catch (err) {
       // Expected for projects without sucker groups - silently fall back to single-chain
+      console.log('[fetchAggregatedParticipants] SuckerGroup query failed, falling back:', err)
     }
   }
 
   // Fallback to single-chain query if we have the params
   if (fallbackProjectId && fallbackChainId) {
     try {
+      console.log('[fetchAggregatedParticipants] Falling back to single-chain query for project', fallbackProjectId, 'chain', fallbackChainId)
       const data = await client.request<{
         participants: {
           totalCount: number
@@ -3109,11 +3113,13 @@ export async function fetchAggregatedParticipants(
         limit: 1000,
       })
 
+      console.log('[fetchAggregatedParticipants] Got', data.participants?.items?.length || 0, 'participants from single-chain query')
       if (data.participants?.items && data.participants.items.length > 0) {
         return processParticipants(data.participants.items, fallbackChainId)
       }
-    } catch {
+    } catch (err) {
       // Fallback query also failed - will return empty results
+      console.log('[fetchAggregatedParticipants] Single-chain query also failed:', err)
     }
   }
 

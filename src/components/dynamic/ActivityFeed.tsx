@@ -292,13 +292,6 @@ export default function ActivityFeed({
     }
   }, [loading, loadingMore, events.length, loadMore])
 
-  const getEventIcon = (type: ActivityEvent['type']) => {
-    switch (type) {
-      case 'pay': return '💰'
-      case 'cashout': return '🔄'
-    }
-  }
-
   const getEventColor = (type: ActivityEvent['type']) => {
     switch (type) {
       case 'pay': return 'text-emerald-400'
@@ -313,7 +306,6 @@ export default function ActivityFeed({
         isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'
       }`}
     >
-      <span className="text-lg">{getEventIcon(event.type)}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <a

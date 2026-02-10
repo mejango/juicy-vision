@@ -298,7 +298,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           </div>
           <div className="flex items-center justify-between">
             <div className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {formatTokenAmount(userBalance)} ${tokenSymbol}
+              {formatTokenAmount(userBalance)} {tokenSymbol}
             </div>
             {(() => {
               const userBalanceNum = parseFloat(userBalance) / 1e18
@@ -353,7 +353,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           {/* Token symbol and ERC-20 badge */}
           <div className="flex items-center gap-2">
             <span className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              ${tokenSymbol}
+              {tokenSymbol}
             </span>
             <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${
               isDark ? 'bg-juice-cyan/20 text-juice-cyan' : 'bg-cyan-100 text-cyan-700'
@@ -483,7 +483,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           </span>
           <div className="flex items-center gap-2">
             <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {totalPendingAcrossChains.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${tokenSymbol}
+              {totalPendingAcrossChains.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
             </span>
             {totalPendingAcrossChains > 0 && (
               <button

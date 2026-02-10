@@ -78,14 +78,19 @@ export default function HoldersChart({
 
         // Fetch the actual suckerGroupId from the project
         const suckerGroupId = await fetchProjectSuckerGroupId(projectId, parseInt(chainId))
+        console.log('[HoldersChart] suckerGroupId:', suckerGroupId, 'for project', projectId, 'chain', chainId)
 
         // Fetch aggregated participants (with fallback to single-chain if no suckerGroup or query fails)
-        const { participants } = await fetchAggregatedParticipants(
+        const { participants, totalSupply } = await fetchAggregatedParticipants(
           suckerGroupId || '',
           limit,
           projectId,
           parseInt(chainId)
         )
+        console.log('[HoldersChart] participants:', participants.length, 'totalSupply:', totalSupply.toString())
+        if (participants.length > 0) {
+          console.log('[HoldersChart] top participant:', participants[0])
+        }
 
         setTotalHolders(participants.length)
 
