@@ -90,13 +90,20 @@ function CashOutCalculator({
   const [expanded, setExpanded] = useState(false)
   const [tokenAmount, setTokenAmount] = useState('')
 
+  // Token decimals (typically 18)
+  const TOKEN_DECIMALS = 18
+
+  // Convert supply from raw (wei) to human-readable
+  const supplyHuman = Number(supply) / Math.pow(10, TOKEN_DECIMALS)
+
   // Bonding curve formula: y = x * ((1 - r) + r * x)
   // Where x = fraction of supply, r = rate, y = fraction of funds
   const r = cashOutTaxRate / 10000
 
-  const calculateReturn = (tokens: number): number => {
-    if (supply === 0n || tokens <= 0) return 0
-    const x = tokens / Number(supply)
+  // Calculate return for human-readable token amount
+  const calculateReturn = (tokensHuman: number): number => {
+    if (supplyHuman === 0 || tokensHuman <= 0) return 0
+    const x = tokensHuman / supplyHuman // fraction of supply
     if (x > 1) return Number(balance) / Math.pow(10, decimals) // Can't cash out more than supply
     const y = x * ((1 - r) + r * x)
     return (y * Number(balance)) / Math.pow(10, decimals)
@@ -104,7 +111,6 @@ function CashOutCalculator({
 
   const tokensNum = parseFloat(tokenAmount) || 0
   const estimatedReturn = calculateReturn(tokensNum)
-  const supplyNum = Number(supply)
 
   return (
     <div className={`mb-3 border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
@@ -144,9 +150,9 @@ function CashOutCalculator({
                     : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
                 } focus:outline-none focus:border-green-500`}
               />
-              {supplyNum > 0 && (
+              {supplyHuman > 0 && (
                 <div className={`mt-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {tokensNum > 0 ? `${((tokensNum / supplyNum) * 100).toFixed(2)}% of supply` : 'Enter amount'}
+                  {tokensNum > 0 ? `${((tokensNum / supplyHuman) * 100).toFixed(2)}% of supply (${supplyHuman.toLocaleString()} total)` : `Total supply: ${supplyHuman.toLocaleString()}`}
                 </div>
               )}
             </div>
