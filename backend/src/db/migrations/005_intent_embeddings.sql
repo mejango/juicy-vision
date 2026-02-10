@@ -1,66 +1,62 @@
 -- Migration: Intent Embeddings for Semantic Routing
 -- Purpose: Enable semantic intent detection using vector similarity
 --
--- This migration sets up pgvector for storing intent embeddings,
--- allowing the system to match user queries to relevant knowledge domains
--- using semantic similarity rather than just keyword matching.
+-- NOTE: This migration gracefully handles the case where pgvector is not available.
+-- If pgvector is not installed, semantic routing will be disabled at runtime.
 
--- Enable pgvector extension (requires superuser or extension already available)
-CREATE EXTENSION IF NOT EXISTS vector;
+-- Try to create the extension (will silently fail if not available)
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS vector;
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE NOTICE 'pgvector extension not available - skipping intent_embeddings table creation';
+END $$;
 
--- Intent embeddings table
--- Stores pre-computed embeddings for domains and sub-modules
-CREATE TABLE IF NOT EXISTS intent_embeddings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+-- Only create the table and indexes if vector extension was successfully created
+DO $$
+BEGIN
+  -- Check if vector type exists
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'vector') THEN
+    RAISE NOTICE 'Skipping intent_embeddings - pgvector not available';
+    RETURN;
+  END IF;
 
-  -- Domain classification (dataQuery, hookDeveloper, transaction)
-  domain VARCHAR(50) NOT NULL,
+  -- Create the table using EXECUTE to handle the vector type
+  EXECUTE '
+    CREATE TABLE IF NOT EXISTS intent_embeddings (
+      id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+      domain VARCHAR(50) NOT NULL,
+      sub_module VARCHAR(100),
+      description TEXT NOT NULL,
+      example_queries TEXT[] NOT NULL DEFAULT ''{}'',
+      embedding vector(1024) NOT NULL,
+      token_cost INTEGER NOT NULL DEFAULT 0,
+      priority INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (domain, sub_module)
+    )
+  ';
 
-  -- Sub-module within domain (e.g., 'chains', 'v51_addresses', 'nft_tiers')
-  -- NULL means this is a domain-level embedding
-  sub_module VARCHAR(100),
+  -- Create indexes
+  EXECUTE '
+    CREATE INDEX IF NOT EXISTS idx_intent_embeddings_vector
+      ON intent_embeddings USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 10)
+  ';
 
-  -- Human-readable description of what this intent covers
-  description TEXT NOT NULL,
+  CREATE INDEX IF NOT EXISTS idx_intent_embeddings_domain
+    ON intent_embeddings (domain);
 
-  -- Example queries that should match this intent
-  -- Used for training and debugging
-  example_queries TEXT[] NOT NULL DEFAULT '{}',
+  CREATE INDEX IF NOT EXISTS idx_intent_embeddings_sub_module
+    ON intent_embeddings (sub_module)
+    WHERE sub_module IS NOT NULL;
 
-  -- The embedding vector (Claude uses 1024 dimensions)
-  embedding vector(1024) NOT NULL,
+  RAISE NOTICE 'intent_embeddings table created successfully';
+END $$;
 
-  -- Estimated token cost if this module is loaded
-  token_cost INTEGER NOT NULL DEFAULT 0,
-
-  -- Priority for tie-breaking (higher = more likely to be selected)
-  priority INTEGER NOT NULL DEFAULT 0,
-
-  -- Metadata for analytics
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-  -- Ensure unique domain + sub_module combinations
-  UNIQUE (domain, sub_module)
-);
-
--- Create IVFFlat index for fast approximate nearest neighbor search
--- Lists = sqrt(n) where n is expected number of vectors
--- For ~50 intents, 10 lists is reasonable
-CREATE INDEX IF NOT EXISTS idx_intent_embeddings_vector
-  ON intent_embeddings USING ivfflat (embedding vector_cosine_ops)
-  WITH (lists = 10);
-
--- Index for domain filtering
-CREATE INDEX IF NOT EXISTS idx_intent_embeddings_domain
-  ON intent_embeddings (domain);
-
--- Index for sub-module filtering
-CREATE INDEX IF NOT EXISTS idx_intent_embeddings_sub_module
-  ON intent_embeddings (sub_module)
-  WHERE sub_module IS NOT NULL;
-
--- Function to update updated_at timestamp
+-- Create the trigger function (this is safe even without pgvector)
 CREATE OR REPLACE FUNCTION update_intent_embeddings_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -69,16 +65,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger for auto-updating updated_at
-DROP TRIGGER IF EXISTS trigger_intent_embeddings_updated_at ON intent_embeddings;
-CREATE TRIGGER trigger_intent_embeddings_updated_at
-  BEFORE UPDATE ON intent_embeddings
-  FOR EACH ROW
-  EXECUTE FUNCTION update_intent_embeddings_updated_at();
+-- Only create trigger if table exists
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'intent_embeddings') THEN
+    DROP TRIGGER IF EXISTS trigger_intent_embeddings_updated_at ON intent_embeddings;
+    CREATE TRIGGER trigger_intent_embeddings_updated_at
+      BEFORE UPDATE ON intent_embeddings
+      FOR EACH ROW
+      EXECUTE FUNCTION update_intent_embeddings_updated_at();
 
--- Comments for documentation
-COMMENT ON TABLE intent_embeddings IS 'Stores vector embeddings for semantic intent detection and routing';
-COMMENT ON COLUMN intent_embeddings.domain IS 'High-level domain: dataQuery, hookDeveloper, transaction';
-COMMENT ON COLUMN intent_embeddings.sub_module IS 'Granular sub-module within a domain, NULL for domain-level';
-COMMENT ON COLUMN intent_embeddings.embedding IS 'Claude embedding vector (1024 dimensions)';
-COMMENT ON COLUMN intent_embeddings.token_cost IS 'Estimated tokens if this module is loaded';
+    COMMENT ON TABLE intent_embeddings IS 'Stores vector embeddings for semantic intent detection and routing';
+    COMMENT ON COLUMN intent_embeddings.domain IS 'High-level domain: dataQuery, hookDeveloper, transaction';
+    COMMENT ON COLUMN intent_embeddings.sub_module IS 'Granular sub-module within a domain, NULL for domain-level';
+    COMMENT ON COLUMN intent_embeddings.embedding IS 'Claude embedding vector (1024 dimensions)';
+    COMMENT ON COLUMN intent_embeddings.token_cost IS 'Estimated tokens if this module is loaded';
+  END IF;
+END $$;
