@@ -597,7 +597,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
       isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
     }`}>
       <h3 className={`text-sm font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-        Funds
+        Project's money
       </h3>
 
       {/* Total Balance */}
