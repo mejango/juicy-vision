@@ -351,16 +351,38 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         </h3>
 
         <div className="space-y-3">
-          {/* Token symbol and ERC-20 badge */}
-          <div className="flex items-center gap-2">
+          {/* Token symbol and ERC-20 badge with chain indicators */}
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {tokenSymbol}
             </span>
-            <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${
-              isDark ? 'bg-juice-cyan/20 text-juice-cyan' : 'bg-cyan-100 text-cyan-700'
-            }`}>
-              ERC-20
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${
+                isDark ? 'bg-juice-cyan/20 text-juice-cyan' : 'bg-cyan-100 text-cyan-700'
+              }`}>
+                ERC-20
+              </span>
+              <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>on</span>
+              {chainTokenData.map(cd => {
+                const chainInfo = CHAIN_INFO[cd.chainId]
+                if (!chainInfo) return null
+                return (
+                  <span
+                    key={cd.chainId}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded ${
+                      isDark ? 'bg-white/10 text-gray-300' : 'bg-gray-100 text-gray-600'
+                    }`}
+                    title={chainInfo.name}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: chainInfo.color }}
+                    />
+                    {chainInfo.shortName}
+                  </span>
+                )
+              })}
+            </div>
           </div>
 
           {/* Token address */}
