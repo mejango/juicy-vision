@@ -704,7 +704,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               onSend={handleChatSend}
               placeholder={`Ask about ${project.name || 'this project'}...`}
               compact
-              hideWalletInfo
             />
           </div>
 
@@ -1068,7 +1067,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           onSend={handleChatSend}
           placeholder={`Ask about ${project.name || 'this project'}...`}
           compact
-          hideWalletInfo
         />
       </div>
 

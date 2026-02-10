@@ -69,8 +69,8 @@ export default function RedemptionCurveChart({
 
   // Chart dimensions - using viewBox for responsive scaling
   const width = 300
-  const height = 100
-  const padding = { top: 8, right: 8, bottom: 20, left: 32 }
+  const height = 50
+  const padding = { top: 4, right: 4, bottom: 14, left: 28 }
   const chartWidth = width - padding.left - padding.right
   const chartHeight = height - padding.top - padding.bottom
 
@@ -166,15 +166,7 @@ export default function RedemptionCurveChart({
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
-        {/* Grid lines */}
-        <line
-          x1={padding.left}
-          y1={padding.top}
-          x2={padding.left}
-          y2={padding.top + chartHeight}
-          stroke={gridColor}
-          strokeWidth={1}
-        />
+        {/* Baseline */}
         <line
           x1={padding.left}
           y1={padding.top + chartHeight}
@@ -184,35 +176,21 @@ export default function RedemptionCurveChart({
           strokeWidth={1}
         />
 
-        {/* Horizontal grid lines at 25%, 50%, 75% */}
-        {[0.25, 0.5, 0.75].map((y) => (
-          <line
-            key={y}
-            x1={padding.left}
-            y1={scaleY(y)}
-            x2={padding.left + chartWidth}
-            y2={scaleY(y)}
-            stroke={gridColor}
-            strokeWidth={1}
-            strokeDasharray="2,2"
-          />
-        ))}
+        {/* Fill under the curve */}
+        <path
+          d={`${pathD} L ${scaleX(1)} ${padding.top + chartHeight} L ${scaleX(0)} ${padding.top + chartHeight} Z`}
+          fill={curveColor}
+          fillOpacity={0.15}
+        />
 
         {/* The curve */}
         <path
           d={pathD}
           fill="none"
           stroke={curveColor}
-          strokeWidth={2}
+          strokeWidth={1.5}
           strokeLinecap="round"
           strokeLinejoin="round"
-        />
-
-        {/* Fill under the curve */}
-        <path
-          d={`${pathD} L ${scaleX(1)} ${padding.top + chartHeight} L ${scaleX(0)} ${padding.top + chartHeight} Z`}
-          fill={curveColor}
-          fillOpacity={0.1}
         />
 
         {/* User position dot */}
@@ -253,31 +231,11 @@ export default function RedemptionCurveChart({
           </>
         )}
 
-        {/* X-axis labels */}
-        <text
-          x={padding.left}
-          y={height - 2}
-          fontSize={9}
-          fill={textColor}
-          textAnchor="start"
-        >
-          0%
-        </text>
-        <text
-          x={padding.left + chartWidth}
-          y={height - 2}
-          fontSize={9}
-          fill={textColor}
-          textAnchor="end"
-        >
-          100%
-        </text>
-
         {/* Y-axis labels */}
         <text
-          x={padding.left - 4}
+          x={padding.left - 3}
           y={padding.top + chartHeight}
-          fontSize={9}
+          fontSize={8}
           fill={textColor}
           textAnchor="end"
           dominantBaseline="middle"
@@ -285,14 +243,14 @@ export default function RedemptionCurveChart({
           {minRetention.toFixed(0)}%
         </text>
         <text
-          x={padding.left - 4}
+          x={padding.left - 3}
           y={padding.top}
-          fontSize={9}
+          fontSize={8}
           fill={textColor}
           textAnchor="end"
           dominantBaseline="middle"
         >
-          {maxRetention}%
+          {maxRetention.toFixed(0)}%
         </text>
       </svg>
 
@@ -307,17 +265,15 @@ export default function RedemptionCurveChart({
             top: `${((hoverPoint.y - 30) / height) * 100}%`,
           }}
         >
-          <div className="font-medium">{(hoverPoint.fraction * 100).toFixed(0)}% redeemed</div>
+          <div className="font-medium">{(hoverPoint.fraction * 100).toFixed(0)}% cashed out</div>
           <div className="text-gray-400">{(hoverPoint.valuePerToken * 100).toFixed(1)}% value/token</div>
         </div>
       )}
 
-      {/* Legend - aligned with graph origin */}
-      <div
-        className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
-        style={{ paddingLeft: `${(padding.left / width) * 100}%` }}
-      >
-        <span>% of supply redeemed →</span>
+      {/* Legend */}
+      <div className={`flex justify-between text-[10px] mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+        <span>More tokens cashed out →</span>
+        <span>↑ Higher value per token</span>
       </div>
     </div>
   )

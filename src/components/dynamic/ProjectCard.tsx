@@ -1330,10 +1330,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       amountInputRef.current?.focus()
                     }
                   }}
-                  className={`flex items-center cursor-text ${
-                    isDark
-                      ? 'bg-juice-dark border border-white/10'
-                      : 'bg-white border border-gray-200'
+                  className={`flex items-center cursor-text border border-green-500 ${
+                    isDark ? 'bg-juice-dark' : 'bg-white'
                   }`}
                 >
                   <input

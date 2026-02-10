@@ -186,12 +186,12 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setSelectedCategory('all')}
-            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`px-3 py-1.5 text-sm font-medium transition-colors border ${
               selectedCategory === 'all'
-                ? 'bg-green-500 text-black'
+                ? 'border-juice-orange text-juice-orange'
                 : isDark
-                  ? 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'border-white/10 text-gray-300 hover:border-juice-orange'
+                  : 'border-gray-200 text-gray-600 hover:border-juice-orange'
             }`}
           >
             All
@@ -200,12 +200,12 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium transition-colors border ${
                 selectedCategory === cat
-                  ? 'bg-green-500 text-black'
+                  ? 'border-juice-orange text-juice-orange'
                   : isDark
-                    ? 'bg-white/10 text-gray-300 hover:bg-white/20'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'border-white/10 text-gray-300 hover:border-juice-orange'
+                    : 'border-gray-200 text-gray-600 hover:border-juice-orange'
               }`}
             >
               {getCategoryName(cat)}
