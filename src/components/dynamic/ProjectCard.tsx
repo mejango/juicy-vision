@@ -1224,7 +1224,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     return (
       <>
         {/* Single scrollable container */}
-        <div className="flex-1 overflow-y-auto">
+        <div className={`flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] ${isDark ? 'bg-[#1f1f1f]' : 'bg-gray-50'}`}>
           {/* NFT Shop - scrolls away */}
           {nftTiers.length > 0 && (
             <div className="px-4 pt-3 mb-3">
@@ -1320,10 +1320,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             </div>
           )}
 
-          {/* Pay section wrapper with subtle background */}
-          <div className={isDark ? 'bg-white/[0.02]' : 'bg-gray-50/50'}>
-            {/* Sticky pay controls - sticks to top when scrolling */}
-            <div className={`sticky top-0 z-20 px-4 py-3 ${isDark ? 'bg-[#131313]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
+          {/* Sticky pay controls - sticks to top when scrolling */}
+          <div className={`sticky top-0 z-20 px-4 py-3 ${isDark ? 'bg-[#1f1f1f]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
               <div className="flex gap-2">
               <div className="flex-1">
                 <div
@@ -1333,7 +1331,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     }
                   }}
                   className={`flex items-center cursor-text border border-green-500 ${
-                    isDark ? 'bg-juice-dark' : 'bg-white'
+                    isDark ? 'bg-[#1f1f1f]' : 'bg-gray-50'
                   }`}
                 >
                   <input
@@ -1566,7 +1564,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               </div>
             )}
             </div>
-          </div>
 
           {/* Activity section header */}
           <div className={`px-4 pt-3 pb-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>

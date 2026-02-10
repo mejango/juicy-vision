@@ -19,7 +19,6 @@ import {
   type QueuedRulesetInfo,
 } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
-import RedemptionCurveChart from './charts/RedemptionCurveChart'
 
 interface FundsSectionProps {
   projectId: string
@@ -70,6 +69,107 @@ function formatBalance(value: string, decimals: number = 18): string {
 function formatCurrency(value: string, decimals: number, currency: number): string {
   const formatted = formatBalance(value, decimals)
   return currency === 2 ? `$${formatted}` : `${formatted} ETH`
+}
+
+// Collapsible cash out calculator
+function CashOutCalculator({
+  cashOutTaxRate,
+  balance,
+  supply,
+  decimals,
+  currencySymbol,
+  isDark,
+}: {
+  cashOutTaxRate: number
+  balance: bigint
+  supply: bigint
+  decimals: number
+  currencySymbol: string
+  isDark: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [tokenAmount, setTokenAmount] = useState('')
+
+  // Bonding curve formula: y = x * ((1 - r) + r * x)
+  // Where x = fraction of supply, r = rate, y = fraction of funds
+  const r = cashOutTaxRate / 10000
+
+  const calculateReturn = (tokens: number): number => {
+    if (supply === 0n || tokens <= 0) return 0
+    const x = tokens / Number(supply)
+    if (x > 1) return Number(balance) / Math.pow(10, decimals) // Can't cash out more than supply
+    const y = x * ((1 - r) + r * x)
+    return (y * Number(balance)) / Math.pow(10, decimals)
+  }
+
+  const tokensNum = parseFloat(tokenAmount) || 0
+  const estimatedReturn = calculateReturn(tokensNum)
+  const supplyNum = Number(supply)
+
+  return (
+    <div className={`mb-3 border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={`w-full px-3 py-2 flex items-center justify-between text-xs ${
+          isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
+        }`}
+      >
+        <span>Cash out calculator</span>
+        <svg
+          className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className={`px-3 pb-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <div className="pt-3 space-y-3">
+            {/* Token input */}
+            <div>
+              <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                Tokens to cash out
+              </label>
+              <input
+                type="number"
+                value={tokenAmount}
+                onChange={(e) => setTokenAmount(e.target.value)}
+                placeholder="0"
+                className={`w-full mt-1 px-2 py-1.5 text-sm font-mono border ${
+                  isDark
+                    ? 'bg-white/5 border-white/10 text-white placeholder-gray-600'
+                    : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                } focus:outline-none focus:border-green-500`}
+              />
+              {supplyNum > 0 && (
+                <div className={`mt-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  {tokensNum > 0 ? `${((tokensNum / supplyNum) * 100).toFixed(2)}% of supply` : 'Enter amount'}
+                </div>
+              )}
+            </div>
+
+            {/* Result */}
+            <div className={`p-2 ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
+              <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                You would receive
+              </div>
+              <div className={`text-lg font-mono font-semibold ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+                {estimatedReturn > 0 ? estimatedReturn.toFixed(6) : '0'} {currencySymbol}
+              </div>
+              {tokensNum > 0 && estimatedReturn > 0 && (
+                <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  ≈ {(estimatedReturn / tokensNum).toFixed(8)} {currencySymbol}/token
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function FundsSection({ projectId, chainId, isOwner, onSendPayouts, isRevnet = false, onCashOut }: FundsSectionProps) {
@@ -383,15 +483,16 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               )}
             </div>
 
-            {/* Redemption curve visualization */}
-            {activeCashOut && activeCashOut.cashOutTaxRate > 0 && activeCashOut.cashOutTaxRate < 10000 && (
-              <div className="mb-3">
-                <RedemptionCurveChart
-                  cashOutTaxRate={activeCashOut.cashOutTaxRate}
-                  balance={BigInt(activeCashOut.balance)}
-                  supply={BigInt(activeCashOut.tokenSupply)}
-                />
-              </div>
+            {/* Cash out calculator (collapsible) */}
+            {activeCashOut && (
+              <CashOutCalculator
+                cashOutTaxRate={activeCashOut.cashOutTaxRate}
+                balance={BigInt(activeCashOut.balance)}
+                supply={BigInt(activeCashOut.tokenSupply)}
+                decimals={activeCashOut.decimals}
+                currencySymbol={activeCashOut.baseCurrency === 2 ? 'USDC' : 'ETH'}
+                isDark={isDark}
+              />
             )}
 
             {/* Per-chain cash out breakdown (if multi-chain) */}
