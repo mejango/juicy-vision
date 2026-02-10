@@ -1242,7 +1242,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       className={`relative flex-shrink-0 w-24 border transition-colors ${
                         isSelected
                           ? exceedsSupply ? 'border-orange-500 bg-orange-500/10' : 'border-green-500 bg-green-500/10'
-                          : isDark ? 'border-white/10 hover:border-white/20' : 'border-gray-200 hover:border-gray-300'
+                          : isDark ? 'border-white/10 hover:border-juice-orange' : 'border-gray-200 hover:border-juice-orange'
                       } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                       onClick={() => {
                         if (isPaymentLocked) return
@@ -1835,7 +1835,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     className={`relative flex-shrink-0 w-24 border transition-colors ${
                       isSelected
                         ? exceedsSupply ? 'border-orange-500 bg-orange-500/10' : 'border-green-500 bg-green-500/10'
-                        : isDark ? 'border-white/10 hover:border-white/20' : 'border-gray-200 hover:border-gray-300'
+                        : isDark ? 'border-white/10 hover:border-juice-orange' : 'border-gray-200 hover:border-juice-orange'
                     } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                     onClick={() => {
                       if (isPaymentLocked) return
