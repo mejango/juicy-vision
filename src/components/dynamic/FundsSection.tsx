@@ -347,8 +347,8 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
 
         // Get the active chain's data for display
         const activeCashOut = chainFundsData.find(cd => cd.chainId === chainIdNum)
-        const cashOutTaxPercent = activeCashOut ? (activeCashOut.cashOutTaxRate / 100).toFixed(1) : '100'
-        const retentionPercent = activeCashOut ? ((10000 - activeCashOut.cashOutTaxRate) / 100).toFixed(1) : '0'
+        // Cash out tax rate as decimal (0-1) for display - NOT a percentage
+        const cashOutTaxDecimal = activeCashOut ? (activeCashOut.cashOutTaxRate / 10000).toFixed(2) : '1'
 
         // Check for surplus allowance
         const activeFundLimits = activeCashOut?.fundAccessLimits
@@ -376,10 +376,10 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
             <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Token holders can cash out for a share of the surplus.
               {activeCashOut && activeCashOut.cashOutTaxRate > 0 && (
-                <span> A {cashOutTaxPercent}% exit tax applies, meaning you receive {retentionPercent}% of the linear value.</span>
+                <span> A bonding curve (rate {cashOutTaxDecimal}) determines value — cashing out more tokens at once yields better value per token.</span>
               )}
               {activeCashOut && activeCashOut.cashOutTaxRate === 0 && (
-                <span> No exit tax — full linear value redemption.</span>
+                <span> Linear redemption — each token returns equal value.</span>
               )}
             </div>
 
@@ -398,13 +398,13 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
             {cashOutEnabledChains.length > 1 && (
               <div className="mb-3">
                 <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  Per-chain cash out rates
+                  Per-chain cash out values
                 </div>
                 <div className="space-y-1">
                   {cashOutEnabledChains.map(cd => {
                     const chainInfo = CHAIN_INFO[cd.chainId]
                     if (!chainInfo) return null
-                    const chainTax = (cd.cashOutTaxRate / 100).toFixed(1)
+                    const chainRate = (cd.cashOutTaxRate / 10000).toFixed(2)
                     return (
                       <div key={cd.chainId} className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -423,7 +423,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                             {cd.cashOutPerToken > 0 ? cd.cashOutPerToken.toFixed(6) : '0'} {cd.baseCurrency === 2 ? 'USDC' : 'ETH'}
                           </span>
                           <span className={`text-[10px] ml-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                            ({chainTax}% tax)
+                            (rate {chainRate})
                           </span>
                         </div>
                       </div>
@@ -471,17 +471,17 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                       ? isDark ? 'text-purple-400' : 'text-purple-700'
                       : isDark ? 'text-green-400' : 'text-green-700'
                   }`}>
-                    {isIncreasing ? 'Cash Out Tax Increasing' : 'Cash Out Tax Decreasing'}
+                    {isIncreasing ? 'Cash Out Rate Increasing' : 'Cash Out Rate Decreasing'}
                   </div>
                   <div className={`text-xs mt-1 ${
                     isIncreasing
                       ? isDark ? 'text-purple-300/80' : 'text-purple-600'
                       : isDark ? 'text-green-300/80' : 'text-green-600'
                   }`}>
-                    Tax changing from {currentTaxDecimal} to {upcomingTaxDecimal} on {dateStr}.
+                    Rate changing from {currentTaxDecimal} to {upcomingTaxDecimal} on {dateStr}.
                     {isIncreasing
-                      ? ` Your tokens will be worth ~${Math.abs(parseInt(valueChange))}% less after this change.`
-                      : ` Your tokens will be worth ~${valueChange}% more after this change.`
+                      ? ` Token cash out value will decrease.`
+                      : ` Token cash out value will increase.`
                     }
                   </div>
                 </div>

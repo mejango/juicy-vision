@@ -68,9 +68,10 @@ export default function RedemptionCurveChart({
   }, [r])
 
   // Chart dimensions - using viewBox for responsive scaling
-  const width = 300
-  const height = 50
-  const padding = { top: 4, right: 4, bottom: 14, left: 28 }
+  // Larger viewBox = smaller scaled text when rendered
+  const width = 400
+  const height = 60
+  const padding = { top: 6, right: 6, bottom: 6, left: 26 }
   const chartWidth = width - padding.left - padding.right
   const chartHeight = height - padding.top - padding.bottom
 
@@ -232,9 +233,9 @@ export default function RedemptionCurveChart({
 
         {/* Y-axis labels */}
         <text
-          x={padding.left - 3}
+          x={padding.left - 4}
           y={padding.top + chartHeight}
-          fontSize={8}
+          fontSize={9}
           fill={textColor}
           textAnchor="end"
           dominantBaseline="middle"
@@ -242,14 +243,34 @@ export default function RedemptionCurveChart({
           {minRetention.toFixed(0)}%
         </text>
         <text
-          x={padding.left - 3}
+          x={padding.left - 4}
           y={padding.top}
-          fontSize={8}
+          fontSize={9}
           fill={textColor}
           textAnchor="end"
           dominantBaseline="middle"
         >
           {maxRetention.toFixed(0)}%
+        </text>
+
+        {/* X-axis labels inside SVG for proper positioning */}
+        <text
+          x={padding.left}
+          y={height - 1}
+          fontSize={8}
+          fill={textColor}
+          textAnchor="start"
+        >
+          0%
+        </text>
+        <text
+          x={padding.left + chartWidth}
+          y={height - 1}
+          fontSize={8}
+          fill={textColor}
+          textAnchor="end"
+        >
+          100%
         </text>
       </svg>
 
@@ -269,11 +290,6 @@ export default function RedemptionCurveChart({
         </div>
       )}
 
-      {/* Legend */}
-      <div className={`flex justify-between text-[10px] mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-        <span>More tokens cashed out →</span>
-        <span>↑ Higher value per token</span>
-      </div>
     </div>
   )
 }
