@@ -1068,6 +1068,13 @@ export async function isProjectOwner(
 // Cache for projects by owner/deployer
 const projectsByOwnerCache = createCache<Project[]>(CACHE_DURATIONS.SHORT)
 
+// Ruleset history cache - for regular projects (1 hour TTL)
+const rulesetHistoryCache = createCache<RulesetHistoryEntry[]>(CACHE_DURATIONS.LONG)
+
+// Permanent caches for revnets (immutable data - no TTL)
+const revnetRulesetHistoryCache = new Map<string, RulesetHistoryEntry[]>()
+const revnetStagesCache = new Map<string, { stages: RevnetStage[]; currentStage: number }>()
+
 // Clear the projects by owner cache (call after deployment completes)
 export function clearProjectsByOwnerCache(ownerAddress?: string): void {
   if (ownerAddress) {
@@ -2084,6 +2091,30 @@ export async function fetchRevnetStages(
   projectId: string,
   chainId: number
 ): Promise<{ stages: RevnetStage[]; currentStage: number } | null> {
+  const cacheKey = `${chainId}-${projectId}`
+
+  // Check cache first - revnet stages are immutable
+  const cached = revnetStagesCache.get(cacheKey)
+  if (cached) {
+    // Recompute current stage status (time-dependent)
+    const now = Math.floor(Date.now() / 1000)
+    let currentStageNum = 1
+    for (const stage of cached.stages) {
+      if (stage.startsAtOrAfter <= now) {
+        currentStageNum = stage.stageNumber
+      }
+    }
+    return {
+      stages: cached.stages.map(stage => ({
+        ...stage,
+        isCurrent: stage.stageNumber === currentStageNum,
+        isPast: stage.stageNumber < currentStageNum,
+        isFuture: stage.stageNumber > currentStageNum,
+      })),
+      currentStage: currentStageNum,
+    }
+  }
+
   const publicClient = getPublicClient(chainId)
   if (!publicClient) return null
 
@@ -2125,6 +2156,9 @@ export async function fetchRevnetStages(
       isFuture: index + 1 > currentStageNum,
     }))
 
+    // Cache the result (permanent - revnet stages are immutable)
+    revnetStagesCache.set(cacheKey, { stages, currentStage: currentStageNum })
+
     return { stages, currentStage: currentStageNum }
   } catch {
     // Silently fail - configurationOf may not exist on older REVDeployer versions
@@ -2141,6 +2175,20 @@ export async function fetchRulesetHistory(
   currentRulesetId: string,
   maxHistory: number = 20
 ): Promise<RulesetHistoryEntry[]> {
+  const cacheKey = `${chainId}-${projectId}`
+
+  // Check permanent cache first (for revnets)
+  const revnetCached = revnetRulesetHistoryCache.get(cacheKey)
+  if (revnetCached) {
+    return revnetCached
+  }
+
+  // Check TTL cache (for regular projects)
+  const cached = rulesetHistoryCache.get(cacheKey)
+  if (cached) {
+    return cached
+  }
+
   const publicClient = getPublicClient(chainId)
   if (!publicClient) return []
 
@@ -2253,6 +2301,13 @@ export async function fetchRulesetHistory(
 
     // Limit to maxHistory and reverse so current is first
     const limited = allCycles.slice(-maxHistory).reverse()
+
+    // Cache the result - revnets get permanent cache, regular projects get 1hr TTL
+    if (contracts.isRevnet) {
+      revnetRulesetHistoryCache.set(cacheKey, limited)
+    } else {
+      rulesetHistoryCache.set(cacheKey, limited)
+    }
 
     return limited
   } catch (err) {

@@ -857,8 +857,8 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                   }`}>
                     Rate changing from {currentTaxDecimal} to {upcomingTaxDecimal} on {dateStr}.
                     {isIncreasing
-                      ? ` Token cash out value will decrease.`
-                      : ` Token cash out value will increase.`
+                      ? ` Cash out value will decrease.`
+                      : ` Cash out value will increase.`
                     }
                   </div>
                 </div>

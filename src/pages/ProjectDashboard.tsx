@@ -653,7 +653,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 {activeTab === 'rulesets' && (
                   <div className="space-y-6">
                     <ExplainerMessage>
-                      This shows the current ruleset cycle and its parameters. Rulesets define how the project handles payments, token issuance, and cash outs.
+                      This shows the current ruleset cycle and its parameters. Rulesets define how the project handles payments, membership, inventory, and access to funds.
                     </ExplainerMessage>
                     <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
                     <ExplainerMessage>
@@ -1019,7 +1019,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         {activeTab === 'rulesets' && (
           <div className="space-y-6">
             <ExplainerMessage>
-              This shows the current ruleset cycle and its parameters. Rulesets define how the project handles payments, token issuance, and cash outs.
+              This shows the current ruleset cycle and its parameters. Rulesets define how the project handles payments, membership, inventory, and access to funds.
             </ExplainerMessage>
             <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
             <ExplainerMessage>
