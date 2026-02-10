@@ -2284,23 +2284,25 @@ export default function RulesetSchedule({
                         <div>
                           <div className="flex justify-between text-xs">
                             <span>Surplus Allowance</span>
-                            <span className={surplusAllowanceIsZero ? (isDark ? 'text-gray-500' : 'text-gray-400') : surplusAllowanceIsUnlimited ? 'text-emerald-400' : 'font-mono'}>
-                              {surplusAllowanceIsZero
-                                ? 'None'
-                                : surplusAllowanceIsUnlimited
-                                  ? 'Unlimited'
-                                  : formatAmount(surplusAllowance!.amount, surplusAllowance!.currency)
+                            <span className={isRevnetProject ? 'text-purple-400' : surplusAllowanceIsZero ? (isDark ? 'text-gray-500' : 'text-gray-400') : surplusAllowanceIsUnlimited ? 'text-emerald-400' : 'font-mono'}>
+                              {isRevnetProject
+                                ? 'Unlimited (loans only)'
+                                : surplusAllowanceIsZero
+                                  ? 'None'
+                                  : surplusAllowanceIsUnlimited
+                                    ? 'Unlimited'
+                                    : formatAmount(surplusAllowance!.amount, surplusAllowance!.currency)
                               }
                             </span>
                           </div>
                           <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                            {surplusAllowanceIsZero
-                              ? 'Owner cannot access surplus beyond payout limit'
-                              : surplusAllowanceIsUnlimited
-                                ? isRevnetProject
-                                  ? 'Used by REVDeployer to facilitate loans against treasury'
-                                  : 'Owner can access any surplus beyond payout limit'
-                                : 'Additional funds owner can access beyond payout limit'}
+                            {isRevnetProject
+                              ? 'Funds cannot be withdrawn directly. REVDeployer uses allowance for loans only.'
+                              : surplusAllowanceIsZero
+                                ? 'Owner cannot access surplus beyond payout limit'
+                                : surplusAllowanceIsUnlimited
+                                  ? 'Owner can access any surplus beyond payout limit'
+                                  : 'Additional funds owner can access beyond payout limit'}
                           </div>
                         </div>
 
@@ -2325,12 +2327,7 @@ export default function RulesetSchedule({
                         <div className={`text-xs p-2 ${isDark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-700'}`}>
                           {payoutLimitIsZero ? 'No payouts.' : payoutLimitIsUnlimited ? 'Unlimited payouts.' : `Payout limit: ${formatAmount(payoutLimit!.amount, payoutLimit!.currency)}.`}
                           {' '}
-                          {surplusAllowanceIsUnlimited
-                            ? 'The unlimited surplus allowance is used by the REVDeployer (project owner) to facilitate loans - token holders can borrow against treasury funds, to be repaid with interest.'
-                            : surplusAllowanceIsZero
-                              ? 'No surplus allowance.'
-                              : `Surplus allowance: ${formatAmount(surplusAllowance!.amount, surplusAllowance!.currency)}.`
-                          }
+                          Revnets have unlimited surplus allowance that facilitates loans only. Funds cannot be withdrawn directly.
                           {cashOutsEnabled && ' Token holders can also cash out at any time.'}
                         </div>
                       ) : (
