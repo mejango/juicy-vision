@@ -273,16 +273,14 @@ function PerChainBreakdown({
             const pbCurrency = pb.currency ?? defaultCurrency
             const pbDecimals = pb.decimals ?? defaultDecimals
             return (
-              <div key={pb.chainId} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: chainInfo.color }}
-                  />
-                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {chainInfo.shortName}
-                  </span>
-                </div>
+              <div key={pb.chainId} className="flex items-center gap-3">
+                <span
+                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: chainInfo.color }}
+                />
+                <span className={`text-xs w-10 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {chainInfo.shortName}
+                </span>
                 <span className={`text-xs font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   {formatCurrency(pb.balance, pbDecimals, pbCurrency)}
                 </span>
