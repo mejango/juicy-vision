@@ -50,6 +50,7 @@ export default function HoldersChart({
   const [connectedChains, setConnectedChains] = useState<number[]>([])
   const [selectedChains, setSelectedChains] = useState<Set<number> | 'all'>('all')
   const [showBreakdown, setShowBreakdown] = useState(false)
+  const [showAllMembers, setShowAllMembers] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -376,6 +377,56 @@ export default function HoldersChart({
             </div>
           )}
         </div>
+
+        {/* Members List */}
+        {!loading && !error && filteredData.length > 0 && (
+          <div className={`px-4 pb-4 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
+            <div className="pt-3 space-y-2">
+              {filteredData
+                .filter(d => d.address !== '') // Exclude "Others"
+                .slice(0, showAllMembers ? undefined : 5)
+                .map((member, index) => (
+                  <div
+                    key={member.address}
+                    className={`flex items-center justify-between py-1.5 ${
+                      index > 0 ? `border-t ${isDark ? 'border-white/5' : 'border-gray-50'}` : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="w-2.5 h-2.5 flex-shrink-0"
+                        style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
+                      />
+                      <span className={`text-xs font-mono truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {member.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                        {parseFloat(member.balance).toLocaleString()} tokens
+                      </span>
+                      <span className={`text-xs font-medium w-12 text-right ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        {formatPercentage(member.value)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+            {filteredData.filter(d => d.address !== '').length > 5 && (
+              <button
+                onClick={() => setShowAllMembers(!showAllMembers)}
+                className={`w-full mt-2 py-1.5 text-xs transition-colors ${
+                  isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'
+                }`}
+              >
+                {showAllMembers
+                  ? 'Show less'
+                  : `View ${filteredData.filter(d => d.address !== '').length - 5} more`
+                }
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
