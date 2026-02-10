@@ -193,6 +193,19 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     return () => window.removeEventListener('juice:open-shop', handleOpenShop)
   }, [setActiveTab])
 
+  // Listen for generic tab switch event (e.g., from "You get" token preview)
+  useEffect(() => {
+    const handleSwitchTab = (e: Event) => {
+      const customEvent = e as CustomEvent<{ tab: DashboardTab }>
+      const tab = customEvent.detail?.tab
+      if (tab) {
+        setActiveTab(tab)
+      }
+    }
+    window.addEventListener('juice:switch-tab', handleSwitchTab)
+    return () => window.removeEventListener('juice:switch-tab', handleSwitchTab)
+  }, [setActiveTab])
+
   const [project, setProject] = useState<Project | null>(null)
   const [projectLoading, setProjectLoading] = useState(true)
   const [supporters, setSupporters] = useState<ProjectConversation[]>([])

@@ -1470,9 +1470,25 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             {expectedTokens !== null ? (
               <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                 <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>You get:</span>
-                <span> ~{(amountNum > 0 ? expectedTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
+                <span> ~{(amountNum > 0 ? expectedTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} </span>
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('juice:switch-tab', { detail: { tab: 'tokens' } }))}
+                  className={`font-medium hover:underline ${isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'}`}
+                >
+                  {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}
+                </button>
                 {payUs && (
-                  <span> + {(amountNum > 0 ? estimatedJuicyTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} JUICY</span>
+                  <span> + {(amountNum > 0 ? estimatedJuicyTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} </span>
+                )}
+                {payUs && (
+                  <a
+                    href="/eth:1#tokens"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`font-medium hover:underline ${isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'}`}
+                  >
+                    JUICY
+                  </a>
                 )}
                 {Object.keys(tierQuantities).length > 0 && (
                   <div className="mt-1">
@@ -2080,9 +2096,25 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         {expectedTokens !== null ? (
           <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
             <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>You get:</span>
-            <span> ~{(amountNum > 0 ? expectedTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}</span>
+            <span> ~{(amountNum > 0 ? expectedTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} </span>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('juice:switch-tab', { detail: { tab: 'tokens' } }))}
+              className={`font-medium hover:underline ${isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'}`}
+            >
+              {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}
+            </button>
             {payUs && (
-              <span> + {(amountNum > 0 ? estimatedJuicyTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} JUICY</span>
+              <span> + {(amountNum > 0 ? estimatedJuicyTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} </span>
+            )}
+            {payUs && (
+              <a
+                href="/eth:1#tokens"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`font-medium hover:underline ${isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'}`}
+              >
+                JUICY
+              </a>
             )}
             {Object.keys(tierQuantities).length > 0 && (
               <div className="mt-1">
