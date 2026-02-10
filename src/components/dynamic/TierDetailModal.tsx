@@ -94,7 +94,7 @@ export default function TierDetailModal({
 
       {/* Content */}
       <div
-        className={`relative w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto border-4 border-juice-orange ${
+        className={`relative w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto hide-scrollbar border-4 border-juice-orange ${
           isDark ? 'bg-juice-dark' : 'bg-white'
         }`}
         onClick={(e) => e.stopPropagation()}
