@@ -1,5 +1,20 @@
 # Cost Management, Vibeengineering, and Security Hardening
 
+## Latest: Ruleset Caching for Revnets
+
+**Status: Complete**
+
+Added client-side caching to bendystraw for ruleset history and revnet stages:
+- Revnets: Permanent cache (immutable data)
+- Regular projects: 1-hour TTL cache
+
+**Changes in `src/services/bendystraw/client.ts`:**
+1. Added `rulesetHistoryCache` (TTL), `revnetRulesetHistoryCache` (permanent), `revnetStagesCache` (permanent)
+2. Modified `fetchRevnetStages()` - checks cache first, recomputes time-dependent flags on hit
+3. Modified `fetchRulesetHistory()` - checks both caches, stores in appropriate cache based on project type
+
+---
+
 ## Completed Tasks
 
 ### Phase 1: Cost Management
