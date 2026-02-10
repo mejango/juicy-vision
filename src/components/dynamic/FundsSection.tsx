@@ -11,6 +11,7 @@ import {
   fetchProjectWithRuleset,
   fetchProjectSplits,
   fetchProjectTokenSupply,
+  fetchProjectTokenSymbol,
   fetchUpcomingRulesetWithMetadata,
   fetchUserTokenBalance,
   calculateFloorPrice,
@@ -79,8 +80,10 @@ function CashOutCalculator({
   chainFundsData,
   initialChainId,
   isDark,
+  tokenSymbol,
 }: {
   chainFundsData: ChainFundsData[]
+  tokenSymbol?: string | null
   initialChainId: number
   isDark: boolean
 }) {
@@ -216,7 +219,7 @@ function CashOutCalculator({
               </div>
               {tokensNum > 0 && estimatedReturn > 0 && !exceedsSupply && (
                 <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  ≈ {(estimatedReturn / tokensNum).toFixed(8)} {currencySymbol}/token
+                  ≈ {(estimatedReturn / tokensNum).toFixed(8)} {currencySymbol}/{tokenSymbol || 'token'}
                 </div>
               )}
               {exceedsSupply && (
@@ -375,6 +378,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   const [showSplits, setShowSplits] = useState(false)
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
   const [userTokenBalance, setUserTokenBalance] = useState<bigint>(0n)
+  const [tokenSymbol, setTokenSymbol] = useState<string | null>(null)
 
   const chainIdNum = parseInt(chainId)
 
@@ -481,6 +485,14 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
           setUpcomingRuleset(upcoming)
         } catch {
           // Silently ignore - upcoming ruleset is optional
+        }
+
+        // Fetch project token symbol (e.g., NANA, REV)
+        try {
+          const symbol = await fetchProjectTokenSymbol(projectId, chainIdNum)
+          setTokenSymbol(symbol)
+        } catch {
+          // Silently ignore - token symbol is optional
         }
 
         // Resolve ENS names for split beneficiaries
@@ -668,7 +680,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                   : isDark ? 'text-gray-500' : 'text-gray-400'
               }`}>
                 {hasSurplus && activeCashOut && activeCashOut.cashOutPerToken > 0
-                  ? `${activeCashOut.cashOutPerToken.toFixed(6)} ${currency === 2 ? 'USDC' : 'ETH'}/token`
+                  ? `${activeCashOut.cashOutPerToken.toFixed(6)} ${currency === 2 ? 'USDC' : 'ETH'}/${tokenSymbol || 'token'}`
                   : 'No surplus'
                 }
               </div>
@@ -702,6 +714,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                 chainFundsData={cashOutEnabledChains}
                 initialChainId={chainIdNum}
                 isDark={isDark}
+                tokenSymbol={tokenSymbol}
               />
             )}
 
