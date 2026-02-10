@@ -368,8 +368,8 @@ function CashOutTaxRateDisplay({
 }) {
   const [showBreakdown, setShowBreakdown] = useState(false)
 
-  // Format tax rate as percentage
-  const formatTaxRate = (rate: number) => `${((rate / 10000) * 100).toFixed(0)}%`
+  // Format tax rate as decimal (0.1 = 10% tax)
+  const formatTaxRate = (rate: number) => (rate / 10000).toFixed(2).replace(/\.?0+$/, '') || '0'
 
   return (
     <div className="mb-3">
