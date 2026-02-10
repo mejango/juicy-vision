@@ -3036,8 +3036,10 @@ export async function fetchAggregatedParticipants(
   const client = getClient(fallbackChainId ? getNetworkOption(fallbackChainId) : undefined)
 
   // Helper to process participants into aggregated format
+  // Now accepts the actual totalSupply from the indexer instead of calculating from balances
   const processParticipants = (
     items: Array<{ address?: string; wallet?: string; chainId?: number; balance: string }>,
+    actualTotalSupply: bigint,
     defaultChainId?: number
   ): { participants: AggregatedParticipant[]; totalSupply: bigint } => {
     const aggregated: Record<string, { balance: bigint; chains: number[] }> = {}
@@ -3053,7 +3055,10 @@ export async function fetchAggregatedParticipants(
       }
     }
 
-    const totalSupply = Object.values(aggregated).reduce((sum, p) => sum + p.balance, 0n)
+    // Use the actual total supply from the indexer for accurate percentages
+    const totalSupply = actualTotalSupply > 0n
+      ? actualTotalSupply
+      : Object.values(aggregated).reduce((sum, p) => sum + p.balance, 0n) // fallback only if no supply provided
 
     const participants = Object.entries(aggregated)
       .map(([address, data]) => ({
@@ -3074,19 +3079,29 @@ export async function fetchAggregatedParticipants(
   if (suckerGroupId) {
     try {
       console.log('[fetchAggregatedParticipants] Querying with suckerGroupId:', suckerGroupId)
-      const data = await client.request<{
-        participants: {
-          totalCount: number
-          items: Array<{ address: string; chainId: number; balance: string }>
-        }
-      }>(SUCKER_GROUP_PARTICIPANTS_QUERY, {
-        suckerGroupId,
-        limit: 10000,
-      })
 
-      console.log('[fetchAggregatedParticipants] Got', data.participants?.items?.length || 0, 'participants from suckerGroup query')
-      if (data.participants?.items && data.participants.items.length > 0) {
-        return processParticipants(data.participants.items)
+      // Fetch both participants and the actual tokenSupply from suckerGroup in parallel
+      const [participantsData, suckerGroupData] = await Promise.all([
+        client.request<{
+          participants: {
+            totalCount: number
+            items: Array<{ address: string; chainId: number; balance: string }>
+          }
+        }>(SUCKER_GROUP_PARTICIPANTS_QUERY, {
+          suckerGroupId,
+          limit: 10000,
+        }),
+        client.request<{
+          suckerGroup: { tokenSupply: string } | null
+        }>(SUCKER_GROUP_BY_ID_QUERY, { id: suckerGroupId })
+      ])
+
+      // Get the actual total token supply from the suckerGroup
+      const actualTotalSupply = BigInt(suckerGroupData.suckerGroup?.tokenSupply || '0')
+      console.log('[fetchAggregatedParticipants] Got', participantsData.participants?.items?.length || 0, 'participants, tokenSupply:', actualTotalSupply.toString())
+
+      if (participantsData.participants?.items && participantsData.participants.items.length > 0) {
+        return processParticipants(participantsData.participants.items, actualTotalSupply)
       }
     } catch (err) {
       // Expected for projects without sucker groups - silently fall back to single-chain
@@ -3098,20 +3113,34 @@ export async function fetchAggregatedParticipants(
   if (fallbackProjectId && fallbackChainId) {
     try {
       console.log('[fetchAggregatedParticipants] Falling back to single-chain query for project', fallbackProjectId, 'chain', fallbackChainId)
-      const data = await client.request<{
-        participants: {
-          totalCount: number
-          items: Array<{ address: string; chainId: number; balance: string }>
-        }
-      }>(TOKEN_HOLDERS_QUERY, {
-        projectId: parseInt(fallbackProjectId),
-        chainId: fallbackChainId,
-        limit: 1000,
-      })
 
-      console.log('[fetchAggregatedParticipants] Got', data.participants?.items?.length || 0, 'participants from single-chain query')
-      if (data.participants?.items && data.participants.items.length > 0) {
-        return processParticipants(data.participants.items, fallbackChainId)
+      // Fetch participants and project data (for tokenSupply) in parallel
+      const [participantsData, projectData] = await Promise.all([
+        client.request<{
+          participants: {
+            totalCount: number
+            items: Array<{ address: string; chainId: number; balance: string }>
+          }
+        }>(TOKEN_HOLDERS_QUERY, {
+          projectId: parseInt(fallbackProjectId),
+          chainId: fallbackChainId,
+          limit: 1000,
+        }),
+        client.request<{
+          project: { tokenSupply?: string } | null
+        }>(PROJECT_QUERY, {
+          projectId: parseInt(fallbackProjectId),
+          chainId: fallbackChainId,
+          version: 5
+        })
+      ])
+
+      // Get the project's token supply
+      const actualTotalSupply = BigInt(projectData.project?.tokenSupply || '0')
+      console.log('[fetchAggregatedParticipants] Got', participantsData.participants?.items?.length || 0, 'participants from single-chain query, tokenSupply:', actualTotalSupply.toString())
+
+      if (participantsData.participants?.items && participantsData.participants.items.length > 0) {
+        return processParticipants(participantsData.participants.items, actualTotalSupply, fallbackChainId)
       }
     } catch (err) {
       // Fallback query also failed - will return empty results

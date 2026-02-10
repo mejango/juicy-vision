@@ -12,6 +12,7 @@ export const PROJECT_QUERY = `
       volume
       volumeUsd
       balance
+      tokenSupply
       nftsMintedCount
       paymentsCount
       createdAt
