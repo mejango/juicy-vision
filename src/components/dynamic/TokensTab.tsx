@@ -416,7 +416,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
           )}
 
           {/* Total supply */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Total issued
             </span>
@@ -491,7 +491,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
 
         {/* Reserved rate */}
         <div className="mb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Reserved for admin
             </span>
@@ -545,27 +545,25 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         </div>
 
         {/* Pending reserved tokens - show total across all chains */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 mb-3">
           <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             Pending distribution
           </span>
-          <div className="flex items-center gap-2">
-            <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {totalPendingAcrossChains.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
-            </span>
-            {totalPendingAcrossChains > 0 && (
-              <button
-                onClick={() => setShowModal(true)}
-                className={`px-2 py-0.5 text-xs font-medium transition-colors ${
-                  isDark
-                    ? 'bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white'
-                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                }`}
-              >
-                Distribute
-              </button>
-            )}
-          </div>
+          <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {totalPendingAcrossChains.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
+          </span>
+          {totalPendingAcrossChains > 0 && (
+            <button
+              onClick={() => setShowModal(true)}
+              className={`px-2 py-0.5 text-xs font-medium transition-colors ${
+                isDark
+                  ? 'bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white'
+                  : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              }`}
+            >
+              Distribute
+            </button>
+          )}
         </div>
 
         {/* Reserved token recipients */}
