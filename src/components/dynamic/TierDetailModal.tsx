@@ -73,9 +73,9 @@ export default function TierDetailModal({
   const displayName = /^Tier \d+$/.test(tier.name) ? (productName || tier.name) : tier.name
   const isSvgImage = imageUrl?.startsWith('data:image/svg') || imageUrl?.endsWith('.svg')
 
-  // Use multi-chain totals if available, otherwise fall back to single chain
-  const remainingSupply = multiChainSupply?.totalRemaining ?? tier.remainingSupply
-  const initialSupply = multiChainSupply?.totalInitial ?? tier.initialSupply
+  // Always use tier's values for main display (this is the current chain's accurate data)
+  const remainingSupply = tier.remainingSupply
+  const initialSupply = tier.initialSupply
   const soldOut = remainingSupply === 0
   const isLowStock = remainingSupply > 0 && remainingSupply <= 10
 
