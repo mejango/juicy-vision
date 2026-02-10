@@ -679,7 +679,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       isRevnet={projectIsRevnet}
                     />
                     <ExplainerMessage>
-                      Payment volume shows how much has been contributed to the project over time.
+                      Here's how much has been contributed to the project over time.
                     </ExplainerMessage>
                     <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
                     <ExplainerMessage>
@@ -1044,7 +1044,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               isRevnet={projectIsRevnet}
             />
             <ExplainerMessage>
-              Payment volume shows how much has been contributed to the project over time.
+              Here's how much has been contributed to the project over time.
             </ExplainerMessage>
             <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
             <ExplainerMessage>
