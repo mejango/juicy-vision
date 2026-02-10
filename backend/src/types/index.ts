@@ -324,4 +324,7 @@ export interface EnvConfig {
 
   // Replicate (Image Generation)
   replicateApiToken?: string;    // Replicate API token for image generation
+
+  // Voyage AI (Embeddings)
+  voyageApiKey?: string;          // Voyage AI API key for semantic embeddings
 }

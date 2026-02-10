@@ -51,6 +51,129 @@
   - Pre-configured breakers for: Bendystraw, IPFS, Juicerkle, MCP Docs
   - Added `getAllCircuitStats()` for monitoring
 
+### Phase 4: AI Confidence Escalation System
+
+- [x] **Confidence Signal in Prompts** (`shared/prompts.ts`)
+  - Added confidence signal instruction to BASE_PROMPT
+  - AI now ends responses with `<confidence level="high|medium|low" reason="..."/>`
+  - Low confidence triggers user-facing uncertainty message
+
+- [x] **Confidence Parsing** (`backend/src/services/claude.ts`)
+  - Added `parseConfidence()` function to extract and strip confidence tags
+  - Returns cleaned content and confidence metadata
+
+- [x] **Escalation Service** (`backend/src/services/escalation.ts`)
+  - `createEscalation()` - Auto-create on low confidence
+  - `getEscalationQueue()` - List pending for admin with filtering
+  - `getEscalation()` - Get single with conversation context
+  - `resolveEscalation()` - Admin marks approved/corrected
+  - `getEscalationStats()` - Queue statistics
+
+- [x] **Trending Context Service** (`backend/src/services/trendingContext.ts`)
+  - Fetches top 10 projects from Bendystraw by trendingScore
+  - Caches in PostgreSQL with 1-hour TTL
+  - Injects into AI system prompt to prevent hallucination
+
+- [x] **Context Manager Update** (`backend/src/services/contextManager.ts`)
+  - Imports trending context and injects into buildEnhancedSystemPrompt
+
+- [x] **Admin Escalation Routes** (`backend/src/routes/admin.ts`)
+  - GET `/admin/escalations` - Queue with filtering
+  - GET `/admin/escalations/stats` - Queue statistics
+  - GET `/admin/escalations/:id` - Detail with context
+  - POST `/admin/escalations/:id/resolve` - Resolve escalation
+
+- [x] **Trending Refresh Cron** (`backend/src/routes/cron.ts`)
+  - POST `/cron/trending` - Hourly refresh of trending projects
+
+- [x] **Chat Flow Integration** (`backend/src/routes/chat.ts`)
+  - Parses confidence from AI responses
+  - Stores confidence metadata with messages
+  - Auto-creates escalations for low-confidence responses
+
+- [x] **Admin UI: EscalationsPage** (`src/admin/pages/EscalationsPage.tsx`)
+  - Stats cards (pending, approved, corrected, avg review time)
+  - Filterable table by status
+  - Click to view details
+
+- [x] **Admin UI: EscalationViewer** (`src/admin/components/EscalationViewer.tsx`)
+  - Shows user query, AI response, confidence reason
+  - Displays surrounding conversation context
+  - Approve/correct actions with notes
+
+- [x] **Admin Navigation** (`src/admin/AdminApp.tsx`, `src/admin/AdminLayout.tsx`)
+  - Added escalations route and navigation link
+
+- [x] **Database Migration** (`backend/src/db/migrations/004_escalation.sql`)
+  - Added ai_confidence, ai_confidence_reason to multi_chat_messages
+  - Created ai_escalations table
+  - Created context_cache table for trending data
+
+### Phase 5: Specialist Knowledge Routing System
+
+- [x] **Sub-Module System** (`shared/prompts/transaction/*.ts`)
+  - Decomposed TRANSACTION_CONTEXT (8k tokens) into 10 granular modules (~200-1500 tokens each)
+  - Created: chains, v51Addresses, v5Addresses, terminals, splitsLimits, nftTiers, revnetParams, rulesets, deployment, metadata
+  - Each module has its own hints, token estimate, and description
+
+- [x] **Sub-Module Aggregator** (`shared/prompts/index.ts`, `shared/prompts/transaction/index.ts`)
+  - Module registry with `TRANSACTION_SUB_MODULES` array
+  - `matchSubModulesByKeywords()` for keyword-based selection
+  - `buildTransactionContext()` to assemble selected modules
+  - `estimateSubModuleTokens()` for token counting
+
+- [x] **Context Manager Updates** (`backend/src/services/contextManager.ts`)
+  - Extended `DetectedIntents` with `transactionSubModules` field
+  - `detectIntentsWithContext()` now detects granular sub-modules
+  - `buildModularPromptWithSubModules()` for token-efficient prompts
+  - Updated `buildEnhancedSystemPrompt()` with `useSubModules` option
+
+- [x] **Intent Embeddings Migration** (`backend/src/db/migrations/005_intent_embeddings.sql`)
+  - pgvector extension for similarity search
+  - `intent_embeddings` table with domain, sub_module, embedding vector(1024)
+  - IVFFlat index for fast approximate nearest neighbor search
+
+- [x] **Embedding Service** (`backend/src/services/embeddingService.ts`)
+  - Voyage AI API wrapper for generating embeddings
+  - In-memory LRU cache for embedding results
+  - Batch embedding support for seeding
+  - Cosine similarity calculation
+
+- [x] **Semantic Intent Detection** (`backend/src/services/intentDetection.ts`)
+  - Hybrid semantic + keyword intent detection
+  - `detectSemanticIntents()` queries pgvector for similar intents
+  - Combines with keyword matching for fallback/boost
+  - `seedIntentEmbeddings()` for populating the database
+
+- [x] **Intent Metrics** (`backend/src/db/migrations/006_intent_metrics.sql`, `backend/src/services/intentMetrics.ts`)
+  - `intent_detection_metrics` table for per-invocation logging
+  - `intent_detection_stats` table for aggregated statistics
+  - `logIntentDetection()`, `updateIntentMetrics()` for tracking
+  - `aggregateHourlyStats()`, `aggregateDailyStats()` for cron jobs
+  - `getStatsSummary()`, `getTopSubModules()` for analytics
+
+- [x] **MCP Server Integration** (`.claude/plugins/jb-knowledge/.mcp.json`)
+  - Registered existing docs.juicebox.money MCP server
+  - Provides: search_docs, get_doc, get_contract_addresses, get_sdk_reference, etc.
+
+- [x] **Chat Route Integration** (`backend/src/routes/chat.ts`)
+  - Enabled sub-module loading in `buildEnhancedPrompt()`
+  - Intent metrics logging on each AI invocation
+  - AI confidence level tracking in metrics
+
+- [x] **Cron Job** (`backend/src/routes/cron.ts`)
+  - Added `/cron/intent-metrics/aggregate` endpoint
+  - Hourly aggregation with daily rollup at midnight
+  - Cleanup of old detailed metrics (30-day retention)
+
+## Expected Outcomes
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Avg tokens per request | ~14,500 | ~8,500 (-41%) |
+| Intent detection accuracy | ~70% (keyword) | ~90% (hybrid) |
+| Time to add new domain | Modify prompts.ts | Add sub-module or use MCP |
+
 ## Deferred Tasks
 
 - [ ] Split `chat.ts` (1,484 lines) → 4 files
@@ -58,20 +181,27 @@
 
 ## Verification Results
 
-- [x] TypeScript compiles: `deno check main.ts` ✓
+- [x] TypeScript compiles: `npx tsc --noEmit` ✓
 - [x] All modified files pass type check ✓
 
 ## Files Modified
 
 | File | Changes |
 |------|---------|
-| `services/claude.ts` | Model selection, PostgreSQL rate limits |
+| `services/claude.ts` | Model selection, PostgreSQL rate limits, confidence parsing |
 | `services/aiBilling.ts` | Token-based billing, env var control |
 | `services/rateLimit.ts` | Tool-specific rate limits |
 | `services/omnichain.ts` | GraphQL sanitization |
+| `services/contextManager.ts` | Trending context injection |
+| `routes/admin.ts` | Escalation endpoints |
+| `routes/cron.ts` | Trending refresh job |
+| `routes/chat.ts` | Confidence integration |
+| `shared/prompts.ts` | Confidence signal instruction |
 | `utils/config.ts` | Added `aiFreeMode` config |
 | `types/index.ts` | Added `aiFreeMode` to `EnvConfig` |
 | `main.ts` | Structured error handling |
+| `src/admin/AdminApp.tsx` | Escalations route |
+| `src/admin/AdminLayout.tsx` | Escalations nav link |
 
 ## New Files
 
@@ -79,3 +209,8 @@
 |------|---------|
 | `errors/AppError.ts` | Structured error types |
 | `utils/circuitBreaker.ts` | Circuit breaker for external services |
+| `backend/src/services/escalation.ts` | Escalation queue logic |
+| `backend/src/services/trendingContext.ts` | Fetch/cache trending projects |
+| `backend/src/db/migrations/004_escalation.sql` | Schema changes |
+| `src/admin/pages/EscalationsPage.tsx` | Admin queue UI |
+| `src/admin/components/EscalationViewer.tsx` | Detail view |

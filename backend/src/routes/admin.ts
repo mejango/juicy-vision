@@ -4,6 +4,12 @@ import { z } from 'zod';
 import { requireAuth, requireAdmin } from '../middleware/auth.ts';
 import { query, queryOne } from '../db/index.ts';
 import { processSingleSpend } from '../services/juice.ts';
+import {
+  getEscalationQueue,
+  getEscalation,
+  resolveEscalation,
+  getEscalationStats,
+} from '../services/escalation.ts';
 
 const adminRouter = new Hono();
 
@@ -571,6 +577,102 @@ adminRouter.get('/juice/stats', async (c) => {
   } catch (error) {
     console.error('[Admin] Juice stats query error:', error);
     return c.json({ success: false, error: 'Failed to fetch juice stats' }, 500);
+  }
+});
+
+// ============================================================================
+// AI Escalations
+// ============================================================================
+
+const EscalationsQuerySchema = z.object({
+  status: z.enum(['pending', 'approved', 'corrected']).optional(),
+  limit: z.coerce.number().min(1).max(100).default(50),
+  offset: z.coerce.number().min(0).default(0),
+});
+
+adminRouter.get('/escalations', zValidator('query', EscalationsQuerySchema), async (c) => {
+  try {
+    const params = c.req.valid('query');
+    const result = await getEscalationQueue(params);
+
+    return c.json({
+      success: true,
+      data: result.escalations,
+      total: result.total,
+    });
+  } catch (error) {
+    console.error('[Admin] Escalations query error:', error);
+    return c.json({ success: false, error: 'Failed to fetch escalations' }, 500);
+  }
+});
+
+adminRouter.get('/escalations/stats', async (c) => {
+  try {
+    const stats = await getEscalationStats();
+
+    return c.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    console.error('[Admin] Escalation stats error:', error);
+    return c.json({ success: false, error: 'Failed to fetch escalation stats' }, 500);
+  }
+});
+
+adminRouter.get('/escalations/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const result = await getEscalation(id);
+
+    if (!result.escalation) {
+      return c.json({ success: false, error: 'Escalation not found' }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        escalation: result.escalation,
+        context: result.context,
+      },
+    });
+  } catch (error) {
+    console.error('[Admin] Get escalation error:', error);
+    return c.json({ success: false, error: 'Failed to fetch escalation' }, 500);
+  }
+});
+
+const ResolveEscalationSchema = z.object({
+  status: z.enum(['approved', 'corrected']),
+  adminCorrection: z.string().optional(),
+  reviewNotes: z.string().optional(),
+});
+
+adminRouter.post('/escalations/:id/resolve', zValidator('json', ResolveEscalationSchema), async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = c.req.valid('json');
+    const user = c.get('user');
+
+    const result = await resolveEscalation({
+      id,
+      status: body.status,
+      reviewedBy: user?.address || 'admin',
+      adminCorrection: body.adminCorrection,
+      reviewNotes: body.reviewNotes,
+    });
+
+    if (!result) {
+      return c.json({ success: false, error: 'Escalation not found' }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('[Admin] Resolve escalation error:', error);
+    return c.json({ success: false, error: 'Failed to resolve escalation' }, 500);
   }
 });
 

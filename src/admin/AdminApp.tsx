@@ -6,6 +6,7 @@ import AdminLayout from './AdminLayout'
 import DashboardPage from './pages/DashboardPage'
 import ChatsPage from './pages/ChatsPage'
 import QueuedPaymentsPage from './pages/QueuedPaymentsPage'
+import EscalationsPage from './pages/EscalationsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -181,6 +182,7 @@ export default function AdminApp() {
             <Route path="/" element={<AdminLayout />}>
               <Route index element={<DashboardPage />} />
               <Route path="chats" element={<ChatsPage />} />
+              <Route path="escalations" element={<EscalationsPage />} />
               <Route path="queued-payments" element={<QueuedPaymentsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

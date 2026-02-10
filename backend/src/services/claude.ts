@@ -252,22 +252,50 @@ export async function buildEnhancedPrompt(options: {
   chatId?: string;
   userId?: string;
   includeOmnichain?: boolean;
+  useSemanticDetection?: boolean;  // Enable semantic intent detection (Phase 2)
+  useSubModules?: boolean;  // Enable granular sub-module loading (Phase 1)
 }): Promise<{
   systemPrompt: string;
   context: import('./contextManager.ts').OptimizedContext | null;
   intents?: import('./contextManager.ts').DetectedIntents;
+  semanticResult?: import('./intentDetection.ts').SemanticIntentResult;
 }> {
   const builder = await getBuildEnhancedSystemPrompt();
 
   // If messages provided and no custom system, use modular mode
   if (options.messages && !options.customSystem) {
-    return builder({
+    // If semantic detection is enabled, use it to get better intent matching
+    let semanticResult: import('./intentDetection.ts').SemanticIntentResult | undefined;
+
+    if (options.useSemanticDetection) {
+      try {
+        const { detectSemanticIntents } = await import('./intentDetection.ts');
+        // Get the last user message for semantic analysis
+        const lastUserMessage = [...options.messages]
+          .reverse()
+          .find(m => m.role === 'user');
+
+        if (lastUserMessage && typeof lastUserMessage.content === 'string') {
+          semanticResult = await detectSemanticIntents(lastUserMessage.content);
+        }
+      } catch (error) {
+        console.error('Semantic intent detection failed, falling back to keywords:', error);
+      }
+    }
+
+    const result = await builder({
       messages: options.messages,
       chatId: options.chatId,
       userId: options.userId,
       includeOmnichain: options.includeOmnichain,
       omnichainContext: OMNICHAIN_CONTEXT,
+      useSubModules: options.useSubModules ?? false,
     });
+
+    return {
+      ...result,
+      semanticResult,
+    };
   }
 
   // Legacy mode: use full prompt
@@ -305,6 +333,42 @@ export interface ClaudeResponse {
     outputTokens: number;
   };
   stopReason: string;
+}
+
+// ============================================================================
+// Confidence Parsing
+// ============================================================================
+
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
+
+export interface ParsedConfidence {
+  level: ConfidenceLevel;
+  reason: string;
+}
+
+/**
+ * Parse and strip confidence tag from AI response.
+ * Returns the cleaned content and extracted confidence metadata.
+ *
+ * Expected format: <confidence level="high|medium|low" reason="brief explanation"/>
+ */
+export function parseConfidence(content: string): {
+  content: string;
+  confidence: ParsedConfidence | null;
+} {
+  const match = content.match(/<confidence\s+level="(high|medium|low)"\s+reason="([^"]*)"\s*\/>/);
+
+  if (match) {
+    return {
+      content: content.replace(/<confidence[^>]*\/>/, '').trim(),
+      confidence: {
+        level: match[1] as ConfidenceLevel,
+        reason: match[2],
+      },
+    };
+  }
+
+  return { content, confidence: null };
 }
 
 // ============================================================================

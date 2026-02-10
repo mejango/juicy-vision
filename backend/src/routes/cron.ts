@@ -12,6 +12,7 @@ import {
 } from '../services/juice.ts';
 import { cleanupExpiredJobs, cancelStaleJobs } from '../services/forge.ts';
 import { cleanupExpiredCache } from '../services/rulesetCache.ts';
+import { refreshTrendingContext } from '../services/trendingContext.ts';
 
 export const cronRouter = new Hono();
 
@@ -489,6 +490,78 @@ cronRouter.post('/rulesets/cleanup', async (c) => {
     });
   } catch (error) {
     console.error('Cron ruleset cache cleanup failed:', error);
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        durationMs: Date.now() - startTime,
+      },
+      500
+    );
+  }
+});
+
+// Refresh trending projects context (run hourly)
+cronRouter.post('/trending', async (c) => {
+  const startTime = Date.now();
+
+  try {
+    const result = await refreshTrendingContext();
+
+    return c.json({
+      success: result.success,
+      data: {
+        projectCount: result.projectCount,
+        durationMs: Date.now() - startTime,
+      },
+    });
+  } catch (error) {
+    console.error('Cron trending refresh failed:', error);
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        durationMs: Date.now() - startTime,
+      },
+      500
+    );
+  }
+});
+
+// ============================================================================
+// Intent Detection Metrics Cron Endpoints
+// ============================================================================
+
+// Aggregate hourly intent detection stats
+cronRouter.post('/intent-metrics/aggregate', async (c) => {
+  const startTime = Date.now();
+
+  try {
+    const { aggregateHourlyStats, aggregateDailyStats, cleanupOldMetrics } = await import('../services/intentMetrics.ts');
+
+    // Aggregate hourly stats
+    await aggregateHourlyStats();
+
+    // Also do daily aggregation if it's midnight (0-1 hour)
+    const hour = new Date().getUTCHours();
+    if (hour === 0) {
+      await aggregateDailyStats();
+    }
+
+    // Cleanup old detailed metrics (keep 30 days)
+    const cleanedUp = await cleanupOldMetrics();
+
+    return c.json({
+      success: true,
+      data: {
+        hourlyAggregated: true,
+        dailyAggregated: hour === 0,
+        cleanedUpCount: cleanedUp,
+        durationMs: Date.now() - startTime,
+      },
+    });
+  } catch (error) {
+    console.error('Cron intent metrics aggregation failed:', error);
     return c.json(
       {
         success: false,

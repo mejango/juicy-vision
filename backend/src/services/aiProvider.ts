@@ -76,13 +76,24 @@ export function getUserUsageStats(userId: string) {
 /**
  * Build enhanced system prompt with context management
  * (Only available in Claude provider currently)
+ *
+ * New options for Phase 1 & 2:
+ * - useSubModules: Enable granular sub-module loading (saves ~40% tokens)
+ * - useSemanticDetection: Enable semantic intent detection via embeddings
  */
 export async function buildEnhancedPrompt(options: {
   customSystem?: string;
   chatId?: string;
   userId?: string;
   includeOmnichain?: boolean;
-}): Promise<{ systemPrompt: string; context: import('./contextManager.ts').OptimizedContext | null }> {
+  useSemanticDetection?: boolean;  // Enable semantic intent detection (Phase 2)
+  useSubModules?: boolean;  // Enable granular sub-module loading (Phase 1)
+}): Promise<{
+  systemPrompt: string;
+  context: import('./contextManager.ts').OptimizedContext | null;
+  intents?: import('./contextManager.ts').DetectedIntents;
+  semanticResult?: import('./intentDetection.ts').SemanticIntentResult;
+}> {
   // Use Claude's implementation as it has context management
   return claude.buildEnhancedPrompt(options);
 }

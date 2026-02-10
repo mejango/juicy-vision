@@ -73,6 +73,8 @@ import { getConfig } from '../utils/config.ts';
 import { getPrimaryChainId } from '@shared/chains.ts';
 import { getPseudoAddress, verifyWalletSignature, parseSessionMergeMessage, isTimestampValid } from '../utils/crypto.ts';
 import { rateLimitMiddleware, rateLimitByWallet } from '../services/rateLimit.ts';
+import { parseConfidence } from '../services/claude.ts';
+import { createEscalation, updateMessageConfidence } from '../services/escalation.ts';
 import {
   getComponentState,
   setComponentState,
@@ -1218,16 +1220,41 @@ chatRouter.post(
       // Build optimized context with summaries, state, and token budgeting
       const { buildOptimizedContext, formatContextForClaude, logContextUsage } = await import('../services/contextManager.ts');
       const { buildEnhancedPrompt } = await import('../services/aiProvider.ts');
+      const { logIntentDetection, createMetricsEntryFromResult } = await import('../services/intentMetrics.ts');
 
       const optimizedContext = await buildOptimizedContext(chatId, walletSession.userId);
       const chatHistory = formatContextForClaude(optimizedContext);
 
       // Build enhanced system prompt with transaction state and user context
-      const { systemPrompt: enhancedSystem } = await buildEnhancedPrompt({
+      // Phase 1: Enable sub-modules for token efficiency
+      // Phase 2: Enable semantic detection when embeddings are available
+      const { systemPrompt: enhancedSystem, intents, semanticResult } = await buildEnhancedPrompt({
         chatId,
         userId: walletSession.userId,
         includeOmnichain: true,
+        useSubModules: true,  // Phase 1: Granular sub-module loading
+        useSemanticDetection: false,  // Phase 2: Enable when embeddings are seeded
       });
+
+      // Log intent detection metrics for optimization
+      let metricsId = '';
+      if (semanticResult) {
+        const metricsEntry = createMetricsEntryFromResult(semanticResult, chatId);
+        metricsId = await logIntentDetection(metricsEntry);
+      } else if (intents) {
+        // Log keyword-only detection
+        metricsId = await logIntentDetection({
+          chatId,
+          detectedIntents: [
+            intents.needsDataQuery ? 'dataQuery' : '',
+            intents.needsHookDeveloper ? 'hookDeveloper' : '',
+            intents.needsTransaction ? 'transaction' : '',
+          ].filter(Boolean),
+          subModulesLoaded: intents.transactionSubModules || [],
+          detectionMethod: 'keyword',
+          detectionTimeMs: 0,
+        });
+      }
 
       // Build multimodal content blocks for the new prompt
       const contentBlocks: Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } } | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }> = [];
@@ -1473,13 +1500,54 @@ chatRouter.post(
         }
       }
 
-      // Store the complete AI response as a message
+      // Parse and strip confidence tag from AI response
+      const { content: cleanedContent, confidence } = parseConfidence(fullContent);
+
+      // Store the complete AI response as a message (with confidence tag stripped)
       const aiMessage = await importMessage({
         chatId,
         senderAddress: assistantAddress,
         role: 'assistant',
-        content: fullContent,
+        content: cleanedContent,
       });
+
+      // Store confidence metadata and create escalation if low confidence
+      if (confidence) {
+        updateMessageConfidence({
+          messageId: aiMessage.id,
+          confidenceLevel: confidence.level,
+          confidenceReason: confidence.reason,
+        }).catch(err => {
+          console.error('Failed to update message confidence:', err);
+        });
+
+        // Update intent metrics with AI confidence level
+        if (metricsId) {
+          const { updateIntentMetrics } = await import('../services/intentMetrics.ts');
+          updateIntentMetrics(metricsId, {
+            aiConfidenceLevel: confidence.level,
+          }).catch(err => {
+            console.error('Failed to update intent metrics with confidence:', err);
+          });
+        }
+
+        // Auto-escalate low confidence responses for admin review
+        if (confidence.level === 'low') {
+          createEscalation({
+            chatId,
+            messageId: aiMessage.id,
+            userQuery: body.prompt,
+            aiResponse: cleanedContent,
+            confidenceLevel: confidence.level,
+            confidenceReason: confidence.reason,
+          }).catch(err => {
+            console.error('Failed to create escalation:', err);
+          });
+        }
+      }
+
+      // Update fullContent for downstream processing (state extraction, etc.)
+      fullContent = cleanedContent;
 
       // Context management: Extract transaction state and trigger summarization (async, non-blocking)
       const { extractStateFromResponse } = await import('../services/transactionState.ts');

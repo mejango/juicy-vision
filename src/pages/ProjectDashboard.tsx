@@ -454,35 +454,11 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  {/* Title row with chain badges */}
-                  <div className="flex items-center gap-2">
-                    <h1 className={`text-xl font-semibold truncate ${
-                      isDark ? 'text-white' : 'text-gray-900'
-                    }`}>
-                      {project.name || `Project #${projectId}`}
-                    </h1>
-                    {/* Show all connected chains, or just current chain if no connections */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      {(connectedChains.length > 0 ? connectedChains : chain ? [{ chainId, projectId }] : []).map(cc => {
-                        const ccChain = CHAINS[cc.chainId] || MAINNET_CHAINS[cc.chainId]
-                        if (!ccChain) return null
-                        return (
-                          <button
-                            key={cc.chainId}
-                            onClick={() => navigate(`/${ccChain.slug}:${cc.projectId}`)}
-                            className="px-2 py-0.5 text-xs font-medium rounded-full transition-opacity hover:opacity-80"
-                            style={{
-                              backgroundColor: ccChain.color + '20',
-                              color: ccChain.color,
-                            }}
-                            title={`View on ${ccChain.name}`}
-                          >
-                            {ccChain.shortName}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
+                  <h1 className={`text-xl font-semibold truncate ${
+                    isDark ? 'text-white' : 'text-gray-900'
+                  }`}>
+                    {project.name || `Project #${projectId}`}
+                  </h1>
                   {/* Stats row */}
                   <div className={`flex items-center gap-4 mt-1 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                     <div
@@ -850,35 +826,11 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               </div>
             )}
             <div className="flex-1 min-w-0">
-              {/* Title row with chain badges */}
-              <div className="flex items-center gap-2">
-                <h1 className={`text-lg font-semibold truncate ${
-                  isDark ? 'text-white' : 'text-gray-900'
-                }`}>
-                  {project.name || `Project #${projectId}`}
-                </h1>
-                {/* Show all connected chains, or just current chain if no connections */}
-                <div className="flex items-center gap-1 shrink-0 flex-wrap">
-                  {(connectedChains.length > 0 ? connectedChains : chain ? [{ chainId, projectId }] : []).map(cc => {
-                    const ccChain = CHAINS[cc.chainId] || MAINNET_CHAINS[cc.chainId]
-                    if (!ccChain) return null
-                    return (
-                      <button
-                        key={cc.chainId}
-                        onClick={() => navigate(`/${ccChain.slug}:${cc.projectId}`)}
-                        className="px-2 py-0.5 text-xs font-medium rounded-full transition-opacity hover:opacity-80"
-                        style={{
-                          backgroundColor: ccChain.color + '20',
-                          color: ccChain.color,
-                        }}
-                        title={`View on ${ccChain.name}`}
-                      >
-                        {ccChain.shortName}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
+              <h1 className={`text-lg font-semibold truncate ${
+                isDark ? 'text-white' : 'text-gray-900'
+              }`}>
+                {project.name || `Project #${projectId}`}
+              </h1>
               {/* Stats row */}
               <div className={`flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 <div

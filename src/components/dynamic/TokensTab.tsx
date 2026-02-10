@@ -285,7 +285,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   return (
     <div className="space-y-4">
       <ExplainerMessage>
-        Project membership is represented by tokens.{cashOutsEnabled && ' Token holders can cash out their share of the treasury.'}
+        Members own a share of the project.
       </ExplainerMessage>
 
       {/* Your Balance */}
@@ -406,7 +406,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
 
       {/* Reserved Tokens Section */}
       <ExplainerMessage>
-        A portion of tokens from each payment can be reserved for the project admin and split among recipients.
+        A portion of membership can be reserved for the project admin and split among recipients.
       </ExplainerMessage>
       <div className={`p-4 border ${
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
@@ -536,7 +536,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
 
       {/* Token Holders Chart */}
       <ExplainerMessage>
-        This shows the distribution of tokens among members. A more distributed ownership means broader participation.
+        This shows the distribution of members.
       </ExplainerMessage>
       <HoldersChart projectId={projectId} chainId={chainId} limit={10} />
 

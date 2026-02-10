@@ -26,6 +26,7 @@ import {
   AttachmentSummary,
 } from './summarization.ts';
 import { getContextForSystemPrompt } from './userContext.ts';
+import { getTrendingContext } from './trendingContext.ts';
 import type { ChatMessage } from './claude.ts';
 import {
   BASE_PROMPT,
@@ -36,6 +37,15 @@ import {
   INTENT_HINTS,
   MODULE_TOKENS,
 } from '@shared/prompts.ts';
+import {
+  TRANSACTION_SUB_MODULES,
+  TRANSACTION_CORE,
+  TRANSACTION_CORE_TOKEN_ESTIMATE,
+  matchSubModulesByKeywords,
+  buildTransactionContext,
+  estimateSubModuleTokens,
+  type SubModule,
+} from '@shared/prompts/index.ts';
 import {
   generateChainTable,
   generateChainConfigs,
@@ -85,6 +95,8 @@ export interface OptimizedContext {
       estimatedTokens: number;
       modulesLoaded: string[];
       reasons: string[];
+      subModulesEnabled?: boolean;
+      transactionSubModules?: string[];
     };
   };
 }
@@ -130,6 +142,8 @@ export interface DetectedIntents {
   needsDataQuery: boolean;
   needsHookDeveloper: boolean;
   needsTransaction: boolean;
+  // Granular sub-modules within transaction context
+  transactionSubModules?: string[];
   // Reason for each module being included (for debugging/logging)
   reasons: string[];
 }
@@ -221,10 +235,32 @@ export async function detectIntentsWithContext(
     }
   }
 
+  // 5. Detect transaction sub-modules for granular loading
+  let transactionSubModules: string[] | undefined;
+  if (needsTransaction) {
+    transactionSubModules = matchSubModulesByKeywords(recentUserMessages);
+
+    // If no specific sub-modules matched but transaction is needed, load core modules
+    if (transactionSubModules.length === 0) {
+      // Default to deployment-related modules for new projects
+      if (transactionState?.designPhase === 'configuration' || transactionState?.designPhase === 'ready') {
+        transactionSubModules = ['v51_addresses', 'terminals', 'deployment'];
+        reasons.push('default transaction sub-modules (design phase)');
+      } else {
+        // Generic transaction context
+        transactionSubModules = ['chains', 'v51_addresses'];
+        reasons.push('default transaction sub-modules (generic)');
+      }
+    } else {
+      reasons.push(`sub-modules: ${transactionSubModules.join(', ')}`);
+    }
+  }
+
   return {
     needsDataQuery,
     needsHookDeveloper,
     needsTransaction,
+    transactionSubModules,
     reasons,
   };
 }
@@ -258,14 +294,28 @@ export function detectIntents(messages: ChatMessage[]): DetectedIntents {
     reasons.push('new conversation default (exploration)');
   }
 
-  return { needsDataQuery, needsHookDeveloper, needsTransaction, reasons };
+  // Detect transaction sub-modules
+  let transactionSubModules: string[] | undefined;
+  if (needsTransaction) {
+    transactionSubModules = matchSubModulesByKeywords(recentUserMessages);
+    if (transactionSubModules.length === 0) {
+      transactionSubModules = ['chains', 'v51_addresses'];
+      reasons.push('default transaction sub-modules');
+    } else {
+      reasons.push(`sub-modules: ${transactionSubModules.join(', ')}`);
+    }
+  }
+
+  return { needsDataQuery, needsHookDeveloper, needsTransaction, transactionSubModules, reasons };
 }
 
 /**
  * Build modular system prompt based on detected intents
  * Returns BASE_PROMPT + only the modules needed for this conversation
+ *
+ * If useSubModules is true, loads granular sub-modules instead of full TRANSACTION_CONTEXT
  */
-export function buildModularPrompt(intents: DetectedIntents): string {
+export function buildModularPrompt(intents: DetectedIntents, useSubModules = false): string {
   const parts: string[] = [BASE_PROMPT];
 
   // Add context modules based on detected intents
@@ -278,7 +328,14 @@ export function buildModularPrompt(intents: DetectedIntents): string {
   }
 
   if (intents.needsTransaction) {
-    parts.push(TRANSACTION_CONTEXT);
+    if (useSubModules && intents.transactionSubModules && intents.transactionSubModules.length > 0) {
+      // Use granular sub-modules for token efficiency
+      parts.push(TRANSACTION_CORE);
+      parts.push(buildTransactionContext(intents.transactionSubModules));
+    } else {
+      // Fallback to full TRANSACTION_CONTEXT
+      parts.push(TRANSACTION_CONTEXT);
+    }
   }
 
   // Always include examples for few-shot learning (small cost)
@@ -288,28 +345,71 @@ export function buildModularPrompt(intents: DetectedIntents): string {
 }
 
 /**
+ * Build modular prompt with sub-modules (granular loading)
+ * This is the new preferred method for token-efficient prompts
+ */
+export function buildModularPromptWithSubModules(intents: DetectedIntents): string {
+  return buildModularPrompt(intents, true);
+}
+
+/**
  * Estimate token count for the modular prompt
  */
-export function estimateModularPromptTokens(intents: DetectedIntents): number {
+export function estimateModularPromptTokens(intents: DetectedIntents, useSubModules = false): number {
   let tokens = MODULE_TOKENS.BASE_PROMPT + MODULE_TOKENS.EXAMPLE_INTERACTIONS;
 
   if (intents.needsDataQuery) tokens += MODULE_TOKENS.DATA_QUERY_CONTEXT;
   if (intents.needsHookDeveloper) tokens += MODULE_TOKENS.HOOK_DEVELOPER_CONTEXT;
-  if (intents.needsTransaction) tokens += MODULE_TOKENS.TRANSACTION_CONTEXT;
+
+  if (intents.needsTransaction) {
+    if (useSubModules && intents.transactionSubModules && intents.transactionSubModules.length > 0) {
+      // Granular sub-module tokens
+      tokens += TRANSACTION_CORE_TOKEN_ESTIMATE;
+      tokens += estimateSubModuleTokens(intents.transactionSubModules);
+    } else {
+      // Full TRANSACTION_CONTEXT
+      tokens += MODULE_TOKENS.TRANSACTION_CONTEXT;
+    }
+  }
 
   return tokens;
 }
 
 /**
+ * Estimate tokens with sub-modules (granular loading)
+ */
+export function estimateModularPromptTokensWithSubModules(intents: DetectedIntents): number {
+  return estimateModularPromptTokens(intents, true);
+}
+
+/**
  * Get list of module names loaded for given intents
  */
-export function getLoadedModules(intents: DetectedIntents): string[] {
+export function getLoadedModules(intents: DetectedIntents, useSubModules = false): string[] {
   const modules = ['BASE_PROMPT'];
   if (intents.needsDataQuery) modules.push('DATA_QUERY_CONTEXT');
   if (intents.needsHookDeveloper) modules.push('HOOK_DEVELOPER_CONTEXT');
-  if (intents.needsTransaction) modules.push('TRANSACTION_CONTEXT');
+
+  if (intents.needsTransaction) {
+    if (useSubModules && intents.transactionSubModules && intents.transactionSubModules.length > 0) {
+      modules.push('TRANSACTION_CORE');
+      for (const subModule of intents.transactionSubModules) {
+        modules.push(`TRANSACTION.${subModule}`);
+      }
+    } else {
+      modules.push('TRANSACTION_CONTEXT');
+    }
+  }
+
   modules.push('EXAMPLE_INTERACTIONS');
   return modules;
+}
+
+/**
+ * Get loaded modules with sub-module granularity
+ */
+export function getLoadedModulesWithSubModules(intents: DetectedIntents): string[] {
+  return getLoadedModules(intents, true);
 }
 
 // ============================================================================
@@ -673,6 +773,7 @@ export async function buildEnhancedSystemPrompt(options: {
   userId?: string;
   includeOmnichain?: boolean;
   omnichainContext?: string;
+  useSubModules?: boolean;  // Enable granular sub-module loading (Phase 1)
 }): Promise<{ systemPrompt: string; context: OptimizedContext | null; intents?: DetectedIntents }> {
   const parts: string[] = [];
   let context: OptimizedContext | null = null;
@@ -703,7 +804,10 @@ export async function buildEnhancedSystemPrompt(options: {
       // No chat context, use simple keyword detection
       detectedIntents = detectIntents(options.messages);
     }
-    basePrompt = buildModularPrompt(detectedIntents);
+    // Use sub-modules for granular loading if enabled
+    basePrompt = options.useSubModules
+      ? buildModularPromptWithSubModules(detectedIntents)
+      : buildModularPrompt(detectedIntents);
   } else {
     // Legacy mode: use provided prompt or import full SYSTEM_PROMPT
     basePrompt = options.basePrompt || BASE_PROMPT;
@@ -752,6 +856,14 @@ ${chainTable}
     parts.push(options.omnichainContext);
   }
 
+  // 2.5. Trending projects context (prevents hallucination about project stats)
+  const trendingContext = await getTrendingContext();
+  if (trendingContext) {
+    parts.push('\n\n---\n\n## Currently Trending Projects\n\n');
+    parts.push('Use this data when asked about trending/popular projects. Do NOT make up stats.\n\n');
+    parts.push(trendingContext);
+  }
+
   // 3. Build optimized context if we have a chat
   if (options.chatId) {
     context = await buildOptimizedContext(options.chatId, options.userId);
@@ -785,10 +897,17 @@ ${chainTable}
 
     // 8. Add modular prompt info to context metadata
     if (detectedIntents && context) {
+      const useSubModules = options.useSubModules ?? false;
       context.metadata.modularPrompt = {
-        estimatedTokens: estimateModularPromptTokens(detectedIntents),
-        modulesLoaded: getLoadedModules(detectedIntents),
+        estimatedTokens: useSubModules
+          ? estimateModularPromptTokensWithSubModules(detectedIntents)
+          : estimateModularPromptTokens(detectedIntents),
+        modulesLoaded: useSubModules
+          ? getLoadedModulesWithSubModules(detectedIntents)
+          : getLoadedModules(detectedIntents),
         reasons: detectedIntents.reasons,
+        subModulesEnabled: useSubModules,
+        transactionSubModules: detectedIntents.transactionSubModules,
       };
     }
   }

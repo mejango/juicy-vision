@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "juicebox-docs": {
+      "type": "http",
+      "url": "https://docs.juicebox.money/api/mcp",
+      "description": "Juicebox documentation, SDK references, contract addresses, and code examples",
+      "capabilities": {
+        "search_docs": "Search across all Juicebox documentation",
+        "get_doc": "Get a specific documentation page by path",
+        "list_docs_by_category": "List docs filtered by category (developer, user, DAO)",
+        "get_doc_structure": "Get the documentation hierarchy",
+        "search_code_examples": "Search code examples by query or language",
+        "get_contract_addresses": "Get contract addresses for any chain",
+        "get_sdk_reference": "Get SDK hooks and API reference",
+        "get_integration_patterns": "Get integration patterns by project type"
+      }
+    }
+  }
+}

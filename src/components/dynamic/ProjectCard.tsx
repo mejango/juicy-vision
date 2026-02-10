@@ -1231,7 +1231,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 Shop
               </div>
-              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <div className="flex gap-3 overflow-x-auto pt-3 pb-2 -mx-4 px-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {nftTiers.slice(0, 6).map(tier => {
                   const quantity = tierQuantities[tier.tierId] || 0
                   const isSelected = quantity > 0
@@ -1822,7 +1822,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Shop
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-3 px-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            <div className="flex gap-3 overflow-x-auto pt-3 pb-2 -mx-3 px-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               {nftTiers.slice(0, 6).map(tier => {
                 const quantity = tierQuantities[tier.tierId] || 0
                 const isSelected = quantity > 0

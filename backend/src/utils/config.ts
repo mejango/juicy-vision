@@ -81,6 +81,9 @@ export function loadConfig(): EnvConfig {
 
     // Replicate (Image Generation)
     replicateApiToken: getEnv('REPLICATE_API_TOKEN', ''),
+
+    // Voyage AI (Embeddings for semantic intent detection)
+    voyageApiKey: getEnv('VOYAGE_API_KEY', ''),
   };
 }
 
