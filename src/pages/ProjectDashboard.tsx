@@ -655,7 +655,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 {activeTab === 'funds' && (
                   <div className="space-y-6">
                     <ExplainerMessage>
-                      Here's the project treasury. You can see the total balance, available payouts, and cash out value for token holders.
+                      Here's the project money. You can see the total balance, available payouts, and cash out value for members.
                     </ExplainerMessage>
                     <FundsSection
                       projectId={String(projectId)}
@@ -1020,7 +1020,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         {activeTab === 'funds' && (
           <div className="space-y-6">
             <ExplainerMessage>
-              Here's the project treasury. You can see the total balance, available payouts, and cash out value for token holders.
+              Here's the project money. You can see the total balance, available payouts, and cash out value for members.
             </ExplainerMessage>
             <FundsSection
               projectId={String(projectId)}

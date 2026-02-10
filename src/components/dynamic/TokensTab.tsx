@@ -83,6 +83,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   const [showSplits, setShowSplits] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
+  const [showReservedBreakdown, setShowReservedBreakdown] = useState(false)
 
   const chainIdNum = parseInt(chainId)
   const chain = CHAINS[chainIdNum] || MAINNET_CHAINS[chainIdNum]
@@ -467,13 +468,58 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         })()}
 
         {/* Reserved rate */}
-        <div className="flex items-center justify-between mb-3">
-          <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Reserved for admin
-          </span>
-          <span className={`text-sm font-mono ${reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-white' : 'text-gray-900'}`}>
-            {(reservedPercent / 100).toFixed(1)}%
-          </span>
+        <div className="mb-3">
+          <div className="flex items-center justify-between">
+            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Reserved for admin
+            </span>
+            <span className={`text-sm font-mono ${reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-white' : 'text-gray-900'}`}>
+              {(reservedPercent / 100).toFixed(1)}%
+            </span>
+          </div>
+          {/* Per-chain breakdown for reserved rate */}
+          {isOmnichain && (
+            <div className="mt-1">
+              <button
+                onClick={() => setShowReservedBreakdown(!showReservedBreakdown)}
+                className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+              >
+                <span>Breakdown</span>
+                <svg
+                  className={`w-3 h-3 transition-transform ${showReservedBreakdown ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showReservedBreakdown && (
+                <div className="mt-2 space-y-1">
+                  {chainTokenData.map(cd => {
+                    const chainInfo = CHAIN_INFO[cd.chainId]
+                    if (!chainInfo) return null
+                    return (
+                      <div key={cd.chainId} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{ backgroundColor: chainInfo.color }}
+                          />
+                          <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {chainInfo.shortName}
+                          </span>
+                        </div>
+                        <span className={`text-xs font-mono ${cd.reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                          {(cd.reservedPercent / 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Pending reserved tokens - show total across all chains */}
