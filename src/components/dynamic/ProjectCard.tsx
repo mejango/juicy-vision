@@ -1225,9 +1225,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       <>
         {/* Single scrollable container */}
         <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {/* NFT Shop - scrolls away */}
-          {nftTiers.length > 0 && (
-            <div className="px-4 pt-3 mb-3">
+          {/* Shop + Pay section with lighter background */}
+          <div className={isDark ? 'bg-[#222]' : 'bg-gray-50'}>
+            {/* NFT Shop - scrolls away */}
+            {nftTiers.length > 0 && (
+              <div className="px-4 pt-3 mb-3">
               <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 Shop
               </div>
@@ -1319,11 +1321,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               )}
             </div>
           )}
+          </div>
 
-          {/* Pay section with lighter background */}
-          <div className={isDark ? 'bg-[#222]' : 'bg-gray-50'}>
-            {/* Sticky pay controls - sticks to top when scrolling */}
-            <div className={`sticky top-0 z-20 px-4 py-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
+          {/* Sticky pay controls - sticks to top when scrolling */}
+          <div className={`sticky top-0 z-20 px-4 py-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
               <div className="flex gap-2">
               <div className="flex-1">
                 <div
@@ -1473,6 +1474,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             </div>
             </div>
 
+          {/* Content below sticky with lighter background */}
+          <div className={isDark ? 'bg-[#222]' : 'bg-gray-50'}>
             <div className="px-4">
             {/* Token preview */}
             {(amountNum > 0 && expectedTokens !== null) || selectedTierIds.length > 0 ? (
