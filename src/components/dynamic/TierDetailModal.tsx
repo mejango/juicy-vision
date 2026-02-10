@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import type { ResolvedNFTTier } from '../../services/nft'
+import { fetchMultiChainTierSupply, type MultiChainTierSupply } from '../../services/nft/multichain'
 
 interface TierDetailModalProps {
   isOpen: boolean
@@ -28,6 +29,28 @@ export default function TierDetailModal({
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const [showTechnical, setShowTechnical] = useState(false)
+  const [multiChainSupply, setMultiChainSupply] = useState<MultiChainTierSupply | null>(null)
+  const [loadingSupply, setLoadingSupply] = useState(false)
+
+  const isMultiChain = connectedChains && connectedChains.length > 1
+
+  // Fetch multi-chain supply when modal opens
+  useEffect(() => {
+    if (!isOpen || !isMultiChain || multiChainSupply) return
+
+    setLoadingSupply(true)
+    fetchMultiChainTierSupply(tier.tierId, connectedChains)
+      .then(setMultiChainSupply)
+      .catch(console.error)
+      .finally(() => setLoadingSupply(false))
+  }, [isOpen, isMultiChain, tier.tierId, connectedChains, multiChainSupply])
+
+  // Reset multi-chain data when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setMultiChainSupply(null)
+    }
+  }, [isOpen])
 
   // Escape key to close
   const handleEscape = useCallback((e: KeyboardEvent) => {
@@ -50,13 +73,17 @@ export default function TierDetailModal({
   const priceEth = parseFloat(formatEther(tier.price))
   const priceUsd = ethPrice ? priceEth * ethPrice : null
   const displayName = /^Tier \d+$/.test(tier.name) ? (productName || tier.name) : tier.name
-  const soldOut = tier.remainingSupply === 0
-  const isLowStock = tier.remainingSupply > 0 && tier.remainingSupply <= 10
   const isSvgImage = imageUrl?.startsWith('data:image/svg') || imageUrl?.endsWith('.svg')
 
+  // Use multi-chain totals if available, otherwise fall back to single chain
+  const remainingSupply = multiChainSupply?.totalRemaining ?? tier.remainingSupply
+  const initialSupply = multiChainSupply?.totalInitial ?? tier.initialSupply
+  const soldOut = remainingSupply === 0
+  const isLowStock = remainingSupply > 0 && remainingSupply <= 10
+
   // Calculate supply percentage for visual indicator
-  const supplyPercent = tier.initialSupply > 0
-    ? (tier.remainingSupply / tier.initialSupply) * 100
+  const supplyPercent = initialSupply > 0
+    ? (remainingSupply / initialSupply) * 100
     : 0
 
   return createPortal(
@@ -148,6 +175,7 @@ export default function TierDetailModal({
                     : isDark ? 'text-gray-300' : 'text-gray-600'
               }`}>
                 {soldOut ? 'Sold Out' : isLowStock ? 'Running Low!' : 'Remaining Supply'}
+                {isMultiChain && <span className="opacity-60 ml-1">(all chains)</span>}
               </span>
               <span className={`font-mono text-lg font-semibold ${
                 soldOut
@@ -156,7 +184,13 @@ export default function TierDetailModal({
                     ? 'text-orange-400'
                     : isDark ? 'text-white' : 'text-gray-900'
               }`}>
-                {tier.remainingSupply} / {tier.initialSupply}
+                {loadingSupply ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  </span>
+                ) : (
+                  `${remainingSupply} / ${initialSupply}`
+                )}
               </span>
             </div>
             {/* Progress bar */}
@@ -172,6 +206,31 @@ export default function TierDetailModal({
                 style={{ width: `${supplyPercent}%` }}
               />
             </div>
+
+            {/* Per-chain breakdown for multi-chain projects */}
+            {isMultiChain && multiChainSupply && multiChainSupply.perChain.length > 1 && (
+              <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  By Network
+                </div>
+                <div className="space-y-1">
+                  {multiChainSupply.perChain.map((chain) => (
+                    <div key={chain.chainId} className="flex justify-between text-sm">
+                      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>
+                        {chain.chainName}
+                      </span>
+                      <span className={`font-mono ${
+                        chain.remaining === 0
+                          ? 'text-red-400'
+                          : isDark ? 'text-gray-200' : 'text-gray-700'
+                      }`}>
+                        {chain.remaining} / {chain.initial}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Technical Details dropdown */}
