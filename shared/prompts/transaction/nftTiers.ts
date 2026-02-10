@@ -1,10 +1,13 @@
 /**
- * NFT Tiers sub-module (~1000 tokens)
- * Hints: tier, NFT, 721, perks, rewards, collectible
+ * NFT Tiers sub-module (~1500 tokens)
+ * Hints: tier, NFT, 721, perks, rewards, collectible, adjustTiers, setDiscount
  */
 
 export const NFT_TIERS_CONTEXT = `
-### NFT Tier Configuration (launch721Project)
+### NFT Tier Configuration
+
+#### For New Projects: launch721Project
+
 
 **Project Type Decision Tree:**
 | User chose... | Action | Contract |
@@ -41,7 +44,7 @@ export const NFT_TIERS_CONTEXT = `
 
 **JB721InitTiersConfig:**
 \`{ tiers: JB721TierConfig[], currency: uint32, decimals: uint8, prices: address }\`
-- tiers: MUST be sorted by price (least to greatest)
+- tiers: MUST be sorted by category (least to greatest)
 - currency: 1=ETH, 2=USD
 - decimals: 6 for USDC, 18 for ETH
 - prices: Zero address for single currency only
@@ -64,12 +67,78 @@ export const NFT_TIERS_CONTEXT = `
   "category": 1, "discountPercent": 0, "allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false,
   "transfersPausable": false, "useVotingUnits": false, "cannotBeRemoved": false, "cannotIncreaseDiscountPercent": false}
 \`\`\`
+
+---
+
+#### For Existing Projects: Managing Tiers
+
+**Adding or Removing Tiers (adjustTiers)**
+
+Use \`adjustTiers\` on the project's 721 hook contract to add new tiers or remove existing ones.
+
+**Function signature:**
+\`adjustTiers(JB721TierConfig[] tiersToAdd, uint256[] tierIdsToRemove)\`
+
+**Adding new tiers:**
+- tiersToAdd: Array of JB721TierConfig structs (same structure as launch721Project)
+- New tiers are assigned the next available tier ID
+- Tiers MUST be sorted by category (lowest to highest) - reverts with InvalidCategorySortOrder otherwise
+
+**Removing tiers:**
+- tierIdsToRemove: Array of tier IDs to remove
+- A tier can only be removed if \`cannotBeRemoved\` was set to false when created
+- Removed tiers stop appearing in the shop but existing NFTs remain valid
+
+**Handling limited quantities (internal logic - don't expose to user):**
+When a project exists in multiple locations, each location maintains separate inventory.
+If user wants 100 total and project is on 4 chains: set initialSupply to 25 per chain.
+If user wants 100 available everywhere: set initialSupply to 100.
+
+Default behavior: Ask "how many do you want available?" and set that as initialSupply.
+Don't mention chains, networks, or locations. Just make it work.
+For truly limited editions (numbered collectibles), divide by chain count to get true total scarcity.
+
+**Setting Discounts (setDiscountPercentsOf)**
+
+Use \`setDiscountPercentsOf\` on the 721 hook to update discounts for multiple tiers at once.
+
+**Function signature:**
+\`setDiscountPercentsOf(uint256[] tierIds, uint8[] discountPercents)\`
+
+- tierIds: Array of tier IDs to update
+- discountPercents: Matching array of new discount percentages (0-100)
+- Can only DECREASE discounts if \`cannotIncreaseDiscountPercent\` was set to true
+
+**Single tier discount:**
+\`setDiscountPercentOf(uint256 tierId, uint8 discountPercent)\`
+
+**Execution:**
+Both adjustTiers and setDiscountPercentsOf are applied everywhere the project exists.
+Bundle via Relayr automatically - user doesn't need to know about this.
+
+**Chat flow guidance:**
+When helping users add tiers:
+1. Ask what they want to sell (name, description)
+2. Ask them to upload or describe an image
+3. Ask for the price (default to USD for simplicity)
+4. Ask "how many do you want available?" (or unlimited)
+5. Show preview and confirm before building transaction
+
+When helping users set discounts:
+1. Show current tier info including any existing discount
+2. Ask for the new discount percentage (e.g., "20% off")
+3. Build and submit the transaction
+
+Keep it simple. Don't mention technical details unless the user asks.
 `;
 
 export const NFT_TIERS_HINTS = [
   'tier', 'NFT', '721', 'perks', 'rewards', 'collectible', 'membership',
   'launch721Project', 'tiersConfig', 'initialSupply', 'tier price',
-  'founding member', 'supporter level'
+  'founding member', 'supporter level',
+  'adjustTiers', 'add tier', 'remove tier', 'delete tier', 'sell something',
+  'setDiscount', 'discount', 'sale', 'price reduction',
+  'edit tier', 'update tier', 'tier metadata'
 ];
 
-export const NFT_TIERS_TOKEN_ESTIMATE = 1000;
+export const NFT_TIERS_TOKEN_ESTIMATE = 1500;

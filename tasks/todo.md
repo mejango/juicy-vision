@@ -1,6 +1,76 @@
 # Cost Management, Vibeengineering, and Security Hardening
 
-## Latest: Ruleset Caching for Revnets
+## Latest: Shop Owner Controls (Tier Management)
+
+**Status: Complete**
+
+Added owner controls to the Shop tab for managing NFT tiers, including AI prompt updates for chat-based tier management.
+
+### AI Prompt Updates (`shared/prompts/transaction/nftTiers.ts`)
+
+Extended the NFT tiers prompt module to support existing project tier management:
+
+1. **adjustTiers documentation** - Function signature, adding/removing tiers
+2. **setDiscountPercentsOf documentation** - Batch discount updates
+3. **Multi-chain inventory explanation** - Jargon-free guidance: "If you set a limited quantity, each chain will have its own stock. For example, 50 available means 50 on each chain where your project runs."
+4. **Chat flow guidance** - Step-by-step instructions for guiding users through tier operations
+5. **Extended hints** - Added: adjustTiers, add tier, remove tier, delete tier, sell something, setDiscount, discount, sale, price reduction, edit tier, update tier, tier metadata
+
+### UI Implementation
+
+**ShopTab changes (`src/components/dynamic/ShopTab.tsx`):**
+1. Added "Sell something" button (green, top right) for owners - triggers chat flow to add new tier
+2. Added `hasTokenUriResolver()` check to determine if tier metadata can be edited
+3. Added handler functions for tier actions that trigger chat-based flows:
+   - `handleEditMetadata` - Edit tier name/description/image
+   - `handleSetDiscount` - Set discount percentage
+   - `handleRemoveTier` - Remove tier from shop
+
+**NFTTierCard changes (`src/components/dynamic/NFTTierCard.tsx`):**
+1. Added three-dot owner menu with:
+   - **Edit info** - Disabled if hook has tokenUriResolver (on-chain metadata)
+   - **Set discount** - Shows current discount if set
+   - **Remove** - Disabled if `cannotBeRemoved` flag is set
+2. Added click-outside handler to close menu
+3. New props: `hasTokenUriResolver`, `onEditMetadata`, `onSetDiscount`, `onRemoveTier`
+
+**NFT Service changes (`src/services/nft/index.ts`):**
+1. Added `hasTokenUriResolver()` function to check if hook uses on-chain URI resolver
+
+**Conditional Guards:**
+- "Edit info" disabled when hook has tokenUriResolver
+- "Remove" disabled when tier has `cannotBeRemoved` flag
+- "Deploy ERC20" hidden when project already has token
+
+---
+
+## Previous: Owner Actions Menu in Project Dashboard
+
+**Status: Complete**
+
+Added a gear icon button next to the "You" badge on the Project Dashboard that opens a dropdown menu with all owner actions:
+
+**Implementation in `src/pages/ProjectDashboard.tsx`:**
+
+1. Extended `ModalType` to include: `reservedTokens`, `deployErc20`, `surplusAllowance`, `manageTiers`, `setSplits`, `setUri`
+2. Added owner action form imports: `SendReservedTokensForm`, `DeployERC20Form`, `UseSurplusAllowanceForm`, `ManageTiersForm`, `SetSplitsForm`, `SetUriForm`
+3. Added `showOwnerMenu` state and `ownerMenuRef` for click-outside handling
+4. Added `hasErc20Token` computed property (from `project.tokenSymbol`)
+5. Added gear icon button next to "You" badge (desktop and mobile layouts)
+6. Added grouped owner actions dropdown menu:
+   - **Funds**: Send Payouts, Use Surplus Allowance
+   - **Tokens**: Send Reserved Tokens, Deploy ERC20 (conditional: only if no token)
+   - **Configuration**: Queue Ruleset, Configure Splits, Update Metadata
+   - **Inventory**: Manage NFT Tiers (conditional: only if hasNftHook)
+7. Added modal wrappers for each form component (desktop and mobile styles)
+
+**Conditional Guards:**
+- Deploy ERC20: Only shown if `!hasErc20Token`
+- Manage NFT Tiers: Only shown if `hasNftHook`
+
+---
+
+## Previous: Ruleset Caching for Revnets
 
 **Status: Complete**
 

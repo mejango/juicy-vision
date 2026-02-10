@@ -273,6 +273,58 @@ export async function resolveTierUri(
 }
 
 /**
+ * Check if a hook has a tokenUriResolver configured
+ * If it does, tier metadata is managed on-chain and cannot be edited via IPFS URI
+ */
+export async function hasTokenUriResolver(
+  hookAddress: `0x${string}`,
+  chainId: number
+): Promise<boolean> {
+  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
+    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
+  if (!chain) return false
+
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
+    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
+  const client = createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  })
+
+  try {
+    // Get the store address
+    const storeAddress = await client.readContract({
+      address: hookAddress,
+      abi: JB721TiersHookAbi,
+      functionName: 'STORE',
+    })
+
+    if (!storeAddress || storeAddress === zeroAddress) return false
+
+    // Check if there's a tokenUriResolver
+    const resolverAddress = await client.readContract({
+      address: storeAddress,
+      abi: [
+        {
+          name: 'tokenUriResolverOf',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [{ name: 'hook', type: 'address' }],
+          outputs: [{ name: '', type: 'address' }],
+        },
+      ] as const,
+      functionName: 'tokenUriResolverOf',
+      args: [hookAddress],
+    })
+
+    return Boolean(resolverAddress && resolverAddress !== zeroAddress)
+  } catch (err) {
+    console.warn('[NFT] Failed to check tokenUriResolver:', err)
+    return false
+  }
+}
+
+/**
  * Fetch a single NFT tier
  */
 export async function fetchNFTTier(

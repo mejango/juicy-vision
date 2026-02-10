@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { formatEther } from 'viem'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useTransactionStore } from '../../stores'
@@ -35,6 +35,14 @@ interface NFTTierCardProps {
   connectedChains?: Array<{ chainId: number; projectId: number }>
   /** Current checkout quantity for this tier (when in addToCheckoutMode) */
   checkoutQuantity?: number
+  /** If true, the hook has a tokenUriResolver so metadata editing is disabled */
+  hasTokenUriResolver?: boolean
+  /** Called when user wants to edit tier metadata */
+  onEditMetadata?: (tierId: number) => void
+  /** Called when user wants to set tier discount */
+  onSetDiscount?: (tierId: number, currentDiscount: number) => void
+  /** Called when user wants to remove the tier */
+  onRemoveTier?: (tierId: number) => void
 }
 
 // Dispatch event to open wallet panel
@@ -59,6 +67,10 @@ export default function NFTTierCard({
   onMetadataLoaded,
   connectedChains,
   checkoutQuantity = 0,
+  hasTokenUriResolver = false,
+  onEditMetadata,
+  onSetDiscount,
+  onRemoveTier,
 }: NFTTierCardProps) {
   const { theme } = useThemeStore()
   const { addTransaction } = useTransactionStore()
@@ -73,6 +85,27 @@ export default function NFTTierCard({
   const [loadingOnChainImage, setLoadingOnChainImage] = useState(false)
   const [imageError, setImageError] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
+
+  // Owner menu state
+  const [showOwnerMenu, setShowOwnerMenu] = useState(false)
+  const ownerMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close owner menu when clicking outside
+  useEffect(() => {
+    if (!showOwnerMenu) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ownerMenuRef.current && !ownerMenuRef.current.contains(event.target as Node)) {
+        setShowOwnerMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showOwnerMenu])
+
+  // Tier permissions
+  const canBeRemoved = !tier.cannotBeRemoved
+  const canSetDiscount = !tier.cannotIncreaseDiscountPercent || (tier.discountPercent ?? 0) > 0
+  const canEditMetadata = !hasTokenUriResolver
 
   // Resolve IPFS URI first
   const ipfsImageUrl = resolveIpfsUri(tier.imageUri)
@@ -313,8 +346,8 @@ export default function NFTTierCard({
           />
         </div>
 
-        {/* Edit button (owner only) */}
-        {isOwner && onEdit && (
+        {/* Edit button (owner only) - legacy, replaced by menu */}
+        {isOwner && onEdit && !onEditMetadata && !onSetDiscount && !onRemoveTier && (
           <button
             onClick={(e) => { e.stopPropagation(); onEdit(tier.tierId) }}
             className={`absolute bottom-2 right-2 p-2 transition-colors ${
@@ -328,6 +361,107 @@ export default function NFTTierCard({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
+        )}
+
+        {/* Owner menu (three-dot) */}
+        {isOwner && (onEditMetadata || onSetDiscount || onRemoveTier) && (
+          <div
+            ref={ownerMenuRef}
+            className="absolute bottom-2 right-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowOwnerMenu(!showOwnerMenu)}
+              className={`p-2 transition-colors ${
+                isDark
+                  ? 'bg-black/70 text-white hover:bg-black/90'
+                  : 'bg-white/90 text-gray-700 hover:bg-white'
+              }`}
+              title="Tier options"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="5" r="2" />
+                <circle cx="12" cy="12" r="2" />
+                <circle cx="12" cy="19" r="2" />
+              </svg>
+            </button>
+
+            {/* Dropdown menu */}
+            {showOwnerMenu && (
+              <div
+                className={`absolute bottom-full right-0 mb-1 w-40 py-1 shadow-lg z-50 ${
+                  isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                }`}
+              >
+                {/* Edit info */}
+                {onEditMetadata && (
+                  <button
+                    onClick={() => {
+                      setShowOwnerMenu(false)
+                      onEditMetadata(tier.tierId)
+                    }}
+                    disabled={!canEditMetadata}
+                    className={`w-full px-3 py-1.5 text-left text-xs transition-colors flex items-center gap-2 ${
+                      !canEditMetadata
+                        ? isDark ? 'text-gray-600 cursor-not-allowed' : 'text-gray-300 cursor-not-allowed'
+                        : isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                    title={!canEditMetadata ? 'Metadata is managed by on-chain resolver' : 'Edit tier metadata'}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit info
+                  </button>
+                )}
+
+                {/* Set discount */}
+                {onSetDiscount && (
+                  <button
+                    onClick={() => {
+                      setShowOwnerMenu(false)
+                      onSetDiscount(tier.tierId, tier.discountPercent ?? 0)
+                    }}
+                    className={`w-full px-3 py-1.5 text-left text-xs transition-colors flex items-center gap-2 ${
+                      isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
+                    </svg>
+                    Set discount
+                    {(tier.discountPercent ?? 0) > 0 && (
+                      <span className="ml-auto text-green-500 text-[10px]">
+                        {tier.discountPercent}%
+                      </span>
+                    )}
+                  </button>
+                )}
+
+                {/* Remove */}
+                {onRemoveTier && (
+                  <button
+                    onClick={() => {
+                      setShowOwnerMenu(false)
+                      onRemoveTier(tier.tierId)
+                    }}
+                    disabled={!canBeRemoved}
+                    className={`w-full px-3 py-1.5 text-left text-xs transition-colors flex items-center gap-2 ${
+                      !canBeRemoved
+                        ? isDark ? 'text-gray-600 cursor-not-allowed' : 'text-gray-300 cursor-not-allowed'
+                        : 'text-red-400 hover:bg-red-500/10'
+                    }`}
+                    title={!canBeRemoved ? 'This tier cannot be removed' : 'Remove this tier'}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Remove
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

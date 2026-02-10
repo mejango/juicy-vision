@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useThemeStore } from '../../stores'
-import { fetchProjectNFTTiers, getProjectDataHook, type ResolvedNFTTier } from '../../services/nft'
+import { fetchProjectNFTTiers, getProjectDataHook, hasTokenUriResolver, type ResolvedNFTTier } from '../../services/nft'
 import { fetchEthPrice } from '../../services/bendystraw'
 import { rulesetKeys, getShopStaleTime } from '../../hooks/useRulesetCache'
 import NFTTierCard from './NFTTierCard'
@@ -43,7 +43,9 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
         fetchEthPrice(),
         getProjectDataHook(projectId, chainIdNum),
       ])
-      return { tiers: tiersData, ethPrice: price, hookAddress: hook }
+      // Check if hook has tokenUriResolver (if hook exists)
+      const hasResolver = hook ? await hasTokenUriResolver(hook, chainIdNum) : false
+      return { tiers: tiersData, ethPrice: price, hookAddress: hook, hasTokenUriResolver: hasResolver }
     },
     staleTime: getShopStaleTime(),
   })
@@ -51,11 +53,51 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
   const tiers = shopData?.tiers ?? []
   const ethPrice = shopData?.ethPrice
   const hookAddress = shopData?.hookAddress ?? null
+  const hookHasTokenUriResolver = shopData?.hasTokenUriResolver ?? false
 
   // Handle refresh button click
   const handleRefresh = useCallback(() => {
     refetch()
   }, [refetch])
+
+  // Handle "Sell something" button click - trigger chat flow
+  const handleSellSomething = useCallback(() => {
+    const message = `Help me add a new NFT tier to project ${projectId} on chain ${chainId}. I want to sell something new.`
+    window.dispatchEvent(new CustomEvent('juice:send-message', {
+      detail: { message, newChat: true }
+    }))
+  }, [projectId, chainId])
+
+  // Handle tier metadata edit - trigger chat flow
+  const handleEditMetadata = useCallback((tierId: number) => {
+    const tier = tiers.find(t => t.tierId === tierId)
+    const tierName = tier?.name || `Tier ${tierId}`
+    const message = `Help me update the metadata for NFT tier "${tierName}" (ID: ${tierId}) in project ${projectId} on chain ${chainId}. I want to change its name, description, or image.`
+    window.dispatchEvent(new CustomEvent('juice:send-message', {
+      detail: { message, newChat: true }
+    }))
+  }, [projectId, chainId, tiers])
+
+  // Handle tier discount change - trigger chat flow
+  const handleSetDiscount = useCallback((tierId: number, currentDiscount: number) => {
+    const tier = tiers.find(t => t.tierId === tierId)
+    const tierName = tier?.name || `Tier ${tierId}`
+    const discountText = currentDiscount > 0 ? ` (currently ${currentDiscount}% off)` : ''
+    const message = `Help me set a discount for NFT tier "${tierName}" (ID: ${tierId})${discountText} in project ${projectId} on chain ${chainId}.`
+    window.dispatchEvent(new CustomEvent('juice:send-message', {
+      detail: { message, newChat: true }
+    }))
+  }, [projectId, chainId, tiers])
+
+  // Handle tier removal - trigger chat flow
+  const handleRemoveTier = useCallback((tierId: number) => {
+    const tier = tiers.find(t => t.tierId === tierId)
+    const tierName = tier?.name || `Tier ${tierId}`
+    const message = `Help me remove NFT tier "${tierName}" (ID: ${tierId}) from project ${projectId} on chain ${chainId}. I want to delete this tier from the shop.`
+    window.dispatchEvent(new CustomEvent('juice:send-message', {
+      detail: { message, newChat: true }
+    }))
+  }, [projectId, chainId, tiers])
 
   // Listen for checkout quantity updates from ProjectCard
   useEffect(() => {
@@ -157,29 +199,41 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
 
   return (
     <div className="relative">
-      {/* Refresh button - subtle top right */}
-      <button
-        onClick={handleRefresh}
-        disabled={isFetching}
-        className={`absolute -top-1 right-0 p-1.5 rounded transition-all ${
-          isFetching ? 'opacity-50' : 'opacity-30 hover:opacity-100'
-        } ${isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
-        title="Refresh shop data"
-      >
-        <svg
-          className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+      {/* Top right controls */}
+      <div className="absolute -top-1 right-0 flex items-center gap-2">
+        {/* Sell something button - owners only */}
+        {isOwner && (
+          <button
+            onClick={handleSellSomething}
+            className="px-2 py-1 text-[10px] font-medium bg-green-500/20 text-green-500 hover:bg-green-500/30 transition-colors rounded"
+          >
+            + Sell something
+          </button>
+        )}
+        {/* Refresh button */}
+        <button
+          onClick={handleRefresh}
+          disabled={isFetching}
+          className={`p-1.5 rounded transition-all ${
+            isFetching ? 'opacity-50' : 'opacity-30 hover:opacity-100'
+          } ${isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+          title="Refresh shop data"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-          />
-        </svg>
-      </button>
+          <svg
+            className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+        </button>
+      </div>
 
       {/* Category filter chips */}
       {categories.length > 0 && (
@@ -238,6 +292,10 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                       onMetadataLoaded={handleTierMetadataLoaded}
                       connectedChains={connectedChains}
                       checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
+                      hasTokenUriResolver={hookHasTokenUriResolver}
+                      onEditMetadata={isOwner ? handleEditMetadata : undefined}
+                      onSetDiscount={isOwner ? handleSetDiscount : undefined}
+                      onRemoveTier={isOwner ? handleRemoveTier : undefined}
                     />
                   </div>
                 ))}
@@ -265,6 +323,10 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                         onMetadataLoaded={handleTierMetadataLoaded}
                         connectedChains={connectedChains}
                         checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
+                        hasTokenUriResolver={hookHasTokenUriResolver}
+                        onEditMetadata={isOwner ? handleEditMetadata : undefined}
+                        onSetDiscount={isOwner ? handleSetDiscount : undefined}
+                        onRemoveTier={isOwner ? handleRemoveTier : undefined}
                       />
                     </div>
                   ))}
@@ -289,6 +351,10 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                 onMetadataLoaded={handleTierMetadataLoaded}
                 connectedChains={connectedChains}
                 checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
+                hasTokenUriResolver={hookHasTokenUriResolver}
+                onEditMetadata={isOwner ? handleEditMetadata : undefined}
+                onSetDiscount={isOwner ? handleSetDiscount : undefined}
+                onRemoveTier={isOwner ? handleRemoveTier : undefined}
               />
             </div>
           ))}

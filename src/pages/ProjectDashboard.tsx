@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAccount } from 'wagmi'
@@ -36,8 +36,20 @@ import SendPayoutsModal from '../components/payment/SendPayoutsModal'
 // Note: QueueRulesetForm is used for ruleset changes - it has its own modal internally
 import QueueRulesetForm from '../components/dynamic/QueueRulesetForm'
 
+// Owner action forms (self-contained with their own modals)
+import SendReservedTokensForm from '../components/dynamic/SendReservedTokensForm'
+import DeployERC20Form from '../components/dynamic/DeployERC20Form'
+import UseSurplusAllowanceForm from '../components/dynamic/UseSurplusAllowanceForm'
+import ManageTiersForm from '../components/dynamic/ManageTiersForm'
+import SetSplitsForm from '../components/dynamic/SetSplitsForm'
+import SetUriForm from '../components/dynamic/SetUriForm'
+
 type DashboardTab = 'about' | 'rulesets' | 'funds' | 'tokens' | 'shop'
-type ModalType = 'pay' | 'cashout' | 'payouts' | 'ruleset' | null
+type ModalType =
+  | 'pay' | 'cashout' | 'payouts' | 'ruleset'
+  | 'reservedTokens' | 'deployErc20' | 'surplusAllowance'
+  | 'manageTiers' | 'setSplits' | 'setUri'
+  | null
 
 interface ProjectDashboardProps {
   chainId: number
@@ -222,6 +234,22 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   // Modal state
   const [activeModal, setActiveModal] = useState<ModalType>(null)
 
+  // Owner actions menu state
+  const [showOwnerMenu, setShowOwnerMenu] = useState(false)
+  const ownerMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close owner menu when clicking outside
+  useEffect(() => {
+    if (!showOwnerMenu) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ownerMenuRef.current && !ownerMenuRef.current.contains(event.target as Node)) {
+        setShowOwnerMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showOwnerMenu])
+
   // Balance tooltip state
   const [showBalanceTooltip, setShowBalanceTooltip] = useState(false)
 
@@ -242,6 +270,11 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     if (!currentUserAddress || !project?.owner) return false
     return currentUserAddress.toLowerCase() === project.owner.toLowerCase()
   }, [currentUserAddress, project?.owner])
+
+  // Check if project has deployed an ERC20 token
+  const hasErc20Token = useMemo(() => {
+    return Boolean(project?.tokenSymbol)
+  }, [project?.tokenSymbol])
 
   // Use aggregated sucker group balance when available (for omnichain projects)
   const displayBalance = useMemo(() => {
@@ -547,9 +580,132 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                             {displayAddressEns || truncateAddress(displayAddress)}
                           </a>
                           {isOwner && (
-                            <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
-                              {t('project.you', 'You')}
-                            </span>
+                            <>
+                              <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
+                                {t('project.you', 'You')}
+                              </span>
+                              <div className="relative" ref={ownerMenuRef}>
+                                <button
+                                  onClick={() => setShowOwnerMenu(!showOwnerMenu)}
+                                  className={`ml-1 p-1 rounded transition-colors ${
+                                    isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                                  }`}
+                                  title="Owner actions"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                </button>
+                                {/* Owner Actions Menu */}
+                                {showOwnerMenu && (
+                                  <div
+                                    className={`absolute top-full left-0 mt-1 w-48 py-1 shadow-lg z-50 ${
+                                      isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                                    }`}
+                                    onClick={() => setShowOwnerMenu(false)}
+                                  >
+                                    {/* FUNDS section */}
+                                    <div className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                                      isDark ? 'text-gray-500' : 'text-gray-400'
+                                    }`}>
+                                      Funds
+                                    </div>
+                                    <button
+                                      onClick={() => setActiveModal('payouts')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Send Payouts
+                                    </button>
+                                    <button
+                                      onClick={() => setActiveModal('surplusAllowance')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Use Surplus Allowance
+                                    </button>
+
+                                    {/* TOKENS section */}
+                                    <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                      isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                    }`}>
+                                      Tokens
+                                    </div>
+                                    <button
+                                      onClick={() => setActiveModal('reservedTokens')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Send Reserved Tokens
+                                    </button>
+                                    {!hasErc20Token && (
+                                      <button
+                                        onClick={() => setActiveModal('deployErc20')}
+                                        className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                          isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                        }`}
+                                      >
+                                        Deploy ERC20
+                                      </button>
+                                    )}
+
+                                    {/* CONFIGURATION section */}
+                                    <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                      isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                    }`}>
+                                      Configuration
+                                    </div>
+                                    <button
+                                      onClick={() => setActiveModal('ruleset')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Queue Ruleset
+                                    </button>
+                                    <button
+                                      onClick={() => setActiveModal('setSplits')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Configure Splits
+                                    </button>
+                                    <button
+                                      onClick={() => setActiveModal('setUri')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Update Metadata
+                                    </button>
+
+                                    {/* INVENTORY section - only if project has NFT hook */}
+                                    {hasNftHook && (
+                                      <>
+                                        <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                          isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                        }`}>
+                                          Inventory
+                                        </div>
+                                        <button
+                                          onClick={() => setActiveModal('manageTiers')}
+                                          className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                            isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                          }`}
+                                        >
+                                          Manage NFT Tiers
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </>
                           )}
                         </>
                       )}
@@ -805,6 +961,162 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           </div>,
           document.body
         )}
+
+        {/* Send Reserved Tokens Modal */}
+        {activeModal === 'reservedTokens' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <SendReservedTokensForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Deploy ERC20 Modal */}
+        {activeModal === 'deployErc20' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <DeployERC20Form projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Use Surplus Allowance Modal */}
+        {activeModal === 'surplusAllowance' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <UseSurplusAllowanceForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Set Splits Modal */}
+        {activeModal === 'setSplits' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <SetSplitsForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Set URI Modal */}
+        {activeModal === 'setUri' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <SetUriForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Manage Tiers Modal */}
+        {activeModal === 'manageTiers' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <ManageTiersForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     )
   }
@@ -925,9 +1237,132 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                         {displayAddressEns || truncateAddress(displayAddress)}
                       </a>
                       {isOwner && (
-                        <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
-                          {t('project.you', 'You')}
-                        </span>
+                        <>
+                          <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
+                            {t('project.you', 'You')}
+                          </span>
+                          <div className="relative" ref={ownerMenuRef}>
+                            <button
+                              onClick={() => setShowOwnerMenu(!showOwnerMenu)}
+                              className={`ml-1 p-1 rounded transition-colors ${
+                                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                              }`}
+                              title="Owner actions"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                            </button>
+                            {/* Owner Actions Menu - Mobile */}
+                            {showOwnerMenu && (
+                              <div
+                                className={`absolute top-full right-0 mt-1 w-48 py-1 shadow-lg z-50 ${
+                                  isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                                }`}
+                                onClick={() => setShowOwnerMenu(false)}
+                              >
+                                {/* FUNDS section */}
+                                <div className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                                  isDark ? 'text-gray-500' : 'text-gray-400'
+                                }`}>
+                                  Funds
+                                </div>
+                                <button
+                                  onClick={() => setActiveModal('payouts')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Send Payouts
+                                </button>
+                                <button
+                                  onClick={() => setActiveModal('surplusAllowance')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Use Surplus Allowance
+                                </button>
+
+                                {/* TOKENS section */}
+                                <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                  isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                }`}>
+                                  Tokens
+                                </div>
+                                <button
+                                  onClick={() => setActiveModal('reservedTokens')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Send Reserved Tokens
+                                </button>
+                                {!hasErc20Token && (
+                                  <button
+                                    onClick={() => setActiveModal('deployErc20')}
+                                    className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                      isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    Deploy ERC20
+                                  </button>
+                                )}
+
+                                {/* CONFIGURATION section */}
+                                <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                  isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                }`}>
+                                  Configuration
+                                </div>
+                                <button
+                                  onClick={() => setActiveModal('ruleset')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Queue Ruleset
+                                </button>
+                                <button
+                                  onClick={() => setActiveModal('setSplits')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Configure Splits
+                                </button>
+                                <button
+                                  onClick={() => setActiveModal('setUri')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Update Metadata
+                                </button>
+
+                                {/* INVENTORY section - only if project has NFT hook */}
+                                {hasNftHook && (
+                                  <>
+                                    <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                      isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                    }`}>
+                                      Inventory
+                                    </div>
+                                    <button
+                                      onClick={() => setActiveModal('manageTiers')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Manage NFT Tiers
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </>
                       )}
                     </>
                   )}
@@ -1132,6 +1567,196 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               </svg>
             </button>
             <QueueRulesetForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Send Reserved Tokens Modal - Mobile */}
+      {activeModal === 'reservedTokens' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <SendReservedTokensForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Deploy ERC20 Modal - Mobile */}
+      {activeModal === 'deployErc20' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <DeployERC20Form projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Use Surplus Allowance Modal - Mobile */}
+      {activeModal === 'surplusAllowance' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <UseSurplusAllowanceForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Set Splits Modal - Mobile */}
+      {activeModal === 'setSplits' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <SetSplitsForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Set URI Modal - Mobile */}
+      {activeModal === 'setUri' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <SetUriForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Manage Tiers Modal - Mobile */}
+      {activeModal === 'manageTiers' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <ManageTiersForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Cash Out Modal - Mobile */}
+      {activeModal === 'cashout' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div className="p-4">
+              <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                Cash Out {project.name} Tokens
+              </h2>
+              <CashOutForm
+                projectId={String(projectId)}
+                chainId={String(chainId)}
+              />
+            </div>
           </div>
         </div>,
         document.body
