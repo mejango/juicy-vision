@@ -191,7 +191,7 @@ export default function TierDetailModal({
           <div>
             <button
               onClick={() => setShowTechnical(!showTechnical)}
-              className={`w-full flex items-center justify-between py-2 transition-colors ${
+              className={`flex items-center gap-1.5 py-2 transition-colors ${
                 isDark ? 'text-gray-600 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'
               }`}
             >
