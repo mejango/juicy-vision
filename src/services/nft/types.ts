@@ -18,6 +18,10 @@ export interface NFTTier {
   allowOwnerMint: boolean
   transfersPausable: boolean
   encodedIPFSUri?: string
+  // Additional tier config fields
+  discountPercent?: number
+  cannotBeRemoved?: boolean
+  cannotIncreaseDiscountPercent?: boolean
 }
 
 /**

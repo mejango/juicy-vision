@@ -158,96 +158,78 @@ export default function TierDetailModal({
             </p>
           )}
 
-          {/* Supply indicator - prominent when low */}
-          <div className={`mb-6 p-4 ${
-            soldOut
-              ? 'bg-red-500/10 border border-red-500/30'
-              : isLowStock
-                ? 'bg-orange-500/10 border border-orange-500/30'
-                : isDark ? 'bg-white/5 border border-white/10' : 'bg-gray-50 border border-gray-200'
-          }`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className={`text-sm font-medium ${
-                soldOut
-                  ? 'text-red-400'
-                  : isLowStock
-                    ? 'text-orange-400'
-                    : isDark ? 'text-gray-300' : 'text-gray-600'
-              }`}>
-                {soldOut ? 'Sold Out' : isLowStock ? 'Running Low!' : 'Remaining Supply'}
-                {isMultiChain && <span className="opacity-60 ml-1">(all chains)</span>}
+          {/* Supply indicator - prominent only when low/sold out */}
+          {(soldOut || isLowStock) ? (
+            <div className={`mb-6 p-4 ${
+              soldOut
+                ? 'bg-red-500/10 border border-red-500/30'
+                : 'bg-orange-500/10 border border-orange-500/30'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-sm font-medium ${soldOut ? 'text-red-400' : 'text-orange-400'}`}>
+                  {soldOut ? 'Sold Out' : 'Running Low!'}
+                  {isMultiChain && <span className="opacity-60 ml-1">(all chains)</span>}
+                </span>
+                <span className={`font-mono text-lg font-semibold ${soldOut ? 'text-red-400' : 'text-orange-400'}`}>
+                  {loadingSupply ? (
+                    <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
+                  ) : (
+                    `${remainingSupply} / ${initialSupply}`
+                  )}
+                </span>
+              </div>
+              {/* Progress bar */}
+              <div className={`h-2 w-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}>
+                <div
+                  className={`h-full ${soldOut ? 'bg-red-500' : 'bg-orange-500'}`}
+                  style={{ width: `${supplyPercent}%` }}
+                />
+              </div>
+              {/* Per-chain breakdown */}
+              {isMultiChain && multiChainSupply && multiChainSupply.perChain.length > 1 && (
+                <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                  <div className="space-y-1">
+                    {multiChainSupply.perChain.map((chain) => (
+                      <div key={chain.chainId} className="flex justify-between text-xs">
+                        <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chain.chainName}</span>
+                        <span className={`font-mono ${chain.remaining === 0 ? 'text-red-400' : ''}`}>
+                          {chain.remaining} / {chain.initial}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Subtle supply display when plenty in stock */
+            <div className={`mb-6 flex items-center justify-between text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span>
+                Supply{isMultiChain && ' (all chains)'}
               </span>
-              <span className={`font-mono text-lg font-semibold ${
-                soldOut
-                  ? 'text-red-400'
-                  : isLowStock
-                    ? 'text-orange-400'
-                    : isDark ? 'text-white' : 'text-gray-900'
-              }`}>
+              <span className="font-mono">
                 {loadingSupply ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  </span>
+                  <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" />
                 ) : (
                   `${remainingSupply} / ${initialSupply}`
                 )}
               </span>
             </div>
-            {/* Progress bar */}
-            <div className={`h-2 w-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}>
-              <div
-                className={`h-full transition-all ${
-                  soldOut
-                    ? 'bg-red-500'
-                    : isLowStock
-                      ? 'bg-orange-500'
-                      : 'bg-green-500'
-                }`}
-                style={{ width: `${supplyPercent}%` }}
-              />
-            </div>
+          )}
 
-            {/* Per-chain breakdown for multi-chain projects */}
-            {isMultiChain && multiChainSupply && multiChainSupply.perChain.length > 1 && (
-              <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  By Network
-                </div>
-                <div className="space-y-1">
-                  {multiChainSupply.perChain.map((chain) => (
-                    <div key={chain.chainId} className="flex justify-between text-sm">
-                      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>
-                        {chain.chainName}
-                      </span>
-                      <span className={`font-mono ${
-                        chain.remaining === 0
-                          ? 'text-red-400'
-                          : isDark ? 'text-gray-200' : 'text-gray-700'
-                      }`}>
-                        {chain.remaining} / {chain.initial}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Technical Details dropdown */}
-          <div className={`border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          {/* Technical Details dropdown - subtle styling */}
+          <div>
             <button
               onClick={() => setShowTechnical(!showTechnical)}
-              className={`w-full flex items-center justify-between p-4 transition-colors ${
-                isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'
+              className={`w-full flex items-center justify-between py-3 transition-colors ${
+                isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
-              <span className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+              <span className="text-xs uppercase tracking-wide">
                 Technical Details
               </span>
               <svg
-                className={`w-5 h-5 transition-transform ${showTechnical ? 'rotate-180' : ''} ${
-                  isDark ? 'text-gray-400' : 'text-gray-500'
-                }`}
+                className={`w-4 h-4 transition-transform ${showTechnical ? 'rotate-180' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -257,53 +239,52 @@ export default function TierDetailModal({
             </button>
 
             {showTechnical && (
-              <div className={`p-4 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className={`pt-3 border-t text-xs ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                <div className="grid grid-cols-2 gap-3">
                   {/* Basic info */}
                   <DetailRow label="Tier ID" value={`#${tier.tierId}`} isDark={isDark} />
-                  <DetailRow label="Category" value={tier.category === 0 ? 'None' : `${tier.category}`} isDark={isDark} />
+                  <DetailRow label="Category" value={`${tier.category}`} isDark={isDark} />
                   <DetailRow
                     label="Currency"
-                    value={tier.currency === 1 ? 'ETH' : tier.currency === 2 ? 'USD' : `Unknown (${tier.currency})`}
+                    value={tier.currency === 1 ? 'ETH' : tier.currency === 2 ? 'USD' : `${tier.currency}`}
                     isDark={isDark}
                   />
                   <DetailRow
                     label="Reserved Rate"
-                    value={tier.reservedRate > 0 ? `${(tier.reservedRate / 100).toFixed(2)}%` : 'None'}
+                    value={tier.reservedRate > 0 ? `1 per ${tier.reservedRate}` : '0'}
                     isDark={isDark}
                   />
                   <DetailRow
                     label="Voting Units"
-                    value={tier.votingUnits > 0n ? tier.votingUnits.toString() : 'None'}
+                    value={tier.votingUnits > 0n ? tier.votingUnits.toString() : '0'}
+                    isDark={isDark}
+                  />
+                  <DetailRow
+                    label="Discount %"
+                    value={tier.discountPercent !== undefined ? `${tier.discountPercent}%` : '0%'}
                     isDark={isDark}
                   />
 
                   {/* Flags section */}
-                  <div className="col-span-2 mt-4 pt-4 border-t border-dashed border-gray-600">
-                    <div className={`text-xs uppercase tracking-wide mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      Tier Flags
+                  <div className={`col-span-2 mt-3 pt-3 border-t ${isDark ? 'border-white/5' : 'border-gray-100'}`}>
+                    <div className={`text-[10px] uppercase tracking-wider mb-2 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                      Flags
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <FlagRow
-                        label="Owner Can Mint"
-                        enabled={tier.allowOwnerMint}
-                        isDark={isDark}
-                      />
-                      <FlagRow
-                        label="Transfers Pausable"
-                        enabled={tier.transfersPausable}
-                        isDark={isDark}
-                      />
+                    <div className="grid grid-cols-2 gap-y-1.5 gap-x-4">
+                      <FlagRow label="Owner Can Mint" enabled={tier.allowOwnerMint} isDark={isDark} />
+                      <FlagRow label="Transfers Pausable" enabled={tier.transfersPausable} isDark={isDark} />
+                      <FlagRow label="Cannot Be Removed" enabled={tier.cannotBeRemoved ?? false} isDark={isDark} />
+                      <FlagRow label="Cannot Increase Discount" enabled={tier.cannotIncreaseDiscountPercent ?? false} isDark={isDark} />
                     </div>
                   </div>
 
                   {/* IPFS info */}
                   {tier.encodedIPFSUri && (
-                    <div className="col-span-2 mt-4 pt-4 border-t border-dashed border-gray-600">
-                      <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        Metadata
+                    <div className={`col-span-2 mt-3 pt-3 border-t ${isDark ? 'border-white/5' : 'border-gray-100'}`}>
+                      <div className={`text-[10px] uppercase tracking-wider mb-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                        IPFS URI
                       </div>
-                      <div className={`font-mono text-xs break-all ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <div className={`font-mono text-[10px] break-all ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                         {tier.encodedIPFSUri}
                       </div>
                     </div>
@@ -332,9 +313,11 @@ function DetailRow({ label, value, isDark }: { label: string; value: string; isD
 // Helper component for flag rows
 function FlagRow({ label, enabled, isDark }: { label: string; enabled: boolean; isDark: boolean }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className={`w-2 h-2 rounded-full ${enabled ? 'bg-green-500' : isDark ? 'bg-gray-600' : 'bg-gray-300'}`} />
-      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{label}</span>
+    <div className="flex justify-between">
+      <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>{label}</span>
+      <span className={`font-mono ${enabled ? (isDark ? 'text-green-400' : 'text-green-600') : (isDark ? 'text-gray-600' : 'text-gray-300')}`}>
+        {enabled ? 'on' : 'off'}
+      </span>
     </div>
   )
 }

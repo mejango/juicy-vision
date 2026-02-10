@@ -183,6 +183,10 @@ export async function fetchNFTTiers(
       encodedIPFSUri: tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
         ? decodeEncodedIPFSUri(tier.encodedIPFSUri) || undefined
         : undefined,
+      // Additional tier config
+      discountPercent: Number(tier.discountPercent),
+      cannotBeRemoved: tier.cannotBeRemoved,
+      cannotIncreaseDiscountPercent: tier.cannotIncreaseDiscountPercent,
     }))
   } catch (err) {
     console.error('[NFT] Failed to fetch NFT tiers:', err)
