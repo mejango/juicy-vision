@@ -864,10 +864,10 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
 
             {/* Explanation */}
             <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              If there is a surplus and cash out tax rate, members can cash out for a share of the surplus.
-              {surplus === 0n && (
-                <span className={isDark ? 'text-yellow-400' : 'text-yellow-600'}> Currently no surplus available for cash outs.</span>
-              )}
+              {hasSurplus
+                ? 'Since there is a surplus and cash out tax rate, members can cash out for a share of the surplus.'
+                : <>If there is a surplus and cash out tax rate, members can cash out for a share of the surplus.<span className={isDark ? 'text-yellow-400' : 'text-yellow-600'}> Currently no surplus available for cash outs.</span></>
+              }
             </div>
 
             {/* Current cash out tax rate */}
