@@ -1225,11 +1225,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       <>
         {/* Single scrollable container */}
         <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {/* Shop + Pay section with lighter background */}
-          <div className={isDark ? 'bg-[#222]' : 'bg-gray-50'}>
-            {/* NFT Shop - scrolls away */}
-            {nftTiers.length > 0 && (
-              <div className="px-4 pt-3 mb-3">
+          {/* NFT Shop - scrolls away */}
+          {nftTiers.length > 0 && (
+            <div className={`px-4 pt-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}>
               <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 Shop
               </div>
@@ -1321,7 +1319,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               )}
             </div>
           )}
-          </div>
 
           {/* Sticky pay controls - sticks to top when scrolling */}
           <div className={`sticky top-0 z-20 px-4 py-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
