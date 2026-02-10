@@ -69,9 +69,9 @@ export default function RedemptionCurveChart({
 
   // Chart dimensions - using viewBox for responsive scaling
   // Larger viewBox = smaller scaled text when rendered
-  const width = 400
-  const height = 60
-  const padding = { top: 6, right: 6, bottom: 6, left: 26 }
+  const width = 800
+  const height = 100
+  const padding = { top: 8, right: 8, bottom: 12, left: 32 }
   const chartWidth = width - padding.left - padding.right
   const chartHeight = height - padding.top - padding.bottom
 
@@ -189,7 +189,7 @@ export default function RedemptionCurveChart({
           d={pathD}
           fill="none"
           stroke={curveColor}
-          strokeWidth={1.5}
+          strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
@@ -199,10 +199,10 @@ export default function RedemptionCurveChart({
           <circle
             cx={userPosition.x}
             cy={userPosition.y}
-            r={3}
+            r={5}
             fill={userDotColor}
             stroke={isDark ? '#000' : '#fff'}
-            strokeWidth={1}
+            strokeWidth={1.5}
           />
         )}
 
@@ -223,19 +223,19 @@ export default function RedemptionCurveChart({
             <circle
               cx={hoverPoint.x}
               cy={hoverPoint.y}
-              r={3}
+              r={5}
               fill={curveColor}
               stroke={isDark ? '#000' : '#fff'}
-              strokeWidth={1}
+              strokeWidth={1.5}
             />
           </>
         )}
 
         {/* Y-axis labels */}
         <text
-          x={padding.left - 4}
+          x={padding.left - 6}
           y={padding.top + chartHeight}
-          fontSize={9}
+          fontSize={11}
           fill={textColor}
           textAnchor="end"
           dominantBaseline="middle"
@@ -243,9 +243,9 @@ export default function RedemptionCurveChart({
           {minRetention.toFixed(0)}%
         </text>
         <text
-          x={padding.left - 4}
+          x={padding.left - 6}
           y={padding.top}
-          fontSize={9}
+          fontSize={11}
           fill={textColor}
           textAnchor="end"
           dominantBaseline="middle"
@@ -256,8 +256,8 @@ export default function RedemptionCurveChart({
         {/* X-axis labels inside SVG for proper positioning */}
         <text
           x={padding.left}
-          y={height - 1}
-          fontSize={8}
+          y={height - 2}
+          fontSize={10}
           fill={textColor}
           textAnchor="start"
         >
@@ -265,8 +265,8 @@ export default function RedemptionCurveChart({
         </text>
         <text
           x={padding.left + chartWidth}
-          y={height - 1}
-          fontSize={8}
+          y={height - 2}
+          fontSize={10}
           fill={textColor}
           textAnchor="end"
         >
