@@ -94,16 +94,31 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   // Check if current user can write to this chat
   const sessionId = getSessionId()
   const currentAddress = getCurrentUserAddress()
+
+  // Also fetch pseudo-address explicitly (backend-computed HMAC address)
+  // This ensures we have the correct address even if the cache isn't populated
+  const [fetchedPseudoAddress, setFetchedPseudoAddress] = useState<string | null>(null)
+  useEffect(() => {
+    getSessionPseudoAddress().then(addr => {
+      setFetchedPseudoAddress(addr?.toLowerCase() || null)
+    }).catch(() => {
+      // Ignore errors - fallback to other checks
+    })
+  }, [sessionId])
+
+  // Use either currentAddress or explicitly fetched pseudo-address
+  const effectiveAddress = currentAddress || fetchedPseudoAddress
+
   const currentUserMember = members.find(m =>
     m.userId === user?.id ||
-    m.address?.toLowerCase() === currentAddress?.toLowerCase() ||
+    m.address?.toLowerCase() === effectiveAddress?.toLowerCase() ||
     (m.address && sessionId && m.address.toLowerCase().includes(sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40)))
   )
   // Also check if user is the founder (even if not in members list, e.g., after session change)
   // Check by userId (logged in user), by address, or by sessionId embedded in founderAddress
   const isFounder = (
     (user?.id && activeChat?.founderUserId === user.id) ||
-    (currentAddress && activeChat?.founderAddress?.toLowerCase() === currentAddress.toLowerCase()) ||
+    (effectiveAddress && activeChat?.founderAddress?.toLowerCase() === effectiveAddress.toLowerCase()) ||
     // Fallback: check if founderAddress contains current sessionId (for pseudo-addresses)
     (sessionId && activeChat?.founderAddress?.toLowerCase().includes(sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).toLowerCase()))
   )
