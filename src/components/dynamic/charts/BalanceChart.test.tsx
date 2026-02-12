@@ -122,6 +122,7 @@ describe('BalanceChart', () => {
 
   describe('range selector', () => {
     beforeEach(() => {
+      useThemeStore.setState({ theme: 'dark' })
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-group-1')
       vi.mocked(bendystraw.fetchSuckerGroupMoments).mockResolvedValue(mockMoments as any)
@@ -142,15 +143,15 @@ describe('BalanceChart', () => {
       expect(screen.getByText('All')).toBeInTheDocument()
     })
 
-    it('defaults to 30d range', async () => {
+    it('defaults to 1y range', async () => {
       render(<BalanceChart projectId="1" />)
 
       await waitFor(() => {
         expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
 
-      const button30d = screen.getByText('30D')
-      expect(button30d.className).toContain('bg-white/10')
+      const button1y = screen.getByText('1Y')
+      expect(button1y.className).toContain('bg-white/10')
     })
 
     it('changes range when clicking different option', async () => {
@@ -255,8 +256,8 @@ describe('BalanceChart', () => {
         expect(screen.getByTestId('line-chart')).toBeInTheDocument()
       })
 
-      const button30d = screen.getByText('30D')
-      expect(button30d.className).toContain('bg-gray-200')
+      const button1y = screen.getByText('1Y')
+      expect(button1y.className).toContain('bg-gray-200')
     })
   })
 

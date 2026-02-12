@@ -120,19 +120,19 @@ describe('ActivityFeed', () => {
       })
     })
 
-    it('renders pay events with correct icons', async () => {
+    it('renders pay events with correct labels', async () => {
       render(<ActivityFeed projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getAllByText('💰').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('paid').length).toBeGreaterThan(0)
       })
     })
 
-    it('renders cashout events with correct icons', async () => {
+    it('renders cashout events with correct labels', async () => {
       render(<ActivityFeed projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText('🔄')).toBeInTheDocument()
+        expect(screen.getByText('cashed out')).toBeInTheDocument()
       })
     })
 
@@ -217,8 +217,8 @@ describe('ActivityFeed', () => {
 
       // Should show all 7 events (6 pay + 1 cashout)
       await waitFor(() => {
-        expect(screen.getAllByText('💰').length).toBe(6)
-        expect(screen.getByText('🔄')).toBeInTheDocument()
+        expect(screen.getAllByText('paid').length).toBe(6)
+        expect(screen.getByText('cashed out')).toBeInTheDocument()
       })
     })
   })

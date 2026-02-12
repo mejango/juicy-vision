@@ -9,7 +9,7 @@ import * as ens from '../../../utils/ens'
 vi.mock('../../../services/bendystraw', () => ({
   fetchProject: vi.fn(),
   fetchProjectSuckerGroupId: vi.fn(),
-  fetchAggregatedParticipants: vi.fn(),
+  fetchMultiChainParticipants: vi.fn(),
   fetchConnectedChains: vi.fn(),
 }))
 
@@ -103,7 +103,7 @@ describe('HoldersChart', () => {
     it('shows error when no holders found', async () => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
-      vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue({
+      vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue({
         participants: [],
         totalSupply: 0n,
       })
@@ -120,7 +120,7 @@ describe('HoldersChart', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
-      vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
+      vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
@@ -153,7 +153,7 @@ describe('HoldersChart', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
-      vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
+      vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
     })
 
     it('resolves ENS names for addresses', async () => {
@@ -175,7 +175,7 @@ describe('HoldersChart', () => {
     })
 
     it('adds "Others" slice when percentages dont sum to 100', async () => {
-      vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
+      vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
 
       render(<HoldersChart projectId="1" />)
 
@@ -189,7 +189,7 @@ describe('HoldersChart', () => {
   describe('sucker group fallback', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
-      vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
+      vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
@@ -199,11 +199,10 @@ describe('HoldersChart', () => {
       render(<HoldersChart projectId="1" chainId="10" />)
 
       await waitFor(() => {
-        expect(bendystraw.fetchAggregatedParticipants).toHaveBeenCalledWith(
-          '', // empty suckerGroupId
+        expect(bendystraw.fetchMultiChainParticipants).toHaveBeenCalledWith(
+          [{ chainId: 10, projectId: 1 }], // connectedChainsArray for single chain
           10, // limit
-          '1', // projectId
-          10 // chainId
+          undefined // no suckerGroupId
         )
       })
     })
@@ -213,7 +212,7 @@ describe('HoldersChart', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
-      vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
+      vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
@@ -221,11 +220,10 @@ describe('HoldersChart', () => {
       render(<HoldersChart projectId="1" limit={5} />)
 
       await waitFor(() => {
-        expect(bendystraw.fetchAggregatedParticipants).toHaveBeenCalledWith(
-          'sucker-1',
+        expect(bendystraw.fetchMultiChainParticipants).toHaveBeenCalledWith(
+          [{ chainId: 1, projectId: 1 }], // connectedChainsArray
           5, // limit
-          '1',
-          1
+          'sucker-1' // suckerGroupId
         )
       })
     })
@@ -234,11 +232,10 @@ describe('HoldersChart', () => {
       render(<HoldersChart projectId="1" />)
 
       await waitFor(() => {
-        expect(bendystraw.fetchAggregatedParticipants).toHaveBeenCalledWith(
-          'sucker-1',
+        expect(bendystraw.fetchMultiChainParticipants).toHaveBeenCalledWith(
+          [{ chainId: 1, projectId: 1 }], // connectedChainsArray
           10, // default limit
-          '1',
-          1
+          'sucker-1' // suckerGroupId
         )
       })
     })
@@ -248,7 +245,7 @@ describe('HoldersChart', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
-      vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
+      vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
@@ -277,7 +274,7 @@ describe('HoldersChart', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
-      vi.mocked(bendystraw.fetchAggregatedParticipants).mockResolvedValue(mockParticipants)
+      vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 

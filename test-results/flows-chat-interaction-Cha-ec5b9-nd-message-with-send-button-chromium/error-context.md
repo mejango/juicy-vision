@@ -1,0 +1,9415 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e6]:
+    - generic [ref=e9]:
+      - generic [ref=e12]:
+        - button "Shuffle" [ref=e14] [cursor=pointer]
+        - generic [ref=e16]:
+          - generic [ref=e17]:
+            - generic [ref=e18]:
+              - button "Create a fundraising platform" [ref=e19] [cursor=pointer]
+              - button "Create autonomous systems bold" [ref=e20] [cursor=pointer]:
+                - text: Create autonomous systems
+                - generic [ref=e21]: bold
+              - button "Study dark matter" [ref=e22] [cursor=pointer]
+              - button "Start a community mentorship business" [ref=e23] [cursor=pointer]
+              - button "Community garden expansion" [ref=e24] [cursor=pointer]
+              - button "Build electric vehicles" [ref=e25] [cursor=pointer]
+              - button "Create royalty distribution" [ref=e26] [cursor=pointer]
+              - button "Profit margins on steroids bold" [ref=e27] [cursor=pointer]:
+                - text: Profit margins on steroids
+                - generic [ref=e28]: bold
+              - button "How do supporters get rewarded? popular" [ref=e29] [cursor=pointer]:
+                - text: How do supporters get rewarded?
+                - generic [ref=e30]: popular
+              - button "Build once collect forever" [ref=e31] [cursor=pointer]
+              - button "Privacy-first funding pro" [ref=e32] [cursor=pointer]:
+                - text: Privacy-first funding
+                - generic [ref=e33]: pro
+              - button "Is it free to create a project? popular" [ref=e34] [cursor=pointer]:
+                - text: Is it free to create a project?
+                - generic [ref=e35]: popular
+              - button "Disrupt for fun fun" [ref=e36] [cursor=pointer]:
+                - text: Disrupt for fun
+                - generic [ref=e37]: fun
+              - button "Set up revenue sharing" [ref=e38] [cursor=pointer]
+              - button "Fund my public art" [ref=e39] [cursor=pointer]
+              - button "Start my vintage arcade" [ref=e40] [cursor=pointer]
+              - button "Unicorn trajectory bold" [ref=e41] [cursor=pointer]:
+                - text: Unicorn trajectory
+                - generic [ref=e42]: bold
+              - button "Automated revenue streams bold" [ref=e43] [cursor=pointer]:
+                - text: Automated revenue streams
+                - generic [ref=e44]: bold
+              - button "Create an auction game fun" [ref=e45] [cursor=pointer]:
+                - text: Create an auction game
+                - generic [ref=e46]: fun
+              - button "Fund my indie game popular" [ref=e47] [cursor=pointer]:
+                - text: Fund my indie game
+                - generic [ref=e48]: popular
+              - button "Support my NFT collection" [ref=e49] [cursor=pointer]
+              - button "Free forever project" [ref=e50] [cursor=pointer]
+              - button "Launch my identity solution pro" [ref=e51] [cursor=pointer]:
+                - text: Launch my identity solution
+                - generic [ref=e52]: pro
+              - button "Fund my rental marketplace" [ref=e53] [cursor=pointer]
+              - button "Start a membership-based workshop business" [ref=e54] [cursor=pointer]
+              - button "Create a simple project demo" [ref=e55] [cursor=pointer]:
+                - text: Create a simple project
+                - generic [ref=e56]: demo
+              - button "Help me think bigger fun" [ref=e57] [cursor=pointer]:
+                - text: Help me think bigger
+                - generic [ref=e58]: fun
+              - button "Create programmable payouts pro" [ref=e59] [cursor=pointer]:
+                - text: Create programmable payouts
+                - generic [ref=e60]: pro
+              - button "Launch my social enterprise" [ref=e61] [cursor=pointer]
+              - button "Create a theater company" [ref=e62] [cursor=pointer]
+              - button "Launch my investing app" [ref=e63] [cursor=pointer]
+              - button "Fund my field research" [ref=e64] [cursor=pointer]
+              - button "Launch a coding bootcamp for my community" [ref=e65] [cursor=pointer]
+              - button "Set up milestone payments" [ref=e66] [cursor=pointer]
+              - button "Fund my car investment" [ref=e67] [cursor=pointer]
+              - button "Support my webcomic popular" [ref=e68] [cursor=pointer]:
+                - text: Support my webcomic
+                - generic [ref=e69]: popular
+              - button "Create a creator community" [ref=e70] [cursor=pointer]
+              - button "Build equipment leasing" [ref=e71] [cursor=pointer]
+              - button "fighting the system id" [ref=e72] [cursor=pointer]:
+                - text: fighting the system
+                - generic [ref=e73]: id
+              - button "Tell me a success story fun" [ref=e74] [cursor=pointer]:
+                - text: Tell me a success story
+                - generic [ref=e75]: fun
+            - generic [ref=e76]:
+              - button "Create a fundraising platform" [ref=e77] [cursor=pointer]
+              - button "Create autonomous systems bold" [ref=e78] [cursor=pointer]:
+                - text: Create autonomous systems
+                - generic [ref=e79]: bold
+              - button "Study dark matter" [ref=e80] [cursor=pointer]
+              - button "Start a community mentorship business" [ref=e81] [cursor=pointer]
+              - button "Community garden expansion" [ref=e82] [cursor=pointer]
+              - button "Build electric vehicles" [ref=e83] [cursor=pointer]
+              - button "Create royalty distribution" [ref=e84] [cursor=pointer]
+              - button "Profit margins on steroids bold" [ref=e85] [cursor=pointer]:
+                - text: Profit margins on steroids
+                - generic [ref=e86]: bold
+              - button "How do supporters get rewarded? popular" [ref=e87] [cursor=pointer]:
+                - text: How do supporters get rewarded?
+                - generic [ref=e88]: popular
+              - button "Build once collect forever" [ref=e89] [cursor=pointer]
+              - button "Privacy-first funding pro" [ref=e90] [cursor=pointer]:
+                - text: Privacy-first funding
+                - generic [ref=e91]: pro
+              - button "Is it free to create a project? popular" [ref=e92] [cursor=pointer]:
+                - text: Is it free to create a project?
+                - generic [ref=e93]: popular
+              - button "Disrupt for fun fun" [ref=e94] [cursor=pointer]:
+                - text: Disrupt for fun
+                - generic [ref=e95]: fun
+              - button "Set up revenue sharing" [ref=e96] [cursor=pointer]
+              - button "Fund my public art" [ref=e97] [cursor=pointer]
+              - button "Start my vintage arcade" [ref=e98] [cursor=pointer]
+              - button "Unicorn trajectory bold" [ref=e99] [cursor=pointer]:
+                - text: Unicorn trajectory
+                - generic [ref=e100]: bold
+              - button "Automated revenue streams bold" [ref=e101] [cursor=pointer]:
+                - text: Automated revenue streams
+                - generic [ref=e102]: bold
+              - button "Create an auction game fun" [ref=e103] [cursor=pointer]:
+                - text: Create an auction game
+                - generic [ref=e104]: fun
+              - button "Fund my indie game popular" [ref=e105] [cursor=pointer]:
+                - text: Fund my indie game
+                - generic [ref=e106]: popular
+              - button "Support my NFT collection" [ref=e107] [cursor=pointer]
+              - button "Free forever project" [ref=e108] [cursor=pointer]
+              - button "Launch my identity solution pro" [ref=e109] [cursor=pointer]:
+                - text: Launch my identity solution
+                - generic [ref=e110]: pro
+              - button "Fund my rental marketplace" [ref=e111] [cursor=pointer]
+              - button "Start a membership-based workshop business" [ref=e112] [cursor=pointer]
+              - button "Create a simple project demo" [ref=e113] [cursor=pointer]:
+                - text: Create a simple project
+                - generic [ref=e114]: demo
+              - button "Help me think bigger fun" [ref=e115] [cursor=pointer]:
+                - text: Help me think bigger
+                - generic [ref=e116]: fun
+              - button "Create programmable payouts pro" [ref=e117] [cursor=pointer]:
+                - text: Create programmable payouts
+                - generic [ref=e118]: pro
+              - button "Launch my social enterprise" [ref=e119] [cursor=pointer]
+              - button "Create a theater company" [ref=e120] [cursor=pointer]
+              - button "Launch my investing app" [ref=e121] [cursor=pointer]
+              - button "Fund my field research" [ref=e122] [cursor=pointer]
+              - button "Launch a coding bootcamp for my community" [ref=e123] [cursor=pointer]
+              - button "Set up milestone payments" [ref=e124] [cursor=pointer]
+              - button "Fund my car investment" [ref=e125] [cursor=pointer]
+              - button "Support my webcomic popular" [ref=e126] [cursor=pointer]:
+                - text: Support my webcomic
+                - generic [ref=e127]: popular
+              - button "Create a creator community" [ref=e128] [cursor=pointer]
+              - button "Build equipment leasing" [ref=e129] [cursor=pointer]
+              - button "fighting the system id" [ref=e130] [cursor=pointer]:
+                - text: fighting the system
+                - generic [ref=e131]: id
+              - button "Tell me a success story fun" [ref=e132] [cursor=pointer]:
+                - text: Tell me a success story
+                - generic [ref=e133]: fun
+            - generic [ref=e134]:
+              - button "Create a fundraising platform" [ref=e135] [cursor=pointer]
+              - button "Create autonomous systems bold" [ref=e136] [cursor=pointer]:
+                - text: Create autonomous systems
+                - generic [ref=e137]: bold
+              - button "Study dark matter" [ref=e138] [cursor=pointer]
+              - button "Start a community mentorship business" [ref=e139] [cursor=pointer]
+              - button "Community garden expansion" [ref=e140] [cursor=pointer]
+              - button "Build electric vehicles" [ref=e141] [cursor=pointer]
+              - button "Create royalty distribution" [ref=e142] [cursor=pointer]
+              - button "Profit margins on steroids bold" [ref=e143] [cursor=pointer]:
+                - text: Profit margins on steroids
+                - generic [ref=e144]: bold
+              - button "How do supporters get rewarded? popular" [ref=e145] [cursor=pointer]:
+                - text: How do supporters get rewarded?
+                - generic [ref=e146]: popular
+              - button "Build once collect forever" [ref=e147] [cursor=pointer]
+              - button "Privacy-first funding pro" [ref=e148] [cursor=pointer]:
+                - text: Privacy-first funding
+                - generic [ref=e149]: pro
+              - button "Is it free to create a project? popular" [ref=e150] [cursor=pointer]:
+                - text: Is it free to create a project?
+                - generic [ref=e151]: popular
+              - button "Disrupt for fun fun" [ref=e152] [cursor=pointer]:
+                - text: Disrupt for fun
+                - generic [ref=e153]: fun
+              - button "Set up revenue sharing" [ref=e154] [cursor=pointer]
+              - button "Fund my public art" [ref=e155] [cursor=pointer]
+              - button "Start my vintage arcade" [ref=e156] [cursor=pointer]
+              - button "Unicorn trajectory bold" [ref=e157] [cursor=pointer]:
+                - text: Unicorn trajectory
+                - generic [ref=e158]: bold
+              - button "Automated revenue streams bold" [ref=e159] [cursor=pointer]:
+                - text: Automated revenue streams
+                - generic [ref=e160]: bold
+              - button "Create an auction game fun" [ref=e161] [cursor=pointer]:
+                - text: Create an auction game
+                - generic [ref=e162]: fun
+              - button "Fund my indie game popular" [ref=e163] [cursor=pointer]:
+                - text: Fund my indie game
+                - generic [ref=e164]: popular
+              - button "Support my NFT collection" [ref=e165] [cursor=pointer]
+              - button "Free forever project" [ref=e166] [cursor=pointer]
+              - button "Launch my identity solution pro" [ref=e167] [cursor=pointer]:
+                - text: Launch my identity solution
+                - generic [ref=e168]: pro
+              - button "Fund my rental marketplace" [ref=e169] [cursor=pointer]
+              - button "Start a membership-based workshop business" [ref=e170] [cursor=pointer]
+              - button "Create a simple project demo" [ref=e171] [cursor=pointer]:
+                - text: Create a simple project
+                - generic [ref=e172]: demo
+              - button "Help me think bigger fun" [ref=e173] [cursor=pointer]:
+                - text: Help me think bigger
+                - generic [ref=e174]: fun
+              - button "Create programmable payouts pro" [ref=e175] [cursor=pointer]:
+                - text: Create programmable payouts
+                - generic [ref=e176]: pro
+              - button "Launch my social enterprise" [ref=e177] [cursor=pointer]
+              - button "Create a theater company" [ref=e178] [cursor=pointer]
+              - button "Launch my investing app" [ref=e179] [cursor=pointer]
+              - button "Fund my field research" [ref=e180] [cursor=pointer]
+              - button "Launch a coding bootcamp for my community" [ref=e181] [cursor=pointer]
+              - button "Set up milestone payments" [ref=e182] [cursor=pointer]
+              - button "Fund my car investment" [ref=e183] [cursor=pointer]
+              - button "Support my webcomic popular" [ref=e184] [cursor=pointer]:
+                - text: Support my webcomic
+                - generic [ref=e185]: popular
+              - button "Create a creator community" [ref=e186] [cursor=pointer]
+              - button "Build equipment leasing" [ref=e187] [cursor=pointer]
+              - button "fighting the system id" [ref=e188] [cursor=pointer]:
+                - text: fighting the system
+                - generic [ref=e189]: id
+              - button "Tell me a success story fun" [ref=e190] [cursor=pointer]:
+                - text: Tell me a success story
+                - generic [ref=e191]: fun
+            - generic [ref=e192]:
+              - button "Create a fundraising platform" [ref=e193] [cursor=pointer]
+              - button "Create autonomous systems bold" [ref=e194] [cursor=pointer]:
+                - text: Create autonomous systems
+                - generic [ref=e195]: bold
+              - button "Study dark matter" [ref=e196] [cursor=pointer]
+              - button "Start a community mentorship business" [ref=e197] [cursor=pointer]
+              - button "Community garden expansion" [ref=e198] [cursor=pointer]
+              - button "Build electric vehicles" [ref=e199] [cursor=pointer]
+              - button "Create royalty distribution" [ref=e200] [cursor=pointer]
+              - button "Profit margins on steroids bold" [ref=e201] [cursor=pointer]:
+                - text: Profit margins on steroids
+                - generic [ref=e202]: bold
+              - button "How do supporters get rewarded? popular" [ref=e203] [cursor=pointer]:
+                - text: How do supporters get rewarded?
+                - generic [ref=e204]: popular
+              - button "Build once collect forever" [ref=e205] [cursor=pointer]
+              - button "Privacy-first funding pro" [ref=e206] [cursor=pointer]:
+                - text: Privacy-first funding
+                - generic [ref=e207]: pro
+              - button "Is it free to create a project? popular" [ref=e208] [cursor=pointer]:
+                - text: Is it free to create a project?
+                - generic [ref=e209]: popular
+              - button "Disrupt for fun fun" [ref=e210] [cursor=pointer]:
+                - text: Disrupt for fun
+                - generic [ref=e211]: fun
+              - button "Set up revenue sharing" [ref=e212] [cursor=pointer]
+              - button "Fund my public art" [ref=e213] [cursor=pointer]
+              - button "Start my vintage arcade" [ref=e214] [cursor=pointer]
+              - button "Unicorn trajectory bold" [ref=e215] [cursor=pointer]:
+                - text: Unicorn trajectory
+                - generic [ref=e216]: bold
+              - button "Automated revenue streams bold" [ref=e217] [cursor=pointer]:
+                - text: Automated revenue streams
+                - generic [ref=e218]: bold
+              - button "Create an auction game fun" [ref=e219] [cursor=pointer]:
+                - text: Create an auction game
+                - generic [ref=e220]: fun
+              - button "Fund my indie game popular" [ref=e221] [cursor=pointer]:
+                - text: Fund my indie game
+                - generic [ref=e222]: popular
+              - button "Support my NFT collection" [ref=e223] [cursor=pointer]
+              - button "Free forever project" [ref=e224] [cursor=pointer]
+              - button "Launch my identity solution pro" [ref=e225] [cursor=pointer]:
+                - text: Launch my identity solution
+                - generic [ref=e226]: pro
+              - button "Fund my rental marketplace" [ref=e227] [cursor=pointer]
+              - button "Start a membership-based workshop business" [ref=e228] [cursor=pointer]
+              - button "Create a simple project demo" [ref=e229] [cursor=pointer]:
+                - text: Create a simple project
+                - generic [ref=e230]: demo
+              - button "Help me think bigger fun" [ref=e231] [cursor=pointer]:
+                - text: Help me think bigger
+                - generic [ref=e232]: fun
+              - button "Create programmable payouts pro" [ref=e233] [cursor=pointer]:
+                - text: Create programmable payouts
+                - generic [ref=e234]: pro
+              - button "Launch my social enterprise" [ref=e235] [cursor=pointer]
+              - button "Create a theater company" [ref=e236] [cursor=pointer]
+              - button "Launch my investing app" [ref=e237] [cursor=pointer]
+              - button "Fund my field research" [ref=e238] [cursor=pointer]
+              - button "Launch a coding bootcamp for my community" [ref=e239] [cursor=pointer]
+              - button "Set up milestone payments" [ref=e240] [cursor=pointer]
+              - button "Fund my car investment" [ref=e241] [cursor=pointer]
+              - button "Support my webcomic popular" [ref=e242] [cursor=pointer]:
+                - text: Support my webcomic
+                - generic [ref=e243]: popular
+              - button "Create a creator community" [ref=e244] [cursor=pointer]
+              - button "Build equipment leasing" [ref=e245] [cursor=pointer]
+              - button "fighting the system id" [ref=e246] [cursor=pointer]:
+                - text: fighting the system
+                - generic [ref=e247]: id
+              - button "Tell me a success story fun" [ref=e248] [cursor=pointer]:
+                - text: Tell me a success story
+                - generic [ref=e249]: fun
+            - generic [ref=e250]:
+              - button "Create a fundraising platform" [ref=e251] [cursor=pointer]
+              - button "Create autonomous systems bold" [ref=e252] [cursor=pointer]:
+                - text: Create autonomous systems
+                - generic [ref=e253]: bold
+              - button "Study dark matter" [ref=e254] [cursor=pointer]
+              - button "Start a community mentorship business" [ref=e255] [cursor=pointer]
+              - button "Community garden expansion" [ref=e256] [cursor=pointer]
+              - button "Build electric vehicles" [ref=e257] [cursor=pointer]
+              - button "Create royalty distribution" [ref=e258] [cursor=pointer]
+              - button "Profit margins on steroids bold" [ref=e259] [cursor=pointer]:
+                - text: Profit margins on steroids
+                - generic [ref=e260]: bold
+              - button "How do supporters get rewarded? popular" [ref=e261] [cursor=pointer]:
+                - text: How do supporters get rewarded?
+                - generic [ref=e262]: popular
+              - button "Build once collect forever" [ref=e263] [cursor=pointer]
+              - button "Privacy-first funding pro" [ref=e264] [cursor=pointer]:
+                - text: Privacy-first funding
+                - generic [ref=e265]: pro
+              - button "Is it free to create a project? popular" [ref=e266] [cursor=pointer]:
+                - text: Is it free to create a project?
+                - generic [ref=e267]: popular
+              - button "Disrupt for fun fun" [ref=e268] [cursor=pointer]:
+                - text: Disrupt for fun
+                - generic [ref=e269]: fun
+              - button "Set up revenue sharing" [ref=e270] [cursor=pointer]
+              - button "Fund my public art" [ref=e271] [cursor=pointer]
+              - button "Start my vintage arcade" [ref=e272] [cursor=pointer]
+              - button "Unicorn trajectory bold" [ref=e273] [cursor=pointer]:
+                - text: Unicorn trajectory
+                - generic [ref=e274]: bold
+              - button "Automated revenue streams bold" [ref=e275] [cursor=pointer]:
+                - text: Automated revenue streams
+                - generic [ref=e276]: bold
+              - button "Create an auction game fun" [ref=e277] [cursor=pointer]:
+                - text: Create an auction game
+                - generic [ref=e278]: fun
+              - button "Fund my indie game popular" [ref=e279] [cursor=pointer]:
+                - text: Fund my indie game
+                - generic [ref=e280]: popular
+              - button "Support my NFT collection" [ref=e281] [cursor=pointer]
+              - button "Free forever project" [ref=e282] [cursor=pointer]
+              - button "Launch my identity solution pro" [ref=e283] [cursor=pointer]:
+                - text: Launch my identity solution
+                - generic [ref=e284]: pro
+              - button "Fund my rental marketplace" [ref=e285] [cursor=pointer]
+              - button "Start a membership-based workshop business" [ref=e286] [cursor=pointer]
+              - button "Create a simple project demo" [ref=e287] [cursor=pointer]:
+                - text: Create a simple project
+                - generic [ref=e288]: demo
+              - button "Help me think bigger fun" [ref=e289] [cursor=pointer]:
+                - text: Help me think bigger
+                - generic [ref=e290]: fun
+              - button "Create programmable payouts pro" [ref=e291] [cursor=pointer]:
+                - text: Create programmable payouts
+                - generic [ref=e292]: pro
+              - button "Launch my social enterprise" [ref=e293] [cursor=pointer]
+              - button "Create a theater company" [ref=e294] [cursor=pointer]
+              - button "Launch my investing app" [ref=e295] [cursor=pointer]
+              - button "Fund my field research" [ref=e296] [cursor=pointer]
+              - button "Launch a coding bootcamp for my community" [ref=e297] [cursor=pointer]
+              - button "Set up milestone payments" [ref=e298] [cursor=pointer]
+              - button "Fund my car investment" [ref=e299] [cursor=pointer]
+              - button "Support my webcomic popular" [ref=e300] [cursor=pointer]:
+                - text: Support my webcomic
+                - generic [ref=e301]: popular
+              - button "Create a creator community" [ref=e302] [cursor=pointer]
+              - button "Build equipment leasing" [ref=e303] [cursor=pointer]
+              - button "fighting the system id" [ref=e304] [cursor=pointer]:
+                - text: fighting the system
+                - generic [ref=e305]: id
+              - button "Tell me a success story fun" [ref=e306] [cursor=pointer]:
+                - text: Tell me a success story
+                - generic [ref=e307]: fun
+          - generic [ref=e308]:
+            - generic [ref=e309]:
+              - button "Anonymous treasury pro" [ref=e310] [cursor=pointer]:
+                - text: Anonymous treasury
+                - generic [ref=e311]: pro
+              - button "Simple service business" [ref=e312] [cursor=pointer]
+              - button "Build sustainable fashion" [ref=e313] [cursor=pointer]
+              - button "Build action sports media" [ref=e314] [cursor=pointer]
+              - button "Launch my talent platform" [ref=e315] [cursor=pointer]
+              - button "Clout treasury" [ref=e316] [cursor=pointer]
+              - button "Haunted house collective fun" [ref=e317] [cursor=pointer]:
+                - text: Haunted house collective
+                - generic [ref=e318]: fun
+              - button "Revenue rocket ship bold" [ref=e319] [cursor=pointer]:
+                - text: Revenue rocket ship
+                - generic [ref=e320]: bold
+              - button "Traditional business model" [ref=e321] [cursor=pointer]
+              - button "Compound wealth fund bold" [ref=e322] [cursor=pointer]:
+                - text: Compound wealth fund
+                - generic [ref=e323]: bold
+              - button "Fund my weird art project fun" [ref=e324] [cursor=pointer]:
+                - text: Fund my weird art project
+                - generic [ref=e325]: fun
+              - button "What are people building? popular" [ref=e326] [cursor=pointer]:
+                - text: What are people building?
+                - generic [ref=e327]: popular
+              - button "Random acts of funding fun" [ref=e328] [cursor=pointer]:
+                - text: Random acts of funding
+                - generic [ref=e329]: fun
+              - button "Build a maps alternative" [ref=e330] [cursor=pointer]
+              - button "Build autonomous vehicles bold" [ref=e331] [cursor=pointer]:
+                - text: Build autonomous vehicles
+                - generic [ref=e332]: bold
+              - button "Launch my advertising platform" [ref=e333] [cursor=pointer]
+              - button "Fund my neobank bold" [ref=e334] [cursor=pointer]:
+                - text: Fund my neobank
+                - generic [ref=e335]: bold
+              - button "Fund my protocol bold" [ref=e336] [cursor=pointer]:
+                - text: Fund my protocol
+                - generic [ref=e337]: bold
+              - button "Walk me through a payment demo" [ref=e338] [cursor=pointer]:
+                - text: Walk me through a payment
+                - generic [ref=e339]: demo
+              - button "Show me successful projects popular" [ref=e340] [cursor=pointer]:
+                - text: Show me successful projects
+                - generic [ref=e341]: popular
+              - button "Fund my ML research pro" [ref=e342] [cursor=pointer]:
+                - text: Fund my ML research
+                - generic [ref=e343]: pro
+              - button "Design an economic experiment pro" [ref=e344] [cursor=pointer]:
+                - text: Design an economic experiment
+                - generic [ref=e345]: pro
+              - button "Fund my research popular" [ref=e346] [cursor=pointer]:
+                - text: Fund my research
+                - generic [ref=e347]: popular
+              - button "Community first always" [ref=e348] [cursor=pointer]
+              - button "Run a community fundraiser popular" [ref=e349] [cursor=pointer]:
+                - text: Run a community fundraiser
+                - generic [ref=e350]: popular
+              - button "Create lab-grown products" [ref=e351] [cursor=pointer]
+              - button "Embed JB mechanics in my game pro" [ref=e352] [cursor=pointer]:
+                - text: Embed JB mechanics in my game
+                - generic [ref=e353]: pro
+              - button "Monetize my TikTok content" [ref=e354] [cursor=pointer]
+              - button "Fund my biodiversity project" [ref=e355] [cursor=pointer]
+              - button "Anon dev fund pro" [ref=e356] [cursor=pointer]:
+                - text: Anon dev fund
+                - generic [ref=e357]: pro
+              - button "Fund my fragrance brand" [ref=e358] [cursor=pointer]
+              - button "Touch grass treasury fun" [ref=e359] [cursor=pointer]:
+                - text: Touch grass treasury
+                - generic [ref=e360]: fun
+              - button "Fame machine project" [ref=e361] [cursor=pointer]
+              - button "Launch a crowdfund with deadline" [ref=e362] [cursor=pointer]
+              - button "Build a bridge pro" [ref=e363] [cursor=pointer]:
+                - text: Build a bridge
+                - generic [ref=e364]: pro
+              - button "Create outdoor recreation fun" [ref=e365] [cursor=pointer]:
+                - text: Create outdoor recreation
+                - generic [ref=e366]: fun
+              - button "Build project management" [ref=e367] [cursor=pointer]
+              - button "Support my music venue" [ref=e368] [cursor=pointer]
+              - button "Create a footwear brand" [ref=e369] [cursor=pointer]
+              - button "Launch my skate park" [ref=e370] [cursor=pointer]
+            - generic [ref=e371]:
+              - button "Anonymous treasury pro" [ref=e372] [cursor=pointer]:
+                - text: Anonymous treasury
+                - generic [ref=e373]: pro
+              - button "Simple service business" [ref=e374] [cursor=pointer]
+              - button "Build sustainable fashion" [ref=e375] [cursor=pointer]
+              - button "Build action sports media" [ref=e376] [cursor=pointer]
+              - button "Launch my talent platform" [ref=e377] [cursor=pointer]
+              - button "Clout treasury" [ref=e378] [cursor=pointer]
+              - button "Haunted house collective fun" [ref=e379] [cursor=pointer]:
+                - text: Haunted house collective
+                - generic [ref=e380]: fun
+              - button "Revenue rocket ship bold" [ref=e381] [cursor=pointer]:
+                - text: Revenue rocket ship
+                - generic [ref=e382]: bold
+              - button "Traditional business model" [ref=e383] [cursor=pointer]
+              - button "Compound wealth fund bold" [ref=e384] [cursor=pointer]:
+                - text: Compound wealth fund
+                - generic [ref=e385]: bold
+              - button "Fund my weird art project fun" [ref=e386] [cursor=pointer]:
+                - text: Fund my weird art project
+                - generic [ref=e387]: fun
+              - button "What are people building? popular" [ref=e388] [cursor=pointer]:
+                - text: What are people building?
+                - generic [ref=e389]: popular
+              - button "Random acts of funding fun" [ref=e390] [cursor=pointer]:
+                - text: Random acts of funding
+                - generic [ref=e391]: fun
+              - button "Build a maps alternative" [ref=e392] [cursor=pointer]
+              - button "Build autonomous vehicles bold" [ref=e393] [cursor=pointer]:
+                - text: Build autonomous vehicles
+                - generic [ref=e394]: bold
+              - button "Launch my advertising platform" [ref=e395] [cursor=pointer]
+              - button "Fund my neobank bold" [ref=e396] [cursor=pointer]:
+                - text: Fund my neobank
+                - generic [ref=e397]: bold
+              - button "Fund my protocol bold" [ref=e398] [cursor=pointer]:
+                - text: Fund my protocol
+                - generic [ref=e399]: bold
+              - button "Walk me through a payment demo" [ref=e400] [cursor=pointer]:
+                - text: Walk me through a payment
+                - generic [ref=e401]: demo
+              - button "Show me successful projects popular" [ref=e402] [cursor=pointer]:
+                - text: Show me successful projects
+                - generic [ref=e403]: popular
+              - button "Fund my ML research pro" [ref=e404] [cursor=pointer]:
+                - text: Fund my ML research
+                - generic [ref=e405]: pro
+              - button "Design an economic experiment pro" [ref=e406] [cursor=pointer]:
+                - text: Design an economic experiment
+                - generic [ref=e407]: pro
+              - button "Fund my research popular" [ref=e408] [cursor=pointer]:
+                - text: Fund my research
+                - generic [ref=e409]: popular
+              - button "Community first always" [ref=e410] [cursor=pointer]
+              - button "Run a community fundraiser popular" [ref=e411] [cursor=pointer]:
+                - text: Run a community fundraiser
+                - generic [ref=e412]: popular
+              - button "Create lab-grown products" [ref=e413] [cursor=pointer]
+              - button "Embed JB mechanics in my game pro" [ref=e414] [cursor=pointer]:
+                - text: Embed JB mechanics in my game
+                - generic [ref=e415]: pro
+              - button "Monetize my TikTok content" [ref=e416] [cursor=pointer]
+              - button "Fund my biodiversity project" [ref=e417] [cursor=pointer]
+              - button "Anon dev fund pro" [ref=e418] [cursor=pointer]:
+                - text: Anon dev fund
+                - generic [ref=e419]: pro
+              - button "Fund my fragrance brand" [ref=e420] [cursor=pointer]
+              - button "Touch grass treasury fun" [ref=e421] [cursor=pointer]:
+                - text: Touch grass treasury
+                - generic [ref=e422]: fun
+              - button "Fame machine project" [ref=e423] [cursor=pointer]
+              - button "Launch a crowdfund with deadline" [ref=e424] [cursor=pointer]
+              - button "Build a bridge pro" [ref=e425] [cursor=pointer]:
+                - text: Build a bridge
+                - generic [ref=e426]: pro
+              - button "Create outdoor recreation fun" [ref=e427] [cursor=pointer]:
+                - text: Create outdoor recreation
+                - generic [ref=e428]: fun
+              - button "Build project management" [ref=e429] [cursor=pointer]
+              - button "Support my music venue" [ref=e430] [cursor=pointer]
+              - button "Create a footwear brand" [ref=e431] [cursor=pointer]
+              - button "Launch my skate park" [ref=e432] [cursor=pointer]
+            - generic [ref=e433]:
+              - button "Anonymous treasury pro" [ref=e434] [cursor=pointer]:
+                - text: Anonymous treasury
+                - generic [ref=e435]: pro
+              - button "Simple service business" [ref=e436] [cursor=pointer]
+              - button "Build sustainable fashion" [ref=e437] [cursor=pointer]
+              - button "Build action sports media" [ref=e438] [cursor=pointer]
+              - button "Launch my talent platform" [ref=e439] [cursor=pointer]
+              - button "Clout treasury" [ref=e440] [cursor=pointer]
+              - button "Haunted house collective fun" [ref=e441] [cursor=pointer]:
+                - text: Haunted house collective
+                - generic [ref=e442]: fun
+              - button "Revenue rocket ship bold" [ref=e443] [cursor=pointer]:
+                - text: Revenue rocket ship
+                - generic [ref=e444]: bold
+              - button "Traditional business model" [ref=e445] [cursor=pointer]
+              - button "Compound wealth fund bold" [ref=e446] [cursor=pointer]:
+                - text: Compound wealth fund
+                - generic [ref=e447]: bold
+              - button "Fund my weird art project fun" [ref=e448] [cursor=pointer]:
+                - text: Fund my weird art project
+                - generic [ref=e449]: fun
+              - button "What are people building? popular" [ref=e450] [cursor=pointer]:
+                - text: What are people building?
+                - generic [ref=e451]: popular
+              - button "Random acts of funding fun" [ref=e452] [cursor=pointer]:
+                - text: Random acts of funding
+                - generic [ref=e453]: fun
+              - button "Build a maps alternative" [ref=e454] [cursor=pointer]
+              - button "Build autonomous vehicles bold" [ref=e455] [cursor=pointer]:
+                - text: Build autonomous vehicles
+                - generic [ref=e456]: bold
+              - button "Launch my advertising platform" [ref=e457] [cursor=pointer]
+              - button "Fund my neobank bold" [ref=e458] [cursor=pointer]:
+                - text: Fund my neobank
+                - generic [ref=e459]: bold
+              - button "Fund my protocol bold" [ref=e460] [cursor=pointer]:
+                - text: Fund my protocol
+                - generic [ref=e461]: bold
+              - button "Walk me through a payment demo" [ref=e462] [cursor=pointer]:
+                - text: Walk me through a payment
+                - generic [ref=e463]: demo
+              - button "Show me successful projects popular" [ref=e464] [cursor=pointer]:
+                - text: Show me successful projects
+                - generic [ref=e465]: popular
+              - button "Fund my ML research pro" [ref=e466] [cursor=pointer]:
+                - text: Fund my ML research
+                - generic [ref=e467]: pro
+              - button "Design an economic experiment pro" [ref=e468] [cursor=pointer]:
+                - text: Design an economic experiment
+                - generic [ref=e469]: pro
+              - button "Fund my research popular" [ref=e470] [cursor=pointer]:
+                - text: Fund my research
+                - generic [ref=e471]: popular
+              - button "Community first always" [ref=e472] [cursor=pointer]
+              - button "Run a community fundraiser popular" [ref=e473] [cursor=pointer]:
+                - text: Run a community fundraiser
+                - generic [ref=e474]: popular
+              - button "Create lab-grown products" [ref=e475] [cursor=pointer]
+              - button "Embed JB mechanics in my game pro" [ref=e476] [cursor=pointer]:
+                - text: Embed JB mechanics in my game
+                - generic [ref=e477]: pro
+              - button "Monetize my TikTok content" [ref=e478] [cursor=pointer]
+              - button "Fund my biodiversity project" [ref=e479] [cursor=pointer]
+              - button "Anon dev fund pro" [ref=e480] [cursor=pointer]:
+                - text: Anon dev fund
+                - generic [ref=e481]: pro
+              - button "Fund my fragrance brand" [ref=e482] [cursor=pointer]
+              - button "Touch grass treasury fun" [ref=e483] [cursor=pointer]:
+                - text: Touch grass treasury
+                - generic [ref=e484]: fun
+              - button "Fame machine project" [ref=e485] [cursor=pointer]
+              - button "Launch a crowdfund with deadline" [ref=e486] [cursor=pointer]
+              - button "Build a bridge pro" [ref=e487] [cursor=pointer]:
+                - text: Build a bridge
+                - generic [ref=e488]: pro
+              - button "Create outdoor recreation fun" [ref=e489] [cursor=pointer]:
+                - text: Create outdoor recreation
+                - generic [ref=e490]: fun
+              - button "Build project management" [ref=e491] [cursor=pointer]
+              - button "Support my music venue" [ref=e492] [cursor=pointer]
+              - button "Create a footwear brand" [ref=e493] [cursor=pointer]
+              - button "Launch my skate park" [ref=e494] [cursor=pointer]
+            - generic [ref=e495]:
+              - button "Anonymous treasury pro" [ref=e496] [cursor=pointer]:
+                - text: Anonymous treasury
+                - generic [ref=e497]: pro
+              - button "Simple service business" [ref=e498] [cursor=pointer]
+              - button "Build sustainable fashion" [ref=e499] [cursor=pointer]
+              - button "Build action sports media" [ref=e500] [cursor=pointer]
+              - button "Launch my talent platform" [ref=e501] [cursor=pointer]
+              - button "Clout treasury" [ref=e502] [cursor=pointer]
+              - button "Haunted house collective fun" [ref=e503] [cursor=pointer]:
+                - text: Haunted house collective
+                - generic [ref=e504]: fun
+              - button "Revenue rocket ship bold" [ref=e505] [cursor=pointer]:
+                - text: Revenue rocket ship
+                - generic [ref=e506]: bold
+              - button "Traditional business model" [ref=e507] [cursor=pointer]
+              - button "Compound wealth fund bold" [ref=e508] [cursor=pointer]:
+                - text: Compound wealth fund
+                - generic [ref=e509]: bold
+              - button "Fund my weird art project fun" [ref=e510] [cursor=pointer]:
+                - text: Fund my weird art project
+                - generic [ref=e511]: fun
+              - button "What are people building? popular" [ref=e512] [cursor=pointer]:
+                - text: What are people building?
+                - generic [ref=e513]: popular
+              - button "Random acts of funding fun" [ref=e514] [cursor=pointer]:
+                - text: Random acts of funding
+                - generic [ref=e515]: fun
+              - button "Build a maps alternative" [ref=e516] [cursor=pointer]
+              - button "Build autonomous vehicles bold" [ref=e517] [cursor=pointer]:
+                - text: Build autonomous vehicles
+                - generic [ref=e518]: bold
+              - button "Launch my advertising platform" [ref=e519] [cursor=pointer]
+              - button "Fund my neobank bold" [ref=e520] [cursor=pointer]:
+                - text: Fund my neobank
+                - generic [ref=e521]: bold
+              - button "Fund my protocol bold" [ref=e522] [cursor=pointer]:
+                - text: Fund my protocol
+                - generic [ref=e523]: bold
+              - button "Walk me through a payment demo" [ref=e524] [cursor=pointer]:
+                - text: Walk me through a payment
+                - generic [ref=e525]: demo
+              - button "Show me successful projects popular" [ref=e526] [cursor=pointer]:
+                - text: Show me successful projects
+                - generic [ref=e527]: popular
+              - button "Fund my ML research pro" [ref=e528] [cursor=pointer]:
+                - text: Fund my ML research
+                - generic [ref=e529]: pro
+              - button "Design an economic experiment pro" [ref=e530] [cursor=pointer]:
+                - text: Design an economic experiment
+                - generic [ref=e531]: pro
+              - button "Fund my research popular" [ref=e532] [cursor=pointer]:
+                - text: Fund my research
+                - generic [ref=e533]: popular
+              - button "Community first always" [ref=e534] [cursor=pointer]
+              - button "Run a community fundraiser popular" [ref=e535] [cursor=pointer]:
+                - text: Run a community fundraiser
+                - generic [ref=e536]: popular
+              - button "Create lab-grown products" [ref=e537] [cursor=pointer]
+              - button "Embed JB mechanics in my game pro" [ref=e538] [cursor=pointer]:
+                - text: Embed JB mechanics in my game
+                - generic [ref=e539]: pro
+              - button "Monetize my TikTok content" [ref=e540] [cursor=pointer]
+              - button "Fund my biodiversity project" [ref=e541] [cursor=pointer]
+              - button "Anon dev fund pro" [ref=e542] [cursor=pointer]:
+                - text: Anon dev fund
+                - generic [ref=e543]: pro
+              - button "Fund my fragrance brand" [ref=e544] [cursor=pointer]
+              - button "Touch grass treasury fun" [ref=e545] [cursor=pointer]:
+                - text: Touch grass treasury
+                - generic [ref=e546]: fun
+              - button "Fame machine project" [ref=e547] [cursor=pointer]
+              - button "Launch a crowdfund with deadline" [ref=e548] [cursor=pointer]
+              - button "Build a bridge pro" [ref=e549] [cursor=pointer]:
+                - text: Build a bridge
+                - generic [ref=e550]: pro
+              - button "Create outdoor recreation fun" [ref=e551] [cursor=pointer]:
+                - text: Create outdoor recreation
+                - generic [ref=e552]: fun
+              - button "Build project management" [ref=e553] [cursor=pointer]
+              - button "Support my music venue" [ref=e554] [cursor=pointer]
+              - button "Create a footwear brand" [ref=e555] [cursor=pointer]
+              - button "Launch my skate park" [ref=e556] [cursor=pointer]
+            - generic [ref=e557]:
+              - button "Anonymous treasury pro" [ref=e558] [cursor=pointer]:
+                - text: Anonymous treasury
+                - generic [ref=e559]: pro
+              - button "Simple service business" [ref=e560] [cursor=pointer]
+              - button "Build sustainable fashion" [ref=e561] [cursor=pointer]
+              - button "Build action sports media" [ref=e562] [cursor=pointer]
+              - button "Launch my talent platform" [ref=e563] [cursor=pointer]
+              - button "Clout treasury" [ref=e564] [cursor=pointer]
+              - button "Haunted house collective fun" [ref=e565] [cursor=pointer]:
+                - text: Haunted house collective
+                - generic [ref=e566]: fun
+              - button "Revenue rocket ship bold" [ref=e567] [cursor=pointer]:
+                - text: Revenue rocket ship
+                - generic [ref=e568]: bold
+              - button "Traditional business model" [ref=e569] [cursor=pointer]
+              - button "Compound wealth fund bold" [ref=e570] [cursor=pointer]:
+                - text: Compound wealth fund
+                - generic [ref=e571]: bold
+              - button "Fund my weird art project fun" [ref=e572] [cursor=pointer]:
+                - text: Fund my weird art project
+                - generic [ref=e573]: fun
+              - button "What are people building? popular" [ref=e574] [cursor=pointer]:
+                - text: What are people building?
+                - generic [ref=e575]: popular
+              - button "Random acts of funding fun" [ref=e576] [cursor=pointer]:
+                - text: Random acts of funding
+                - generic [ref=e577]: fun
+              - button "Build a maps alternative" [ref=e578] [cursor=pointer]
+              - button "Build autonomous vehicles bold" [ref=e579] [cursor=pointer]:
+                - text: Build autonomous vehicles
+                - generic [ref=e580]: bold
+              - button "Launch my advertising platform" [ref=e581] [cursor=pointer]
+              - button "Fund my neobank bold" [ref=e582] [cursor=pointer]:
+                - text: Fund my neobank
+                - generic [ref=e583]: bold
+              - button "Fund my protocol bold" [ref=e584] [cursor=pointer]:
+                - text: Fund my protocol
+                - generic [ref=e585]: bold
+              - button "Walk me through a payment demo" [ref=e586] [cursor=pointer]:
+                - text: Walk me through a payment
+                - generic [ref=e587]: demo
+              - button "Show me successful projects popular" [ref=e588] [cursor=pointer]:
+                - text: Show me successful projects
+                - generic [ref=e589]: popular
+              - button "Fund my ML research pro" [ref=e590] [cursor=pointer]:
+                - text: Fund my ML research
+                - generic [ref=e591]: pro
+              - button "Design an economic experiment pro" [ref=e592] [cursor=pointer]:
+                - text: Design an economic experiment
+                - generic [ref=e593]: pro
+              - button "Fund my research popular" [ref=e594] [cursor=pointer]:
+                - text: Fund my research
+                - generic [ref=e595]: popular
+              - button "Community first always" [ref=e596] [cursor=pointer]
+              - button "Run a community fundraiser popular" [ref=e597] [cursor=pointer]:
+                - text: Run a community fundraiser
+                - generic [ref=e598]: popular
+              - button "Create lab-grown products" [ref=e599] [cursor=pointer]
+              - button "Embed JB mechanics in my game pro" [ref=e600] [cursor=pointer]:
+                - text: Embed JB mechanics in my game
+                - generic [ref=e601]: pro
+              - button "Monetize my TikTok content" [ref=e602] [cursor=pointer]
+              - button "Fund my biodiversity project" [ref=e603] [cursor=pointer]
+              - button "Anon dev fund pro" [ref=e604] [cursor=pointer]:
+                - text: Anon dev fund
+                - generic [ref=e605]: pro
+              - button "Fund my fragrance brand" [ref=e606] [cursor=pointer]
+              - button "Touch grass treasury fun" [ref=e607] [cursor=pointer]:
+                - text: Touch grass treasury
+                - generic [ref=e608]: fun
+              - button "Fame machine project" [ref=e609] [cursor=pointer]
+              - button "Launch a crowdfund with deadline" [ref=e610] [cursor=pointer]
+              - button "Build a bridge pro" [ref=e611] [cursor=pointer]:
+                - text: Build a bridge
+                - generic [ref=e612]: pro
+              - button "Create outdoor recreation fun" [ref=e613] [cursor=pointer]:
+                - text: Create outdoor recreation
+                - generic [ref=e614]: fun
+              - button "Build project management" [ref=e615] [cursor=pointer]
+              - button "Support my music venue" [ref=e616] [cursor=pointer]
+              - button "Create a footwear brand" [ref=e617] [cursor=pointer]
+              - button "Launch my skate park" [ref=e618] [cursor=pointer]
+          - generic [ref=e619]:
+            - generic [ref=e620]:
+              - button "Create patient support" [ref=e621] [cursor=pointer]
+              - button "Fund my container platform pro" [ref=e622] [cursor=pointer]:
+                - text: Fund my container platform
+                - generic [ref=e623]: pro
+              - button "Autonomous collective pro" [ref=e624] [cursor=pointer]:
+                - text: Autonomous collective
+                - generic [ref=e625]: pro
+              - button "Start a free store" [ref=e626] [cursor=pointer]
+              - button "Who's doing it right? fun" [ref=e627] [cursor=pointer]:
+                - text: Who's doing it right?
+                - generic [ref=e628]: fun
+              - button "Tattoo parlor fund" [ref=e629] [cursor=pointer]
+              - button "Money that works while I sleep bold" [ref=e630] [cursor=pointer]:
+                - text: Money that works while I sleep
+                - generic [ref=e631]: bold
+              - button "Privacy-preserving treasury pro" [ref=e632] [cursor=pointer]:
+                - text: Privacy-preserving treasury
+                - generic [ref=e633]: pro
+              - button "Main character energy fund" [ref=e634] [cursor=pointer]
+              - button "Start a fan club popular" [ref=e635] [cursor=pointer]:
+                - text: Start a fan club
+                - generic [ref=e636]: popular
+              - button "API-driven treasury pro" [ref=e637] [cursor=pointer]:
+                - text: API-driven treasury
+                - generic [ref=e638]: pro
+              - button "Fund my data company" [ref=e639] [cursor=pointer]
+              - button "Launch my token pro" [ref=e640] [cursor=pointer]:
+                - text: Launch my token
+                - generic [ref=e641]: pro
+              - button "Build a peer learning membership" [ref=e642] [cursor=pointer]
+              - button "Build a philanthropy dashboard pro" [ref=e643] [cursor=pointer]:
+                - text: Build a philanthropy dashboard
+                - generic [ref=e644]: pro
+              - button "Wealth accumulation engine bold" [ref=e645] [cursor=pointer]:
+                - text: Wealth accumulation engine
+                - generic [ref=e646]: bold
+              - button "Find projects by category" [ref=e647] [cursor=pointer]
+              - button "How do I share revenue with backers? pro" [ref=e648] [cursor=pointer]:
+                - text: How do I share revenue with backers?
+                - generic [ref=e649]: pro
+              - button "Green space treasury" [ref=e650] [cursor=pointer]
+              - button "Build a cultural center" [ref=e651] [cursor=pointer]
+              - button "Build mental health app popular" [ref=e652] [cursor=pointer]:
+                - text: Build mental health app
+                - generic [ref=e653]: popular
+              - button "Projects on Arbitrum" [ref=e654] [cursor=pointer]
+              - button "Fund my compliance tools pro" [ref=e655] [cursor=pointer]:
+                - text: Fund my compliance tools
+                - generic [ref=e656]: pro
+              - button "No meetings required" [ref=e657] [cursor=pointer]
+              - button "Launch my music project" [ref=e658] [cursor=pointer]
+              - button "Fund my streaming service fun" [ref=e659] [cursor=pointer]:
+                - text: Fund my streaming service
+                - generic [ref=e660]: fun
+              - button "Create luxury goods market" [ref=e661] [cursor=pointer]
+              - button "Create a video platform" [ref=e662] [cursor=pointer]
+              - button "Trustless and faceless pro" [ref=e663] [cursor=pointer]:
+                - text: Trustless and faceless
+                - generic [ref=e664]: pro
+              - button "Build a creator collective" [ref=e665] [cursor=pointer]
+              - button "Token go up treasury fun" [ref=e666] [cursor=pointer]:
+                - text: Token go up treasury
+                - generic [ref=e667]: fun
+              - button "Local park improvement" [ref=e668] [cursor=pointer]
+              - button "Launch my pirate ship bar fun" [ref=e669] [cursor=pointer]:
+                - text: Launch my pirate ship bar
+                - generic [ref=e670]: fun
+              - button "Show me Base projects demo" [ref=e671] [cursor=pointer]:
+                - text: Show me Base projects
+                - generic [ref=e672]: demo
+              - button "Fund my book" [ref=e673] [cursor=pointer]
+              - button "Support my mentorship program" [ref=e674] [cursor=pointer]
+              - button "Influencer launch fund" [ref=e675] [cursor=pointer]
+              - button "Fund world domination bold" [ref=e676] [cursor=pointer]:
+                - text: Fund world domination
+                - generic [ref=e677]: bold
+              - button "Create circular economy bold" [ref=e678] [cursor=pointer]:
+                - text: Create circular economy
+                - generic [ref=e679]: bold
+              - button "Launch my homeless solution" [ref=e680] [cursor=pointer]
+            - generic [ref=e681]:
+              - button "Create patient support" [ref=e682] [cursor=pointer]
+              - button "Fund my container platform pro" [ref=e683] [cursor=pointer]:
+                - text: Fund my container platform
+                - generic [ref=e684]: pro
+              - button "Autonomous collective pro" [ref=e685] [cursor=pointer]:
+                - text: Autonomous collective
+                - generic [ref=e686]: pro
+              - button "Start a free store" [ref=e687] [cursor=pointer]
+              - button "Who's doing it right? fun" [ref=e688] [cursor=pointer]:
+                - text: Who's doing it right?
+                - generic [ref=e689]: fun
+              - button "Tattoo parlor fund" [ref=e690] [cursor=pointer]
+              - button "Money that works while I sleep bold" [ref=e691] [cursor=pointer]:
+                - text: Money that works while I sleep
+                - generic [ref=e692]: bold
+              - button "Privacy-preserving treasury pro" [ref=e693] [cursor=pointer]:
+                - text: Privacy-preserving treasury
+                - generic [ref=e694]: pro
+              - button "Main character energy fund" [ref=e695] [cursor=pointer]
+              - button "Start a fan club popular" [ref=e696] [cursor=pointer]:
+                - text: Start a fan club
+                - generic [ref=e697]: popular
+              - button "API-driven treasury pro" [ref=e698] [cursor=pointer]:
+                - text: API-driven treasury
+                - generic [ref=e699]: pro
+              - button "Fund my data company" [ref=e700] [cursor=pointer]
+              - button "Launch my token pro" [ref=e701] [cursor=pointer]:
+                - text: Launch my token
+                - generic [ref=e702]: pro
+              - button "Build a peer learning membership" [ref=e703] [cursor=pointer]
+              - button "Build a philanthropy dashboard pro" [ref=e704] [cursor=pointer]:
+                - text: Build a philanthropy dashboard
+                - generic [ref=e705]: pro
+              - button "Wealth accumulation engine bold" [ref=e706] [cursor=pointer]:
+                - text: Wealth accumulation engine
+                - generic [ref=e707]: bold
+              - button "Find projects by category" [ref=e708] [cursor=pointer]
+              - button "How do I share revenue with backers? pro" [ref=e709] [cursor=pointer]:
+                - text: How do I share revenue with backers?
+                - generic [ref=e710]: pro
+              - button "Green space treasury" [ref=e711] [cursor=pointer]
+              - button "Build a cultural center" [ref=e712] [cursor=pointer]
+              - button "Build mental health app popular" [ref=e713] [cursor=pointer]:
+                - text: Build mental health app
+                - generic [ref=e714]: popular
+              - button "Projects on Arbitrum" [ref=e715] [cursor=pointer]
+              - button "Fund my compliance tools pro" [ref=e716] [cursor=pointer]:
+                - text: Fund my compliance tools
+                - generic [ref=e717]: pro
+              - button "No meetings required" [ref=e718] [cursor=pointer]
+              - button "Launch my music project" [ref=e719] [cursor=pointer]
+              - button "Fund my streaming service fun" [ref=e720] [cursor=pointer]:
+                - text: Fund my streaming service
+                - generic [ref=e721]: fun
+              - button "Create luxury goods market" [ref=e722] [cursor=pointer]
+              - button "Create a video platform" [ref=e723] [cursor=pointer]
+              - button "Trustless and faceless pro" [ref=e724] [cursor=pointer]:
+                - text: Trustless and faceless
+                - generic [ref=e725]: pro
+              - button "Build a creator collective" [ref=e726] [cursor=pointer]
+              - button "Token go up treasury fun" [ref=e727] [cursor=pointer]:
+                - text: Token go up treasury
+                - generic [ref=e728]: fun
+              - button "Local park improvement" [ref=e729] [cursor=pointer]
+              - button "Launch my pirate ship bar fun" [ref=e730] [cursor=pointer]:
+                - text: Launch my pirate ship bar
+                - generic [ref=e731]: fun
+              - button "Show me Base projects demo" [ref=e732] [cursor=pointer]:
+                - text: Show me Base projects
+                - generic [ref=e733]: demo
+              - button "Fund my book" [ref=e734] [cursor=pointer]
+              - button "Support my mentorship program" [ref=e735] [cursor=pointer]
+              - button "Influencer launch fund" [ref=e736] [cursor=pointer]
+              - button "Fund world domination bold" [ref=e737] [cursor=pointer]:
+                - text: Fund world domination
+                - generic [ref=e738]: bold
+              - button "Create circular economy bold" [ref=e739] [cursor=pointer]:
+                - text: Create circular economy
+                - generic [ref=e740]: bold
+              - button "Launch my homeless solution" [ref=e741] [cursor=pointer]
+            - generic [ref=e742]:
+              - button "Create patient support" [ref=e743] [cursor=pointer]
+              - button "Fund my container platform pro" [ref=e744] [cursor=pointer]:
+                - text: Fund my container platform
+                - generic [ref=e745]: pro
+              - button "Autonomous collective pro" [ref=e746] [cursor=pointer]:
+                - text: Autonomous collective
+                - generic [ref=e747]: pro
+              - button "Start a free store" [ref=e748] [cursor=pointer]
+              - button "Who's doing it right? fun" [ref=e749] [cursor=pointer]:
+                - text: Who's doing it right?
+                - generic [ref=e750]: fun
+              - button "Tattoo parlor fund" [ref=e751] [cursor=pointer]
+              - button "Money that works while I sleep bold" [ref=e752] [cursor=pointer]:
+                - text: Money that works while I sleep
+                - generic [ref=e753]: bold
+              - button "Privacy-preserving treasury pro" [ref=e754] [cursor=pointer]:
+                - text: Privacy-preserving treasury
+                - generic [ref=e755]: pro
+              - button "Main character energy fund" [ref=e756] [cursor=pointer]
+              - button "Start a fan club popular" [ref=e757] [cursor=pointer]:
+                - text: Start a fan club
+                - generic [ref=e758]: popular
+              - button "API-driven treasury pro" [ref=e759] [cursor=pointer]:
+                - text: API-driven treasury
+                - generic [ref=e760]: pro
+              - button "Fund my data company" [ref=e761] [cursor=pointer]
+              - button "Launch my token pro" [ref=e762] [cursor=pointer]:
+                - text: Launch my token
+                - generic [ref=e763]: pro
+              - button "Build a peer learning membership" [ref=e764] [cursor=pointer]
+              - button "Build a philanthropy dashboard pro" [ref=e765] [cursor=pointer]:
+                - text: Build a philanthropy dashboard
+                - generic [ref=e766]: pro
+              - button "Wealth accumulation engine bold" [ref=e767] [cursor=pointer]:
+                - text: Wealth accumulation engine
+                - generic [ref=e768]: bold
+              - button "Find projects by category" [ref=e769] [cursor=pointer]
+              - button "How do I share revenue with backers? pro" [ref=e770] [cursor=pointer]:
+                - text: How do I share revenue with backers?
+                - generic [ref=e771]: pro
+              - button "Green space treasury" [ref=e772] [cursor=pointer]
+              - button "Build a cultural center" [ref=e773] [cursor=pointer]
+              - button "Build mental health app popular" [ref=e774] [cursor=pointer]:
+                - text: Build mental health app
+                - generic [ref=e775]: popular
+              - button "Projects on Arbitrum" [ref=e776] [cursor=pointer]
+              - button "Fund my compliance tools pro" [ref=e777] [cursor=pointer]:
+                - text: Fund my compliance tools
+                - generic [ref=e778]: pro
+              - button "No meetings required" [ref=e779] [cursor=pointer]
+              - button "Launch my music project" [ref=e780] [cursor=pointer]
+              - button "Fund my streaming service fun" [ref=e781] [cursor=pointer]:
+                - text: Fund my streaming service
+                - generic [ref=e782]: fun
+              - button "Create luxury goods market" [ref=e783] [cursor=pointer]
+              - button "Create a video platform" [ref=e784] [cursor=pointer]
+              - button "Trustless and faceless pro" [ref=e785] [cursor=pointer]:
+                - text: Trustless and faceless
+                - generic [ref=e786]: pro
+              - button "Build a creator collective" [ref=e787] [cursor=pointer]
+              - button "Token go up treasury fun" [ref=e788] [cursor=pointer]:
+                - text: Token go up treasury
+                - generic [ref=e789]: fun
+              - button "Local park improvement" [ref=e790] [cursor=pointer]
+              - button "Launch my pirate ship bar fun" [ref=e791] [cursor=pointer]:
+                - text: Launch my pirate ship bar
+                - generic [ref=e792]: fun
+              - button "Show me Base projects demo" [ref=e793] [cursor=pointer]:
+                - text: Show me Base projects
+                - generic [ref=e794]: demo
+              - button "Fund my book" [ref=e795] [cursor=pointer]
+              - button "Support my mentorship program" [ref=e796] [cursor=pointer]
+              - button "Influencer launch fund" [ref=e797] [cursor=pointer]
+              - button "Fund world domination bold" [ref=e798] [cursor=pointer]:
+                - text: Fund world domination
+                - generic [ref=e799]: bold
+              - button "Create circular economy bold" [ref=e800] [cursor=pointer]:
+                - text: Create circular economy
+                - generic [ref=e801]: bold
+              - button "Launch my homeless solution" [ref=e802] [cursor=pointer]
+            - generic [ref=e803]:
+              - button "Create patient support" [ref=e804] [cursor=pointer]
+              - button "Fund my container platform pro" [ref=e805] [cursor=pointer]:
+                - text: Fund my container platform
+                - generic [ref=e806]: pro
+              - button "Autonomous collective pro" [ref=e807] [cursor=pointer]:
+                - text: Autonomous collective
+                - generic [ref=e808]: pro
+              - button "Start a free store" [ref=e809] [cursor=pointer]
+              - button "Who's doing it right? fun" [ref=e810] [cursor=pointer]:
+                - text: Who's doing it right?
+                - generic [ref=e811]: fun
+              - button "Tattoo parlor fund" [ref=e812] [cursor=pointer]
+              - button "Money that works while I sleep bold" [ref=e813] [cursor=pointer]:
+                - text: Money that works while I sleep
+                - generic [ref=e814]: bold
+              - button "Privacy-preserving treasury pro" [ref=e815] [cursor=pointer]:
+                - text: Privacy-preserving treasury
+                - generic [ref=e816]: pro
+              - button "Main character energy fund" [ref=e817] [cursor=pointer]
+              - button "Start a fan club popular" [ref=e818] [cursor=pointer]:
+                - text: Start a fan club
+                - generic [ref=e819]: popular
+              - button "API-driven treasury pro" [ref=e820] [cursor=pointer]:
+                - text: API-driven treasury
+                - generic [ref=e821]: pro
+              - button "Fund my data company" [ref=e822] [cursor=pointer]
+              - button "Launch my token pro" [ref=e823] [cursor=pointer]:
+                - text: Launch my token
+                - generic [ref=e824]: pro
+              - button "Build a peer learning membership" [ref=e825] [cursor=pointer]
+              - button "Build a philanthropy dashboard pro" [ref=e826] [cursor=pointer]:
+                - text: Build a philanthropy dashboard
+                - generic [ref=e827]: pro
+              - button "Wealth accumulation engine bold" [ref=e828] [cursor=pointer]:
+                - text: Wealth accumulation engine
+                - generic [ref=e829]: bold
+              - button "Find projects by category" [ref=e830] [cursor=pointer]
+              - button "How do I share revenue with backers? pro" [ref=e831] [cursor=pointer]:
+                - text: How do I share revenue with backers?
+                - generic [ref=e832]: pro
+              - button "Green space treasury" [ref=e833] [cursor=pointer]
+              - button "Build a cultural center" [ref=e834] [cursor=pointer]
+              - button "Build mental health app popular" [ref=e835] [cursor=pointer]:
+                - text: Build mental health app
+                - generic [ref=e836]: popular
+              - button "Projects on Arbitrum" [ref=e837] [cursor=pointer]
+              - button "Fund my compliance tools pro" [ref=e838] [cursor=pointer]:
+                - text: Fund my compliance tools
+                - generic [ref=e839]: pro
+              - button "No meetings required" [ref=e840] [cursor=pointer]
+              - button "Launch my music project" [ref=e841] [cursor=pointer]
+              - button "Fund my streaming service fun" [ref=e842] [cursor=pointer]:
+                - text: Fund my streaming service
+                - generic [ref=e843]: fun
+              - button "Create luxury goods market" [ref=e844] [cursor=pointer]
+              - button "Create a video platform" [ref=e845] [cursor=pointer]
+              - button "Trustless and faceless pro" [ref=e846] [cursor=pointer]:
+                - text: Trustless and faceless
+                - generic [ref=e847]: pro
+              - button "Build a creator collective" [ref=e848] [cursor=pointer]
+              - button "Token go up treasury fun" [ref=e849] [cursor=pointer]:
+                - text: Token go up treasury
+                - generic [ref=e850]: fun
+              - button "Local park improvement" [ref=e851] [cursor=pointer]
+              - button "Launch my pirate ship bar fun" [ref=e852] [cursor=pointer]:
+                - text: Launch my pirate ship bar
+                - generic [ref=e853]: fun
+              - button "Show me Base projects demo" [ref=e854] [cursor=pointer]:
+                - text: Show me Base projects
+                - generic [ref=e855]: demo
+              - button "Fund my book" [ref=e856] [cursor=pointer]
+              - button "Support my mentorship program" [ref=e857] [cursor=pointer]
+              - button "Influencer launch fund" [ref=e858] [cursor=pointer]
+              - button "Fund world domination bold" [ref=e859] [cursor=pointer]:
+                - text: Fund world domination
+                - generic [ref=e860]: bold
+              - button "Create circular economy bold" [ref=e861] [cursor=pointer]:
+                - text: Create circular economy
+                - generic [ref=e862]: bold
+              - button "Launch my homeless solution" [ref=e863] [cursor=pointer]
+            - generic [ref=e864]:
+              - button "Create patient support" [ref=e865] [cursor=pointer]
+              - button "Fund my container platform pro" [ref=e866] [cursor=pointer]:
+                - text: Fund my container platform
+                - generic [ref=e867]: pro
+              - button "Autonomous collective pro" [ref=e868] [cursor=pointer]:
+                - text: Autonomous collective
+                - generic [ref=e869]: pro
+              - button "Start a free store" [ref=e870] [cursor=pointer]
+              - button "Who's doing it right? fun" [ref=e871] [cursor=pointer]:
+                - text: Who's doing it right?
+                - generic [ref=e872]: fun
+              - button "Tattoo parlor fund" [ref=e873] [cursor=pointer]
+              - button "Money that works while I sleep bold" [ref=e874] [cursor=pointer]:
+                - text: Money that works while I sleep
+                - generic [ref=e875]: bold
+              - button "Privacy-preserving treasury pro" [ref=e876] [cursor=pointer]:
+                - text: Privacy-preserving treasury
+                - generic [ref=e877]: pro
+              - button "Main character energy fund" [ref=e878] [cursor=pointer]
+              - button "Start a fan club popular" [ref=e879] [cursor=pointer]:
+                - text: Start a fan club
+                - generic [ref=e880]: popular
+              - button "API-driven treasury pro" [ref=e881] [cursor=pointer]:
+                - text: API-driven treasury
+                - generic [ref=e882]: pro
+              - button "Fund my data company" [ref=e883] [cursor=pointer]
+              - button "Launch my token pro" [ref=e884] [cursor=pointer]:
+                - text: Launch my token
+                - generic [ref=e885]: pro
+              - button "Build a peer learning membership" [ref=e886] [cursor=pointer]
+              - button "Build a philanthropy dashboard pro" [ref=e887] [cursor=pointer]:
+                - text: Build a philanthropy dashboard
+                - generic [ref=e888]: pro
+              - button "Wealth accumulation engine bold" [ref=e889] [cursor=pointer]:
+                - text: Wealth accumulation engine
+                - generic [ref=e890]: bold
+              - button "Find projects by category" [ref=e891] [cursor=pointer]
+              - button "How do I share revenue with backers? pro" [ref=e892] [cursor=pointer]:
+                - text: How do I share revenue with backers?
+                - generic [ref=e893]: pro
+              - button "Green space treasury" [ref=e894] [cursor=pointer]
+              - button "Build a cultural center" [ref=e895] [cursor=pointer]
+              - button "Build mental health app popular" [ref=e896] [cursor=pointer]:
+                - text: Build mental health app
+                - generic [ref=e897]: popular
+              - button "Projects on Arbitrum" [ref=e898] [cursor=pointer]
+              - button "Fund my compliance tools pro" [ref=e899] [cursor=pointer]:
+                - text: Fund my compliance tools
+                - generic [ref=e900]: pro
+              - button "No meetings required" [ref=e901] [cursor=pointer]
+              - button "Launch my music project" [ref=e902] [cursor=pointer]
+              - button "Fund my streaming service fun" [ref=e903] [cursor=pointer]:
+                - text: Fund my streaming service
+                - generic [ref=e904]: fun
+              - button "Create luxury goods market" [ref=e905] [cursor=pointer]
+              - button "Create a video platform" [ref=e906] [cursor=pointer]
+              - button "Trustless and faceless pro" [ref=e907] [cursor=pointer]:
+                - text: Trustless and faceless
+                - generic [ref=e908]: pro
+              - button "Build a creator collective" [ref=e909] [cursor=pointer]
+              - button "Token go up treasury fun" [ref=e910] [cursor=pointer]:
+                - text: Token go up treasury
+                - generic [ref=e911]: fun
+              - button "Local park improvement" [ref=e912] [cursor=pointer]
+              - button "Launch my pirate ship bar fun" [ref=e913] [cursor=pointer]:
+                - text: Launch my pirate ship bar
+                - generic [ref=e914]: fun
+              - button "Show me Base projects demo" [ref=e915] [cursor=pointer]:
+                - text: Show me Base projects
+                - generic [ref=e916]: demo
+              - button "Fund my book" [ref=e917] [cursor=pointer]
+              - button "Support my mentorship program" [ref=e918] [cursor=pointer]
+              - button "Influencer launch fund" [ref=e919] [cursor=pointer]
+              - button "Fund world domination bold" [ref=e920] [cursor=pointer]:
+                - text: Fund world domination
+                - generic [ref=e921]: bold
+              - button "Create circular economy bold" [ref=e922] [cursor=pointer]:
+                - text: Create circular economy
+                - generic [ref=e923]: bold
+              - button "Launch my homeless solution" [ref=e924] [cursor=pointer]
+          - generic [ref=e925]:
+            - generic [ref=e926]:
+              - button "Creative destruction treasury fun" [ref=e927] [cursor=pointer]:
+                - text: Creative destruction treasury
+                - generic [ref=e928]: fun
+              - button "Set up staged releases pro" [ref=e929] [cursor=pointer]:
+                - text: Set up staged releases
+                - generic [ref=e930]: pro
+              - button "High risk high reward project" [ref=e931] [cursor=pointer]
+              - button "Ape into something new fun" [ref=e932] [cursor=pointer]:
+                - text: Ape into something new
+                - generic [ref=e933]: fun
+              - button "Fund my scholarship program" [ref=e934] [cursor=pointer]
+              - button "Launch my fitness brand" [ref=e935] [cursor=pointer]
+              - button "Build a talent agency" [ref=e936] [cursor=pointer]
+              - button "What launched this week? demo" [ref=e937] [cursor=pointer]:
+                - text: What launched this week?
+                - generic [ref=e938]: demo
+              - button "No KYC required pro" [ref=e939] [cursor=pointer]:
+                - text: No KYC required
+                - generic [ref=e940]: pro
+              - button "Change an industry bold" [ref=e941] [cursor=pointer]:
+                - text: Change an industry
+                - generic [ref=e942]: bold
+              - button "No doxxing allowed pro" [ref=e943] [cursor=pointer]:
+                - text: No doxxing allowed
+                - generic [ref=e944]: pro
+              - button "Run fundraisers for my community" [ref=e945] [cursor=pointer]
+              - button "Launch my carbon removal bold" [ref=e946] [cursor=pointer]:
+                - text: Launch my carbon removal
+                - generic [ref=e947]: bold
+              - button "Fund my AI startup bold" [ref=e948] [cursor=pointer]:
+                - text: Fund my AI startup
+                - generic [ref=e949]: bold
+              - button "Launch a community fridge" [ref=e950] [cursor=pointer]
+              - button "Build vertical farming" [ref=e951] [cursor=pointer]
+              - button "Show me trending projects demo" [ref=e952] [cursor=pointer]:
+                - text: Show me trending projects
+                - generic [ref=e953]: demo
+              - button "Try a test transaction demo" [ref=e954] [cursor=pointer]:
+                - text: Try a test transaction
+                - generic [ref=e955]: demo
+              - button "Build an interest-based community" [ref=e956] [cursor=pointer]
+              - button "Build my personal brand popular" [ref=e957] [cursor=pointer]:
+                - text: Build my personal brand
+                - generic [ref=e958]: popular
+              - button "Build sales tools" [ref=e959] [cursor=pointer]
+              - button "Start a worker-owned co-op" [ref=e960] [cursor=pointer]
+              - button "Startup to acquisition bold" [ref=e961] [cursor=pointer]:
+                - text: Startup to acquisition
+                - generic [ref=e962]: bold
+              - button "Build recruiting tools" [ref=e963] [cursor=pointer]
+              - button "Launch my empire bold" [ref=e964] [cursor=pointer]:
+                - text: Launch my empire
+                - generic [ref=e965]: bold
+              - button "Fund my data availability layer pro" [ref=e966] [cursor=pointer]:
+                - text: Fund my data availability layer
+                - generic [ref=e967]: pro
+              - button "Outdoor adventure fund" [ref=e968] [cursor=pointer]
+              - button "Let smart contracts handle it pro" [ref=e969] [cursor=pointer]:
+                - text: Let smart contracts handle it
+                - generic [ref=e970]: pro
+              - button "Fund my distillery fun" [ref=e971] [cursor=pointer]:
+                - text: Fund my distillery
+                - generic [ref=e972]: fun
+              - button "Build a sports league" [ref=e973] [cursor=pointer]
+              - button "Create ESG investing pro" [ref=e974] [cursor=pointer]:
+                - text: Create ESG investing
+                - generic [ref=e975]: pro
+              - button "Fund my museum" [ref=e976] [cursor=pointer]
+              - button "Launch my reentry services" [ref=e977] [cursor=pointer]
+              - button "Build a journalism startup" [ref=e978] [cursor=pointer]
+              - button "Agency starter fund" [ref=e979] [cursor=pointer]
+              - button "Embed fundraising in my app pro" [ref=e980] [cursor=pointer]:
+                - text: Embed fundraising in my app
+                - generic [ref=e981]: pro
+              - button "Support my course popular" [ref=e982] [cursor=pointer]:
+                - text: Support my course
+                - generic [ref=e983]: popular
+              - button "Fund my wearable tech" [ref=e984] [cursor=pointer]
+              - button "Launch my gaming community" [ref=e985] [cursor=pointer]
+              - button "Create a photo app" [ref=e986] [cursor=pointer]
+            - generic [ref=e987]:
+              - button "Creative destruction treasury fun" [ref=e988] [cursor=pointer]:
+                - text: Creative destruction treasury
+                - generic [ref=e989]: fun
+              - button "Set up staged releases pro" [ref=e990] [cursor=pointer]:
+                - text: Set up staged releases
+                - generic [ref=e991]: pro
+              - button "High risk high reward project" [ref=e992] [cursor=pointer]
+              - button "Ape into something new fun" [ref=e993] [cursor=pointer]:
+                - text: Ape into something new
+                - generic [ref=e994]: fun
+              - button "Fund my scholarship program" [ref=e995] [cursor=pointer]
+              - button "Launch my fitness brand" [ref=e996] [cursor=pointer]
+              - button "Build a talent agency" [ref=e997] [cursor=pointer]
+              - button "What launched this week? demo" [ref=e998] [cursor=pointer]:
+                - text: What launched this week?
+                - generic [ref=e999]: demo
+              - button "No KYC required pro" [ref=e1000] [cursor=pointer]:
+                - text: No KYC required
+                - generic [ref=e1001]: pro
+              - button "Change an industry bold" [ref=e1002] [cursor=pointer]:
+                - text: Change an industry
+                - generic [ref=e1003]: bold
+              - button "No doxxing allowed pro" [ref=e1004] [cursor=pointer]:
+                - text: No doxxing allowed
+                - generic [ref=e1005]: pro
+              - button "Run fundraisers for my community" [ref=e1006] [cursor=pointer]
+              - button "Launch my carbon removal bold" [ref=e1007] [cursor=pointer]:
+                - text: Launch my carbon removal
+                - generic [ref=e1008]: bold
+              - button "Fund my AI startup bold" [ref=e1009] [cursor=pointer]:
+                - text: Fund my AI startup
+                - generic [ref=e1010]: bold
+              - button "Launch a community fridge" [ref=e1011] [cursor=pointer]
+              - button "Build vertical farming" [ref=e1012] [cursor=pointer]
+              - button "Show me trending projects demo" [ref=e1013] [cursor=pointer]:
+                - text: Show me trending projects
+                - generic [ref=e1014]: demo
+              - button "Try a test transaction demo" [ref=e1015] [cursor=pointer]:
+                - text: Try a test transaction
+                - generic [ref=e1016]: demo
+              - button "Build an interest-based community" [ref=e1017] [cursor=pointer]
+              - button "Build my personal brand popular" [ref=e1018] [cursor=pointer]:
+                - text: Build my personal brand
+                - generic [ref=e1019]: popular
+              - button "Build sales tools" [ref=e1020] [cursor=pointer]
+              - button "Start a worker-owned co-op" [ref=e1021] [cursor=pointer]
+              - button "Startup to acquisition bold" [ref=e1022] [cursor=pointer]:
+                - text: Startup to acquisition
+                - generic [ref=e1023]: bold
+              - button "Build recruiting tools" [ref=e1024] [cursor=pointer]
+              - button "Launch my empire bold" [ref=e1025] [cursor=pointer]:
+                - text: Launch my empire
+                - generic [ref=e1026]: bold
+              - button "Fund my data availability layer pro" [ref=e1027] [cursor=pointer]:
+                - text: Fund my data availability layer
+                - generic [ref=e1028]: pro
+              - button "Outdoor adventure fund" [ref=e1029] [cursor=pointer]
+              - button "Let smart contracts handle it pro" [ref=e1030] [cursor=pointer]:
+                - text: Let smart contracts handle it
+                - generic [ref=e1031]: pro
+              - button "Fund my distillery fun" [ref=e1032] [cursor=pointer]:
+                - text: Fund my distillery
+                - generic [ref=e1033]: fun
+              - button "Build a sports league" [ref=e1034] [cursor=pointer]
+              - button "Create ESG investing pro" [ref=e1035] [cursor=pointer]:
+                - text: Create ESG investing
+                - generic [ref=e1036]: pro
+              - button "Fund my museum" [ref=e1037] [cursor=pointer]
+              - button "Launch my reentry services" [ref=e1038] [cursor=pointer]
+              - button "Build a journalism startup" [ref=e1039] [cursor=pointer]
+              - button "Agency starter fund" [ref=e1040] [cursor=pointer]
+              - button "Embed fundraising in my app pro" [ref=e1041] [cursor=pointer]:
+                - text: Embed fundraising in my app
+                - generic [ref=e1042]: pro
+              - button "Support my course popular" [ref=e1043] [cursor=pointer]:
+                - text: Support my course
+                - generic [ref=e1044]: popular
+              - button "Fund my wearable tech" [ref=e1045] [cursor=pointer]
+              - button "Launch my gaming community" [ref=e1046] [cursor=pointer]
+              - button "Create a photo app" [ref=e1047] [cursor=pointer]
+            - generic [ref=e1048]:
+              - button "Creative destruction treasury fun" [ref=e1049] [cursor=pointer]:
+                - text: Creative destruction treasury
+                - generic [ref=e1050]: fun
+              - button "Set up staged releases pro" [ref=e1051] [cursor=pointer]:
+                - text: Set up staged releases
+                - generic [ref=e1052]: pro
+              - button "High risk high reward project" [ref=e1053] [cursor=pointer]
+              - button "Ape into something new fun" [ref=e1054] [cursor=pointer]:
+                - text: Ape into something new
+                - generic [ref=e1055]: fun
+              - button "Fund my scholarship program" [ref=e1056] [cursor=pointer]
+              - button "Launch my fitness brand" [ref=e1057] [cursor=pointer]
+              - button "Build a talent agency" [ref=e1058] [cursor=pointer]
+              - button "What launched this week? demo" [ref=e1059] [cursor=pointer]:
+                - text: What launched this week?
+                - generic [ref=e1060]: demo
+              - button "No KYC required pro" [ref=e1061] [cursor=pointer]:
+                - text: No KYC required
+                - generic [ref=e1062]: pro
+              - button "Change an industry bold" [ref=e1063] [cursor=pointer]:
+                - text: Change an industry
+                - generic [ref=e1064]: bold
+              - button "No doxxing allowed pro" [ref=e1065] [cursor=pointer]:
+                - text: No doxxing allowed
+                - generic [ref=e1066]: pro
+              - button "Run fundraisers for my community" [ref=e1067] [cursor=pointer]
+              - button "Launch my carbon removal bold" [ref=e1068] [cursor=pointer]:
+                - text: Launch my carbon removal
+                - generic [ref=e1069]: bold
+              - button "Fund my AI startup bold" [ref=e1070] [cursor=pointer]:
+                - text: Fund my AI startup
+                - generic [ref=e1071]: bold
+              - button "Launch a community fridge" [ref=e1072] [cursor=pointer]
+              - button "Build vertical farming" [ref=e1073] [cursor=pointer]
+              - button "Show me trending projects demo" [ref=e1074] [cursor=pointer]:
+                - text: Show me trending projects
+                - generic [ref=e1075]: demo
+              - button "Try a test transaction demo" [ref=e1076] [cursor=pointer]:
+                - text: Try a test transaction
+                - generic [ref=e1077]: demo
+              - button "Build an interest-based community" [ref=e1078] [cursor=pointer]
+              - button "Build my personal brand popular" [ref=e1079] [cursor=pointer]:
+                - text: Build my personal brand
+                - generic [ref=e1080]: popular
+              - button "Build sales tools" [ref=e1081] [cursor=pointer]
+              - button "Start a worker-owned co-op" [ref=e1082] [cursor=pointer]
+              - button "Startup to acquisition bold" [ref=e1083] [cursor=pointer]:
+                - text: Startup to acquisition
+                - generic [ref=e1084]: bold
+              - button "Build recruiting tools" [ref=e1085] [cursor=pointer]
+              - button "Launch my empire bold" [ref=e1086] [cursor=pointer]:
+                - text: Launch my empire
+                - generic [ref=e1087]: bold
+              - button "Fund my data availability layer pro" [ref=e1088] [cursor=pointer]:
+                - text: Fund my data availability layer
+                - generic [ref=e1089]: pro
+              - button "Outdoor adventure fund" [ref=e1090] [cursor=pointer]
+              - button "Let smart contracts handle it pro" [ref=e1091] [cursor=pointer]:
+                - text: Let smart contracts handle it
+                - generic [ref=e1092]: pro
+              - button "Fund my distillery fun" [ref=e1093] [cursor=pointer]:
+                - text: Fund my distillery
+                - generic [ref=e1094]: fun
+              - button "Build a sports league" [ref=e1095] [cursor=pointer]
+              - button "Create ESG investing pro" [ref=e1096] [cursor=pointer]:
+                - text: Create ESG investing
+                - generic [ref=e1097]: pro
+              - button "Fund my museum" [ref=e1098] [cursor=pointer]
+              - button "Launch my reentry services" [ref=e1099] [cursor=pointer]
+              - button "Build a journalism startup" [ref=e1100] [cursor=pointer]
+              - button "Agency starter fund" [ref=e1101] [cursor=pointer]
+              - button "Embed fundraising in my app pro" [ref=e1102] [cursor=pointer]:
+                - text: Embed fundraising in my app
+                - generic [ref=e1103]: pro
+              - button "Support my course popular" [ref=e1104] [cursor=pointer]:
+                - text: Support my course
+                - generic [ref=e1105]: popular
+              - button "Fund my wearable tech" [ref=e1106] [cursor=pointer]
+              - button "Launch my gaming community" [ref=e1107] [cursor=pointer]
+              - button "Create a photo app" [ref=e1108] [cursor=pointer]
+            - generic [ref=e1109]:
+              - button "Creative destruction treasury fun" [ref=e1110] [cursor=pointer]:
+                - text: Creative destruction treasury
+                - generic [ref=e1111]: fun
+              - button "Set up staged releases pro" [ref=e1112] [cursor=pointer]:
+                - text: Set up staged releases
+                - generic [ref=e1113]: pro
+              - button "High risk high reward project" [ref=e1114] [cursor=pointer]
+              - button "Ape into something new fun" [ref=e1115] [cursor=pointer]:
+                - text: Ape into something new
+                - generic [ref=e1116]: fun
+              - button "Fund my scholarship program" [ref=e1117] [cursor=pointer]
+              - button "Launch my fitness brand" [ref=e1118] [cursor=pointer]
+              - button "Build a talent agency" [ref=e1119] [cursor=pointer]
+              - button "What launched this week? demo" [ref=e1120] [cursor=pointer]:
+                - text: What launched this week?
+                - generic [ref=e1121]: demo
+              - button "No KYC required pro" [ref=e1122] [cursor=pointer]:
+                - text: No KYC required
+                - generic [ref=e1123]: pro
+              - button "Change an industry bold" [ref=e1124] [cursor=pointer]:
+                - text: Change an industry
+                - generic [ref=e1125]: bold
+              - button "No doxxing allowed pro" [ref=e1126] [cursor=pointer]:
+                - text: No doxxing allowed
+                - generic [ref=e1127]: pro
+              - button "Run fundraisers for my community" [ref=e1128] [cursor=pointer]
+              - button "Launch my carbon removal bold" [ref=e1129] [cursor=pointer]:
+                - text: Launch my carbon removal
+                - generic [ref=e1130]: bold
+              - button "Fund my AI startup bold" [ref=e1131] [cursor=pointer]:
+                - text: Fund my AI startup
+                - generic [ref=e1132]: bold
+              - button "Launch a community fridge" [ref=e1133] [cursor=pointer]
+              - button "Build vertical farming" [ref=e1134] [cursor=pointer]
+              - button "Show me trending projects demo" [ref=e1135] [cursor=pointer]:
+                - text: Show me trending projects
+                - generic [ref=e1136]: demo
+              - button "Try a test transaction demo" [ref=e1137] [cursor=pointer]:
+                - text: Try a test transaction
+                - generic [ref=e1138]: demo
+              - button "Build an interest-based community" [ref=e1139] [cursor=pointer]
+              - button "Build my personal brand popular" [ref=e1140] [cursor=pointer]:
+                - text: Build my personal brand
+                - generic [ref=e1141]: popular
+              - button "Build sales tools" [ref=e1142] [cursor=pointer]
+              - button "Start a worker-owned co-op" [ref=e1143] [cursor=pointer]
+              - button "Startup to acquisition bold" [ref=e1144] [cursor=pointer]:
+                - text: Startup to acquisition
+                - generic [ref=e1145]: bold
+              - button "Build recruiting tools" [ref=e1146] [cursor=pointer]
+              - button "Launch my empire bold" [ref=e1147] [cursor=pointer]:
+                - text: Launch my empire
+                - generic [ref=e1148]: bold
+              - button "Fund my data availability layer pro" [ref=e1149] [cursor=pointer]:
+                - text: Fund my data availability layer
+                - generic [ref=e1150]: pro
+              - button "Outdoor adventure fund" [ref=e1151] [cursor=pointer]
+              - button "Let smart contracts handle it pro" [ref=e1152] [cursor=pointer]:
+                - text: Let smart contracts handle it
+                - generic [ref=e1153]: pro
+              - button "Fund my distillery fun" [ref=e1154] [cursor=pointer]:
+                - text: Fund my distillery
+                - generic [ref=e1155]: fun
+              - button "Build a sports league" [ref=e1156] [cursor=pointer]
+              - button "Create ESG investing pro" [ref=e1157] [cursor=pointer]:
+                - text: Create ESG investing
+                - generic [ref=e1158]: pro
+              - button "Fund my museum" [ref=e1159] [cursor=pointer]
+              - button "Launch my reentry services" [ref=e1160] [cursor=pointer]
+              - button "Build a journalism startup" [ref=e1161] [cursor=pointer]
+              - button "Agency starter fund" [ref=e1162] [cursor=pointer]
+              - button "Embed fundraising in my app pro" [ref=e1163] [cursor=pointer]:
+                - text: Embed fundraising in my app
+                - generic [ref=e1164]: pro
+              - button "Support my course popular" [ref=e1165] [cursor=pointer]:
+                - text: Support my course
+                - generic [ref=e1166]: popular
+              - button "Fund my wearable tech" [ref=e1167] [cursor=pointer]
+              - button "Launch my gaming community" [ref=e1168] [cursor=pointer]
+              - button "Create a photo app" [ref=e1169] [cursor=pointer]
+            - generic [ref=e1170]:
+              - button "Creative destruction treasury fun" [ref=e1171] [cursor=pointer]:
+                - text: Creative destruction treasury
+                - generic [ref=e1172]: fun
+              - button "Set up staged releases pro" [ref=e1173] [cursor=pointer]:
+                - text: Set up staged releases
+                - generic [ref=e1174]: pro
+              - button "High risk high reward project" [ref=e1175] [cursor=pointer]
+              - button "Ape into something new fun" [ref=e1176] [cursor=pointer]:
+                - text: Ape into something new
+                - generic [ref=e1177]: fun
+              - button "Fund my scholarship program" [ref=e1178] [cursor=pointer]
+              - button "Launch my fitness brand" [ref=e1179] [cursor=pointer]
+              - button "Build a talent agency" [ref=e1180] [cursor=pointer]
+              - button "What launched this week? demo" [ref=e1181] [cursor=pointer]:
+                - text: What launched this week?
+                - generic [ref=e1182]: demo
+              - button "No KYC required pro" [ref=e1183] [cursor=pointer]:
+                - text: No KYC required
+                - generic [ref=e1184]: pro
+              - button "Change an industry bold" [ref=e1185] [cursor=pointer]:
+                - text: Change an industry
+                - generic [ref=e1186]: bold
+              - button "No doxxing allowed pro" [ref=e1187] [cursor=pointer]:
+                - text: No doxxing allowed
+                - generic [ref=e1188]: pro
+              - button "Run fundraisers for my community" [ref=e1189] [cursor=pointer]
+              - button "Launch my carbon removal bold" [ref=e1190] [cursor=pointer]:
+                - text: Launch my carbon removal
+                - generic [ref=e1191]: bold
+              - button "Fund my AI startup bold" [ref=e1192] [cursor=pointer]:
+                - text: Fund my AI startup
+                - generic [ref=e1193]: bold
+              - button "Launch a community fridge" [ref=e1194] [cursor=pointer]
+              - button "Build vertical farming" [ref=e1195] [cursor=pointer]
+              - button "Show me trending projects demo" [ref=e1196] [cursor=pointer]:
+                - text: Show me trending projects
+                - generic [ref=e1197]: demo
+              - button "Try a test transaction demo" [ref=e1198] [cursor=pointer]:
+                - text: Try a test transaction
+                - generic [ref=e1199]: demo
+              - button "Build an interest-based community" [ref=e1200] [cursor=pointer]
+              - button "Build my personal brand popular" [ref=e1201] [cursor=pointer]:
+                - text: Build my personal brand
+                - generic [ref=e1202]: popular
+              - button "Build sales tools" [ref=e1203] [cursor=pointer]
+              - button "Start a worker-owned co-op" [ref=e1204] [cursor=pointer]
+              - button "Startup to acquisition bold" [ref=e1205] [cursor=pointer]:
+                - text: Startup to acquisition
+                - generic [ref=e1206]: bold
+              - button "Build recruiting tools" [ref=e1207] [cursor=pointer]
+              - button "Launch my empire bold" [ref=e1208] [cursor=pointer]:
+                - text: Launch my empire
+                - generic [ref=e1209]: bold
+              - button "Fund my data availability layer pro" [ref=e1210] [cursor=pointer]:
+                - text: Fund my data availability layer
+                - generic [ref=e1211]: pro
+              - button "Outdoor adventure fund" [ref=e1212] [cursor=pointer]
+              - button "Let smart contracts handle it pro" [ref=e1213] [cursor=pointer]:
+                - text: Let smart contracts handle it
+                - generic [ref=e1214]: pro
+              - button "Fund my distillery fun" [ref=e1215] [cursor=pointer]:
+                - text: Fund my distillery
+                - generic [ref=e1216]: fun
+              - button "Build a sports league" [ref=e1217] [cursor=pointer]
+              - button "Create ESG investing pro" [ref=e1218] [cursor=pointer]:
+                - text: Create ESG investing
+                - generic [ref=e1219]: pro
+              - button "Fund my museum" [ref=e1220] [cursor=pointer]
+              - button "Launch my reentry services" [ref=e1221] [cursor=pointer]
+              - button "Build a journalism startup" [ref=e1222] [cursor=pointer]
+              - button "Agency starter fund" [ref=e1223] [cursor=pointer]
+              - button "Embed fundraising in my app pro" [ref=e1224] [cursor=pointer]:
+                - text: Embed fundraising in my app
+                - generic [ref=e1225]: pro
+              - button "Support my course popular" [ref=e1226] [cursor=pointer]:
+                - text: Support my course
+                - generic [ref=e1227]: popular
+              - button "Fund my wearable tech" [ref=e1228] [cursor=pointer]
+              - button "Launch my gaming community" [ref=e1229] [cursor=pointer]
+              - button "Create a photo app" [ref=e1230] [cursor=pointer]
+          - generic [ref=e1231]:
+            - generic [ref=e1232]:
+              - button "Fund my athletic training" [ref=e1233] [cursor=pointer]
+              - button "Create a virtual fashion fun" [ref=e1234] [cursor=pointer]:
+                - text: Create a virtual fashion
+                - generic [ref=e1235]: fun
+              - button "Fund my solar company" [ref=e1236] [cursor=pointer]
+              - button "Fund my immersive experience fun" [ref=e1237] [cursor=pointer]:
+                - text: Fund my immersive experience
+                - generic [ref=e1238]: fun
+              - button "Neighborhood beautification" [ref=e1239] [cursor=pointer]
+              - button "Regular retail business" [ref=e1240] [cursor=pointer]
+              - button "Launch my anthropology" [ref=e1241] [cursor=pointer]
+              - button "Build a music app" [ref=e1242] [cursor=pointer]
+              - button "Launch my L2 bold" [ref=e1243] [cursor=pointer]:
+                - text: Launch my L2
+                - generic [ref=e1244]: bold
+              - button "Fund my wearables company" [ref=e1245] [cursor=pointer]
+              - button "Build invoicing tools" [ref=e1246] [cursor=pointer]
+              - button "Launch my arcade" [ref=e1247] [cursor=pointer]
+              - button "Build my AI lab bold" [ref=e1248] [cursor=pointer]:
+                - text: Build my AI lab
+                - generic [ref=e1249]: bold
+              - button "Wildlife preservation" [ref=e1250] [cursor=pointer]
+              - button "Launch my food truck popular" [ref=e1251] [cursor=pointer]:
+                - text: Launch my food truck
+                - generic [ref=e1252]: popular
+              - button "Zero maintenance fundraising" [ref=e1253] [cursor=pointer]
+              - button "Fund public goods popular" [ref=e1254] [cursor=pointer]:
+                - text: Fund public goods
+                - generic [ref=e1255]: popular
+              - button "Projects on Optimism" [ref=e1256] [cursor=pointer]
+              - button "Create automation tools" [ref=e1257] [cursor=pointer]
+              - button "Start my consulting firm" [ref=e1258] [cursor=pointer]
+              - button "Build consumer electronics" [ref=e1259] [cursor=pointer]
+              - button "Hands-off treasury management pro" [ref=e1260] [cursor=pointer]:
+                - text: Hands-off treasury management
+                - generic [ref=e1261]: pro
+              - button "Create an impact marketplace" [ref=e1262] [cursor=pointer]
+              - button "Build orchestration tools" [ref=e1263] [cursor=pointer]
+              - button "Start my media company" [ref=e1264] [cursor=pointer]
+              - button "Self-sustaining without me pro" [ref=e1265] [cursor=pointer]:
+                - text: Self-sustaining without me
+                - generic [ref=e1266]: pro
+              - button "Create open research" [ref=e1267] [cursor=pointer]
+              - button "Fund my database project" [ref=e1268] [cursor=pointer]
+              - button "Collective benefit pool" [ref=e1269] [cursor=pointer]
+              - button "Find a project to support popular" [ref=e1270] [cursor=pointer]:
+                - text: Find a project to support
+                - generic [ref=e1271]: popular
+              - button "Create tax solutions" [ref=e1272] [cursor=pointer]
+              - button "Fund my food tech" [ref=e1273] [cursor=pointer]
+              - button "Nature connection fund" [ref=e1274] [cursor=pointer]
+              - button "Gift economy treasury" [ref=e1275] [cursor=pointer]
+              - button "Fund my street performance fun" [ref=e1276] [cursor=pointer]:
+                - text: Fund my street performance
+                - generic [ref=e1277]: fun
+              - button "Share the wealth treasury" [ref=e1278] [cursor=pointer]
+              - button "Fund my cloud startup pro" [ref=e1279] [cursor=pointer]:
+                - text: Fund my cloud startup
+                - generic [ref=e1280]: pro
+              - button "Diamond hands treasury fun" [ref=e1281] [cursor=pointer]:
+                - text: Diamond hands treasury
+                - generic [ref=e1282]: fun
+              - button "Create a coordinated community bold" [ref=e1283] [cursor=pointer]:
+                - text: Create a coordinated community
+                - generic [ref=e1284]: bold
+              - button "Fund my video app" [ref=e1285] [cursor=pointer]
+            - generic [ref=e1286]:
+              - button "Fund my athletic training" [ref=e1287] [cursor=pointer]
+              - button "Create a virtual fashion fun" [ref=e1288] [cursor=pointer]:
+                - text: Create a virtual fashion
+                - generic [ref=e1289]: fun
+              - button "Fund my solar company" [ref=e1290] [cursor=pointer]
+              - button "Fund my immersive experience fun" [ref=e1291] [cursor=pointer]:
+                - text: Fund my immersive experience
+                - generic [ref=e1292]: fun
+              - button "Neighborhood beautification" [ref=e1293] [cursor=pointer]
+              - button "Regular retail business" [ref=e1294] [cursor=pointer]
+              - button "Launch my anthropology" [ref=e1295] [cursor=pointer]
+              - button "Build a music app" [ref=e1296] [cursor=pointer]
+              - button "Launch my L2 bold" [ref=e1297] [cursor=pointer]:
+                - text: Launch my L2
+                - generic [ref=e1298]: bold
+              - button "Fund my wearables company" [ref=e1299] [cursor=pointer]
+              - button "Build invoicing tools" [ref=e1300] [cursor=pointer]
+              - button "Launch my arcade" [ref=e1301] [cursor=pointer]
+              - button "Build my AI lab bold" [ref=e1302] [cursor=pointer]:
+                - text: Build my AI lab
+                - generic [ref=e1303]: bold
+              - button "Wildlife preservation" [ref=e1304] [cursor=pointer]
+              - button "Launch my food truck popular" [ref=e1305] [cursor=pointer]:
+                - text: Launch my food truck
+                - generic [ref=e1306]: popular
+              - button "Zero maintenance fundraising" [ref=e1307] [cursor=pointer]
+              - button "Fund public goods popular" [ref=e1308] [cursor=pointer]:
+                - text: Fund public goods
+                - generic [ref=e1309]: popular
+              - button "Projects on Optimism" [ref=e1310] [cursor=pointer]
+              - button "Create automation tools" [ref=e1311] [cursor=pointer]
+              - button "Start my consulting firm" [ref=e1312] [cursor=pointer]
+              - button "Build consumer electronics" [ref=e1313] [cursor=pointer]
+              - button "Hands-off treasury management pro" [ref=e1314] [cursor=pointer]:
+                - text: Hands-off treasury management
+                - generic [ref=e1315]: pro
+              - button "Create an impact marketplace" [ref=e1316] [cursor=pointer]
+              - button "Build orchestration tools" [ref=e1317] [cursor=pointer]
+              - button "Start my media company" [ref=e1318] [cursor=pointer]
+              - button "Self-sustaining without me pro" [ref=e1319] [cursor=pointer]:
+                - text: Self-sustaining without me
+                - generic [ref=e1320]: pro
+              - button "Create open research" [ref=e1321] [cursor=pointer]
+              - button "Fund my database project" [ref=e1322] [cursor=pointer]
+              - button "Collective benefit pool" [ref=e1323] [cursor=pointer]
+              - button "Find a project to support popular" [ref=e1324] [cursor=pointer]:
+                - text: Find a project to support
+                - generic [ref=e1325]: popular
+              - button "Create tax solutions" [ref=e1326] [cursor=pointer]
+              - button "Fund my food tech" [ref=e1327] [cursor=pointer]
+              - button "Nature connection fund" [ref=e1328] [cursor=pointer]
+              - button "Gift economy treasury" [ref=e1329] [cursor=pointer]
+              - button "Fund my street performance fun" [ref=e1330] [cursor=pointer]:
+                - text: Fund my street performance
+                - generic [ref=e1331]: fun
+              - button "Share the wealth treasury" [ref=e1332] [cursor=pointer]
+              - button "Fund my cloud startup pro" [ref=e1333] [cursor=pointer]:
+                - text: Fund my cloud startup
+                - generic [ref=e1334]: pro
+              - button "Diamond hands treasury fun" [ref=e1335] [cursor=pointer]:
+                - text: Diamond hands treasury
+                - generic [ref=e1336]: fun
+              - button "Create a coordinated community bold" [ref=e1337] [cursor=pointer]:
+                - text: Create a coordinated community
+                - generic [ref=e1338]: bold
+              - button "Fund my video app" [ref=e1339] [cursor=pointer]
+            - generic [ref=e1340]:
+              - button "Fund my athletic training" [ref=e1341] [cursor=pointer]
+              - button "Create a virtual fashion fun" [ref=e1342] [cursor=pointer]:
+                - text: Create a virtual fashion
+                - generic [ref=e1343]: fun
+              - button "Fund my solar company" [ref=e1344] [cursor=pointer]
+              - button "Fund my immersive experience fun" [ref=e1345] [cursor=pointer]:
+                - text: Fund my immersive experience
+                - generic [ref=e1346]: fun
+              - button "Neighborhood beautification" [ref=e1347] [cursor=pointer]
+              - button "Regular retail business" [ref=e1348] [cursor=pointer]
+              - button "Launch my anthropology" [ref=e1349] [cursor=pointer]
+              - button "Build a music app" [ref=e1350] [cursor=pointer]
+              - button "Launch my L2 bold" [ref=e1351] [cursor=pointer]:
+                - text: Launch my L2
+                - generic [ref=e1352]: bold
+              - button "Fund my wearables company" [ref=e1353] [cursor=pointer]
+              - button "Build invoicing tools" [ref=e1354] [cursor=pointer]
+              - button "Launch my arcade" [ref=e1355] [cursor=pointer]
+              - button "Build my AI lab bold" [ref=e1356] [cursor=pointer]:
+                - text: Build my AI lab
+                - generic [ref=e1357]: bold
+              - button "Wildlife preservation" [ref=e1358] [cursor=pointer]
+              - button "Launch my food truck popular" [ref=e1359] [cursor=pointer]:
+                - text: Launch my food truck
+                - generic [ref=e1360]: popular
+              - button "Zero maintenance fundraising" [ref=e1361] [cursor=pointer]
+              - button "Fund public goods popular" [ref=e1362] [cursor=pointer]:
+                - text: Fund public goods
+                - generic [ref=e1363]: popular
+              - button "Projects on Optimism" [ref=e1364] [cursor=pointer]
+              - button "Create automation tools" [ref=e1365] [cursor=pointer]
+              - button "Start my consulting firm" [ref=e1366] [cursor=pointer]
+              - button "Build consumer electronics" [ref=e1367] [cursor=pointer]
+              - button "Hands-off treasury management pro" [ref=e1368] [cursor=pointer]:
+                - text: Hands-off treasury management
+                - generic [ref=e1369]: pro
+              - button "Create an impact marketplace" [ref=e1370] [cursor=pointer]
+              - button "Build orchestration tools" [ref=e1371] [cursor=pointer]
+              - button "Start my media company" [ref=e1372] [cursor=pointer]
+              - button "Self-sustaining without me pro" [ref=e1373] [cursor=pointer]:
+                - text: Self-sustaining without me
+                - generic [ref=e1374]: pro
+              - button "Create open research" [ref=e1375] [cursor=pointer]
+              - button "Fund my database project" [ref=e1376] [cursor=pointer]
+              - button "Collective benefit pool" [ref=e1377] [cursor=pointer]
+              - button "Find a project to support popular" [ref=e1378] [cursor=pointer]:
+                - text: Find a project to support
+                - generic [ref=e1379]: popular
+              - button "Create tax solutions" [ref=e1380] [cursor=pointer]
+              - button "Fund my food tech" [ref=e1381] [cursor=pointer]
+              - button "Nature connection fund" [ref=e1382] [cursor=pointer]
+              - button "Gift economy treasury" [ref=e1383] [cursor=pointer]
+              - button "Fund my street performance fun" [ref=e1384] [cursor=pointer]:
+                - text: Fund my street performance
+                - generic [ref=e1385]: fun
+              - button "Share the wealth treasury" [ref=e1386] [cursor=pointer]
+              - button "Fund my cloud startup pro" [ref=e1387] [cursor=pointer]:
+                - text: Fund my cloud startup
+                - generic [ref=e1388]: pro
+              - button "Diamond hands treasury fun" [ref=e1389] [cursor=pointer]:
+                - text: Diamond hands treasury
+                - generic [ref=e1390]: fun
+              - button "Create a coordinated community bold" [ref=e1391] [cursor=pointer]:
+                - text: Create a coordinated community
+                - generic [ref=e1392]: bold
+              - button "Fund my video app" [ref=e1393] [cursor=pointer]
+            - generic [ref=e1394]:
+              - button "Fund my athletic training" [ref=e1395] [cursor=pointer]
+              - button "Create a virtual fashion fun" [ref=e1396] [cursor=pointer]:
+                - text: Create a virtual fashion
+                - generic [ref=e1397]: fun
+              - button "Fund my solar company" [ref=e1398] [cursor=pointer]
+              - button "Fund my immersive experience fun" [ref=e1399] [cursor=pointer]:
+                - text: Fund my immersive experience
+                - generic [ref=e1400]: fun
+              - button "Neighborhood beautification" [ref=e1401] [cursor=pointer]
+              - button "Regular retail business" [ref=e1402] [cursor=pointer]
+              - button "Launch my anthropology" [ref=e1403] [cursor=pointer]
+              - button "Build a music app" [ref=e1404] [cursor=pointer]
+              - button "Launch my L2 bold" [ref=e1405] [cursor=pointer]:
+                - text: Launch my L2
+                - generic [ref=e1406]: bold
+              - button "Fund my wearables company" [ref=e1407] [cursor=pointer]
+              - button "Build invoicing tools" [ref=e1408] [cursor=pointer]
+              - button "Launch my arcade" [ref=e1409] [cursor=pointer]
+              - button "Build my AI lab bold" [ref=e1410] [cursor=pointer]:
+                - text: Build my AI lab
+                - generic [ref=e1411]: bold
+              - button "Wildlife preservation" [ref=e1412] [cursor=pointer]
+              - button "Launch my food truck popular" [ref=e1413] [cursor=pointer]:
+                - text: Launch my food truck
+                - generic [ref=e1414]: popular
+              - button "Zero maintenance fundraising" [ref=e1415] [cursor=pointer]
+              - button "Fund public goods popular" [ref=e1416] [cursor=pointer]:
+                - text: Fund public goods
+                - generic [ref=e1417]: popular
+              - button "Projects on Optimism" [ref=e1418] [cursor=pointer]
+              - button "Create automation tools" [ref=e1419] [cursor=pointer]
+              - button "Start my consulting firm" [ref=e1420] [cursor=pointer]
+              - button "Build consumer electronics" [ref=e1421] [cursor=pointer]
+              - button "Hands-off treasury management pro" [ref=e1422] [cursor=pointer]:
+                - text: Hands-off treasury management
+                - generic [ref=e1423]: pro
+              - button "Create an impact marketplace" [ref=e1424] [cursor=pointer]
+              - button "Build orchestration tools" [ref=e1425] [cursor=pointer]
+              - button "Start my media company" [ref=e1426] [cursor=pointer]
+              - button "Self-sustaining without me pro" [ref=e1427] [cursor=pointer]:
+                - text: Self-sustaining without me
+                - generic [ref=e1428]: pro
+              - button "Create open research" [ref=e1429] [cursor=pointer]
+              - button "Fund my database project" [ref=e1430] [cursor=pointer]
+              - button "Collective benefit pool" [ref=e1431] [cursor=pointer]
+              - button "Find a project to support popular" [ref=e1432] [cursor=pointer]:
+                - text: Find a project to support
+                - generic [ref=e1433]: popular
+              - button "Create tax solutions" [ref=e1434] [cursor=pointer]
+              - button "Fund my food tech" [ref=e1435] [cursor=pointer]
+              - button "Nature connection fund" [ref=e1436] [cursor=pointer]
+              - button "Gift economy treasury" [ref=e1437] [cursor=pointer]
+              - button "Fund my street performance fun" [ref=e1438] [cursor=pointer]:
+                - text: Fund my street performance
+                - generic [ref=e1439]: fun
+              - button "Share the wealth treasury" [ref=e1440] [cursor=pointer]
+              - button "Fund my cloud startup pro" [ref=e1441] [cursor=pointer]:
+                - text: Fund my cloud startup
+                - generic [ref=e1442]: pro
+              - button "Diamond hands treasury fun" [ref=e1443] [cursor=pointer]:
+                - text: Diamond hands treasury
+                - generic [ref=e1444]: fun
+              - button "Create a coordinated community bold" [ref=e1445] [cursor=pointer]:
+                - text: Create a coordinated community
+                - generic [ref=e1446]: bold
+              - button "Fund my video app" [ref=e1447] [cursor=pointer]
+            - generic [ref=e1448]:
+              - button "Fund my athletic training" [ref=e1449] [cursor=pointer]
+              - button "Create a virtual fashion fun" [ref=e1450] [cursor=pointer]:
+                - text: Create a virtual fashion
+                - generic [ref=e1451]: fun
+              - button "Fund my solar company" [ref=e1452] [cursor=pointer]
+              - button "Fund my immersive experience fun" [ref=e1453] [cursor=pointer]:
+                - text: Fund my immersive experience
+                - generic [ref=e1454]: fun
+              - button "Neighborhood beautification" [ref=e1455] [cursor=pointer]
+              - button "Regular retail business" [ref=e1456] [cursor=pointer]
+              - button "Launch my anthropology" [ref=e1457] [cursor=pointer]
+              - button "Build a music app" [ref=e1458] [cursor=pointer]
+              - button "Launch my L2 bold" [ref=e1459] [cursor=pointer]:
+                - text: Launch my L2
+                - generic [ref=e1460]: bold
+              - button "Fund my wearables company" [ref=e1461] [cursor=pointer]
+              - button "Build invoicing tools" [ref=e1462] [cursor=pointer]
+              - button "Launch my arcade" [ref=e1463] [cursor=pointer]
+              - button "Build my AI lab bold" [ref=e1464] [cursor=pointer]:
+                - text: Build my AI lab
+                - generic [ref=e1465]: bold
+              - button "Wildlife preservation" [ref=e1466] [cursor=pointer]
+              - button "Launch my food truck popular" [ref=e1467] [cursor=pointer]:
+                - text: Launch my food truck
+                - generic [ref=e1468]: popular
+              - button "Zero maintenance fundraising" [ref=e1469] [cursor=pointer]
+              - button "Fund public goods popular" [ref=e1470] [cursor=pointer]:
+                - text: Fund public goods
+                - generic [ref=e1471]: popular
+              - button "Projects on Optimism" [ref=e1472] [cursor=pointer]
+              - button "Create automation tools" [ref=e1473] [cursor=pointer]
+              - button "Start my consulting firm" [ref=e1474] [cursor=pointer]
+              - button "Build consumer electronics" [ref=e1475] [cursor=pointer]
+              - button "Hands-off treasury management pro" [ref=e1476] [cursor=pointer]:
+                - text: Hands-off treasury management
+                - generic [ref=e1477]: pro
+              - button "Create an impact marketplace" [ref=e1478] [cursor=pointer]
+              - button "Build orchestration tools" [ref=e1479] [cursor=pointer]
+              - button "Start my media company" [ref=e1480] [cursor=pointer]
+              - button "Self-sustaining without me pro" [ref=e1481] [cursor=pointer]:
+                - text: Self-sustaining without me
+                - generic [ref=e1482]: pro
+              - button "Create open research" [ref=e1483] [cursor=pointer]
+              - button "Fund my database project" [ref=e1484] [cursor=pointer]
+              - button "Collective benefit pool" [ref=e1485] [cursor=pointer]
+              - button "Find a project to support popular" [ref=e1486] [cursor=pointer]:
+                - text: Find a project to support
+                - generic [ref=e1487]: popular
+              - button "Create tax solutions" [ref=e1488] [cursor=pointer]
+              - button "Fund my food tech" [ref=e1489] [cursor=pointer]
+              - button "Nature connection fund" [ref=e1490] [cursor=pointer]
+              - button "Gift economy treasury" [ref=e1491] [cursor=pointer]
+              - button "Fund my street performance fun" [ref=e1492] [cursor=pointer]:
+                - text: Fund my street performance
+                - generic [ref=e1493]: fun
+              - button "Share the wealth treasury" [ref=e1494] [cursor=pointer]
+              - button "Fund my cloud startup pro" [ref=e1495] [cursor=pointer]:
+                - text: Fund my cloud startup
+                - generic [ref=e1496]: pro
+              - button "Diamond hands treasury fun" [ref=e1497] [cursor=pointer]:
+                - text: Diamond hands treasury
+                - generic [ref=e1498]: fun
+              - button "Create a coordinated community bold" [ref=e1499] [cursor=pointer]:
+                - text: Create a coordinated community
+                - generic [ref=e1500]: bold
+              - button "Fund my video app" [ref=e1501] [cursor=pointer]
+          - generic [ref=e1502]:
+            - generic [ref=e1503]:
+              - button "Bootstrap my startup popular" [ref=e1504] [cursor=pointer]:
+                - text: Bootstrap my startup
+                - generic [ref=e1505]: popular
+              - button "Create a freelancer marketplace" [ref=e1506] [cursor=pointer]
+              - button "Build a digital nation bold" [ref=e1507] [cursor=pointer]:
+                - text: Build a digital nation
+                - generic [ref=e1508]: bold
+              - button "Start my maker space" [ref=e1509] [cursor=pointer]
+              - button "Passive income on autopilot fun" [ref=e1510] [cursor=pointer]:
+                - text: Passive income on autopilot
+                - generic [ref=e1511]: fun
+              - button "What makes Juicy different?" [ref=e1512] [cursor=pointer]
+              - button "Build research collaboration" [ref=e1513] [cursor=pointer]
+              - button "Maintain critical infrastructure pro" [ref=e1514] [cursor=pointer]:
+                - text: Maintain critical infrastructure
+                - generic [ref=e1515]: pro
+              - button "Just a regular business" [ref=e1516] [cursor=pointer]
+              - button "Create vendor management" [ref=e1517] [cursor=pointer]
+              - button "Launch my subscription marketplace" [ref=e1518] [cursor=pointer]
+              - button "Launch my CRM alternative" [ref=e1519] [cursor=pointer]
+              - button "No-name collective" [ref=e1520] [cursor=pointer]
+              - button "Use JB as my app's payment layer pro" [ref=e1521] [cursor=pointer]:
+                - text: Use JB as my app's payment layer
+                - generic [ref=e1522]: pro
+              - button "Main street business" [ref=e1523] [cursor=pointer]
+              - button "To the moon project fun" [ref=e1524] [cursor=pointer]:
+                - text: To the moon project
+                - generic [ref=e1525]: fun
+              - button "Fund my nonprofit" [ref=e1526] [cursor=pointer]
+              - button "Fund my community workshop" [ref=e1527] [cursor=pointer]
+              - button "Fund my academic project" [ref=e1528] [cursor=pointer]
+              - button "Chaos magic project fun" [ref=e1529] [cursor=pointer]:
+                - text: Chaos magic project
+                - generic [ref=e1530]: fun
+              - button "Create access management" [ref=e1531] [cursor=pointer]
+              - button "Launch my knowledge base" [ref=e1532] [cursor=pointer]
+              - button "Build a mastermind group" [ref=e1533] [cursor=pointer]
+              - button "Revnet for the culture" [ref=e1534] [cursor=pointer]
+              - button "Launch a fantasy league with payouts fun" [ref=e1535] [cursor=pointer]:
+                - text: Launch a fantasy league with payouts
+                - generic [ref=e1536]: fun
+              - button "Create a dance company fun" [ref=e1537] [cursor=pointer]:
+                - text: Create a dance company
+                - generic [ref=e1538]: fun
+              - button "Start a community bootcamp business" [ref=e1539] [cursor=pointer]
+              - button "How do I update my project?" [ref=e1540] [cursor=pointer]
+              - button "Create a curated marketplace" [ref=e1541] [cursor=pointer]
+              - button "Launch my athlete fund" [ref=e1542] [cursor=pointer]
+              - button "Launch my jewelry line" [ref=e1543] [cursor=pointer]
+              - button "Self-running project pro" [ref=e1544] [cursor=pointer]:
+                - text: Self-running project
+                - generic [ref=e1545]: pro
+              - button "Make money while I sleep bold" [ref=e1546] [cursor=pointer]:
+                - text: Make money while I sleep
+                - generic [ref=e1547]: bold
+              - button "Launch my recycling startup" [ref=e1548] [cursor=pointer]
+              - button "Create a snack company fun" [ref=e1549] [cursor=pointer]:
+                - text: Create a snack company
+                - generic [ref=e1550]: fun
+              - button "Launch my ghost kitchen fun" [ref=e1551] [cursor=pointer]:
+                - text: Launch my ghost kitchen
+                - generic [ref=e1552]: fun
+              - button "Fund my franchise" [ref=e1553] [cursor=pointer]
+              - button "Create a managed marketplace bold" [ref=e1554] [cursor=pointer]:
+                - text: Create a managed marketplace
+                - generic [ref=e1555]: bold
+              - button "Fund my language app" [ref=e1556] [cursor=pointer]
+              - button "Fund my content house fun" [ref=e1557] [cursor=pointer]:
+                - text: Fund my content house
+                - generic [ref=e1558]: fun
+            - generic [ref=e1559]:
+              - button "Bootstrap my startup popular" [ref=e1560] [cursor=pointer]:
+                - text: Bootstrap my startup
+                - generic [ref=e1561]: popular
+              - button "Create a freelancer marketplace" [ref=e1562] [cursor=pointer]
+              - button "Build a digital nation bold" [ref=e1563] [cursor=pointer]:
+                - text: Build a digital nation
+                - generic [ref=e1564]: bold
+              - button "Start my maker space" [ref=e1565] [cursor=pointer]
+              - button "Passive income on autopilot fun" [ref=e1566] [cursor=pointer]:
+                - text: Passive income on autopilot
+                - generic [ref=e1567]: fun
+              - button "What makes Juicy different?" [ref=e1568] [cursor=pointer]
+              - button "Build research collaboration" [ref=e1569] [cursor=pointer]
+              - button "Maintain critical infrastructure pro" [ref=e1570] [cursor=pointer]:
+                - text: Maintain critical infrastructure
+                - generic [ref=e1571]: pro
+              - button "Just a regular business" [ref=e1572] [cursor=pointer]
+              - button "Create vendor management" [ref=e1573] [cursor=pointer]
+              - button "Launch my subscription marketplace" [ref=e1574] [cursor=pointer]
+              - button "Launch my CRM alternative" [ref=e1575] [cursor=pointer]
+              - button "No-name collective" [ref=e1576] [cursor=pointer]
+              - button "Use JB as my app's payment layer pro" [ref=e1577] [cursor=pointer]:
+                - text: Use JB as my app's payment layer
+                - generic [ref=e1578]: pro
+              - button "Main street business" [ref=e1579] [cursor=pointer]
+              - button "To the moon project fun" [ref=e1580] [cursor=pointer]:
+                - text: To the moon project
+                - generic [ref=e1581]: fun
+              - button "Fund my nonprofit" [ref=e1582] [cursor=pointer]
+              - button "Fund my community workshop" [ref=e1583] [cursor=pointer]
+              - button "Fund my academic project" [ref=e1584] [cursor=pointer]
+              - button "Chaos magic project fun" [ref=e1585] [cursor=pointer]:
+                - text: Chaos magic project
+                - generic [ref=e1586]: fun
+              - button "Create access management" [ref=e1587] [cursor=pointer]
+              - button "Launch my knowledge base" [ref=e1588] [cursor=pointer]
+              - button "Build a mastermind group" [ref=e1589] [cursor=pointer]
+              - button "Revnet for the culture" [ref=e1590] [cursor=pointer]
+              - button "Launch a fantasy league with payouts fun" [ref=e1591] [cursor=pointer]:
+                - text: Launch a fantasy league with payouts
+                - generic [ref=e1592]: fun
+              - button "Create a dance company fun" [ref=e1593] [cursor=pointer]:
+                - text: Create a dance company
+                - generic [ref=e1594]: fun
+              - button "Start a community bootcamp business" [ref=e1595] [cursor=pointer]
+              - button "How do I update my project?" [ref=e1596] [cursor=pointer]
+              - button "Create a curated marketplace" [ref=e1597] [cursor=pointer]
+              - button "Launch my athlete fund" [ref=e1598] [cursor=pointer]
+              - button "Launch my jewelry line" [ref=e1599] [cursor=pointer]
+              - button "Self-running project pro" [ref=e1600] [cursor=pointer]:
+                - text: Self-running project
+                - generic [ref=e1601]: pro
+              - button "Make money while I sleep bold" [ref=e1602] [cursor=pointer]:
+                - text: Make money while I sleep
+                - generic [ref=e1603]: bold
+              - button "Launch my recycling startup" [ref=e1604] [cursor=pointer]
+              - button "Create a snack company fun" [ref=e1605] [cursor=pointer]:
+                - text: Create a snack company
+                - generic [ref=e1606]: fun
+              - button "Launch my ghost kitchen fun" [ref=e1607] [cursor=pointer]:
+                - text: Launch my ghost kitchen
+                - generic [ref=e1608]: fun
+              - button "Fund my franchise" [ref=e1609] [cursor=pointer]
+              - button "Create a managed marketplace bold" [ref=e1610] [cursor=pointer]:
+                - text: Create a managed marketplace
+                - generic [ref=e1611]: bold
+              - button "Fund my language app" [ref=e1612] [cursor=pointer]
+              - button "Fund my content house fun" [ref=e1613] [cursor=pointer]:
+                - text: Fund my content house
+                - generic [ref=e1614]: fun
+            - generic [ref=e1615]:
+              - button "Bootstrap my startup popular" [ref=e1616] [cursor=pointer]:
+                - text: Bootstrap my startup
+                - generic [ref=e1617]: popular
+              - button "Create a freelancer marketplace" [ref=e1618] [cursor=pointer]
+              - button "Build a digital nation bold" [ref=e1619] [cursor=pointer]:
+                - text: Build a digital nation
+                - generic [ref=e1620]: bold
+              - button "Start my maker space" [ref=e1621] [cursor=pointer]
+              - button "Passive income on autopilot fun" [ref=e1622] [cursor=pointer]:
+                - text: Passive income on autopilot
+                - generic [ref=e1623]: fun
+              - button "What makes Juicy different?" [ref=e1624] [cursor=pointer]
+              - button "Build research collaboration" [ref=e1625] [cursor=pointer]
+              - button "Maintain critical infrastructure pro" [ref=e1626] [cursor=pointer]:
+                - text: Maintain critical infrastructure
+                - generic [ref=e1627]: pro
+              - button "Just a regular business" [ref=e1628] [cursor=pointer]
+              - button "Create vendor management" [ref=e1629] [cursor=pointer]
+              - button "Launch my subscription marketplace" [ref=e1630] [cursor=pointer]
+              - button "Launch my CRM alternative" [ref=e1631] [cursor=pointer]
+              - button "No-name collective" [ref=e1632] [cursor=pointer]
+              - button "Use JB as my app's payment layer pro" [ref=e1633] [cursor=pointer]:
+                - text: Use JB as my app's payment layer
+                - generic [ref=e1634]: pro
+              - button "Main street business" [ref=e1635] [cursor=pointer]
+              - button "To the moon project fun" [ref=e1636] [cursor=pointer]:
+                - text: To the moon project
+                - generic [ref=e1637]: fun
+              - button "Fund my nonprofit" [ref=e1638] [cursor=pointer]
+              - button "Fund my community workshop" [ref=e1639] [cursor=pointer]
+              - button "Fund my academic project" [ref=e1640] [cursor=pointer]
+              - button "Chaos magic project fun" [ref=e1641] [cursor=pointer]:
+                - text: Chaos magic project
+                - generic [ref=e1642]: fun
+              - button "Create access management" [ref=e1643] [cursor=pointer]
+              - button "Launch my knowledge base" [ref=e1644] [cursor=pointer]
+              - button "Build a mastermind group" [ref=e1645] [cursor=pointer]
+              - button "Revnet for the culture" [ref=e1646] [cursor=pointer]
+              - button "Launch a fantasy league with payouts fun" [ref=e1647] [cursor=pointer]:
+                - text: Launch a fantasy league with payouts
+                - generic [ref=e1648]: fun
+              - button "Create a dance company fun" [ref=e1649] [cursor=pointer]:
+                - text: Create a dance company
+                - generic [ref=e1650]: fun
+              - button "Start a community bootcamp business" [ref=e1651] [cursor=pointer]
+              - button "How do I update my project?" [ref=e1652] [cursor=pointer]
+              - button "Create a curated marketplace" [ref=e1653] [cursor=pointer]
+              - button "Launch my athlete fund" [ref=e1654] [cursor=pointer]
+              - button "Launch my jewelry line" [ref=e1655] [cursor=pointer]
+              - button "Self-running project pro" [ref=e1656] [cursor=pointer]:
+                - text: Self-running project
+                - generic [ref=e1657]: pro
+              - button "Make money while I sleep bold" [ref=e1658] [cursor=pointer]:
+                - text: Make money while I sleep
+                - generic [ref=e1659]: bold
+              - button "Launch my recycling startup" [ref=e1660] [cursor=pointer]
+              - button "Create a snack company fun" [ref=e1661] [cursor=pointer]:
+                - text: Create a snack company
+                - generic [ref=e1662]: fun
+              - button "Launch my ghost kitchen fun" [ref=e1663] [cursor=pointer]:
+                - text: Launch my ghost kitchen
+                - generic [ref=e1664]: fun
+              - button "Fund my franchise" [ref=e1665] [cursor=pointer]
+              - button "Create a managed marketplace bold" [ref=e1666] [cursor=pointer]:
+                - text: Create a managed marketplace
+                - generic [ref=e1667]: bold
+              - button "Fund my language app" [ref=e1668] [cursor=pointer]
+              - button "Fund my content house fun" [ref=e1669] [cursor=pointer]:
+                - text: Fund my content house
+                - generic [ref=e1670]: fun
+            - generic [ref=e1671]:
+              - button "Bootstrap my startup popular" [ref=e1672] [cursor=pointer]:
+                - text: Bootstrap my startup
+                - generic [ref=e1673]: popular
+              - button "Create a freelancer marketplace" [ref=e1674] [cursor=pointer]
+              - button "Build a digital nation bold" [ref=e1675] [cursor=pointer]:
+                - text: Build a digital nation
+                - generic [ref=e1676]: bold
+              - button "Start my maker space" [ref=e1677] [cursor=pointer]
+              - button "Passive income on autopilot fun" [ref=e1678] [cursor=pointer]:
+                - text: Passive income on autopilot
+                - generic [ref=e1679]: fun
+              - button "What makes Juicy different?" [ref=e1680] [cursor=pointer]
+              - button "Build research collaboration" [ref=e1681] [cursor=pointer]
+              - button "Maintain critical infrastructure pro" [ref=e1682] [cursor=pointer]:
+                - text: Maintain critical infrastructure
+                - generic [ref=e1683]: pro
+              - button "Just a regular business" [ref=e1684] [cursor=pointer]
+              - button "Create vendor management" [ref=e1685] [cursor=pointer]
+              - button "Launch my subscription marketplace" [ref=e1686] [cursor=pointer]
+              - button "Launch my CRM alternative" [ref=e1687] [cursor=pointer]
+              - button "No-name collective" [ref=e1688] [cursor=pointer]
+              - button "Use JB as my app's payment layer pro" [ref=e1689] [cursor=pointer]:
+                - text: Use JB as my app's payment layer
+                - generic [ref=e1690]: pro
+              - button "Main street business" [ref=e1691] [cursor=pointer]
+              - button "To the moon project fun" [ref=e1692] [cursor=pointer]:
+                - text: To the moon project
+                - generic [ref=e1693]: fun
+              - button "Fund my nonprofit" [ref=e1694] [cursor=pointer]
+              - button "Fund my community workshop" [ref=e1695] [cursor=pointer]
+              - button "Fund my academic project" [ref=e1696] [cursor=pointer]
+              - button "Chaos magic project fun" [ref=e1697] [cursor=pointer]:
+                - text: Chaos magic project
+                - generic [ref=e1698]: fun
+              - button "Create access management" [ref=e1699] [cursor=pointer]
+              - button "Launch my knowledge base" [ref=e1700] [cursor=pointer]
+              - button "Build a mastermind group" [ref=e1701] [cursor=pointer]
+              - button "Revnet for the culture" [ref=e1702] [cursor=pointer]
+              - button "Launch a fantasy league with payouts fun" [ref=e1703] [cursor=pointer]:
+                - text: Launch a fantasy league with payouts
+                - generic [ref=e1704]: fun
+              - button "Create a dance company fun" [ref=e1705] [cursor=pointer]:
+                - text: Create a dance company
+                - generic [ref=e1706]: fun
+              - button "Start a community bootcamp business" [ref=e1707] [cursor=pointer]
+              - button "How do I update my project?" [ref=e1708] [cursor=pointer]
+              - button "Create a curated marketplace" [ref=e1709] [cursor=pointer]
+              - button "Launch my athlete fund" [ref=e1710] [cursor=pointer]
+              - button "Launch my jewelry line" [ref=e1711] [cursor=pointer]
+              - button "Self-running project pro" [ref=e1712] [cursor=pointer]:
+                - text: Self-running project
+                - generic [ref=e1713]: pro
+              - button "Make money while I sleep bold" [ref=e1714] [cursor=pointer]:
+                - text: Make money while I sleep
+                - generic [ref=e1715]: bold
+              - button "Launch my recycling startup" [ref=e1716] [cursor=pointer]
+              - button "Create a snack company fun" [ref=e1717] [cursor=pointer]:
+                - text: Create a snack company
+                - generic [ref=e1718]: fun
+              - button "Launch my ghost kitchen fun" [ref=e1719] [cursor=pointer]:
+                - text: Launch my ghost kitchen
+                - generic [ref=e1720]: fun
+              - button "Fund my franchise" [ref=e1721] [cursor=pointer]
+              - button "Create a managed marketplace bold" [ref=e1722] [cursor=pointer]:
+                - text: Create a managed marketplace
+                - generic [ref=e1723]: bold
+              - button "Fund my language app" [ref=e1724] [cursor=pointer]
+              - button "Fund my content house fun" [ref=e1725] [cursor=pointer]:
+                - text: Fund my content house
+                - generic [ref=e1726]: fun
+            - generic [ref=e1727]:
+              - button "Bootstrap my startup popular" [ref=e1728] [cursor=pointer]:
+                - text: Bootstrap my startup
+                - generic [ref=e1729]: popular
+              - button "Create a freelancer marketplace" [ref=e1730] [cursor=pointer]
+              - button "Build a digital nation bold" [ref=e1731] [cursor=pointer]:
+                - text: Build a digital nation
+                - generic [ref=e1732]: bold
+              - button "Start my maker space" [ref=e1733] [cursor=pointer]
+              - button "Passive income on autopilot fun" [ref=e1734] [cursor=pointer]:
+                - text: Passive income on autopilot
+                - generic [ref=e1735]: fun
+              - button "What makes Juicy different?" [ref=e1736] [cursor=pointer]
+              - button "Build research collaboration" [ref=e1737] [cursor=pointer]
+              - button "Maintain critical infrastructure pro" [ref=e1738] [cursor=pointer]:
+                - text: Maintain critical infrastructure
+                - generic [ref=e1739]: pro
+              - button "Just a regular business" [ref=e1740] [cursor=pointer]
+              - button "Create vendor management" [ref=e1741] [cursor=pointer]
+              - button "Launch my subscription marketplace" [ref=e1742] [cursor=pointer]
+              - button "Launch my CRM alternative" [ref=e1743] [cursor=pointer]
+              - button "No-name collective" [ref=e1744] [cursor=pointer]
+              - button "Use JB as my app's payment layer pro" [ref=e1745] [cursor=pointer]:
+                - text: Use JB as my app's payment layer
+                - generic [ref=e1746]: pro
+              - button "Main street business" [ref=e1747] [cursor=pointer]
+              - button "To the moon project fun" [ref=e1748] [cursor=pointer]:
+                - text: To the moon project
+                - generic [ref=e1749]: fun
+              - button "Fund my nonprofit" [ref=e1750] [cursor=pointer]
+              - button "Fund my community workshop" [ref=e1751] [cursor=pointer]
+              - button "Fund my academic project" [ref=e1752] [cursor=pointer]
+              - button "Chaos magic project fun" [ref=e1753] [cursor=pointer]:
+                - text: Chaos magic project
+                - generic [ref=e1754]: fun
+              - button "Create access management" [ref=e1755] [cursor=pointer]
+              - button "Launch my knowledge base" [ref=e1756] [cursor=pointer]
+              - button "Build a mastermind group" [ref=e1757] [cursor=pointer]
+              - button "Revnet for the culture" [ref=e1758] [cursor=pointer]
+              - button "Launch a fantasy league with payouts fun" [ref=e1759] [cursor=pointer]:
+                - text: Launch a fantasy league with payouts
+                - generic [ref=e1760]: fun
+              - button "Create a dance company fun" [ref=e1761] [cursor=pointer]:
+                - text: Create a dance company
+                - generic [ref=e1762]: fun
+              - button "Start a community bootcamp business" [ref=e1763] [cursor=pointer]
+              - button "How do I update my project?" [ref=e1764] [cursor=pointer]
+              - button "Create a curated marketplace" [ref=e1765] [cursor=pointer]
+              - button "Launch my athlete fund" [ref=e1766] [cursor=pointer]
+              - button "Launch my jewelry line" [ref=e1767] [cursor=pointer]
+              - button "Self-running project pro" [ref=e1768] [cursor=pointer]:
+                - text: Self-running project
+                - generic [ref=e1769]: pro
+              - button "Make money while I sleep bold" [ref=e1770] [cursor=pointer]:
+                - text: Make money while I sleep
+                - generic [ref=e1771]: bold
+              - button "Launch my recycling startup" [ref=e1772] [cursor=pointer]
+              - button "Create a snack company fun" [ref=e1773] [cursor=pointer]:
+                - text: Create a snack company
+                - generic [ref=e1774]: fun
+              - button "Launch my ghost kitchen fun" [ref=e1775] [cursor=pointer]:
+                - text: Launch my ghost kitchen
+                - generic [ref=e1776]: fun
+              - button "Fund my franchise" [ref=e1777] [cursor=pointer]
+              - button "Create a managed marketplace bold" [ref=e1778] [cursor=pointer]:
+                - text: Create a managed marketplace
+                - generic [ref=e1779]: bold
+              - button "Fund my language app" [ref=e1780] [cursor=pointer]
+              - button "Fund my content house fun" [ref=e1781] [cursor=pointer]:
+                - text: Fund my content house
+                - generic [ref=e1782]: fun
+          - generic [ref=e1783]:
+            - generic [ref=e1784]:
+              - button "Launch my coffee roaster popular" [ref=e1785] [cursor=pointer]:
+                - text: Launch my coffee roaster
+                - generic [ref=e1786]: popular
+              - button "Create chip design bold" [ref=e1787] [cursor=pointer]:
+                - text: Create chip design
+                - generic [ref=e1788]: bold
+              - button "Launch my analytics platform pro" [ref=e1789] [cursor=pointer]:
+                - text: Launch my analytics platform
+                - generic [ref=e1790]: pro
+              - button "making food id" [ref=e1791] [cursor=pointer]:
+                - text: making food
+                - generic [ref=e1792]: id
+              - button "Create a residency program" [ref=e1793] [cursor=pointer]
+              - button "Mint and pray fun" [ref=e1794] [cursor=pointer]:
+                - text: Mint and pray
+                - generic [ref=e1795]: fun
+              - button "Create a watch brand" [ref=e1796] [cursor=pointer]
+              - button "Local service treasury" [ref=e1797] [cursor=pointer]
+              - button "Fund my scooter company fun" [ref=e1798] [cursor=pointer]:
+                - text: Fund my scooter company
+                - generic [ref=e1799]: fun
+              - button "Support independent media" [ref=e1800] [cursor=pointer]
+              - button "Launch my staking protocol" [ref=e1801] [cursor=pointer]
+              - button "Create a betting platform fun" [ref=e1802] [cursor=pointer]:
+                - text: Create a betting platform
+                - generic [ref=e1803]: fun
+              - button "Fund my VS Code extension" [ref=e1804] [cursor=pointer]
+              - button "Use JB for in-game economies pro" [ref=e1805] [cursor=pointer]:
+                - text: Use JB for in-game economies
+                - generic [ref=e1806]: pro
+              - button "Fund my orchestra" [ref=e1807] [cursor=pointer]
+              - button "Create e-bikes fun" [ref=e1808] [cursor=pointer]:
+                - text: Create e-bikes
+                - generic [ref=e1809]: fun
+              - button "Launch my timber fund" [ref=e1810] [cursor=pointer]
+              - button "Build healthcare access" [ref=e1811] [cursor=pointer]
+              - button "Launch my youth program" [ref=e1812] [cursor=pointer]
+              - button "Fund my gallery" [ref=e1813] [cursor=pointer]
+              - button "Launch my social club" [ref=e1814] [cursor=pointer]
+              - button "Launch my financial API pro" [ref=e1815] [cursor=pointer]:
+                - text: Launch my financial API
+                - generic [ref=e1816]: pro
+              - button "Fund my fitness startup" [ref=e1817] [cursor=pointer]
+              - button "helping my neighborhood id" [ref=e1818] [cursor=pointer]:
+                - text: helping my neighborhood
+                - generic [ref=e1819]: id
+              - button "Financial freedom machine bold" [ref=e1820] [cursor=pointer]:
+                - text: Financial freedom machine
+                - generic [ref=e1821]: bold
+              - button "Degen funding pool fun" [ref=e1822] [cursor=pointer]:
+                - text: Degen funding pool
+                - generic [ref=e1823]: fun
+              - button "doing less work id" [ref=e1824] [cursor=pointer]:
+                - text: doing less work
+                - generic [ref=e1825]: id
+              - button "Create vesting schedules pro" [ref=e1826] [cursor=pointer]:
+                - text: Create vesting schedules
+                - generic [ref=e1827]: pro
+              - button "Sustain my GitHub project" [ref=e1828] [cursor=pointer]
+              - button "Fund my location-based community" [ref=e1829] [cursor=pointer]
+              - button "Fund my hardware startup" [ref=e1830] [cursor=pointer]
+              - button "Absurdist art fund fun" [ref=e1831] [cursor=pointer]:
+                - text: Absurdist art fund
+                - generic [ref=e1832]: fun
+              - button "Ponzinomics but ethical fun" [ref=e1833] [cursor=pointer]:
+                - text: Ponzinomics but ethical
+                - generic [ref=e1834]: fun
+              - button "Launch my circus fun" [ref=e1835] [cursor=pointer]:
+                - text: Launch my circus
+                - generic [ref=e1836]: fun
+              - button "Build collectibles platform" [ref=e1837] [cursor=pointer]
+              - button "Mutual aid network" [ref=e1838] [cursor=pointer]
+              - button "Fund my justice reform" [ref=e1839] [cursor=pointer]
+              - button "Find projects in my city" [ref=e1840] [cursor=pointer]
+              - button "Build a condiment brand" [ref=e1841] [cursor=pointer]
+              - button "Create archival project" [ref=e1842] [cursor=pointer]
+            - generic [ref=e1843]:
+              - button "Launch my coffee roaster popular" [ref=e1844] [cursor=pointer]:
+                - text: Launch my coffee roaster
+                - generic [ref=e1845]: popular
+              - button "Create chip design bold" [ref=e1846] [cursor=pointer]:
+                - text: Create chip design
+                - generic [ref=e1847]: bold
+              - button "Launch my analytics platform pro" [ref=e1848] [cursor=pointer]:
+                - text: Launch my analytics platform
+                - generic [ref=e1849]: pro
+              - button "making food id" [ref=e1850] [cursor=pointer]:
+                - text: making food
+                - generic [ref=e1851]: id
+              - button "Create a residency program" [ref=e1852] [cursor=pointer]
+              - button "Mint and pray fun" [ref=e1853] [cursor=pointer]:
+                - text: Mint and pray
+                - generic [ref=e1854]: fun
+              - button "Create a watch brand" [ref=e1855] [cursor=pointer]
+              - button "Local service treasury" [ref=e1856] [cursor=pointer]
+              - button "Fund my scooter company fun" [ref=e1857] [cursor=pointer]:
+                - text: Fund my scooter company
+                - generic [ref=e1858]: fun
+              - button "Support independent media" [ref=e1859] [cursor=pointer]
+              - button "Launch my staking protocol" [ref=e1860] [cursor=pointer]
+              - button "Create a betting platform fun" [ref=e1861] [cursor=pointer]:
+                - text: Create a betting platform
+                - generic [ref=e1862]: fun
+              - button "Fund my VS Code extension" [ref=e1863] [cursor=pointer]
+              - button "Use JB for in-game economies pro" [ref=e1864] [cursor=pointer]:
+                - text: Use JB for in-game economies
+                - generic [ref=e1865]: pro
+              - button "Fund my orchestra" [ref=e1866] [cursor=pointer]
+              - button "Create e-bikes fun" [ref=e1867] [cursor=pointer]:
+                - text: Create e-bikes
+                - generic [ref=e1868]: fun
+              - button "Launch my timber fund" [ref=e1869] [cursor=pointer]
+              - button "Build healthcare access" [ref=e1870] [cursor=pointer]
+              - button "Launch my youth program" [ref=e1871] [cursor=pointer]
+              - button "Fund my gallery" [ref=e1872] [cursor=pointer]
+              - button "Launch my social club" [ref=e1873] [cursor=pointer]
+              - button "Launch my financial API pro" [ref=e1874] [cursor=pointer]:
+                - text: Launch my financial API
+                - generic [ref=e1875]: pro
+              - button "Fund my fitness startup" [ref=e1876] [cursor=pointer]
+              - button "helping my neighborhood id" [ref=e1877] [cursor=pointer]:
+                - text: helping my neighborhood
+                - generic [ref=e1878]: id
+              - button "Financial freedom machine bold" [ref=e1879] [cursor=pointer]:
+                - text: Financial freedom machine
+                - generic [ref=e1880]: bold
+              - button "Degen funding pool fun" [ref=e1881] [cursor=pointer]:
+                - text: Degen funding pool
+                - generic [ref=e1882]: fun
+              - button "doing less work id" [ref=e1883] [cursor=pointer]:
+                - text: doing less work
+                - generic [ref=e1884]: id
+              - button "Create vesting schedules pro" [ref=e1885] [cursor=pointer]:
+                - text: Create vesting schedules
+                - generic [ref=e1886]: pro
+              - button "Sustain my GitHub project" [ref=e1887] [cursor=pointer]
+              - button "Fund my location-based community" [ref=e1888] [cursor=pointer]
+              - button "Fund my hardware startup" [ref=e1889] [cursor=pointer]
+              - button "Absurdist art fund fun" [ref=e1890] [cursor=pointer]:
+                - text: Absurdist art fund
+                - generic [ref=e1891]: fun
+              - button "Ponzinomics but ethical fun" [ref=e1892] [cursor=pointer]:
+                - text: Ponzinomics but ethical
+                - generic [ref=e1893]: fun
+              - button "Launch my circus fun" [ref=e1894] [cursor=pointer]:
+                - text: Launch my circus
+                - generic [ref=e1895]: fun
+              - button "Build collectibles platform" [ref=e1896] [cursor=pointer]
+              - button "Mutual aid network" [ref=e1897] [cursor=pointer]
+              - button "Fund my justice reform" [ref=e1898] [cursor=pointer]
+              - button "Find projects in my city" [ref=e1899] [cursor=pointer]
+              - button "Build a condiment brand" [ref=e1900] [cursor=pointer]
+              - button "Create archival project" [ref=e1901] [cursor=pointer]
+            - generic [ref=e1902]:
+              - button "Launch my coffee roaster popular" [ref=e1903] [cursor=pointer]:
+                - text: Launch my coffee roaster
+                - generic [ref=e1904]: popular
+              - button "Create chip design bold" [ref=e1905] [cursor=pointer]:
+                - text: Create chip design
+                - generic [ref=e1906]: bold
+              - button "Launch my analytics platform pro" [ref=e1907] [cursor=pointer]:
+                - text: Launch my analytics platform
+                - generic [ref=e1908]: pro
+              - button "making food id" [ref=e1909] [cursor=pointer]:
+                - text: making food
+                - generic [ref=e1910]: id
+              - button "Create a residency program" [ref=e1911] [cursor=pointer]
+              - button "Mint and pray fun" [ref=e1912] [cursor=pointer]:
+                - text: Mint and pray
+                - generic [ref=e1913]: fun
+              - button "Create a watch brand" [ref=e1914] [cursor=pointer]
+              - button "Local service treasury" [ref=e1915] [cursor=pointer]
+              - button "Fund my scooter company fun" [ref=e1916] [cursor=pointer]:
+                - text: Fund my scooter company
+                - generic [ref=e1917]: fun
+              - button "Support independent media" [ref=e1918] [cursor=pointer]
+              - button "Launch my staking protocol" [ref=e1919] [cursor=pointer]
+              - button "Create a betting platform fun" [ref=e1920] [cursor=pointer]:
+                - text: Create a betting platform
+                - generic [ref=e1921]: fun
+              - button "Fund my VS Code extension" [ref=e1922] [cursor=pointer]
+              - button "Use JB for in-game economies pro" [ref=e1923] [cursor=pointer]:
+                - text: Use JB for in-game economies
+                - generic [ref=e1924]: pro
+              - button "Fund my orchestra" [ref=e1925] [cursor=pointer]
+              - button "Create e-bikes fun" [ref=e1926] [cursor=pointer]:
+                - text: Create e-bikes
+                - generic [ref=e1927]: fun
+              - button "Launch my timber fund" [ref=e1928] [cursor=pointer]
+              - button "Build healthcare access" [ref=e1929] [cursor=pointer]
+              - button "Launch my youth program" [ref=e1930] [cursor=pointer]
+              - button "Fund my gallery" [ref=e1931] [cursor=pointer]
+              - button "Launch my social club" [ref=e1932] [cursor=pointer]
+              - button "Launch my financial API pro" [ref=e1933] [cursor=pointer]:
+                - text: Launch my financial API
+                - generic [ref=e1934]: pro
+              - button "Fund my fitness startup" [ref=e1935] [cursor=pointer]
+              - button "helping my neighborhood id" [ref=e1936] [cursor=pointer]:
+                - text: helping my neighborhood
+                - generic [ref=e1937]: id
+              - button "Financial freedom machine bold" [ref=e1938] [cursor=pointer]:
+                - text: Financial freedom machine
+                - generic [ref=e1939]: bold
+              - button "Degen funding pool fun" [ref=e1940] [cursor=pointer]:
+                - text: Degen funding pool
+                - generic [ref=e1941]: fun
+              - button "doing less work id" [ref=e1942] [cursor=pointer]:
+                - text: doing less work
+                - generic [ref=e1943]: id
+              - button "Create vesting schedules pro" [ref=e1944] [cursor=pointer]:
+                - text: Create vesting schedules
+                - generic [ref=e1945]: pro
+              - button "Sustain my GitHub project" [ref=e1946] [cursor=pointer]
+              - button "Fund my location-based community" [ref=e1947] [cursor=pointer]
+              - button "Fund my hardware startup" [ref=e1948] [cursor=pointer]
+              - button "Absurdist art fund fun" [ref=e1949] [cursor=pointer]:
+                - text: Absurdist art fund
+                - generic [ref=e1950]: fun
+              - button "Ponzinomics but ethical fun" [ref=e1951] [cursor=pointer]:
+                - text: Ponzinomics but ethical
+                - generic [ref=e1952]: fun
+              - button "Launch my circus fun" [ref=e1953] [cursor=pointer]:
+                - text: Launch my circus
+                - generic [ref=e1954]: fun
+              - button "Build collectibles platform" [ref=e1955] [cursor=pointer]
+              - button "Mutual aid network" [ref=e1956] [cursor=pointer]
+              - button "Fund my justice reform" [ref=e1957] [cursor=pointer]
+              - button "Find projects in my city" [ref=e1958] [cursor=pointer]
+              - button "Build a condiment brand" [ref=e1959] [cursor=pointer]
+              - button "Create archival project" [ref=e1960] [cursor=pointer]
+            - generic [ref=e1961]:
+              - button "Launch my coffee roaster popular" [ref=e1962] [cursor=pointer]:
+                - text: Launch my coffee roaster
+                - generic [ref=e1963]: popular
+              - button "Create chip design bold" [ref=e1964] [cursor=pointer]:
+                - text: Create chip design
+                - generic [ref=e1965]: bold
+              - button "Launch my analytics platform pro" [ref=e1966] [cursor=pointer]:
+                - text: Launch my analytics platform
+                - generic [ref=e1967]: pro
+              - button "making food id" [ref=e1968] [cursor=pointer]:
+                - text: making food
+                - generic [ref=e1969]: id
+              - button "Create a residency program" [ref=e1970] [cursor=pointer]
+              - button "Mint and pray fun" [ref=e1971] [cursor=pointer]:
+                - text: Mint and pray
+                - generic [ref=e1972]: fun
+              - button "Create a watch brand" [ref=e1973] [cursor=pointer]
+              - button "Local service treasury" [ref=e1974] [cursor=pointer]
+              - button "Fund my scooter company fun" [ref=e1975] [cursor=pointer]:
+                - text: Fund my scooter company
+                - generic [ref=e1976]: fun
+              - button "Support independent media" [ref=e1977] [cursor=pointer]
+              - button "Launch my staking protocol" [ref=e1978] [cursor=pointer]
+              - button "Create a betting platform fun" [ref=e1979] [cursor=pointer]:
+                - text: Create a betting platform
+                - generic [ref=e1980]: fun
+              - button "Fund my VS Code extension" [ref=e1981] [cursor=pointer]
+              - button "Use JB for in-game economies pro" [ref=e1982] [cursor=pointer]:
+                - text: Use JB for in-game economies
+                - generic [ref=e1983]: pro
+              - button "Fund my orchestra" [ref=e1984] [cursor=pointer]
+              - button "Create e-bikes fun" [ref=e1985] [cursor=pointer]:
+                - text: Create e-bikes
+                - generic [ref=e1986]: fun
+              - button "Launch my timber fund" [ref=e1987] [cursor=pointer]
+              - button "Build healthcare access" [ref=e1988] [cursor=pointer]
+              - button "Launch my youth program" [ref=e1989] [cursor=pointer]
+              - button "Fund my gallery" [ref=e1990] [cursor=pointer]
+              - button "Launch my social club" [ref=e1991] [cursor=pointer]
+              - button "Launch my financial API pro" [ref=e1992] [cursor=pointer]:
+                - text: Launch my financial API
+                - generic [ref=e1993]: pro
+              - button "Fund my fitness startup" [ref=e1994] [cursor=pointer]
+              - button "helping my neighborhood id" [ref=e1995] [cursor=pointer]:
+                - text: helping my neighborhood
+                - generic [ref=e1996]: id
+              - button "Financial freedom machine bold" [ref=e1997] [cursor=pointer]:
+                - text: Financial freedom machine
+                - generic [ref=e1998]: bold
+              - button "Degen funding pool fun" [ref=e1999] [cursor=pointer]:
+                - text: Degen funding pool
+                - generic [ref=e2000]: fun
+              - button "doing less work id" [ref=e2001] [cursor=pointer]:
+                - text: doing less work
+                - generic [ref=e2002]: id
+              - button "Create vesting schedules pro" [ref=e2003] [cursor=pointer]:
+                - text: Create vesting schedules
+                - generic [ref=e2004]: pro
+              - button "Sustain my GitHub project" [ref=e2005] [cursor=pointer]
+              - button "Fund my location-based community" [ref=e2006] [cursor=pointer]
+              - button "Fund my hardware startup" [ref=e2007] [cursor=pointer]
+              - button "Absurdist art fund fun" [ref=e2008] [cursor=pointer]:
+                - text: Absurdist art fund
+                - generic [ref=e2009]: fun
+              - button "Ponzinomics but ethical fun" [ref=e2010] [cursor=pointer]:
+                - text: Ponzinomics but ethical
+                - generic [ref=e2011]: fun
+              - button "Launch my circus fun" [ref=e2012] [cursor=pointer]:
+                - text: Launch my circus
+                - generic [ref=e2013]: fun
+              - button "Build collectibles platform" [ref=e2014] [cursor=pointer]
+              - button "Mutual aid network" [ref=e2015] [cursor=pointer]
+              - button "Fund my justice reform" [ref=e2016] [cursor=pointer]
+              - button "Find projects in my city" [ref=e2017] [cursor=pointer]
+              - button "Build a condiment brand" [ref=e2018] [cursor=pointer]
+              - button "Create archival project" [ref=e2019] [cursor=pointer]
+            - generic [ref=e2020]:
+              - button "Launch my coffee roaster popular" [ref=e2021] [cursor=pointer]:
+                - text: Launch my coffee roaster
+                - generic [ref=e2022]: popular
+              - button "Create chip design bold" [ref=e2023] [cursor=pointer]:
+                - text: Create chip design
+                - generic [ref=e2024]: bold
+              - button "Launch my analytics platform pro" [ref=e2025] [cursor=pointer]:
+                - text: Launch my analytics platform
+                - generic [ref=e2026]: pro
+              - button "making food id" [ref=e2027] [cursor=pointer]:
+                - text: making food
+                - generic [ref=e2028]: id
+              - button "Create a residency program" [ref=e2029] [cursor=pointer]
+              - button "Mint and pray fun" [ref=e2030] [cursor=pointer]:
+                - text: Mint and pray
+                - generic [ref=e2031]: fun
+              - button "Create a watch brand" [ref=e2032] [cursor=pointer]
+              - button "Local service treasury" [ref=e2033] [cursor=pointer]
+              - button "Fund my scooter company fun" [ref=e2034] [cursor=pointer]:
+                - text: Fund my scooter company
+                - generic [ref=e2035]: fun
+              - button "Support independent media" [ref=e2036] [cursor=pointer]
+              - button "Launch my staking protocol" [ref=e2037] [cursor=pointer]
+              - button "Create a betting platform fun" [ref=e2038] [cursor=pointer]:
+                - text: Create a betting platform
+                - generic [ref=e2039]: fun
+              - button "Fund my VS Code extension" [ref=e2040] [cursor=pointer]
+              - button "Use JB for in-game economies pro" [ref=e2041] [cursor=pointer]:
+                - text: Use JB for in-game economies
+                - generic [ref=e2042]: pro
+              - button "Fund my orchestra" [ref=e2043] [cursor=pointer]
+              - button "Create e-bikes fun" [ref=e2044] [cursor=pointer]:
+                - text: Create e-bikes
+                - generic [ref=e2045]: fun
+              - button "Launch my timber fund" [ref=e2046] [cursor=pointer]
+              - button "Build healthcare access" [ref=e2047] [cursor=pointer]
+              - button "Launch my youth program" [ref=e2048] [cursor=pointer]
+              - button "Fund my gallery" [ref=e2049] [cursor=pointer]
+              - button "Launch my social club" [ref=e2050] [cursor=pointer]
+              - button "Launch my financial API pro" [ref=e2051] [cursor=pointer]:
+                - text: Launch my financial API
+                - generic [ref=e2052]: pro
+              - button "Fund my fitness startup" [ref=e2053] [cursor=pointer]
+              - button "helping my neighborhood id" [ref=e2054] [cursor=pointer]:
+                - text: helping my neighborhood
+                - generic [ref=e2055]: id
+              - button "Financial freedom machine bold" [ref=e2056] [cursor=pointer]:
+                - text: Financial freedom machine
+                - generic [ref=e2057]: bold
+              - button "Degen funding pool fun" [ref=e2058] [cursor=pointer]:
+                - text: Degen funding pool
+                - generic [ref=e2059]: fun
+              - button "doing less work id" [ref=e2060] [cursor=pointer]:
+                - text: doing less work
+                - generic [ref=e2061]: id
+              - button "Create vesting schedules pro" [ref=e2062] [cursor=pointer]:
+                - text: Create vesting schedules
+                - generic [ref=e2063]: pro
+              - button "Sustain my GitHub project" [ref=e2064] [cursor=pointer]
+              - button "Fund my location-based community" [ref=e2065] [cursor=pointer]
+              - button "Fund my hardware startup" [ref=e2066] [cursor=pointer]
+              - button "Absurdist art fund fun" [ref=e2067] [cursor=pointer]:
+                - text: Absurdist art fund
+                - generic [ref=e2068]: fun
+              - button "Ponzinomics but ethical fun" [ref=e2069] [cursor=pointer]:
+                - text: Ponzinomics but ethical
+                - generic [ref=e2070]: fun
+              - button "Launch my circus fun" [ref=e2071] [cursor=pointer]:
+                - text: Launch my circus
+                - generic [ref=e2072]: fun
+              - button "Build collectibles platform" [ref=e2073] [cursor=pointer]
+              - button "Mutual aid network" [ref=e2074] [cursor=pointer]
+              - button "Fund my justice reform" [ref=e2075] [cursor=pointer]
+              - button "Find projects in my city" [ref=e2076] [cursor=pointer]
+              - button "Build a condiment brand" [ref=e2077] [cursor=pointer]
+              - button "Create archival project" [ref=e2078] [cursor=pointer]
+          - generic [ref=e2079]:
+            - generic [ref=e2080]:
+              - button "Build medical devices" [ref=e2081] [cursor=pointer]
+              - button "Support my lab" [ref=e2082] [cursor=pointer]
+              - button "Configure profit distribution" [ref=e2083] [cursor=pointer]
+              - button "Launch my MEV solution pro" [ref=e2084] [cursor=pointer]:
+                - text: Launch my MEV solution
+                - generic [ref=e2085]: pro
+              - button "Launch my plant-based startup" [ref=e2086] [cursor=pointer]
+              - button "Fund my professional community" [ref=e2087] [cursor=pointer]
+              - button "Create embedded finance bold" [ref=e2088] [cursor=pointer]:
+                - text: Create embedded finance
+                - generic [ref=e2089]: bold
+              - button "Fund my experimental theater fun" [ref=e2090] [cursor=pointer]:
+                - text: Fund my experimental theater
+                - generic [ref=e2091]: fun
+              - button "Create generational wealth bold" [ref=e2092] [cursor=pointer]:
+                - text: Create generational wealth
+                - generic [ref=e2093]: bold
+              - button "Find something inspiring popular" [ref=e2094] [cursor=pointer]:
+                - text: Find something inspiring
+                - generic [ref=e2095]: popular
+              - button "Fund my reverse marketplace" [ref=e2096] [cursor=pointer]
+              - button "Build agriculture investment" [ref=e2097] [cursor=pointer]
+              - button "Launch my sports platform fun" [ref=e2098] [cursor=pointer]:
+                - text: Launch my sports platform
+                - generic [ref=e2099]: fun
+              - button "Launch my themed restaurant fun" [ref=e2100] [cursor=pointer]:
+                - text: Launch my themed restaurant
+                - generic [ref=e2101]: fun
+              - button "Build a bag brand" [ref=e2102] [cursor=pointer]
+              - button "Build nutrition platform" [ref=e2103] [cursor=pointer]
+              - button "Build my own crowdfunding site" [ref=e2104] [cursor=pointer]
+              - button "Fund my collaboration tools" [ref=e2105] [cursor=pointer]
+              - button "Launch a group challenge with stakes fun" [ref=e2106] [cursor=pointer]:
+                - text: Launch a group challenge with stakes
+                - generic [ref=e2107]: fun
+              - button "Fund my drone company fun" [ref=e2108] [cursor=pointer]:
+                - text: Fund my drone company
+                - generic [ref=e2109]: fun
+              - button "Build cross-chain tooling pro" [ref=e2110] [cursor=pointer]:
+                - text: Build cross-chain tooling
+                - generic [ref=e2111]: pro
+              - button "Support my security research" [ref=e2112] [cursor=pointer]
+              - button "Create a DEX pro" [ref=e2113] [cursor=pointer]:
+                - text: Create a DEX
+                - generic [ref=e2114]: pro
+              - button "What would you fund? fun" [ref=e2115] [cursor=pointer]:
+                - text: What would you fund?
+                - generic [ref=e2116]: fun
+              - button "Run a retroactive funding round pro" [ref=e2117] [cursor=pointer]:
+                - text: Run a retroactive funding round
+                - generic [ref=e2118]: pro
+              - button "Create telehealth solution" [ref=e2119] [cursor=pointer]
+              - button "Run a Discord with benefits" [ref=e2120] [cursor=pointer]
+              - button "Launch my wellness platform popular" [ref=e2121] [cursor=pointer]:
+                - text: Launch my wellness platform
+                - generic [ref=e2122]: popular
+              - button "Fund my urban garden" [ref=e2123] [cursor=pointer]
+              - button "Build a sculpture garden" [ref=e2124] [cursor=pointer]
+              - button "Launch my Twitch career" [ref=e2125] [cursor=pointer]
+              - button "Fund my artistic protest fun" [ref=e2126] [cursor=pointer]:
+                - text: Fund my artistic protest
+                - generic [ref=e2127]: fun
+              - button "Build a neighborhood app" [ref=e2128] [cursor=pointer]
+              - button "Wealth generation protocol bold" [ref=e2129] [cursor=pointer]:
+                - text: Wealth generation protocol
+                - generic [ref=e2130]: bold
+              - button "Fund my content creation popular" [ref=e2131] [cursor=pointer]:
+                - text: Fund my content creation
+                - generic [ref=e2132]: popular
+              - button "Build on JB primitives pro" [ref=e2133] [cursor=pointer]:
+                - text: Build on JB primitives
+                - generic [ref=e2134]: pro
+              - button "Back an indie developer" [ref=e2135] [cursor=pointer]
+              - button "Relief fund for anyone" [ref=e2136] [cursor=pointer]
+              - button "Launch my podcast network" [ref=e2137] [cursor=pointer]
+              - button "Launch my marketplace" [ref=e2138] [cursor=pointer]
+            - generic [ref=e2139]:
+              - button "Build medical devices" [ref=e2140] [cursor=pointer]
+              - button "Support my lab" [ref=e2141] [cursor=pointer]
+              - button "Configure profit distribution" [ref=e2142] [cursor=pointer]
+              - button "Launch my MEV solution pro" [ref=e2143] [cursor=pointer]:
+                - text: Launch my MEV solution
+                - generic [ref=e2144]: pro
+              - button "Launch my plant-based startup" [ref=e2145] [cursor=pointer]
+              - button "Fund my professional community" [ref=e2146] [cursor=pointer]
+              - button "Create embedded finance bold" [ref=e2147] [cursor=pointer]:
+                - text: Create embedded finance
+                - generic [ref=e2148]: bold
+              - button "Fund my experimental theater fun" [ref=e2149] [cursor=pointer]:
+                - text: Fund my experimental theater
+                - generic [ref=e2150]: fun
+              - button "Create generational wealth bold" [ref=e2151] [cursor=pointer]:
+                - text: Create generational wealth
+                - generic [ref=e2152]: bold
+              - button "Find something inspiring popular" [ref=e2153] [cursor=pointer]:
+                - text: Find something inspiring
+                - generic [ref=e2154]: popular
+              - button "Fund my reverse marketplace" [ref=e2155] [cursor=pointer]
+              - button "Build agriculture investment" [ref=e2156] [cursor=pointer]
+              - button "Launch my sports platform fun" [ref=e2157] [cursor=pointer]:
+                - text: Launch my sports platform
+                - generic [ref=e2158]: fun
+              - button "Launch my themed restaurant fun" [ref=e2159] [cursor=pointer]:
+                - text: Launch my themed restaurant
+                - generic [ref=e2160]: fun
+              - button "Build a bag brand" [ref=e2161] [cursor=pointer]
+              - button "Build nutrition platform" [ref=e2162] [cursor=pointer]
+              - button "Build my own crowdfunding site" [ref=e2163] [cursor=pointer]
+              - button "Fund my collaboration tools" [ref=e2164] [cursor=pointer]
+              - button "Launch a group challenge with stakes fun" [ref=e2165] [cursor=pointer]:
+                - text: Launch a group challenge with stakes
+                - generic [ref=e2166]: fun
+              - button "Fund my drone company fun" [ref=e2167] [cursor=pointer]:
+                - text: Fund my drone company
+                - generic [ref=e2168]: fun
+              - button "Build cross-chain tooling pro" [ref=e2169] [cursor=pointer]:
+                - text: Build cross-chain tooling
+                - generic [ref=e2170]: pro
+              - button "Support my security research" [ref=e2171] [cursor=pointer]
+              - button "Create a DEX pro" [ref=e2172] [cursor=pointer]:
+                - text: Create a DEX
+                - generic [ref=e2173]: pro
+              - button "What would you fund? fun" [ref=e2174] [cursor=pointer]:
+                - text: What would you fund?
+                - generic [ref=e2175]: fun
+              - button "Run a retroactive funding round pro" [ref=e2176] [cursor=pointer]:
+                - text: Run a retroactive funding round
+                - generic [ref=e2177]: pro
+              - button "Create telehealth solution" [ref=e2178] [cursor=pointer]
+              - button "Run a Discord with benefits" [ref=e2179] [cursor=pointer]
+              - button "Launch my wellness platform popular" [ref=e2180] [cursor=pointer]:
+                - text: Launch my wellness platform
+                - generic [ref=e2181]: popular
+              - button "Fund my urban garden" [ref=e2182] [cursor=pointer]
+              - button "Build a sculpture garden" [ref=e2183] [cursor=pointer]
+              - button "Launch my Twitch career" [ref=e2184] [cursor=pointer]
+              - button "Fund my artistic protest fun" [ref=e2185] [cursor=pointer]:
+                - text: Fund my artistic protest
+                - generic [ref=e2186]: fun
+              - button "Build a neighborhood app" [ref=e2187] [cursor=pointer]
+              - button "Wealth generation protocol bold" [ref=e2188] [cursor=pointer]:
+                - text: Wealth generation protocol
+                - generic [ref=e2189]: bold
+              - button "Fund my content creation popular" [ref=e2190] [cursor=pointer]:
+                - text: Fund my content creation
+                - generic [ref=e2191]: popular
+              - button "Build on JB primitives pro" [ref=e2192] [cursor=pointer]:
+                - text: Build on JB primitives
+                - generic [ref=e2193]: pro
+              - button "Back an indie developer" [ref=e2194] [cursor=pointer]
+              - button "Relief fund for anyone" [ref=e2195] [cursor=pointer]
+              - button "Launch my podcast network" [ref=e2196] [cursor=pointer]
+              - button "Launch my marketplace" [ref=e2197] [cursor=pointer]
+            - generic [ref=e2198]:
+              - button "Build medical devices" [ref=e2199] [cursor=pointer]
+              - button "Support my lab" [ref=e2200] [cursor=pointer]
+              - button "Configure profit distribution" [ref=e2201] [cursor=pointer]
+              - button "Launch my MEV solution pro" [ref=e2202] [cursor=pointer]:
+                - text: Launch my MEV solution
+                - generic [ref=e2203]: pro
+              - button "Launch my plant-based startup" [ref=e2204] [cursor=pointer]
+              - button "Fund my professional community" [ref=e2205] [cursor=pointer]
+              - button "Create embedded finance bold" [ref=e2206] [cursor=pointer]:
+                - text: Create embedded finance
+                - generic [ref=e2207]: bold
+              - button "Fund my experimental theater fun" [ref=e2208] [cursor=pointer]:
+                - text: Fund my experimental theater
+                - generic [ref=e2209]: fun
+              - button "Create generational wealth bold" [ref=e2210] [cursor=pointer]:
+                - text: Create generational wealth
+                - generic [ref=e2211]: bold
+              - button "Find something inspiring popular" [ref=e2212] [cursor=pointer]:
+                - text: Find something inspiring
+                - generic [ref=e2213]: popular
+              - button "Fund my reverse marketplace" [ref=e2214] [cursor=pointer]
+              - button "Build agriculture investment" [ref=e2215] [cursor=pointer]
+              - button "Launch my sports platform fun" [ref=e2216] [cursor=pointer]:
+                - text: Launch my sports platform
+                - generic [ref=e2217]: fun
+              - button "Launch my themed restaurant fun" [ref=e2218] [cursor=pointer]:
+                - text: Launch my themed restaurant
+                - generic [ref=e2219]: fun
+              - button "Build a bag brand" [ref=e2220] [cursor=pointer]
+              - button "Build nutrition platform" [ref=e2221] [cursor=pointer]
+              - button "Build my own crowdfunding site" [ref=e2222] [cursor=pointer]
+              - button "Fund my collaboration tools" [ref=e2223] [cursor=pointer]
+              - button "Launch a group challenge with stakes fun" [ref=e2224] [cursor=pointer]:
+                - text: Launch a group challenge with stakes
+                - generic [ref=e2225]: fun
+              - button "Fund my drone company fun" [ref=e2226] [cursor=pointer]:
+                - text: Fund my drone company
+                - generic [ref=e2227]: fun
+              - button "Build cross-chain tooling pro" [ref=e2228] [cursor=pointer]:
+                - text: Build cross-chain tooling
+                - generic [ref=e2229]: pro
+              - button "Support my security research" [ref=e2230] [cursor=pointer]
+              - button "Create a DEX pro" [ref=e2231] [cursor=pointer]:
+                - text: Create a DEX
+                - generic [ref=e2232]: pro
+              - button "What would you fund? fun" [ref=e2233] [cursor=pointer]:
+                - text: What would you fund?
+                - generic [ref=e2234]: fun
+              - button "Run a retroactive funding round pro" [ref=e2235] [cursor=pointer]:
+                - text: Run a retroactive funding round
+                - generic [ref=e2236]: pro
+              - button "Create telehealth solution" [ref=e2237] [cursor=pointer]
+              - button "Run a Discord with benefits" [ref=e2238] [cursor=pointer]
+              - button "Launch my wellness platform popular" [ref=e2239] [cursor=pointer]:
+                - text: Launch my wellness platform
+                - generic [ref=e2240]: popular
+              - button "Fund my urban garden" [ref=e2241] [cursor=pointer]
+              - button "Build a sculpture garden" [ref=e2242] [cursor=pointer]
+              - button "Launch my Twitch career" [ref=e2243] [cursor=pointer]
+              - button "Fund my artistic protest fun" [ref=e2244] [cursor=pointer]:
+                - text: Fund my artistic protest
+                - generic [ref=e2245]: fun
+              - button "Build a neighborhood app" [ref=e2246] [cursor=pointer]
+              - button "Wealth generation protocol bold" [ref=e2247] [cursor=pointer]:
+                - text: Wealth generation protocol
+                - generic [ref=e2248]: bold
+              - button "Fund my content creation popular" [ref=e2249] [cursor=pointer]:
+                - text: Fund my content creation
+                - generic [ref=e2250]: popular
+              - button "Build on JB primitives pro" [ref=e2251] [cursor=pointer]:
+                - text: Build on JB primitives
+                - generic [ref=e2252]: pro
+              - button "Back an indie developer" [ref=e2253] [cursor=pointer]
+              - button "Relief fund for anyone" [ref=e2254] [cursor=pointer]
+              - button "Launch my podcast network" [ref=e2255] [cursor=pointer]
+              - button "Launch my marketplace" [ref=e2256] [cursor=pointer]
+            - generic [ref=e2257]:
+              - button "Build medical devices" [ref=e2258] [cursor=pointer]
+              - button "Support my lab" [ref=e2259] [cursor=pointer]
+              - button "Configure profit distribution" [ref=e2260] [cursor=pointer]
+              - button "Launch my MEV solution pro" [ref=e2261] [cursor=pointer]:
+                - text: Launch my MEV solution
+                - generic [ref=e2262]: pro
+              - button "Launch my plant-based startup" [ref=e2263] [cursor=pointer]
+              - button "Fund my professional community" [ref=e2264] [cursor=pointer]
+              - button "Create embedded finance bold" [ref=e2265] [cursor=pointer]:
+                - text: Create embedded finance
+                - generic [ref=e2266]: bold
+              - button "Fund my experimental theater fun" [ref=e2267] [cursor=pointer]:
+                - text: Fund my experimental theater
+                - generic [ref=e2268]: fun
+              - button "Create generational wealth bold" [ref=e2269] [cursor=pointer]:
+                - text: Create generational wealth
+                - generic [ref=e2270]: bold
+              - button "Find something inspiring popular" [ref=e2271] [cursor=pointer]:
+                - text: Find something inspiring
+                - generic [ref=e2272]: popular
+              - button "Fund my reverse marketplace" [ref=e2273] [cursor=pointer]
+              - button "Build agriculture investment" [ref=e2274] [cursor=pointer]
+              - button "Launch my sports platform fun" [ref=e2275] [cursor=pointer]:
+                - text: Launch my sports platform
+                - generic [ref=e2276]: fun
+              - button "Launch my themed restaurant fun" [ref=e2277] [cursor=pointer]:
+                - text: Launch my themed restaurant
+                - generic [ref=e2278]: fun
+              - button "Build a bag brand" [ref=e2279] [cursor=pointer]
+              - button "Build nutrition platform" [ref=e2280] [cursor=pointer]
+              - button "Build my own crowdfunding site" [ref=e2281] [cursor=pointer]
+              - button "Fund my collaboration tools" [ref=e2282] [cursor=pointer]
+              - button "Launch a group challenge with stakes fun" [ref=e2283] [cursor=pointer]:
+                - text: Launch a group challenge with stakes
+                - generic [ref=e2284]: fun
+              - button "Fund my drone company fun" [ref=e2285] [cursor=pointer]:
+                - text: Fund my drone company
+                - generic [ref=e2286]: fun
+              - button "Build cross-chain tooling pro" [ref=e2287] [cursor=pointer]:
+                - text: Build cross-chain tooling
+                - generic [ref=e2288]: pro
+              - button "Support my security research" [ref=e2289] [cursor=pointer]
+              - button "Create a DEX pro" [ref=e2290] [cursor=pointer]:
+                - text: Create a DEX
+                - generic [ref=e2291]: pro
+              - button "What would you fund? fun" [ref=e2292] [cursor=pointer]:
+                - text: What would you fund?
+                - generic [ref=e2293]: fun
+              - button "Run a retroactive funding round pro" [ref=e2294] [cursor=pointer]:
+                - text: Run a retroactive funding round
+                - generic [ref=e2295]: pro
+              - button "Create telehealth solution" [ref=e2296] [cursor=pointer]
+              - button "Run a Discord with benefits" [ref=e2297] [cursor=pointer]
+              - button "Launch my wellness platform popular" [ref=e2298] [cursor=pointer]:
+                - text: Launch my wellness platform
+                - generic [ref=e2299]: popular
+              - button "Fund my urban garden" [ref=e2300] [cursor=pointer]
+              - button "Build a sculpture garden" [ref=e2301] [cursor=pointer]
+              - button "Launch my Twitch career" [ref=e2302] [cursor=pointer]
+              - button "Fund my artistic protest fun" [ref=e2303] [cursor=pointer]:
+                - text: Fund my artistic protest
+                - generic [ref=e2304]: fun
+              - button "Build a neighborhood app" [ref=e2305] [cursor=pointer]
+              - button "Wealth generation protocol bold" [ref=e2306] [cursor=pointer]:
+                - text: Wealth generation protocol
+                - generic [ref=e2307]: bold
+              - button "Fund my content creation popular" [ref=e2308] [cursor=pointer]:
+                - text: Fund my content creation
+                - generic [ref=e2309]: popular
+              - button "Build on JB primitives pro" [ref=e2310] [cursor=pointer]:
+                - text: Build on JB primitives
+                - generic [ref=e2311]: pro
+              - button "Back an indie developer" [ref=e2312] [cursor=pointer]
+              - button "Relief fund for anyone" [ref=e2313] [cursor=pointer]
+              - button "Launch my podcast network" [ref=e2314] [cursor=pointer]
+              - button "Launch my marketplace" [ref=e2315] [cursor=pointer]
+            - generic [ref=e2316]:
+              - button "Build medical devices" [ref=e2317] [cursor=pointer]
+              - button "Support my lab" [ref=e2318] [cursor=pointer]
+              - button "Configure profit distribution" [ref=e2319] [cursor=pointer]
+              - button "Launch my MEV solution pro" [ref=e2320] [cursor=pointer]:
+                - text: Launch my MEV solution
+                - generic [ref=e2321]: pro
+              - button "Launch my plant-based startup" [ref=e2322] [cursor=pointer]
+              - button "Fund my professional community" [ref=e2323] [cursor=pointer]
+              - button "Create embedded finance bold" [ref=e2324] [cursor=pointer]:
+                - text: Create embedded finance
+                - generic [ref=e2325]: bold
+              - button "Fund my experimental theater fun" [ref=e2326] [cursor=pointer]:
+                - text: Fund my experimental theater
+                - generic [ref=e2327]: fun
+              - button "Create generational wealth bold" [ref=e2328] [cursor=pointer]:
+                - text: Create generational wealth
+                - generic [ref=e2329]: bold
+              - button "Find something inspiring popular" [ref=e2330] [cursor=pointer]:
+                - text: Find something inspiring
+                - generic [ref=e2331]: popular
+              - button "Fund my reverse marketplace" [ref=e2332] [cursor=pointer]
+              - button "Build agriculture investment" [ref=e2333] [cursor=pointer]
+              - button "Launch my sports platform fun" [ref=e2334] [cursor=pointer]:
+                - text: Launch my sports platform
+                - generic [ref=e2335]: fun
+              - button "Launch my themed restaurant fun" [ref=e2336] [cursor=pointer]:
+                - text: Launch my themed restaurant
+                - generic [ref=e2337]: fun
+              - button "Build a bag brand" [ref=e2338] [cursor=pointer]
+              - button "Build nutrition platform" [ref=e2339] [cursor=pointer]
+              - button "Build my own crowdfunding site" [ref=e2340] [cursor=pointer]
+              - button "Fund my collaboration tools" [ref=e2341] [cursor=pointer]
+              - button "Launch a group challenge with stakes fun" [ref=e2342] [cursor=pointer]:
+                - text: Launch a group challenge with stakes
+                - generic [ref=e2343]: fun
+              - button "Fund my drone company fun" [ref=e2344] [cursor=pointer]:
+                - text: Fund my drone company
+                - generic [ref=e2345]: fun
+              - button "Build cross-chain tooling pro" [ref=e2346] [cursor=pointer]:
+                - text: Build cross-chain tooling
+                - generic [ref=e2347]: pro
+              - button "Support my security research" [ref=e2348] [cursor=pointer]
+              - button "Create a DEX pro" [ref=e2349] [cursor=pointer]:
+                - text: Create a DEX
+                - generic [ref=e2350]: pro
+              - button "What would you fund? fun" [ref=e2351] [cursor=pointer]:
+                - text: What would you fund?
+                - generic [ref=e2352]: fun
+              - button "Run a retroactive funding round pro" [ref=e2353] [cursor=pointer]:
+                - text: Run a retroactive funding round
+                - generic [ref=e2354]: pro
+              - button "Create telehealth solution" [ref=e2355] [cursor=pointer]
+              - button "Run a Discord with benefits" [ref=e2356] [cursor=pointer]
+              - button "Launch my wellness platform popular" [ref=e2357] [cursor=pointer]:
+                - text: Launch my wellness platform
+                - generic [ref=e2358]: popular
+              - button "Fund my urban garden" [ref=e2359] [cursor=pointer]
+              - button "Build a sculpture garden" [ref=e2360] [cursor=pointer]
+              - button "Launch my Twitch career" [ref=e2361] [cursor=pointer]
+              - button "Fund my artistic protest fun" [ref=e2362] [cursor=pointer]:
+                - text: Fund my artistic protest
+                - generic [ref=e2363]: fun
+              - button "Build a neighborhood app" [ref=e2364] [cursor=pointer]
+              - button "Wealth generation protocol bold" [ref=e2365] [cursor=pointer]:
+                - text: Wealth generation protocol
+                - generic [ref=e2366]: bold
+              - button "Fund my content creation popular" [ref=e2367] [cursor=pointer]:
+                - text: Fund my content creation
+                - generic [ref=e2368]: popular
+              - button "Build on JB primitives pro" [ref=e2369] [cursor=pointer]:
+                - text: Build on JB primitives
+                - generic [ref=e2370]: pro
+              - button "Back an indie developer" [ref=e2371] [cursor=pointer]
+              - button "Relief fund for anyone" [ref=e2372] [cursor=pointer]
+              - button "Launch my podcast network" [ref=e2373] [cursor=pointer]
+              - button "Launch my marketplace" [ref=e2374] [cursor=pointer]
+          - generic [ref=e2375]:
+            - generic [ref=e2376]:
+              - button "Fund my community teaching studio" [ref=e2377] [cursor=pointer]
+              - button "Create sustainable agriculture" [ref=e2378] [cursor=pointer]
+              - button "Build a learning app" [ref=e2379] [cursor=pointer]
+              - button "writing code id" [ref=e2380] [cursor=pointer]:
+                - text: writing code
+                - generic [ref=e2381]: id
+              - button "causing chaos id" [ref=e2382] [cursor=pointer]:
+                - text: causing chaos
+                - generic [ref=e2383]: id
+              - button "Build developer tools pro" [ref=e2384] [cursor=pointer]:
+                - text: Build developer tools
+                - generic [ref=e2385]: pro
+              - button "Immersive chaos experience fun" [ref=e2386] [cursor=pointer]:
+                - text: Immersive chaos experience
+                - generic [ref=e2387]: fun
+              - button "Fund my network state bold" [ref=e2388] [cursor=pointer]:
+                - text: Fund my network state
+                - generic [ref=e2389]: bold
+              - button "Create a giving circle" [ref=e2390] [cursor=pointer]
+              - button "Create a farmers market" [ref=e2391] [cursor=pointer]
+              - button "Outdoor fitness treasury" [ref=e2392] [cursor=pointer]
+              - button "learning & teaching id" [ref=e2393] [cursor=pointer]:
+                - text: learning & teaching
+                - generic [ref=e2394]: id
+              - button "Fund investigative reporting" [ref=e2395] [cursor=pointer]
+              - button "Build my audience first" [ref=e2396] [cursor=pointer]
+              - button "Monetize my API" [ref=e2397] [cursor=pointer]
+              - button "Fund my commodity trading" [ref=e2398] [cursor=pointer]
+              - button "Open source sustainability" [ref=e2399] [cursor=pointer]
+              - button "getting famous id" [ref=e2400] [cursor=pointer]:
+                - text: getting famous
+                - generic [ref=e2401]: id
+              - button "Fund decentralization" [ref=e2402] [cursor=pointer]
+              - button "Build a giving platform" [ref=e2403] [cursor=pointer]
+              - button "Create investor agreements" [ref=e2404] [cursor=pointer]
+              - button "Show me underfunded gems demo" [ref=e2405] [cursor=pointer]:
+                - text: Show me underfunded gems
+                - generic [ref=e2406]: demo
+              - button "Create a tea company" [ref=e2407] [cursor=pointer]
+              - button "Launch my infrastructure fund" [ref=e2408] [cursor=pointer]
+              - button "Create sports scholarships" [ref=e2409] [cursor=pointer]
+              - button "Build a particle detector" [ref=e2410] [cursor=pointer]
+              - button "Fund my housing project" [ref=e2411] [cursor=pointer]
+              - button "Build a market simulation bold" [ref=e2412] [cursor=pointer]:
+                - text: Build a market simulation
+                - generic [ref=e2413]: bold
+              - button "Launch my productivity app popular" [ref=e2414] [cursor=pointer]:
+                - text: Launch my productivity app
+                - generic [ref=e2415]: popular
+              - button "Build generative AI tools" [ref=e2416] [cursor=pointer]
+              - button "Build no-code platform bold" [ref=e2417] [cursor=pointer]:
+                - text: Build no-code platform
+                - generic [ref=e2418]: bold
+              - button "IPO preparation fund bold" [ref=e2419] [cursor=pointer]:
+                - text: IPO preparation fund
+                - generic [ref=e2420]: bold
+              - button "Outdoor community space" [ref=e2421] [cursor=pointer]
+              - button "Disrupt everything bold" [ref=e2422] [cursor=pointer]:
+                - text: Disrupt everything
+                - generic [ref=e2423]: bold
+              - button "Host multiple projects on my site" [ref=e2424] [cursor=pointer]
+              - button "Anonymous art fund" [ref=e2425] [cursor=pointer]
+              - button "Start my agency" [ref=e2426] [cursor=pointer]
+              - button "Build rehabilitation programs" [ref=e2427] [cursor=pointer]
+              - button "Create fractional ownership bold" [ref=e2428] [cursor=pointer]:
+                - text: Create fractional ownership
+                - generic [ref=e2429]: bold
+              - button "Fund my accounting software" [ref=e2430] [cursor=pointer]
+            - generic [ref=e2431]:
+              - button "Fund my community teaching studio" [ref=e2432] [cursor=pointer]
+              - button "Create sustainable agriculture" [ref=e2433] [cursor=pointer]
+              - button "Build a learning app" [ref=e2434] [cursor=pointer]
+              - button "writing code id" [ref=e2435] [cursor=pointer]:
+                - text: writing code
+                - generic [ref=e2436]: id
+              - button "causing chaos id" [ref=e2437] [cursor=pointer]:
+                - text: causing chaos
+                - generic [ref=e2438]: id
+              - button "Build developer tools pro" [ref=e2439] [cursor=pointer]:
+                - text: Build developer tools
+                - generic [ref=e2440]: pro
+              - button "Immersive chaos experience fun" [ref=e2441] [cursor=pointer]:
+                - text: Immersive chaos experience
+                - generic [ref=e2442]: fun
+              - button "Fund my network state bold" [ref=e2443] [cursor=pointer]:
+                - text: Fund my network state
+                - generic [ref=e2444]: bold
+              - button "Create a giving circle" [ref=e2445] [cursor=pointer]
+              - button "Create a farmers market" [ref=e2446] [cursor=pointer]
+              - button "Outdoor fitness treasury" [ref=e2447] [cursor=pointer]
+              - button "learning & teaching id" [ref=e2448] [cursor=pointer]:
+                - text: learning & teaching
+                - generic [ref=e2449]: id
+              - button "Fund investigative reporting" [ref=e2450] [cursor=pointer]
+              - button "Build my audience first" [ref=e2451] [cursor=pointer]
+              - button "Monetize my API" [ref=e2452] [cursor=pointer]
+              - button "Fund my commodity trading" [ref=e2453] [cursor=pointer]
+              - button "Open source sustainability" [ref=e2454] [cursor=pointer]
+              - button "getting famous id" [ref=e2455] [cursor=pointer]:
+                - text: getting famous
+                - generic [ref=e2456]: id
+              - button "Fund decentralization" [ref=e2457] [cursor=pointer]
+              - button "Build a giving platform" [ref=e2458] [cursor=pointer]
+              - button "Create investor agreements" [ref=e2459] [cursor=pointer]
+              - button "Show me underfunded gems demo" [ref=e2460] [cursor=pointer]:
+                - text: Show me underfunded gems
+                - generic [ref=e2461]: demo
+              - button "Create a tea company" [ref=e2462] [cursor=pointer]
+              - button "Launch my infrastructure fund" [ref=e2463] [cursor=pointer]
+              - button "Create sports scholarships" [ref=e2464] [cursor=pointer]
+              - button "Build a particle detector" [ref=e2465] [cursor=pointer]
+              - button "Fund my housing project" [ref=e2466] [cursor=pointer]
+              - button "Build a market simulation bold" [ref=e2467] [cursor=pointer]:
+                - text: Build a market simulation
+                - generic [ref=e2468]: bold
+              - button "Launch my productivity app popular" [ref=e2469] [cursor=pointer]:
+                - text: Launch my productivity app
+                - generic [ref=e2470]: popular
+              - button "Build generative AI tools" [ref=e2471] [cursor=pointer]
+              - button "Build no-code platform bold" [ref=e2472] [cursor=pointer]:
+                - text: Build no-code platform
+                - generic [ref=e2473]: bold
+              - button "IPO preparation fund bold" [ref=e2474] [cursor=pointer]:
+                - text: IPO preparation fund
+                - generic [ref=e2475]: bold
+              - button "Outdoor community space" [ref=e2476] [cursor=pointer]
+              - button "Disrupt everything bold" [ref=e2477] [cursor=pointer]:
+                - text: Disrupt everything
+                - generic [ref=e2478]: bold
+              - button "Host multiple projects on my site" [ref=e2479] [cursor=pointer]
+              - button "Anonymous art fund" [ref=e2480] [cursor=pointer]
+              - button "Start my agency" [ref=e2481] [cursor=pointer]
+              - button "Build rehabilitation programs" [ref=e2482] [cursor=pointer]
+              - button "Create fractional ownership bold" [ref=e2483] [cursor=pointer]:
+                - text: Create fractional ownership
+                - generic [ref=e2484]: bold
+              - button "Fund my accounting software" [ref=e2485] [cursor=pointer]
+            - generic [ref=e2486]:
+              - button "Fund my community teaching studio" [ref=e2487] [cursor=pointer]
+              - button "Create sustainable agriculture" [ref=e2488] [cursor=pointer]
+              - button "Build a learning app" [ref=e2489] [cursor=pointer]
+              - button "writing code id" [ref=e2490] [cursor=pointer]:
+                - text: writing code
+                - generic [ref=e2491]: id
+              - button "causing chaos id" [ref=e2492] [cursor=pointer]:
+                - text: causing chaos
+                - generic [ref=e2493]: id
+              - button "Build developer tools pro" [ref=e2494] [cursor=pointer]:
+                - text: Build developer tools
+                - generic [ref=e2495]: pro
+              - button "Immersive chaos experience fun" [ref=e2496] [cursor=pointer]:
+                - text: Immersive chaos experience
+                - generic [ref=e2497]: fun
+              - button "Fund my network state bold" [ref=e2498] [cursor=pointer]:
+                - text: Fund my network state
+                - generic [ref=e2499]: bold
+              - button "Create a giving circle" [ref=e2500] [cursor=pointer]
+              - button "Create a farmers market" [ref=e2501] [cursor=pointer]
+              - button "Outdoor fitness treasury" [ref=e2502] [cursor=pointer]
+              - button "learning & teaching id" [ref=e2503] [cursor=pointer]:
+                - text: learning & teaching
+                - generic [ref=e2504]: id
+              - button "Fund investigative reporting" [ref=e2505] [cursor=pointer]
+              - button "Build my audience first" [ref=e2506] [cursor=pointer]
+              - button "Monetize my API" [ref=e2507] [cursor=pointer]
+              - button "Fund my commodity trading" [ref=e2508] [cursor=pointer]
+              - button "Open source sustainability" [ref=e2509] [cursor=pointer]
+              - button "getting famous id" [ref=e2510] [cursor=pointer]:
+                - text: getting famous
+                - generic [ref=e2511]: id
+              - button "Fund decentralization" [ref=e2512] [cursor=pointer]
+              - button "Build a giving platform" [ref=e2513] [cursor=pointer]
+              - button "Create investor agreements" [ref=e2514] [cursor=pointer]
+              - button "Show me underfunded gems demo" [ref=e2515] [cursor=pointer]:
+                - text: Show me underfunded gems
+                - generic [ref=e2516]: demo
+              - button "Create a tea company" [ref=e2517] [cursor=pointer]
+              - button "Launch my infrastructure fund" [ref=e2518] [cursor=pointer]
+              - button "Create sports scholarships" [ref=e2519] [cursor=pointer]
+              - button "Build a particle detector" [ref=e2520] [cursor=pointer]
+              - button "Fund my housing project" [ref=e2521] [cursor=pointer]
+              - button "Build a market simulation bold" [ref=e2522] [cursor=pointer]:
+                - text: Build a market simulation
+                - generic [ref=e2523]: bold
+              - button "Launch my productivity app popular" [ref=e2524] [cursor=pointer]:
+                - text: Launch my productivity app
+                - generic [ref=e2525]: popular
+              - button "Build generative AI tools" [ref=e2526] [cursor=pointer]
+              - button "Build no-code platform bold" [ref=e2527] [cursor=pointer]:
+                - text: Build no-code platform
+                - generic [ref=e2528]: bold
+              - button "IPO preparation fund bold" [ref=e2529] [cursor=pointer]:
+                - text: IPO preparation fund
+                - generic [ref=e2530]: bold
+              - button "Outdoor community space" [ref=e2531] [cursor=pointer]
+              - button "Disrupt everything bold" [ref=e2532] [cursor=pointer]:
+                - text: Disrupt everything
+                - generic [ref=e2533]: bold
+              - button "Host multiple projects on my site" [ref=e2534] [cursor=pointer]
+              - button "Anonymous art fund" [ref=e2535] [cursor=pointer]
+              - button "Start my agency" [ref=e2536] [cursor=pointer]
+              - button "Build rehabilitation programs" [ref=e2537] [cursor=pointer]
+              - button "Create fractional ownership bold" [ref=e2538] [cursor=pointer]:
+                - text: Create fractional ownership
+                - generic [ref=e2539]: bold
+              - button "Fund my accounting software" [ref=e2540] [cursor=pointer]
+            - generic [ref=e2541]:
+              - button "Fund my community teaching studio" [ref=e2542] [cursor=pointer]
+              - button "Create sustainable agriculture" [ref=e2543] [cursor=pointer]
+              - button "Build a learning app" [ref=e2544] [cursor=pointer]
+              - button "writing code id" [ref=e2545] [cursor=pointer]:
+                - text: writing code
+                - generic [ref=e2546]: id
+              - button "causing chaos id" [ref=e2547] [cursor=pointer]:
+                - text: causing chaos
+                - generic [ref=e2548]: id
+              - button "Build developer tools pro" [ref=e2549] [cursor=pointer]:
+                - text: Build developer tools
+                - generic [ref=e2550]: pro
+              - button "Immersive chaos experience fun" [ref=e2551] [cursor=pointer]:
+                - text: Immersive chaos experience
+                - generic [ref=e2552]: fun
+              - button "Fund my network state bold" [ref=e2553] [cursor=pointer]:
+                - text: Fund my network state
+                - generic [ref=e2554]: bold
+              - button "Create a giving circle" [ref=e2555] [cursor=pointer]
+              - button "Create a farmers market" [ref=e2556] [cursor=pointer]
+              - button "Outdoor fitness treasury" [ref=e2557] [cursor=pointer]
+              - button "learning & teaching id" [ref=e2558] [cursor=pointer]:
+                - text: learning & teaching
+                - generic [ref=e2559]: id
+              - button "Fund investigative reporting" [ref=e2560] [cursor=pointer]
+              - button "Build my audience first" [ref=e2561] [cursor=pointer]
+              - button "Monetize my API" [ref=e2562] [cursor=pointer]
+              - button "Fund my commodity trading" [ref=e2563] [cursor=pointer]
+              - button "Open source sustainability" [ref=e2564] [cursor=pointer]
+              - button "getting famous id" [ref=e2565] [cursor=pointer]:
+                - text: getting famous
+                - generic [ref=e2566]: id
+              - button "Fund decentralization" [ref=e2567] [cursor=pointer]
+              - button "Build a giving platform" [ref=e2568] [cursor=pointer]
+              - button "Create investor agreements" [ref=e2569] [cursor=pointer]
+              - button "Show me underfunded gems demo" [ref=e2570] [cursor=pointer]:
+                - text: Show me underfunded gems
+                - generic [ref=e2571]: demo
+              - button "Create a tea company" [ref=e2572] [cursor=pointer]
+              - button "Launch my infrastructure fund" [ref=e2573] [cursor=pointer]
+              - button "Create sports scholarships" [ref=e2574] [cursor=pointer]
+              - button "Build a particle detector" [ref=e2575] [cursor=pointer]
+              - button "Fund my housing project" [ref=e2576] [cursor=pointer]
+              - button "Build a market simulation bold" [ref=e2577] [cursor=pointer]:
+                - text: Build a market simulation
+                - generic [ref=e2578]: bold
+              - button "Launch my productivity app popular" [ref=e2579] [cursor=pointer]:
+                - text: Launch my productivity app
+                - generic [ref=e2580]: popular
+              - button "Build generative AI tools" [ref=e2581] [cursor=pointer]
+              - button "Build no-code platform bold" [ref=e2582] [cursor=pointer]:
+                - text: Build no-code platform
+                - generic [ref=e2583]: bold
+              - button "IPO preparation fund bold" [ref=e2584] [cursor=pointer]:
+                - text: IPO preparation fund
+                - generic [ref=e2585]: bold
+              - button "Outdoor community space" [ref=e2586] [cursor=pointer]
+              - button "Disrupt everything bold" [ref=e2587] [cursor=pointer]:
+                - text: Disrupt everything
+                - generic [ref=e2588]: bold
+              - button "Host multiple projects on my site" [ref=e2589] [cursor=pointer]
+              - button "Anonymous art fund" [ref=e2590] [cursor=pointer]
+              - button "Start my agency" [ref=e2591] [cursor=pointer]
+              - button "Build rehabilitation programs" [ref=e2592] [cursor=pointer]
+              - button "Create fractional ownership bold" [ref=e2593] [cursor=pointer]:
+                - text: Create fractional ownership
+                - generic [ref=e2594]: bold
+              - button "Fund my accounting software" [ref=e2595] [cursor=pointer]
+            - generic [ref=e2596]:
+              - button "Fund my community teaching studio" [ref=e2597] [cursor=pointer]
+              - button "Create sustainable agriculture" [ref=e2598] [cursor=pointer]
+              - button "Build a learning app" [ref=e2599] [cursor=pointer]
+              - button "writing code id" [ref=e2600] [cursor=pointer]:
+                - text: writing code
+                - generic [ref=e2601]: id
+              - button "causing chaos id" [ref=e2602] [cursor=pointer]:
+                - text: causing chaos
+                - generic [ref=e2603]: id
+              - button "Build developer tools pro" [ref=e2604] [cursor=pointer]:
+                - text: Build developer tools
+                - generic [ref=e2605]: pro
+              - button "Immersive chaos experience fun" [ref=e2606] [cursor=pointer]:
+                - text: Immersive chaos experience
+                - generic [ref=e2607]: fun
+              - button "Fund my network state bold" [ref=e2608] [cursor=pointer]:
+                - text: Fund my network state
+                - generic [ref=e2609]: bold
+              - button "Create a giving circle" [ref=e2610] [cursor=pointer]
+              - button "Create a farmers market" [ref=e2611] [cursor=pointer]
+              - button "Outdoor fitness treasury" [ref=e2612] [cursor=pointer]
+              - button "learning & teaching id" [ref=e2613] [cursor=pointer]:
+                - text: learning & teaching
+                - generic [ref=e2614]: id
+              - button "Fund investigative reporting" [ref=e2615] [cursor=pointer]
+              - button "Build my audience first" [ref=e2616] [cursor=pointer]
+              - button "Monetize my API" [ref=e2617] [cursor=pointer]
+              - button "Fund my commodity trading" [ref=e2618] [cursor=pointer]
+              - button "Open source sustainability" [ref=e2619] [cursor=pointer]
+              - button "getting famous id" [ref=e2620] [cursor=pointer]:
+                - text: getting famous
+                - generic [ref=e2621]: id
+              - button "Fund decentralization" [ref=e2622] [cursor=pointer]
+              - button "Build a giving platform" [ref=e2623] [cursor=pointer]
+              - button "Create investor agreements" [ref=e2624] [cursor=pointer]
+              - button "Show me underfunded gems demo" [ref=e2625] [cursor=pointer]:
+                - text: Show me underfunded gems
+                - generic [ref=e2626]: demo
+              - button "Create a tea company" [ref=e2627] [cursor=pointer]
+              - button "Launch my infrastructure fund" [ref=e2628] [cursor=pointer]
+              - button "Create sports scholarships" [ref=e2629] [cursor=pointer]
+              - button "Build a particle detector" [ref=e2630] [cursor=pointer]
+              - button "Fund my housing project" [ref=e2631] [cursor=pointer]
+              - button "Build a market simulation bold" [ref=e2632] [cursor=pointer]:
+                - text: Build a market simulation
+                - generic [ref=e2633]: bold
+              - button "Launch my productivity app popular" [ref=e2634] [cursor=pointer]:
+                - text: Launch my productivity app
+                - generic [ref=e2635]: popular
+              - button "Build generative AI tools" [ref=e2636] [cursor=pointer]
+              - button "Build no-code platform bold" [ref=e2637] [cursor=pointer]:
+                - text: Build no-code platform
+                - generic [ref=e2638]: bold
+              - button "IPO preparation fund bold" [ref=e2639] [cursor=pointer]:
+                - text: IPO preparation fund
+                - generic [ref=e2640]: bold
+              - button "Outdoor community space" [ref=e2641] [cursor=pointer]
+              - button "Disrupt everything bold" [ref=e2642] [cursor=pointer]:
+                - text: Disrupt everything
+                - generic [ref=e2643]: bold
+              - button "Host multiple projects on my site" [ref=e2644] [cursor=pointer]
+              - button "Anonymous art fund" [ref=e2645] [cursor=pointer]
+              - button "Start my agency" [ref=e2646] [cursor=pointer]
+              - button "Build rehabilitation programs" [ref=e2647] [cursor=pointer]
+              - button "Create fractional ownership bold" [ref=e2648] [cursor=pointer]:
+                - text: Create fractional ownership
+                - generic [ref=e2649]: bold
+              - button "Fund my accounting software" [ref=e2650] [cursor=pointer]
+          - generic [ref=e2651]:
+            - generic [ref=e2652]:
+              - button "Create linguistics research" [ref=e2653] [cursor=pointer]
+              - button "Create a notes app" [ref=e2654] [cursor=pointer]
+              - button "Build AI-powered tools popular" [ref=e2655] [cursor=pointer]:
+                - text: Build AI-powered tools
+                - generic [ref=e2656]: popular
+              - button "How can I reward supporters? popular" [ref=e2657] [cursor=pointer]:
+                - text: How can I reward supporters?
+                - generic [ref=e2658]: popular
+              - button "Launch my lab equipment" [ref=e2659] [cursor=pointer]
+              - button "thinking big id" [ref=e2660] [cursor=pointer]:
+                - text: thinking big
+                - generic [ref=e2661]: id
+              - button "Can I run a membership program?" [ref=e2662] [cursor=pointer]
+              - button "Set up cross-chain fundraising pro" [ref=e2663] [cursor=pointer]:
+                - text: Set up cross-chain fundraising
+                - generic [ref=e2664]: pro
+              - button "avoiding people id" [ref=e2665] [cursor=pointer]:
+                - text: avoiding people
+                - generic [ref=e2666]: id
+              - button "Fund my real estate project" [ref=e2667] [cursor=pointer]
+              - button "Fund my meditation startup" [ref=e2668] [cursor=pointer]
+              - button "Nature education fund" [ref=e2669] [cursor=pointer]
+              - button "Fund my teaching collective" [ref=e2670] [cursor=pointer]
+              - button "Charity without overhead" [ref=e2671] [cursor=pointer]
+              - button "How does the money flow? demo" [ref=e2672] [cursor=pointer]:
+                - text: How does the money flow?
+                - generic [ref=e2673]: demo
+              - button "Fund my hardware startup" [ref=e2674] [cursor=pointer]
+              - button "Create personalized medicine bold" [ref=e2675] [cursor=pointer]:
+                - text: Create personalized medicine
+                - generic [ref=e2676]: bold
+              - button "Exit strategy treasury bold" [ref=e2677] [cursor=pointer]:
+                - text: Exit strategy treasury
+                - generic [ref=e2678]: bold
+              - button "Build a task manager" [ref=e2679] [cursor=pointer]
+              - button "Nonprofit for coral reefs" [ref=e2680] [cursor=pointer]
+              - button "Launch my tournament series" [ref=e2681] [cursor=pointer]
+              - button "Launch my fitness app" [ref=e2682] [cursor=pointer]
+              - button "being normal id" [ref=e2683] [cursor=pointer]:
+                - text: being normal
+                - generic [ref=e2684]: id
+              - button "Build an NFT marketplace" [ref=e2685] [cursor=pointer]
+              - button "Launch my puppet show fun" [ref=e2686] [cursor=pointer]:
+                - text: Launch my puppet show
+                - generic [ref=e2687]: fun
+              - button "Create employee engagement" [ref=e2688] [cursor=pointer]
+              - button "Trail maintenance treasury" [ref=e2689] [cursor=pointer]
+              - button "Build a prediction game on Juicebox fun" [ref=e2690] [cursor=pointer]:
+                - text: Build a prediction game on Juicebox
+                - generic [ref=e2691]: fun
+              - button "Fund my two-sided marketplace bold" [ref=e2692] [cursor=pointer]:
+                - text: Fund my two-sided marketplace
+                - generic [ref=e2693]: bold
+              - button "Build web3 public goods" [ref=e2694] [cursor=pointer]
+              - button "Fund my commodity marketplace" [ref=e2695] [cursor=pointer]
+              - button "Create financial education" [ref=e2696] [cursor=pointer]
+              - button "Fund my licensing platform" [ref=e2697] [cursor=pointer]
+              - button "Can I fundraise for a collective?" [ref=e2698] [cursor=pointer]
+              - button "Fund my online community popular" [ref=e2699] [cursor=pointer]:
+                - text: Fund my online community
+                - generic [ref=e2700]: popular
+              - button "Fund my tutorial series" [ref=e2701] [cursor=pointer]
+              - button "Fund my telescope time" [ref=e2702] [cursor=pointer]
+              - button "Chaotic good funding fun" [ref=e2703] [cursor=pointer]:
+                - text: Chaotic good funding
+                - generic [ref=e2704]: fun
+              - button "On-chain only presence pro" [ref=e2705] [cursor=pointer]:
+                - text: On-chain only presence
+                - generic [ref=e2706]: pro
+              - button "Create employment programs" [ref=e2707] [cursor=pointer]
+            - generic [ref=e2708]:
+              - button "Create linguistics research" [ref=e2709] [cursor=pointer]
+              - button "Create a notes app" [ref=e2710] [cursor=pointer]
+              - button "Build AI-powered tools popular" [ref=e2711] [cursor=pointer]:
+                - text: Build AI-powered tools
+                - generic [ref=e2712]: popular
+              - button "How can I reward supporters? popular" [ref=e2713] [cursor=pointer]:
+                - text: How can I reward supporters?
+                - generic [ref=e2714]: popular
+              - button "Launch my lab equipment" [ref=e2715] [cursor=pointer]
+              - button "thinking big id" [ref=e2716] [cursor=pointer]:
+                - text: thinking big
+                - generic [ref=e2717]: id
+              - button "Can I run a membership program?" [ref=e2718] [cursor=pointer]
+              - button "Set up cross-chain fundraising pro" [ref=e2719] [cursor=pointer]:
+                - text: Set up cross-chain fundraising
+                - generic [ref=e2720]: pro
+              - button "avoiding people id" [ref=e2721] [cursor=pointer]:
+                - text: avoiding people
+                - generic [ref=e2722]: id
+              - button "Fund my real estate project" [ref=e2723] [cursor=pointer]
+              - button "Fund my meditation startup" [ref=e2724] [cursor=pointer]
+              - button "Nature education fund" [ref=e2725] [cursor=pointer]
+              - button "Fund my teaching collective" [ref=e2726] [cursor=pointer]
+              - button "Charity without overhead" [ref=e2727] [cursor=pointer]
+              - button "How does the money flow? demo" [ref=e2728] [cursor=pointer]:
+                - text: How does the money flow?
+                - generic [ref=e2729]: demo
+              - button "Fund my hardware startup" [ref=e2730] [cursor=pointer]
+              - button "Create personalized medicine bold" [ref=e2731] [cursor=pointer]:
+                - text: Create personalized medicine
+                - generic [ref=e2732]: bold
+              - button "Exit strategy treasury bold" [ref=e2733] [cursor=pointer]:
+                - text: Exit strategy treasury
+                - generic [ref=e2734]: bold
+              - button "Build a task manager" [ref=e2735] [cursor=pointer]
+              - button "Nonprofit for coral reefs" [ref=e2736] [cursor=pointer]
+              - button "Launch my tournament series" [ref=e2737] [cursor=pointer]
+              - button "Launch my fitness app" [ref=e2738] [cursor=pointer]
+              - button "being normal id" [ref=e2739] [cursor=pointer]:
+                - text: being normal
+                - generic [ref=e2740]: id
+              - button "Build an NFT marketplace" [ref=e2741] [cursor=pointer]
+              - button "Launch my puppet show fun" [ref=e2742] [cursor=pointer]:
+                - text: Launch my puppet show
+                - generic [ref=e2743]: fun
+              - button "Create employee engagement" [ref=e2744] [cursor=pointer]
+              - button "Trail maintenance treasury" [ref=e2745] [cursor=pointer]
+              - button "Build a prediction game on Juicebox fun" [ref=e2746] [cursor=pointer]:
+                - text: Build a prediction game on Juicebox
+                - generic [ref=e2747]: fun
+              - button "Fund my two-sided marketplace bold" [ref=e2748] [cursor=pointer]:
+                - text: Fund my two-sided marketplace
+                - generic [ref=e2749]: bold
+              - button "Build web3 public goods" [ref=e2750] [cursor=pointer]
+              - button "Fund my commodity marketplace" [ref=e2751] [cursor=pointer]
+              - button "Create financial education" [ref=e2752] [cursor=pointer]
+              - button "Fund my licensing platform" [ref=e2753] [cursor=pointer]
+              - button "Can I fundraise for a collective?" [ref=e2754] [cursor=pointer]
+              - button "Fund my online community popular" [ref=e2755] [cursor=pointer]:
+                - text: Fund my online community
+                - generic [ref=e2756]: popular
+              - button "Fund my tutorial series" [ref=e2757] [cursor=pointer]
+              - button "Fund my telescope time" [ref=e2758] [cursor=pointer]
+              - button "Chaotic good funding fun" [ref=e2759] [cursor=pointer]:
+                - text: Chaotic good funding
+                - generic [ref=e2760]: fun
+              - button "On-chain only presence pro" [ref=e2761] [cursor=pointer]:
+                - text: On-chain only presence
+                - generic [ref=e2762]: pro
+              - button "Create employment programs" [ref=e2763] [cursor=pointer]
+            - generic [ref=e2764]:
+              - button "Create linguistics research" [ref=e2765] [cursor=pointer]
+              - button "Create a notes app" [ref=e2766] [cursor=pointer]
+              - button "Build AI-powered tools popular" [ref=e2767] [cursor=pointer]:
+                - text: Build AI-powered tools
+                - generic [ref=e2768]: popular
+              - button "How can I reward supporters? popular" [ref=e2769] [cursor=pointer]:
+                - text: How can I reward supporters?
+                - generic [ref=e2770]: popular
+              - button "Launch my lab equipment" [ref=e2771] [cursor=pointer]
+              - button "thinking big id" [ref=e2772] [cursor=pointer]:
+                - text: thinking big
+                - generic [ref=e2773]: id
+              - button "Can I run a membership program?" [ref=e2774] [cursor=pointer]
+              - button "Set up cross-chain fundraising pro" [ref=e2775] [cursor=pointer]:
+                - text: Set up cross-chain fundraising
+                - generic [ref=e2776]: pro
+              - button "avoiding people id" [ref=e2777] [cursor=pointer]:
+                - text: avoiding people
+                - generic [ref=e2778]: id
+              - button "Fund my real estate project" [ref=e2779] [cursor=pointer]
+              - button "Fund my meditation startup" [ref=e2780] [cursor=pointer]
+              - button "Nature education fund" [ref=e2781] [cursor=pointer]
+              - button "Fund my teaching collective" [ref=e2782] [cursor=pointer]
+              - button "Charity without overhead" [ref=e2783] [cursor=pointer]
+              - button "How does the money flow? demo" [ref=e2784] [cursor=pointer]:
+                - text: How does the money flow?
+                - generic [ref=e2785]: demo
+              - button "Fund my hardware startup" [ref=e2786] [cursor=pointer]
+              - button "Create personalized medicine bold" [ref=e2787] [cursor=pointer]:
+                - text: Create personalized medicine
+                - generic [ref=e2788]: bold
+              - button "Exit strategy treasury bold" [ref=e2789] [cursor=pointer]:
+                - text: Exit strategy treasury
+                - generic [ref=e2790]: bold
+              - button "Build a task manager" [ref=e2791] [cursor=pointer]
+              - button "Nonprofit for coral reefs" [ref=e2792] [cursor=pointer]
+              - button "Launch my tournament series" [ref=e2793] [cursor=pointer]
+              - button "Launch my fitness app" [ref=e2794] [cursor=pointer]
+              - button "being normal id" [ref=e2795] [cursor=pointer]:
+                - text: being normal
+                - generic [ref=e2796]: id
+              - button "Build an NFT marketplace" [ref=e2797] [cursor=pointer]
+              - button "Launch my puppet show fun" [ref=e2798] [cursor=pointer]:
+                - text: Launch my puppet show
+                - generic [ref=e2799]: fun
+              - button "Create employee engagement" [ref=e2800] [cursor=pointer]
+              - button "Trail maintenance treasury" [ref=e2801] [cursor=pointer]
+              - button "Build a prediction game on Juicebox fun" [ref=e2802] [cursor=pointer]:
+                - text: Build a prediction game on Juicebox
+                - generic [ref=e2803]: fun
+              - button "Fund my two-sided marketplace bold" [ref=e2804] [cursor=pointer]:
+                - text: Fund my two-sided marketplace
+                - generic [ref=e2805]: bold
+              - button "Build web3 public goods" [ref=e2806] [cursor=pointer]
+              - button "Fund my commodity marketplace" [ref=e2807] [cursor=pointer]
+              - button "Create financial education" [ref=e2808] [cursor=pointer]
+              - button "Fund my licensing platform" [ref=e2809] [cursor=pointer]
+              - button "Can I fundraise for a collective?" [ref=e2810] [cursor=pointer]
+              - button "Fund my online community popular" [ref=e2811] [cursor=pointer]:
+                - text: Fund my online community
+                - generic [ref=e2812]: popular
+              - button "Fund my tutorial series" [ref=e2813] [cursor=pointer]
+              - button "Fund my telescope time" [ref=e2814] [cursor=pointer]
+              - button "Chaotic good funding fun" [ref=e2815] [cursor=pointer]:
+                - text: Chaotic good funding
+                - generic [ref=e2816]: fun
+              - button "On-chain only presence pro" [ref=e2817] [cursor=pointer]:
+                - text: On-chain only presence
+                - generic [ref=e2818]: pro
+              - button "Create employment programs" [ref=e2819] [cursor=pointer]
+            - generic [ref=e2820]:
+              - button "Create linguistics research" [ref=e2821] [cursor=pointer]
+              - button "Create a notes app" [ref=e2822] [cursor=pointer]
+              - button "Build AI-powered tools popular" [ref=e2823] [cursor=pointer]:
+                - text: Build AI-powered tools
+                - generic [ref=e2824]: popular
+              - button "How can I reward supporters? popular" [ref=e2825] [cursor=pointer]:
+                - text: How can I reward supporters?
+                - generic [ref=e2826]: popular
+              - button "Launch my lab equipment" [ref=e2827] [cursor=pointer]
+              - button "thinking big id" [ref=e2828] [cursor=pointer]:
+                - text: thinking big
+                - generic [ref=e2829]: id
+              - button "Can I run a membership program?" [ref=e2830] [cursor=pointer]
+              - button "Set up cross-chain fundraising pro" [ref=e2831] [cursor=pointer]:
+                - text: Set up cross-chain fundraising
+                - generic [ref=e2832]: pro
+              - button "avoiding people id" [ref=e2833] [cursor=pointer]:
+                - text: avoiding people
+                - generic [ref=e2834]: id
+              - button "Fund my real estate project" [ref=e2835] [cursor=pointer]
+              - button "Fund my meditation startup" [ref=e2836] [cursor=pointer]
+              - button "Nature education fund" [ref=e2837] [cursor=pointer]
+              - button "Fund my teaching collective" [ref=e2838] [cursor=pointer]
+              - button "Charity without overhead" [ref=e2839] [cursor=pointer]
+              - button "How does the money flow? demo" [ref=e2840] [cursor=pointer]:
+                - text: How does the money flow?
+                - generic [ref=e2841]: demo
+              - button "Fund my hardware startup" [ref=e2842] [cursor=pointer]
+              - button "Create personalized medicine bold" [ref=e2843] [cursor=pointer]:
+                - text: Create personalized medicine
+                - generic [ref=e2844]: bold
+              - button "Exit strategy treasury bold" [ref=e2845] [cursor=pointer]:
+                - text: Exit strategy treasury
+                - generic [ref=e2846]: bold
+              - button "Build a task manager" [ref=e2847] [cursor=pointer]
+              - button "Nonprofit for coral reefs" [ref=e2848] [cursor=pointer]
+              - button "Launch my tournament series" [ref=e2849] [cursor=pointer]
+              - button "Launch my fitness app" [ref=e2850] [cursor=pointer]
+              - button "being normal id" [ref=e2851] [cursor=pointer]:
+                - text: being normal
+                - generic [ref=e2852]: id
+              - button "Build an NFT marketplace" [ref=e2853] [cursor=pointer]
+              - button "Launch my puppet show fun" [ref=e2854] [cursor=pointer]:
+                - text: Launch my puppet show
+                - generic [ref=e2855]: fun
+              - button "Create employee engagement" [ref=e2856] [cursor=pointer]
+              - button "Trail maintenance treasury" [ref=e2857] [cursor=pointer]
+              - button "Build a prediction game on Juicebox fun" [ref=e2858] [cursor=pointer]:
+                - text: Build a prediction game on Juicebox
+                - generic [ref=e2859]: fun
+              - button "Fund my two-sided marketplace bold" [ref=e2860] [cursor=pointer]:
+                - text: Fund my two-sided marketplace
+                - generic [ref=e2861]: bold
+              - button "Build web3 public goods" [ref=e2862] [cursor=pointer]
+              - button "Fund my commodity marketplace" [ref=e2863] [cursor=pointer]
+              - button "Create financial education" [ref=e2864] [cursor=pointer]
+              - button "Fund my licensing platform" [ref=e2865] [cursor=pointer]
+              - button "Can I fundraise for a collective?" [ref=e2866] [cursor=pointer]
+              - button "Fund my online community popular" [ref=e2867] [cursor=pointer]:
+                - text: Fund my online community
+                - generic [ref=e2868]: popular
+              - button "Fund my tutorial series" [ref=e2869] [cursor=pointer]
+              - button "Fund my telescope time" [ref=e2870] [cursor=pointer]
+              - button "Chaotic good funding fun" [ref=e2871] [cursor=pointer]:
+                - text: Chaotic good funding
+                - generic [ref=e2872]: fun
+              - button "On-chain only presence pro" [ref=e2873] [cursor=pointer]:
+                - text: On-chain only presence
+                - generic [ref=e2874]: pro
+              - button "Create employment programs" [ref=e2875] [cursor=pointer]
+            - generic [ref=e2876]:
+              - button "Create linguistics research" [ref=e2877] [cursor=pointer]
+              - button "Create a notes app" [ref=e2878] [cursor=pointer]
+              - button "Build AI-powered tools popular" [ref=e2879] [cursor=pointer]:
+                - text: Build AI-powered tools
+                - generic [ref=e2880]: popular
+              - button "How can I reward supporters? popular" [ref=e2881] [cursor=pointer]:
+                - text: How can I reward supporters?
+                - generic [ref=e2882]: popular
+              - button "Launch my lab equipment" [ref=e2883] [cursor=pointer]
+              - button "thinking big id" [ref=e2884] [cursor=pointer]:
+                - text: thinking big
+                - generic [ref=e2885]: id
+              - button "Can I run a membership program?" [ref=e2886] [cursor=pointer]
+              - button "Set up cross-chain fundraising pro" [ref=e2887] [cursor=pointer]:
+                - text: Set up cross-chain fundraising
+                - generic [ref=e2888]: pro
+              - button "avoiding people id" [ref=e2889] [cursor=pointer]:
+                - text: avoiding people
+                - generic [ref=e2890]: id
+              - button "Fund my real estate project" [ref=e2891] [cursor=pointer]
+              - button "Fund my meditation startup" [ref=e2892] [cursor=pointer]
+              - button "Nature education fund" [ref=e2893] [cursor=pointer]
+              - button "Fund my teaching collective" [ref=e2894] [cursor=pointer]
+              - button "Charity without overhead" [ref=e2895] [cursor=pointer]
+              - button "How does the money flow? demo" [ref=e2896] [cursor=pointer]:
+                - text: How does the money flow?
+                - generic [ref=e2897]: demo
+              - button "Fund my hardware startup" [ref=e2898] [cursor=pointer]
+              - button "Create personalized medicine bold" [ref=e2899] [cursor=pointer]:
+                - text: Create personalized medicine
+                - generic [ref=e2900]: bold
+              - button "Exit strategy treasury bold" [ref=e2901] [cursor=pointer]:
+                - text: Exit strategy treasury
+                - generic [ref=e2902]: bold
+              - button "Build a task manager" [ref=e2903] [cursor=pointer]
+              - button "Nonprofit for coral reefs" [ref=e2904] [cursor=pointer]
+              - button "Launch my tournament series" [ref=e2905] [cursor=pointer]
+              - button "Launch my fitness app" [ref=e2906] [cursor=pointer]
+              - button "being normal id" [ref=e2907] [cursor=pointer]:
+                - text: being normal
+                - generic [ref=e2908]: id
+              - button "Build an NFT marketplace" [ref=e2909] [cursor=pointer]
+              - button "Launch my puppet show fun" [ref=e2910] [cursor=pointer]:
+                - text: Launch my puppet show
+                - generic [ref=e2911]: fun
+              - button "Create employee engagement" [ref=e2912] [cursor=pointer]
+              - button "Trail maintenance treasury" [ref=e2913] [cursor=pointer]
+              - button "Build a prediction game on Juicebox fun" [ref=e2914] [cursor=pointer]:
+                - text: Build a prediction game on Juicebox
+                - generic [ref=e2915]: fun
+              - button "Fund my two-sided marketplace bold" [ref=e2916] [cursor=pointer]:
+                - text: Fund my two-sided marketplace
+                - generic [ref=e2917]: bold
+              - button "Build web3 public goods" [ref=e2918] [cursor=pointer]
+              - button "Fund my commodity marketplace" [ref=e2919] [cursor=pointer]
+              - button "Create financial education" [ref=e2920] [cursor=pointer]
+              - button "Fund my licensing platform" [ref=e2921] [cursor=pointer]
+              - button "Can I fundraise for a collective?" [ref=e2922] [cursor=pointer]
+              - button "Fund my online community popular" [ref=e2923] [cursor=pointer]:
+                - text: Fund my online community
+                - generic [ref=e2924]: popular
+              - button "Fund my tutorial series" [ref=e2925] [cursor=pointer]
+              - button "Fund my telescope time" [ref=e2926] [cursor=pointer]
+              - button "Chaotic good funding fun" [ref=e2927] [cursor=pointer]:
+                - text: Chaotic good funding
+                - generic [ref=e2928]: fun
+              - button "On-chain only presence pro" [ref=e2929] [cursor=pointer]:
+                - text: On-chain only presence
+                - generic [ref=e2930]: pro
+              - button "Create employment programs" [ref=e2931] [cursor=pointer]
+          - generic [ref=e2932]:
+            - generic [ref=e2933]:
+              - button "Set up automated distributions" [ref=e2934] [cursor=pointer]
+              - button "Fund my compiler bold" [ref=e2935] [cursor=pointer]:
+                - text: Fund my compiler
+                - generic [ref=e2936]: bold
+              - button "Food truck launch" [ref=e2937] [cursor=pointer]
+              - button "Launch my procurement platform" [ref=e2938] [cursor=pointer]
+              - button "How do I start a fundraiser? popular" [ref=e2939] [cursor=pointer]:
+                - text: How do I start a fundraiser?
+                - generic [ref=e2940]: popular
+              - button "Launch my opera company" [ref=e2941] [cursor=pointer]
+              - button "Fund my programming language bold" [ref=e2942] [cursor=pointer]:
+                - text: Fund my programming language
+                - generic [ref=e2943]: bold
+              - button "Create BI tools" [ref=e2944] [cursor=pointer]
+              - button "Fund my sound design studio" [ref=e2945] [cursor=pointer]
+              - button "Launch my oceanography" [ref=e2946] [cursor=pointer]
+              - button "Fund my clinical research" [ref=e2947] [cursor=pointer]
+              - button "Shadow treasury pro" [ref=e2948] [cursor=pointer]:
+                - text: Shadow treasury
+                - generic [ref=e2949]: pro
+              - button "Launch my remittance service" [ref=e2950] [cursor=pointer]
+              - button "Support my mod development" [ref=e2951] [cursor=pointer]
+              - button "Breaking news fund" [ref=e2952] [cursor=pointer]
+              - button "Inspire me fun" [ref=e2953] [cursor=pointer]:
+                - text: Inspire me
+                - generic [ref=e2954]: fun
+              - button "Viral content treasury" [ref=e2955] [cursor=pointer]
+              - button "Launch my semiconductor bold" [ref=e2956] [cursor=pointer]:
+                - text: Launch my semiconductor
+                - generic [ref=e2957]: bold
+              - button "Launch my DevOps platform pro" [ref=e2958] [cursor=pointer]:
+                - text: Launch my DevOps platform
+                - generic [ref=e2959]: pro
+              - button "Train my own model bold" [ref=e2960] [cursor=pointer]:
+                - text: Train my own model
+                - generic [ref=e2961]: bold
+              - button "Launch a tool library" [ref=e2962] [cursor=pointer]
+              - button "Prediction market mayhem fun" [ref=e2963] [cursor=pointer]:
+                - text: Prediction market mayhem
+                - generic [ref=e2964]: fun
+              - button "Build sports technology" [ref=e2965] [cursor=pointer]
+              - button "Let the code do the work" [ref=e2966] [cursor=pointer]
+              - button "Fund my zine" [ref=e2967] [cursor=pointer]
+              - button "Create a B2B marketplace" [ref=e2968] [cursor=pointer]
+              - button "Build a privacy protocol pro" [ref=e2969] [cursor=pointer]:
+                - text: Build a privacy protocol
+                - generic [ref=e2970]: pro
+              - button "What could go right? fun" [ref=e2971] [cursor=pointer]:
+                - text: What could go right?
+                - generic [ref=e2972]: fun
+              - button "Support my blog" [ref=e2973] [cursor=pointer]
+              - button "Build authentication pro" [ref=e2974] [cursor=pointer]:
+                - text: Build authentication
+                - generic [ref=e2975]: pro
+              - button "Launch my citizen science" [ref=e2976] [cursor=pointer]
+              - button "Fund my networking startup pro" [ref=e2977] [cursor=pointer]:
+                - text: Fund my networking startup
+                - generic [ref=e2978]: pro
+              - button "Create a new category bold" [ref=e2979] [cursor=pointer]:
+                - text: Create a new category
+                - generic [ref=e2980]: bold
+              - button "Launch a local skills training business" [ref=e2981] [cursor=pointer]
+              - button "Fund my AI safety research pro" [ref=e2982] [cursor=pointer]:
+                - text: Fund my AI safety research
+                - generic [ref=e2983]: pro
+              - button "Build green infrastructure" [ref=e2984] [cursor=pointer]
+              - button "Fund my esports team popular" [ref=e2985] [cursor=pointer]:
+                - text: Fund my esports team
+                - generic [ref=e2986]: popular
+              - button "Scholarship for strangers" [ref=e2987] [cursor=pointer]
+              - button "Create a sports bracket with real stakes fun" [ref=e2988] [cursor=pointer]:
+                - text: Create a sports bracket with real stakes
+                - generic [ref=e2989]: fun
+              - button "Fund my security startup pro" [ref=e2990] [cursor=pointer]:
+                - text: Fund my security startup
+                - generic [ref=e2991]: pro
+            - generic [ref=e2992]:
+              - button "Set up automated distributions" [ref=e2993] [cursor=pointer]
+              - button "Fund my compiler bold" [ref=e2994] [cursor=pointer]:
+                - text: Fund my compiler
+                - generic [ref=e2995]: bold
+              - button "Food truck launch" [ref=e2996] [cursor=pointer]
+              - button "Launch my procurement platform" [ref=e2997] [cursor=pointer]
+              - button "How do I start a fundraiser? popular" [ref=e2998] [cursor=pointer]:
+                - text: How do I start a fundraiser?
+                - generic [ref=e2999]: popular
+              - button "Launch my opera company" [ref=e3000] [cursor=pointer]
+              - button "Fund my programming language bold" [ref=e3001] [cursor=pointer]:
+                - text: Fund my programming language
+                - generic [ref=e3002]: bold
+              - button "Create BI tools" [ref=e3003] [cursor=pointer]
+              - button "Fund my sound design studio" [ref=e3004] [cursor=pointer]
+              - button "Launch my oceanography" [ref=e3005] [cursor=pointer]
+              - button "Fund my clinical research" [ref=e3006] [cursor=pointer]
+              - button "Shadow treasury pro" [ref=e3007] [cursor=pointer]:
+                - text: Shadow treasury
+                - generic [ref=e3008]: pro
+              - button "Launch my remittance service" [ref=e3009] [cursor=pointer]
+              - button "Support my mod development" [ref=e3010] [cursor=pointer]
+              - button "Breaking news fund" [ref=e3011] [cursor=pointer]
+              - button "Inspire me fun" [ref=e3012] [cursor=pointer]:
+                - text: Inspire me
+                - generic [ref=e3013]: fun
+              - button "Viral content treasury" [ref=e3014] [cursor=pointer]
+              - button "Launch my semiconductor bold" [ref=e3015] [cursor=pointer]:
+                - text: Launch my semiconductor
+                - generic [ref=e3016]: bold
+              - button "Launch my DevOps platform pro" [ref=e3017] [cursor=pointer]:
+                - text: Launch my DevOps platform
+                - generic [ref=e3018]: pro
+              - button "Train my own model bold" [ref=e3019] [cursor=pointer]:
+                - text: Train my own model
+                - generic [ref=e3020]: bold
+              - button "Launch a tool library" [ref=e3021] [cursor=pointer]
+              - button "Prediction market mayhem fun" [ref=e3022] [cursor=pointer]:
+                - text: Prediction market mayhem
+                - generic [ref=e3023]: fun
+              - button "Build sports technology" [ref=e3024] [cursor=pointer]
+              - button "Let the code do the work" [ref=e3025] [cursor=pointer]
+              - button "Fund my zine" [ref=e3026] [cursor=pointer]
+              - button "Create a B2B marketplace" [ref=e3027] [cursor=pointer]
+              - button "Build a privacy protocol pro" [ref=e3028] [cursor=pointer]:
+                - text: Build a privacy protocol
+                - generic [ref=e3029]: pro
+              - button "What could go right? fun" [ref=e3030] [cursor=pointer]:
+                - text: What could go right?
+                - generic [ref=e3031]: fun
+              - button "Support my blog" [ref=e3032] [cursor=pointer]
+              - button "Build authentication pro" [ref=e3033] [cursor=pointer]:
+                - text: Build authentication
+                - generic [ref=e3034]: pro
+              - button "Launch my citizen science" [ref=e3035] [cursor=pointer]
+              - button "Fund my networking startup pro" [ref=e3036] [cursor=pointer]:
+                - text: Fund my networking startup
+                - generic [ref=e3037]: pro
+              - button "Create a new category bold" [ref=e3038] [cursor=pointer]:
+                - text: Create a new category
+                - generic [ref=e3039]: bold
+              - button "Launch a local skills training business" [ref=e3040] [cursor=pointer]
+              - button "Fund my AI safety research pro" [ref=e3041] [cursor=pointer]:
+                - text: Fund my AI safety research
+                - generic [ref=e3042]: pro
+              - button "Build green infrastructure" [ref=e3043] [cursor=pointer]
+              - button "Fund my esports team popular" [ref=e3044] [cursor=pointer]:
+                - text: Fund my esports team
+                - generic [ref=e3045]: popular
+              - button "Scholarship for strangers" [ref=e3046] [cursor=pointer]
+              - button "Create a sports bracket with real stakes fun" [ref=e3047] [cursor=pointer]:
+                - text: Create a sports bracket with real stakes
+                - generic [ref=e3048]: fun
+              - button "Fund my security startup pro" [ref=e3049] [cursor=pointer]:
+                - text: Fund my security startup
+                - generic [ref=e3050]: pro
+            - generic [ref=e3051]:
+              - button "Set up automated distributions" [ref=e3052] [cursor=pointer]
+              - button "Fund my compiler bold" [ref=e3053] [cursor=pointer]:
+                - text: Fund my compiler
+                - generic [ref=e3054]: bold
+              - button "Food truck launch" [ref=e3055] [cursor=pointer]
+              - button "Launch my procurement platform" [ref=e3056] [cursor=pointer]
+              - button "How do I start a fundraiser? popular" [ref=e3057] [cursor=pointer]:
+                - text: How do I start a fundraiser?
+                - generic [ref=e3058]: popular
+              - button "Launch my opera company" [ref=e3059] [cursor=pointer]
+              - button "Fund my programming language bold" [ref=e3060] [cursor=pointer]:
+                - text: Fund my programming language
+                - generic [ref=e3061]: bold
+              - button "Create BI tools" [ref=e3062] [cursor=pointer]
+              - button "Fund my sound design studio" [ref=e3063] [cursor=pointer]
+              - button "Launch my oceanography" [ref=e3064] [cursor=pointer]
+              - button "Fund my clinical research" [ref=e3065] [cursor=pointer]
+              - button "Shadow treasury pro" [ref=e3066] [cursor=pointer]:
+                - text: Shadow treasury
+                - generic [ref=e3067]: pro
+              - button "Launch my remittance service" [ref=e3068] [cursor=pointer]
+              - button "Support my mod development" [ref=e3069] [cursor=pointer]
+              - button "Breaking news fund" [ref=e3070] [cursor=pointer]
+              - button "Inspire me fun" [ref=e3071] [cursor=pointer]:
+                - text: Inspire me
+                - generic [ref=e3072]: fun
+              - button "Viral content treasury" [ref=e3073] [cursor=pointer]
+              - button "Launch my semiconductor bold" [ref=e3074] [cursor=pointer]:
+                - text: Launch my semiconductor
+                - generic [ref=e3075]: bold
+              - button "Launch my DevOps platform pro" [ref=e3076] [cursor=pointer]:
+                - text: Launch my DevOps platform
+                - generic [ref=e3077]: pro
+              - button "Train my own model bold" [ref=e3078] [cursor=pointer]:
+                - text: Train my own model
+                - generic [ref=e3079]: bold
+              - button "Launch a tool library" [ref=e3080] [cursor=pointer]
+              - button "Prediction market mayhem fun" [ref=e3081] [cursor=pointer]:
+                - text: Prediction market mayhem
+                - generic [ref=e3082]: fun
+              - button "Build sports technology" [ref=e3083] [cursor=pointer]
+              - button "Let the code do the work" [ref=e3084] [cursor=pointer]
+              - button "Fund my zine" [ref=e3085] [cursor=pointer]
+              - button "Create a B2B marketplace" [ref=e3086] [cursor=pointer]
+              - button "Build a privacy protocol pro" [ref=e3087] [cursor=pointer]:
+                - text: Build a privacy protocol
+                - generic [ref=e3088]: pro
+              - button "What could go right? fun" [ref=e3089] [cursor=pointer]:
+                - text: What could go right?
+                - generic [ref=e3090]: fun
+              - button "Support my blog" [ref=e3091] [cursor=pointer]
+              - button "Build authentication pro" [ref=e3092] [cursor=pointer]:
+                - text: Build authentication
+                - generic [ref=e3093]: pro
+              - button "Launch my citizen science" [ref=e3094] [cursor=pointer]
+              - button "Fund my networking startup pro" [ref=e3095] [cursor=pointer]:
+                - text: Fund my networking startup
+                - generic [ref=e3096]: pro
+              - button "Create a new category bold" [ref=e3097] [cursor=pointer]:
+                - text: Create a new category
+                - generic [ref=e3098]: bold
+              - button "Launch a local skills training business" [ref=e3099] [cursor=pointer]
+              - button "Fund my AI safety research pro" [ref=e3100] [cursor=pointer]:
+                - text: Fund my AI safety research
+                - generic [ref=e3101]: pro
+              - button "Build green infrastructure" [ref=e3102] [cursor=pointer]
+              - button "Fund my esports team popular" [ref=e3103] [cursor=pointer]:
+                - text: Fund my esports team
+                - generic [ref=e3104]: popular
+              - button "Scholarship for strangers" [ref=e3105] [cursor=pointer]
+              - button "Create a sports bracket with real stakes fun" [ref=e3106] [cursor=pointer]:
+                - text: Create a sports bracket with real stakes
+                - generic [ref=e3107]: fun
+              - button "Fund my security startup pro" [ref=e3108] [cursor=pointer]:
+                - text: Fund my security startup
+                - generic [ref=e3109]: pro
+            - generic [ref=e3110]:
+              - button "Set up automated distributions" [ref=e3111] [cursor=pointer]
+              - button "Fund my compiler bold" [ref=e3112] [cursor=pointer]:
+                - text: Fund my compiler
+                - generic [ref=e3113]: bold
+              - button "Food truck launch" [ref=e3114] [cursor=pointer]
+              - button "Launch my procurement platform" [ref=e3115] [cursor=pointer]
+              - button "How do I start a fundraiser? popular" [ref=e3116] [cursor=pointer]:
+                - text: How do I start a fundraiser?
+                - generic [ref=e3117]: popular
+              - button "Launch my opera company" [ref=e3118] [cursor=pointer]
+              - button "Fund my programming language bold" [ref=e3119] [cursor=pointer]:
+                - text: Fund my programming language
+                - generic [ref=e3120]: bold
+              - button "Create BI tools" [ref=e3121] [cursor=pointer]
+              - button "Fund my sound design studio" [ref=e3122] [cursor=pointer]
+              - button "Launch my oceanography" [ref=e3123] [cursor=pointer]
+              - button "Fund my clinical research" [ref=e3124] [cursor=pointer]
+              - button "Shadow treasury pro" [ref=e3125] [cursor=pointer]:
+                - text: Shadow treasury
+                - generic [ref=e3126]: pro
+              - button "Launch my remittance service" [ref=e3127] [cursor=pointer]
+              - button "Support my mod development" [ref=e3128] [cursor=pointer]
+              - button "Breaking news fund" [ref=e3129] [cursor=pointer]
+              - button "Inspire me fun" [ref=e3130] [cursor=pointer]:
+                - text: Inspire me
+                - generic [ref=e3131]: fun
+              - button "Viral content treasury" [ref=e3132] [cursor=pointer]
+              - button "Launch my semiconductor bold" [ref=e3133] [cursor=pointer]:
+                - text: Launch my semiconductor
+                - generic [ref=e3134]: bold
+              - button "Launch my DevOps platform pro" [ref=e3135] [cursor=pointer]:
+                - text: Launch my DevOps platform
+                - generic [ref=e3136]: pro
+              - button "Train my own model bold" [ref=e3137] [cursor=pointer]:
+                - text: Train my own model
+                - generic [ref=e3138]: bold
+              - button "Launch a tool library" [ref=e3139] [cursor=pointer]
+              - button "Prediction market mayhem fun" [ref=e3140] [cursor=pointer]:
+                - text: Prediction market mayhem
+                - generic [ref=e3141]: fun
+              - button "Build sports technology" [ref=e3142] [cursor=pointer]
+              - button "Let the code do the work" [ref=e3143] [cursor=pointer]
+              - button "Fund my zine" [ref=e3144] [cursor=pointer]
+              - button "Create a B2B marketplace" [ref=e3145] [cursor=pointer]
+              - button "Build a privacy protocol pro" [ref=e3146] [cursor=pointer]:
+                - text: Build a privacy protocol
+                - generic [ref=e3147]: pro
+              - button "What could go right? fun" [ref=e3148] [cursor=pointer]:
+                - text: What could go right?
+                - generic [ref=e3149]: fun
+              - button "Support my blog" [ref=e3150] [cursor=pointer]
+              - button "Build authentication pro" [ref=e3151] [cursor=pointer]:
+                - text: Build authentication
+                - generic [ref=e3152]: pro
+              - button "Launch my citizen science" [ref=e3153] [cursor=pointer]
+              - button "Fund my networking startup pro" [ref=e3154] [cursor=pointer]:
+                - text: Fund my networking startup
+                - generic [ref=e3155]: pro
+              - button "Create a new category bold" [ref=e3156] [cursor=pointer]:
+                - text: Create a new category
+                - generic [ref=e3157]: bold
+              - button "Launch a local skills training business" [ref=e3158] [cursor=pointer]
+              - button "Fund my AI safety research pro" [ref=e3159] [cursor=pointer]:
+                - text: Fund my AI safety research
+                - generic [ref=e3160]: pro
+              - button "Build green infrastructure" [ref=e3161] [cursor=pointer]
+              - button "Fund my esports team popular" [ref=e3162] [cursor=pointer]:
+                - text: Fund my esports team
+                - generic [ref=e3163]: popular
+              - button "Scholarship for strangers" [ref=e3164] [cursor=pointer]
+              - button "Create a sports bracket with real stakes fun" [ref=e3165] [cursor=pointer]:
+                - text: Create a sports bracket with real stakes
+                - generic [ref=e3166]: fun
+              - button "Fund my security startup pro" [ref=e3167] [cursor=pointer]:
+                - text: Fund my security startup
+                - generic [ref=e3168]: pro
+            - generic [ref=e3169]:
+              - button "Set up automated distributions" [ref=e3170] [cursor=pointer]
+              - button "Fund my compiler bold" [ref=e3171] [cursor=pointer]:
+                - text: Fund my compiler
+                - generic [ref=e3172]: bold
+              - button "Food truck launch" [ref=e3173] [cursor=pointer]
+              - button "Launch my procurement platform" [ref=e3174] [cursor=pointer]
+              - button "How do I start a fundraiser? popular" [ref=e3175] [cursor=pointer]:
+                - text: How do I start a fundraiser?
+                - generic [ref=e3176]: popular
+              - button "Launch my opera company" [ref=e3177] [cursor=pointer]
+              - button "Fund my programming language bold" [ref=e3178] [cursor=pointer]:
+                - text: Fund my programming language
+                - generic [ref=e3179]: bold
+              - button "Create BI tools" [ref=e3180] [cursor=pointer]
+              - button "Fund my sound design studio" [ref=e3181] [cursor=pointer]
+              - button "Launch my oceanography" [ref=e3182] [cursor=pointer]
+              - button "Fund my clinical research" [ref=e3183] [cursor=pointer]
+              - button "Shadow treasury pro" [ref=e3184] [cursor=pointer]:
+                - text: Shadow treasury
+                - generic [ref=e3185]: pro
+              - button "Launch my remittance service" [ref=e3186] [cursor=pointer]
+              - button "Support my mod development" [ref=e3187] [cursor=pointer]
+              - button "Breaking news fund" [ref=e3188] [cursor=pointer]
+              - button "Inspire me fun" [ref=e3189] [cursor=pointer]:
+                - text: Inspire me
+                - generic [ref=e3190]: fun
+              - button "Viral content treasury" [ref=e3191] [cursor=pointer]
+              - button "Launch my semiconductor bold" [ref=e3192] [cursor=pointer]:
+                - text: Launch my semiconductor
+                - generic [ref=e3193]: bold
+              - button "Launch my DevOps platform pro" [ref=e3194] [cursor=pointer]:
+                - text: Launch my DevOps platform
+                - generic [ref=e3195]: pro
+              - button "Train my own model bold" [ref=e3196] [cursor=pointer]:
+                - text: Train my own model
+                - generic [ref=e3197]: bold
+              - button "Launch a tool library" [ref=e3198] [cursor=pointer]
+              - button "Prediction market mayhem fun" [ref=e3199] [cursor=pointer]:
+                - text: Prediction market mayhem
+                - generic [ref=e3200]: fun
+              - button "Build sports technology" [ref=e3201] [cursor=pointer]
+              - button "Let the code do the work" [ref=e3202] [cursor=pointer]
+              - button "Fund my zine" [ref=e3203] [cursor=pointer]
+              - button "Create a B2B marketplace" [ref=e3204] [cursor=pointer]
+              - button "Build a privacy protocol pro" [ref=e3205] [cursor=pointer]:
+                - text: Build a privacy protocol
+                - generic [ref=e3206]: pro
+              - button "What could go right? fun" [ref=e3207] [cursor=pointer]:
+                - text: What could go right?
+                - generic [ref=e3208]: fun
+              - button "Support my blog" [ref=e3209] [cursor=pointer]
+              - button "Build authentication pro" [ref=e3210] [cursor=pointer]:
+                - text: Build authentication
+                - generic [ref=e3211]: pro
+              - button "Launch my citizen science" [ref=e3212] [cursor=pointer]
+              - button "Fund my networking startup pro" [ref=e3213] [cursor=pointer]:
+                - text: Fund my networking startup
+                - generic [ref=e3214]: pro
+              - button "Create a new category bold" [ref=e3215] [cursor=pointer]:
+                - text: Create a new category
+                - generic [ref=e3216]: bold
+              - button "Launch a local skills training business" [ref=e3217] [cursor=pointer]
+              - button "Fund my AI safety research pro" [ref=e3218] [cursor=pointer]:
+                - text: Fund my AI safety research
+                - generic [ref=e3219]: pro
+              - button "Build green infrastructure" [ref=e3220] [cursor=pointer]
+              - button "Fund my esports team popular" [ref=e3221] [cursor=pointer]:
+                - text: Fund my esports team
+                - generic [ref=e3222]: popular
+              - button "Scholarship for strangers" [ref=e3223] [cursor=pointer]
+              - button "Create a sports bracket with real stakes fun" [ref=e3224] [cursor=pointer]:
+                - text: Create a sports bracket with real stakes
+                - generic [ref=e3225]: fun
+              - button "Fund my security startup pro" [ref=e3226] [cursor=pointer]:
+                - text: Fund my security startup
+                - generic [ref=e3227]: pro
+          - generic [ref=e3228]:
+            - generic [ref=e3229]:
+              - button "Map the ocean floor" [ref=e3230] [cursor=pointer]
+              - button "Start a movement bold" [ref=e3231] [cursor=pointer]:
+                - text: Start a movement
+                - generic [ref=e3232]: bold
+              - button "Support my streaming setup" [ref=e3233] [cursor=pointer]
+              - button "Launch my messaging app" [ref=e3234] [cursor=pointer]
+              - button "Urban farming collective" [ref=e3235] [cursor=pointer]
+              - button "Build an improv theater fun" [ref=e3236] [cursor=pointer]:
+                - text: Build an improv theater
+                - generic [ref=e3237]: fun
+              - button "Fund my speedrun project" [ref=e3238] [cursor=pointer]
+              - button "Create a global marketplace" [ref=e3239] [cursor=pointer]
+              - button "Fund my side project" [ref=e3240] [cursor=pointer]
+              - button "Show me climate projects" [ref=e3241] [cursor=pointer]
+              - button "Coffee shop crowdfund" [ref=e3242] [cursor=pointer]
+              - button "What makes a project take off?" [ref=e3243] [cursor=pointer]
+              - button "Build peer-to-peer platform" [ref=e3244] [cursor=pointer]
+              - button "Launch a token for my project" [ref=e3245] [cursor=pointer]
+              - button "Fund my education nonprofit" [ref=e3246] [cursor=pointer]
+              - button "From broke to rich bold" [ref=e3247] [cursor=pointer]:
+                - text: From broke to rich
+                - generic [ref=e3248]: bold
+              - button "Fund my social app popular" [ref=e3249] [cursor=pointer]:
+                - text: Fund my social app
+                - generic [ref=e3250]: popular
+              - button "Create a collective action mechanism bold" [ref=e3251] [cursor=pointer]:
+                - text: Create a collective action mechanism
+                - generic [ref=e3252]: bold
+              - button "Build a wellness brand" [ref=e3253] [cursor=pointer]
+              - button "Create a poker league treasury fun" [ref=e3254] [cursor=pointer]:
+                - text: Create a poker league treasury
+                - generic [ref=e3255]: fun
+              - button "Launch my longevity project bold" [ref=e3256] [cursor=pointer]:
+                - text: Launch my longevity project
+                - generic [ref=e3257]: bold
+              - button "Support blockchain research" [ref=e3258] [cursor=pointer]
+              - button "Fund my album popular" [ref=e3259] [cursor=pointer]:
+                - text: Fund my album
+                - generic [ref=e3260]: popular
+              - button "Launch my coaching business" [ref=e3261] [cursor=pointer]
+              - button "Fund my production company" [ref=e3262] [cursor=pointer]
+              - button "How can I start a business? popular" [ref=e3263] [cursor=pointer]:
+                - text: How can I start a business?
+                - generic [ref=e3264]: popular
+              - button "Fund a local initiative" [ref=e3265] [cursor=pointer]
+              - button "Fund my newsletter popular" [ref=e3266] [cursor=pointer]:
+                - text: Fund my newsletter
+                - generic [ref=e3267]: popular
+              - button "Show me biggest projects right now demo" [ref=e3268] [cursor=pointer]:
+                - text: Show me biggest projects right now
+                - generic [ref=e3269]: demo
+              - button "Fund public goods forever" [ref=e3270] [cursor=pointer]
+              - button "Build research infrastructure bold" [ref=e3271] [cursor=pointer]:
+                - text: Build research infrastructure
+                - generic [ref=e3272]: bold
+              - button "Build a services marketplace" [ref=e3273] [cursor=pointer]
+              - button "Launch my bootcamp" [ref=e3274] [cursor=pointer]
+              - button "Build an autonomous treasury bold" [ref=e3275] [cursor=pointer]:
+                - text: Build an autonomous treasury
+                - generic [ref=e3276]: bold
+              - button "White-label fund management pro" [ref=e3277] [cursor=pointer]:
+                - text: White-label fund management
+                - generic [ref=e3278]: pro
+              - button "Money printing operation bold" [ref=e3279] [cursor=pointer]:
+                - text: Money printing operation
+                - generic [ref=e3280]: bold
+              - button "Build paleontology project" [ref=e3281] [cursor=pointer]
+              - button "Launch my service business" [ref=e3282] [cursor=pointer]
+              - button "Run a matching campaign" [ref=e3283] [cursor=pointer]
+              - button "Launch a collective business" [ref=e3284] [cursor=pointer]
+            - generic [ref=e3285]:
+              - button "Map the ocean floor" [ref=e3286] [cursor=pointer]
+              - button "Start a movement bold" [ref=e3287] [cursor=pointer]:
+                - text: Start a movement
+                - generic [ref=e3288]: bold
+              - button "Support my streaming setup" [ref=e3289] [cursor=pointer]
+              - button "Launch my messaging app" [ref=e3290] [cursor=pointer]
+              - button "Urban farming collective" [ref=e3291] [cursor=pointer]
+              - button "Build an improv theater fun" [ref=e3292] [cursor=pointer]:
+                - text: Build an improv theater
+                - generic [ref=e3293]: fun
+              - button "Fund my speedrun project" [ref=e3294] [cursor=pointer]
+              - button "Create a global marketplace" [ref=e3295] [cursor=pointer]
+              - button "Fund my side project" [ref=e3296] [cursor=pointer]
+              - button "Show me climate projects" [ref=e3297] [cursor=pointer]
+              - button "Coffee shop crowdfund" [ref=e3298] [cursor=pointer]
+              - button "What makes a project take off?" [ref=e3299] [cursor=pointer]
+              - button "Build peer-to-peer platform" [ref=e3300] [cursor=pointer]
+              - button "Launch a token for my project" [ref=e3301] [cursor=pointer]
+              - button "Fund my education nonprofit" [ref=e3302] [cursor=pointer]
+              - button "From broke to rich bold" [ref=e3303] [cursor=pointer]:
+                - text: From broke to rich
+                - generic [ref=e3304]: bold
+              - button "Fund my social app popular" [ref=e3305] [cursor=pointer]:
+                - text: Fund my social app
+                - generic [ref=e3306]: popular
+              - button "Create a collective action mechanism bold" [ref=e3307] [cursor=pointer]:
+                - text: Create a collective action mechanism
+                - generic [ref=e3308]: bold
+              - button "Build a wellness brand" [ref=e3309] [cursor=pointer]
+              - button "Create a poker league treasury fun" [ref=e3310] [cursor=pointer]:
+                - text: Create a poker league treasury
+                - generic [ref=e3311]: fun
+              - button "Launch my longevity project bold" [ref=e3312] [cursor=pointer]:
+                - text: Launch my longevity project
+                - generic [ref=e3313]: bold
+              - button "Support blockchain research" [ref=e3314] [cursor=pointer]
+              - button "Fund my album popular" [ref=e3315] [cursor=pointer]:
+                - text: Fund my album
+                - generic [ref=e3316]: popular
+              - button "Launch my coaching business" [ref=e3317] [cursor=pointer]
+              - button "Fund my production company" [ref=e3318] [cursor=pointer]
+              - button "How can I start a business? popular" [ref=e3319] [cursor=pointer]:
+                - text: How can I start a business?
+                - generic [ref=e3320]: popular
+              - button "Fund a local initiative" [ref=e3321] [cursor=pointer]
+              - button "Fund my newsletter popular" [ref=e3322] [cursor=pointer]:
+                - text: Fund my newsletter
+                - generic [ref=e3323]: popular
+              - button "Show me biggest projects right now demo" [ref=e3324] [cursor=pointer]:
+                - text: Show me biggest projects right now
+                - generic [ref=e3325]: demo
+              - button "Fund public goods forever" [ref=e3326] [cursor=pointer]
+              - button "Build research infrastructure bold" [ref=e3327] [cursor=pointer]:
+                - text: Build research infrastructure
+                - generic [ref=e3328]: bold
+              - button "Build a services marketplace" [ref=e3329] [cursor=pointer]
+              - button "Launch my bootcamp" [ref=e3330] [cursor=pointer]
+              - button "Build an autonomous treasury bold" [ref=e3331] [cursor=pointer]:
+                - text: Build an autonomous treasury
+                - generic [ref=e3332]: bold
+              - button "White-label fund management pro" [ref=e3333] [cursor=pointer]:
+                - text: White-label fund management
+                - generic [ref=e3334]: pro
+              - button "Money printing operation bold" [ref=e3335] [cursor=pointer]:
+                - text: Money printing operation
+                - generic [ref=e3336]: bold
+              - button "Build paleontology project" [ref=e3337] [cursor=pointer]
+              - button "Launch my service business" [ref=e3338] [cursor=pointer]
+              - button "Run a matching campaign" [ref=e3339] [cursor=pointer]
+              - button "Launch a collective business" [ref=e3340] [cursor=pointer]
+            - generic [ref=e3341]:
+              - button "Map the ocean floor" [ref=e3342] [cursor=pointer]
+              - button "Start a movement bold" [ref=e3343] [cursor=pointer]:
+                - text: Start a movement
+                - generic [ref=e3344]: bold
+              - button "Support my streaming setup" [ref=e3345] [cursor=pointer]
+              - button "Launch my messaging app" [ref=e3346] [cursor=pointer]
+              - button "Urban farming collective" [ref=e3347] [cursor=pointer]
+              - button "Build an improv theater fun" [ref=e3348] [cursor=pointer]:
+                - text: Build an improv theater
+                - generic [ref=e3349]: fun
+              - button "Fund my speedrun project" [ref=e3350] [cursor=pointer]
+              - button "Create a global marketplace" [ref=e3351] [cursor=pointer]
+              - button "Fund my side project" [ref=e3352] [cursor=pointer]
+              - button "Show me climate projects" [ref=e3353] [cursor=pointer]
+              - button "Coffee shop crowdfund" [ref=e3354] [cursor=pointer]
+              - button "What makes a project take off?" [ref=e3355] [cursor=pointer]
+              - button "Build peer-to-peer platform" [ref=e3356] [cursor=pointer]
+              - button "Launch a token for my project" [ref=e3357] [cursor=pointer]
+              - button "Fund my education nonprofit" [ref=e3358] [cursor=pointer]
+              - button "From broke to rich bold" [ref=e3359] [cursor=pointer]:
+                - text: From broke to rich
+                - generic [ref=e3360]: bold
+              - button "Fund my social app popular" [ref=e3361] [cursor=pointer]:
+                - text: Fund my social app
+                - generic [ref=e3362]: popular
+              - button "Create a collective action mechanism bold" [ref=e3363] [cursor=pointer]:
+                - text: Create a collective action mechanism
+                - generic [ref=e3364]: bold
+              - button "Build a wellness brand" [ref=e3365] [cursor=pointer]
+              - button "Create a poker league treasury fun" [ref=e3366] [cursor=pointer]:
+                - text: Create a poker league treasury
+                - generic [ref=e3367]: fun
+              - button "Launch my longevity project bold" [ref=e3368] [cursor=pointer]:
+                - text: Launch my longevity project
+                - generic [ref=e3369]: bold
+              - button "Support blockchain research" [ref=e3370] [cursor=pointer]
+              - button "Fund my album popular" [ref=e3371] [cursor=pointer]:
+                - text: Fund my album
+                - generic [ref=e3372]: popular
+              - button "Launch my coaching business" [ref=e3373] [cursor=pointer]
+              - button "Fund my production company" [ref=e3374] [cursor=pointer]
+              - button "How can I start a business? popular" [ref=e3375] [cursor=pointer]:
+                - text: How can I start a business?
+                - generic [ref=e3376]: popular
+              - button "Fund a local initiative" [ref=e3377] [cursor=pointer]
+              - button "Fund my newsletter popular" [ref=e3378] [cursor=pointer]:
+                - text: Fund my newsletter
+                - generic [ref=e3379]: popular
+              - button "Show me biggest projects right now demo" [ref=e3380] [cursor=pointer]:
+                - text: Show me biggest projects right now
+                - generic [ref=e3381]: demo
+              - button "Fund public goods forever" [ref=e3382] [cursor=pointer]
+              - button "Build research infrastructure bold" [ref=e3383] [cursor=pointer]:
+                - text: Build research infrastructure
+                - generic [ref=e3384]: bold
+              - button "Build a services marketplace" [ref=e3385] [cursor=pointer]
+              - button "Launch my bootcamp" [ref=e3386] [cursor=pointer]
+              - button "Build an autonomous treasury bold" [ref=e3387] [cursor=pointer]:
+                - text: Build an autonomous treasury
+                - generic [ref=e3388]: bold
+              - button "White-label fund management pro" [ref=e3389] [cursor=pointer]:
+                - text: White-label fund management
+                - generic [ref=e3390]: pro
+              - button "Money printing operation bold" [ref=e3391] [cursor=pointer]:
+                - text: Money printing operation
+                - generic [ref=e3392]: bold
+              - button "Build paleontology project" [ref=e3393] [cursor=pointer]
+              - button "Launch my service business" [ref=e3394] [cursor=pointer]
+              - button "Run a matching campaign" [ref=e3395] [cursor=pointer]
+              - button "Launch a collective business" [ref=e3396] [cursor=pointer]
+            - generic [ref=e3397]:
+              - button "Map the ocean floor" [ref=e3398] [cursor=pointer]
+              - button "Start a movement bold" [ref=e3399] [cursor=pointer]:
+                - text: Start a movement
+                - generic [ref=e3400]: bold
+              - button "Support my streaming setup" [ref=e3401] [cursor=pointer]
+              - button "Launch my messaging app" [ref=e3402] [cursor=pointer]
+              - button "Urban farming collective" [ref=e3403] [cursor=pointer]
+              - button "Build an improv theater fun" [ref=e3404] [cursor=pointer]:
+                - text: Build an improv theater
+                - generic [ref=e3405]: fun
+              - button "Fund my speedrun project" [ref=e3406] [cursor=pointer]
+              - button "Create a global marketplace" [ref=e3407] [cursor=pointer]
+              - button "Fund my side project" [ref=e3408] [cursor=pointer]
+              - button "Show me climate projects" [ref=e3409] [cursor=pointer]
+              - button "Coffee shop crowdfund" [ref=e3410] [cursor=pointer]
+              - button "What makes a project take off?" [ref=e3411] [cursor=pointer]
+              - button "Build peer-to-peer platform" [ref=e3412] [cursor=pointer]
+              - button "Launch a token for my project" [ref=e3413] [cursor=pointer]
+              - button "Fund my education nonprofit" [ref=e3414] [cursor=pointer]
+              - button "From broke to rich bold" [ref=e3415] [cursor=pointer]:
+                - text: From broke to rich
+                - generic [ref=e3416]: bold
+              - button "Fund my social app popular" [ref=e3417] [cursor=pointer]:
+                - text: Fund my social app
+                - generic [ref=e3418]: popular
+              - button "Create a collective action mechanism bold" [ref=e3419] [cursor=pointer]:
+                - text: Create a collective action mechanism
+                - generic [ref=e3420]: bold
+              - button "Build a wellness brand" [ref=e3421] [cursor=pointer]
+              - button "Create a poker league treasury fun" [ref=e3422] [cursor=pointer]:
+                - text: Create a poker league treasury
+                - generic [ref=e3423]: fun
+              - button "Launch my longevity project bold" [ref=e3424] [cursor=pointer]:
+                - text: Launch my longevity project
+                - generic [ref=e3425]: bold
+              - button "Support blockchain research" [ref=e3426] [cursor=pointer]
+              - button "Fund my album popular" [ref=e3427] [cursor=pointer]:
+                - text: Fund my album
+                - generic [ref=e3428]: popular
+              - button "Launch my coaching business" [ref=e3429] [cursor=pointer]
+              - button "Fund my production company" [ref=e3430] [cursor=pointer]
+              - button "How can I start a business? popular" [ref=e3431] [cursor=pointer]:
+                - text: How can I start a business?
+                - generic [ref=e3432]: popular
+              - button "Fund a local initiative" [ref=e3433] [cursor=pointer]
+              - button "Fund my newsletter popular" [ref=e3434] [cursor=pointer]:
+                - text: Fund my newsletter
+                - generic [ref=e3435]: popular
+              - button "Show me biggest projects right now demo" [ref=e3436] [cursor=pointer]:
+                - text: Show me biggest projects right now
+                - generic [ref=e3437]: demo
+              - button "Fund public goods forever" [ref=e3438] [cursor=pointer]
+              - button "Build research infrastructure bold" [ref=e3439] [cursor=pointer]:
+                - text: Build research infrastructure
+                - generic [ref=e3440]: bold
+              - button "Build a services marketplace" [ref=e3441] [cursor=pointer]
+              - button "Launch my bootcamp" [ref=e3442] [cursor=pointer]
+              - button "Build an autonomous treasury bold" [ref=e3443] [cursor=pointer]:
+                - text: Build an autonomous treasury
+                - generic [ref=e3444]: bold
+              - button "White-label fund management pro" [ref=e3445] [cursor=pointer]:
+                - text: White-label fund management
+                - generic [ref=e3446]: pro
+              - button "Money printing operation bold" [ref=e3447] [cursor=pointer]:
+                - text: Money printing operation
+                - generic [ref=e3448]: bold
+              - button "Build paleontology project" [ref=e3449] [cursor=pointer]
+              - button "Launch my service business" [ref=e3450] [cursor=pointer]
+              - button "Run a matching campaign" [ref=e3451] [cursor=pointer]
+              - button "Launch a collective business" [ref=e3452] [cursor=pointer]
+            - generic [ref=e3453]:
+              - button "Map the ocean floor" [ref=e3454] [cursor=pointer]
+              - button "Start a movement bold" [ref=e3455] [cursor=pointer]:
+                - text: Start a movement
+                - generic [ref=e3456]: bold
+              - button "Support my streaming setup" [ref=e3457] [cursor=pointer]
+              - button "Launch my messaging app" [ref=e3458] [cursor=pointer]
+              - button "Urban farming collective" [ref=e3459] [cursor=pointer]
+              - button "Build an improv theater fun" [ref=e3460] [cursor=pointer]:
+                - text: Build an improv theater
+                - generic [ref=e3461]: fun
+              - button "Fund my speedrun project" [ref=e3462] [cursor=pointer]
+              - button "Create a global marketplace" [ref=e3463] [cursor=pointer]
+              - button "Fund my side project" [ref=e3464] [cursor=pointer]
+              - button "Show me climate projects" [ref=e3465] [cursor=pointer]
+              - button "Coffee shop crowdfund" [ref=e3466] [cursor=pointer]
+              - button "What makes a project take off?" [ref=e3467] [cursor=pointer]
+              - button "Build peer-to-peer platform" [ref=e3468] [cursor=pointer]
+              - button "Launch a token for my project" [ref=e3469] [cursor=pointer]
+              - button "Fund my education nonprofit" [ref=e3470] [cursor=pointer]
+              - button "From broke to rich bold" [ref=e3471] [cursor=pointer]:
+                - text: From broke to rich
+                - generic [ref=e3472]: bold
+              - button "Fund my social app popular" [ref=e3473] [cursor=pointer]:
+                - text: Fund my social app
+                - generic [ref=e3474]: popular
+              - button "Create a collective action mechanism bold" [ref=e3475] [cursor=pointer]:
+                - text: Create a collective action mechanism
+                - generic [ref=e3476]: bold
+              - button "Build a wellness brand" [ref=e3477] [cursor=pointer]
+              - button "Create a poker league treasury fun" [ref=e3478] [cursor=pointer]:
+                - text: Create a poker league treasury
+                - generic [ref=e3479]: fun
+              - button "Launch my longevity project bold" [ref=e3480] [cursor=pointer]:
+                - text: Launch my longevity project
+                - generic [ref=e3481]: bold
+              - button "Support blockchain research" [ref=e3482] [cursor=pointer]
+              - button "Fund my album popular" [ref=e3483] [cursor=pointer]:
+                - text: Fund my album
+                - generic [ref=e3484]: popular
+              - button "Launch my coaching business" [ref=e3485] [cursor=pointer]
+              - button "Fund my production company" [ref=e3486] [cursor=pointer]
+              - button "How can I start a business? popular" [ref=e3487] [cursor=pointer]:
+                - text: How can I start a business?
+                - generic [ref=e3488]: popular
+              - button "Fund a local initiative" [ref=e3489] [cursor=pointer]
+              - button "Fund my newsletter popular" [ref=e3490] [cursor=pointer]:
+                - text: Fund my newsletter
+                - generic [ref=e3491]: popular
+              - button "Show me biggest projects right now demo" [ref=e3492] [cursor=pointer]:
+                - text: Show me biggest projects right now
+                - generic [ref=e3493]: demo
+              - button "Fund public goods forever" [ref=e3494] [cursor=pointer]
+              - button "Build research infrastructure bold" [ref=e3495] [cursor=pointer]:
+                - text: Build research infrastructure
+                - generic [ref=e3496]: bold
+              - button "Build a services marketplace" [ref=e3497] [cursor=pointer]
+              - button "Launch my bootcamp" [ref=e3498] [cursor=pointer]
+              - button "Build an autonomous treasury bold" [ref=e3499] [cursor=pointer]:
+                - text: Build an autonomous treasury
+                - generic [ref=e3500]: bold
+              - button "White-label fund management pro" [ref=e3501] [cursor=pointer]:
+                - text: White-label fund management
+                - generic [ref=e3502]: pro
+              - button "Money printing operation bold" [ref=e3503] [cursor=pointer]:
+                - text: Money printing operation
+                - generic [ref=e3504]: bold
+              - button "Build paleontology project" [ref=e3505] [cursor=pointer]
+              - button "Launch my service business" [ref=e3506] [cursor=pointer]
+              - button "Run a matching campaign" [ref=e3507] [cursor=pointer]
+              - button "Launch a collective business" [ref=e3508] [cursor=pointer]
+          - generic [ref=e3509]:
+            - generic [ref=e3510]:
+              - button "Fund my art collective popular" [ref=e3511] [cursor=pointer]:
+                - text: Fund my art collective
+                - generic [ref=e3512]: popular
+              - button "Create workout content" [ref=e3513] [cursor=pointer]
+              - button "Fund my game studio" [ref=e3514] [cursor=pointer]
+              - button "Create community healing" [ref=e3515] [cursor=pointer]
+              - button "Build credit scoring" [ref=e3516] [cursor=pointer]
+              - button "How can I make agreements with investors? pro" [ref=e3517] [cursor=pointer]:
+                - text: How can I make agreements with investors?
+                - generic [ref=e3518]: pro
+              - button "What can I build with Juicy? popular" [ref=e3519] [cursor=pointer]:
+                - text: What can I build with Juicy?
+                - generic [ref=e3520]: popular
+              - button "Build impact measurement" [ref=e3521] [cursor=pointer]
+              - button "starting a business id" [ref=e3522] [cursor=pointer]:
+                - text: starting a business
+                - generic [ref=e3523]: id
+              - button "Fund my community kitchen" [ref=e3524] [cursor=pointer]
+              - button "What is Juicy? popular" [ref=e3525] [cursor=pointer]:
+                - text: What is Juicy?
+                - generic [ref=e3526]: popular
+              - button "Build energy storage" [ref=e3527] [cursor=pointer]
+              - button "Build a social token platform bold" [ref=e3528] [cursor=pointer]:
+                - text: Build a social token platform
+                - generic [ref=e3529]: bold
+              - button "Launch my local marketplace" [ref=e3530] [cursor=pointer]
+              - button "Fund my diagnostics startup" [ref=e3531] [cursor=pointer]
+              - button "Fund my creator studio" [ref=e3532] [cursor=pointer]
+              - button "Create food security" [ref=e3533] [cursor=pointer]
+              - button "Fund my lending startup" [ref=e3534] [cursor=pointer]
+              - button "Build a chocolate company" [ref=e3535] [cursor=pointer]
+              - button "Gamified treasury fun" [ref=e3536] [cursor=pointer]:
+                - text: Gamified treasury
+                - generic [ref=e3537]: fun
+              - button "Weird experiment treasury fun" [ref=e3538] [cursor=pointer]:
+                - text: Weird experiment treasury
+                - generic [ref=e3539]: fun
+              - button "Launch a perpetual funding engine bold" [ref=e3540] [cursor=pointer]:
+                - text: Launch a perpetual funding engine
+                - generic [ref=e3541]: bold
+              - button "Show me creative projects demo" [ref=e3542] [cursor=pointer]:
+                - text: Show me creative projects
+                - generic [ref=e3543]: demo
+              - button "Fund my extreme sports fun" [ref=e3544] [cursor=pointer]:
+                - text: Fund my extreme sports
+                - generic [ref=e3545]: fun
+              - button "Launch my animation project popular" [ref=e3546] [cursor=pointer]:
+                - text: Launch my animation project
+                - generic [ref=e3547]: popular
+              - button "Build edge computing pro" [ref=e3548] [cursor=pointer]:
+                - text: Build edge computing
+                - generic [ref=e3549]: pro
+              - button "Fund my cultural preservation" [ref=e3550] [cursor=pointer]
+              - button "Crowdfund my tattoo shop" [ref=e3551] [cursor=pointer]
+              - button "Fund my translation project" [ref=e3552] [cursor=pointer]
+              - button "Crowdfund my film" [ref=e3553] [cursor=pointer]
+              - button "Fund my clean tech bold" [ref=e3554] [cursor=pointer]:
+                - text: Fund my clean tech
+                - generic [ref=e3555]: bold
+              - button "Build health data platform" [ref=e3556] [cursor=pointer]
+              - button "Create immigrant services" [ref=e3557] [cursor=pointer]
+              - button "Go from zero to IPO bold" [ref=e3558] [cursor=pointer]:
+                - text: Go from zero to IPO
+                - generic [ref=e3559]: bold
+              - button "Fund my ocean cleanup" [ref=e3560] [cursor=pointer]
+              - button "Empire starts here bold" [ref=e3561] [cursor=pointer]:
+                - text: Empire starts here
+                - generic [ref=e3562]: bold
+              - button "Meme lord treasury fun" [ref=e3563] [cursor=pointer]:
+                - text: Meme lord treasury
+                - generic [ref=e3564]: fun
+              - button "Subversive art collective fun" [ref=e3565] [cursor=pointer]:
+                - text: Subversive art collective
+                - generic [ref=e3566]: fun
+              - button "Break things beautifully fun" [ref=e3567] [cursor=pointer]:
+                - text: Break things beautifully
+                - generic [ref=e3568]: fun
+              - button "Find Ethereum projects" [ref=e3569] [cursor=pointer]
+            - generic [ref=e3570]:
+              - button "Fund my art collective popular" [ref=e3571] [cursor=pointer]:
+                - text: Fund my art collective
+                - generic [ref=e3572]: popular
+              - button "Create workout content" [ref=e3573] [cursor=pointer]
+              - button "Fund my game studio" [ref=e3574] [cursor=pointer]
+              - button "Create community healing" [ref=e3575] [cursor=pointer]
+              - button "Build credit scoring" [ref=e3576] [cursor=pointer]
+              - button "How can I make agreements with investors? pro" [ref=e3577] [cursor=pointer]:
+                - text: How can I make agreements with investors?
+                - generic [ref=e3578]: pro
+              - button "What can I build with Juicy? popular" [ref=e3579] [cursor=pointer]:
+                - text: What can I build with Juicy?
+                - generic [ref=e3580]: popular
+              - button "Build impact measurement" [ref=e3581] [cursor=pointer]
+              - button "starting a business id" [ref=e3582] [cursor=pointer]:
+                - text: starting a business
+                - generic [ref=e3583]: id
+              - button "Fund my community kitchen" [ref=e3584] [cursor=pointer]
+              - button "What is Juicy? popular" [ref=e3585] [cursor=pointer]:
+                - text: What is Juicy?
+                - generic [ref=e3586]: popular
+              - button "Build energy storage" [ref=e3587] [cursor=pointer]
+              - button "Build a social token platform bold" [ref=e3588] [cursor=pointer]:
+                - text: Build a social token platform
+                - generic [ref=e3589]: bold
+              - button "Launch my local marketplace" [ref=e3590] [cursor=pointer]
+              - button "Fund my diagnostics startup" [ref=e3591] [cursor=pointer]
+              - button "Fund my creator studio" [ref=e3592] [cursor=pointer]
+              - button "Create food security" [ref=e3593] [cursor=pointer]
+              - button "Fund my lending startup" [ref=e3594] [cursor=pointer]
+              - button "Build a chocolate company" [ref=e3595] [cursor=pointer]
+              - button "Gamified treasury fun" [ref=e3596] [cursor=pointer]:
+                - text: Gamified treasury
+                - generic [ref=e3597]: fun
+              - button "Weird experiment treasury fun" [ref=e3598] [cursor=pointer]:
+                - text: Weird experiment treasury
+                - generic [ref=e3599]: fun
+              - button "Launch a perpetual funding engine bold" [ref=e3600] [cursor=pointer]:
+                - text: Launch a perpetual funding engine
+                - generic [ref=e3601]: bold
+              - button "Show me creative projects demo" [ref=e3602] [cursor=pointer]:
+                - text: Show me creative projects
+                - generic [ref=e3603]: demo
+              - button "Fund my extreme sports fun" [ref=e3604] [cursor=pointer]:
+                - text: Fund my extreme sports
+                - generic [ref=e3605]: fun
+              - button "Launch my animation project popular" [ref=e3606] [cursor=pointer]:
+                - text: Launch my animation project
+                - generic [ref=e3607]: popular
+              - button "Build edge computing pro" [ref=e3608] [cursor=pointer]:
+                - text: Build edge computing
+                - generic [ref=e3609]: pro
+              - button "Fund my cultural preservation" [ref=e3610] [cursor=pointer]
+              - button "Crowdfund my tattoo shop" [ref=e3611] [cursor=pointer]
+              - button "Fund my translation project" [ref=e3612] [cursor=pointer]
+              - button "Crowdfund my film" [ref=e3613] [cursor=pointer]
+              - button "Fund my clean tech bold" [ref=e3614] [cursor=pointer]:
+                - text: Fund my clean tech
+                - generic [ref=e3615]: bold
+              - button "Build health data platform" [ref=e3616] [cursor=pointer]
+              - button "Create immigrant services" [ref=e3617] [cursor=pointer]
+              - button "Go from zero to IPO bold" [ref=e3618] [cursor=pointer]:
+                - text: Go from zero to IPO
+                - generic [ref=e3619]: bold
+              - button "Fund my ocean cleanup" [ref=e3620] [cursor=pointer]
+              - button "Empire starts here bold" [ref=e3621] [cursor=pointer]:
+                - text: Empire starts here
+                - generic [ref=e3622]: bold
+              - button "Meme lord treasury fun" [ref=e3623] [cursor=pointer]:
+                - text: Meme lord treasury
+                - generic [ref=e3624]: fun
+              - button "Subversive art collective fun" [ref=e3625] [cursor=pointer]:
+                - text: Subversive art collective
+                - generic [ref=e3626]: fun
+              - button "Break things beautifully fun" [ref=e3627] [cursor=pointer]:
+                - text: Break things beautifully
+                - generic [ref=e3628]: fun
+              - button "Find Ethereum projects" [ref=e3629] [cursor=pointer]
+            - generic [ref=e3630]:
+              - button "Fund my art collective popular" [ref=e3631] [cursor=pointer]:
+                - text: Fund my art collective
+                - generic [ref=e3632]: popular
+              - button "Create workout content" [ref=e3633] [cursor=pointer]
+              - button "Fund my game studio" [ref=e3634] [cursor=pointer]
+              - button "Create community healing" [ref=e3635] [cursor=pointer]
+              - button "Build credit scoring" [ref=e3636] [cursor=pointer]
+              - button "How can I make agreements with investors? pro" [ref=e3637] [cursor=pointer]:
+                - text: How can I make agreements with investors?
+                - generic [ref=e3638]: pro
+              - button "What can I build with Juicy? popular" [ref=e3639] [cursor=pointer]:
+                - text: What can I build with Juicy?
+                - generic [ref=e3640]: popular
+              - button "Build impact measurement" [ref=e3641] [cursor=pointer]
+              - button "starting a business id" [ref=e3642] [cursor=pointer]:
+                - text: starting a business
+                - generic [ref=e3643]: id
+              - button "Fund my community kitchen" [ref=e3644] [cursor=pointer]
+              - button "What is Juicy? popular" [ref=e3645] [cursor=pointer]:
+                - text: What is Juicy?
+                - generic [ref=e3646]: popular
+              - button "Build energy storage" [ref=e3647] [cursor=pointer]
+              - button "Build a social token platform bold" [ref=e3648] [cursor=pointer]:
+                - text: Build a social token platform
+                - generic [ref=e3649]: bold
+              - button "Launch my local marketplace" [ref=e3650] [cursor=pointer]
+              - button "Fund my diagnostics startup" [ref=e3651] [cursor=pointer]
+              - button "Fund my creator studio" [ref=e3652] [cursor=pointer]
+              - button "Create food security" [ref=e3653] [cursor=pointer]
+              - button "Fund my lending startup" [ref=e3654] [cursor=pointer]
+              - button "Build a chocolate company" [ref=e3655] [cursor=pointer]
+              - button "Gamified treasury fun" [ref=e3656] [cursor=pointer]:
+                - text: Gamified treasury
+                - generic [ref=e3657]: fun
+              - button "Weird experiment treasury fun" [ref=e3658] [cursor=pointer]:
+                - text: Weird experiment treasury
+                - generic [ref=e3659]: fun
+              - button "Launch a perpetual funding engine bold" [ref=e3660] [cursor=pointer]:
+                - text: Launch a perpetual funding engine
+                - generic [ref=e3661]: bold
+              - button "Show me creative projects demo" [ref=e3662] [cursor=pointer]:
+                - text: Show me creative projects
+                - generic [ref=e3663]: demo
+              - button "Fund my extreme sports fun" [ref=e3664] [cursor=pointer]:
+                - text: Fund my extreme sports
+                - generic [ref=e3665]: fun
+              - button "Launch my animation project popular" [ref=e3666] [cursor=pointer]:
+                - text: Launch my animation project
+                - generic [ref=e3667]: popular
+              - button "Build edge computing pro" [ref=e3668] [cursor=pointer]:
+                - text: Build edge computing
+                - generic [ref=e3669]: pro
+              - button "Fund my cultural preservation" [ref=e3670] [cursor=pointer]
+              - button "Crowdfund my tattoo shop" [ref=e3671] [cursor=pointer]
+              - button "Fund my translation project" [ref=e3672] [cursor=pointer]
+              - button "Crowdfund my film" [ref=e3673] [cursor=pointer]
+              - button "Fund my clean tech bold" [ref=e3674] [cursor=pointer]:
+                - text: Fund my clean tech
+                - generic [ref=e3675]: bold
+              - button "Build health data platform" [ref=e3676] [cursor=pointer]
+              - button "Create immigrant services" [ref=e3677] [cursor=pointer]
+              - button "Go from zero to IPO bold" [ref=e3678] [cursor=pointer]:
+                - text: Go from zero to IPO
+                - generic [ref=e3679]: bold
+              - button "Fund my ocean cleanup" [ref=e3680] [cursor=pointer]
+              - button "Empire starts here bold" [ref=e3681] [cursor=pointer]:
+                - text: Empire starts here
+                - generic [ref=e3682]: bold
+              - button "Meme lord treasury fun" [ref=e3683] [cursor=pointer]:
+                - text: Meme lord treasury
+                - generic [ref=e3684]: fun
+              - button "Subversive art collective fun" [ref=e3685] [cursor=pointer]:
+                - text: Subversive art collective
+                - generic [ref=e3686]: fun
+              - button "Break things beautifully fun" [ref=e3687] [cursor=pointer]:
+                - text: Break things beautifully
+                - generic [ref=e3688]: fun
+              - button "Find Ethereum projects" [ref=e3689] [cursor=pointer]
+            - generic [ref=e3690]:
+              - button "Fund my art collective popular" [ref=e3691] [cursor=pointer]:
+                - text: Fund my art collective
+                - generic [ref=e3692]: popular
+              - button "Create workout content" [ref=e3693] [cursor=pointer]
+              - button "Fund my game studio" [ref=e3694] [cursor=pointer]
+              - button "Create community healing" [ref=e3695] [cursor=pointer]
+              - button "Build credit scoring" [ref=e3696] [cursor=pointer]
+              - button "How can I make agreements with investors? pro" [ref=e3697] [cursor=pointer]:
+                - text: How can I make agreements with investors?
+                - generic [ref=e3698]: pro
+              - button "What can I build with Juicy? popular" [ref=e3699] [cursor=pointer]:
+                - text: What can I build with Juicy?
+                - generic [ref=e3700]: popular
+              - button "Build impact measurement" [ref=e3701] [cursor=pointer]
+              - button "starting a business id" [ref=e3702] [cursor=pointer]:
+                - text: starting a business
+                - generic [ref=e3703]: id
+              - button "Fund my community kitchen" [ref=e3704] [cursor=pointer]
+              - button "What is Juicy? popular" [ref=e3705] [cursor=pointer]:
+                - text: What is Juicy?
+                - generic [ref=e3706]: popular
+              - button "Build energy storage" [ref=e3707] [cursor=pointer]
+              - button "Build a social token platform bold" [ref=e3708] [cursor=pointer]:
+                - text: Build a social token platform
+                - generic [ref=e3709]: bold
+              - button "Launch my local marketplace" [ref=e3710] [cursor=pointer]
+              - button "Fund my diagnostics startup" [ref=e3711] [cursor=pointer]
+              - button "Fund my creator studio" [ref=e3712] [cursor=pointer]
+              - button "Create food security" [ref=e3713] [cursor=pointer]
+              - button "Fund my lending startup" [ref=e3714] [cursor=pointer]
+              - button "Build a chocolate company" [ref=e3715] [cursor=pointer]
+              - button "Gamified treasury fun" [ref=e3716] [cursor=pointer]:
+                - text: Gamified treasury
+                - generic [ref=e3717]: fun
+              - button "Weird experiment treasury fun" [ref=e3718] [cursor=pointer]:
+                - text: Weird experiment treasury
+                - generic [ref=e3719]: fun
+              - button "Launch a perpetual funding engine bold" [ref=e3720] [cursor=pointer]:
+                - text: Launch a perpetual funding engine
+                - generic [ref=e3721]: bold
+              - button "Show me creative projects demo" [ref=e3722] [cursor=pointer]:
+                - text: Show me creative projects
+                - generic [ref=e3723]: demo
+              - button "Fund my extreme sports fun" [ref=e3724] [cursor=pointer]:
+                - text: Fund my extreme sports
+                - generic [ref=e3725]: fun
+              - button "Launch my animation project popular" [ref=e3726] [cursor=pointer]:
+                - text: Launch my animation project
+                - generic [ref=e3727]: popular
+              - button "Build edge computing pro" [ref=e3728] [cursor=pointer]:
+                - text: Build edge computing
+                - generic [ref=e3729]: pro
+              - button "Fund my cultural preservation" [ref=e3730] [cursor=pointer]
+              - button "Crowdfund my tattoo shop" [ref=e3731] [cursor=pointer]
+              - button "Fund my translation project" [ref=e3732] [cursor=pointer]
+              - button "Crowdfund my film" [ref=e3733] [cursor=pointer]
+              - button "Fund my clean tech bold" [ref=e3734] [cursor=pointer]:
+                - text: Fund my clean tech
+                - generic [ref=e3735]: bold
+              - button "Build health data platform" [ref=e3736] [cursor=pointer]
+              - button "Create immigrant services" [ref=e3737] [cursor=pointer]
+              - button "Go from zero to IPO bold" [ref=e3738] [cursor=pointer]:
+                - text: Go from zero to IPO
+                - generic [ref=e3739]: bold
+              - button "Fund my ocean cleanup" [ref=e3740] [cursor=pointer]
+              - button "Empire starts here bold" [ref=e3741] [cursor=pointer]:
+                - text: Empire starts here
+                - generic [ref=e3742]: bold
+              - button "Meme lord treasury fun" [ref=e3743] [cursor=pointer]:
+                - text: Meme lord treasury
+                - generic [ref=e3744]: fun
+              - button "Subversive art collective fun" [ref=e3745] [cursor=pointer]:
+                - text: Subversive art collective
+                - generic [ref=e3746]: fun
+              - button "Break things beautifully fun" [ref=e3747] [cursor=pointer]:
+                - text: Break things beautifully
+                - generic [ref=e3748]: fun
+              - button "Find Ethereum projects" [ref=e3749] [cursor=pointer]
+            - generic [ref=e3750]:
+              - button "Fund my art collective popular" [ref=e3751] [cursor=pointer]:
+                - text: Fund my art collective
+                - generic [ref=e3752]: popular
+              - button "Create workout content" [ref=e3753] [cursor=pointer]
+              - button "Fund my game studio" [ref=e3754] [cursor=pointer]
+              - button "Create community healing" [ref=e3755] [cursor=pointer]
+              - button "Build credit scoring" [ref=e3756] [cursor=pointer]
+              - button "How can I make agreements with investors? pro" [ref=e3757] [cursor=pointer]:
+                - text: How can I make agreements with investors?
+                - generic [ref=e3758]: pro
+              - button "What can I build with Juicy? popular" [ref=e3759] [cursor=pointer]:
+                - text: What can I build with Juicy?
+                - generic [ref=e3760]: popular
+              - button "Build impact measurement" [ref=e3761] [cursor=pointer]
+              - button "starting a business id" [ref=e3762] [cursor=pointer]:
+                - text: starting a business
+                - generic [ref=e3763]: id
+              - button "Fund my community kitchen" [ref=e3764] [cursor=pointer]
+              - button "What is Juicy? popular" [ref=e3765] [cursor=pointer]:
+                - text: What is Juicy?
+                - generic [ref=e3766]: popular
+              - button "Build energy storage" [ref=e3767] [cursor=pointer]
+              - button "Build a social token platform bold" [ref=e3768] [cursor=pointer]:
+                - text: Build a social token platform
+                - generic [ref=e3769]: bold
+              - button "Launch my local marketplace" [ref=e3770] [cursor=pointer]
+              - button "Fund my diagnostics startup" [ref=e3771] [cursor=pointer]
+              - button "Fund my creator studio" [ref=e3772] [cursor=pointer]
+              - button "Create food security" [ref=e3773] [cursor=pointer]
+              - button "Fund my lending startup" [ref=e3774] [cursor=pointer]
+              - button "Build a chocolate company" [ref=e3775] [cursor=pointer]
+              - button "Gamified treasury fun" [ref=e3776] [cursor=pointer]:
+                - text: Gamified treasury
+                - generic [ref=e3777]: fun
+              - button "Weird experiment treasury fun" [ref=e3778] [cursor=pointer]:
+                - text: Weird experiment treasury
+                - generic [ref=e3779]: fun
+              - button "Launch a perpetual funding engine bold" [ref=e3780] [cursor=pointer]:
+                - text: Launch a perpetual funding engine
+                - generic [ref=e3781]: bold
+              - button "Show me creative projects demo" [ref=e3782] [cursor=pointer]:
+                - text: Show me creative projects
+                - generic [ref=e3783]: demo
+              - button "Fund my extreme sports fun" [ref=e3784] [cursor=pointer]:
+                - text: Fund my extreme sports
+                - generic [ref=e3785]: fun
+              - button "Launch my animation project popular" [ref=e3786] [cursor=pointer]:
+                - text: Launch my animation project
+                - generic [ref=e3787]: popular
+              - button "Build edge computing pro" [ref=e3788] [cursor=pointer]:
+                - text: Build edge computing
+                - generic [ref=e3789]: pro
+              - button "Fund my cultural preservation" [ref=e3790] [cursor=pointer]
+              - button "Crowdfund my tattoo shop" [ref=e3791] [cursor=pointer]
+              - button "Fund my translation project" [ref=e3792] [cursor=pointer]
+              - button "Crowdfund my film" [ref=e3793] [cursor=pointer]
+              - button "Fund my clean tech bold" [ref=e3794] [cursor=pointer]:
+                - text: Fund my clean tech
+                - generic [ref=e3795]: bold
+              - button "Build health data platform" [ref=e3796] [cursor=pointer]
+              - button "Create immigrant services" [ref=e3797] [cursor=pointer]
+              - button "Go from zero to IPO bold" [ref=e3798] [cursor=pointer]:
+                - text: Go from zero to IPO
+                - generic [ref=e3799]: bold
+              - button "Fund my ocean cleanup" [ref=e3800] [cursor=pointer]
+              - button "Empire starts here bold" [ref=e3801] [cursor=pointer]:
+                - text: Empire starts here
+                - generic [ref=e3802]: bold
+              - button "Meme lord treasury fun" [ref=e3803] [cursor=pointer]:
+                - text: Meme lord treasury
+                - generic [ref=e3804]: fun
+              - button "Subversive art collective fun" [ref=e3805] [cursor=pointer]:
+                - text: Subversive art collective
+                - generic [ref=e3806]: fun
+              - button "Break things beautifully fun" [ref=e3807] [cursor=pointer]:
+                - text: Break things beautifully
+                - generic [ref=e3808]: fun
+              - button "Find Ethereum projects" [ref=e3809] [cursor=pointer]
+          - generic [ref=e3810]:
+            - generic [ref=e3811]:
+              - button "Launch a coding bootcamp for my community" [ref=e3812] [cursor=pointer]
+              - button "Set up milestone payments" [ref=e3813] [cursor=pointer]
+              - button "Fund my car investment" [ref=e3814] [cursor=pointer]
+              - button "Support my webcomic popular" [ref=e3815] [cursor=pointer]:
+                - text: Support my webcomic
+                - generic [ref=e3816]: popular
+              - button "Create a creator community" [ref=e3817] [cursor=pointer]
+              - button "Build equipment leasing" [ref=e3818] [cursor=pointer]
+              - button "fighting the system id" [ref=e3819] [cursor=pointer]:
+                - text: fighting the system
+                - generic [ref=e3820]: id
+              - button "Tell me a success story fun" [ref=e3821] [cursor=pointer]:
+                - text: Tell me a success story
+                - generic [ref=e3822]: fun
+              - button "Fund my fashion brand popular" [ref=e3823] [cursor=pointer]:
+                - text: Fund my fashion brand
+                - generic [ref=e3824]: popular
+              - button "Fund my SaaS product" [ref=e3825] [cursor=pointer]
+              - button "Music industry disruption" [ref=e3826] [cursor=pointer]
+              - button "Fund my podcast popular" [ref=e3827] [cursor=pointer]:
+                - text: Fund my podcast
+                - generic [ref=e3828]: popular
+              - button "Sequence an unknown genome" [ref=e3829] [cursor=pointer]
+              - button "Fund my vertical marketplace" [ref=e3830] [cursor=pointer]
+              - button "Media mogul starter" [ref=e3831] [cursor=pointer]
+              - button "Help me plan my fundraise popular" [ref=e3832] [cursor=pointer]:
+                - text: Help me plan my fundraise
+                - generic [ref=e3833]: popular
+              - button "Build accessibility tools" [ref=e3834] [cursor=pointer]
+              - button "Beach cleanup fund" [ref=e3835] [cursor=pointer]
+              - button "Can I set funding goals?" [ref=e3836] [cursor=pointer]
+              - button "Create a grants program pro" [ref=e3837] [cursor=pointer]:
+                - text: Create a grants program
+                - generic [ref=e3838]: pro
+              - button "Build a coordination game bold" [ref=e3839] [cursor=pointer]:
+                - text: Build a coordination game
+                - generic [ref=e3840]: bold
+              - button "Famous overnight project" [ref=e3841] [cursor=pointer]
+              - button "Fund mutual aid" [ref=e3842] [cursor=pointer]
+              - button "Start mutual fund" [ref=e3843] [cursor=pointer]
+              - button "staying anonymous id" [ref=e3844] [cursor=pointer]:
+                - text: staying anonymous
+                - generic [ref=e3845]: id
+              - button "Fund my cat cafe fun" [ref=e3846] [cursor=pointer]:
+                - text: Fund my cat cafe
+                - generic [ref=e3847]: fun
+              - button "Launch my adventure sports" [ref=e3848] [cursor=pointer]
+              - button "Give it all away" [ref=e3849] [cursor=pointer]
+              - button "Fund infrastructure I maintain" [ref=e3850] [cursor=pointer]
+              - button "Fund my clinical trials" [ref=e3851] [cursor=pointer]
+              - button "Fund my community radio" [ref=e3852] [cursor=pointer]
+              - button "Outdoor project fund" [ref=e3853] [cursor=pointer]
+              - button "Create IoT devices" [ref=e3854] [cursor=pointer]
+              - button "Fund my dev tools" [ref=e3855] [cursor=pointer]
+              - button "Fund my physical product" [ref=e3856] [cursor=pointer]
+              - button "Fund my enterprise SaaS bold" [ref=e3857] [cursor=pointer]:
+                - text: Fund my enterprise SaaS
+                - generic [ref=e3858]: bold
+              - button "Launch a governance game bold" [ref=e3859] [cursor=pointer]:
+                - text: Launch a governance game
+                - generic [ref=e3860]: bold
+              - button "Build property technology" [ref=e3861] [cursor=pointer]
+              - button "Create a magic show fun" [ref=e3862] [cursor=pointer]:
+                - text: Create a magic show
+                - generic [ref=e3863]: fun
+              - button "Build a community education startup" [ref=e3864] [cursor=pointer]
+            - generic [ref=e3865]:
+              - button "Launch a coding bootcamp for my community" [ref=e3866] [cursor=pointer]
+              - button "Set up milestone payments" [ref=e3867] [cursor=pointer]
+              - button "Fund my car investment" [ref=e3868] [cursor=pointer]
+              - button "Support my webcomic popular" [ref=e3869] [cursor=pointer]:
+                - text: Support my webcomic
+                - generic [ref=e3870]: popular
+              - button "Create a creator community" [ref=e3871] [cursor=pointer]
+              - button "Build equipment leasing" [ref=e3872] [cursor=pointer]
+              - button "fighting the system id" [ref=e3873] [cursor=pointer]:
+                - text: fighting the system
+                - generic [ref=e3874]: id
+              - button "Tell me a success story fun" [ref=e3875] [cursor=pointer]:
+                - text: Tell me a success story
+                - generic [ref=e3876]: fun
+              - button "Fund my fashion brand popular" [ref=e3877] [cursor=pointer]:
+                - text: Fund my fashion brand
+                - generic [ref=e3878]: popular
+              - button "Fund my SaaS product" [ref=e3879] [cursor=pointer]
+              - button "Music industry disruption" [ref=e3880] [cursor=pointer]
+              - button "Fund my podcast popular" [ref=e3881] [cursor=pointer]:
+                - text: Fund my podcast
+                - generic [ref=e3882]: popular
+              - button "Sequence an unknown genome" [ref=e3883] [cursor=pointer]
+              - button "Fund my vertical marketplace" [ref=e3884] [cursor=pointer]
+              - button "Media mogul starter" [ref=e3885] [cursor=pointer]
+              - button "Help me plan my fundraise popular" [ref=e3886] [cursor=pointer]:
+                - text: Help me plan my fundraise
+                - generic [ref=e3887]: popular
+              - button "Build accessibility tools" [ref=e3888] [cursor=pointer]
+              - button "Beach cleanup fund" [ref=e3889] [cursor=pointer]
+              - button "Can I set funding goals?" [ref=e3890] [cursor=pointer]
+              - button "Create a grants program pro" [ref=e3891] [cursor=pointer]:
+                - text: Create a grants program
+                - generic [ref=e3892]: pro
+              - button "Build a coordination game bold" [ref=e3893] [cursor=pointer]:
+                - text: Build a coordination game
+                - generic [ref=e3894]: bold
+              - button "Famous overnight project" [ref=e3895] [cursor=pointer]
+              - button "Fund mutual aid" [ref=e3896] [cursor=pointer]
+              - button "Start mutual fund" [ref=e3897] [cursor=pointer]
+              - button "staying anonymous id" [ref=e3898] [cursor=pointer]:
+                - text: staying anonymous
+                - generic [ref=e3899]: id
+              - button "Fund my cat cafe fun" [ref=e3900] [cursor=pointer]:
+                - text: Fund my cat cafe
+                - generic [ref=e3901]: fun
+              - button "Launch my adventure sports" [ref=e3902] [cursor=pointer]
+              - button "Give it all away" [ref=e3903] [cursor=pointer]
+              - button "Fund infrastructure I maintain" [ref=e3904] [cursor=pointer]
+              - button "Fund my clinical trials" [ref=e3905] [cursor=pointer]
+              - button "Fund my community radio" [ref=e3906] [cursor=pointer]
+              - button "Outdoor project fund" [ref=e3907] [cursor=pointer]
+              - button "Create IoT devices" [ref=e3908] [cursor=pointer]
+              - button "Fund my dev tools" [ref=e3909] [cursor=pointer]
+              - button "Fund my physical product" [ref=e3910] [cursor=pointer]
+              - button "Fund my enterprise SaaS bold" [ref=e3911] [cursor=pointer]:
+                - text: Fund my enterprise SaaS
+                - generic [ref=e3912]: bold
+              - button "Launch a governance game bold" [ref=e3913] [cursor=pointer]:
+                - text: Launch a governance game
+                - generic [ref=e3914]: bold
+              - button "Build property technology" [ref=e3915] [cursor=pointer]
+              - button "Create a magic show fun" [ref=e3916] [cursor=pointer]:
+                - text: Create a magic show
+                - generic [ref=e3917]: fun
+              - button "Build a community education startup" [ref=e3918] [cursor=pointer]
+            - generic [ref=e3919]:
+              - button "Launch a coding bootcamp for my community" [ref=e3920] [cursor=pointer]
+              - button "Set up milestone payments" [ref=e3921] [cursor=pointer]
+              - button "Fund my car investment" [ref=e3922] [cursor=pointer]
+              - button "Support my webcomic popular" [ref=e3923] [cursor=pointer]:
+                - text: Support my webcomic
+                - generic [ref=e3924]: popular
+              - button "Create a creator community" [ref=e3925] [cursor=pointer]
+              - button "Build equipment leasing" [ref=e3926] [cursor=pointer]
+              - button "fighting the system id" [ref=e3927] [cursor=pointer]:
+                - text: fighting the system
+                - generic [ref=e3928]: id
+              - button "Tell me a success story fun" [ref=e3929] [cursor=pointer]:
+                - text: Tell me a success story
+                - generic [ref=e3930]: fun
+              - button "Fund my fashion brand popular" [ref=e3931] [cursor=pointer]:
+                - text: Fund my fashion brand
+                - generic [ref=e3932]: popular
+              - button "Fund my SaaS product" [ref=e3933] [cursor=pointer]
+              - button "Music industry disruption" [ref=e3934] [cursor=pointer]
+              - button "Fund my podcast popular" [ref=e3935] [cursor=pointer]:
+                - text: Fund my podcast
+                - generic [ref=e3936]: popular
+              - button "Sequence an unknown genome" [ref=e3937] [cursor=pointer]
+              - button "Fund my vertical marketplace" [ref=e3938] [cursor=pointer]
+              - button "Media mogul starter" [ref=e3939] [cursor=pointer]
+              - button "Help me plan my fundraise popular" [ref=e3940] [cursor=pointer]:
+                - text: Help me plan my fundraise
+                - generic [ref=e3941]: popular
+              - button "Build accessibility tools" [ref=e3942] [cursor=pointer]
+              - button "Beach cleanup fund" [ref=e3943] [cursor=pointer]
+              - button "Can I set funding goals?" [ref=e3944] [cursor=pointer]
+              - button "Create a grants program pro" [ref=e3945] [cursor=pointer]:
+                - text: Create a grants program
+                - generic [ref=e3946]: pro
+              - button "Build a coordination game bold" [ref=e3947] [cursor=pointer]:
+                - text: Build a coordination game
+                - generic [ref=e3948]: bold
+              - button "Famous overnight project" [ref=e3949] [cursor=pointer]
+              - button "Fund mutual aid" [ref=e3950] [cursor=pointer]
+              - button "Start mutual fund" [ref=e3951] [cursor=pointer]
+              - button "staying anonymous id" [ref=e3952] [cursor=pointer]:
+                - text: staying anonymous
+                - generic [ref=e3953]: id
+              - button "Fund my cat cafe fun" [ref=e3954] [cursor=pointer]:
+                - text: Fund my cat cafe
+                - generic [ref=e3955]: fun
+              - button "Launch my adventure sports" [ref=e3956] [cursor=pointer]
+              - button "Give it all away" [ref=e3957] [cursor=pointer]
+              - button "Fund infrastructure I maintain" [ref=e3958] [cursor=pointer]
+              - button "Fund my clinical trials" [ref=e3959] [cursor=pointer]
+              - button "Fund my community radio" [ref=e3960] [cursor=pointer]
+              - button "Outdoor project fund" [ref=e3961] [cursor=pointer]
+              - button "Create IoT devices" [ref=e3962] [cursor=pointer]
+              - button "Fund my dev tools" [ref=e3963] [cursor=pointer]
+              - button "Fund my physical product" [ref=e3964] [cursor=pointer]
+              - button "Fund my enterprise SaaS bold" [ref=e3965] [cursor=pointer]:
+                - text: Fund my enterprise SaaS
+                - generic [ref=e3966]: bold
+              - button "Launch a governance game bold" [ref=e3967] [cursor=pointer]:
+                - text: Launch a governance game
+                - generic [ref=e3968]: bold
+              - button "Build property technology" [ref=e3969] [cursor=pointer]
+              - button "Create a magic show fun" [ref=e3970] [cursor=pointer]:
+                - text: Create a magic show
+                - generic [ref=e3971]: fun
+              - button "Build a community education startup" [ref=e3972] [cursor=pointer]
+            - generic [ref=e3973]:
+              - button "Launch a coding bootcamp for my community" [ref=e3974] [cursor=pointer]
+              - button "Set up milestone payments" [ref=e3975] [cursor=pointer]
+              - button "Fund my car investment" [ref=e3976] [cursor=pointer]
+              - button "Support my webcomic popular" [ref=e3977] [cursor=pointer]:
+                - text: Support my webcomic
+                - generic [ref=e3978]: popular
+              - button "Create a creator community" [ref=e3979] [cursor=pointer]
+              - button "Build equipment leasing" [ref=e3980] [cursor=pointer]
+              - button "fighting the system id" [ref=e3981] [cursor=pointer]:
+                - text: fighting the system
+                - generic [ref=e3982]: id
+              - button "Tell me a success story fun" [ref=e3983] [cursor=pointer]:
+                - text: Tell me a success story
+                - generic [ref=e3984]: fun
+              - button "Fund my fashion brand popular" [ref=e3985] [cursor=pointer]:
+                - text: Fund my fashion brand
+                - generic [ref=e3986]: popular
+              - button "Fund my SaaS product" [ref=e3987] [cursor=pointer]
+              - button "Music industry disruption" [ref=e3988] [cursor=pointer]
+              - button "Fund my podcast popular" [ref=e3989] [cursor=pointer]:
+                - text: Fund my podcast
+                - generic [ref=e3990]: popular
+              - button "Sequence an unknown genome" [ref=e3991] [cursor=pointer]
+              - button "Fund my vertical marketplace" [ref=e3992] [cursor=pointer]
+              - button "Media mogul starter" [ref=e3993] [cursor=pointer]
+              - button "Help me plan my fundraise popular" [ref=e3994] [cursor=pointer]:
+                - text: Help me plan my fundraise
+                - generic [ref=e3995]: popular
+              - button "Build accessibility tools" [ref=e3996] [cursor=pointer]
+              - button "Beach cleanup fund" [ref=e3997] [cursor=pointer]
+              - button "Can I set funding goals?" [ref=e3998] [cursor=pointer]
+              - button "Create a grants program pro" [ref=e3999] [cursor=pointer]:
+                - text: Create a grants program
+                - generic [ref=e4000]: pro
+              - button "Build a coordination game bold" [ref=e4001] [cursor=pointer]:
+                - text: Build a coordination game
+                - generic [ref=e4002]: bold
+              - button "Famous overnight project" [ref=e4003] [cursor=pointer]
+              - button "Fund mutual aid" [ref=e4004] [cursor=pointer]
+              - button "Start mutual fund" [ref=e4005] [cursor=pointer]
+              - button "staying anonymous id" [ref=e4006] [cursor=pointer]:
+                - text: staying anonymous
+                - generic [ref=e4007]: id
+              - button "Fund my cat cafe fun" [ref=e4008] [cursor=pointer]:
+                - text: Fund my cat cafe
+                - generic [ref=e4009]: fun
+              - button "Launch my adventure sports" [ref=e4010] [cursor=pointer]
+              - button "Give it all away" [ref=e4011] [cursor=pointer]
+              - button "Fund infrastructure I maintain" [ref=e4012] [cursor=pointer]
+              - button "Fund my clinical trials" [ref=e4013] [cursor=pointer]
+              - button "Fund my community radio" [ref=e4014] [cursor=pointer]
+              - button "Outdoor project fund" [ref=e4015] [cursor=pointer]
+              - button "Create IoT devices" [ref=e4016] [cursor=pointer]
+              - button "Fund my dev tools" [ref=e4017] [cursor=pointer]
+              - button "Fund my physical product" [ref=e4018] [cursor=pointer]
+              - button "Fund my enterprise SaaS bold" [ref=e4019] [cursor=pointer]:
+                - text: Fund my enterprise SaaS
+                - generic [ref=e4020]: bold
+              - button "Launch a governance game bold" [ref=e4021] [cursor=pointer]:
+                - text: Launch a governance game
+                - generic [ref=e4022]: bold
+              - button "Build property technology" [ref=e4023] [cursor=pointer]
+              - button "Create a magic show fun" [ref=e4024] [cursor=pointer]:
+                - text: Create a magic show
+                - generic [ref=e4025]: fun
+              - button "Build a community education startup" [ref=e4026] [cursor=pointer]
+            - generic [ref=e4027]:
+              - button "Launch a coding bootcamp for my community" [ref=e4028] [cursor=pointer]
+              - button "Set up milestone payments" [ref=e4029] [cursor=pointer]
+              - button "Fund my car investment" [ref=e4030] [cursor=pointer]
+              - button "Support my webcomic popular" [ref=e4031] [cursor=pointer]:
+                - text: Support my webcomic
+                - generic [ref=e4032]: popular
+              - button "Create a creator community" [ref=e4033] [cursor=pointer]
+              - button "Build equipment leasing" [ref=e4034] [cursor=pointer]
+              - button "fighting the system id" [ref=e4035] [cursor=pointer]:
+                - text: fighting the system
+                - generic [ref=e4036]: id
+              - button "Tell me a success story fun" [ref=e4037] [cursor=pointer]:
+                - text: Tell me a success story
+                - generic [ref=e4038]: fun
+              - button "Fund my fashion brand popular" [ref=e4039] [cursor=pointer]:
+                - text: Fund my fashion brand
+                - generic [ref=e4040]: popular
+              - button "Fund my SaaS product" [ref=e4041] [cursor=pointer]
+              - button "Music industry disruption" [ref=e4042] [cursor=pointer]
+              - button "Fund my podcast popular" [ref=e4043] [cursor=pointer]:
+                - text: Fund my podcast
+                - generic [ref=e4044]: popular
+              - button "Sequence an unknown genome" [ref=e4045] [cursor=pointer]
+              - button "Fund my vertical marketplace" [ref=e4046] [cursor=pointer]
+              - button "Media mogul starter" [ref=e4047] [cursor=pointer]
+              - button "Help me plan my fundraise popular" [ref=e4048] [cursor=pointer]:
+                - text: Help me plan my fundraise
+                - generic [ref=e4049]: popular
+              - button "Build accessibility tools" [ref=e4050] [cursor=pointer]
+              - button "Beach cleanup fund" [ref=e4051] [cursor=pointer]
+              - button "Can I set funding goals?" [ref=e4052] [cursor=pointer]
+              - button "Create a grants program pro" [ref=e4053] [cursor=pointer]:
+                - text: Create a grants program
+                - generic [ref=e4054]: pro
+              - button "Build a coordination game bold" [ref=e4055] [cursor=pointer]:
+                - text: Build a coordination game
+                - generic [ref=e4056]: bold
+              - button "Famous overnight project" [ref=e4057] [cursor=pointer]
+              - button "Fund mutual aid" [ref=e4058] [cursor=pointer]
+              - button "Start mutual fund" [ref=e4059] [cursor=pointer]
+              - button "staying anonymous id" [ref=e4060] [cursor=pointer]:
+                - text: staying anonymous
+                - generic [ref=e4061]: id
+              - button "Fund my cat cafe fun" [ref=e4062] [cursor=pointer]:
+                - text: Fund my cat cafe
+                - generic [ref=e4063]: fun
+              - button "Launch my adventure sports" [ref=e4064] [cursor=pointer]
+              - button "Give it all away" [ref=e4065] [cursor=pointer]
+              - button "Fund infrastructure I maintain" [ref=e4066] [cursor=pointer]
+              - button "Fund my clinical trials" [ref=e4067] [cursor=pointer]
+              - button "Fund my community radio" [ref=e4068] [cursor=pointer]
+              - button "Outdoor project fund" [ref=e4069] [cursor=pointer]
+              - button "Create IoT devices" [ref=e4070] [cursor=pointer]
+              - button "Fund my dev tools" [ref=e4071] [cursor=pointer]
+              - button "Fund my physical product" [ref=e4072] [cursor=pointer]
+              - button "Fund my enterprise SaaS bold" [ref=e4073] [cursor=pointer]:
+                - text: Fund my enterprise SaaS
+                - generic [ref=e4074]: bold
+              - button "Launch a governance game bold" [ref=e4075] [cursor=pointer]:
+                - text: Launch a governance game
+                - generic [ref=e4076]: bold
+              - button "Build property technology" [ref=e4077] [cursor=pointer]
+              - button "Create a magic show fun" [ref=e4078] [cursor=pointer]:
+                - text: Create a magic show
+                - generic [ref=e4079]: fun
+              - button "Build a community education startup" [ref=e4080] [cursor=pointer]
+          - generic [ref=e4081]:
+            - generic [ref=e4082]:
+              - button "Touch grass treasury fun" [ref=e4083] [cursor=pointer]:
+                - text: Touch grass treasury
+                - generic [ref=e4084]: fun
+              - button "Fame machine project" [ref=e4085] [cursor=pointer]
+              - button "Launch a crowdfund with deadline" [ref=e4086] [cursor=pointer]
+              - button "Build a bridge pro" [ref=e4087] [cursor=pointer]:
+                - text: Build a bridge
+                - generic [ref=e4088]: pro
+              - button "Create outdoor recreation fun" [ref=e4089] [cursor=pointer]:
+                - text: Create outdoor recreation
+                - generic [ref=e4090]: fun
+              - button "Build project management" [ref=e4091] [cursor=pointer]
+              - button "Support my music venue" [ref=e4092] [cursor=pointer]
+              - button "Create a footwear brand" [ref=e4093] [cursor=pointer]
+              - button "Launch my skate park" [ref=e4094] [cursor=pointer]
+              - button "Launch my wholesale marketplace" [ref=e4095] [cursor=pointer]
+              - button "Create documentation tools" [ref=e4096] [cursor=pointer]
+              - button "Fund my computer vision project" [ref=e4097] [cursor=pointer]
+              - button "Fund my calendar app" [ref=e4098] [cursor=pointer]
+              - button "Can supporters cash out? popular" [ref=e4099] [cursor=pointer]:
+                - text: Can supporters cash out?
+                - generic [ref=e4100]: popular
+              - button "Async-first treasury pro" [ref=e4101] [cursor=pointer]:
+                - text: Async-first treasury
+                - generic [ref=e4102]: pro
+              - button "Create a luxury brand" [ref=e4103] [cursor=pointer]
+              - button "Launch my hobby community fun" [ref=e4104] [cursor=pointer]:
+                - text: Launch my hobby community
+                - generic [ref=e4105]: fun
+              - button "Arcade token economy fun" [ref=e4106] [cursor=pointer]:
+                - text: Arcade token economy
+                - generic [ref=e4107]: fun
+              - button "Fund my community center popular" [ref=e4108] [cursor=pointer]:
+                - text: Fund my community center
+                - generic [ref=e4109]: popular
+              - button "Create an alumni network" [ref=e4110] [cursor=pointer]
+              - button "Fund my thesis" [ref=e4111] [cursor=pointer]
+              - button "Build my speaking career" [ref=e4112] [cursor=pointer]
+              - button "Anarchy but organized fun" [ref=e4113] [cursor=pointer]:
+                - text: Anarchy but organized
+                - generic [ref=e4114]: fun
+              - button "Get paid for my npm package" [ref=e4115] [cursor=pointer]
+              - button "Create sustainable packaging popular" [ref=e4116] [cursor=pointer]:
+                - text: Create sustainable packaging
+                - generic [ref=e4117]: popular
+              - button "Pseudonymous publishing pro" [ref=e4118] [cursor=pointer]:
+                - text: Pseudonymous publishing
+                - generic [ref=e4119]: pro
+              - button "Make an auditable political campaign pro" [ref=e4120] [cursor=pointer]:
+                - text: Make an auditable political campaign
+                - generic [ref=e4121]: pro
+              - button "making things id" [ref=e4122] [cursor=pointer]:
+                - text: making things
+                - generic [ref=e4123]: id
+              - button "Fund my haunted house fun" [ref=e4124] [cursor=pointer]:
+                - text: Fund my haunted house
+                - generic [ref=e4125]: fun
+              - button "Create a meal delivery" [ref=e4126] [cursor=pointer]
+              - button "Launch my livestream setup fun" [ref=e4127] [cursor=pointer]:
+                - text: Launch my livestream setup
+                - generic [ref=e4128]: fun
+              - button "Fund my health tech popular" [ref=e4129] [cursor=pointer]:
+                - text: Fund my health tech
+                - generic [ref=e4130]: popular
+              - button "Podcast to millions" [ref=e4131] [cursor=pointer]
+              - button "What projects need funding?" [ref=e4132] [cursor=pointer]
+              - button "Create a delegation market bold" [ref=e4133] [cursor=pointer]:
+                - text: Create a delegation market
+                - generic [ref=e4134]: bold
+              - button "being a degen id" [ref=e4135] [cursor=pointer]:
+                - text: being a degen
+                - generic [ref=e4136]: id
+              - button "Protocol-native project pro" [ref=e4137] [cursor=pointer]:
+                - text: Protocol-native project
+                - generic [ref=e4138]: pro
+              - button "Create a journal app" [ref=e4139] [cursor=pointer]
+              - button "Fund my audio drama" [ref=e4140] [cursor=pointer]
+              - button "Launch my media empire" [ref=e4141] [cursor=pointer]
+            - generic [ref=e4142]:
+              - button "Touch grass treasury fun" [ref=e4143] [cursor=pointer]:
+                - text: Touch grass treasury
+                - generic [ref=e4144]: fun
+              - button "Fame machine project" [ref=e4145] [cursor=pointer]
+              - button "Launch a crowdfund with deadline" [ref=e4146] [cursor=pointer]
+              - button "Build a bridge pro" [ref=e4147] [cursor=pointer]:
+                - text: Build a bridge
+                - generic [ref=e4148]: pro
+              - button "Create outdoor recreation fun" [ref=e4149] [cursor=pointer]:
+                - text: Create outdoor recreation
+                - generic [ref=e4150]: fun
+              - button "Build project management" [ref=e4151] [cursor=pointer]
+              - button "Support my music venue" [ref=e4152] [cursor=pointer]
+              - button "Create a footwear brand" [ref=e4153] [cursor=pointer]
+              - button "Launch my skate park" [ref=e4154] [cursor=pointer]
+              - button "Launch my wholesale marketplace" [ref=e4155] [cursor=pointer]
+              - button "Create documentation tools" [ref=e4156] [cursor=pointer]
+              - button "Fund my computer vision project" [ref=e4157] [cursor=pointer]
+              - button "Fund my calendar app" [ref=e4158] [cursor=pointer]
+              - button "Can supporters cash out? popular" [ref=e4159] [cursor=pointer]:
+                - text: Can supporters cash out?
+                - generic [ref=e4160]: popular
+              - button "Async-first treasury pro" [ref=e4161] [cursor=pointer]:
+                - text: Async-first treasury
+                - generic [ref=e4162]: pro
+              - button "Create a luxury brand" [ref=e4163] [cursor=pointer]
+              - button "Launch my hobby community fun" [ref=e4164] [cursor=pointer]:
+                - text: Launch my hobby community
+                - generic [ref=e4165]: fun
+              - button "Arcade token economy fun" [ref=e4166] [cursor=pointer]:
+                - text: Arcade token economy
+                - generic [ref=e4167]: fun
+              - button "Fund my community center popular" [ref=e4168] [cursor=pointer]:
+                - text: Fund my community center
+                - generic [ref=e4169]: popular
+              - button "Create an alumni network" [ref=e4170] [cursor=pointer]
+              - button "Fund my thesis" [ref=e4171] [cursor=pointer]
+              - button "Build my speaking career" [ref=e4172] [cursor=pointer]
+              - button "Anarchy but organized fun" [ref=e4173] [cursor=pointer]:
+                - text: Anarchy but organized
+                - generic [ref=e4174]: fun
+              - button "Get paid for my npm package" [ref=e4175] [cursor=pointer]
+              - button "Create sustainable packaging popular" [ref=e4176] [cursor=pointer]:
+                - text: Create sustainable packaging
+                - generic [ref=e4177]: popular
+              - button "Pseudonymous publishing pro" [ref=e4178] [cursor=pointer]:
+                - text: Pseudonymous publishing
+                - generic [ref=e4179]: pro
+              - button "Make an auditable political campaign pro" [ref=e4180] [cursor=pointer]:
+                - text: Make an auditable political campaign
+                - generic [ref=e4181]: pro
+              - button "making things id" [ref=e4182] [cursor=pointer]:
+                - text: making things
+                - generic [ref=e4183]: id
+              - button "Fund my haunted house fun" [ref=e4184] [cursor=pointer]:
+                - text: Fund my haunted house
+                - generic [ref=e4185]: fun
+              - button "Create a meal delivery" [ref=e4186] [cursor=pointer]
+              - button "Launch my livestream setup fun" [ref=e4187] [cursor=pointer]:
+                - text: Launch my livestream setup
+                - generic [ref=e4188]: fun
+              - button "Fund my health tech popular" [ref=e4189] [cursor=pointer]:
+                - text: Fund my health tech
+                - generic [ref=e4190]: popular
+              - button "Podcast to millions" [ref=e4191] [cursor=pointer]
+              - button "What projects need funding?" [ref=e4192] [cursor=pointer]
+              - button "Create a delegation market bold" [ref=e4193] [cursor=pointer]:
+                - text: Create a delegation market
+                - generic [ref=e4194]: bold
+              - button "being a degen id" [ref=e4195] [cursor=pointer]:
+                - text: being a degen
+                - generic [ref=e4196]: id
+              - button "Protocol-native project pro" [ref=e4197] [cursor=pointer]:
+                - text: Protocol-native project
+                - generic [ref=e4198]: pro
+              - button "Create a journal app" [ref=e4199] [cursor=pointer]
+              - button "Fund my audio drama" [ref=e4200] [cursor=pointer]
+              - button "Launch my media empire" [ref=e4201] [cursor=pointer]
+            - generic [ref=e4202]:
+              - button "Touch grass treasury fun" [ref=e4203] [cursor=pointer]:
+                - text: Touch grass treasury
+                - generic [ref=e4204]: fun
+              - button "Fame machine project" [ref=e4205] [cursor=pointer]
+              - button "Launch a crowdfund with deadline" [ref=e4206] [cursor=pointer]
+              - button "Build a bridge pro" [ref=e4207] [cursor=pointer]:
+                - text: Build a bridge
+                - generic [ref=e4208]: pro
+              - button "Create outdoor recreation fun" [ref=e4209] [cursor=pointer]:
+                - text: Create outdoor recreation
+                - generic [ref=e4210]: fun
+              - button "Build project management" [ref=e4211] [cursor=pointer]
+              - button "Support my music venue" [ref=e4212] [cursor=pointer]
+              - button "Create a footwear brand" [ref=e4213] [cursor=pointer]
+              - button "Launch my skate park" [ref=e4214] [cursor=pointer]
+              - button "Launch my wholesale marketplace" [ref=e4215] [cursor=pointer]
+              - button "Create documentation tools" [ref=e4216] [cursor=pointer]
+              - button "Fund my computer vision project" [ref=e4217] [cursor=pointer]
+              - button "Fund my calendar app" [ref=e4218] [cursor=pointer]
+              - button "Can supporters cash out? popular" [ref=e4219] [cursor=pointer]:
+                - text: Can supporters cash out?
+                - generic [ref=e4220]: popular
+              - button "Async-first treasury pro" [ref=e4221] [cursor=pointer]:
+                - text: Async-first treasury
+                - generic [ref=e4222]: pro
+              - button "Create a luxury brand" [ref=e4223] [cursor=pointer]
+              - button "Launch my hobby community fun" [ref=e4224] [cursor=pointer]:
+                - text: Launch my hobby community
+                - generic [ref=e4225]: fun
+              - button "Arcade token economy fun" [ref=e4226] [cursor=pointer]:
+                - text: Arcade token economy
+                - generic [ref=e4227]: fun
+              - button "Fund my community center popular" [ref=e4228] [cursor=pointer]:
+                - text: Fund my community center
+                - generic [ref=e4229]: popular
+              - button "Create an alumni network" [ref=e4230] [cursor=pointer]
+              - button "Fund my thesis" [ref=e4231] [cursor=pointer]
+              - button "Build my speaking career" [ref=e4232] [cursor=pointer]
+              - button "Anarchy but organized fun" [ref=e4233] [cursor=pointer]:
+                - text: Anarchy but organized
+                - generic [ref=e4234]: fun
+              - button "Get paid for my npm package" [ref=e4235] [cursor=pointer]
+              - button "Create sustainable packaging popular" [ref=e4236] [cursor=pointer]:
+                - text: Create sustainable packaging
+                - generic [ref=e4237]: popular
+              - button "Pseudonymous publishing pro" [ref=e4238] [cursor=pointer]:
+                - text: Pseudonymous publishing
+                - generic [ref=e4239]: pro
+              - button "Make an auditable political campaign pro" [ref=e4240] [cursor=pointer]:
+                - text: Make an auditable political campaign
+                - generic [ref=e4241]: pro
+              - button "making things id" [ref=e4242] [cursor=pointer]:
+                - text: making things
+                - generic [ref=e4243]: id
+              - button "Fund my haunted house fun" [ref=e4244] [cursor=pointer]:
+                - text: Fund my haunted house
+                - generic [ref=e4245]: fun
+              - button "Create a meal delivery" [ref=e4246] [cursor=pointer]
+              - button "Launch my livestream setup fun" [ref=e4247] [cursor=pointer]:
+                - text: Launch my livestream setup
+                - generic [ref=e4248]: fun
+              - button "Fund my health tech popular" [ref=e4249] [cursor=pointer]:
+                - text: Fund my health tech
+                - generic [ref=e4250]: popular
+              - button "Podcast to millions" [ref=e4251] [cursor=pointer]
+              - button "What projects need funding?" [ref=e4252] [cursor=pointer]
+              - button "Create a delegation market bold" [ref=e4253] [cursor=pointer]:
+                - text: Create a delegation market
+                - generic [ref=e4254]: bold
+              - button "being a degen id" [ref=e4255] [cursor=pointer]:
+                - text: being a degen
+                - generic [ref=e4256]: id
+              - button "Protocol-native project pro" [ref=e4257] [cursor=pointer]:
+                - text: Protocol-native project
+                - generic [ref=e4258]: pro
+              - button "Create a journal app" [ref=e4259] [cursor=pointer]
+              - button "Fund my audio drama" [ref=e4260] [cursor=pointer]
+              - button "Launch my media empire" [ref=e4261] [cursor=pointer]
+            - generic [ref=e4262]:
+              - button "Touch grass treasury fun" [ref=e4263] [cursor=pointer]:
+                - text: Touch grass treasury
+                - generic [ref=e4264]: fun
+              - button "Fame machine project" [ref=e4265] [cursor=pointer]
+              - button "Launch a crowdfund with deadline" [ref=e4266] [cursor=pointer]
+              - button "Build a bridge pro" [ref=e4267] [cursor=pointer]:
+                - text: Build a bridge
+                - generic [ref=e4268]: pro
+              - button "Create outdoor recreation fun" [ref=e4269] [cursor=pointer]:
+                - text: Create outdoor recreation
+                - generic [ref=e4270]: fun
+              - button "Build project management" [ref=e4271] [cursor=pointer]
+              - button "Support my music venue" [ref=e4272] [cursor=pointer]
+              - button "Create a footwear brand" [ref=e4273] [cursor=pointer]
+              - button "Launch my skate park" [ref=e4274] [cursor=pointer]
+              - button "Launch my wholesale marketplace" [ref=e4275] [cursor=pointer]
+              - button "Create documentation tools" [ref=e4276] [cursor=pointer]
+              - button "Fund my computer vision project" [ref=e4277] [cursor=pointer]
+              - button "Fund my calendar app" [ref=e4278] [cursor=pointer]
+              - button "Can supporters cash out? popular" [ref=e4279] [cursor=pointer]:
+                - text: Can supporters cash out?
+                - generic [ref=e4280]: popular
+              - button "Async-first treasury pro" [ref=e4281] [cursor=pointer]:
+                - text: Async-first treasury
+                - generic [ref=e4282]: pro
+              - button "Create a luxury brand" [ref=e4283] [cursor=pointer]
+              - button "Launch my hobby community fun" [ref=e4284] [cursor=pointer]:
+                - text: Launch my hobby community
+                - generic [ref=e4285]: fun
+              - button "Arcade token economy fun" [ref=e4286] [cursor=pointer]:
+                - text: Arcade token economy
+                - generic [ref=e4287]: fun
+              - button "Fund my community center popular" [ref=e4288] [cursor=pointer]:
+                - text: Fund my community center
+                - generic [ref=e4289]: popular
+              - button "Create an alumni network" [ref=e4290] [cursor=pointer]
+              - button "Fund my thesis" [ref=e4291] [cursor=pointer]
+              - button "Build my speaking career" [ref=e4292] [cursor=pointer]
+              - button "Anarchy but organized fun" [ref=e4293] [cursor=pointer]:
+                - text: Anarchy but organized
+                - generic [ref=e4294]: fun
+              - button "Get paid for my npm package" [ref=e4295] [cursor=pointer]
+              - button "Create sustainable packaging popular" [ref=e4296] [cursor=pointer]:
+                - text: Create sustainable packaging
+                - generic [ref=e4297]: popular
+              - button "Pseudonymous publishing pro" [ref=e4298] [cursor=pointer]:
+                - text: Pseudonymous publishing
+                - generic [ref=e4299]: pro
+              - button "Make an auditable political campaign pro" [ref=e4300] [cursor=pointer]:
+                - text: Make an auditable political campaign
+                - generic [ref=e4301]: pro
+              - button "making things id" [ref=e4302] [cursor=pointer]:
+                - text: making things
+                - generic [ref=e4303]: id
+              - button "Fund my haunted house fun" [ref=e4304] [cursor=pointer]:
+                - text: Fund my haunted house
+                - generic [ref=e4305]: fun
+              - button "Create a meal delivery" [ref=e4306] [cursor=pointer]
+              - button "Launch my livestream setup fun" [ref=e4307] [cursor=pointer]:
+                - text: Launch my livestream setup
+                - generic [ref=e4308]: fun
+              - button "Fund my health tech popular" [ref=e4309] [cursor=pointer]:
+                - text: Fund my health tech
+                - generic [ref=e4310]: popular
+              - button "Podcast to millions" [ref=e4311] [cursor=pointer]
+              - button "What projects need funding?" [ref=e4312] [cursor=pointer]
+              - button "Create a delegation market bold" [ref=e4313] [cursor=pointer]:
+                - text: Create a delegation market
+                - generic [ref=e4314]: bold
+              - button "being a degen id" [ref=e4315] [cursor=pointer]:
+                - text: being a degen
+                - generic [ref=e4316]: id
+              - button "Protocol-native project pro" [ref=e4317] [cursor=pointer]:
+                - text: Protocol-native project
+                - generic [ref=e4318]: pro
+              - button "Create a journal app" [ref=e4319] [cursor=pointer]
+              - button "Fund my audio drama" [ref=e4320] [cursor=pointer]
+              - button "Launch my media empire" [ref=e4321] [cursor=pointer]
+            - generic [ref=e4322]:
+              - button "Touch grass treasury fun" [ref=e4323] [cursor=pointer]:
+                - text: Touch grass treasury
+                - generic [ref=e4324]: fun
+              - button "Fame machine project" [ref=e4325] [cursor=pointer]
+              - button "Launch a crowdfund with deadline" [ref=e4326] [cursor=pointer]
+              - button "Build a bridge pro" [ref=e4327] [cursor=pointer]:
+                - text: Build a bridge
+                - generic [ref=e4328]: pro
+              - button "Create outdoor recreation fun" [ref=e4329] [cursor=pointer]:
+                - text: Create outdoor recreation
+                - generic [ref=e4330]: fun
+              - button "Build project management" [ref=e4331] [cursor=pointer]
+              - button "Support my music venue" [ref=e4332] [cursor=pointer]
+              - button "Create a footwear brand" [ref=e4333] [cursor=pointer]
+              - button "Launch my skate park" [ref=e4334] [cursor=pointer]
+              - button "Launch my wholesale marketplace" [ref=e4335] [cursor=pointer]
+              - button "Create documentation tools" [ref=e4336] [cursor=pointer]
+              - button "Fund my computer vision project" [ref=e4337] [cursor=pointer]
+              - button "Fund my calendar app" [ref=e4338] [cursor=pointer]
+              - button "Can supporters cash out? popular" [ref=e4339] [cursor=pointer]:
+                - text: Can supporters cash out?
+                - generic [ref=e4340]: popular
+              - button "Async-first treasury pro" [ref=e4341] [cursor=pointer]:
+                - text: Async-first treasury
+                - generic [ref=e4342]: pro
+              - button "Create a luxury brand" [ref=e4343] [cursor=pointer]
+              - button "Launch my hobby community fun" [ref=e4344] [cursor=pointer]:
+                - text: Launch my hobby community
+                - generic [ref=e4345]: fun
+              - button "Arcade token economy fun" [ref=e4346] [cursor=pointer]:
+                - text: Arcade token economy
+                - generic [ref=e4347]: fun
+              - button "Fund my community center popular" [ref=e4348] [cursor=pointer]:
+                - text: Fund my community center
+                - generic [ref=e4349]: popular
+              - button "Create an alumni network" [ref=e4350] [cursor=pointer]
+              - button "Fund my thesis" [ref=e4351] [cursor=pointer]
+              - button "Build my speaking career" [ref=e4352] [cursor=pointer]
+              - button "Anarchy but organized fun" [ref=e4353] [cursor=pointer]:
+                - text: Anarchy but organized
+                - generic [ref=e4354]: fun
+              - button "Get paid for my npm package" [ref=e4355] [cursor=pointer]
+              - button "Create sustainable packaging popular" [ref=e4356] [cursor=pointer]:
+                - text: Create sustainable packaging
+                - generic [ref=e4357]: popular
+              - button "Pseudonymous publishing pro" [ref=e4358] [cursor=pointer]:
+                - text: Pseudonymous publishing
+                - generic [ref=e4359]: pro
+              - button "Make an auditable political campaign pro" [ref=e4360] [cursor=pointer]:
+                - text: Make an auditable political campaign
+                - generic [ref=e4361]: pro
+              - button "making things id" [ref=e4362] [cursor=pointer]:
+                - text: making things
+                - generic [ref=e4363]: id
+              - button "Fund my haunted house fun" [ref=e4364] [cursor=pointer]:
+                - text: Fund my haunted house
+                - generic [ref=e4365]: fun
+              - button "Create a meal delivery" [ref=e4366] [cursor=pointer]
+              - button "Launch my livestream setup fun" [ref=e4367] [cursor=pointer]:
+                - text: Launch my livestream setup
+                - generic [ref=e4368]: fun
+              - button "Fund my health tech popular" [ref=e4369] [cursor=pointer]:
+                - text: Fund my health tech
+                - generic [ref=e4370]: popular
+              - button "Podcast to millions" [ref=e4371] [cursor=pointer]
+              - button "What projects need funding?" [ref=e4372] [cursor=pointer]
+              - button "Create a delegation market bold" [ref=e4373] [cursor=pointer]:
+                - text: Create a delegation market
+                - generic [ref=e4374]: bold
+              - button "being a degen id" [ref=e4375] [cursor=pointer]:
+                - text: being a degen
+                - generic [ref=e4376]: id
+              - button "Protocol-native project pro" [ref=e4377] [cursor=pointer]:
+                - text: Protocol-native project
+                - generic [ref=e4378]: pro
+              - button "Create a journal app" [ref=e4379] [cursor=pointer]
+              - button "Fund my audio drama" [ref=e4380] [cursor=pointer]
+              - button "Launch my media empire" [ref=e4381] [cursor=pointer]
+          - generic [ref=e4382]:
+            - generic [ref=e4383]:
+              - button "Launch my pirate ship bar fun" [ref=e4384] [cursor=pointer]:
+                - text: Launch my pirate ship bar
+                - generic [ref=e4385]: fun
+              - button "Show me Base projects demo" [ref=e4386] [cursor=pointer]:
+                - text: Show me Base projects
+                - generic [ref=e4387]: demo
+              - button "Fund my book" [ref=e4388] [cursor=pointer]
+              - button "Support my mentorship program" [ref=e4389] [cursor=pointer]
+              - button "Influencer launch fund" [ref=e4390] [cursor=pointer]
+              - button "Fund world domination bold" [ref=e4391] [cursor=pointer]:
+                - text: Fund world domination
+                - generic [ref=e4392]: bold
+              - button "Create circular economy bold" [ref=e4393] [cursor=pointer]:
+                - text: Create circular economy
+                - generic [ref=e4394]: bold
+              - button "Launch my homeless solution" [ref=e4395] [cursor=pointer]
+              - button "Climbing gym fund" [ref=e4396] [cursor=pointer]
+              - button "Fund my solar project popular" [ref=e4397] [cursor=pointer]:
+                - text: Fund my solar project
+                - generic [ref=e4398]: popular
+              - button "Launch my CDN pro" [ref=e4399] [cursor=pointer]:
+                - text: Launch my CDN
+                - generic [ref=e4400]: pro
+              - button "Build literacy programs" [ref=e4401] [cursor=pointer]
+              - button "Build payment infrastructure bold" [ref=e4402] [cursor=pointer]:
+                - text: Build payment infrastructure
+                - generic [ref=e4403]: bold
+              - button "Show me how it works popular" [ref=e4404] [cursor=pointer]:
+                - text: Show me how it works
+                - generic [ref=e4405]: popular
+              - button "Create a treasury for my group" [ref=e4406] [cursor=pointer]
+              - button "Bootstrap to billions bold" [ref=e4407] [cursor=pointer]:
+                - text: Bootstrap to billions
+                - generic [ref=e4408]: bold
+              - button "Newsletter empire" [ref=e4409] [cursor=pointer]
+              - button "WAGMI fund fun" [ref=e4410] [cursor=pointer]:
+                - text: WAGMI fund
+                - generic [ref=e4411]: fun
+              - button "Build a music platform" [ref=e4412] [cursor=pointer]
+              - button "Create savings platform" [ref=e4413] [cursor=pointer]
+              - button "Fund my coworking space popular" [ref=e4414] [cursor=pointer]:
+                - text: Fund my coworking space
+                - generic [ref=e4415]: popular
+              - button "Fund my farmland project" [ref=e4416] [cursor=pointer]
+              - button "Launch my habit tracker" [ref=e4417] [cursor=pointer]
+              - button "Build decentralized infrastructure bold" [ref=e4418] [cursor=pointer]:
+                - text: Build decentralized infrastructure
+                - generic [ref=e4419]: bold
+              - button "Build a CPG company" [ref=e4420] [cursor=pointer]
+              - button "just exploring id" [ref=e4421] [cursor=pointer]:
+                - text: just exploring
+                - generic [ref=e4422]: id
+              - button "Launch my health community" [ref=e4423] [cursor=pointer]
+              - button "Launch my athleisure" [ref=e4424] [cursor=pointer]
+              - button "How do I add team members?" [ref=e4425] [cursor=pointer]
+              - button "Fund my brand deals" [ref=e4426] [cursor=pointer]
+              - button "Wealth building machine bold" [ref=e4427] [cursor=pointer]:
+                - text: Wealth building machine
+                - generic [ref=e4428]: bold
+              - button "Build a dating app" [ref=e4429] [cursor=pointer]
+              - button "Start my hackerspace popular" [ref=e4430] [cursor=pointer]:
+                - text: Start my hackerspace
+                - generic [ref=e4431]: popular
+              - button "Show me projects I can pay into" [ref=e4432] [cursor=pointer]
+              - button "Build an auction marketplace" [ref=e4433] [cursor=pointer]
+              - button "Fund Ethereum infrastructure" [ref=e4434] [cursor=pointer]
+              - button "Make a prediction market game fun" [ref=e4435] [cursor=pointer]:
+                - text: Make a prediction market game
+                - generic [ref=e4436]: fun
+              - button "Fund my comedy venue fun" [ref=e4437] [cursor=pointer]:
+                - text: Fund my comedy venue
+                - generic [ref=e4438]: fun
+              - button "Create a token launch game" [ref=e4439] [cursor=pointer]
+              - button "Create a self-sustaining treasury bold" [ref=e4440] [cursor=pointer]:
+                - text: Create a self-sustaining treasury
+                - generic [ref=e4441]: bold
+            - generic [ref=e4442]:
+              - button "Launch my pirate ship bar fun" [ref=e4443] [cursor=pointer]:
+                - text: Launch my pirate ship bar
+                - generic [ref=e4444]: fun
+              - button "Show me Base projects demo" [ref=e4445] [cursor=pointer]:
+                - text: Show me Base projects
+                - generic [ref=e4446]: demo
+              - button "Fund my book" [ref=e4447] [cursor=pointer]
+              - button "Support my mentorship program" [ref=e4448] [cursor=pointer]
+              - button "Influencer launch fund" [ref=e4449] [cursor=pointer]
+              - button "Fund world domination bold" [ref=e4450] [cursor=pointer]:
+                - text: Fund world domination
+                - generic [ref=e4451]: bold
+              - button "Create circular economy bold" [ref=e4452] [cursor=pointer]:
+                - text: Create circular economy
+                - generic [ref=e4453]: bold
+              - button "Launch my homeless solution" [ref=e4454] [cursor=pointer]
+              - button "Climbing gym fund" [ref=e4455] [cursor=pointer]
+              - button "Fund my solar project popular" [ref=e4456] [cursor=pointer]:
+                - text: Fund my solar project
+                - generic [ref=e4457]: popular
+              - button "Launch my CDN pro" [ref=e4458] [cursor=pointer]:
+                - text: Launch my CDN
+                - generic [ref=e4459]: pro
+              - button "Build literacy programs" [ref=e4460] [cursor=pointer]
+              - button "Build payment infrastructure bold" [ref=e4461] [cursor=pointer]:
+                - text: Build payment infrastructure
+                - generic [ref=e4462]: bold
+              - button "Show me how it works popular" [ref=e4463] [cursor=pointer]:
+                - text: Show me how it works
+                - generic [ref=e4464]: popular
+              - button "Create a treasury for my group" [ref=e4465] [cursor=pointer]
+              - button "Bootstrap to billions bold" [ref=e4466] [cursor=pointer]:
+                - text: Bootstrap to billions
+                - generic [ref=e4467]: bold
+              - button "Newsletter empire" [ref=e4468] [cursor=pointer]
+              - button "WAGMI fund fun" [ref=e4469] [cursor=pointer]:
+                - text: WAGMI fund
+                - generic [ref=e4470]: fun
+              - button "Build a music platform" [ref=e4471] [cursor=pointer]
+              - button "Create savings platform" [ref=e4472] [cursor=pointer]
+              - button "Fund my coworking space popular" [ref=e4473] [cursor=pointer]:
+                - text: Fund my coworking space
+                - generic [ref=e4474]: popular
+              - button "Fund my farmland project" [ref=e4475] [cursor=pointer]
+              - button "Launch my habit tracker" [ref=e4476] [cursor=pointer]
+              - button "Build decentralized infrastructure bold" [ref=e4477] [cursor=pointer]:
+                - text: Build decentralized infrastructure
+                - generic [ref=e4478]: bold
+              - button "Build a CPG company" [ref=e4479] [cursor=pointer]
+              - button "just exploring id" [ref=e4480] [cursor=pointer]:
+                - text: just exploring
+                - generic [ref=e4481]: id
+              - button "Launch my health community" [ref=e4482] [cursor=pointer]
+              - button "Launch my athleisure" [ref=e4483] [cursor=pointer]
+              - button "How do I add team members?" [ref=e4484] [cursor=pointer]
+              - button "Fund my brand deals" [ref=e4485] [cursor=pointer]
+              - button "Wealth building machine bold" [ref=e4486] [cursor=pointer]:
+                - text: Wealth building machine
+                - generic [ref=e4487]: bold
+              - button "Build a dating app" [ref=e4488] [cursor=pointer]
+              - button "Start my hackerspace popular" [ref=e4489] [cursor=pointer]:
+                - text: Start my hackerspace
+                - generic [ref=e4490]: popular
+              - button "Show me projects I can pay into" [ref=e4491] [cursor=pointer]
+              - button "Build an auction marketplace" [ref=e4492] [cursor=pointer]
+              - button "Fund Ethereum infrastructure" [ref=e4493] [cursor=pointer]
+              - button "Make a prediction market game fun" [ref=e4494] [cursor=pointer]:
+                - text: Make a prediction market game
+                - generic [ref=e4495]: fun
+              - button "Fund my comedy venue fun" [ref=e4496] [cursor=pointer]:
+                - text: Fund my comedy venue
+                - generic [ref=e4497]: fun
+              - button "Create a token launch game" [ref=e4498] [cursor=pointer]
+              - button "Create a self-sustaining treasury bold" [ref=e4499] [cursor=pointer]:
+                - text: Create a self-sustaining treasury
+                - generic [ref=e4500]: bold
+            - generic [ref=e4501]:
+              - button "Launch my pirate ship bar fun" [ref=e4502] [cursor=pointer]:
+                - text: Launch my pirate ship bar
+                - generic [ref=e4503]: fun
+              - button "Show me Base projects demo" [ref=e4504] [cursor=pointer]:
+                - text: Show me Base projects
+                - generic [ref=e4505]: demo
+              - button "Fund my book" [ref=e4506] [cursor=pointer]
+              - button "Support my mentorship program" [ref=e4507] [cursor=pointer]
+              - button "Influencer launch fund" [ref=e4508] [cursor=pointer]
+              - button "Fund world domination bold" [ref=e4509] [cursor=pointer]:
+                - text: Fund world domination
+                - generic [ref=e4510]: bold
+              - button "Create circular economy bold" [ref=e4511] [cursor=pointer]:
+                - text: Create circular economy
+                - generic [ref=e4512]: bold
+              - button "Launch my homeless solution" [ref=e4513] [cursor=pointer]
+              - button "Climbing gym fund" [ref=e4514] [cursor=pointer]
+              - button "Fund my solar project popular" [ref=e4515] [cursor=pointer]:
+                - text: Fund my solar project
+                - generic [ref=e4516]: popular
+              - button "Launch my CDN pro" [ref=e4517] [cursor=pointer]:
+                - text: Launch my CDN
+                - generic [ref=e4518]: pro
+              - button "Build literacy programs" [ref=e4519] [cursor=pointer]
+              - button "Build payment infrastructure bold" [ref=e4520] [cursor=pointer]:
+                - text: Build payment infrastructure
+                - generic [ref=e4521]: bold
+              - button "Show me how it works popular" [ref=e4522] [cursor=pointer]:
+                - text: Show me how it works
+                - generic [ref=e4523]: popular
+              - button "Create a treasury for my group" [ref=e4524] [cursor=pointer]
+              - button "Bootstrap to billions bold" [ref=e4525] [cursor=pointer]:
+                - text: Bootstrap to billions
+                - generic [ref=e4526]: bold
+              - button "Newsletter empire" [ref=e4527] [cursor=pointer]
+              - button "WAGMI fund fun" [ref=e4528] [cursor=pointer]:
+                - text: WAGMI fund
+                - generic [ref=e4529]: fun
+              - button "Build a music platform" [ref=e4530] [cursor=pointer]
+              - button "Create savings platform" [ref=e4531] [cursor=pointer]
+              - button "Fund my coworking space popular" [ref=e4532] [cursor=pointer]:
+                - text: Fund my coworking space
+                - generic [ref=e4533]: popular
+              - button "Fund my farmland project" [ref=e4534] [cursor=pointer]
+              - button "Launch my habit tracker" [ref=e4535] [cursor=pointer]
+              - button "Build decentralized infrastructure bold" [ref=e4536] [cursor=pointer]:
+                - text: Build decentralized infrastructure
+                - generic [ref=e4537]: bold
+              - button "Build a CPG company" [ref=e4538] [cursor=pointer]
+              - button "just exploring id" [ref=e4539] [cursor=pointer]:
+                - text: just exploring
+                - generic [ref=e4540]: id
+              - button "Launch my health community" [ref=e4541] [cursor=pointer]
+              - button "Launch my athleisure" [ref=e4542] [cursor=pointer]
+              - button "How do I add team members?" [ref=e4543] [cursor=pointer]
+              - button "Fund my brand deals" [ref=e4544] [cursor=pointer]
+              - button "Wealth building machine bold" [ref=e4545] [cursor=pointer]:
+                - text: Wealth building machine
+                - generic [ref=e4546]: bold
+              - button "Build a dating app" [ref=e4547] [cursor=pointer]
+              - button "Start my hackerspace popular" [ref=e4548] [cursor=pointer]:
+                - text: Start my hackerspace
+                - generic [ref=e4549]: popular
+              - button "Show me projects I can pay into" [ref=e4550] [cursor=pointer]
+              - button "Build an auction marketplace" [ref=e4551] [cursor=pointer]
+              - button "Fund Ethereum infrastructure" [ref=e4552] [cursor=pointer]
+              - button "Make a prediction market game fun" [ref=e4553] [cursor=pointer]:
+                - text: Make a prediction market game
+                - generic [ref=e4554]: fun
+              - button "Fund my comedy venue fun" [ref=e4555] [cursor=pointer]:
+                - text: Fund my comedy venue
+                - generic [ref=e4556]: fun
+              - button "Create a token launch game" [ref=e4557] [cursor=pointer]
+              - button "Create a self-sustaining treasury bold" [ref=e4558] [cursor=pointer]:
+                - text: Create a self-sustaining treasury
+                - generic [ref=e4559]: bold
+            - generic [ref=e4560]:
+              - button "Launch my pirate ship bar fun" [ref=e4561] [cursor=pointer]:
+                - text: Launch my pirate ship bar
+                - generic [ref=e4562]: fun
+              - button "Show me Base projects demo" [ref=e4563] [cursor=pointer]:
+                - text: Show me Base projects
+                - generic [ref=e4564]: demo
+              - button "Fund my book" [ref=e4565] [cursor=pointer]
+              - button "Support my mentorship program" [ref=e4566] [cursor=pointer]
+              - button "Influencer launch fund" [ref=e4567] [cursor=pointer]
+              - button "Fund world domination bold" [ref=e4568] [cursor=pointer]:
+                - text: Fund world domination
+                - generic [ref=e4569]: bold
+              - button "Create circular economy bold" [ref=e4570] [cursor=pointer]:
+                - text: Create circular economy
+                - generic [ref=e4571]: bold
+              - button "Launch my homeless solution" [ref=e4572] [cursor=pointer]
+              - button "Climbing gym fund" [ref=e4573] [cursor=pointer]
+              - button "Fund my solar project popular" [ref=e4574] [cursor=pointer]:
+                - text: Fund my solar project
+                - generic [ref=e4575]: popular
+              - button "Launch my CDN pro" [ref=e4576] [cursor=pointer]:
+                - text: Launch my CDN
+                - generic [ref=e4577]: pro
+              - button "Build literacy programs" [ref=e4578] [cursor=pointer]
+              - button "Build payment infrastructure bold" [ref=e4579] [cursor=pointer]:
+                - text: Build payment infrastructure
+                - generic [ref=e4580]: bold
+              - button "Show me how it works popular" [ref=e4581] [cursor=pointer]:
+                - text: Show me how it works
+                - generic [ref=e4582]: popular
+              - button "Create a treasury for my group" [ref=e4583] [cursor=pointer]
+              - button "Bootstrap to billions bold" [ref=e4584] [cursor=pointer]:
+                - text: Bootstrap to billions
+                - generic [ref=e4585]: bold
+              - button "Newsletter empire" [ref=e4586] [cursor=pointer]
+              - button "WAGMI fund fun" [ref=e4587] [cursor=pointer]:
+                - text: WAGMI fund
+                - generic [ref=e4588]: fun
+              - button "Build a music platform" [ref=e4589] [cursor=pointer]
+              - button "Create savings platform" [ref=e4590] [cursor=pointer]
+              - button "Fund my coworking space popular" [ref=e4591] [cursor=pointer]:
+                - text: Fund my coworking space
+                - generic [ref=e4592]: popular
+              - button "Fund my farmland project" [ref=e4593] [cursor=pointer]
+              - button "Launch my habit tracker" [ref=e4594] [cursor=pointer]
+              - button "Build decentralized infrastructure bold" [ref=e4595] [cursor=pointer]:
+                - text: Build decentralized infrastructure
+                - generic [ref=e4596]: bold
+              - button "Build a CPG company" [ref=e4597] [cursor=pointer]
+              - button "just exploring id" [ref=e4598] [cursor=pointer]:
+                - text: just exploring
+                - generic [ref=e4599]: id
+              - button "Launch my health community" [ref=e4600] [cursor=pointer]
+              - button "Launch my athleisure" [ref=e4601] [cursor=pointer]
+              - button "How do I add team members?" [ref=e4602] [cursor=pointer]
+              - button "Fund my brand deals" [ref=e4603] [cursor=pointer]
+              - button "Wealth building machine bold" [ref=e4604] [cursor=pointer]:
+                - text: Wealth building machine
+                - generic [ref=e4605]: bold
+              - button "Build a dating app" [ref=e4606] [cursor=pointer]
+              - button "Start my hackerspace popular" [ref=e4607] [cursor=pointer]:
+                - text: Start my hackerspace
+                - generic [ref=e4608]: popular
+              - button "Show me projects I can pay into" [ref=e4609] [cursor=pointer]
+              - button "Build an auction marketplace" [ref=e4610] [cursor=pointer]
+              - button "Fund Ethereum infrastructure" [ref=e4611] [cursor=pointer]
+              - button "Make a prediction market game fun" [ref=e4612] [cursor=pointer]:
+                - text: Make a prediction market game
+                - generic [ref=e4613]: fun
+              - button "Fund my comedy venue fun" [ref=e4614] [cursor=pointer]:
+                - text: Fund my comedy venue
+                - generic [ref=e4615]: fun
+              - button "Create a token launch game" [ref=e4616] [cursor=pointer]
+              - button "Create a self-sustaining treasury bold" [ref=e4617] [cursor=pointer]:
+                - text: Create a self-sustaining treasury
+                - generic [ref=e4618]: bold
+            - generic [ref=e4619]:
+              - button "Launch my pirate ship bar fun" [ref=e4620] [cursor=pointer]:
+                - text: Launch my pirate ship bar
+                - generic [ref=e4621]: fun
+              - button "Show me Base projects demo" [ref=e4622] [cursor=pointer]:
+                - text: Show me Base projects
+                - generic [ref=e4623]: demo
+              - button "Fund my book" [ref=e4624] [cursor=pointer]
+              - button "Support my mentorship program" [ref=e4625] [cursor=pointer]
+              - button "Influencer launch fund" [ref=e4626] [cursor=pointer]
+              - button "Fund world domination bold" [ref=e4627] [cursor=pointer]:
+                - text: Fund world domination
+                - generic [ref=e4628]: bold
+              - button "Create circular economy bold" [ref=e4629] [cursor=pointer]:
+                - text: Create circular economy
+                - generic [ref=e4630]: bold
+              - button "Launch my homeless solution" [ref=e4631] [cursor=pointer]
+              - button "Climbing gym fund" [ref=e4632] [cursor=pointer]
+              - button "Fund my solar project popular" [ref=e4633] [cursor=pointer]:
+                - text: Fund my solar project
+                - generic [ref=e4634]: popular
+              - button "Launch my CDN pro" [ref=e4635] [cursor=pointer]:
+                - text: Launch my CDN
+                - generic [ref=e4636]: pro
+              - button "Build literacy programs" [ref=e4637] [cursor=pointer]
+              - button "Build payment infrastructure bold" [ref=e4638] [cursor=pointer]:
+                - text: Build payment infrastructure
+                - generic [ref=e4639]: bold
+              - button "Show me how it works popular" [ref=e4640] [cursor=pointer]:
+                - text: Show me how it works
+                - generic [ref=e4641]: popular
+              - button "Create a treasury for my group" [ref=e4642] [cursor=pointer]
+              - button "Bootstrap to billions bold" [ref=e4643] [cursor=pointer]:
+                - text: Bootstrap to billions
+                - generic [ref=e4644]: bold
+              - button "Newsletter empire" [ref=e4645] [cursor=pointer]
+              - button "WAGMI fund fun" [ref=e4646] [cursor=pointer]:
+                - text: WAGMI fund
+                - generic [ref=e4647]: fun
+              - button "Build a music platform" [ref=e4648] [cursor=pointer]
+              - button "Create savings platform" [ref=e4649] [cursor=pointer]
+              - button "Fund my coworking space popular" [ref=e4650] [cursor=pointer]:
+                - text: Fund my coworking space
+                - generic [ref=e4651]: popular
+              - button "Fund my farmland project" [ref=e4652] [cursor=pointer]
+              - button "Launch my habit tracker" [ref=e4653] [cursor=pointer]
+              - button "Build decentralized infrastructure bold" [ref=e4654] [cursor=pointer]:
+                - text: Build decentralized infrastructure
+                - generic [ref=e4655]: bold
+              - button "Build a CPG company" [ref=e4656] [cursor=pointer]
+              - button "just exploring id" [ref=e4657] [cursor=pointer]:
+                - text: just exploring
+                - generic [ref=e4658]: id
+              - button "Launch my health community" [ref=e4659] [cursor=pointer]
+              - button "Launch my athleisure" [ref=e4660] [cursor=pointer]
+              - button "How do I add team members?" [ref=e4661] [cursor=pointer]
+              - button "Fund my brand deals" [ref=e4662] [cursor=pointer]
+              - button "Wealth building machine bold" [ref=e4663] [cursor=pointer]:
+                - text: Wealth building machine
+                - generic [ref=e4664]: bold
+              - button "Build a dating app" [ref=e4665] [cursor=pointer]
+              - button "Start my hackerspace popular" [ref=e4666] [cursor=pointer]:
+                - text: Start my hackerspace
+                - generic [ref=e4667]: popular
+              - button "Show me projects I can pay into" [ref=e4668] [cursor=pointer]
+              - button "Build an auction marketplace" [ref=e4669] [cursor=pointer]
+              - button "Fund Ethereum infrastructure" [ref=e4670] [cursor=pointer]
+              - button "Make a prediction market game fun" [ref=e4671] [cursor=pointer]:
+                - text: Make a prediction market game
+                - generic [ref=e4672]: fun
+              - button "Fund my comedy venue fun" [ref=e4673] [cursor=pointer]:
+                - text: Fund my comedy venue
+                - generic [ref=e4674]: fun
+              - button "Create a token launch game" [ref=e4675] [cursor=pointer]
+              - button "Create a self-sustaining treasury bold" [ref=e4676] [cursor=pointer]:
+                - text: Create a self-sustaining treasury
+                - generic [ref=e4677]: bold
+          - generic [ref=e4678]:
+            - generic [ref=e4679]:
+              - button "Launch my reentry services" [ref=e4680] [cursor=pointer]
+              - button "Build a journalism startup" [ref=e4681] [cursor=pointer]
+              - button "Agency starter fund" [ref=e4682] [cursor=pointer]
+              - button "Embed fundraising in my app pro" [ref=e4683] [cursor=pointer]:
+                - text: Embed fundraising in my app
+                - generic [ref=e4684]: pro
+              - button "Support my course popular" [ref=e4685] [cursor=pointer]:
+                - text: Support my course
+                - generic [ref=e4686]: popular
+              - button "Fund my wearable tech" [ref=e4687] [cursor=pointer]
+              - button "Launch my gaming community" [ref=e4688] [cursor=pointer]
+              - button "Create a photo app" [ref=e4689] [cursor=pointer]
+              - button "Discover a new species" [ref=e4690] [cursor=pointer]
+              - button "Fund my robotics project bold" [ref=e4691] [cursor=pointer]:
+                - text: Fund my robotics project
+                - generic [ref=e4692]: bold
+              - button "Build an AI agent popular" [ref=e4693] [cursor=pointer]:
+                - text: Build an AI agent
+                - generic [ref=e4694]: popular
+              - button "Demo the token mechanics demo" [ref=e4695] [cursor=pointer]:
+                - text: Demo the token mechanics
+                - generic [ref=e4696]: demo
+              - button "Perpetual motion money fun" [ref=e4697] [cursor=pointer]:
+                - text: Perpetual motion money
+                - generic [ref=e4698]: fun
+              - button "giving back id" [ref=e4699] [cursor=pointer]:
+                - text: giving back
+                - generic [ref=e4700]: id
+              - button "Decentralized identity fund pro" [ref=e4701] [cursor=pointer]:
+                - text: Decentralized identity fund
+                - generic [ref=e4702]: pro
+              - button "Fund my reforestation" [ref=e4703] [cursor=pointer]
+              - button "Build a winery" [ref=e4704] [cursor=pointer]
+              - button "Launch my specialty food" [ref=e4705] [cursor=pointer]
+              - button "Create research datasets" [ref=e4706] [cursor=pointer]
+              - button "expressing myself id" [ref=e4707] [cursor=pointer]:
+                - text: expressing myself
+                - generic [ref=e4708]: id
+              - button "Build a digital goods marketplace" [ref=e4709] [cursor=pointer]
+              - button "Build an education co-op" [ref=e4710] [cursor=pointer]
+              - button "Create a gym chain" [ref=e4711] [cursor=pointer]
+              - button "Support my journalism" [ref=e4712] [cursor=pointer]
+              - button "Free stuff for everyone" [ref=e4713] [cursor=pointer]
+              - button "Launch my fan community" [ref=e4714] [cursor=pointer]
+              - button "Vintage shop treasury" [ref=e4715] [cursor=pointer]
+              - button "Normal small business fund" [ref=e4716] [cursor=pointer]
+              - button "Launch my fantasy sports fun" [ref=e4717] [cursor=pointer]:
+                - text: Launch my fantasy sports
+                - generic [ref=e4718]: fun
+              - button "Build a paid community popular" [ref=e4719] [cursor=pointer]:
+                - text: Build a paid community
+                - generic [ref=e4720]: popular
+              - button "Fund my AI hardware" [ref=e4721] [cursor=pointer]
+              - button "looking to support id" [ref=e4722] [cursor=pointer]:
+                - text: looking to support
+                - generic [ref=e4723]: id
+              - button "Fund my VR experience" [ref=e4724] [cursor=pointer]
+              - button "Fund my board game" [ref=e4725] [cursor=pointer]
+              - button "Fund my CLI tool" [ref=e4726] [cursor=pointer]
+              - button "Fund beautiful chaos fun" [ref=e4727] [cursor=pointer]:
+                - text: Fund beautiful chaos
+                - generic [ref=e4728]: fun
+              - button "Launch my AI API" [ref=e4729] [cursor=pointer]
+              - button "Fund my documentary popular" [ref=e4730] [cursor=pointer]:
+                - text: Fund my documentary
+                - generic [ref=e4731]: popular
+              - button "Find education projects" [ref=e4732] [cursor=pointer]
+              - button "Create on-chain governance pro" [ref=e4733] [cursor=pointer]:
+                - text: Create on-chain governance
+                - generic [ref=e4734]: pro
+            - generic [ref=e4735]:
+              - button "Launch my reentry services" [ref=e4736] [cursor=pointer]
+              - button "Build a journalism startup" [ref=e4737] [cursor=pointer]
+              - button "Agency starter fund" [ref=e4738] [cursor=pointer]
+              - button "Embed fundraising in my app pro" [ref=e4739] [cursor=pointer]:
+                - text: Embed fundraising in my app
+                - generic [ref=e4740]: pro
+              - button "Support my course popular" [ref=e4741] [cursor=pointer]:
+                - text: Support my course
+                - generic [ref=e4742]: popular
+              - button "Fund my wearable tech" [ref=e4743] [cursor=pointer]
+              - button "Launch my gaming community" [ref=e4744] [cursor=pointer]
+              - button "Create a photo app" [ref=e4745] [cursor=pointer]
+              - button "Discover a new species" [ref=e4746] [cursor=pointer]
+              - button "Fund my robotics project bold" [ref=e4747] [cursor=pointer]:
+                - text: Fund my robotics project
+                - generic [ref=e4748]: bold
+              - button "Build an AI agent popular" [ref=e4749] [cursor=pointer]:
+                - text: Build an AI agent
+                - generic [ref=e4750]: popular
+              - button "Demo the token mechanics demo" [ref=e4751] [cursor=pointer]:
+                - text: Demo the token mechanics
+                - generic [ref=e4752]: demo
+              - button "Perpetual motion money fun" [ref=e4753] [cursor=pointer]:
+                - text: Perpetual motion money
+                - generic [ref=e4754]: fun
+              - button "giving back id" [ref=e4755] [cursor=pointer]:
+                - text: giving back
+                - generic [ref=e4756]: id
+              - button "Decentralized identity fund pro" [ref=e4757] [cursor=pointer]:
+                - text: Decentralized identity fund
+                - generic [ref=e4758]: pro
+              - button "Fund my reforestation" [ref=e4759] [cursor=pointer]
+              - button "Build a winery" [ref=e4760] [cursor=pointer]
+              - button "Launch my specialty food" [ref=e4761] [cursor=pointer]
+              - button "Create research datasets" [ref=e4762] [cursor=pointer]
+              - button "expressing myself id" [ref=e4763] [cursor=pointer]:
+                - text: expressing myself
+                - generic [ref=e4764]: id
+              - button "Build a digital goods marketplace" [ref=e4765] [cursor=pointer]
+              - button "Build an education co-op" [ref=e4766] [cursor=pointer]
+              - button "Create a gym chain" [ref=e4767] [cursor=pointer]
+              - button "Support my journalism" [ref=e4768] [cursor=pointer]
+              - button "Free stuff for everyone" [ref=e4769] [cursor=pointer]
+              - button "Launch my fan community" [ref=e4770] [cursor=pointer]
+              - button "Vintage shop treasury" [ref=e4771] [cursor=pointer]
+              - button "Normal small business fund" [ref=e4772] [cursor=pointer]
+              - button "Launch my fantasy sports fun" [ref=e4773] [cursor=pointer]:
+                - text: Launch my fantasy sports
+                - generic [ref=e4774]: fun
+              - button "Build a paid community popular" [ref=e4775] [cursor=pointer]:
+                - text: Build a paid community
+                - generic [ref=e4776]: popular
+              - button "Fund my AI hardware" [ref=e4777] [cursor=pointer]
+              - button "looking to support id" [ref=e4778] [cursor=pointer]:
+                - text: looking to support
+                - generic [ref=e4779]: id
+              - button "Fund my VR experience" [ref=e4780] [cursor=pointer]
+              - button "Fund my board game" [ref=e4781] [cursor=pointer]
+              - button "Fund my CLI tool" [ref=e4782] [cursor=pointer]
+              - button "Fund beautiful chaos fun" [ref=e4783] [cursor=pointer]:
+                - text: Fund beautiful chaos
+                - generic [ref=e4784]: fun
+              - button "Launch my AI API" [ref=e4785] [cursor=pointer]
+              - button "Fund my documentary popular" [ref=e4786] [cursor=pointer]:
+                - text: Fund my documentary
+                - generic [ref=e4787]: popular
+              - button "Find education projects" [ref=e4788] [cursor=pointer]
+              - button "Create on-chain governance pro" [ref=e4789] [cursor=pointer]:
+                - text: Create on-chain governance
+                - generic [ref=e4790]: pro
+            - generic [ref=e4791]:
+              - button "Launch my reentry services" [ref=e4792] [cursor=pointer]
+              - button "Build a journalism startup" [ref=e4793] [cursor=pointer]
+              - button "Agency starter fund" [ref=e4794] [cursor=pointer]
+              - button "Embed fundraising in my app pro" [ref=e4795] [cursor=pointer]:
+                - text: Embed fundraising in my app
+                - generic [ref=e4796]: pro
+              - button "Support my course popular" [ref=e4797] [cursor=pointer]:
+                - text: Support my course
+                - generic [ref=e4798]: popular
+              - button "Fund my wearable tech" [ref=e4799] [cursor=pointer]
+              - button "Launch my gaming community" [ref=e4800] [cursor=pointer]
+              - button "Create a photo app" [ref=e4801] [cursor=pointer]
+              - button "Discover a new species" [ref=e4802] [cursor=pointer]
+              - button "Fund my robotics project bold" [ref=e4803] [cursor=pointer]:
+                - text: Fund my robotics project
+                - generic [ref=e4804]: bold
+              - button "Build an AI agent popular" [ref=e4805] [cursor=pointer]:
+                - text: Build an AI agent
+                - generic [ref=e4806]: popular
+              - button "Demo the token mechanics demo" [ref=e4807] [cursor=pointer]:
+                - text: Demo the token mechanics
+                - generic [ref=e4808]: demo
+              - button "Perpetual motion money fun" [ref=e4809] [cursor=pointer]:
+                - text: Perpetual motion money
+                - generic [ref=e4810]: fun
+              - button "giving back id" [ref=e4811] [cursor=pointer]:
+                - text: giving back
+                - generic [ref=e4812]: id
+              - button "Decentralized identity fund pro" [ref=e4813] [cursor=pointer]:
+                - text: Decentralized identity fund
+                - generic [ref=e4814]: pro
+              - button "Fund my reforestation" [ref=e4815] [cursor=pointer]
+              - button "Build a winery" [ref=e4816] [cursor=pointer]
+              - button "Launch my specialty food" [ref=e4817] [cursor=pointer]
+              - button "Create research datasets" [ref=e4818] [cursor=pointer]
+              - button "expressing myself id" [ref=e4819] [cursor=pointer]:
+                - text: expressing myself
+                - generic [ref=e4820]: id
+              - button "Build a digital goods marketplace" [ref=e4821] [cursor=pointer]
+              - button "Build an education co-op" [ref=e4822] [cursor=pointer]
+              - button "Create a gym chain" [ref=e4823] [cursor=pointer]
+              - button "Support my journalism" [ref=e4824] [cursor=pointer]
+              - button "Free stuff for everyone" [ref=e4825] [cursor=pointer]
+              - button "Launch my fan community" [ref=e4826] [cursor=pointer]
+              - button "Vintage shop treasury" [ref=e4827] [cursor=pointer]
+              - button "Normal small business fund" [ref=e4828] [cursor=pointer]
+              - button "Launch my fantasy sports fun" [ref=e4829] [cursor=pointer]:
+                - text: Launch my fantasy sports
+                - generic [ref=e4830]: fun
+              - button "Build a paid community popular" [ref=e4831] [cursor=pointer]:
+                - text: Build a paid community
+                - generic [ref=e4832]: popular
+              - button "Fund my AI hardware" [ref=e4833] [cursor=pointer]
+              - button "looking to support id" [ref=e4834] [cursor=pointer]:
+                - text: looking to support
+                - generic [ref=e4835]: id
+              - button "Fund my VR experience" [ref=e4836] [cursor=pointer]
+              - button "Fund my board game" [ref=e4837] [cursor=pointer]
+              - button "Fund my CLI tool" [ref=e4838] [cursor=pointer]
+              - button "Fund beautiful chaos fun" [ref=e4839] [cursor=pointer]:
+                - text: Fund beautiful chaos
+                - generic [ref=e4840]: fun
+              - button "Launch my AI API" [ref=e4841] [cursor=pointer]
+              - button "Fund my documentary popular" [ref=e4842] [cursor=pointer]:
+                - text: Fund my documentary
+                - generic [ref=e4843]: popular
+              - button "Find education projects" [ref=e4844] [cursor=pointer]
+              - button "Create on-chain governance pro" [ref=e4845] [cursor=pointer]:
+                - text: Create on-chain governance
+                - generic [ref=e4846]: pro
+            - generic [ref=e4847]:
+              - button "Launch my reentry services" [ref=e4848] [cursor=pointer]
+              - button "Build a journalism startup" [ref=e4849] [cursor=pointer]
+              - button "Agency starter fund" [ref=e4850] [cursor=pointer]
+              - button "Embed fundraising in my app pro" [ref=e4851] [cursor=pointer]:
+                - text: Embed fundraising in my app
+                - generic [ref=e4852]: pro
+              - button "Support my course popular" [ref=e4853] [cursor=pointer]:
+                - text: Support my course
+                - generic [ref=e4854]: popular
+              - button "Fund my wearable tech" [ref=e4855] [cursor=pointer]
+              - button "Launch my gaming community" [ref=e4856] [cursor=pointer]
+              - button "Create a photo app" [ref=e4857] [cursor=pointer]
+              - button "Discover a new species" [ref=e4858] [cursor=pointer]
+              - button "Fund my robotics project bold" [ref=e4859] [cursor=pointer]:
+                - text: Fund my robotics project
+                - generic [ref=e4860]: bold
+              - button "Build an AI agent popular" [ref=e4861] [cursor=pointer]:
+                - text: Build an AI agent
+                - generic [ref=e4862]: popular
+              - button "Demo the token mechanics demo" [ref=e4863] [cursor=pointer]:
+                - text: Demo the token mechanics
+                - generic [ref=e4864]: demo
+              - button "Perpetual motion money fun" [ref=e4865] [cursor=pointer]:
+                - text: Perpetual motion money
+                - generic [ref=e4866]: fun
+              - button "giving back id" [ref=e4867] [cursor=pointer]:
+                - text: giving back
+                - generic [ref=e4868]: id
+              - button "Decentralized identity fund pro" [ref=e4869] [cursor=pointer]:
+                - text: Decentralized identity fund
+                - generic [ref=e4870]: pro
+              - button "Fund my reforestation" [ref=e4871] [cursor=pointer]
+              - button "Build a winery" [ref=e4872] [cursor=pointer]
+              - button "Launch my specialty food" [ref=e4873] [cursor=pointer]
+              - button "Create research datasets" [ref=e4874] [cursor=pointer]
+              - button "expressing myself id" [ref=e4875] [cursor=pointer]:
+                - text: expressing myself
+                - generic [ref=e4876]: id
+              - button "Build a digital goods marketplace" [ref=e4877] [cursor=pointer]
+              - button "Build an education co-op" [ref=e4878] [cursor=pointer]
+              - button "Create a gym chain" [ref=e4879] [cursor=pointer]
+              - button "Support my journalism" [ref=e4880] [cursor=pointer]
+              - button "Free stuff for everyone" [ref=e4881] [cursor=pointer]
+              - button "Launch my fan community" [ref=e4882] [cursor=pointer]
+              - button "Vintage shop treasury" [ref=e4883] [cursor=pointer]
+              - button "Normal small business fund" [ref=e4884] [cursor=pointer]
+              - button "Launch my fantasy sports fun" [ref=e4885] [cursor=pointer]:
+                - text: Launch my fantasy sports
+                - generic [ref=e4886]: fun
+              - button "Build a paid community popular" [ref=e4887] [cursor=pointer]:
+                - text: Build a paid community
+                - generic [ref=e4888]: popular
+              - button "Fund my AI hardware" [ref=e4889] [cursor=pointer]
+              - button "looking to support id" [ref=e4890] [cursor=pointer]:
+                - text: looking to support
+                - generic [ref=e4891]: id
+              - button "Fund my VR experience" [ref=e4892] [cursor=pointer]
+              - button "Fund my board game" [ref=e4893] [cursor=pointer]
+              - button "Fund my CLI tool" [ref=e4894] [cursor=pointer]
+              - button "Fund beautiful chaos fun" [ref=e4895] [cursor=pointer]:
+                - text: Fund beautiful chaos
+                - generic [ref=e4896]: fun
+              - button "Launch my AI API" [ref=e4897] [cursor=pointer]
+              - button "Fund my documentary popular" [ref=e4898] [cursor=pointer]:
+                - text: Fund my documentary
+                - generic [ref=e4899]: popular
+              - button "Find education projects" [ref=e4900] [cursor=pointer]
+              - button "Create on-chain governance pro" [ref=e4901] [cursor=pointer]:
+                - text: Create on-chain governance
+                - generic [ref=e4902]: pro
+            - generic [ref=e4903]:
+              - button "Launch my reentry services" [ref=e4904] [cursor=pointer]
+              - button "Build a journalism startup" [ref=e4905] [cursor=pointer]
+              - button "Agency starter fund" [ref=e4906] [cursor=pointer]
+              - button "Embed fundraising in my app pro" [ref=e4907] [cursor=pointer]:
+                - text: Embed fundraising in my app
+                - generic [ref=e4908]: pro
+              - button "Support my course popular" [ref=e4909] [cursor=pointer]:
+                - text: Support my course
+                - generic [ref=e4910]: popular
+              - button "Fund my wearable tech" [ref=e4911] [cursor=pointer]
+              - button "Launch my gaming community" [ref=e4912] [cursor=pointer]
+              - button "Create a photo app" [ref=e4913] [cursor=pointer]
+              - button "Discover a new species" [ref=e4914] [cursor=pointer]
+              - button "Fund my robotics project bold" [ref=e4915] [cursor=pointer]:
+                - text: Fund my robotics project
+                - generic [ref=e4916]: bold
+              - button "Build an AI agent popular" [ref=e4917] [cursor=pointer]:
+                - text: Build an AI agent
+                - generic [ref=e4918]: popular
+              - button "Demo the token mechanics demo" [ref=e4919] [cursor=pointer]:
+                - text: Demo the token mechanics
+                - generic [ref=e4920]: demo
+              - button "Perpetual motion money fun" [ref=e4921] [cursor=pointer]:
+                - text: Perpetual motion money
+                - generic [ref=e4922]: fun
+              - button "giving back id" [ref=e4923] [cursor=pointer]:
+                - text: giving back
+                - generic [ref=e4924]: id
+              - button "Decentralized identity fund pro" [ref=e4925] [cursor=pointer]:
+                - text: Decentralized identity fund
+                - generic [ref=e4926]: pro
+              - button "Fund my reforestation" [ref=e4927] [cursor=pointer]
+              - button "Build a winery" [ref=e4928] [cursor=pointer]
+              - button "Launch my specialty food" [ref=e4929] [cursor=pointer]
+              - button "Create research datasets" [ref=e4930] [cursor=pointer]
+              - button "expressing myself id" [ref=e4931] [cursor=pointer]:
+                - text: expressing myself
+                - generic [ref=e4932]: id
+              - button "Build a digital goods marketplace" [ref=e4933] [cursor=pointer]
+              - button "Build an education co-op" [ref=e4934] [cursor=pointer]
+              - button "Create a gym chain" [ref=e4935] [cursor=pointer]
+              - button "Support my journalism" [ref=e4936] [cursor=pointer]
+              - button "Free stuff for everyone" [ref=e4937] [cursor=pointer]
+              - button "Launch my fan community" [ref=e4938] [cursor=pointer]
+              - button "Vintage shop treasury" [ref=e4939] [cursor=pointer]
+              - button "Normal small business fund" [ref=e4940] [cursor=pointer]
+              - button "Launch my fantasy sports fun" [ref=e4941] [cursor=pointer]:
+                - text: Launch my fantasy sports
+                - generic [ref=e4942]: fun
+              - button "Build a paid community popular" [ref=e4943] [cursor=pointer]:
+                - text: Build a paid community
+                - generic [ref=e4944]: popular
+              - button "Fund my AI hardware" [ref=e4945] [cursor=pointer]
+              - button "looking to support id" [ref=e4946] [cursor=pointer]:
+                - text: looking to support
+                - generic [ref=e4947]: id
+              - button "Fund my VR experience" [ref=e4948] [cursor=pointer]
+              - button "Fund my board game" [ref=e4949] [cursor=pointer]
+              - button "Fund my CLI tool" [ref=e4950] [cursor=pointer]
+              - button "Fund beautiful chaos fun" [ref=e4951] [cursor=pointer]:
+                - text: Fund beautiful chaos
+                - generic [ref=e4952]: fun
+              - button "Launch my AI API" [ref=e4953] [cursor=pointer]
+              - button "Fund my documentary popular" [ref=e4954] [cursor=pointer]:
+                - text: Fund my documentary
+                - generic [ref=e4955]: popular
+              - button "Find education projects" [ref=e4956] [cursor=pointer]
+              - button "Create on-chain governance pro" [ref=e4957] [cursor=pointer]:
+                - text: Create on-chain governance
+                - generic [ref=e4958]: pro
+          - generic [ref=e4959]:
+            - generic [ref=e4960]:
+              - button "Nature connection fund" [ref=e4961] [cursor=pointer]
+              - button "Gift economy treasury" [ref=e4962] [cursor=pointer]
+              - button "Fund my street performance fun" [ref=e4963] [cursor=pointer]:
+                - text: Fund my street performance
+                - generic [ref=e4964]: fun
+              - button "Share the wealth treasury" [ref=e4965] [cursor=pointer]
+              - button "Fund my cloud startup pro" [ref=e4966] [cursor=pointer]:
+                - text: Fund my cloud startup
+                - generic [ref=e4967]: pro
+              - button "Diamond hands treasury fun" [ref=e4968] [cursor=pointer]:
+                - text: Diamond hands treasury
+                - generic [ref=e4969]: fun
+              - button "Create a coordinated community bold" [ref=e4970] [cursor=pointer]:
+                - text: Create a coordinated community
+                - generic [ref=e4971]: bold
+              - button "Fund my video app" [ref=e4972] [cursor=pointer]
+              - button "Create logging platform" [ref=e4973] [cursor=pointer]
+              - button "Create a family app" [ref=e4974] [cursor=pointer]
+              - button "Launch my historical society" [ref=e4975] [cursor=pointer]
+              - button "Support protocol development" [ref=e4976] [cursor=pointer]
+              - button "fixing what's broken id" [ref=e4977] [cursor=pointer]:
+                - text: fixing what's broken
+                - generic [ref=e4978]: id
+              - button "Create a tournament with prize pools popular" [ref=e4979] [cursor=pointer]:
+                - text: Create a tournament with prize pools
+                - generic [ref=e4980]: popular
+              - button "Fund my workflow automation" [ref=e4981] [cursor=pointer]
+              - button "Viral moment treasury" [ref=e4982] [cursor=pointer]
+              - button "Show me projects like mine demo" [ref=e4983] [cursor=pointer]:
+                - text: Show me projects like mine
+                - generic [ref=e4984]: demo
+              - button "Betting pool for degens fun" [ref=e4985] [cursor=pointer]:
+                - text: Betting pool for degens
+                - generic [ref=e4986]: fun
+              - button "Revenue maximization bold" [ref=e4987] [cursor=pointer]:
+                - text: Revenue maximization
+                - generic [ref=e4988]: bold
+              - button "Anonymous collective pro" [ref=e4989] [cursor=pointer]:
+                - text: Anonymous collective
+                - generic [ref=e4990]: pro
+              - button "Launch my merch line popular" [ref=e4991] [cursor=pointer]:
+                - text: Launch my merch line
+                - generic [ref=e4992]: popular
+              - button "Fund my art investment" [ref=e4993] [cursor=pointer]
+              - button "Build a World Cup game like Defifa fun" [ref=e4994] [cursor=pointer]:
+                - text: Build a World Cup game like Defifa
+                - generic [ref=e4995]: fun
+              - button "Family business fund" [ref=e4996] [cursor=pointer]
+              - button "Create a quadratic funding pool pro" [ref=e4997] [cursor=pointer]:
+                - text: Create a quadratic funding pool
+                - generic [ref=e4998]: pro
+              - button "Fund my disability services" [ref=e4999] [cursor=pointer]
+              - button "Create API management pro" [ref=e5000] [cursor=pointer]:
+                - text: Create API management
+                - generic [ref=e5001]: pro
+              - button "Launch a staking game" [ref=e5002] [cursor=pointer]
+              - button "Fantasy sports with real stakes fun" [ref=e5003] [cursor=pointer]:
+                - text: Fantasy sports with real stakes
+                - generic [ref=e5004]: fun
+              - button "Launch my observability" [ref=e5005] [cursor=pointer]
+              - button "Fund my fusion research" [ref=e5006] [cursor=pointer]
+              - button "Launch my therapy app" [ref=e5007] [cursor=pointer]
+              - button "Fund my bike repair collective" [ref=e5008] [cursor=pointer]
+              - button "Start my mystery dinner theater fun" [ref=e5009] [cursor=pointer]:
+                - text: Start my mystery dinner theater
+                - generic [ref=e5010]: fun
+              - button "How do I withdraw funds? demo" [ref=e5011] [cursor=pointer]:
+                - text: How do I withdraw funds?
+                - generic [ref=e5012]: demo
+              - button "Build an accessories brand" [ref=e5013] [cursor=pointer]
+              - button "Build risk management" [ref=e5014] [cursor=pointer]
+              - button "Profit-first treasury bold" [ref=e5015] [cursor=pointer]:
+                - text: Profit-first treasury
+                - generic [ref=e5016]: bold
+              - button "Launch my photography project" [ref=e5017] [cursor=pointer]
+              - button "Build custom approval flows pro" [ref=e5018] [cursor=pointer]:
+                - text: Build custom approval flows
+                - generic [ref=e5019]: pro
+            - generic [ref=e5020]:
+              - button "Nature connection fund" [ref=e5021] [cursor=pointer]
+              - button "Gift economy treasury" [ref=e5022] [cursor=pointer]
+              - button "Fund my street performance fun" [ref=e5023] [cursor=pointer]:
+                - text: Fund my street performance
+                - generic [ref=e5024]: fun
+              - button "Share the wealth treasury" [ref=e5025] [cursor=pointer]
+              - button "Fund my cloud startup pro" [ref=e5026] [cursor=pointer]:
+                - text: Fund my cloud startup
+                - generic [ref=e5027]: pro
+              - button "Diamond hands treasury fun" [ref=e5028] [cursor=pointer]:
+                - text: Diamond hands treasury
+                - generic [ref=e5029]: fun
+              - button "Create a coordinated community bold" [ref=e5030] [cursor=pointer]:
+                - text: Create a coordinated community
+                - generic [ref=e5031]: bold
+              - button "Fund my video app" [ref=e5032] [cursor=pointer]
+              - button "Create logging platform" [ref=e5033] [cursor=pointer]
+              - button "Create a family app" [ref=e5034] [cursor=pointer]
+              - button "Launch my historical society" [ref=e5035] [cursor=pointer]
+              - button "Support protocol development" [ref=e5036] [cursor=pointer]
+              - button "fixing what's broken id" [ref=e5037] [cursor=pointer]:
+                - text: fixing what's broken
+                - generic [ref=e5038]: id
+              - button "Create a tournament with prize pools popular" [ref=e5039] [cursor=pointer]:
+                - text: Create a tournament with prize pools
+                - generic [ref=e5040]: popular
+              - button "Fund my workflow automation" [ref=e5041] [cursor=pointer]
+              - button "Viral moment treasury" [ref=e5042] [cursor=pointer]
+              - button "Show me projects like mine demo" [ref=e5043] [cursor=pointer]:
+                - text: Show me projects like mine
+                - generic [ref=e5044]: demo
+              - button "Betting pool for degens fun" [ref=e5045] [cursor=pointer]:
+                - text: Betting pool for degens
+                - generic [ref=e5046]: fun
+              - button "Revenue maximization bold" [ref=e5047] [cursor=pointer]:
+                - text: Revenue maximization
+                - generic [ref=e5048]: bold
+              - button "Anonymous collective pro" [ref=e5049] [cursor=pointer]:
+                - text: Anonymous collective
+                - generic [ref=e5050]: pro
+              - button "Launch my merch line popular" [ref=e5051] [cursor=pointer]:
+                - text: Launch my merch line
+                - generic [ref=e5052]: popular
+              - button "Fund my art investment" [ref=e5053] [cursor=pointer]
+              - button "Build a World Cup game like Defifa fun" [ref=e5054] [cursor=pointer]:
+                - text: Build a World Cup game like Defifa
+                - generic [ref=e5055]: fun
+              - button "Family business fund" [ref=e5056] [cursor=pointer]
+              - button "Create a quadratic funding pool pro" [ref=e5057] [cursor=pointer]:
+                - text: Create a quadratic funding pool
+                - generic [ref=e5058]: pro
+              - button "Fund my disability services" [ref=e5059] [cursor=pointer]
+              - button "Create API management pro" [ref=e5060] [cursor=pointer]:
+                - text: Create API management
+                - generic [ref=e5061]: pro
+              - button "Launch a staking game" [ref=e5062] [cursor=pointer]
+              - button "Fantasy sports with real stakes fun" [ref=e5063] [cursor=pointer]:
+                - text: Fantasy sports with real stakes
+                - generic [ref=e5064]: fun
+              - button "Launch my observability" [ref=e5065] [cursor=pointer]
+              - button "Fund my fusion research" [ref=e5066] [cursor=pointer]
+              - button "Launch my therapy app" [ref=e5067] [cursor=pointer]
+              - button "Fund my bike repair collective" [ref=e5068] [cursor=pointer]
+              - button "Start my mystery dinner theater fun" [ref=e5069] [cursor=pointer]:
+                - text: Start my mystery dinner theater
+                - generic [ref=e5070]: fun
+              - button "How do I withdraw funds? demo" [ref=e5071] [cursor=pointer]:
+                - text: How do I withdraw funds?
+                - generic [ref=e5072]: demo
+              - button "Build an accessories brand" [ref=e5073] [cursor=pointer]
+              - button "Build risk management" [ref=e5074] [cursor=pointer]
+              - button "Profit-first treasury bold" [ref=e5075] [cursor=pointer]:
+                - text: Profit-first treasury
+                - generic [ref=e5076]: bold
+              - button "Launch my photography project" [ref=e5077] [cursor=pointer]
+              - button "Build custom approval flows pro" [ref=e5078] [cursor=pointer]:
+                - text: Build custom approval flows
+                - generic [ref=e5079]: pro
+            - generic [ref=e5080]:
+              - button "Nature connection fund" [ref=e5081] [cursor=pointer]
+              - button "Gift economy treasury" [ref=e5082] [cursor=pointer]
+              - button "Fund my street performance fun" [ref=e5083] [cursor=pointer]:
+                - text: Fund my street performance
+                - generic [ref=e5084]: fun
+              - button "Share the wealth treasury" [ref=e5085] [cursor=pointer]
+              - button "Fund my cloud startup pro" [ref=e5086] [cursor=pointer]:
+                - text: Fund my cloud startup
+                - generic [ref=e5087]: pro
+              - button "Diamond hands treasury fun" [ref=e5088] [cursor=pointer]:
+                - text: Diamond hands treasury
+                - generic [ref=e5089]: fun
+              - button "Create a coordinated community bold" [ref=e5090] [cursor=pointer]:
+                - text: Create a coordinated community
+                - generic [ref=e5091]: bold
+              - button "Fund my video app" [ref=e5092] [cursor=pointer]
+              - button "Create logging platform" [ref=e5093] [cursor=pointer]
+              - button "Create a family app" [ref=e5094] [cursor=pointer]
+              - button "Launch my historical society" [ref=e5095] [cursor=pointer]
+              - button "Support protocol development" [ref=e5096] [cursor=pointer]
+              - button "fixing what's broken id" [ref=e5097] [cursor=pointer]:
+                - text: fixing what's broken
+                - generic [ref=e5098]: id
+              - button "Create a tournament with prize pools popular" [ref=e5099] [cursor=pointer]:
+                - text: Create a tournament with prize pools
+                - generic [ref=e5100]: popular
+              - button "Fund my workflow automation" [ref=e5101] [cursor=pointer]
+              - button "Viral moment treasury" [ref=e5102] [cursor=pointer]
+              - button "Show me projects like mine demo" [ref=e5103] [cursor=pointer]:
+                - text: Show me projects like mine
+                - generic [ref=e5104]: demo
+              - button "Betting pool for degens fun" [ref=e5105] [cursor=pointer]:
+                - text: Betting pool for degens
+                - generic [ref=e5106]: fun
+              - button "Revenue maximization bold" [ref=e5107] [cursor=pointer]:
+                - text: Revenue maximization
+                - generic [ref=e5108]: bold
+              - button "Anonymous collective pro" [ref=e5109] [cursor=pointer]:
+                - text: Anonymous collective
+                - generic [ref=e5110]: pro
+              - button "Launch my merch line popular" [ref=e5111] [cursor=pointer]:
+                - text: Launch my merch line
+                - generic [ref=e5112]: popular
+              - button "Fund my art investment" [ref=e5113] [cursor=pointer]
+              - button "Build a World Cup game like Defifa fun" [ref=e5114] [cursor=pointer]:
+                - text: Build a World Cup game like Defifa
+                - generic [ref=e5115]: fun
+              - button "Family business fund" [ref=e5116] [cursor=pointer]
+              - button "Create a quadratic funding pool pro" [ref=e5117] [cursor=pointer]:
+                - text: Create a quadratic funding pool
+                - generic [ref=e5118]: pro
+              - button "Fund my disability services" [ref=e5119] [cursor=pointer]
+              - button "Create API management pro" [ref=e5120] [cursor=pointer]:
+                - text: Create API management
+                - generic [ref=e5121]: pro
+              - button "Launch a staking game" [ref=e5122] [cursor=pointer]
+              - button "Fantasy sports with real stakes fun" [ref=e5123] [cursor=pointer]:
+                - text: Fantasy sports with real stakes
+                - generic [ref=e5124]: fun
+              - button "Launch my observability" [ref=e5125] [cursor=pointer]
+              - button "Fund my fusion research" [ref=e5126] [cursor=pointer]
+              - button "Launch my therapy app" [ref=e5127] [cursor=pointer]
+              - button "Fund my bike repair collective" [ref=e5128] [cursor=pointer]
+              - button "Start my mystery dinner theater fun" [ref=e5129] [cursor=pointer]:
+                - text: Start my mystery dinner theater
+                - generic [ref=e5130]: fun
+              - button "How do I withdraw funds? demo" [ref=e5131] [cursor=pointer]:
+                - text: How do I withdraw funds?
+                - generic [ref=e5132]: demo
+              - button "Build an accessories brand" [ref=e5133] [cursor=pointer]
+              - button "Build risk management" [ref=e5134] [cursor=pointer]
+              - button "Profit-first treasury bold" [ref=e5135] [cursor=pointer]:
+                - text: Profit-first treasury
+                - generic [ref=e5136]: bold
+              - button "Launch my photography project" [ref=e5137] [cursor=pointer]
+              - button "Build custom approval flows pro" [ref=e5138] [cursor=pointer]:
+                - text: Build custom approval flows
+                - generic [ref=e5139]: pro
+            - generic [ref=e5140]:
+              - button "Nature connection fund" [ref=e5141] [cursor=pointer]
+              - button "Gift economy treasury" [ref=e5142] [cursor=pointer]
+              - button "Fund my street performance fun" [ref=e5143] [cursor=pointer]:
+                - text: Fund my street performance
+                - generic [ref=e5144]: fun
+              - button "Share the wealth treasury" [ref=e5145] [cursor=pointer]
+              - button "Fund my cloud startup pro" [ref=e5146] [cursor=pointer]:
+                - text: Fund my cloud startup
+                - generic [ref=e5147]: pro
+              - button "Diamond hands treasury fun" [ref=e5148] [cursor=pointer]:
+                - text: Diamond hands treasury
+                - generic [ref=e5149]: fun
+              - button "Create a coordinated community bold" [ref=e5150] [cursor=pointer]:
+                - text: Create a coordinated community
+                - generic [ref=e5151]: bold
+              - button "Fund my video app" [ref=e5152] [cursor=pointer]
+              - button "Create logging platform" [ref=e5153] [cursor=pointer]
+              - button "Create a family app" [ref=e5154] [cursor=pointer]
+              - button "Launch my historical society" [ref=e5155] [cursor=pointer]
+              - button "Support protocol development" [ref=e5156] [cursor=pointer]
+              - button "fixing what's broken id" [ref=e5157] [cursor=pointer]:
+                - text: fixing what's broken
+                - generic [ref=e5158]: id
+              - button "Create a tournament with prize pools popular" [ref=e5159] [cursor=pointer]:
+                - text: Create a tournament with prize pools
+                - generic [ref=e5160]: popular
+              - button "Fund my workflow automation" [ref=e5161] [cursor=pointer]
+              - button "Viral moment treasury" [ref=e5162] [cursor=pointer]
+              - button "Show me projects like mine demo" [ref=e5163] [cursor=pointer]:
+                - text: Show me projects like mine
+                - generic [ref=e5164]: demo
+              - button "Betting pool for degens fun" [ref=e5165] [cursor=pointer]:
+                - text: Betting pool for degens
+                - generic [ref=e5166]: fun
+              - button "Revenue maximization bold" [ref=e5167] [cursor=pointer]:
+                - text: Revenue maximization
+                - generic [ref=e5168]: bold
+              - button "Anonymous collective pro" [ref=e5169] [cursor=pointer]:
+                - text: Anonymous collective
+                - generic [ref=e5170]: pro
+              - button "Launch my merch line popular" [ref=e5171] [cursor=pointer]:
+                - text: Launch my merch line
+                - generic [ref=e5172]: popular
+              - button "Fund my art investment" [ref=e5173] [cursor=pointer]
+              - button "Build a World Cup game like Defifa fun" [ref=e5174] [cursor=pointer]:
+                - text: Build a World Cup game like Defifa
+                - generic [ref=e5175]: fun
+              - button "Family business fund" [ref=e5176] [cursor=pointer]
+              - button "Create a quadratic funding pool pro" [ref=e5177] [cursor=pointer]:
+                - text: Create a quadratic funding pool
+                - generic [ref=e5178]: pro
+              - button "Fund my disability services" [ref=e5179] [cursor=pointer]
+              - button "Create API management pro" [ref=e5180] [cursor=pointer]:
+                - text: Create API management
+                - generic [ref=e5181]: pro
+              - button "Launch a staking game" [ref=e5182] [cursor=pointer]
+              - button "Fantasy sports with real stakes fun" [ref=e5183] [cursor=pointer]:
+                - text: Fantasy sports with real stakes
+                - generic [ref=e5184]: fun
+              - button "Launch my observability" [ref=e5185] [cursor=pointer]
+              - button "Fund my fusion research" [ref=e5186] [cursor=pointer]
+              - button "Launch my therapy app" [ref=e5187] [cursor=pointer]
+              - button "Fund my bike repair collective" [ref=e5188] [cursor=pointer]
+              - button "Start my mystery dinner theater fun" [ref=e5189] [cursor=pointer]:
+                - text: Start my mystery dinner theater
+                - generic [ref=e5190]: fun
+              - button "How do I withdraw funds? demo" [ref=e5191] [cursor=pointer]:
+                - text: How do I withdraw funds?
+                - generic [ref=e5192]: demo
+              - button "Build an accessories brand" [ref=e5193] [cursor=pointer]
+              - button "Build risk management" [ref=e5194] [cursor=pointer]
+              - button "Profit-first treasury bold" [ref=e5195] [cursor=pointer]:
+                - text: Profit-first treasury
+                - generic [ref=e5196]: bold
+              - button "Launch my photography project" [ref=e5197] [cursor=pointer]
+              - button "Build custom approval flows pro" [ref=e5198] [cursor=pointer]:
+                - text: Build custom approval flows
+                - generic [ref=e5199]: pro
+            - generic [ref=e5200]:
+              - button "Nature connection fund" [ref=e5201] [cursor=pointer]
+              - button "Gift economy treasury" [ref=e5202] [cursor=pointer]
+              - button "Fund my street performance fun" [ref=e5203] [cursor=pointer]:
+                - text: Fund my street performance
+                - generic [ref=e5204]: fun
+              - button "Share the wealth treasury" [ref=e5205] [cursor=pointer]
+              - button "Fund my cloud startup pro" [ref=e5206] [cursor=pointer]:
+                - text: Fund my cloud startup
+                - generic [ref=e5207]: pro
+              - button "Diamond hands treasury fun" [ref=e5208] [cursor=pointer]:
+                - text: Diamond hands treasury
+                - generic [ref=e5209]: fun
+              - button "Create a coordinated community bold" [ref=e5210] [cursor=pointer]:
+                - text: Create a coordinated community
+                - generic [ref=e5211]: bold
+              - button "Fund my video app" [ref=e5212] [cursor=pointer]
+              - button "Create logging platform" [ref=e5213] [cursor=pointer]
+              - button "Create a family app" [ref=e5214] [cursor=pointer]
+              - button "Launch my historical society" [ref=e5215] [cursor=pointer]
+              - button "Support protocol development" [ref=e5216] [cursor=pointer]
+              - button "fixing what's broken id" [ref=e5217] [cursor=pointer]:
+                - text: fixing what's broken
+                - generic [ref=e5218]: id
+              - button "Create a tournament with prize pools popular" [ref=e5219] [cursor=pointer]:
+                - text: Create a tournament with prize pools
+                - generic [ref=e5220]: popular
+              - button "Fund my workflow automation" [ref=e5221] [cursor=pointer]
+              - button "Viral moment treasury" [ref=e5222] [cursor=pointer]
+              - button "Show me projects like mine demo" [ref=e5223] [cursor=pointer]:
+                - text: Show me projects like mine
+                - generic [ref=e5224]: demo
+              - button "Betting pool for degens fun" [ref=e5225] [cursor=pointer]:
+                - text: Betting pool for degens
+                - generic [ref=e5226]: fun
+              - button "Revenue maximization bold" [ref=e5227] [cursor=pointer]:
+                - text: Revenue maximization
+                - generic [ref=e5228]: bold
+              - button "Anonymous collective pro" [ref=e5229] [cursor=pointer]:
+                - text: Anonymous collective
+                - generic [ref=e5230]: pro
+              - button "Launch my merch line popular" [ref=e5231] [cursor=pointer]:
+                - text: Launch my merch line
+                - generic [ref=e5232]: popular
+              - button "Fund my art investment" [ref=e5233] [cursor=pointer]
+              - button "Build a World Cup game like Defifa fun" [ref=e5234] [cursor=pointer]:
+                - text: Build a World Cup game like Defifa
+                - generic [ref=e5235]: fun
+              - button "Family business fund" [ref=e5236] [cursor=pointer]
+              - button "Create a quadratic funding pool pro" [ref=e5237] [cursor=pointer]:
+                - text: Create a quadratic funding pool
+                - generic [ref=e5238]: pro
+              - button "Fund my disability services" [ref=e5239] [cursor=pointer]
+              - button "Create API management pro" [ref=e5240] [cursor=pointer]:
+                - text: Create API management
+                - generic [ref=e5241]: pro
+              - button "Launch a staking game" [ref=e5242] [cursor=pointer]
+              - button "Fantasy sports with real stakes fun" [ref=e5243] [cursor=pointer]:
+                - text: Fantasy sports with real stakes
+                - generic [ref=e5244]: fun
+              - button "Launch my observability" [ref=e5245] [cursor=pointer]
+              - button "Fund my fusion research" [ref=e5246] [cursor=pointer]
+              - button "Launch my therapy app" [ref=e5247] [cursor=pointer]
+              - button "Fund my bike repair collective" [ref=e5248] [cursor=pointer]
+              - button "Start my mystery dinner theater fun" [ref=e5249] [cursor=pointer]:
+                - text: Start my mystery dinner theater
+                - generic [ref=e5250]: fun
+              - button "How do I withdraw funds? demo" [ref=e5251] [cursor=pointer]:
+                - text: How do I withdraw funds?
+                - generic [ref=e5252]: demo
+              - button "Build an accessories brand" [ref=e5253] [cursor=pointer]
+              - button "Build risk management" [ref=e5254] [cursor=pointer]
+              - button "Profit-first treasury bold" [ref=e5255] [cursor=pointer]:
+                - text: Profit-first treasury
+                - generic [ref=e5256]: bold
+              - button "Launch my photography project" [ref=e5257] [cursor=pointer]
+              - button "Build custom approval flows pro" [ref=e5258] [cursor=pointer]:
+                - text: Build custom approval flows
+                - generic [ref=e5259]: pro
+          - generic [ref=e5260]:
+            - generic [ref=e5261]:
+              - button "Make money while I sleep bold" [ref=e5262] [cursor=pointer]:
+                - text: Make money while I sleep
+                - generic [ref=e5263]: bold
+              - button "Launch my recycling startup" [ref=e5264] [cursor=pointer]
+              - button "Create a snack company fun" [ref=e5265] [cursor=pointer]:
+                - text: Create a snack company
+                - generic [ref=e5266]: fun
+              - button "Launch my ghost kitchen fun" [ref=e5267] [cursor=pointer]:
+                - text: Launch my ghost kitchen
+                - generic [ref=e5268]: fun
+              - button "Fund my franchise" [ref=e5269] [cursor=pointer]
+              - button "Create a managed marketplace bold" [ref=e5270] [cursor=pointer]:
+                - text: Create a managed marketplace
+                - generic [ref=e5271]: bold
+              - button "Fund my language app" [ref=e5272] [cursor=pointer]
+              - button "Fund my content house fun" [ref=e5273] [cursor=pointer]:
+                - text: Fund my content house
+                - generic [ref=e5274]: fun
+              - button "Free education treasury" [ref=e5275] [cursor=pointer]
+              - button "Launch my wine fund" [ref=e5276] [cursor=pointer]
+              - button "Fund my climbing gym" [ref=e5277] [cursor=pointer]
+              - button "Build heritage sites" [ref=e5278] [cursor=pointer]
+              - button "Dream big with me fun" [ref=e5279] [cursor=pointer]:
+                - text: Dream big with me
+                - generic [ref=e5280]: fun
+              - button "Decode ancient DNA" [ref=e5281] [cursor=pointer]
+              - button "Launch a Dutch auction fun" [ref=e5282] [cursor=pointer]:
+                - text: Launch a Dutch auction
+                - generic [ref=e5283]: fun
+              - button "Fund my zero-waste business" [ref=e5284] [cursor=pointer]
+              - button "Fund my sports team popular" [ref=e5285] [cursor=pointer]:
+                - text: Fund my sports team
+                - generic [ref=e5286]: popular
+              - button "Create expense tracking" [ref=e5287] [cursor=pointer]
+              - button "Create a haircare line" [ref=e5288] [cursor=pointer]
+              - button "Launch my ice cream brand fun" [ref=e5289] [cursor=pointer]:
+                - text: Launch my ice cream brand
+                - generic [ref=e5290]: fun
+              - button "How do I whitelabel Juicy? pro" [ref=e5291] [cursor=pointer]:
+                - text: How do I whitelabel Juicy?
+                - generic [ref=e5292]: pro
+              - button "Journalism that matters" [ref=e5293] [cursor=pointer]
+              - button "Launch my virtual city bold" [ref=e5294] [cursor=pointer]:
+                - text: Launch my virtual city
+                - generic [ref=e5295]: bold
+              - button "saving the planet id" [ref=e5296] [cursor=pointer]:
+                - text: saving the planet
+                - generic [ref=e5297]: id
+              - button "Launch my climate tech" [ref=e5298] [cursor=pointer]
+              - button "Launch my carbon credits pro" [ref=e5299] [cursor=pointer]:
+                - text: Launch my carbon credits
+                - generic [ref=e5300]: pro
+              - button "Launch my kids app" [ref=e5301] [cursor=pointer]
+              - button "Launch my charging network" [ref=e5302] [cursor=pointer]
+              - button "Start a neighborhood project" [ref=e5303] [cursor=pointer]
+              - button "Discover new projects popular" [ref=e5304] [cursor=pointer]:
+                - text: Discover new projects
+                - generic [ref=e5305]: popular
+              - button "doing science id" [ref=e5306] [cursor=pointer]:
+                - text: doing science
+                - generic [ref=e5307]: id
+              - button "Degen collective treasury fun" [ref=e5308] [cursor=pointer]:
+                - text: Degen collective treasury
+                - generic [ref=e5309]: fun
+              - button "Pure public benefit" [ref=e5310] [cursor=pointer]
+              - button "Build sports infrastructure" [ref=e5311] [cursor=pointer]
+              - button "Support a creator I follow" [ref=e5312] [cursor=pointer]
+              - button "How do refunds work? demo" [ref=e5313] [cursor=pointer]:
+                - text: How do refunds work?
+                - generic [ref=e5314]: demo
+              - button "Commons funding pool" [ref=e5315] [cursor=pointer]
+              - button "Build a restaurant chain" [ref=e5316] [cursor=pointer]
+              - button "Launch a network state project pro" [ref=e5317] [cursor=pointer]:
+                - text: Launch a network state project
+                - generic [ref=e5318]: pro
+              - button "Build renewable energy bold" [ref=e5319] [cursor=pointer]:
+                - text: Build renewable energy
+                - generic [ref=e5320]: bold
+            - generic [ref=e5321]:
+              - button "Make money while I sleep bold" [ref=e5322] [cursor=pointer]:
+                - text: Make money while I sleep
+                - generic [ref=e5323]: bold
+              - button "Launch my recycling startup" [ref=e5324] [cursor=pointer]
+              - button "Create a snack company fun" [ref=e5325] [cursor=pointer]:
+                - text: Create a snack company
+                - generic [ref=e5326]: fun
+              - button "Launch my ghost kitchen fun" [ref=e5327] [cursor=pointer]:
+                - text: Launch my ghost kitchen
+                - generic [ref=e5328]: fun
+              - button "Fund my franchise" [ref=e5329] [cursor=pointer]
+              - button "Create a managed marketplace bold" [ref=e5330] [cursor=pointer]:
+                - text: Create a managed marketplace
+                - generic [ref=e5331]: bold
+              - button "Fund my language app" [ref=e5332] [cursor=pointer]
+              - button "Fund my content house fun" [ref=e5333] [cursor=pointer]:
+                - text: Fund my content house
+                - generic [ref=e5334]: fun
+              - button "Free education treasury" [ref=e5335] [cursor=pointer]
+              - button "Launch my wine fund" [ref=e5336] [cursor=pointer]
+              - button "Fund my climbing gym" [ref=e5337] [cursor=pointer]
+              - button "Build heritage sites" [ref=e5338] [cursor=pointer]
+              - button "Dream big with me fun" [ref=e5339] [cursor=pointer]:
+                - text: Dream big with me
+                - generic [ref=e5340]: fun
+              - button "Decode ancient DNA" [ref=e5341] [cursor=pointer]
+              - button "Launch a Dutch auction fun" [ref=e5342] [cursor=pointer]:
+                - text: Launch a Dutch auction
+                - generic [ref=e5343]: fun
+              - button "Fund my zero-waste business" [ref=e5344] [cursor=pointer]
+              - button "Fund my sports team popular" [ref=e5345] [cursor=pointer]:
+                - text: Fund my sports team
+                - generic [ref=e5346]: popular
+              - button "Create expense tracking" [ref=e5347] [cursor=pointer]
+              - button "Create a haircare line" [ref=e5348] [cursor=pointer]
+              - button "Launch my ice cream brand fun" [ref=e5349] [cursor=pointer]:
+                - text: Launch my ice cream brand
+                - generic [ref=e5350]: fun
+              - button "How do I whitelabel Juicy? pro" [ref=e5351] [cursor=pointer]:
+                - text: How do I whitelabel Juicy?
+                - generic [ref=e5352]: pro
+              - button "Journalism that matters" [ref=e5353] [cursor=pointer]
+              - button "Launch my virtual city bold" [ref=e5354] [cursor=pointer]:
+                - text: Launch my virtual city
+                - generic [ref=e5355]: bold
+              - button "saving the planet id" [ref=e5356] [cursor=pointer]:
+                - text: saving the planet
+                - generic [ref=e5357]: id
+              - button "Launch my climate tech" [ref=e5358] [cursor=pointer]
+              - button "Launch my carbon credits pro" [ref=e5359] [cursor=pointer]:
+                - text: Launch my carbon credits
+                - generic [ref=e5360]: pro
+              - button "Launch my kids app" [ref=e5361] [cursor=pointer]
+              - button "Launch my charging network" [ref=e5362] [cursor=pointer]
+              - button "Start a neighborhood project" [ref=e5363] [cursor=pointer]
+              - button "Discover new projects popular" [ref=e5364] [cursor=pointer]:
+                - text: Discover new projects
+                - generic [ref=e5365]: popular
+              - button "doing science id" [ref=e5366] [cursor=pointer]:
+                - text: doing science
+                - generic [ref=e5367]: id
+              - button "Degen collective treasury fun" [ref=e5368] [cursor=pointer]:
+                - text: Degen collective treasury
+                - generic [ref=e5369]: fun
+              - button "Pure public benefit" [ref=e5370] [cursor=pointer]
+              - button "Build sports infrastructure" [ref=e5371] [cursor=pointer]
+              - button "Support a creator I follow" [ref=e5372] [cursor=pointer]
+              - button "How do refunds work? demo" [ref=e5373] [cursor=pointer]:
+                - text: How do refunds work?
+                - generic [ref=e5374]: demo
+              - button "Commons funding pool" [ref=e5375] [cursor=pointer]
+              - button "Build a restaurant chain" [ref=e5376] [cursor=pointer]
+              - button "Launch a network state project pro" [ref=e5377] [cursor=pointer]:
+                - text: Launch a network state project
+                - generic [ref=e5378]: pro
+              - button "Build renewable energy bold" [ref=e5379] [cursor=pointer]:
+                - text: Build renewable energy
+                - generic [ref=e5380]: bold
+            - generic [ref=e5381]:
+              - button "Make money while I sleep bold" [ref=e5382] [cursor=pointer]:
+                - text: Make money while I sleep
+                - generic [ref=e5383]: bold
+              - button "Launch my recycling startup" [ref=e5384] [cursor=pointer]
+              - button "Create a snack company fun" [ref=e5385] [cursor=pointer]:
+                - text: Create a snack company
+                - generic [ref=e5386]: fun
+              - button "Launch my ghost kitchen fun" [ref=e5387] [cursor=pointer]:
+                - text: Launch my ghost kitchen
+                - generic [ref=e5388]: fun
+              - button "Fund my franchise" [ref=e5389] [cursor=pointer]
+              - button "Create a managed marketplace bold" [ref=e5390] [cursor=pointer]:
+                - text: Create a managed marketplace
+                - generic [ref=e5391]: bold
+              - button "Fund my language app" [ref=e5392] [cursor=pointer]
+              - button "Fund my content house fun" [ref=e5393] [cursor=pointer]:
+                - text: Fund my content house
+                - generic [ref=e5394]: fun
+              - button "Free education treasury" [ref=e5395] [cursor=pointer]
+              - button "Launch my wine fund" [ref=e5396] [cursor=pointer]
+              - button "Fund my climbing gym" [ref=e5397] [cursor=pointer]
+              - button "Build heritage sites" [ref=e5398] [cursor=pointer]
+              - button "Dream big with me fun" [ref=e5399] [cursor=pointer]:
+                - text: Dream big with me
+                - generic [ref=e5400]: fun
+              - button "Decode ancient DNA" [ref=e5401] [cursor=pointer]
+              - button "Launch a Dutch auction fun" [ref=e5402] [cursor=pointer]:
+                - text: Launch a Dutch auction
+                - generic [ref=e5403]: fun
+              - button "Fund my zero-waste business" [ref=e5404] [cursor=pointer]
+              - button "Fund my sports team popular" [ref=e5405] [cursor=pointer]:
+                - text: Fund my sports team
+                - generic [ref=e5406]: popular
+              - button "Create expense tracking" [ref=e5407] [cursor=pointer]
+              - button "Create a haircare line" [ref=e5408] [cursor=pointer]
+              - button "Launch my ice cream brand fun" [ref=e5409] [cursor=pointer]:
+                - text: Launch my ice cream brand
+                - generic [ref=e5410]: fun
+              - button "How do I whitelabel Juicy? pro" [ref=e5411] [cursor=pointer]:
+                - text: How do I whitelabel Juicy?
+                - generic [ref=e5412]: pro
+              - button "Journalism that matters" [ref=e5413] [cursor=pointer]
+              - button "Launch my virtual city bold" [ref=e5414] [cursor=pointer]:
+                - text: Launch my virtual city
+                - generic [ref=e5415]: bold
+              - button "saving the planet id" [ref=e5416] [cursor=pointer]:
+                - text: saving the planet
+                - generic [ref=e5417]: id
+              - button "Launch my climate tech" [ref=e5418] [cursor=pointer]
+              - button "Launch my carbon credits pro" [ref=e5419] [cursor=pointer]:
+                - text: Launch my carbon credits
+                - generic [ref=e5420]: pro
+              - button "Launch my kids app" [ref=e5421] [cursor=pointer]
+              - button "Launch my charging network" [ref=e5422] [cursor=pointer]
+              - button "Start a neighborhood project" [ref=e5423] [cursor=pointer]
+              - button "Discover new projects popular" [ref=e5424] [cursor=pointer]:
+                - text: Discover new projects
+                - generic [ref=e5425]: popular
+              - button "doing science id" [ref=e5426] [cursor=pointer]:
+                - text: doing science
+                - generic [ref=e5427]: id
+              - button "Degen collective treasury fun" [ref=e5428] [cursor=pointer]:
+                - text: Degen collective treasury
+                - generic [ref=e5429]: fun
+              - button "Pure public benefit" [ref=e5430] [cursor=pointer]
+              - button "Build sports infrastructure" [ref=e5431] [cursor=pointer]
+              - button "Support a creator I follow" [ref=e5432] [cursor=pointer]
+              - button "How do refunds work? demo" [ref=e5433] [cursor=pointer]:
+                - text: How do refunds work?
+                - generic [ref=e5434]: demo
+              - button "Commons funding pool" [ref=e5435] [cursor=pointer]
+              - button "Build a restaurant chain" [ref=e5436] [cursor=pointer]
+              - button "Launch a network state project pro" [ref=e5437] [cursor=pointer]:
+                - text: Launch a network state project
+                - generic [ref=e5438]: pro
+              - button "Build renewable energy bold" [ref=e5439] [cursor=pointer]:
+                - text: Build renewable energy
+                - generic [ref=e5440]: bold
+            - generic [ref=e5441]:
+              - button "Make money while I sleep bold" [ref=e5442] [cursor=pointer]:
+                - text: Make money while I sleep
+                - generic [ref=e5443]: bold
+              - button "Launch my recycling startup" [ref=e5444] [cursor=pointer]
+              - button "Create a snack company fun" [ref=e5445] [cursor=pointer]:
+                - text: Create a snack company
+                - generic [ref=e5446]: fun
+              - button "Launch my ghost kitchen fun" [ref=e5447] [cursor=pointer]:
+                - text: Launch my ghost kitchen
+                - generic [ref=e5448]: fun
+              - button "Fund my franchise" [ref=e5449] [cursor=pointer]
+              - button "Create a managed marketplace bold" [ref=e5450] [cursor=pointer]:
+                - text: Create a managed marketplace
+                - generic [ref=e5451]: bold
+              - button "Fund my language app" [ref=e5452] [cursor=pointer]
+              - button "Fund my content house fun" [ref=e5453] [cursor=pointer]:
+                - text: Fund my content house
+                - generic [ref=e5454]: fun
+              - button "Free education treasury" [ref=e5455] [cursor=pointer]
+              - button "Launch my wine fund" [ref=e5456] [cursor=pointer]
+              - button "Fund my climbing gym" [ref=e5457] [cursor=pointer]
+              - button "Build heritage sites" [ref=e5458] [cursor=pointer]
+              - button "Dream big with me fun" [ref=e5459] [cursor=pointer]:
+                - text: Dream big with me
+                - generic [ref=e5460]: fun
+              - button "Decode ancient DNA" [ref=e5461] [cursor=pointer]
+              - button "Launch a Dutch auction fun" [ref=e5462] [cursor=pointer]:
+                - text: Launch a Dutch auction
+                - generic [ref=e5463]: fun
+              - button "Fund my zero-waste business" [ref=e5464] [cursor=pointer]
+              - button "Fund my sports team popular" [ref=e5465] [cursor=pointer]:
+                - text: Fund my sports team
+                - generic [ref=e5466]: popular
+              - button "Create expense tracking" [ref=e5467] [cursor=pointer]
+              - button "Create a haircare line" [ref=e5468] [cursor=pointer]
+              - button "Launch my ice cream brand fun" [ref=e5469] [cursor=pointer]:
+                - text: Launch my ice cream brand
+                - generic [ref=e5470]: fun
+              - button "How do I whitelabel Juicy? pro" [ref=e5471] [cursor=pointer]:
+                - text: How do I whitelabel Juicy?
+                - generic [ref=e5472]: pro
+              - button "Journalism that matters" [ref=e5473] [cursor=pointer]
+              - button "Launch my virtual city bold" [ref=e5474] [cursor=pointer]:
+                - text: Launch my virtual city
+                - generic [ref=e5475]: bold
+              - button "saving the planet id" [ref=e5476] [cursor=pointer]:
+                - text: saving the planet
+                - generic [ref=e5477]: id
+              - button "Launch my climate tech" [ref=e5478] [cursor=pointer]
+              - button "Launch my carbon credits pro" [ref=e5479] [cursor=pointer]:
+                - text: Launch my carbon credits
+                - generic [ref=e5480]: pro
+              - button "Launch my kids app" [ref=e5481] [cursor=pointer]
+              - button "Launch my charging network" [ref=e5482] [cursor=pointer]
+              - button "Start a neighborhood project" [ref=e5483] [cursor=pointer]
+              - button "Discover new projects popular" [ref=e5484] [cursor=pointer]:
+                - text: Discover new projects
+                - generic [ref=e5485]: popular
+              - button "doing science id" [ref=e5486] [cursor=pointer]:
+                - text: doing science
+                - generic [ref=e5487]: id
+              - button "Degen collective treasury fun" [ref=e5488] [cursor=pointer]:
+                - text: Degen collective treasury
+                - generic [ref=e5489]: fun
+              - button "Pure public benefit" [ref=e5490] [cursor=pointer]
+              - button "Build sports infrastructure" [ref=e5491] [cursor=pointer]
+              - button "Support a creator I follow" [ref=e5492] [cursor=pointer]
+              - button "How do refunds work? demo" [ref=e5493] [cursor=pointer]:
+                - text: How do refunds work?
+                - generic [ref=e5494]: demo
+              - button "Commons funding pool" [ref=e5495] [cursor=pointer]
+              - button "Build a restaurant chain" [ref=e5496] [cursor=pointer]
+              - button "Launch a network state project pro" [ref=e5497] [cursor=pointer]:
+                - text: Launch a network state project
+                - generic [ref=e5498]: pro
+              - button "Build renewable energy bold" [ref=e5499] [cursor=pointer]:
+                - text: Build renewable energy
+                - generic [ref=e5500]: bold
+            - generic [ref=e5501]:
+              - button "Make money while I sleep bold" [ref=e5502] [cursor=pointer]:
+                - text: Make money while I sleep
+                - generic [ref=e5503]: bold
+              - button "Launch my recycling startup" [ref=e5504] [cursor=pointer]
+              - button "Create a snack company fun" [ref=e5505] [cursor=pointer]:
+                - text: Create a snack company
+                - generic [ref=e5506]: fun
+              - button "Launch my ghost kitchen fun" [ref=e5507] [cursor=pointer]:
+                - text: Launch my ghost kitchen
+                - generic [ref=e5508]: fun
+              - button "Fund my franchise" [ref=e5509] [cursor=pointer]
+              - button "Create a managed marketplace bold" [ref=e5510] [cursor=pointer]:
+                - text: Create a managed marketplace
+                - generic [ref=e5511]: bold
+              - button "Fund my language app" [ref=e5512] [cursor=pointer]
+              - button "Fund my content house fun" [ref=e5513] [cursor=pointer]:
+                - text: Fund my content house
+                - generic [ref=e5514]: fun
+              - button "Free education treasury" [ref=e5515] [cursor=pointer]
+              - button "Launch my wine fund" [ref=e5516] [cursor=pointer]
+              - button "Fund my climbing gym" [ref=e5517] [cursor=pointer]
+              - button "Build heritage sites" [ref=e5518] [cursor=pointer]
+              - button "Dream big with me fun" [ref=e5519] [cursor=pointer]:
+                - text: Dream big with me
+                - generic [ref=e5520]: fun
+              - button "Decode ancient DNA" [ref=e5521] [cursor=pointer]
+              - button "Launch a Dutch auction fun" [ref=e5522] [cursor=pointer]:
+                - text: Launch a Dutch auction
+                - generic [ref=e5523]: fun
+              - button "Fund my zero-waste business" [ref=e5524] [cursor=pointer]
+              - button "Fund my sports team popular" [ref=e5525] [cursor=pointer]:
+                - text: Fund my sports team
+                - generic [ref=e5526]: popular
+              - button "Create expense tracking" [ref=e5527] [cursor=pointer]
+              - button "Create a haircare line" [ref=e5528] [cursor=pointer]
+              - button "Launch my ice cream brand fun" [ref=e5529] [cursor=pointer]:
+                - text: Launch my ice cream brand
+                - generic [ref=e5530]: fun
+              - button "How do I whitelabel Juicy? pro" [ref=e5531] [cursor=pointer]:
+                - text: How do I whitelabel Juicy?
+                - generic [ref=e5532]: pro
+              - button "Journalism that matters" [ref=e5533] [cursor=pointer]
+              - button "Launch my virtual city bold" [ref=e5534] [cursor=pointer]:
+                - text: Launch my virtual city
+                - generic [ref=e5535]: bold
+              - button "saving the planet id" [ref=e5536] [cursor=pointer]:
+                - text: saving the planet
+                - generic [ref=e5537]: id
+              - button "Launch my climate tech" [ref=e5538] [cursor=pointer]
+              - button "Launch my carbon credits pro" [ref=e5539] [cursor=pointer]:
+                - text: Launch my carbon credits
+                - generic [ref=e5540]: pro
+              - button "Launch my kids app" [ref=e5541] [cursor=pointer]
+              - button "Launch my charging network" [ref=e5542] [cursor=pointer]
+              - button "Start a neighborhood project" [ref=e5543] [cursor=pointer]
+              - button "Discover new projects popular" [ref=e5544] [cursor=pointer]:
+                - text: Discover new projects
+                - generic [ref=e5545]: popular
+              - button "doing science id" [ref=e5546] [cursor=pointer]:
+                - text: doing science
+                - generic [ref=e5547]: id
+              - button "Degen collective treasury fun" [ref=e5548] [cursor=pointer]:
+                - text: Degen collective treasury
+                - generic [ref=e5549]: fun
+              - button "Pure public benefit" [ref=e5550] [cursor=pointer]
+              - button "Build sports infrastructure" [ref=e5551] [cursor=pointer]
+              - button "Support a creator I follow" [ref=e5552] [cursor=pointer]
+              - button "How do refunds work? demo" [ref=e5553] [cursor=pointer]:
+                - text: How do refunds work?
+                - generic [ref=e5554]: demo
+              - button "Commons funding pool" [ref=e5555] [cursor=pointer]
+              - button "Build a restaurant chain" [ref=e5556] [cursor=pointer]
+              - button "Launch a network state project pro" [ref=e5557] [cursor=pointer]:
+                - text: Launch a network state project
+                - generic [ref=e5558]: pro
+              - button "Build renewable energy bold" [ref=e5559] [cursor=pointer]:
+                - text: Build renewable energy
+                - generic [ref=e5560]: bold
+          - generic [ref=e5561]:
+            - generic [ref=e5562]:
+              - button "Absurdist art fund fun" [ref=e5563] [cursor=pointer]:
+                - text: Absurdist art fund
+                - generic [ref=e5564]: fun
+              - button "Ponzinomics but ethical fun" [ref=e5565] [cursor=pointer]:
+                - text: Ponzinomics but ethical
+                - generic [ref=e5566]: fun
+              - button "Launch my circus fun" [ref=e5567] [cursor=pointer]:
+                - text: Launch my circus
+                - generic [ref=e5568]: fun
+              - button "Build collectibles platform" [ref=e5569] [cursor=pointer]
+              - button "Mutual aid network" [ref=e5570] [cursor=pointer]
+              - button "Fund my justice reform" [ref=e5571] [cursor=pointer]
+              - button "Find projects in my city" [ref=e5572] [cursor=pointer]
+              - button "Build a condiment brand" [ref=e5573] [cursor=pointer]
+              - button "Create archival project" [ref=e5574] [cursor=pointer]
+              - button "Fund my biotech research bold" [ref=e5575] [cursor=pointer]:
+                - text: Fund my biotech research
+                - generic [ref=e5576]: bold
+              - button "Build regenerative systems" [ref=e5577] [cursor=pointer]
+              - button "Fund disaster relief" [ref=e5578] [cursor=pointer]
+              - button "Fund my sports media" [ref=e5579] [cursor=pointer]
+              - button "Start a neighborhood tutoring business" [ref=e5580] [cursor=pointer]
+              - button "building AI id" [ref=e5581] [cursor=pointer]:
+                - text: building AI
+                - generic [ref=e5582]: id
+              - button "Launch a revnet pro" [ref=e5583] [cursor=pointer]:
+                - text: Launch a revnet
+                - generic [ref=e5584]: pro
+              - button "Community wealth fund" [ref=e5585] [cursor=pointer]
+              - button "Start a tutoring collective" [ref=e5586] [cursor=pointer]
+              - button "Fund my restaurant popular" [ref=e5587] [cursor=pointer]:
+                - text: Fund my restaurant
+                - generic [ref=e5588]: popular
+              - button "Fund the inexplicable fun" [ref=e5589] [cursor=pointer]:
+                - text: Fund the inexplicable
+                - generic [ref=e5590]: fun
+              - button "Create a social graph bold" [ref=e5591] [cursor=pointer]:
+                - text: Create a social graph
+                - generic [ref=e5592]: bold
+              - button "Build a voting mechanism bold" [ref=e5593] [cursor=pointer]:
+                - text: Build a voting mechanism
+                - generic [ref=e5594]: bold
+              - button "Manage cap table on-chain pro" [ref=e5595] [cursor=pointer]:
+                - text: Manage cap table on-chain
+                - generic [ref=e5596]: pro
+              - button "Consulting practice treasury" [ref=e5597] [cursor=pointer]
+              - button "Create a reputation system bold" [ref=e5598] [cursor=pointer]:
+                - text: Create a reputation system
+                - generic [ref=e5599]: bold
+              - button "Build a bonding curve game pro" [ref=e5600] [cursor=pointer]:
+                - text: Build a bonding curve game
+                - generic [ref=e5601]: pro
+              - button "Start a buying club" [ref=e5602] [cursor=pointer]
+              - button "Minimal effort maximum returns fun" [ref=e5603] [cursor=pointer]:
+                - text: Minimal effort maximum returns
+                - generic [ref=e5604]: fun
+              - button "Fund my wallet app" [ref=e5605] [cursor=pointer]
+              - button "Fund my news platform" [ref=e5606] [cursor=pointer]
+              - button "Fund my escape room fun" [ref=e5607] [cursor=pointer]:
+                - text: Fund my escape room
+                - generic [ref=e5608]: fun
+              - button "Build a DAO from scratch pro" [ref=e5609] [cursor=pointer]:
+                - text: Build a DAO from scratch
+                - generic [ref=e5610]: pro
+              - button "How transparent is the funding? demo" [ref=e5611] [cursor=pointer]:
+                - text: How transparent is the funding?
+                - generic [ref=e5612]: demo
+              - button "Build affordable housing" [ref=e5613] [cursor=pointer]
+              - button "Launch my arts festival fun" [ref=e5614] [cursor=pointer]:
+                - text: Launch my arts festival
+                - generic [ref=e5615]: fun
+              - button "Fund my sports facility" [ref=e5616] [cursor=pointer]
+              - button "Anonymous research fund pro" [ref=e5617] [cursor=pointer]:
+                - text: Anonymous research fund
+                - generic [ref=e5618]: pro
+              - button "Launch my identity platform pro" [ref=e5619] [cursor=pointer]:
+                - text: Launch my identity platform
+                - generic [ref=e5620]: pro
+              - button "Fund my sustainable fashion" [ref=e5621] [cursor=pointer]
+              - button "Create battery technology" [ref=e5622] [cursor=pointer]
+            - generic [ref=e5623]:
+              - button "Absurdist art fund fun" [ref=e5624] [cursor=pointer]:
+                - text: Absurdist art fund
+                - generic [ref=e5625]: fun
+              - button "Ponzinomics but ethical fun" [ref=e5626] [cursor=pointer]:
+                - text: Ponzinomics but ethical
+                - generic [ref=e5627]: fun
+              - button "Launch my circus fun" [ref=e5628] [cursor=pointer]:
+                - text: Launch my circus
+                - generic [ref=e5629]: fun
+              - button "Build collectibles platform" [ref=e5630] [cursor=pointer]
+              - button "Mutual aid network" [ref=e5631] [cursor=pointer]
+              - button "Fund my justice reform" [ref=e5632] [cursor=pointer]
+              - button "Find projects in my city" [ref=e5633] [cursor=pointer]
+              - button "Build a condiment brand" [ref=e5634] [cursor=pointer]
+              - button "Create archival project" [ref=e5635] [cursor=pointer]
+              - button "Fund my biotech research bold" [ref=e5636] [cursor=pointer]:
+                - text: Fund my biotech research
+                - generic [ref=e5637]: bold
+              - button "Build regenerative systems" [ref=e5638] [cursor=pointer]
+              - button "Fund disaster relief" [ref=e5639] [cursor=pointer]
+              - button "Fund my sports media" [ref=e5640] [cursor=pointer]
+              - button "Start a neighborhood tutoring business" [ref=e5641] [cursor=pointer]
+              - button "building AI id" [ref=e5642] [cursor=pointer]:
+                - text: building AI
+                - generic [ref=e5643]: id
+              - button "Launch a revnet pro" [ref=e5644] [cursor=pointer]:
+                - text: Launch a revnet
+                - generic [ref=e5645]: pro
+              - button "Community wealth fund" [ref=e5646] [cursor=pointer]
+              - button "Start a tutoring collective" [ref=e5647] [cursor=pointer]
+              - button "Fund my restaurant popular" [ref=e5648] [cursor=pointer]:
+                - text: Fund my restaurant
+                - generic [ref=e5649]: popular
+              - button "Fund the inexplicable fun" [ref=e5650] [cursor=pointer]:
+                - text: Fund the inexplicable
+                - generic [ref=e5651]: fun
+              - button "Create a social graph bold" [ref=e5652] [cursor=pointer]:
+                - text: Create a social graph
+                - generic [ref=e5653]: bold
+              - button "Build a voting mechanism bold" [ref=e5654] [cursor=pointer]:
+                - text: Build a voting mechanism
+                - generic [ref=e5655]: bold
+              - button "Manage cap table on-chain pro" [ref=e5656] [cursor=pointer]:
+                - text: Manage cap table on-chain
+                - generic [ref=e5657]: pro
+              - button "Consulting practice treasury" [ref=e5658] [cursor=pointer]
+              - button "Create a reputation system bold" [ref=e5659] [cursor=pointer]:
+                - text: Create a reputation system
+                - generic [ref=e5660]: bold
+              - button "Build a bonding curve game pro" [ref=e5661] [cursor=pointer]:
+                - text: Build a bonding curve game
+                - generic [ref=e5662]: pro
+              - button "Start a buying club" [ref=e5663] [cursor=pointer]
+              - button "Minimal effort maximum returns fun" [ref=e5664] [cursor=pointer]:
+                - text: Minimal effort maximum returns
+                - generic [ref=e5665]: fun
+              - button "Fund my wallet app" [ref=e5666] [cursor=pointer]
+              - button "Fund my news platform" [ref=e5667] [cursor=pointer]
+              - button "Fund my escape room fun" [ref=e5668] [cursor=pointer]:
+                - text: Fund my escape room
+                - generic [ref=e5669]: fun
+              - button "Build a DAO from scratch pro" [ref=e5670] [cursor=pointer]:
+                - text: Build a DAO from scratch
+                - generic [ref=e5671]: pro
+              - button "How transparent is the funding? demo" [ref=e5672] [cursor=pointer]:
+                - text: How transparent is the funding?
+                - generic [ref=e5673]: demo
+              - button "Build affordable housing" [ref=e5674] [cursor=pointer]
+              - button "Launch my arts festival fun" [ref=e5675] [cursor=pointer]:
+                - text: Launch my arts festival
+                - generic [ref=e5676]: fun
+              - button "Fund my sports facility" [ref=e5677] [cursor=pointer]
+              - button "Anonymous research fund pro" [ref=e5678] [cursor=pointer]:
+                - text: Anonymous research fund
+                - generic [ref=e5679]: pro
+              - button "Launch my identity platform pro" [ref=e5680] [cursor=pointer]:
+                - text: Launch my identity platform
+                - generic [ref=e5681]: pro
+              - button "Fund my sustainable fashion" [ref=e5682] [cursor=pointer]
+              - button "Create battery technology" [ref=e5683] [cursor=pointer]
+            - generic [ref=e5684]:
+              - button "Absurdist art fund fun" [ref=e5685] [cursor=pointer]:
+                - text: Absurdist art fund
+                - generic [ref=e5686]: fun
+              - button "Ponzinomics but ethical fun" [ref=e5687] [cursor=pointer]:
+                - text: Ponzinomics but ethical
+                - generic [ref=e5688]: fun
+              - button "Launch my circus fun" [ref=e5689] [cursor=pointer]:
+                - text: Launch my circus
+                - generic [ref=e5690]: fun
+              - button "Build collectibles platform" [ref=e5691] [cursor=pointer]
+              - button "Mutual aid network" [ref=e5692] [cursor=pointer]
+              - button "Fund my justice reform" [ref=e5693] [cursor=pointer]
+              - button "Find projects in my city" [ref=e5694] [cursor=pointer]
+              - button "Build a condiment brand" [ref=e5695] [cursor=pointer]
+              - button "Create archival project" [ref=e5696] [cursor=pointer]
+              - button "Fund my biotech research bold" [ref=e5697] [cursor=pointer]:
+                - text: Fund my biotech research
+                - generic [ref=e5698]: bold
+              - button "Build regenerative systems" [ref=e5699] [cursor=pointer]
+              - button "Fund disaster relief" [ref=e5700] [cursor=pointer]
+              - button "Fund my sports media" [ref=e5701] [cursor=pointer]
+              - button "Start a neighborhood tutoring business" [ref=e5702] [cursor=pointer]
+              - button "building AI id" [ref=e5703] [cursor=pointer]:
+                - text: building AI
+                - generic [ref=e5704]: id
+              - button "Launch a revnet pro" [ref=e5705] [cursor=pointer]:
+                - text: Launch a revnet
+                - generic [ref=e5706]: pro
+              - button "Community wealth fund" [ref=e5707] [cursor=pointer]
+              - button "Start a tutoring collective" [ref=e5708] [cursor=pointer]
+              - button "Fund my restaurant popular" [ref=e5709] [cursor=pointer]:
+                - text: Fund my restaurant
+                - generic [ref=e5710]: popular
+              - button "Fund the inexplicable fun" [ref=e5711] [cursor=pointer]:
+                - text: Fund the inexplicable
+                - generic [ref=e5712]: fun
+              - button "Create a social graph bold" [ref=e5713] [cursor=pointer]:
+                - text: Create a social graph
+                - generic [ref=e5714]: bold
+              - button "Build a voting mechanism bold" [ref=e5715] [cursor=pointer]:
+                - text: Build a voting mechanism
+                - generic [ref=e5716]: bold
+              - button "Manage cap table on-chain pro" [ref=e5717] [cursor=pointer]:
+                - text: Manage cap table on-chain
+                - generic [ref=e5718]: pro
+              - button "Consulting practice treasury" [ref=e5719] [cursor=pointer]
+              - button "Create a reputation system bold" [ref=e5720] [cursor=pointer]:
+                - text: Create a reputation system
+                - generic [ref=e5721]: bold
+              - button "Build a bonding curve game pro" [ref=e5722] [cursor=pointer]:
+                - text: Build a bonding curve game
+                - generic [ref=e5723]: pro
+              - button "Start a buying club" [ref=e5724] [cursor=pointer]
+              - button "Minimal effort maximum returns fun" [ref=e5725] [cursor=pointer]:
+                - text: Minimal effort maximum returns
+                - generic [ref=e5726]: fun
+              - button "Fund my wallet app" [ref=e5727] [cursor=pointer]
+              - button "Fund my news platform" [ref=e5728] [cursor=pointer]
+              - button "Fund my escape room fun" [ref=e5729] [cursor=pointer]:
+                - text: Fund my escape room
+                - generic [ref=e5730]: fun
+              - button "Build a DAO from scratch pro" [ref=e5731] [cursor=pointer]:
+                - text: Build a DAO from scratch
+                - generic [ref=e5732]: pro
+              - button "How transparent is the funding? demo" [ref=e5733] [cursor=pointer]:
+                - text: How transparent is the funding?
+                - generic [ref=e5734]: demo
+              - button "Build affordable housing" [ref=e5735] [cursor=pointer]
+              - button "Launch my arts festival fun" [ref=e5736] [cursor=pointer]:
+                - text: Launch my arts festival
+                - generic [ref=e5737]: fun
+              - button "Fund my sports facility" [ref=e5738] [cursor=pointer]
+              - button "Anonymous research fund pro" [ref=e5739] [cursor=pointer]:
+                - text: Anonymous research fund
+                - generic [ref=e5740]: pro
+              - button "Launch my identity platform pro" [ref=e5741] [cursor=pointer]:
+                - text: Launch my identity platform
+                - generic [ref=e5742]: pro
+              - button "Fund my sustainable fashion" [ref=e5743] [cursor=pointer]
+              - button "Create battery technology" [ref=e5744] [cursor=pointer]
+            - generic [ref=e5745]:
+              - button "Absurdist art fund fun" [ref=e5746] [cursor=pointer]:
+                - text: Absurdist art fund
+                - generic [ref=e5747]: fun
+              - button "Ponzinomics but ethical fun" [ref=e5748] [cursor=pointer]:
+                - text: Ponzinomics but ethical
+                - generic [ref=e5749]: fun
+              - button "Launch my circus fun" [ref=e5750] [cursor=pointer]:
+                - text: Launch my circus
+                - generic [ref=e5751]: fun
+              - button "Build collectibles platform" [ref=e5752] [cursor=pointer]
+              - button "Mutual aid network" [ref=e5753] [cursor=pointer]
+              - button "Fund my justice reform" [ref=e5754] [cursor=pointer]
+              - button "Find projects in my city" [ref=e5755] [cursor=pointer]
+              - button "Build a condiment brand" [ref=e5756] [cursor=pointer]
+              - button "Create archival project" [ref=e5757] [cursor=pointer]
+              - button "Fund my biotech research bold" [ref=e5758] [cursor=pointer]:
+                - text: Fund my biotech research
+                - generic [ref=e5759]: bold
+              - button "Build regenerative systems" [ref=e5760] [cursor=pointer]
+              - button "Fund disaster relief" [ref=e5761] [cursor=pointer]
+              - button "Fund my sports media" [ref=e5762] [cursor=pointer]
+              - button "Start a neighborhood tutoring business" [ref=e5763] [cursor=pointer]
+              - button "building AI id" [ref=e5764] [cursor=pointer]:
+                - text: building AI
+                - generic [ref=e5765]: id
+              - button "Launch a revnet pro" [ref=e5766] [cursor=pointer]:
+                - text: Launch a revnet
+                - generic [ref=e5767]: pro
+              - button "Community wealth fund" [ref=e5768] [cursor=pointer]
+              - button "Start a tutoring collective" [ref=e5769] [cursor=pointer]
+              - button "Fund my restaurant popular" [ref=e5770] [cursor=pointer]:
+                - text: Fund my restaurant
+                - generic [ref=e5771]: popular
+              - button "Fund the inexplicable fun" [ref=e5772] [cursor=pointer]:
+                - text: Fund the inexplicable
+                - generic [ref=e5773]: fun
+              - button "Create a social graph bold" [ref=e5774] [cursor=pointer]:
+                - text: Create a social graph
+                - generic [ref=e5775]: bold
+              - button "Build a voting mechanism bold" [ref=e5776] [cursor=pointer]:
+                - text: Build a voting mechanism
+                - generic [ref=e5777]: bold
+              - button "Manage cap table on-chain pro" [ref=e5778] [cursor=pointer]:
+                - text: Manage cap table on-chain
+                - generic [ref=e5779]: pro
+              - button "Consulting practice treasury" [ref=e5780] [cursor=pointer]
+              - button "Create a reputation system bold" [ref=e5781] [cursor=pointer]:
+                - text: Create a reputation system
+                - generic [ref=e5782]: bold
+              - button "Build a bonding curve game pro" [ref=e5783] [cursor=pointer]:
+                - text: Build a bonding curve game
+                - generic [ref=e5784]: pro
+              - button "Start a buying club" [ref=e5785] [cursor=pointer]
+              - button "Minimal effort maximum returns fun" [ref=e5786] [cursor=pointer]:
+                - text: Minimal effort maximum returns
+                - generic [ref=e5787]: fun
+              - button "Fund my wallet app" [ref=e5788] [cursor=pointer]
+              - button "Fund my news platform" [ref=e5789] [cursor=pointer]
+              - button "Fund my escape room fun" [ref=e5790] [cursor=pointer]:
+                - text: Fund my escape room
+                - generic [ref=e5791]: fun
+              - button "Build a DAO from scratch pro" [ref=e5792] [cursor=pointer]:
+                - text: Build a DAO from scratch
+                - generic [ref=e5793]: pro
+              - button "How transparent is the funding? demo" [ref=e5794] [cursor=pointer]:
+                - text: How transparent is the funding?
+                - generic [ref=e5795]: demo
+              - button "Build affordable housing" [ref=e5796] [cursor=pointer]
+              - button "Launch my arts festival fun" [ref=e5797] [cursor=pointer]:
+                - text: Launch my arts festival
+                - generic [ref=e5798]: fun
+              - button "Fund my sports facility" [ref=e5799] [cursor=pointer]
+              - button "Anonymous research fund pro" [ref=e5800] [cursor=pointer]:
+                - text: Anonymous research fund
+                - generic [ref=e5801]: pro
+              - button "Launch my identity platform pro" [ref=e5802] [cursor=pointer]:
+                - text: Launch my identity platform
+                - generic [ref=e5803]: pro
+              - button "Fund my sustainable fashion" [ref=e5804] [cursor=pointer]
+              - button "Create battery technology" [ref=e5805] [cursor=pointer]
+            - generic [ref=e5806]:
+              - button "Absurdist art fund fun" [ref=e5807] [cursor=pointer]:
+                - text: Absurdist art fund
+                - generic [ref=e5808]: fun
+              - button "Ponzinomics but ethical fun" [ref=e5809] [cursor=pointer]:
+                - text: Ponzinomics but ethical
+                - generic [ref=e5810]: fun
+              - button "Launch my circus fun" [ref=e5811] [cursor=pointer]:
+                - text: Launch my circus
+                - generic [ref=e5812]: fun
+              - button "Build collectibles platform" [ref=e5813] [cursor=pointer]
+              - button "Mutual aid network" [ref=e5814] [cursor=pointer]
+              - button "Fund my justice reform" [ref=e5815] [cursor=pointer]
+              - button "Find projects in my city" [ref=e5816] [cursor=pointer]
+              - button "Build a condiment brand" [ref=e5817] [cursor=pointer]
+              - button "Create archival project" [ref=e5818] [cursor=pointer]
+              - button "Fund my biotech research bold" [ref=e5819] [cursor=pointer]:
+                - text: Fund my biotech research
+                - generic [ref=e5820]: bold
+              - button "Build regenerative systems" [ref=e5821] [cursor=pointer]
+              - button "Fund disaster relief" [ref=e5822] [cursor=pointer]
+              - button "Fund my sports media" [ref=e5823] [cursor=pointer]
+              - button "Start a neighborhood tutoring business" [ref=e5824] [cursor=pointer]
+              - button "building AI id" [ref=e5825] [cursor=pointer]:
+                - text: building AI
+                - generic [ref=e5826]: id
+              - button "Launch a revnet pro" [ref=e5827] [cursor=pointer]:
+                - text: Launch a revnet
+                - generic [ref=e5828]: pro
+              - button "Community wealth fund" [ref=e5829] [cursor=pointer]
+              - button "Start a tutoring collective" [ref=e5830] [cursor=pointer]
+              - button "Fund my restaurant popular" [ref=e5831] [cursor=pointer]:
+                - text: Fund my restaurant
+                - generic [ref=e5832]: popular
+              - button "Fund the inexplicable fun" [ref=e5833] [cursor=pointer]:
+                - text: Fund the inexplicable
+                - generic [ref=e5834]: fun
+              - button "Create a social graph bold" [ref=e5835] [cursor=pointer]:
+                - text: Create a social graph
+                - generic [ref=e5836]: bold
+              - button "Build a voting mechanism bold" [ref=e5837] [cursor=pointer]:
+                - text: Build a voting mechanism
+                - generic [ref=e5838]: bold
+              - button "Manage cap table on-chain pro" [ref=e5839] [cursor=pointer]:
+                - text: Manage cap table on-chain
+                - generic [ref=e5840]: pro
+              - button "Consulting practice treasury" [ref=e5841] [cursor=pointer]
+              - button "Create a reputation system bold" [ref=e5842] [cursor=pointer]:
+                - text: Create a reputation system
+                - generic [ref=e5843]: bold
+              - button "Build a bonding curve game pro" [ref=e5844] [cursor=pointer]:
+                - text: Build a bonding curve game
+                - generic [ref=e5845]: pro
+              - button "Start a buying club" [ref=e5846] [cursor=pointer]
+              - button "Minimal effort maximum returns fun" [ref=e5847] [cursor=pointer]:
+                - text: Minimal effort maximum returns
+                - generic [ref=e5848]: fun
+              - button "Fund my wallet app" [ref=e5849] [cursor=pointer]
+              - button "Fund my news platform" [ref=e5850] [cursor=pointer]
+              - button "Fund my escape room fun" [ref=e5851] [cursor=pointer]:
+                - text: Fund my escape room
+                - generic [ref=e5852]: fun
+              - button "Build a DAO from scratch pro" [ref=e5853] [cursor=pointer]:
+                - text: Build a DAO from scratch
+                - generic [ref=e5854]: pro
+              - button "How transparent is the funding? demo" [ref=e5855] [cursor=pointer]:
+                - text: How transparent is the funding?
+                - generic [ref=e5856]: demo
+              - button "Build affordable housing" [ref=e5857] [cursor=pointer]
+              - button "Launch my arts festival fun" [ref=e5858] [cursor=pointer]:
+                - text: Launch my arts festival
+                - generic [ref=e5859]: fun
+              - button "Fund my sports facility" [ref=e5860] [cursor=pointer]
+              - button "Anonymous research fund pro" [ref=e5861] [cursor=pointer]:
+                - text: Anonymous research fund
+                - generic [ref=e5862]: pro
+              - button "Launch my identity platform pro" [ref=e5863] [cursor=pointer]:
+                - text: Launch my identity platform
+                - generic [ref=e5864]: pro
+              - button "Fund my sustainable fashion" [ref=e5865] [cursor=pointer]
+              - button "Create battery technology" [ref=e5866] [cursor=pointer]
+          - generic [ref=e5867]:
+            - generic [ref=e5868]:
+              - button "Build a neighborhood app" [ref=e5869] [cursor=pointer]
+              - button "Wealth generation protocol bold" [ref=e5870] [cursor=pointer]:
+                - text: Wealth generation protocol
+                - generic [ref=e5871]: bold
+              - button "Fund my content creation popular" [ref=e5872] [cursor=pointer]:
+                - text: Fund my content creation
+                - generic [ref=e5873]: popular
+              - button "Build on JB primitives pro" [ref=e5874] [cursor=pointer]:
+                - text: Build on JB primitives
+                - generic [ref=e5875]: pro
+              - button "Back an indie developer" [ref=e5876] [cursor=pointer]
+              - button "Relief fund for anyone" [ref=e5877] [cursor=pointer]
+              - button "Launch my podcast network" [ref=e5878] [cursor=pointer]
+              - button "Launch my marketplace" [ref=e5879] [cursor=pointer]
+              - button "Create sports analytics" [ref=e5880] [cursor=pointer]
+              - button "Configure complex splits pro" [ref=e5881] [cursor=pointer]:
+                - text: Configure complex splits
+                - generic [ref=e5882]: pro
+              - button "Launch a community apprenticeship program" [ref=e5883] [cursor=pointer]
+              - button "touching grass id" [ref=e5884] [cursor=pointer]:
+                - text: touching grass
+                - generic [ref=e5885]: id
+              - button "Controlled demolition fund" [ref=e5886] [cursor=pointer]
+              - button "Fund my accountability community" [ref=e5887] [cursor=pointer]
+              - button "improving health id" [ref=e5888] [cursor=pointer]:
+                - text: improving health
+                - generic [ref=e5889]: id
+              - button "Audience building fund" [ref=e5890] [cursor=pointer]
+              - button "Fund my live events" [ref=e5891] [cursor=pointer]
+              - button "Build wealth management" [ref=e5892] [cursor=pointer]
+              - button "Create my creator fund" [ref=e5893] [cursor=pointer]
+              - button "Launch my beverage brand" [ref=e5894] [cursor=pointer]
+              - button "Streaming career fund" [ref=e5895] [cursor=pointer]
+              - button "Show me weird projects demo" [ref=e5896] [cursor=pointer]:
+                - text: Show me weird projects
+                - generic [ref=e5897]: demo
+              - button "Build a commitment device bold" [ref=e5898] [cursor=pointer]:
+                - text: Build a commitment device
+                - generic [ref=e5899]: bold
+              - button "Create a support group fun" [ref=e5900] [cursor=pointer]:
+                - text: Create a support group
+                - generic [ref=e5901]: fun
+              - button "Fund my beauty brand" [ref=e5902] [cursor=pointer]
+              - button "Build a skincare line" [ref=e5903] [cursor=pointer]
+              - button "Monetize my expertise popular" [ref=e5904] [cursor=pointer]:
+                - text: Monetize my expertise
+                - generic [ref=e5905]: popular
+              - button "Start my record label" [ref=e5906] [cursor=pointer]
+              - button "Launch my refugee support" [ref=e5907] [cursor=pointer]
+              - button "Run a project from my couch fun" [ref=e5908] [cursor=pointer]:
+                - text: Run a project from my couch
+                - generic [ref=e5909]: fun
+              - button "Build credit solutions" [ref=e5910] [cursor=pointer]
+              - button "Build an automated revenue machine bold" [ref=e5911] [cursor=pointer]:
+                - text: Build an automated revenue machine
+                - generic [ref=e5912]: bold
+              - button "Fund my oracle network pro" [ref=e5913] [cursor=pointer]:
+                - text: Fund my oracle network
+                - generic [ref=e5914]: pro
+              - button "Fund my game server" [ref=e5915] [cursor=pointer]
+              - button "Launch my small business" [ref=e5916] [cursor=pointer]
+              - button "creating things id" [ref=e5917] [cursor=pointer]:
+                - text: creating things
+                - generic [ref=e5918]: id
+              - button "Fund my subscription business" [ref=e5919] [cursor=pointer]
+              - button "Fire and forget funding fun" [ref=e5920] [cursor=pointer]:
+                - text: Fire and forget funding
+                - generic [ref=e5921]: fun
+              - button "Build a betting pool for my friends popular" [ref=e5922] [cursor=pointer]:
+                - text: Build a betting pool for my friends
+                - generic [ref=e5923]: popular
+              - button "Launch my integration platform bold" [ref=e5924] [cursor=pointer]:
+                - text: Launch my integration platform
+                - generic [ref=e5925]: bold
+            - generic [ref=e5926]:
+              - button "Build a neighborhood app" [ref=e5927] [cursor=pointer]
+              - button "Wealth generation protocol bold" [ref=e5928] [cursor=pointer]:
+                - text: Wealth generation protocol
+                - generic [ref=e5929]: bold
+              - button "Fund my content creation popular" [ref=e5930] [cursor=pointer]:
+                - text: Fund my content creation
+                - generic [ref=e5931]: popular
+              - button "Build on JB primitives pro" [ref=e5932] [cursor=pointer]:
+                - text: Build on JB primitives
+                - generic [ref=e5933]: pro
+              - button "Back an indie developer" [ref=e5934] [cursor=pointer]
+              - button "Relief fund for anyone" [ref=e5935] [cursor=pointer]
+              - button "Launch my podcast network" [ref=e5936] [cursor=pointer]
+              - button "Launch my marketplace" [ref=e5937] [cursor=pointer]
+              - button "Create sports analytics" [ref=e5938] [cursor=pointer]
+              - button "Configure complex splits pro" [ref=e5939] [cursor=pointer]:
+                - text: Configure complex splits
+                - generic [ref=e5940]: pro
+              - button "Launch a community apprenticeship program" [ref=e5941] [cursor=pointer]
+              - button "touching grass id" [ref=e5942] [cursor=pointer]:
+                - text: touching grass
+                - generic [ref=e5943]: id
+              - button "Controlled demolition fund" [ref=e5944] [cursor=pointer]
+              - button "Fund my accountability community" [ref=e5945] [cursor=pointer]
+              - button "improving health id" [ref=e5946] [cursor=pointer]:
+                - text: improving health
+                - generic [ref=e5947]: id
+              - button "Audience building fund" [ref=e5948] [cursor=pointer]
+              - button "Fund my live events" [ref=e5949] [cursor=pointer]
+              - button "Build wealth management" [ref=e5950] [cursor=pointer]
+              - button "Create my creator fund" [ref=e5951] [cursor=pointer]
+              - button "Launch my beverage brand" [ref=e5952] [cursor=pointer]
+              - button "Streaming career fund" [ref=e5953] [cursor=pointer]
+              - button "Show me weird projects demo" [ref=e5954] [cursor=pointer]:
+                - text: Show me weird projects
+                - generic [ref=e5955]: demo
+              - button "Build a commitment device bold" [ref=e5956] [cursor=pointer]:
+                - text: Build a commitment device
+                - generic [ref=e5957]: bold
+              - button "Create a support group fun" [ref=e5958] [cursor=pointer]:
+                - text: Create a support group
+                - generic [ref=e5959]: fun
+              - button "Fund my beauty brand" [ref=e5960] [cursor=pointer]
+              - button "Build a skincare line" [ref=e5961] [cursor=pointer]
+              - button "Monetize my expertise popular" [ref=e5962] [cursor=pointer]:
+                - text: Monetize my expertise
+                - generic [ref=e5963]: popular
+              - button "Start my record label" [ref=e5964] [cursor=pointer]
+              - button "Launch my refugee support" [ref=e5965] [cursor=pointer]
+              - button "Run a project from my couch fun" [ref=e5966] [cursor=pointer]:
+                - text: Run a project from my couch
+                - generic [ref=e5967]: fun
+              - button "Build credit solutions" [ref=e5968] [cursor=pointer]
+              - button "Build an automated revenue machine bold" [ref=e5969] [cursor=pointer]:
+                - text: Build an automated revenue machine
+                - generic [ref=e5970]: bold
+              - button "Fund my oracle network pro" [ref=e5971] [cursor=pointer]:
+                - text: Fund my oracle network
+                - generic [ref=e5972]: pro
+              - button "Fund my game server" [ref=e5973] [cursor=pointer]
+              - button "Launch my small business" [ref=e5974] [cursor=pointer]
+              - button "creating things id" [ref=e5975] [cursor=pointer]:
+                - text: creating things
+                - generic [ref=e5976]: id
+              - button "Fund my subscription business" [ref=e5977] [cursor=pointer]
+              - button "Fire and forget funding fun" [ref=e5978] [cursor=pointer]:
+                - text: Fire and forget funding
+                - generic [ref=e5979]: fun
+              - button "Build a betting pool for my friends popular" [ref=e5980] [cursor=pointer]:
+                - text: Build a betting pool for my friends
+                - generic [ref=e5981]: popular
+              - button "Launch my integration platform bold" [ref=e5982] [cursor=pointer]:
+                - text: Launch my integration platform
+                - generic [ref=e5983]: bold
+            - generic [ref=e5984]:
+              - button "Build a neighborhood app" [ref=e5985] [cursor=pointer]
+              - button "Wealth generation protocol bold" [ref=e5986] [cursor=pointer]:
+                - text: Wealth generation protocol
+                - generic [ref=e5987]: bold
+              - button "Fund my content creation popular" [ref=e5988] [cursor=pointer]:
+                - text: Fund my content creation
+                - generic [ref=e5989]: popular
+              - button "Build on JB primitives pro" [ref=e5990] [cursor=pointer]:
+                - text: Build on JB primitives
+                - generic [ref=e5991]: pro
+              - button "Back an indie developer" [ref=e5992] [cursor=pointer]
+              - button "Relief fund for anyone" [ref=e5993] [cursor=pointer]
+              - button "Launch my podcast network" [ref=e5994] [cursor=pointer]
+              - button "Launch my marketplace" [ref=e5995] [cursor=pointer]
+              - button "Create sports analytics" [ref=e5996] [cursor=pointer]
+              - button "Configure complex splits pro" [ref=e5997] [cursor=pointer]:
+                - text: Configure complex splits
+                - generic [ref=e5998]: pro
+              - button "Launch a community apprenticeship program" [ref=e5999] [cursor=pointer]
+              - button "touching grass id" [ref=e6000] [cursor=pointer]:
+                - text: touching grass
+                - generic [ref=e6001]: id
+              - button "Controlled demolition fund" [ref=e6002] [cursor=pointer]
+              - button "Fund my accountability community" [ref=e6003] [cursor=pointer]
+              - button "improving health id" [ref=e6004] [cursor=pointer]:
+                - text: improving health
+                - generic [ref=e6005]: id
+              - button "Audience building fund" [ref=e6006] [cursor=pointer]
+              - button "Fund my live events" [ref=e6007] [cursor=pointer]
+              - button "Build wealth management" [ref=e6008] [cursor=pointer]
+              - button "Create my creator fund" [ref=e6009] [cursor=pointer]
+              - button "Launch my beverage brand" [ref=e6010] [cursor=pointer]
+              - button "Streaming career fund" [ref=e6011] [cursor=pointer]
+              - button "Show me weird projects demo" [ref=e6012] [cursor=pointer]:
+                - text: Show me weird projects
+                - generic [ref=e6013]: demo
+              - button "Build a commitment device bold" [ref=e6014] [cursor=pointer]:
+                - text: Build a commitment device
+                - generic [ref=e6015]: bold
+              - button "Create a support group fun" [ref=e6016] [cursor=pointer]:
+                - text: Create a support group
+                - generic [ref=e6017]: fun
+              - button "Fund my beauty brand" [ref=e6018] [cursor=pointer]
+              - button "Build a skincare line" [ref=e6019] [cursor=pointer]
+              - button "Monetize my expertise popular" [ref=e6020] [cursor=pointer]:
+                - text: Monetize my expertise
+                - generic [ref=e6021]: popular
+              - button "Start my record label" [ref=e6022] [cursor=pointer]
+              - button "Launch my refugee support" [ref=e6023] [cursor=pointer]
+              - button "Run a project from my couch fun" [ref=e6024] [cursor=pointer]:
+                - text: Run a project from my couch
+                - generic [ref=e6025]: fun
+              - button "Build credit solutions" [ref=e6026] [cursor=pointer]
+              - button "Build an automated revenue machine bold" [ref=e6027] [cursor=pointer]:
+                - text: Build an automated revenue machine
+                - generic [ref=e6028]: bold
+              - button "Fund my oracle network pro" [ref=e6029] [cursor=pointer]:
+                - text: Fund my oracle network
+                - generic [ref=e6030]: pro
+              - button "Fund my game server" [ref=e6031] [cursor=pointer]
+              - button "Launch my small business" [ref=e6032] [cursor=pointer]
+              - button "creating things id" [ref=e6033] [cursor=pointer]:
+                - text: creating things
+                - generic [ref=e6034]: id
+              - button "Fund my subscription business" [ref=e6035] [cursor=pointer]
+              - button "Fire and forget funding fun" [ref=e6036] [cursor=pointer]:
+                - text: Fire and forget funding
+                - generic [ref=e6037]: fun
+              - button "Build a betting pool for my friends popular" [ref=e6038] [cursor=pointer]:
+                - text: Build a betting pool for my friends
+                - generic [ref=e6039]: popular
+              - button "Launch my integration platform bold" [ref=e6040] [cursor=pointer]:
+                - text: Launch my integration platform
+                - generic [ref=e6041]: bold
+            - generic [ref=e6042]:
+              - button "Build a neighborhood app" [ref=e6043] [cursor=pointer]
+              - button "Wealth generation protocol bold" [ref=e6044] [cursor=pointer]:
+                - text: Wealth generation protocol
+                - generic [ref=e6045]: bold
+              - button "Fund my content creation popular" [ref=e6046] [cursor=pointer]:
+                - text: Fund my content creation
+                - generic [ref=e6047]: popular
+              - button "Build on JB primitives pro" [ref=e6048] [cursor=pointer]:
+                - text: Build on JB primitives
+                - generic [ref=e6049]: pro
+              - button "Back an indie developer" [ref=e6050] [cursor=pointer]
+              - button "Relief fund for anyone" [ref=e6051] [cursor=pointer]
+              - button "Launch my podcast network" [ref=e6052] [cursor=pointer]
+              - button "Launch my marketplace" [ref=e6053] [cursor=pointer]
+              - button "Create sports analytics" [ref=e6054] [cursor=pointer]
+              - button "Configure complex splits pro" [ref=e6055] [cursor=pointer]:
+                - text: Configure complex splits
+                - generic [ref=e6056]: pro
+              - button "Launch a community apprenticeship program" [ref=e6057] [cursor=pointer]
+              - button "touching grass id" [ref=e6058] [cursor=pointer]:
+                - text: touching grass
+                - generic [ref=e6059]: id
+              - button "Controlled demolition fund" [ref=e6060] [cursor=pointer]
+              - button "Fund my accountability community" [ref=e6061] [cursor=pointer]
+              - button "improving health id" [ref=e6062] [cursor=pointer]:
+                - text: improving health
+                - generic [ref=e6063]: id
+              - button "Audience building fund" [ref=e6064] [cursor=pointer]
+              - button "Fund my live events" [ref=e6065] [cursor=pointer]
+              - button "Build wealth management" [ref=e6066] [cursor=pointer]
+              - button "Create my creator fund" [ref=e6067] [cursor=pointer]
+              - button "Launch my beverage brand" [ref=e6068] [cursor=pointer]
+              - button "Streaming career fund" [ref=e6069] [cursor=pointer]
+              - button "Show me weird projects demo" [ref=e6070] [cursor=pointer]:
+                - text: Show me weird projects
+                - generic [ref=e6071]: demo
+              - button "Build a commitment device bold" [ref=e6072] [cursor=pointer]:
+                - text: Build a commitment device
+                - generic [ref=e6073]: bold
+              - button "Create a support group fun" [ref=e6074] [cursor=pointer]:
+                - text: Create a support group
+                - generic [ref=e6075]: fun
+              - button "Fund my beauty brand" [ref=e6076] [cursor=pointer]
+              - button "Build a skincare line" [ref=e6077] [cursor=pointer]
+              - button "Monetize my expertise popular" [ref=e6078] [cursor=pointer]:
+                - text: Monetize my expertise
+                - generic [ref=e6079]: popular
+              - button "Start my record label" [ref=e6080] [cursor=pointer]
+              - button "Launch my refugee support" [ref=e6081] [cursor=pointer]
+              - button "Run a project from my couch fun" [ref=e6082] [cursor=pointer]:
+                - text: Run a project from my couch
+                - generic [ref=e6083]: fun
+              - button "Build credit solutions" [ref=e6084] [cursor=pointer]
+              - button "Build an automated revenue machine bold" [ref=e6085] [cursor=pointer]:
+                - text: Build an automated revenue machine
+                - generic [ref=e6086]: bold
+              - button "Fund my oracle network pro" [ref=e6087] [cursor=pointer]:
+                - text: Fund my oracle network
+                - generic [ref=e6088]: pro
+              - button "Fund my game server" [ref=e6089] [cursor=pointer]
+              - button "Launch my small business" [ref=e6090] [cursor=pointer]
+              - button "creating things id" [ref=e6091] [cursor=pointer]:
+                - text: creating things
+                - generic [ref=e6092]: id
+              - button "Fund my subscription business" [ref=e6093] [cursor=pointer]
+              - button "Fire and forget funding fun" [ref=e6094] [cursor=pointer]:
+                - text: Fire and forget funding
+                - generic [ref=e6095]: fun
+              - button "Build a betting pool for my friends popular" [ref=e6096] [cursor=pointer]:
+                - text: Build a betting pool for my friends
+                - generic [ref=e6097]: popular
+              - button "Launch my integration platform bold" [ref=e6098] [cursor=pointer]:
+                - text: Launch my integration platform
+                - generic [ref=e6099]: bold
+            - generic [ref=e6100]:
+              - button "Build a neighborhood app" [ref=e6101] [cursor=pointer]
+              - button "Wealth generation protocol bold" [ref=e6102] [cursor=pointer]:
+                - text: Wealth generation protocol
+                - generic [ref=e6103]: bold
+              - button "Fund my content creation popular" [ref=e6104] [cursor=pointer]:
+                - text: Fund my content creation
+                - generic [ref=e6105]: popular
+              - button "Build on JB primitives pro" [ref=e6106] [cursor=pointer]:
+                - text: Build on JB primitives
+                - generic [ref=e6107]: pro
+              - button "Back an indie developer" [ref=e6108] [cursor=pointer]
+              - button "Relief fund for anyone" [ref=e6109] [cursor=pointer]
+              - button "Launch my podcast network" [ref=e6110] [cursor=pointer]
+              - button "Launch my marketplace" [ref=e6111] [cursor=pointer]
+              - button "Create sports analytics" [ref=e6112] [cursor=pointer]
+              - button "Configure complex splits pro" [ref=e6113] [cursor=pointer]:
+                - text: Configure complex splits
+                - generic [ref=e6114]: pro
+              - button "Launch a community apprenticeship program" [ref=e6115] [cursor=pointer]
+              - button "touching grass id" [ref=e6116] [cursor=pointer]:
+                - text: touching grass
+                - generic [ref=e6117]: id
+              - button "Controlled demolition fund" [ref=e6118] [cursor=pointer]
+              - button "Fund my accountability community" [ref=e6119] [cursor=pointer]
+              - button "improving health id" [ref=e6120] [cursor=pointer]:
+                - text: improving health
+                - generic [ref=e6121]: id
+              - button "Audience building fund" [ref=e6122] [cursor=pointer]
+              - button "Fund my live events" [ref=e6123] [cursor=pointer]
+              - button "Build wealth management" [ref=e6124] [cursor=pointer]
+              - button "Create my creator fund" [ref=e6125] [cursor=pointer]
+              - button "Launch my beverage brand" [ref=e6126] [cursor=pointer]
+              - button "Streaming career fund" [ref=e6127] [cursor=pointer]
+              - button "Show me weird projects demo" [ref=e6128] [cursor=pointer]:
+                - text: Show me weird projects
+                - generic [ref=e6129]: demo
+              - button "Build a commitment device bold" [ref=e6130] [cursor=pointer]:
+                - text: Build a commitment device
+                - generic [ref=e6131]: bold
+              - button "Create a support group fun" [ref=e6132] [cursor=pointer]:
+                - text: Create a support group
+                - generic [ref=e6133]: fun
+              - button "Fund my beauty brand" [ref=e6134] [cursor=pointer]
+              - button "Build a skincare line" [ref=e6135] [cursor=pointer]
+              - button "Monetize my expertise popular" [ref=e6136] [cursor=pointer]:
+                - text: Monetize my expertise
+                - generic [ref=e6137]: popular
+              - button "Start my record label" [ref=e6138] [cursor=pointer]
+              - button "Launch my refugee support" [ref=e6139] [cursor=pointer]
+              - button "Run a project from my couch fun" [ref=e6140] [cursor=pointer]:
+                - text: Run a project from my couch
+                - generic [ref=e6141]: fun
+              - button "Build credit solutions" [ref=e6142] [cursor=pointer]
+              - button "Build an automated revenue machine bold" [ref=e6143] [cursor=pointer]:
+                - text: Build an automated revenue machine
+                - generic [ref=e6144]: bold
+              - button "Fund my oracle network pro" [ref=e6145] [cursor=pointer]:
+                - text: Fund my oracle network
+                - generic [ref=e6146]: pro
+              - button "Fund my game server" [ref=e6147] [cursor=pointer]
+              - button "Launch my small business" [ref=e6148] [cursor=pointer]
+              - button "creating things id" [ref=e6149] [cursor=pointer]:
+                - text: creating things
+                - generic [ref=e6150]: id
+              - button "Fund my subscription business" [ref=e6151] [cursor=pointer]
+              - button "Fire and forget funding fun" [ref=e6152] [cursor=pointer]:
+                - text: Fire and forget funding
+                - generic [ref=e6153]: fun
+              - button "Build a betting pool for my friends popular" [ref=e6154] [cursor=pointer]:
+                - text: Build a betting pool for my friends
+                - generic [ref=e6155]: popular
+              - button "Launch my integration platform bold" [ref=e6156] [cursor=pointer]:
+                - text: Launch my integration platform
+                - generic [ref=e6157]: bold
+          - generic [ref=e6158]:
+            - generic [ref=e6159]:
+              - button "IPO preparation fund bold" [ref=e6160] [cursor=pointer]:
+                - text: IPO preparation fund
+                - generic [ref=e6161]: bold
+              - button "Outdoor community space" [ref=e6162] [cursor=pointer]
+              - button "Disrupt everything bold" [ref=e6163] [cursor=pointer]:
+                - text: Disrupt everything
+                - generic [ref=e6164]: bold
+              - button "Host multiple projects on my site" [ref=e6165] [cursor=pointer]
+              - button "Anonymous art fund" [ref=e6166] [cursor=pointer]
+              - button "Start my agency" [ref=e6167] [cursor=pointer]
+              - button "Build rehabilitation programs" [ref=e6168] [cursor=pointer]
+              - button "Create fractional ownership bold" [ref=e6169] [cursor=pointer]:
+                - text: Create fractional ownership
+                - generic [ref=e6170]: bold
+              - button "Fund my accounting software" [ref=e6171] [cursor=pointer]
+              - button "Content creator treasury" [ref=e6172] [cursor=pointer]
+              - button "Build biomedical research" [ref=e6173] [cursor=pointer]
+              - button "JB as backend for my dapp pro" [ref=e6174] [cursor=pointer]:
+                - text: JB as backend for my dapp
+                - generic [ref=e6175]: pro
+              - button "Create chemistry research" [ref=e6176] [cursor=pointer]
+              - button "Launch my streetwear popular" [ref=e6177] [cursor=pointer]:
+                - text: Launch my streetwear
+                - generic [ref=e6178]: popular
+              - button "Create a recipe app" [ref=e6179] [cursor=pointer]
+              - button "Launch my private network" [ref=e6180] [cursor=pointer]
+              - button "Launch my fashion tech" [ref=e6181] [cursor=pointer]
+              - button "Fund my community garden" [ref=e6182] [cursor=pointer]
+              - button "Documentary series treasury" [ref=e6183] [cursor=pointer]
+              - button "Fund my open source library popular" [ref=e6184] [cursor=pointer]:
+                - text: Fund my open source library
+                - generic [ref=e6185]: popular
+              - button "Create a fundraising platform" [ref=e6186] [cursor=pointer]
+              - button "Create autonomous systems bold" [ref=e6187] [cursor=pointer]:
+                - text: Create autonomous systems
+                - generic [ref=e6188]: bold
+              - button "Study dark matter" [ref=e6189] [cursor=pointer]
+              - button "Start a community mentorship business" [ref=e6190] [cursor=pointer]
+              - button "Community garden expansion" [ref=e6191] [cursor=pointer]
+              - button "Build electric vehicles" [ref=e6192] [cursor=pointer]
+              - button "Create royalty distribution" [ref=e6193] [cursor=pointer]
+              - button "Profit margins on steroids bold" [ref=e6194] [cursor=pointer]:
+                - text: Profit margins on steroids
+                - generic [ref=e6195]: bold
+              - button "How do supporters get rewarded? popular" [ref=e6196] [cursor=pointer]:
+                - text: How do supporters get rewarded?
+                - generic [ref=e6197]: popular
+              - button "Build once collect forever" [ref=e6198] [cursor=pointer]
+              - button "Privacy-first funding pro" [ref=e6199] [cursor=pointer]:
+                - text: Privacy-first funding
+                - generic [ref=e6200]: pro
+              - button "Is it free to create a project? popular" [ref=e6201] [cursor=pointer]:
+                - text: Is it free to create a project?
+                - generic [ref=e6202]: popular
+              - button "Disrupt for fun fun" [ref=e6203] [cursor=pointer]:
+                - text: Disrupt for fun
+                - generic [ref=e6204]: fun
+              - button "Set up revenue sharing" [ref=e6205] [cursor=pointer]
+              - button "Fund my public art" [ref=e6206] [cursor=pointer]
+              - button "Start my vintage arcade" [ref=e6207] [cursor=pointer]
+              - button "Unicorn trajectory bold" [ref=e6208] [cursor=pointer]:
+                - text: Unicorn trajectory
+                - generic [ref=e6209]: bold
+              - button "Automated revenue streams bold" [ref=e6210] [cursor=pointer]:
+                - text: Automated revenue streams
+                - generic [ref=e6211]: bold
+              - button "Create an auction game fun" [ref=e6212] [cursor=pointer]:
+                - text: Create an auction game
+                - generic [ref=e6213]: fun
+              - button "Fund my indie game popular" [ref=e6214] [cursor=pointer]:
+                - text: Fund my indie game
+                - generic [ref=e6215]: popular
+            - generic [ref=e6216]:
+              - button "IPO preparation fund bold" [ref=e6217] [cursor=pointer]:
+                - text: IPO preparation fund
+                - generic [ref=e6218]: bold
+              - button "Outdoor community space" [ref=e6219] [cursor=pointer]
+              - button "Disrupt everything bold" [ref=e6220] [cursor=pointer]:
+                - text: Disrupt everything
+                - generic [ref=e6221]: bold
+              - button "Host multiple projects on my site" [ref=e6222] [cursor=pointer]
+              - button "Anonymous art fund" [ref=e6223] [cursor=pointer]
+              - button "Start my agency" [ref=e6224] [cursor=pointer]
+              - button "Build rehabilitation programs" [ref=e6225] [cursor=pointer]
+              - button "Create fractional ownership bold" [ref=e6226] [cursor=pointer]:
+                - text: Create fractional ownership
+                - generic [ref=e6227]: bold
+              - button "Fund my accounting software" [ref=e6228] [cursor=pointer]
+              - button "Content creator treasury" [ref=e6229] [cursor=pointer]
+              - button "Build biomedical research" [ref=e6230] [cursor=pointer]
+              - button "JB as backend for my dapp pro" [ref=e6231] [cursor=pointer]:
+                - text: JB as backend for my dapp
+                - generic [ref=e6232]: pro
+              - button "Create chemistry research" [ref=e6233] [cursor=pointer]
+              - button "Launch my streetwear popular" [ref=e6234] [cursor=pointer]:
+                - text: Launch my streetwear
+                - generic [ref=e6235]: popular
+              - button "Create a recipe app" [ref=e6236] [cursor=pointer]
+              - button "Launch my private network" [ref=e6237] [cursor=pointer]
+              - button "Launch my fashion tech" [ref=e6238] [cursor=pointer]
+              - button "Fund my community garden" [ref=e6239] [cursor=pointer]
+              - button "Documentary series treasury" [ref=e6240] [cursor=pointer]
+              - button "Fund my open source library popular" [ref=e6241] [cursor=pointer]:
+                - text: Fund my open source library
+                - generic [ref=e6242]: popular
+              - button "Create a fundraising platform" [ref=e6243] [cursor=pointer]
+              - button "Create autonomous systems bold" [ref=e6244] [cursor=pointer]:
+                - text: Create autonomous systems
+                - generic [ref=e6245]: bold
+              - button "Study dark matter" [ref=e6246] [cursor=pointer]
+              - button "Start a community mentorship business" [ref=e6247] [cursor=pointer]
+              - button "Community garden expansion" [ref=e6248] [cursor=pointer]
+              - button "Build electric vehicles" [ref=e6249] [cursor=pointer]
+              - button "Create royalty distribution" [ref=e6250] [cursor=pointer]
+              - button "Profit margins on steroids bold" [ref=e6251] [cursor=pointer]:
+                - text: Profit margins on steroids
+                - generic [ref=e6252]: bold
+              - button "How do supporters get rewarded? popular" [ref=e6253] [cursor=pointer]:
+                - text: How do supporters get rewarded?
+                - generic [ref=e6254]: popular
+              - button "Build once collect forever" [ref=e6255] [cursor=pointer]
+              - button "Privacy-first funding pro" [ref=e6256] [cursor=pointer]:
+                - text: Privacy-first funding
+                - generic [ref=e6257]: pro
+              - button "Is it free to create a project? popular" [ref=e6258] [cursor=pointer]:
+                - text: Is it free to create a project?
+                - generic [ref=e6259]: popular
+              - button "Disrupt for fun fun" [ref=e6260] [cursor=pointer]:
+                - text: Disrupt for fun
+                - generic [ref=e6261]: fun
+              - button "Set up revenue sharing" [ref=e6262] [cursor=pointer]
+              - button "Fund my public art" [ref=e6263] [cursor=pointer]
+              - button "Start my vintage arcade" [ref=e6264] [cursor=pointer]
+              - button "Unicorn trajectory bold" [ref=e6265] [cursor=pointer]:
+                - text: Unicorn trajectory
+                - generic [ref=e6266]: bold
+              - button "Automated revenue streams bold" [ref=e6267] [cursor=pointer]:
+                - text: Automated revenue streams
+                - generic [ref=e6268]: bold
+              - button "Create an auction game fun" [ref=e6269] [cursor=pointer]:
+                - text: Create an auction game
+                - generic [ref=e6270]: fun
+              - button "Fund my indie game popular" [ref=e6271] [cursor=pointer]:
+                - text: Fund my indie game
+                - generic [ref=e6272]: popular
+            - generic [ref=e6273]:
+              - button "IPO preparation fund bold" [ref=e6274] [cursor=pointer]:
+                - text: IPO preparation fund
+                - generic [ref=e6275]: bold
+              - button "Outdoor community space" [ref=e6276] [cursor=pointer]
+              - button "Disrupt everything bold" [ref=e6277] [cursor=pointer]:
+                - text: Disrupt everything
+                - generic [ref=e6278]: bold
+              - button "Host multiple projects on my site" [ref=e6279] [cursor=pointer]
+              - button "Anonymous art fund" [ref=e6280] [cursor=pointer]
+              - button "Start my agency" [ref=e6281] [cursor=pointer]
+              - button "Build rehabilitation programs" [ref=e6282] [cursor=pointer]
+              - button "Create fractional ownership bold" [ref=e6283] [cursor=pointer]:
+                - text: Create fractional ownership
+                - generic [ref=e6284]: bold
+              - button "Fund my accounting software" [ref=e6285] [cursor=pointer]
+              - button "Content creator treasury" [ref=e6286] [cursor=pointer]
+              - button "Build biomedical research" [ref=e6287] [cursor=pointer]
+              - button "JB as backend for my dapp pro" [ref=e6288] [cursor=pointer]:
+                - text: JB as backend for my dapp
+                - generic [ref=e6289]: pro
+              - button "Create chemistry research" [ref=e6290] [cursor=pointer]
+              - button "Launch my streetwear popular" [ref=e6291] [cursor=pointer]:
+                - text: Launch my streetwear
+                - generic [ref=e6292]: popular
+              - button "Create a recipe app" [ref=e6293] [cursor=pointer]
+              - button "Launch my private network" [ref=e6294] [cursor=pointer]
+              - button "Launch my fashion tech" [ref=e6295] [cursor=pointer]
+              - button "Fund my community garden" [ref=e6296] [cursor=pointer]
+              - button "Documentary series treasury" [ref=e6297] [cursor=pointer]
+              - button "Fund my open source library popular" [ref=e6298] [cursor=pointer]:
+                - text: Fund my open source library
+                - generic [ref=e6299]: popular
+              - button "Create a fundraising platform" [ref=e6300] [cursor=pointer]
+              - button "Create autonomous systems bold" [ref=e6301] [cursor=pointer]:
+                - text: Create autonomous systems
+                - generic [ref=e6302]: bold
+              - button "Study dark matter" [ref=e6303] [cursor=pointer]
+              - button "Start a community mentorship business" [ref=e6304] [cursor=pointer]
+              - button "Community garden expansion" [ref=e6305] [cursor=pointer]
+              - button "Build electric vehicles" [ref=e6306] [cursor=pointer]
+              - button "Create royalty distribution" [ref=e6307] [cursor=pointer]
+              - button "Profit margins on steroids bold" [ref=e6308] [cursor=pointer]:
+                - text: Profit margins on steroids
+                - generic [ref=e6309]: bold
+              - button "How do supporters get rewarded? popular" [ref=e6310] [cursor=pointer]:
+                - text: How do supporters get rewarded?
+                - generic [ref=e6311]: popular
+              - button "Build once collect forever" [ref=e6312] [cursor=pointer]
+              - button "Privacy-first funding pro" [ref=e6313] [cursor=pointer]:
+                - text: Privacy-first funding
+                - generic [ref=e6314]: pro
+              - button "Is it free to create a project? popular" [ref=e6315] [cursor=pointer]:
+                - text: Is it free to create a project?
+                - generic [ref=e6316]: popular
+              - button "Disrupt for fun fun" [ref=e6317] [cursor=pointer]:
+                - text: Disrupt for fun
+                - generic [ref=e6318]: fun
+              - button "Set up revenue sharing" [ref=e6319] [cursor=pointer]
+              - button "Fund my public art" [ref=e6320] [cursor=pointer]
+              - button "Start my vintage arcade" [ref=e6321] [cursor=pointer]
+              - button "Unicorn trajectory bold" [ref=e6322] [cursor=pointer]:
+                - text: Unicorn trajectory
+                - generic [ref=e6323]: bold
+              - button "Automated revenue streams bold" [ref=e6324] [cursor=pointer]:
+                - text: Automated revenue streams
+                - generic [ref=e6325]: bold
+              - button "Create an auction game fun" [ref=e6326] [cursor=pointer]:
+                - text: Create an auction game
+                - generic [ref=e6327]: fun
+              - button "Fund my indie game popular" [ref=e6328] [cursor=pointer]:
+                - text: Fund my indie game
+                - generic [ref=e6329]: popular
+            - generic [ref=e6330]:
+              - button "IPO preparation fund bold" [ref=e6331] [cursor=pointer]:
+                - text: IPO preparation fund
+                - generic [ref=e6332]: bold
+              - button "Outdoor community space" [ref=e6333] [cursor=pointer]
+              - button "Disrupt everything bold" [ref=e6334] [cursor=pointer]:
+                - text: Disrupt everything
+                - generic [ref=e6335]: bold
+              - button "Host multiple projects on my site" [ref=e6336] [cursor=pointer]
+              - button "Anonymous art fund" [ref=e6337] [cursor=pointer]
+              - button "Start my agency" [ref=e6338] [cursor=pointer]
+              - button "Build rehabilitation programs" [ref=e6339] [cursor=pointer]
+              - button "Create fractional ownership bold" [ref=e6340] [cursor=pointer]:
+                - text: Create fractional ownership
+                - generic [ref=e6341]: bold
+              - button "Fund my accounting software" [ref=e6342] [cursor=pointer]
+              - button "Content creator treasury" [ref=e6343] [cursor=pointer]
+              - button "Build biomedical research" [ref=e6344] [cursor=pointer]
+              - button "JB as backend for my dapp pro" [ref=e6345] [cursor=pointer]:
+                - text: JB as backend for my dapp
+                - generic [ref=e6346]: pro
+              - button "Create chemistry research" [ref=e6347] [cursor=pointer]
+              - button "Launch my streetwear popular" [ref=e6348] [cursor=pointer]:
+                - text: Launch my streetwear
+                - generic [ref=e6349]: popular
+              - button "Create a recipe app" [ref=e6350] [cursor=pointer]
+              - button "Launch my private network" [ref=e6351] [cursor=pointer]
+              - button "Launch my fashion tech" [ref=e6352] [cursor=pointer]
+              - button "Fund my community garden" [ref=e6353] [cursor=pointer]
+              - button "Documentary series treasury" [ref=e6354] [cursor=pointer]
+              - button "Fund my open source library popular" [ref=e6355] [cursor=pointer]:
+                - text: Fund my open source library
+                - generic [ref=e6356]: popular
+              - button "Create a fundraising platform" [ref=e6357] [cursor=pointer]
+              - button "Create autonomous systems bold" [ref=e6358] [cursor=pointer]:
+                - text: Create autonomous systems
+                - generic [ref=e6359]: bold
+              - button "Study dark matter" [ref=e6360] [cursor=pointer]
+              - button "Start a community mentorship business" [ref=e6361] [cursor=pointer]
+              - button "Community garden expansion" [ref=e6362] [cursor=pointer]
+              - button "Build electric vehicles" [ref=e6363] [cursor=pointer]
+              - button "Create royalty distribution" [ref=e6364] [cursor=pointer]
+              - button "Profit margins on steroids bold" [ref=e6365] [cursor=pointer]:
+                - text: Profit margins on steroids
+                - generic [ref=e6366]: bold
+              - button "How do supporters get rewarded? popular" [ref=e6367] [cursor=pointer]:
+                - text: How do supporters get rewarded?
+                - generic [ref=e6368]: popular
+              - button "Build once collect forever" [ref=e6369] [cursor=pointer]
+              - button "Privacy-first funding pro" [ref=e6370] [cursor=pointer]:
+                - text: Privacy-first funding
+                - generic [ref=e6371]: pro
+              - button "Is it free to create a project? popular" [ref=e6372] [cursor=pointer]:
+                - text: Is it free to create a project?
+                - generic [ref=e6373]: popular
+              - button "Disrupt for fun fun" [ref=e6374] [cursor=pointer]:
+                - text: Disrupt for fun
+                - generic [ref=e6375]: fun
+              - button "Set up revenue sharing" [ref=e6376] [cursor=pointer]
+              - button "Fund my public art" [ref=e6377] [cursor=pointer]
+              - button "Start my vintage arcade" [ref=e6378] [cursor=pointer]
+              - button "Unicorn trajectory bold" [ref=e6379] [cursor=pointer]:
+                - text: Unicorn trajectory
+                - generic [ref=e6380]: bold
+              - button "Automated revenue streams bold" [ref=e6381] [cursor=pointer]:
+                - text: Automated revenue streams
+                - generic [ref=e6382]: bold
+              - button "Create an auction game fun" [ref=e6383] [cursor=pointer]:
+                - text: Create an auction game
+                - generic [ref=e6384]: fun
+              - button "Fund my indie game popular" [ref=e6385] [cursor=pointer]:
+                - text: Fund my indie game
+                - generic [ref=e6386]: popular
+            - generic [ref=e6387]:
+              - button "IPO preparation fund bold" [ref=e6388] [cursor=pointer]:
+                - text: IPO preparation fund
+                - generic [ref=e6389]: bold
+              - button "Outdoor community space" [ref=e6390] [cursor=pointer]
+              - button "Disrupt everything bold" [ref=e6391] [cursor=pointer]:
+                - text: Disrupt everything
+                - generic [ref=e6392]: bold
+              - button "Host multiple projects on my site" [ref=e6393] [cursor=pointer]
+              - button "Anonymous art fund" [ref=e6394] [cursor=pointer]
+              - button "Start my agency" [ref=e6395] [cursor=pointer]
+              - button "Build rehabilitation programs" [ref=e6396] [cursor=pointer]
+              - button "Create fractional ownership bold" [ref=e6397] [cursor=pointer]:
+                - text: Create fractional ownership
+                - generic [ref=e6398]: bold
+              - button "Fund my accounting software" [ref=e6399] [cursor=pointer]
+              - button "Content creator treasury" [ref=e6400] [cursor=pointer]
+              - button "Build biomedical research" [ref=e6401] [cursor=pointer]
+              - button "JB as backend for my dapp pro" [ref=e6402] [cursor=pointer]:
+                - text: JB as backend for my dapp
+                - generic [ref=e6403]: pro
+              - button "Create chemistry research" [ref=e6404] [cursor=pointer]
+              - button "Launch my streetwear popular" [ref=e6405] [cursor=pointer]:
+                - text: Launch my streetwear
+                - generic [ref=e6406]: popular
+              - button "Create a recipe app" [ref=e6407] [cursor=pointer]
+              - button "Launch my private network" [ref=e6408] [cursor=pointer]
+              - button "Launch my fashion tech" [ref=e6409] [cursor=pointer]
+              - button "Fund my community garden" [ref=e6410] [cursor=pointer]
+              - button "Documentary series treasury" [ref=e6411] [cursor=pointer]
+              - button "Fund my open source library popular" [ref=e6412] [cursor=pointer]:
+                - text: Fund my open source library
+                - generic [ref=e6413]: popular
+              - button "Create a fundraising platform" [ref=e6414] [cursor=pointer]
+              - button "Create autonomous systems bold" [ref=e6415] [cursor=pointer]:
+                - text: Create autonomous systems
+                - generic [ref=e6416]: bold
+              - button "Study dark matter" [ref=e6417] [cursor=pointer]
+              - button "Start a community mentorship business" [ref=e6418] [cursor=pointer]
+              - button "Community garden expansion" [ref=e6419] [cursor=pointer]
+              - button "Build electric vehicles" [ref=e6420] [cursor=pointer]
+              - button "Create royalty distribution" [ref=e6421] [cursor=pointer]
+              - button "Profit margins on steroids bold" [ref=e6422] [cursor=pointer]:
+                - text: Profit margins on steroids
+                - generic [ref=e6423]: bold
+              - button "How do supporters get rewarded? popular" [ref=e6424] [cursor=pointer]:
+                - text: How do supporters get rewarded?
+                - generic [ref=e6425]: popular
+              - button "Build once collect forever" [ref=e6426] [cursor=pointer]
+              - button "Privacy-first funding pro" [ref=e6427] [cursor=pointer]:
+                - text: Privacy-first funding
+                - generic [ref=e6428]: pro
+              - button "Is it free to create a project? popular" [ref=e6429] [cursor=pointer]:
+                - text: Is it free to create a project?
+                - generic [ref=e6430]: popular
+              - button "Disrupt for fun fun" [ref=e6431] [cursor=pointer]:
+                - text: Disrupt for fun
+                - generic [ref=e6432]: fun
+              - button "Set up revenue sharing" [ref=e6433] [cursor=pointer]
+              - button "Fund my public art" [ref=e6434] [cursor=pointer]
+              - button "Start my vintage arcade" [ref=e6435] [cursor=pointer]
+              - button "Unicorn trajectory bold" [ref=e6436] [cursor=pointer]:
+                - text: Unicorn trajectory
+                - generic [ref=e6437]: bold
+              - button "Automated revenue streams bold" [ref=e6438] [cursor=pointer]:
+                - text: Automated revenue streams
+                - generic [ref=e6439]: bold
+              - button "Create an auction game fun" [ref=e6440] [cursor=pointer]:
+                - text: Create an auction game
+                - generic [ref=e6441]: fun
+              - button "Fund my indie game popular" [ref=e6442] [cursor=pointer]:
+                - text: Fund my indie game
+                - generic [ref=e6443]: popular
+          - generic [ref=e6444]:
+            - generic [ref=e6445]:
+              - button "Fund my licensing platform" [ref=e6446] [cursor=pointer]
+              - button "Can I fundraise for a collective?" [ref=e6447] [cursor=pointer]
+              - button "Fund my online community popular" [ref=e6448] [cursor=pointer]:
+                - text: Fund my online community
+                - generic [ref=e6449]: popular
+              - button "Fund my tutorial series" [ref=e6450] [cursor=pointer]
+              - button "Fund my telescope time" [ref=e6451] [cursor=pointer]
+              - button "Chaotic good funding fun" [ref=e6452] [cursor=pointer]:
+                - text: Chaotic good funding
+                - generic [ref=e6453]: fun
+              - button "On-chain only presence pro" [ref=e6454] [cursor=pointer]:
+                - text: On-chain only presence
+                - generic [ref=e6455]: pro
+              - button "Create employment programs" [ref=e6456] [cursor=pointer]
+              - button "What if money wasn't the problem? fun" [ref=e6457] [cursor=pointer]:
+                - text: What if money wasn't the problem?
+                - generic [ref=e6458]: fun
+              - button "Build ethical AI" [ref=e6459] [cursor=pointer]
+              - button "Neighborhood shop fund" [ref=e6460] [cursor=pointer]
+              - button "Start a meme coin with utility" [ref=e6461] [cursor=pointer]
+              - button "Create AI for good" [ref=e6462] [cursor=pointer]
+              - button "Create serverless platform pro" [ref=e6463] [cursor=pointer]:
+                - text: Create serverless platform
+                - generic [ref=e6464]: pro
+              - button "Bonding curve experiments" [ref=e6465] [cursor=pointer]
+              - button "Fund my scientific research bold" [ref=e6466] [cursor=pointer]:
+                - text: Fund my scientific research
+                - generic [ref=e6467]: bold
+              - button "Build a paid learning community" [ref=e6468] [cursor=pointer]
+              - button "Build a membership platform popular" [ref=e6469] [cursor=pointer]:
+                - text: Build a membership platform
+                - generic [ref=e6470]: popular
+              - button "Launch my food app" [ref=e6471] [cursor=pointer]
+              - button "Fund my bakery" [ref=e6472] [cursor=pointer]
+              - button "Anonymous treasury pro" [ref=e6473] [cursor=pointer]:
+                - text: Anonymous treasury
+                - generic [ref=e6474]: pro
+              - button "Simple service business" [ref=e6475] [cursor=pointer]
+              - button "Build sustainable fashion" [ref=e6476] [cursor=pointer]
+              - button "Build action sports media" [ref=e6477] [cursor=pointer]
+              - button "Launch my talent platform" [ref=e6478] [cursor=pointer]
+              - button "Clout treasury" [ref=e6479] [cursor=pointer]
+              - button "Haunted house collective fun" [ref=e6480] [cursor=pointer]:
+                - text: Haunted house collective
+                - generic [ref=e6481]: fun
+              - button "Revenue rocket ship bold" [ref=e6482] [cursor=pointer]:
+                - text: Revenue rocket ship
+                - generic [ref=e6483]: bold
+              - button "Traditional business model" [ref=e6484] [cursor=pointer]
+              - button "Compound wealth fund bold" [ref=e6485] [cursor=pointer]:
+                - text: Compound wealth fund
+                - generic [ref=e6486]: bold
+              - button "Fund my weird art project fun" [ref=e6487] [cursor=pointer]:
+                - text: Fund my weird art project
+                - generic [ref=e6488]: fun
+              - button "What are people building? popular" [ref=e6489] [cursor=pointer]:
+                - text: What are people building?
+                - generic [ref=e6490]: popular
+              - button "Random acts of funding fun" [ref=e6491] [cursor=pointer]:
+                - text: Random acts of funding
+                - generic [ref=e6492]: fun
+              - button "Build a maps alternative" [ref=e6493] [cursor=pointer]
+              - button "Build autonomous vehicles bold" [ref=e6494] [cursor=pointer]:
+                - text: Build autonomous vehicles
+                - generic [ref=e6495]: bold
+              - button "Launch my advertising platform" [ref=e6496] [cursor=pointer]
+              - button "Fund my neobank bold" [ref=e6497] [cursor=pointer]:
+                - text: Fund my neobank
+                - generic [ref=e6498]: bold
+              - button "Fund my protocol bold" [ref=e6499] [cursor=pointer]:
+                - text: Fund my protocol
+                - generic [ref=e6500]: bold
+              - button "Walk me through a payment demo" [ref=e6501] [cursor=pointer]:
+                - text: Walk me through a payment
+                - generic [ref=e6502]: demo
+              - button "Show me successful projects popular" [ref=e6503] [cursor=pointer]:
+                - text: Show me successful projects
+                - generic [ref=e6504]: popular
+            - generic [ref=e6505]:
+              - button "Fund my licensing platform" [ref=e6506] [cursor=pointer]
+              - button "Can I fundraise for a collective?" [ref=e6507] [cursor=pointer]
+              - button "Fund my online community popular" [ref=e6508] [cursor=pointer]:
+                - text: Fund my online community
+                - generic [ref=e6509]: popular
+              - button "Fund my tutorial series" [ref=e6510] [cursor=pointer]
+              - button "Fund my telescope time" [ref=e6511] [cursor=pointer]
+              - button "Chaotic good funding fun" [ref=e6512] [cursor=pointer]:
+                - text: Chaotic good funding
+                - generic [ref=e6513]: fun
+              - button "On-chain only presence pro" [ref=e6514] [cursor=pointer]:
+                - text: On-chain only presence
+                - generic [ref=e6515]: pro
+              - button "Create employment programs" [ref=e6516] [cursor=pointer]
+              - button "What if money wasn't the problem? fun" [ref=e6517] [cursor=pointer]:
+                - text: What if money wasn't the problem?
+                - generic [ref=e6518]: fun
+              - button "Build ethical AI" [ref=e6519] [cursor=pointer]
+              - button "Neighborhood shop fund" [ref=e6520] [cursor=pointer]
+              - button "Start a meme coin with utility" [ref=e6521] [cursor=pointer]
+              - button "Create AI for good" [ref=e6522] [cursor=pointer]
+              - button "Create serverless platform pro" [ref=e6523] [cursor=pointer]:
+                - text: Create serverless platform
+                - generic [ref=e6524]: pro
+              - button "Bonding curve experiments" [ref=e6525] [cursor=pointer]
+              - button "Fund my scientific research bold" [ref=e6526] [cursor=pointer]:
+                - text: Fund my scientific research
+                - generic [ref=e6527]: bold
+              - button "Build a paid learning community" [ref=e6528] [cursor=pointer]
+              - button "Build a membership platform popular" [ref=e6529] [cursor=pointer]:
+                - text: Build a membership platform
+                - generic [ref=e6530]: popular
+              - button "Launch my food app" [ref=e6531] [cursor=pointer]
+              - button "Fund my bakery" [ref=e6532] [cursor=pointer]
+              - button "Anonymous treasury pro" [ref=e6533] [cursor=pointer]:
+                - text: Anonymous treasury
+                - generic [ref=e6534]: pro
+              - button "Simple service business" [ref=e6535] [cursor=pointer]
+              - button "Build sustainable fashion" [ref=e6536] [cursor=pointer]
+              - button "Build action sports media" [ref=e6537] [cursor=pointer]
+              - button "Launch my talent platform" [ref=e6538] [cursor=pointer]
+              - button "Clout treasury" [ref=e6539] [cursor=pointer]
+              - button "Haunted house collective fun" [ref=e6540] [cursor=pointer]:
+                - text: Haunted house collective
+                - generic [ref=e6541]: fun
+              - button "Revenue rocket ship bold" [ref=e6542] [cursor=pointer]:
+                - text: Revenue rocket ship
+                - generic [ref=e6543]: bold
+              - button "Traditional business model" [ref=e6544] [cursor=pointer]
+              - button "Compound wealth fund bold" [ref=e6545] [cursor=pointer]:
+                - text: Compound wealth fund
+                - generic [ref=e6546]: bold
+              - button "Fund my weird art project fun" [ref=e6547] [cursor=pointer]:
+                - text: Fund my weird art project
+                - generic [ref=e6548]: fun
+              - button "What are people building? popular" [ref=e6549] [cursor=pointer]:
+                - text: What are people building?
+                - generic [ref=e6550]: popular
+              - button "Random acts of funding fun" [ref=e6551] [cursor=pointer]:
+                - text: Random acts of funding
+                - generic [ref=e6552]: fun
+              - button "Build a maps alternative" [ref=e6553] [cursor=pointer]
+              - button "Build autonomous vehicles bold" [ref=e6554] [cursor=pointer]:
+                - text: Build autonomous vehicles
+                - generic [ref=e6555]: bold
+              - button "Launch my advertising platform" [ref=e6556] [cursor=pointer]
+              - button "Fund my neobank bold" [ref=e6557] [cursor=pointer]:
+                - text: Fund my neobank
+                - generic [ref=e6558]: bold
+              - button "Fund my protocol bold" [ref=e6559] [cursor=pointer]:
+                - text: Fund my protocol
+                - generic [ref=e6560]: bold
+              - button "Walk me through a payment demo" [ref=e6561] [cursor=pointer]:
+                - text: Walk me through a payment
+                - generic [ref=e6562]: demo
+              - button "Show me successful projects popular" [ref=e6563] [cursor=pointer]:
+                - text: Show me successful projects
+                - generic [ref=e6564]: popular
+            - generic [ref=e6565]:
+              - button "Fund my licensing platform" [ref=e6566] [cursor=pointer]
+              - button "Can I fundraise for a collective?" [ref=e6567] [cursor=pointer]
+              - button "Fund my online community popular" [ref=e6568] [cursor=pointer]:
+                - text: Fund my online community
+                - generic [ref=e6569]: popular
+              - button "Fund my tutorial series" [ref=e6570] [cursor=pointer]
+              - button "Fund my telescope time" [ref=e6571] [cursor=pointer]
+              - button "Chaotic good funding fun" [ref=e6572] [cursor=pointer]:
+                - text: Chaotic good funding
+                - generic [ref=e6573]: fun
+              - button "On-chain only presence pro" [ref=e6574] [cursor=pointer]:
+                - text: On-chain only presence
+                - generic [ref=e6575]: pro
+              - button "Create employment programs" [ref=e6576] [cursor=pointer]
+              - button "What if money wasn't the problem? fun" [ref=e6577] [cursor=pointer]:
+                - text: What if money wasn't the problem?
+                - generic [ref=e6578]: fun
+              - button "Build ethical AI" [ref=e6579] [cursor=pointer]
+              - button "Neighborhood shop fund" [ref=e6580] [cursor=pointer]
+              - button "Start a meme coin with utility" [ref=e6581] [cursor=pointer]
+              - button "Create AI for good" [ref=e6582] [cursor=pointer]
+              - button "Create serverless platform pro" [ref=e6583] [cursor=pointer]:
+                - text: Create serverless platform
+                - generic [ref=e6584]: pro
+              - button "Bonding curve experiments" [ref=e6585] [cursor=pointer]
+              - button "Fund my scientific research bold" [ref=e6586] [cursor=pointer]:
+                - text: Fund my scientific research
+                - generic [ref=e6587]: bold
+              - button "Build a paid learning community" [ref=e6588] [cursor=pointer]
+              - button "Build a membership platform popular" [ref=e6589] [cursor=pointer]:
+                - text: Build a membership platform
+                - generic [ref=e6590]: popular
+              - button "Launch my food app" [ref=e6591] [cursor=pointer]
+              - button "Fund my bakery" [ref=e6592] [cursor=pointer]
+              - button "Anonymous treasury pro" [ref=e6593] [cursor=pointer]:
+                - text: Anonymous treasury
+                - generic [ref=e6594]: pro
+              - button "Simple service business" [ref=e6595] [cursor=pointer]
+              - button "Build sustainable fashion" [ref=e6596] [cursor=pointer]
+              - button "Build action sports media" [ref=e6597] [cursor=pointer]
+              - button "Launch my talent platform" [ref=e6598] [cursor=pointer]
+              - button "Clout treasury" [ref=e6599] [cursor=pointer]
+              - button "Haunted house collective fun" [ref=e6600] [cursor=pointer]:
+                - text: Haunted house collective
+                - generic [ref=e6601]: fun
+              - button "Revenue rocket ship bold" [ref=e6602] [cursor=pointer]:
+                - text: Revenue rocket ship
+                - generic [ref=e6603]: bold
+              - button "Traditional business model" [ref=e6604] [cursor=pointer]
+              - button "Compound wealth fund bold" [ref=e6605] [cursor=pointer]:
+                - text: Compound wealth fund
+                - generic [ref=e6606]: bold
+              - button "Fund my weird art project fun" [ref=e6607] [cursor=pointer]:
+                - text: Fund my weird art project
+                - generic [ref=e6608]: fun
+              - button "What are people building? popular" [ref=e6609] [cursor=pointer]:
+                - text: What are people building?
+                - generic [ref=e6610]: popular
+              - button "Random acts of funding fun" [ref=e6611] [cursor=pointer]:
+                - text: Random acts of funding
+                - generic [ref=e6612]: fun
+              - button "Build a maps alternative" [ref=e6613] [cursor=pointer]
+              - button "Build autonomous vehicles bold" [ref=e6614] [cursor=pointer]:
+                - text: Build autonomous vehicles
+                - generic [ref=e6615]: bold
+              - button "Launch my advertising platform" [ref=e6616] [cursor=pointer]
+              - button "Fund my neobank bold" [ref=e6617] [cursor=pointer]:
+                - text: Fund my neobank
+                - generic [ref=e6618]: bold
+              - button "Fund my protocol bold" [ref=e6619] [cursor=pointer]:
+                - text: Fund my protocol
+                - generic [ref=e6620]: bold
+              - button "Walk me through a payment demo" [ref=e6621] [cursor=pointer]:
+                - text: Walk me through a payment
+                - generic [ref=e6622]: demo
+              - button "Show me successful projects popular" [ref=e6623] [cursor=pointer]:
+                - text: Show me successful projects
+                - generic [ref=e6624]: popular
+            - generic [ref=e6625]:
+              - button "Fund my licensing platform" [ref=e6626] [cursor=pointer]
+              - button "Can I fundraise for a collective?" [ref=e6627] [cursor=pointer]
+              - button "Fund my online community popular" [ref=e6628] [cursor=pointer]:
+                - text: Fund my online community
+                - generic [ref=e6629]: popular
+              - button "Fund my tutorial series" [ref=e6630] [cursor=pointer]
+              - button "Fund my telescope time" [ref=e6631] [cursor=pointer]
+              - button "Chaotic good funding fun" [ref=e6632] [cursor=pointer]:
+                - text: Chaotic good funding
+                - generic [ref=e6633]: fun
+              - button "On-chain only presence pro" [ref=e6634] [cursor=pointer]:
+                - text: On-chain only presence
+                - generic [ref=e6635]: pro
+              - button "Create employment programs" [ref=e6636] [cursor=pointer]
+              - button "What if money wasn't the problem? fun" [ref=e6637] [cursor=pointer]:
+                - text: What if money wasn't the problem?
+                - generic [ref=e6638]: fun
+              - button "Build ethical AI" [ref=e6639] [cursor=pointer]
+              - button "Neighborhood shop fund" [ref=e6640] [cursor=pointer]
+              - button "Start a meme coin with utility" [ref=e6641] [cursor=pointer]
+              - button "Create AI for good" [ref=e6642] [cursor=pointer]
+              - button "Create serverless platform pro" [ref=e6643] [cursor=pointer]:
+                - text: Create serverless platform
+                - generic [ref=e6644]: pro
+              - button "Bonding curve experiments" [ref=e6645] [cursor=pointer]
+              - button "Fund my scientific research bold" [ref=e6646] [cursor=pointer]:
+                - text: Fund my scientific research
+                - generic [ref=e6647]: bold
+              - button "Build a paid learning community" [ref=e6648] [cursor=pointer]
+              - button "Build a membership platform popular" [ref=e6649] [cursor=pointer]:
+                - text: Build a membership platform
+                - generic [ref=e6650]: popular
+              - button "Launch my food app" [ref=e6651] [cursor=pointer]
+              - button "Fund my bakery" [ref=e6652] [cursor=pointer]
+              - button "Anonymous treasury pro" [ref=e6653] [cursor=pointer]:
+                - text: Anonymous treasury
+                - generic [ref=e6654]: pro
+              - button "Simple service business" [ref=e6655] [cursor=pointer]
+              - button "Build sustainable fashion" [ref=e6656] [cursor=pointer]
+              - button "Build action sports media" [ref=e6657] [cursor=pointer]
+              - button "Launch my talent platform" [ref=e6658] [cursor=pointer]
+              - button "Clout treasury" [ref=e6659] [cursor=pointer]
+              - button "Haunted house collective fun" [ref=e6660] [cursor=pointer]:
+                - text: Haunted house collective
+                - generic [ref=e6661]: fun
+              - button "Revenue rocket ship bold" [ref=e6662] [cursor=pointer]:
+                - text: Revenue rocket ship
+                - generic [ref=e6663]: bold
+              - button "Traditional business model" [ref=e6664] [cursor=pointer]
+              - button "Compound wealth fund bold" [ref=e6665] [cursor=pointer]:
+                - text: Compound wealth fund
+                - generic [ref=e6666]: bold
+              - button "Fund my weird art project fun" [ref=e6667] [cursor=pointer]:
+                - text: Fund my weird art project
+                - generic [ref=e6668]: fun
+              - button "What are people building? popular" [ref=e6669] [cursor=pointer]:
+                - text: What are people building?
+                - generic [ref=e6670]: popular
+              - button "Random acts of funding fun" [ref=e6671] [cursor=pointer]:
+                - text: Random acts of funding
+                - generic [ref=e6672]: fun
+              - button "Build a maps alternative" [ref=e6673] [cursor=pointer]
+              - button "Build autonomous vehicles bold" [ref=e6674] [cursor=pointer]:
+                - text: Build autonomous vehicles
+                - generic [ref=e6675]: bold
+              - button "Launch my advertising platform" [ref=e6676] [cursor=pointer]
+              - button "Fund my neobank bold" [ref=e6677] [cursor=pointer]:
+                - text: Fund my neobank
+                - generic [ref=e6678]: bold
+              - button "Fund my protocol bold" [ref=e6679] [cursor=pointer]:
+                - text: Fund my protocol
+                - generic [ref=e6680]: bold
+              - button "Walk me through a payment demo" [ref=e6681] [cursor=pointer]:
+                - text: Walk me through a payment
+                - generic [ref=e6682]: demo
+              - button "Show me successful projects popular" [ref=e6683] [cursor=pointer]:
+                - text: Show me successful projects
+                - generic [ref=e6684]: popular
+            - generic [ref=e6685]:
+              - button "Fund my licensing platform" [ref=e6686] [cursor=pointer]
+              - button "Can I fundraise for a collective?" [ref=e6687] [cursor=pointer]
+              - button "Fund my online community popular" [ref=e6688] [cursor=pointer]:
+                - text: Fund my online community
+                - generic [ref=e6689]: popular
+              - button "Fund my tutorial series" [ref=e6690] [cursor=pointer]
+              - button "Fund my telescope time" [ref=e6691] [cursor=pointer]
+              - button "Chaotic good funding fun" [ref=e6692] [cursor=pointer]:
+                - text: Chaotic good funding
+                - generic [ref=e6693]: fun
+              - button "On-chain only presence pro" [ref=e6694] [cursor=pointer]:
+                - text: On-chain only presence
+                - generic [ref=e6695]: pro
+              - button "Create employment programs" [ref=e6696] [cursor=pointer]
+              - button "What if money wasn't the problem? fun" [ref=e6697] [cursor=pointer]:
+                - text: What if money wasn't the problem?
+                - generic [ref=e6698]: fun
+              - button "Build ethical AI" [ref=e6699] [cursor=pointer]
+              - button "Neighborhood shop fund" [ref=e6700] [cursor=pointer]
+              - button "Start a meme coin with utility" [ref=e6701] [cursor=pointer]
+              - button "Create AI for good" [ref=e6702] [cursor=pointer]
+              - button "Create serverless platform pro" [ref=e6703] [cursor=pointer]:
+                - text: Create serverless platform
+                - generic [ref=e6704]: pro
+              - button "Bonding curve experiments" [ref=e6705] [cursor=pointer]
+              - button "Fund my scientific research bold" [ref=e6706] [cursor=pointer]:
+                - text: Fund my scientific research
+                - generic [ref=e6707]: bold
+              - button "Build a paid learning community" [ref=e6708] [cursor=pointer]
+              - button "Build a membership platform popular" [ref=e6709] [cursor=pointer]:
+                - text: Build a membership platform
+                - generic [ref=e6710]: popular
+              - button "Launch my food app" [ref=e6711] [cursor=pointer]
+              - button "Fund my bakery" [ref=e6712] [cursor=pointer]
+              - button "Anonymous treasury pro" [ref=e6713] [cursor=pointer]:
+                - text: Anonymous treasury
+                - generic [ref=e6714]: pro
+              - button "Simple service business" [ref=e6715] [cursor=pointer]
+              - button "Build sustainable fashion" [ref=e6716] [cursor=pointer]
+              - button "Build action sports media" [ref=e6717] [cursor=pointer]
+              - button "Launch my talent platform" [ref=e6718] [cursor=pointer]
+              - button "Clout treasury" [ref=e6719] [cursor=pointer]
+              - button "Haunted house collective fun" [ref=e6720] [cursor=pointer]:
+                - text: Haunted house collective
+                - generic [ref=e6721]: fun
+              - button "Revenue rocket ship bold" [ref=e6722] [cursor=pointer]:
+                - text: Revenue rocket ship
+                - generic [ref=e6723]: bold
+              - button "Traditional business model" [ref=e6724] [cursor=pointer]
+              - button "Compound wealth fund bold" [ref=e6725] [cursor=pointer]:
+                - text: Compound wealth fund
+                - generic [ref=e6726]: bold
+              - button "Fund my weird art project fun" [ref=e6727] [cursor=pointer]:
+                - text: Fund my weird art project
+                - generic [ref=e6728]: fun
+              - button "What are people building? popular" [ref=e6729] [cursor=pointer]:
+                - text: What are people building?
+                - generic [ref=e6730]: popular
+              - button "Random acts of funding fun" [ref=e6731] [cursor=pointer]:
+                - text: Random acts of funding
+                - generic [ref=e6732]: fun
+              - button "Build a maps alternative" [ref=e6733] [cursor=pointer]
+              - button "Build autonomous vehicles bold" [ref=e6734] [cursor=pointer]:
+                - text: Build autonomous vehicles
+                - generic [ref=e6735]: bold
+              - button "Launch my advertising platform" [ref=e6736] [cursor=pointer]
+              - button "Fund my neobank bold" [ref=e6737] [cursor=pointer]:
+                - text: Fund my neobank
+                - generic [ref=e6738]: bold
+              - button "Fund my protocol bold" [ref=e6739] [cursor=pointer]:
+                - text: Fund my protocol
+                - generic [ref=e6740]: bold
+              - button "Walk me through a payment demo" [ref=e6741] [cursor=pointer]:
+                - text: Walk me through a payment
+                - generic [ref=e6742]: demo
+              - button "Show me successful projects popular" [ref=e6743] [cursor=pointer]:
+                - text: Show me successful projects
+                - generic [ref=e6744]: popular
+          - generic [ref=e6745]:
+            - generic [ref=e6746]:
+              - button "Create a new category bold" [ref=e6747] [cursor=pointer]:
+                - text: Create a new category
+                - generic [ref=e6748]: bold
+              - button "Launch a local skills training business" [ref=e6749] [cursor=pointer]
+              - button "Fund my AI safety research pro" [ref=e6750] [cursor=pointer]:
+                - text: Fund my AI safety research
+                - generic [ref=e6751]: pro
+              - button "Build green infrastructure" [ref=e6752] [cursor=pointer]
+              - button "Fund my esports team popular" [ref=e6753] [cursor=pointer]:
+                - text: Fund my esports team
+                - generic [ref=e6754]: popular
+              - button "Scholarship for strangers" [ref=e6755] [cursor=pointer]
+              - button "Create a sports bracket with real stakes fun" [ref=e6756] [cursor=pointer]:
+                - text: Create a sports bracket with real stakes
+                - generic [ref=e6757]: fun
+              - button "Fund my security startup pro" [ref=e6758] [cursor=pointer]:
+                - text: Fund my security startup
+                - generic [ref=e6759]: pro
+              - button "Support an open source project" [ref=e6760] [cursor=pointer]
+              - button "Fund my food brand" [ref=e6761] [cursor=pointer]
+              - button "Fund my online course popular" [ref=e6762] [cursor=pointer]:
+                - text: Fund my online course
+                - generic [ref=e6763]: popular
+              - button "Launch my payroll startup" [ref=e6764] [cursor=pointer]
+              - button "Set up on-chain governance" [ref=e6765] [cursor=pointer]
+              - button "Show me what's possible fun" [ref=e6766] [cursor=pointer]:
+                - text: Show me what's possible
+                - generic [ref=e6767]: fun
+              - button "Launch my peer group" [ref=e6768] [cursor=pointer]
+              - button "Get sponsors for my framework pro" [ref=e6769] [cursor=pointer]:
+                - text: Get sponsors for my framework
+                - generic [ref=e6770]: pro
+              - button "Launch a meme treasury fun" [ref=e6771] [cursor=pointer]:
+                - text: Launch a meme treasury
+                - generic [ref=e6772]: fun
+              - button "Launch my workshop series" [ref=e6773] [cursor=pointer]
+              - button "Fund my video production" [ref=e6774] [cursor=pointer]
+              - button "Create patient support" [ref=e6775] [cursor=pointer]
+              - button "Fund my container platform pro" [ref=e6776] [cursor=pointer]:
+                - text: Fund my container platform
+                - generic [ref=e6777]: pro
+              - button "Autonomous collective pro" [ref=e6778] [cursor=pointer]:
+                - text: Autonomous collective
+                - generic [ref=e6779]: pro
+              - button "Start a free store" [ref=e6780] [cursor=pointer]
+              - button "Who's doing it right? fun" [ref=e6781] [cursor=pointer]:
+                - text: Who's doing it right?
+                - generic [ref=e6782]: fun
+              - button "Tattoo parlor fund" [ref=e6783] [cursor=pointer]
+              - button "Money that works while I sleep bold" [ref=e6784] [cursor=pointer]:
+                - text: Money that works while I sleep
+                - generic [ref=e6785]: bold
+              - button "Privacy-preserving treasury pro" [ref=e6786] [cursor=pointer]:
+                - text: Privacy-preserving treasury
+                - generic [ref=e6787]: pro
+              - button "Main character energy fund" [ref=e6788] [cursor=pointer]
+              - button "Start a fan club popular" [ref=e6789] [cursor=pointer]:
+                - text: Start a fan club
+                - generic [ref=e6790]: popular
+              - button "API-driven treasury pro" [ref=e6791] [cursor=pointer]:
+                - text: API-driven treasury
+                - generic [ref=e6792]: pro
+              - button "Fund my data company" [ref=e6793] [cursor=pointer]
+              - button "Launch my token pro" [ref=e6794] [cursor=pointer]:
+                - text: Launch my token
+                - generic [ref=e6795]: pro
+              - button "Build a peer learning membership" [ref=e6796] [cursor=pointer]
+              - button "Build a philanthropy dashboard pro" [ref=e6797] [cursor=pointer]:
+                - text: Build a philanthropy dashboard
+                - generic [ref=e6798]: pro
+              - button "Wealth accumulation engine bold" [ref=e6799] [cursor=pointer]:
+                - text: Wealth accumulation engine
+                - generic [ref=e6800]: bold
+              - button "Find projects by category" [ref=e6801] [cursor=pointer]
+              - button "How do I share revenue with backers? pro" [ref=e6802] [cursor=pointer]:
+                - text: How do I share revenue with backers?
+                - generic [ref=e6803]: pro
+              - button "Green space treasury" [ref=e6804] [cursor=pointer]
+              - button "Build a cultural center" [ref=e6805] [cursor=pointer]
+              - button "Build mental health app popular" [ref=e6806] [cursor=pointer]:
+                - text: Build mental health app
+                - generic [ref=e6807]: popular
+            - generic [ref=e6808]:
+              - button "Create a new category bold" [ref=e6809] [cursor=pointer]:
+                - text: Create a new category
+                - generic [ref=e6810]: bold
+              - button "Launch a local skills training business" [ref=e6811] [cursor=pointer]
+              - button "Fund my AI safety research pro" [ref=e6812] [cursor=pointer]:
+                - text: Fund my AI safety research
+                - generic [ref=e6813]: pro
+              - button "Build green infrastructure" [ref=e6814] [cursor=pointer]
+              - button "Fund my esports team popular" [ref=e6815] [cursor=pointer]:
+                - text: Fund my esports team
+                - generic [ref=e6816]: popular
+              - button "Scholarship for strangers" [ref=e6817] [cursor=pointer]
+              - button "Create a sports bracket with real stakes fun" [ref=e6818] [cursor=pointer]:
+                - text: Create a sports bracket with real stakes
+                - generic [ref=e6819]: fun
+              - button "Fund my security startup pro" [ref=e6820] [cursor=pointer]:
+                - text: Fund my security startup
+                - generic [ref=e6821]: pro
+              - button "Support an open source project" [ref=e6822] [cursor=pointer]
+              - button "Fund my food brand" [ref=e6823] [cursor=pointer]
+              - button "Fund my online course popular" [ref=e6824] [cursor=pointer]:
+                - text: Fund my online course
+                - generic [ref=e6825]: popular
+              - button "Launch my payroll startup" [ref=e6826] [cursor=pointer]
+              - button "Set up on-chain governance" [ref=e6827] [cursor=pointer]
+              - button "Show me what's possible fun" [ref=e6828] [cursor=pointer]:
+                - text: Show me what's possible
+                - generic [ref=e6829]: fun
+              - button "Launch my peer group" [ref=e6830] [cursor=pointer]
+              - button "Get sponsors for my framework pro" [ref=e6831] [cursor=pointer]:
+                - text: Get sponsors for my framework
+                - generic [ref=e6832]: pro
+              - button "Launch a meme treasury fun" [ref=e6833] [cursor=pointer]:
+                - text: Launch a meme treasury
+                - generic [ref=e6834]: fun
+              - button "Launch my workshop series" [ref=e6835] [cursor=pointer]
+              - button "Fund my video production" [ref=e6836] [cursor=pointer]
+              - button "Create patient support" [ref=e6837] [cursor=pointer]
+              - button "Fund my container platform pro" [ref=e6838] [cursor=pointer]:
+                - text: Fund my container platform
+                - generic [ref=e6839]: pro
+              - button "Autonomous collective pro" [ref=e6840] [cursor=pointer]:
+                - text: Autonomous collective
+                - generic [ref=e6841]: pro
+              - button "Start a free store" [ref=e6842] [cursor=pointer]
+              - button "Who's doing it right? fun" [ref=e6843] [cursor=pointer]:
+                - text: Who's doing it right?
+                - generic [ref=e6844]: fun
+              - button "Tattoo parlor fund" [ref=e6845] [cursor=pointer]
+              - button "Money that works while I sleep bold" [ref=e6846] [cursor=pointer]:
+                - text: Money that works while I sleep
+                - generic [ref=e6847]: bold
+              - button "Privacy-preserving treasury pro" [ref=e6848] [cursor=pointer]:
+                - text: Privacy-preserving treasury
+                - generic [ref=e6849]: pro
+              - button "Main character energy fund" [ref=e6850] [cursor=pointer]
+              - button "Start a fan club popular" [ref=e6851] [cursor=pointer]:
+                - text: Start a fan club
+                - generic [ref=e6852]: popular
+              - button "API-driven treasury pro" [ref=e6853] [cursor=pointer]:
+                - text: API-driven treasury
+                - generic [ref=e6854]: pro
+              - button "Fund my data company" [ref=e6855] [cursor=pointer]
+              - button "Launch my token pro" [ref=e6856] [cursor=pointer]:
+                - text: Launch my token
+                - generic [ref=e6857]: pro
+              - button "Build a peer learning membership" [ref=e6858] [cursor=pointer]
+              - button "Build a philanthropy dashboard pro" [ref=e6859] [cursor=pointer]:
+                - text: Build a philanthropy dashboard
+                - generic [ref=e6860]: pro
+              - button "Wealth accumulation engine bold" [ref=e6861] [cursor=pointer]:
+                - text: Wealth accumulation engine
+                - generic [ref=e6862]: bold
+              - button "Find projects by category" [ref=e6863] [cursor=pointer]
+              - button "How do I share revenue with backers? pro" [ref=e6864] [cursor=pointer]:
+                - text: How do I share revenue with backers?
+                - generic [ref=e6865]: pro
+              - button "Green space treasury" [ref=e6866] [cursor=pointer]
+              - button "Build a cultural center" [ref=e6867] [cursor=pointer]
+              - button "Build mental health app popular" [ref=e6868] [cursor=pointer]:
+                - text: Build mental health app
+                - generic [ref=e6869]: popular
+            - generic [ref=e6870]:
+              - button "Create a new category bold" [ref=e6871] [cursor=pointer]:
+                - text: Create a new category
+                - generic [ref=e6872]: bold
+              - button "Launch a local skills training business" [ref=e6873] [cursor=pointer]
+              - button "Fund my AI safety research pro" [ref=e6874] [cursor=pointer]:
+                - text: Fund my AI safety research
+                - generic [ref=e6875]: pro
+              - button "Build green infrastructure" [ref=e6876] [cursor=pointer]
+              - button "Fund my esports team popular" [ref=e6877] [cursor=pointer]:
+                - text: Fund my esports team
+                - generic [ref=e6878]: popular
+              - button "Scholarship for strangers" [ref=e6879] [cursor=pointer]
+              - button "Create a sports bracket with real stakes fun" [ref=e6880] [cursor=pointer]:
+                - text: Create a sports bracket with real stakes
+                - generic [ref=e6881]: fun
+              - button "Fund my security startup pro" [ref=e6882] [cursor=pointer]:
+                - text: Fund my security startup
+                - generic [ref=e6883]: pro
+              - button "Support an open source project" [ref=e6884] [cursor=pointer]
+              - button "Fund my food brand" [ref=e6885] [cursor=pointer]
+              - button "Fund my online course popular" [ref=e6886] [cursor=pointer]:
+                - text: Fund my online course
+                - generic [ref=e6887]: popular
+              - button "Launch my payroll startup" [ref=e6888] [cursor=pointer]
+              - button "Set up on-chain governance" [ref=e6889] [cursor=pointer]
+              - button "Show me what's possible fun" [ref=e6890] [cursor=pointer]:
+                - text: Show me what's possible
+                - generic [ref=e6891]: fun
+              - button "Launch my peer group" [ref=e6892] [cursor=pointer]
+              - button "Get sponsors for my framework pro" [ref=e6893] [cursor=pointer]:
+                - text: Get sponsors for my framework
+                - generic [ref=e6894]: pro
+              - button "Launch a meme treasury fun" [ref=e6895] [cursor=pointer]:
+                - text: Launch a meme treasury
+                - generic [ref=e6896]: fun
+              - button "Launch my workshop series" [ref=e6897] [cursor=pointer]
+              - button "Fund my video production" [ref=e6898] [cursor=pointer]
+              - button "Create patient support" [ref=e6899] [cursor=pointer]
+              - button "Fund my container platform pro" [ref=e6900] [cursor=pointer]:
+                - text: Fund my container platform
+                - generic [ref=e6901]: pro
+              - button "Autonomous collective pro" [ref=e6902] [cursor=pointer]:
+                - text: Autonomous collective
+                - generic [ref=e6903]: pro
+              - button "Start a free store" [ref=e6904] [cursor=pointer]
+              - button "Who's doing it right? fun" [ref=e6905] [cursor=pointer]:
+                - text: Who's doing it right?
+                - generic [ref=e6906]: fun
+              - button "Tattoo parlor fund" [ref=e6907] [cursor=pointer]
+              - button "Money that works while I sleep bold" [ref=e6908] [cursor=pointer]:
+                - text: Money that works while I sleep
+                - generic [ref=e6909]: bold
+              - button "Privacy-preserving treasury pro" [ref=e6910] [cursor=pointer]:
+                - text: Privacy-preserving treasury
+                - generic [ref=e6911]: pro
+              - button "Main character energy fund" [ref=e6912] [cursor=pointer]
+              - button "Start a fan club popular" [ref=e6913] [cursor=pointer]:
+                - text: Start a fan club
+                - generic [ref=e6914]: popular
+              - button "API-driven treasury pro" [ref=e6915] [cursor=pointer]:
+                - text: API-driven treasury
+                - generic [ref=e6916]: pro
+              - button "Fund my data company" [ref=e6917] [cursor=pointer]
+              - button "Launch my token pro" [ref=e6918] [cursor=pointer]:
+                - text: Launch my token
+                - generic [ref=e6919]: pro
+              - button "Build a peer learning membership" [ref=e6920] [cursor=pointer]
+              - button "Build a philanthropy dashboard pro" [ref=e6921] [cursor=pointer]:
+                - text: Build a philanthropy dashboard
+                - generic [ref=e6922]: pro
+              - button "Wealth accumulation engine bold" [ref=e6923] [cursor=pointer]:
+                - text: Wealth accumulation engine
+                - generic [ref=e6924]: bold
+              - button "Find projects by category" [ref=e6925] [cursor=pointer]
+              - button "How do I share revenue with backers? pro" [ref=e6926] [cursor=pointer]:
+                - text: How do I share revenue with backers?
+                - generic [ref=e6927]: pro
+              - button "Green space treasury" [ref=e6928] [cursor=pointer]
+              - button "Build a cultural center" [ref=e6929] [cursor=pointer]
+              - button "Build mental health app popular" [ref=e6930] [cursor=pointer]:
+                - text: Build mental health app
+                - generic [ref=e6931]: popular
+            - generic [ref=e6932]:
+              - button "Create a new category bold" [ref=e6933] [cursor=pointer]:
+                - text: Create a new category
+                - generic [ref=e6934]: bold
+              - button "Launch a local skills training business" [ref=e6935] [cursor=pointer]
+              - button "Fund my AI safety research pro" [ref=e6936] [cursor=pointer]:
+                - text: Fund my AI safety research
+                - generic [ref=e6937]: pro
+              - button "Build green infrastructure" [ref=e6938] [cursor=pointer]
+              - button "Fund my esports team popular" [ref=e6939] [cursor=pointer]:
+                - text: Fund my esports team
+                - generic [ref=e6940]: popular
+              - button "Scholarship for strangers" [ref=e6941] [cursor=pointer]
+              - button "Create a sports bracket with real stakes fun" [ref=e6942] [cursor=pointer]:
+                - text: Create a sports bracket with real stakes
+                - generic [ref=e6943]: fun
+              - button "Fund my security startup pro" [ref=e6944] [cursor=pointer]:
+                - text: Fund my security startup
+                - generic [ref=e6945]: pro
+              - button "Support an open source project" [ref=e6946] [cursor=pointer]
+              - button "Fund my food brand" [ref=e6947] [cursor=pointer]
+              - button "Fund my online course popular" [ref=e6948] [cursor=pointer]:
+                - text: Fund my online course
+                - generic [ref=e6949]: popular
+              - button "Launch my payroll startup" [ref=e6950] [cursor=pointer]
+              - button "Set up on-chain governance" [ref=e6951] [cursor=pointer]
+              - button "Show me what's possible fun" [ref=e6952] [cursor=pointer]:
+                - text: Show me what's possible
+                - generic [ref=e6953]: fun
+              - button "Launch my peer group" [ref=e6954] [cursor=pointer]
+              - button "Get sponsors for my framework pro" [ref=e6955] [cursor=pointer]:
+                - text: Get sponsors for my framework
+                - generic [ref=e6956]: pro
+              - button "Launch a meme treasury fun" [ref=e6957] [cursor=pointer]:
+                - text: Launch a meme treasury
+                - generic [ref=e6958]: fun
+              - button "Launch my workshop series" [ref=e6959] [cursor=pointer]
+              - button "Fund my video production" [ref=e6960] [cursor=pointer]
+              - button "Create patient support" [ref=e6961] [cursor=pointer]
+              - button "Fund my container platform pro" [ref=e6962] [cursor=pointer]:
+                - text: Fund my container platform
+                - generic [ref=e6963]: pro
+              - button "Autonomous collective pro" [ref=e6964] [cursor=pointer]:
+                - text: Autonomous collective
+                - generic [ref=e6965]: pro
+              - button "Start a free store" [ref=e6966] [cursor=pointer]
+              - button "Who's doing it right? fun" [ref=e6967] [cursor=pointer]:
+                - text: Who's doing it right?
+                - generic [ref=e6968]: fun
+              - button "Tattoo parlor fund" [ref=e6969] [cursor=pointer]
+              - button "Money that works while I sleep bold" [ref=e6970] [cursor=pointer]:
+                - text: Money that works while I sleep
+                - generic [ref=e6971]: bold
+              - button "Privacy-preserving treasury pro" [ref=e6972] [cursor=pointer]:
+                - text: Privacy-preserving treasury
+                - generic [ref=e6973]: pro
+              - button "Main character energy fund" [ref=e6974] [cursor=pointer]
+              - button "Start a fan club popular" [ref=e6975] [cursor=pointer]:
+                - text: Start a fan club
+                - generic [ref=e6976]: popular
+              - button "API-driven treasury pro" [ref=e6977] [cursor=pointer]:
+                - text: API-driven treasury
+                - generic [ref=e6978]: pro
+              - button "Fund my data company" [ref=e6979] [cursor=pointer]
+              - button "Launch my token pro" [ref=e6980] [cursor=pointer]:
+                - text: Launch my token
+                - generic [ref=e6981]: pro
+              - button "Build a peer learning membership" [ref=e6982] [cursor=pointer]
+              - button "Build a philanthropy dashboard pro" [ref=e6983] [cursor=pointer]:
+                - text: Build a philanthropy dashboard
+                - generic [ref=e6984]: pro
+              - button "Wealth accumulation engine bold" [ref=e6985] [cursor=pointer]:
+                - text: Wealth accumulation engine
+                - generic [ref=e6986]: bold
+              - button "Find projects by category" [ref=e6987] [cursor=pointer]
+              - button "How do I share revenue with backers? pro" [ref=e6988] [cursor=pointer]:
+                - text: How do I share revenue with backers?
+                - generic [ref=e6989]: pro
+              - button "Green space treasury" [ref=e6990] [cursor=pointer]
+              - button "Build a cultural center" [ref=e6991] [cursor=pointer]
+              - button "Build mental health app popular" [ref=e6992] [cursor=pointer]:
+                - text: Build mental health app
+                - generic [ref=e6993]: popular
+            - generic [ref=e6994]:
+              - button "Create a new category bold" [ref=e6995] [cursor=pointer]:
+                - text: Create a new category
+                - generic [ref=e6996]: bold
+              - button "Launch a local skills training business" [ref=e6997] [cursor=pointer]
+              - button "Fund my AI safety research pro" [ref=e6998] [cursor=pointer]:
+                - text: Fund my AI safety research
+                - generic [ref=e6999]: pro
+              - button "Build green infrastructure" [ref=e7000] [cursor=pointer]
+              - button "Fund my esports team popular" [ref=e7001] [cursor=pointer]:
+                - text: Fund my esports team
+                - generic [ref=e7002]: popular
+              - button "Scholarship for strangers" [ref=e7003] [cursor=pointer]
+              - button "Create a sports bracket with real stakes fun" [ref=e7004] [cursor=pointer]:
+                - text: Create a sports bracket with real stakes
+                - generic [ref=e7005]: fun
+              - button "Fund my security startup pro" [ref=e7006] [cursor=pointer]:
+                - text: Fund my security startup
+                - generic [ref=e7007]: pro
+              - button "Support an open source project" [ref=e7008] [cursor=pointer]
+              - button "Fund my food brand" [ref=e7009] [cursor=pointer]
+              - button "Fund my online course popular" [ref=e7010] [cursor=pointer]:
+                - text: Fund my online course
+                - generic [ref=e7011]: popular
+              - button "Launch my payroll startup" [ref=e7012] [cursor=pointer]
+              - button "Set up on-chain governance" [ref=e7013] [cursor=pointer]
+              - button "Show me what's possible fun" [ref=e7014] [cursor=pointer]:
+                - text: Show me what's possible
+                - generic [ref=e7015]: fun
+              - button "Launch my peer group" [ref=e7016] [cursor=pointer]
+              - button "Get sponsors for my framework pro" [ref=e7017] [cursor=pointer]:
+                - text: Get sponsors for my framework
+                - generic [ref=e7018]: pro
+              - button "Launch a meme treasury fun" [ref=e7019] [cursor=pointer]:
+                - text: Launch a meme treasury
+                - generic [ref=e7020]: fun
+              - button "Launch my workshop series" [ref=e7021] [cursor=pointer]
+              - button "Fund my video production" [ref=e7022] [cursor=pointer]
+              - button "Create patient support" [ref=e7023] [cursor=pointer]
+              - button "Fund my container platform pro" [ref=e7024] [cursor=pointer]:
+                - text: Fund my container platform
+                - generic [ref=e7025]: pro
+              - button "Autonomous collective pro" [ref=e7026] [cursor=pointer]:
+                - text: Autonomous collective
+                - generic [ref=e7027]: pro
+              - button "Start a free store" [ref=e7028] [cursor=pointer]
+              - button "Who's doing it right? fun" [ref=e7029] [cursor=pointer]:
+                - text: Who's doing it right?
+                - generic [ref=e7030]: fun
+              - button "Tattoo parlor fund" [ref=e7031] [cursor=pointer]
+              - button "Money that works while I sleep bold" [ref=e7032] [cursor=pointer]:
+                - text: Money that works while I sleep
+                - generic [ref=e7033]: bold
+              - button "Privacy-preserving treasury pro" [ref=e7034] [cursor=pointer]:
+                - text: Privacy-preserving treasury
+                - generic [ref=e7035]: pro
+              - button "Main character energy fund" [ref=e7036] [cursor=pointer]
+              - button "Start a fan club popular" [ref=e7037] [cursor=pointer]:
+                - text: Start a fan club
+                - generic [ref=e7038]: popular
+              - button "API-driven treasury pro" [ref=e7039] [cursor=pointer]:
+                - text: API-driven treasury
+                - generic [ref=e7040]: pro
+              - button "Fund my data company" [ref=e7041] [cursor=pointer]
+              - button "Launch my token pro" [ref=e7042] [cursor=pointer]:
+                - text: Launch my token
+                - generic [ref=e7043]: pro
+              - button "Build a peer learning membership" [ref=e7044] [cursor=pointer]
+              - button "Build a philanthropy dashboard pro" [ref=e7045] [cursor=pointer]:
+                - text: Build a philanthropy dashboard
+                - generic [ref=e7046]: pro
+              - button "Wealth accumulation engine bold" [ref=e7047] [cursor=pointer]:
+                - text: Wealth accumulation engine
+                - generic [ref=e7048]: bold
+              - button "Find projects by category" [ref=e7049] [cursor=pointer]
+              - button "How do I share revenue with backers? pro" [ref=e7050] [cursor=pointer]:
+                - text: How do I share revenue with backers?
+                - generic [ref=e7051]: pro
+              - button "Green space treasury" [ref=e7052] [cursor=pointer]
+              - button "Build a cultural center" [ref=e7053] [cursor=pointer]
+              - button "Build mental health app popular" [ref=e7054] [cursor=pointer]:
+                - text: Build mental health app
+                - generic [ref=e7055]: popular
+      - generic [ref=e7056]:
+        - generic [ref=e7057]:
+          - generic [ref=e7058]:
+            - button "Chats" [ref=e7059] [cursor=pointer]
+            - button "My Projects" [ref=e7060] [cursor=pointer]
+            - button "Payments" [ref=e7061] [cursor=pointer]
+          - generic [ref=e7062]:
+            - generic [ref=e7063]: Recent conversations
+            - generic [ref=e7064]:
+              - button "New Chat" [ref=e7065] [cursor=pointer]:
+                - img [ref=e7066]
+              - button [ref=e7068] [cursor=pointer]:
+                - img [ref=e7069]
+        - generic [ref=e7072]:
+          - generic [ref=e7073]: No chats yet
+          - button "Start a new chat" [ref=e7074] [cursor=pointer]
+    - generic [ref=e7077]:
+      - button "Join us" [ref=e7079] [cursor=pointer]
+      - img [ref=e7081]
+      - generic [ref=e7083]:
+        - generic [ref=e7084]:
+          - generic:
+            - img "Juicy Mascot"
+          - generic:
+            - paragraph: Fund Your Thing Your Way
+        - generic [ref=e7086]:
+          - generic [ref=e7087]:
+            - paragraph [ref=e7088]: The juiciest way to fund and grow your project.
+            - paragraph [ref=e7089]: Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams.
+            - paragraph [ref=e7090]: Just prompt away, in private or together.
+            - button "Join us" [ref=e7091] [cursor=pointer]
+            - paragraph [ref=e7092]: NANA balance $4,187
+          - paragraph [ref=e7093]: JUICY runs like a co-op that keeps this open source site running and this public network growing. When you pay into Juicy, you receive JUICY proportional to your payment.
+          - paragraph [ref=e7094]: As the balance grows, so does the value backing each JUICY. You can cash out anytime for your share, or hold to support the community business and benefit from growth. Fully automated by blockchains, your money and your data remain accessible even if this website goes down.
+          - button "Join us" [ref=e7095] [cursor=pointer]
+          - paragraph [ref=e7096]:
+            - text: Uses
+            - link "revnets" [ref=e7097] [cursor=pointer]:
+              - /url: https://revnet.app
+            - text: ", powered by"
+            - link "Juicebox" [ref=e7098] [cursor=pointer]:
+              - /url: https://docs.juicebox.money
+            - text: ", secured by Ethereum, Optimism, Base, and Arbitrum."
+          - button "Copy us" [ref=e7099] [cursor=pointer]
+          - paragraph [ref=e7100]:
+            - text: Teach the juicebox skills that Juicy is based on to your AI
+            - link "here" [ref=e7101] [cursor=pointer]:
+              - /url: https://github.com/mejango/juicebox-skills
+            - text: .
+    - generic [ref=e7105]:
+      - generic [ref=e7107]:
+        - generic [ref=e7110]: Hello, darling.
+        - generic [ref=e7112]:
+          - button "English" [ref=e7114] [cursor=pointer]
+          - button "Switch to light mode" [ref=e7115] [cursor=pointer]:
+            - img [ref=e7116]
+          - button "Settings" [ref=e7118] [cursor=pointer]:
+            - img [ref=e7119]
+        - generic [ref=e7122]:
+          - textbox "What's your juicy vision?" [active] [ref=e7125]: Test message via button
+          - generic [ref=e7126]:
+            - generic [ref=e7127]: Let's make it real.
+            - generic [ref=e7128]:
+              - button "Beta" [ref=e7129] [cursor=pointer]
+              - button [ref=e7131] [cursor=pointer]:
+                - img [ref=e7132]
+          - generic [ref=e7136]:
+            - button "Drop your vision doc" [ref=e7137] [cursor=pointer]
+            - button "Show your master plan" [ref=e7138] [cursor=pointer]
+            - button "Paste a screenshot" [ref=e7139] [cursor=pointer]
+        - generic [ref=e7142]:
+          - button "Connected" [ref=e7143] [cursor=pointer]:
+            - generic [ref=e7145]: Connected
+          - button "· Set your Juicy ID" [ref=e7146] [cursor=pointer]
+          - button "·0 USDC·0 ETH" [ref=e7147] [cursor=pointer]:
+            - generic [ref=e7148]: ·0 USDC·0 ETH
+      - generic [ref=e7150]:
+        - generic [ref=e7151]:
+          - generic [ref=e7152]:
+            - button "Chats" [ref=e7153] [cursor=pointer]
+            - button "My Projects" [ref=e7154] [cursor=pointer]
+            - button "Payments" [ref=e7155] [cursor=pointer]
+          - generic [ref=e7156]:
+            - generic [ref=e7157]: Recent conversations
+            - generic [ref=e7158]:
+              - button "New Chat" [ref=e7159] [cursor=pointer]:
+                - img [ref=e7160]
+              - button [ref=e7162] [cursor=pointer]:
+                - img [ref=e7163]
+        - generic [ref=e7166]:
+          - generic [ref=e7167]: No chats yet
+          - button "Start a new chat" [ref=e7168] [cursor=pointer]
+  - generic [ref=e7171]:
+    - generic [ref=e7172]:
+      - heading "Fresh activity" [level=2] [ref=e7173]
+      - button "Add a juicy note" [ref=e7174] [cursor=pointer]:
+        - img [ref=e7175]
+    - generic [ref=e7178]:
+      - generic [ref=e7181] [cursor=pointer]:
+        - generic [ref=e7182]:
+          - generic [ref=e7183]: Markee
+          - generic [ref=e7184]: 1d ago
+        - generic [ref=e7185]:
+          - generic [ref=e7186]: Paid
+          - generic [ref=e7187]: 0.0011 ETH
+        - generic [ref=e7188]:
+          - generic [ref=e7189]: paul2.eth
+          - generic [ref=e7190]: "on"
+          - generic [ref=e7191]: BASE
+          - link [ref=e7192]:
+            - /url: https://basescan.org/tx/0x71a1a9452821a827f16614f46a192770d7ac14c0db07bed28ad7c8c904469f09
+            - img [ref=e7193]
+      - generic [ref=e7197] [cursor=pointer]:
+        - generic [ref=e7198]:
+          - generic [ref=e7199]: Markee
+          - generic [ref=e7200]: 1d ago
+        - generic [ref=e7201]:
+          - generic [ref=e7202]: Minted
+          - generic [ref=e7203]: 114.00 tokens
+        - generic [ref=e7204]:
+          - generic [ref=e7205]: paul2.eth
+          - generic [ref=e7206]: "on"
+          - generic [ref=e7207]: BASE
+          - link [ref=e7208]:
+            - /url: https://basescan.org/tx/0x71a1a9452821a827f16614f46a192770d7ac14c0db07bed28ad7c8c904469f09
+            - img [ref=e7209]
+      - generic [ref=e7213] [cursor=pointer]:
+        - generic [ref=e7214]:
+          - generic [ref=e7215]: flowgrid
+          - generic [ref=e7216]: 1d ago
+        - generic [ref=e7217]:
+          - generic [ref=e7218]: Paid
+          - generic [ref=e7219]: 0.0001 ETH
+        - generic [ref=e7220]:
+          - generic [ref=e7221]: 0x2d65...6b98
+          - generic [ref=e7222]: "on"
+          - generic [ref=e7223]: BASE
+          - link [ref=e7224]:
+            - /url: https://basescan.org/tx/0x5a04f88497a73b0cf452896cb2ee14d3412ebb1d77aef1dbee6d4d0bb47f0c5d
+            - img [ref=e7225]
+      - generic [ref=e7229] [cursor=pointer]:
+        - generic [ref=e7230]:
+          - generic [ref=e7231]: flowgrid
+          - generic [ref=e7232]: 1d ago
+        - generic [ref=e7234]: Minted NFT
+        - generic [ref=e7235]:
+          - generic [ref=e7236]: 0x2d65...6b98
+          - generic [ref=e7237]: "on"
+          - generic [ref=e7238]: BASE
+          - link [ref=e7239]:
+            - /url: https://basescan.org/tx/0x5a04f88497a73b0cf452896cb2ee14d3412ebb1d77aef1dbee6d4d0bb47f0c5d
+            - img [ref=e7240]
+      - generic [ref=e7244] [cursor=pointer]:
+        - generic [ref=e7245]:
+          - generic [ref=e7246]: flowgrid
+          - generic [ref=e7247]: 1d ago
+        - generic [ref=e7249]: Created
+        - generic [ref=e7250]:
+          - generic [ref=e7251]: 0x2d65...6b98
+          - generic [ref=e7252]: "on"
+          - generic [ref=e7253]: BASE
+          - link [ref=e7254]:
+            - /url: https://basescan.org/tx/0xd840fdea451361b9d3a2fd4dce537ec371e1cb7c009bf2c2940233619c6f7f04
+            - img [ref=e7255]
+      - generic [ref=e7259] [cursor=pointer]:
+        - generic [ref=e7260]:
+          - generic [ref=e7261]: Markee
+          - generic [ref=e7262]: 1d ago
+        - generic [ref=e7264]: Distributed reserved tokens
+        - generic [ref=e7265]:
+          - generic [ref=e7266]: paul2.eth
+          - generic [ref=e7267]: "on"
+          - generic [ref=e7268]: BASE
+          - link [ref=e7269]:
+            - /url: https://basescan.org/tx/0xd8024e2c22806cab7ed8d4666ef4c9a35279c93d7c9e1a59f6d4a1ae279662ef
+            - img [ref=e7270]
+      - generic [ref=e7274] [cursor=pointer]:
+        - generic [ref=e7275]:
+          - generic [ref=e7276]: Markee
+          - generic [ref=e7277]: 1d ago
+        - generic [ref=e7278]:
+          - generic [ref=e7279]: Minted
+          - generic [ref=e7280]: 49.40 tokens
+        - generic [ref=e7281]:
+          - generic [ref=e7282]: paul2.eth
+          - generic [ref=e7283]: "on"
+          - generic [ref=e7284]: BASE
+          - link [ref=e7285]:
+            - /url: https://basescan.org/tx/0x1912ae271ba57887df5f58f590f16f422f12d2844e4a04fe75f904867303302a
+            - img [ref=e7286]
+      - generic [ref=e7290] [cursor=pointer]:
+        - generic [ref=e7291]:
+          - generic [ref=e7292]: Markee
+          - generic [ref=e7293]: 1d ago
+        - generic [ref=e7294]:
+          - generic [ref=e7295]: Paid
+          - generic [ref=e7296]: 0.0005 ETH
+        - generic [ref=e7297]:
+          - generic [ref=e7298]: paul2.eth
+          - generic [ref=e7299]: "on"
+          - generic [ref=e7300]: BASE
+          - link [ref=e7301]:
+            - /url: https://basescan.org/tx/0x1912ae271ba57887df5f58f590f16f422f12d2844e4a04fe75f904867303302a
+            - img [ref=e7302]
+      - generic [ref=e7306] [cursor=pointer]:
+        - generic [ref=e7307]:
+          - generic [ref=e7308]: Footy App (v5)
+          - generic [ref=e7309]: 2d ago
+        - generic [ref=e7310]:
+          - generic [ref=e7311]: Minted
+          - generic [ref=e7312]: 2.68 tokens
+        - generic [ref=e7313]:
+          - generic [ref=e7314]: 0x0668...03d9
+          - generic [ref=e7315]: "on"
+          - generic [ref=e7316]: BASE
+          - link [ref=e7317]:
+            - /url: https://basescan.org/tx/0x2ab59003589a5d548eec275decb20649e77e42d91ceb0a3b272fad249df3077f
+            - img [ref=e7318]
+      - generic [ref=e7322] [cursor=pointer]:
+        - generic [ref=e7323]:
+          - generic [ref=e7324]: Footy App (v5)
+          - generic [ref=e7325]: 2d ago
+        - generic [ref=e7326]:
+          - generic [ref=e7327]: Paid
+          - generic [ref=e7328]: <0.0001 ETH
+        - generic [ref=e7329]:
+          - generic [ref=e7330]: 0xb01c...9c2e
+          - generic [ref=e7331]: "on"
+          - generic [ref=e7332]: BASE
+          - link [ref=e7333]:
+            - /url: https://basescan.org/tx/0x2ab59003589a5d548eec275decb20649e77e42d91ceb0a3b272fad249df3077f
+            - img [ref=e7334]
+      - generic [ref=e7338] [cursor=pointer]:
+        - generic [ref=e7339]:
+          - generic [ref=e7340]: AppleTree
+          - generic [ref=e7341]: 3d ago
+        - generic [ref=e7342]:
+          - generic [ref=e7343]: Paid
+          - generic [ref=e7344]: 0.0035 ETH
+        - generic [ref=e7345]:
+          - generic [ref=e7346]: 0xd499...c713
+          - generic [ref=e7347]: "on"
+          - generic [ref=e7348]: ETH
+          - link [ref=e7349]:
+            - /url: https://etherscan.io/tx/0x2721d97717430bb183a0811781987ebed9be7ce55c56a836dccf6acebedd8b45
+            - img [ref=e7350]
+      - generic [ref=e7354] [cursor=pointer]:
+        - generic [ref=e7355]:
+          - generic [ref=e7356]: BreakingDAO
+          - generic [ref=e7357]: 3d ago
+        - generic [ref=e7359]: Deployed $WALT
+        - generic [ref=e7360]:
+          - generic [ref=e7361]: 0x755f...a105
+          - generic [ref=e7362]: "on"
+          - generic [ref=e7363]: BASE
+          - link [ref=e7364]:
+            - /url: https://basescan.org/tx/0x98716fb11e9740f4251bd3026124d45d54e75d7469d51ac4dd88816c1df60fbb
+            - img [ref=e7365]
+      - generic [ref=e7369] [cursor=pointer]:
+        - generic [ref=e7370]:
+          - generic [ref=e7371]: BreakingDAO
+          - generic [ref=e7372]: 3d ago
+        - generic [ref=e7374]: Created
+        - generic [ref=e7375]:
+          - generic [ref=e7376]: 0x2e74...46ef
+          - generic [ref=e7377]: "on"
+          - generic [ref=e7378]: BASE
+          - link [ref=e7379]:
+            - /url: https://basescan.org/tx/0x4d338a154cb94728f575e613e70e412911b9d1db9b66117476e9b021d06cbf96
+            - img [ref=e7380]
+      - button "Load more" [ref=e7384] [cursor=pointer]
+```
