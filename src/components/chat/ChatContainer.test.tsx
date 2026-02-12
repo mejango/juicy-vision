@@ -387,7 +387,7 @@ describe('ChatContainer', () => {
 
     beforeEach(() => {
       // Reset mocks for each test
-      vi.mocked(chatApi.fetchChat).mockResolvedValue(null)
+      vi.mocked(chatApi.fetchChat).mockResolvedValue(undefined as any)
       vi.mocked(chatApi.fetchMessages).mockResolvedValue([])
       vi.mocked(chatApi.fetchMembers).mockResolvedValue([])
     })
@@ -396,18 +396,19 @@ describe('ChatContainer', () => {
       // Mock session to return a viewer address (not founder, not member)
       vi.mocked(sessionModule.getCurrentUserAddress).mockReturnValue(viewerAddress)
 
+      const mockMessages = [createMockMessage({ id: 'msg-1', content: 'Hello' })]
       const mockChat = createMockChat({
         id: 'shared-chat-id',
         founderAddress: founderAddress,
         founderUserId: 'founder-user-id',
         members: [], // No members
-        messages: [createMockMessage({ id: 'msg-1', content: 'Hello' })], // Add a message so it's not welcome screen
+        messages: mockMessages, // Add a message so it's not welcome screen
       })
 
       // Return empty members from API
       vi.mocked(chatApi.fetchMembers).mockResolvedValue([])
       vi.mocked(chatApi.fetchChat).mockResolvedValue(mockChat)
-      vi.mocked(chatApi.fetchMessages).mockResolvedValue(mockChat.messages)
+      vi.mocked(chatApi.fetchMessages).mockResolvedValue(mockMessages)
 
       useChatStore.setState({
         chats: [mockChat],
@@ -500,29 +501,22 @@ describe('ChatContainer', () => {
       // Mock session to return member address
       vi.mocked(sessionModule.getCurrentUserAddress).mockReturnValue(memberAddress)
 
+      const mockMember = {
+        address: memberAddress,
+        role: 'member' as const,
+        joinedAt: new Date().toISOString(),
+        canSendMessages: true,
+      }
+
       const mockChat = createMockChat({
         id: 'member-chat-id',
         founderAddress: founderAddress,
         founderUserId: 'founder-user-id',
-        members: [{
-          id: 'member-1',
-          chatId: 'member-chat-id',
-          address: memberAddress,
-          role: 'member',
-          permissions: 'view-and-write',
-          createdAt: new Date().toISOString(),
-        }],
+        members: [mockMember],
       })
 
       // Return member from API
-      vi.mocked(chatApi.fetchMembers).mockResolvedValue([{
-        id: 'member-1',
-        chatId: 'member-chat-id',
-        address: memberAddress,
-        role: 'member',
-        permissions: 'view-and-write',
-        createdAt: new Date().toISOString(),
-      }])
+      vi.mocked(chatApi.fetchMembers).mockResolvedValue([mockMember])
 
       useChatStore.setState({
         chats: [mockChat],
@@ -544,29 +538,22 @@ describe('ChatContainer', () => {
       // Mock session to return member address
       vi.mocked(sessionModule.getCurrentUserAddress).mockReturnValue(memberAddress)
 
+      const mockMember = {
+        address: memberAddress,
+        role: 'member' as const,
+        joinedAt: new Date().toISOString(),
+        canSendMessages: false, // view-only
+      }
+
       const mockChat = createMockChat({
         id: 'view-only-chat-id',
         founderAddress: founderAddress,
         founderUserId: 'founder-user-id',
-        members: [{
-          id: 'member-1',
-          chatId: 'view-only-chat-id',
-          address: memberAddress,
-          role: 'member',
-          permissions: 'view-only',
-          createdAt: new Date().toISOString(),
-        }],
+        members: [mockMember],
       })
 
       // Return view-only member from API
-      vi.mocked(chatApi.fetchMembers).mockResolvedValue([{
-        id: 'member-1',
-        chatId: 'view-only-chat-id',
-        address: memberAddress,
-        role: 'member',
-        permissions: 'view-only',
-        createdAt: new Date().toISOString(),
-      }])
+      vi.mocked(chatApi.fetchMembers).mockResolvedValue([mockMember])
 
       useChatStore.setState({
         chats: [mockChat],
