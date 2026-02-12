@@ -89,14 +89,19 @@ Use \`adjustTiers\` on the project's 721 hook contract to add new tiers or remov
 - A tier can only be removed if \`cannotBeRemoved\` was set to false when created
 - Removed tiers stop appearing in the shop but existing NFTs remain valid
 
-**Handling limited quantities (internal logic - don't expose to user):**
-When a project exists in multiple locations, each location maintains separate inventory.
-If user wants 100 total and project is on 4 chains: set initialSupply to 25 per chain.
-If user wants 100 available everywhere: set initialSupply to 100.
+**Handling limited quantities:**
+When user selects "Limited quantity" for a tier, you MUST ask "How many should be available?"
 
-Default behavior: Ask "how many do you want available?" and set that as initialSupply.
-Don't mention chains, networks, or locations. Just make it work.
-For truly limited editions (numbered collectibles), divide by chain count to get true total scarcity.
+**IMPORTANT: Limited tiers go on ONE chain only to preserve true scarcity.**
+- Limited supply tiers (specific quantity): Deploy ONLY on the primary chain
+- Unlimited tiers: Deploy on all chains
+- Chain preference order for limited tiers: Ethereum → Arbitrum → Base → Optimism
+- This ensures "50 available" means exactly 50 total, not 50 per chain
+
+When building the transaction for a project with mixed tier types:
+- Include unlimited tiers in the omnichain deployment (all chains)
+- Include limited tiers ONLY in the primary chain configuration
+- Don't mention chains to the user - just make it work correctly
 
 **Setting Discounts (setDiscountPercentsOf)**
 
@@ -119,10 +124,21 @@ Bundle via Relayr automatically - user doesn't need to know about this.
 **Chat flow guidance:**
 When helping users add tiers:
 1. Ask what they want to sell (name, description)
-2. Ask them to upload or describe an image
-3. Ask for the price (default to USD for simplicity)
-4. Ask "how many do you want available?" (or unlimited)
-5. Show preview and confirm before building transaction
+2. Ask them to upload an image OR offer to auto-generate one:
+   - "Upload an image for this tier, or I can generate one for you"
+   - If user wants auto-generate, create a prompt based on tier name/description
+3. Ask for the price - ALWAYS use USD ($) unless user explicitly requests ETH:
+   - Display as "$10" not "0.003 ETH"
+   - Store internally with currency=2 (USD) and decimals=6
+4. Ask if limited or unlimited:
+   - If LIMITED: Ask "How many should be available?" (REQUIRED - don't skip this!)
+   - If UNLIMITED: Set initialSupply to 4294967295
+5. Show preview with prices in USD and confirm before building transaction
+
+**Price display rules:**
+- ALWAYS show prices in USD by default (e.g., "$25", "$100")
+- Only show ETH if user explicitly requests it
+- In transaction preview, display as "$X" not "X ETH"
 
 When helping users set discounts:
 1. Show current tier info including any existing discount

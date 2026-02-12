@@ -105,26 +105,57 @@ export function buildAdjustTiersTransaction(params: {
 }
 
 /**
+ * Per-chain configuration overrides for tier adjustments.
+ * Use this to add limited supply tiers only on the primary chain.
+ */
+export interface TiersChainConfigOverride {
+  chainId: number
+  /**
+   * Override tiers to add for this chain. Use this to add limited supply tiers
+   * only on the primary chain while adding unlimited tiers on all chains.
+   * If not provided, uses the default tiersToAdd.
+   */
+  tiersToAdd?: JB721TierConfigInput[]
+}
+
+/**
  * Build transactions for adjusting tiers on multiple chains.
  * Assumes same hook address on all chains (CREATE2 deployed).
+ *
+ * For LIMITED SUPPLY TIERS: Use chainConfigs with per-chain `tiersToAdd` to add
+ * limited tiers only on the primary chain while adding unlimited tiers on all chains.
  */
 export function buildOmnichainAdjustTiersTransactions(params: {
   chainIds: number[]
   hookAddress: `0x${string}`
-  tiersToAdd: JB721TierConfigInput[]
+  tiersToAdd: JB721TierConfigInput[]  // Default tiers (used if no chain override)
   tierIdsToRemove: (number | bigint)[]
+  chainConfigs?: TiersChainConfigOverride[]  // Per-chain tier overrides
 }): Array<{
   chainId: number
   to: `0x${string}`
   data: `0x${string}`
   value: string
 }> {
-  return params.chainIds.map(chainId =>
-    buildAdjustTiersTransaction({
+  const { chainConfigs = [] } = params
+
+  // Build a map of chainId -> tier configurations from chainConfigs
+  const chainConfigMap = new Map<number, TiersChainConfigOverride>()
+  for (const cfg of chainConfigs) {
+    chainConfigMap.set(cfg.chainId, cfg)
+  }
+
+  return params.chainIds.map(chainId => {
+    // Get per-chain tiers to add (use override if available)
+    const chainConfig = chainConfigMap.get(chainId)
+    const tiersToAdd = chainConfig?.tiersToAdd ?? params.tiersToAdd
+
+    return buildAdjustTiersTransaction({
       ...params,
       chainId,
+      tiersToAdd,
     })
-  )
+  })
 }
 
 /**

@@ -6,7 +6,11 @@ import {
   encodeQueueRulesetsOf,
   buildQueueRulesetsTransaction,
   buildOmnichainQueueRulesetsTransactions,
+  buildOmnichainLaunch721RulesetsTransactions,
   type ChainConfigOverride,
+  type JBDeployTiersHookConfig,
+  type JBLaunchRulesetsConfig,
+  type JB721TierConfig,
 } from './omnichainDeployer'
 import type { JBRulesetConfig, JBTerminalConfig, JBSuckerDeploymentConfig } from './relayr'
 
@@ -415,6 +419,213 @@ describe('omnichainDeployer', () => {
       expect(transactions[0].chainId).toBe(1)
       expect(transactions[1].chainId).toBe(10)
       expect(transactions[2].chainId).toBe(8453)
+    })
+  })
+
+  describe('buildOmnichainLaunch721RulesetsTransactions - per-chain tier support', () => {
+    // Sample tier configurations
+    const unlimitedTier: JB721TierConfig = {
+      price: '5000000', // $5 USDC
+      initialSupply: 4294967295, // Max uint32 = "unlimited"
+      votingUnits: 0,
+      reserveFrequency: 0,
+      reserveBeneficiary: '0x0000000000000000000000000000000000000000',
+      encodedIPFSUri: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      category: 1,
+      discountPercent: 0,
+      allowOwnerMint: false,
+      useReserveBeneficiaryAsDefault: false,
+      transfersPausable: false,
+      useVotingUnits: false,
+      cannotBeRemoved: false,
+      cannotIncreaseDiscountPercent: false,
+    }
+
+    const limitedTier: JB721TierConfig = {
+      price: '25000000', // $25 USDC
+      initialSupply: 50, // Limited to 50
+      votingUnits: 0,
+      reserveFrequency: 0,
+      reserveBeneficiary: '0x0000000000000000000000000000000000000000',
+      encodedIPFSUri: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      category: 1,
+      discountPercent: 0,
+      allowOwnerMint: false,
+      useReserveBeneficiaryAsDefault: false,
+      transfersPausable: false,
+      useVotingUnits: false,
+      cannotBeRemoved: false,
+      cannotIncreaseDiscountPercent: false,
+    }
+
+    const sampleDeployTiersHookConfig: JBDeployTiersHookConfig = {
+      name: 'Test Collection',
+      symbol: 'TEST',
+      baseUri: '',
+      tokenUriResolver: '0x0000000000000000000000000000000000000000',
+      contractUri: '',
+      tiersConfig: {
+        tiers: [unlimitedTier, limitedTier],
+        currency: 2, // USD
+        decimals: 6,
+        prices: '0x0000000000000000000000000000000000000000',
+      },
+      reserveBeneficiary: '0x0000000000000000000000000000000000000000',
+      flags: {
+        noNewTiersWithReserves: false,
+        noNewTiersWithVotes: false,
+        noNewTiersWithOwnerMinting: false,
+        preventOverspending: false,
+      },
+    }
+
+    const sampleLaunchRulesetsConfig: JBLaunchRulesetsConfig = {
+      projectId: 0,
+      rulesetConfigurations: [sampleRulesetConfig],
+      terminalConfigurations: [sampleEthTerminalConfig],
+      memo: 'Launch with tiers',
+    }
+
+    it('builds transactions for multiple chains with same tiers by default', () => {
+      const transactions = buildOmnichainLaunch721RulesetsTransactions({
+        chainIds: [11155111, 11155420], // Sepolia, OP Sepolia
+        projectId: 123,
+        deployTiersHookConfig: sampleDeployTiersHookConfig,
+        launchRulesetsConfig: sampleLaunchRulesetsConfig,
+      })
+
+      expect(transactions).toHaveLength(2)
+      expect(transactions[0].chainId).toBe(11155111)
+      expect(transactions[1].chainId).toBe(11155420)
+
+      // Both chains get the same tiers by default
+      // (calldata will be identical except for sucker config)
+    })
+
+    it('applies per-chain tier overrides for limited supply single-chain deployment', () => {
+      // For limited supply tiers, we want to deploy:
+      // - Unlimited tiers on ALL chains
+      // - Limited tiers ONLY on the primary chain (first in list)
+      const chainConfigs: ChainConfigOverride[] = [
+        {
+          chainId: 11155111, // Primary chain - gets ALL tiers (unlimited + limited)
+          tiers: [unlimitedTier, limitedTier],
+        },
+        {
+          chainId: 11155420, // Secondary chain - gets ONLY unlimited tiers
+          tiers: [unlimitedTier],
+        },
+      ]
+
+      const transactions = buildOmnichainLaunch721RulesetsTransactions({
+        chainIds: [11155111, 11155420],
+        projectId: 123,
+        deployTiersHookConfig: sampleDeployTiersHookConfig,
+        launchRulesetsConfig: sampleLaunchRulesetsConfig,
+        chainConfigs,
+      })
+
+      expect(transactions).toHaveLength(2)
+
+      // The calldata should be DIFFERENT because:
+      // - Primary chain (11155111) has 2 tiers
+      // - Secondary chain (11155420) has 1 tier
+      expect(transactions[0].data).not.toBe(transactions[1].data)
+
+      // Primary chain calldata should be longer (more tiers)
+      expect(transactions[0].data.length).toBeGreaterThan(transactions[1].data.length)
+    })
+
+    it('uses default tiers when no chainConfig override is provided for a chain', () => {
+      // Only override one chain, let the other use defaults
+      const chainConfigs: ChainConfigOverride[] = [
+        {
+          chainId: 11155420, // Only override OP Sepolia
+          tiers: [unlimitedTier], // Give it only unlimited tier
+        },
+      ]
+
+      const transactions = buildOmnichainLaunch721RulesetsTransactions({
+        chainIds: [11155111, 11155420],
+        projectId: 123,
+        deployTiersHookConfig: sampleDeployTiersHookConfig, // Has both tiers
+        launchRulesetsConfig: sampleLaunchRulesetsConfig,
+        chainConfigs,
+      })
+
+      expect(transactions).toHaveLength(2)
+
+      // Sepolia (no override) gets default tiers (2 tiers)
+      // OP Sepolia (override) gets only unlimited tier (1 tier)
+      expect(transactions[0].data.length).toBeGreaterThan(transactions[1].data.length)
+    })
+
+    it('handles single chain deployment correctly', () => {
+      const transactions = buildOmnichainLaunch721RulesetsTransactions({
+        chainIds: [11155111], // Only Sepolia
+        projectId: 123,
+        deployTiersHookConfig: sampleDeployTiersHookConfig,
+        launchRulesetsConfig: sampleLaunchRulesetsConfig,
+      })
+
+      expect(transactions).toHaveLength(1)
+      expect(transactions[0].chainId).toBe(11155111)
+      expect(transactions[0].data).toMatch(/^0x/)
+    })
+
+    it('handles empty tiers array in per-chain override', () => {
+      const chainConfigs: ChainConfigOverride[] = [
+        {
+          chainId: 11155420,
+          tiers: [], // No tiers for this chain
+        },
+      ]
+
+      const transactions = buildOmnichainLaunch721RulesetsTransactions({
+        chainIds: [11155111, 11155420],
+        projectId: 123,
+        deployTiersHookConfig: sampleDeployTiersHookConfig,
+        launchRulesetsConfig: sampleLaunchRulesetsConfig,
+        chainConfigs,
+      })
+
+      expect(transactions).toHaveLength(2)
+      // OP Sepolia should have shorter calldata (no tiers)
+      expect(transactions[1].data.length).toBeLessThan(transactions[0].data.length)
+    })
+
+    it('combines terminal and tier overrides in chainConfigs', () => {
+      const chainConfigs: ChainConfigOverride[] = [
+        {
+          chainId: 11155111,
+          terminalConfigurations: [sampleUsdcTerminalConfig],
+          tiers: [unlimitedTier, limitedTier], // All tiers
+        },
+        {
+          chainId: 11155420,
+          terminalConfigurations: [{
+            terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+            accountingContextsToAccept: [{
+              token: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // OP Sepolia USDC
+              decimals: 6,
+              currency: 3169378579,
+            }],
+          }],
+          tiers: [unlimitedTier], // Only unlimited
+        },
+      ]
+
+      const transactions = buildOmnichainLaunch721RulesetsTransactions({
+        chainIds: [11155111, 11155420],
+        projectId: 123,
+        deployTiersHookConfig: sampleDeployTiersHookConfig,
+        launchRulesetsConfig: sampleLaunchRulesetsConfig,
+        chainConfigs,
+      })
+
+      expect(transactions).toHaveLength(2)
+      // Both chains have different calldata (different terminals AND different tier counts)
+      expect(transactions[0].data).not.toBe(transactions[1].data)
     })
   })
 })

@@ -866,14 +866,24 @@ function TiersHookConfigSection({
                 Tiers ({tiersConfig.tiers.length})
               </div>
               <div className={`space-y-1 mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {(tiersConfig.tiers as Array<{ price?: string | bigint; initialSupply?: number }>).slice(0, 5).map((tier, idx) => (
-                  <div key={idx} className="flex justify-between text-xs">
-                    <span>Tier {idx + 1}</span>
-                    <span className="font-mono">
-                      {tier.initialSupply || '?'} × {tier.price ? `${(Number(tier.price) / 1e18).toFixed(4)} ETH` : '?'}
-                    </span>
-                  </div>
-                ))}
+                {(tiersConfig.tiers as Array<{ price?: string | bigint; initialSupply?: number }>).slice(0, 5).map((tier, idx) => {
+                  const tierCurrency = (tiersConfig as { currency?: number })?.currency || 2
+                  const tierDecimals = (tiersConfig as { decimals?: number })?.decimals || 6
+                  const isUsd = tierCurrency === 2 || isUsdcCurrency(tierCurrency)
+                  const priceDisplay = tier.price
+                    ? (isUsd
+                      ? `$${(Number(tier.price) / Math.pow(10, tierDecimals)).toLocaleString()}`
+                      : `${(Number(tier.price) / 1e18).toFixed(4)} ETH`)
+                    : '?'
+                  return (
+                    <div key={idx} className="flex justify-between text-xs">
+                      <span>Tier {idx + 1}</span>
+                      <span className="font-mono">
+                        {tier.initialSupply || '?'} × {priceDisplay}
+                      </span>
+                    </div>
+                  )
+                })}
                 {tiersConfig.tiers.length > 5 && (
                   <div className={`text-xs italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                     +{tiersConfig.tiers.length - 5} more tier{tiersConfig.tiers.length - 5 > 1 ? 's' : ''}
@@ -1106,8 +1116,9 @@ interface TierInfo {
 }
 
 function TierPreview({ tier, index, isDark }: { tier: TierInfo; index: number; isDark: boolean }) {
-  // Convert price based on decimals
-  const priceFormatted = tier.currency === 2
+  // Convert price based on currency - check for USD (2) or any USDC currency code
+  const isUsdBased = tier.currency === 2 || isUsdcCurrency(tier.currency)
+  const priceFormatted = isUsdBased
     ? `$${(tier.price / Math.pow(10, tier.decimals || 6)).toLocaleString()}`
     : `${(tier.price / 1e18).toFixed(4)} ETH`
 

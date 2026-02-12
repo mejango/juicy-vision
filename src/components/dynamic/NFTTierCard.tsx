@@ -4,6 +4,7 @@ import { useAccount } from 'wagmi'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import { resolveIpfsUri, inlineSvgImages } from '../../utils/ipfs'
 import { resolveTierUri, type ResolvedNFTTier } from '../../services/nft'
+import { isUsdcCurrency } from '../../utils/technicalDetails'
 import GenerateImageButton from '../ui/GenerateImageButton'
 import SupplyBadge from '../ui/SupplyBadge'
 import TierDetailModal from './TierDetailModal'
@@ -182,8 +183,14 @@ export default function NFTTierCard({
   const imageUrl = imageError ? null : (ipfsImageUrl || onChainImage)
   // Check if image is an SVG (data URI or .svg extension)
   const isSvgImage = imageUrl?.startsWith('data:image/svg') || imageUrl?.endsWith('.svg')
+
+  // Price display: USD-based tiers show USD primary, ETH-based show ETH primary
+  const isUsdBased = tier.currency === 2 || isUsdcCurrency(tier.currency)
   const priceEth = parseFloat(formatEther(tier.price))
-  const priceUsd = ethPrice ? priceEth * ethPrice : null
+  // For USD-based tiers, price is already in USD (with 6 decimals for USDC)
+  const priceUsd = isUsdBased
+    ? Number(tier.price) / Math.pow(10, 6) // USDC has 6 decimals
+    : (ethPrice ? priceEth * ethPrice : null)
   const soldOut = tier.remainingSupply === 0
 
   const handleAddToCheckout = () => {
@@ -292,13 +299,23 @@ export default function NFTTierCard({
 
         {/* Price & Action */}
         <div className="text-right">
-          <div className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {priceEth.toFixed(4)} ETH
-          </div>
-          {priceUsd && (
-            <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              ~${priceUsd.toFixed(2)}
-            </div>
+          {isUsdBased ? (
+            <>
+              <div className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                ${priceUsd?.toFixed(2)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {priceEth.toFixed(4)} ETH
+              </div>
+              {priceUsd && (
+                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  ~${priceUsd.toFixed(2)}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -496,13 +513,21 @@ export default function NFTTierCard({
 
         {/* Price */}
         <div className="flex items-baseline gap-2 mb-3">
-          <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {priceEth.toFixed(4)} ETH
-          </span>
-          {priceUsd && (
-            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              (~${priceUsd.toFixed(2)})
+          {isUsdBased ? (
+            <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              ${priceUsd?.toFixed(2)}
             </span>
+          ) : (
+            <>
+              <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {priceEth.toFixed(4)} ETH
+              </span>
+              {priceUsd && (
+                <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  (~${priceUsd.toFixed(2)})
+                </span>
+              )}
+            </>
           )}
         </div>
 

@@ -4,6 +4,7 @@ import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import type { ResolvedNFTTier } from '../../services/nft'
 import { fetchMultiChainTierSupply, type MultiChainTierSupply } from '../../services/nft/multichain'
+import { isUsdcCurrency } from '../../utils/technicalDetails'
 
 interface TierDetailModalProps {
   isOpen: boolean
@@ -68,8 +69,13 @@ export default function TierDetailModal({
 
   if (!isOpen) return null
 
+  // Price display: USD-based tiers show USD primary, ETH-based show ETH primary
+  const isUsdBased = tier.currency === 2 || isUsdcCurrency(tier.currency)
   const priceEth = parseFloat(formatEther(tier.price))
-  const priceUsd = ethPrice ? priceEth * ethPrice : null
+  // For USD-based tiers, price is already in USD (with 6 decimals for USDC)
+  const priceUsd = isUsdBased
+    ? Number(tier.price) / Math.pow(10, 6) // USDC has 6 decimals
+    : (ethPrice ? priceEth * ethPrice : null)
   const displayName = /^Tier \d+$/.test(tier.name) ? (productName || tier.name) : tier.name
   const isSvgImage = imageUrl?.startsWith('data:image/svg') || imageUrl?.endsWith('.svg')
 
@@ -141,13 +147,21 @@ export default function TierDetailModal({
 
           {/* Price */}
           <div className="mb-4">
-            <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {priceEth.toFixed(4)} ETH
-            </span>
-            {priceUsd && (
-              <span className={`text-sm ml-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                ~${priceUsd.toFixed(2)}
+            {isUsdBased ? (
+              <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                ${priceUsd?.toFixed(2)}
               </span>
+            ) : (
+              <>
+                <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {priceEth.toFixed(4)} ETH
+                </span>
+                {priceUsd && (
+                  <span className={`text-sm ml-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    ~${priceUsd.toFixed(2)}
+                  </span>
+                )}
+              </>
             )}
           </div>
 

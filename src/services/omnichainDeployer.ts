@@ -332,10 +332,17 @@ export function buildLaunchProjectTransaction(params: {
 /**
  * Per-chain configuration overrides.
  * Allows different terminal configurations per chain (e.g., different USDC addresses).
+ * Also supports per-chain tier filtering for limited supply single-chain deployment.
  */
 export interface ChainConfigOverride {
   chainId: number
   terminalConfigurations?: JBTerminalConfig[]
+  /**
+   * Override tiers for this chain. Use this to deploy limited supply tiers
+   * only on the primary chain while deploying unlimited tiers on all chains.
+   * If not provided, uses the default tiersConfig from deployTiersHookConfig.
+   */
+  tiers?: JB721TierConfig[]
 }
 
 /**
@@ -672,6 +679,10 @@ export function buildLaunch721RulesetsTransaction(params: {
  *
  * For ERC20-based projects (e.g., USDC), pass chainConfigs with per-chain
  * terminal configurations to ensure correct token addresses on each chain.
+ *
+ * For LIMITED SUPPLY TIERS: Use chainConfigs with per-chain `tiers` to deploy
+ * limited tiers only on the primary chain while deploying unlimited tiers on all chains.
+ * This ensures "50 available" means exactly 50 total, not 50 per chain.
  */
 export function buildOmnichainLaunch721RulesetsTransactions(params: {
   chainIds: number[]
@@ -680,7 +691,7 @@ export function buildOmnichainLaunch721RulesetsTransactions(params: {
   launchRulesetsConfig: JBLaunchRulesetsConfig
   controller?: `0x${string}`
   salt?: `0x${string}`
-  chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs
+  chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs and tiers
 }): Array<{
   chainId: number
   to: `0x${string}`
@@ -689,7 +700,7 @@ export function buildOmnichainLaunch721RulesetsTransactions(params: {
 }> {
   const { chainConfigs = [] } = params
 
-  // Build a map of chainId -> terminal configurations from chainConfigs
+  // Build a map of chainId -> chain configuration from chainConfigs
   const chainConfigMap = new Map<number, ChainConfigOverride>()
   for (const cfg of chainConfigs) {
     chainConfigMap.set(cfg.chainId, cfg)
@@ -700,9 +711,21 @@ export function buildOmnichainLaunch721RulesetsTransactions(params: {
     const chainConfig = chainConfigMap.get(chainId)
     const terminalConfigurations = chainConfig?.terminalConfigurations ?? params.launchRulesetsConfig.terminalConfigurations
 
+    // Get per-chain tier configurations (use override if available)
+    // This enables limited supply tiers to be deployed only on primary chain
+    const tiers = chainConfig?.tiers ?? params.deployTiersHookConfig.tiersConfig.tiers
+    const deployTiersHookConfig: JBDeployTiersHookConfig = {
+      ...params.deployTiersHookConfig,
+      tiersConfig: {
+        ...params.deployTiersHookConfig.tiersConfig,
+        tiers,
+      },
+    }
+
     return buildLaunch721RulesetsTransaction({
       ...params,
       chainId,
+      deployTiersHookConfig,
       launchRulesetsConfig: {
         ...params.launchRulesetsConfig,
         terminalConfigurations,  // Use per-chain terminal configs

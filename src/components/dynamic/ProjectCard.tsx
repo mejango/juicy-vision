@@ -8,6 +8,7 @@ import { getProjectDataHook, fetchResolvedNFTTiers, fetchHookFlags, resolveTierU
 import { inlineSvgImages } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore, type PaymentStage, type TransactionStatus } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, CHAINS, type SupportedChainId } from '../../constants'
+import { isUsdcCurrency } from '../../utils/technicalDetails'
 import { useJuiceBalance } from '../../hooks/useJuiceBalance'
 import { useWalletBalances } from '../../hooks/useWalletBalances'
 import { useManagedWallet } from '../../hooks'
@@ -1273,7 +1274,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                           {getTierDisplayName(tier)}
                         </div>
                         <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {tier.currency === 2 ? `$${formatEther(tier.price)}` : `${formatEther(tier.price)} ETH`}
+                          {(tier.currency === 2 || isUsdcCurrency(tier.currency)) ? `$${(Number(tier.price) / 1e6).toFixed(2)}` : `${formatEther(tier.price)} ETH`}
                         </div>
                       </div>
                       {/* Quantity controls when selected */}
@@ -1873,7 +1874,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                         {getTierDisplayName(tier)}
                       </div>
                       <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {tier.currency === 2 ? `$${formatEther(tier.price)}` : `${formatEther(tier.price)} ETH`}
+                        {(tier.currency === 2 || isUsdcCurrency(tier.currency)) ? `$${(Number(tier.price) / 1e6).toFixed(2)}` : `${formatEther(tier.price)} ETH`}
                       </div>
                     </div>
                     {/* Quantity controls when selected */}

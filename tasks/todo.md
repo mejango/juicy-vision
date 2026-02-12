@@ -1,6 +1,43 @@
 # Cost Management, Vibeengineering, and Security Hardening
 
-## Latest: Shop Owner Controls (Tier Management)
+## Latest: Reward Tier Creation Flow Improvements
+
+**Status: Complete**
+
+Feedback from user testing on the tier creation conversation flow:
+
+### 1. Display Prices in USD by Default ✓
+- [x] NFTTierCard.tsx - Shows USD primary for USD-based tiers, ETH for ETH-based
+- [x] TierDetailModal.tsx - Same USD-first logic
+- [x] ProjectCard.tsx - Fixed USDC decimals (6, not 18)
+- [x] TransactionPreview.tsx - Already had USD display support
+- [x] Added `isUsdcCurrency()` checks for chain-specific USDC codes
+
+### 2. Tier Media Support ✓
+- [x] ChatInput.tsx already supports image uploads (drag, drop, paste, file picker)
+- [x] GenerateImageButton component for AI image generation
+- [x] TierEditor.tsx uses GenerateImageButton for auto-generation
+- [x] AI prompt in nftTiers.ts instructs to ask for uploads or offer generation
+
+### 3. Limited Supply Handling for Multichain ✓
+- [x] AI prompt updated to ask "How many should be available?" for limited tiers
+- [x] Extended `ChainConfigOverride` in omnichainDeployer.ts with per-chain `tiers` array
+- [x] Updated `buildOmnichainLaunch721RulesetsTransactions()` for per-chain tier filtering
+- [x] Added `TiersChainConfigOverride` to tiersHook.ts for adjustTiers
+- [x] AI prompt documents chain preference: ETH → ARB → BASE → OP
+
+### Files Updated
+- `shared/prompts/transaction/nftTiers.ts` - USD pricing, limited supply, media guidance
+- `src/components/dynamic/TransactionPreview.tsx` - USD display for USDC currencies
+- `src/components/dynamic/NFTTierCard.tsx` - USD-first pricing for USD-based tiers
+- `src/components/dynamic/TierDetailModal.tsx` - USD-first pricing
+- `src/components/dynamic/ProjectCard.tsx` - Fixed USDC decimals, added isUsdcCurrency
+- `src/services/omnichainDeployer.ts` - Per-chain tier configuration support
+- `src/services/tiersHook.ts` - Per-chain tier support for adjustTiers
+
+---
+
+## Previous: Shop Owner Controls (Tier Management)
 
 **Status: Complete**
 
