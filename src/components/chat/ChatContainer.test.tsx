@@ -497,6 +497,42 @@ describe('ChatContainer', () => {
       expect(screen.getByRole('textbox')).toBeInTheDocument()
     })
 
+    it('allows founder to write when matched by sessionId in founderAddress (pseudo-address)', async () => {
+      // Mock session with a sessionId that's embedded in the founderAddress
+      const testSessionId = 'ses_abc123def456_7890abcd1234'
+      vi.mocked(sessionModule.getSessionId).mockReturnValue(testSessionId)
+      vi.mocked(sessionModule.getCurrentUserAddress).mockReturnValue(null) // No direct address match
+
+      // founderAddress is a pseudo-address that contains the sessionId hex
+      // The check extracts hex chars from sessionId: abc123def4567890abcd1234 (first 40 chars)
+      const pseudoAddress = '0xabc123def4567890abcd12340000000000000000'
+
+      const mockChat = createMockChat({
+        id: 'session-founder-chat-id',
+        founderAddress: pseudoAddress,
+        founderUserId: 'different-user-id',
+        members: [],
+      })
+
+      vi.mocked(chatApi.fetchMembers).mockResolvedValue([])
+
+      useChatStore.setState({
+        chats: [mockChat],
+        activeChatId: 'session-founder-chat-id',
+      })
+
+      useAuthStore.setState({ user: null, token: null })
+
+      renderWithProviders(<ChatContainer forceActiveChatId="session-founder-chat-id" />)
+
+      // Should NOT show read-only message - founder can write via sessionId match
+      await waitFor(() => {
+        expect(screen.queryByText(/read-only mode/i)).not.toBeInTheDocument()
+      })
+
+      expect(screen.getByRole('textbox')).toBeInTheDocument()
+    })
+
     it('allows member with write access to send messages', async () => {
       // Mock session to return member address
       vi.mocked(sessionModule.getCurrentUserAddress).mockReturnValue(memberAddress)

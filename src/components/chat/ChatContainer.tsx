@@ -99,7 +99,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     m.address?.toLowerCase() === currentAddress?.toLowerCase() ||
     (m.address && sessionId && m.address.toLowerCase().includes(sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40)))
   )
-  const canWrite = isChatMode ? !!currentUserMember : true // Anyone can write to local chats
+  // Also check if user is the founder (even if not in members list, e.g., after session change)
+  // Check by userId (logged in user), by address, or by sessionId embedded in founderAddress
+  const isFounder = (
+    (user?.id && activeChat?.founderUserId === user.id) ||
+    (currentAddress && activeChat?.founderAddress?.toLowerCase() === currentAddress.toLowerCase()) ||
+    // Fallback: check if founderAddress contains current sessionId (for pseudo-addresses)
+    (sessionId && activeChat?.founderAddress?.toLowerCase().includes(sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).toLowerCase()))
+  )
+  const canWrite = isChatMode ? !!(currentUserMember || isFounder) : true // Anyone can write to local chats
   const canInvite = !isChatMode || // Anyone can invite in local mode
     currentUserMember?.role === 'founder' ||
     currentUserMember?.role === 'admin' ||
