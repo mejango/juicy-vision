@@ -299,3 +299,74 @@ Added client-side caching to bendystraw for ruleset history and revnet stages:
 | `backend/src/db/migrations/004_escalation.sql` | Schema changes |
 | `src/admin/pages/EscalationsPage.tsx` | Admin queue UI |
 | `src/admin/components/EscalationViewer.tsx` | Detail view |
+
+---
+
+# E2E Testing Architecture Implementation
+
+## Status: Complete
+
+Implemented a comprehensive E2E testing system with two complementary approaches:
+1. **Playwright E2E Suite** - Deterministic regression tests
+2. **AI UX Tester Bot** - Claude-powered exploratory testing
+
+## Completed Tasks
+
+- [x] **Test Fixtures** (`e2e/fixtures/`)
+  - `auth.ts` - Managed wallet and self-custody auth strategies
+  - `api.ts` - API response fixtures for deterministic tests
+  - `test-wallet.ts` - Mock wallet provider for testing
+
+- [x] **Test Helpers** (`e2e/helpers/`)
+  - `chat.ts` - Chat interaction helpers
+  - `components.ts` - Component interaction helpers
+  - `wallet.ts` - Wallet connection utilities
+
+- [x] **E2E Flow Tests** (`e2e/flows/`)
+  - `project-creation.spec.ts` - Chat→deploy flow
+  - `store-management.spec.ts` - Tier management
+  - `dashboard.spec.ts` - Dashboard navigation
+
+- [x] **API Tests** (`e2e/api-tests/`)
+  - `chat-api.spec.ts` - Chat endpoint tests
+  - `project-api.spec.ts` - Project endpoint tests
+  - `tier-api.spec.ts` - Tier management tests
+
+- [x] **UX Bot** (`e2e/ux-bot/`)
+  - `agent.ts` - Claude orchestrator
+  - `driver.ts` - Playwright actions
+  - `analyzer.ts` - Page analysis
+  - `reporter.ts` - HTML/JSON reports
+  - `api-client.ts` - API testing
+
+- [x] **Configuration**
+  - `playwright.config.ts` - Added projects
+  - `package.json` - New npm scripts
+
+## NPM Scripts
+
+```bash
+npm run test:e2e          # All E2E tests
+npm run test:e2e:flow     # Flow tests only
+npm run test:e2e:api      # API tests only
+npm run test:ux-bot       # UX Bot tests
+npm run test:ux-bot:scenario  # Custom scenario
+```
+
+## New File Structure
+
+```
+e2e/
+├── fixtures/             # Auth, API, wallet mocks
+├── helpers/              # Reusable test utilities
+├── flows/                # User journey tests
+├── api-tests/            # Direct API tests
+├── mocks/                # JSON test data
+├── ux-bot/               # AI testing agent
+│   ├── agent.ts
+│   ├── driver.ts
+│   ├── analyzer.ts
+│   ├── reporter.ts
+│   └── scenarios/
+└── ux-bot.spec.ts        # Bot entry point
+```

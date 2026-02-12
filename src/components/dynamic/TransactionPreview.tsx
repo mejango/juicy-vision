@@ -1501,7 +1501,7 @@ function FundingBreakdown({
                   </button>
                   {t('deployment.joinJuicy')}
                   <InfoPopover
-                    content="Help us keep building. JUICY runs like a co-op and is the revenue token that powers this app. When you pay 2.5% into JUICY, you receive JUICY tokens proportional to your payment. As Juicy's balance grows over time, so does the value backing each token."
+                    content="JUICY runs like a co-op that keeps this open source site running and this public network growing. When you pay into Juicy, you receive JUICY proportional to your payment. As the balance grows, so does the value backing each JUICY. You can cash out anytime for your share, or hold to support the community business and benefit from growth. Fully automated by blockchains, your money and your data remain accessible even if this website goes down."
                     isDark={isDark}
                   />
                 </span>

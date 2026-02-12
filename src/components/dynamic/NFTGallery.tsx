@@ -105,7 +105,7 @@ export default function NFTGallery({
       <div className={`p-4 border text-center ${
         isDark ? 'bg-juice-dark-lighter border-gray-600 text-gray-400' : 'bg-white border-gray-300 text-gray-500'
       }`}>
-        No NFT tiers available
+        Nothing for sale yet
       </div>
     )
   }

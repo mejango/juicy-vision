@@ -191,8 +191,7 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
   if (tiers.length === 0) {
     return (
       <div className={`text-center py-12 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-        <p className="text-lg font-medium mb-2">No NFT tiers available</p>
-        <p className="text-sm">This project doesn't have any NFT tiers configured yet.</p>
+        <p className="text-lg font-medium">Nothing for sale yet</p>
       </div>
     )
   }

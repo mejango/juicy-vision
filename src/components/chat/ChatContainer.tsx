@@ -2116,7 +2116,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   : 'border-teal-600 text-teal-600 hover:bg-teal-50'
               }`}
             >
-              {t('beta.joinUs', 'Join us so we can go faster')}
+              {t('beta.joinUs', 'Pay us so we can keep Juicy up and growing faster')}
             </button>
           </div>
         </div>

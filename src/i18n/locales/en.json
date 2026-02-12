@@ -145,8 +145,8 @@
     "free": "Free",
     "send": "Send note",
     "sendWithPayment": "Send note with {{amount}} {{token}}",
-    "payJuicy": "Join Juicy (+{{percent}}%)",
-    "joinJuicy": "Join Juicy (+{{percent}}%)"
+    "payJuicy": "Pay for Juicy (+{{percent}}%)",
+    "joinJuicy": "Pay for Juicy (+{{percent}}%)"
   },
   "invite": {
     "title": "Invite to {{chatName}}",
@@ -198,8 +198,8 @@
     "intro": "The juiciest way to fund and grow your project.",
     "useIt": "Use it to run your fundraise, operate your business, manage your campaign, sell to customers, work with your community, and build out your dreams.",
     "promptAway": "Just prompt away, in private or together.",
-    "paragraph1": "JUICY runs like a co-op, and is the revenue token that powers this app. When you pay into Juicy, you receive JUICY revnet tokens proportional to your payment.",
-    "paragraph2": "As Juicy's balance grows, so does the value backing each token. You can cash out anytime for your share, or hold to support the community business. Fully automated by blockchains, no one's in control.",
+    "paragraph1": "JUICY runs like a co-op that keeps this open source site running and this public network growing. When you pay into Juicy, you receive JUICY proportional to your payment.",
+    "paragraph2": "As the balance grows, so does the value backing each JUICY. You can cash out anytime for your share, or hold to support the community business and benefit from growth. Fully automated by blockchains, your money and your data remain accessible even if this website goes down.",
     "poweredBy": "Uses revnets, powered by Juicebox, secured by Ethereum, Optimism, Base, and Arbitrum.",
     "teachSkills": "Teach the juicebox skills that Juicy is based on to your AI"
   },
@@ -210,7 +210,7 @@
     "promptAway": "Just prompt away, in private or together.",
     "whyBeta": "We're still working out the kinks. Expect bugs.",
     "whenNotBeta": "We'll drop the beta tag when it just works.",
-    "joinUs": "Join us so we can go faster",
+    "joinUs": "Pay us so we can keep Juicy up and growing faster",
     "supportUs": "Support Juicy Vision",
     "comingSoon": "JUICY coming soon. Currently using NANA."
   },
@@ -1193,7 +1193,7 @@
     "unlimited": "Unlimited",
     "you": "You",
     "recipient": "Recipient",
-    "joinJuicy": "Join Juicy",
+    "joinJuicy": "Pay for Juicy",
     "untitledProject": "Untitled Project",
     "sessionExpired": "Session expired.",
     "sessionExpiredDesc": "Please sign out and sign in again to continue.",

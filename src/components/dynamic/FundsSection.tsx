@@ -80,13 +80,19 @@ function CashOutCalculator({
   chainFundsData,
   isDark,
   tokenSymbol,
+  userTokenBalance,
 }: {
   chainFundsData: ChainFundsData[]
   tokenSymbol?: string | null
   isDark: boolean
+  userTokenBalance?: bigint
 }) {
+  // Default to user's balance if available
+  const defaultAmount = userTokenBalance && userTokenBalance > 0n
+    ? (Number(userTokenBalance) / Math.pow(10, 18)).toString()
+    : ''
   const [expanded, setExpanded] = useState(false)
-  const [tokenAmount, setTokenAmount] = useState('')
+  const [tokenAmount, setTokenAmount] = useState(defaultAmount)
   const [showBreakdown, setShowBreakdown] = useState(false)
 
   const TOKEN_DECIMALS = 18
@@ -877,6 +883,17 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               isDark={isDark}
             />
 
+            {/* User token balance - right below tax rate */}
+            {isSignedIn && (
+              <div className="mb-3">
+                <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Your balance: <span className={`font-mono ${userTokenBalance > 0n ? (isDark ? 'text-white' : 'text-gray-900') : ''}`}>
+                    {formatBalance(userTokenBalance.toString(), 18)}
+                  </span> {tokenSymbol || 'tokens'}
+                </span>
+              </div>
+            )}
+
             {/* Per-chain cash out breakdown (collapsible) */}
             {hasSurplus && cashOutEnabledChains.length > 1 && (
               <PerChainCashOutBreakdown
@@ -891,6 +908,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                 chainFundsData={cashOutEnabledChains}
                 isDark={isDark}
                 tokenSymbol={tokenSymbol}
+                userTokenBalance={userTokenBalance}
               />
             )}
 
@@ -987,14 +1005,6 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                       )}
                     </div>
                   )}
-                  {/* User token balance */}
-                  {isSignedIn && (
-                    <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Your balance: <span className={`font-mono ${userTokenBalance > 0n ? (isDark ? 'text-white' : 'text-gray-900') : ''}`}>
-                        {formatBalance(userTokenBalance.toString(), 18)}
-                      </span> {tokenSymbol || 'tokens'}
-                    </span>
-                  )}
                 </div>
               </div>
             )}
@@ -1069,13 +1079,13 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <button
             onClick={() => setShowSplits(!showSplits)}
-            className={`flex items-center justify-between w-full text-sm ${
+            className={`flex items-center gap-1 text-sm ${
               isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             <span>Payout recipients ({activeChainData.payoutSplits.length})</span>
             <svg
-              className={`w-4 h-4 transition-transform ${showSplits ? 'rotate-180' : ''}`}
+              className={`w-3 h-3 transition-transform ${showSplits ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"

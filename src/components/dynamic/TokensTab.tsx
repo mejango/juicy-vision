@@ -12,6 +12,7 @@ import {
   fetchProjectSplits,
   fetchPendingReservedTokens,
   calculateFloorPrice,
+  isRevnet,
   type Project,
   type ConnectedChain,
   type JBSplitData,
@@ -21,6 +22,7 @@ import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { VIEM_CHAINS, RPC_ENDPOINTS, CHAINS, MAINNET_CHAINS, type SupportedChainId } from '../../constants'
 import { SendReservedTokensModal } from '../payment'
 import HoldersChart from './charts/HoldersChart'
+import PriceChart from './PriceChart'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
 
 interface TokensTabProps {
@@ -290,66 +292,16 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         Membership is represented on blockchains to make agreements permanent.
       </ExplainerMessage>
 
-      {/* Your Balance */}
-      {isConnected && (
-        <div className={`p-4 border ${
-          isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
-        }`}>
-          <div className={`text-xs mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Your membership
-          </div>
-          <div className="flex items-center justify-between">
-            <div className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {formatTokenAmount(userBalance)} {tokenSymbol}
-            </div>
-            {(() => {
-              const userBalanceNum = parseFloat(userBalance) / 1e18
-              const currencySymbol = activeChainData?.baseCurrency === 2 ? 'USDC' : 'ETH'
-              const cashOutValue = userBalanceNum * (activeChainData?.cashOutPerToken || 0)
-              const isCashOutDisabled = activeChainData?.cashOutTaxRate === 10000
-
-              if (userBalanceNum > 0 && activeChainData) {
-                if (isCashOutDisabled) {
-                  return (
-                    <div className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      No cash out
-                    </div>
-                  )
-                } else if (cashOutValue > 0) {
-                  return (
-                    <div className={`text-sm font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      ~{cashOutValue < 0.0001 ? '<0.0001' : cashOutValue.toFixed(4)} {currencySymbol}
-                    </div>
-                  )
-                }
-              }
-              return null
-            })()}
-          </div>
-          {(() => {
-            const userBalanceNum = parseFloat(userBalance) / 1e18
-            const isCashOutDisabled = activeChainData?.cashOutTaxRate === 10000
-            const cashOutValue = userBalanceNum * (activeChainData?.cashOutPerToken || 0)
-
-            if (userBalanceNum > 0 && !isCashOutDisabled && cashOutValue > 0) {
-              return (
-                <div className={`text-xs mt-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                  Cash out value at current rate
-                </div>
-              )
-            }
-            return null
-          })()}
-        </div>
-      )}
-
       {/* Project Token Info */}
       <div className={`p-4 border ${
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
       }`}>
-        <h3 className={`text-sm font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+        <h3 className={`text-sm font-semibold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
           Membership accounting
         </h3>
+        <p className={`text-xs mb-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          Here's how membership is tracked.
+        </p>
 
         <div className="space-y-3">
           {/* Token symbol with chain indicators */}
@@ -463,6 +415,45 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
               </div>
             )}
           </div>
+
+          {/* Your membership - only shown when connected */}
+          {isConnected && (
+            <div className={`pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Your membership
+                  </span>
+                  <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {formatTokenAmount(userBalance)}
+                  </span>
+                </div>
+                {(() => {
+                  const userBalanceNum = parseFloat(userBalance) / 1e18
+                  const currencySymbol = activeChainData?.baseCurrency === 2 ? 'USDC' : 'ETH'
+                  const cashOutValue = userBalanceNum * (activeChainData?.cashOutPerToken || 0)
+                  const isCashOutDisabled = activeChainData?.cashOutTaxRate === 10000
+
+                  if (userBalanceNum > 0 && activeChainData) {
+                    if (isCashOutDisabled) {
+                      return (
+                        <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                          No cash out
+                        </span>
+                      )
+                    } else if (cashOutValue > 0) {
+                      return (
+                        <span className={`text-xs font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                          ~{cashOutValue < 0.0001 ? '<0.0001' : cashOutValue.toFixed(4)} {currencySymbol}
+                        </span>
+                      )
+                    }
+                  }
+                  return null
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -477,7 +468,8 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
 
         {/* Description */}
         <p className={`text-xs mb-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          Portion of new membership set aside for recipients below.
+          A portion of new membership is currently set aside for recipients below.
+          {project && isRevnet(project.owner) && ' These recipients are locked in and cannot be changed.'}
         </p>
 
         {/* Check for chain differences */}
@@ -678,9 +670,25 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
 
       </div>
 
+      {/* Membership Price Section */}
+      <div className={`p-4 border ${
+        isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
+      }`}>
+        <h3 className={`text-sm font-semibold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          Membership price
+        </h3>
+        <p className={`text-xs mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          Here's the cost to join over time.
+          {project && isRevnet(project.owner) && ' Earlier members pay less.'}
+        </p>
+
+        {/* Chart - includes disclaimer for non-revnets */}
+        <PriceChart projectId={projectId} chainId={chainId} />
+      </div>
+
       {/* Token Holders Chart */}
       <ExplainerMessage>
-        This shows the distribution of members.
+        Here's who the members are.
       </ExplainerMessage>
       <HoldersChart projectId={projectId} chainId={chainId} limit={10} />
 

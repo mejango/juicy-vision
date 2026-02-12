@@ -7,6 +7,7 @@ import { resolveTierUri, type ResolvedNFTTier } from '../../services/nft'
 import GenerateImageButton from '../ui/GenerateImageButton'
 import SupplyBadge from '../ui/SupplyBadge'
 import TierDetailModal from './TierDetailModal'
+import TierEditPopout, { type TierUpdates } from './TierEditPopout'
 
 interface NFTTierCardProps {
   tier: ResolvedNFTTier
@@ -89,6 +90,10 @@ export default function NFTTierCard({
   // Owner menu state
   const [showOwnerMenu, setShowOwnerMenu] = useState(false)
   const ownerMenuRef = useRef<HTMLDivElement>(null)
+
+  // Edit popout state
+  const [showEditPopout, setShowEditPopout] = useState(false)
+  const editButtonRef = useRef<HTMLButtonElement>(null)
 
   // Close owner menu when clicking outside
   useEffect(() => {
@@ -202,6 +207,17 @@ export default function NFTTierCard({
         name: displayName,
       }
     }))
+  }
+
+  // Handle save from edit popout
+  const handleEditPopoutSave = (updates: TierUpdates) => {
+    if (updates.name !== undefined && onEditMetadata) {
+      onEditMetadata(tier.tierId)
+    }
+    if (updates.discount !== undefined && onSetDiscount) {
+      onSetDiscount(tier.tierId, updates.discount)
+    }
+    setShowEditPopout(false)
   }
 
   const handleMint = async () => {
@@ -497,6 +513,39 @@ export default function NFTTierCard({
           </div>
         )}
 
+        {/* Owner action buttons */}
+        {isOwner && (onEditMetadata || onSetDiscount || onRemoveTier) && (
+          <div className="flex gap-2 mb-3 relative">
+            <button
+              ref={editButtonRef}
+              onClick={() => setShowEditPopout(true)}
+              className={`flex-1 px-3 py-1.5 text-xs font-medium border transition-colors ${
+                isDark
+                  ? 'border-white/20 text-gray-300 hover:bg-white/5'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Edit
+            </button>
+            {onRemoveTier && (
+              <button
+                onClick={() => onRemoveTier(tier.tierId)}
+                disabled={!canBeRemoved}
+                className={`px-3 py-1.5 text-xs font-medium border transition-colors ${
+                  !canBeRemoved
+                    ? isDark
+                      ? 'border-white/10 text-gray-600 cursor-not-allowed'
+                      : 'border-gray-100 text-gray-300 cursor-not-allowed'
+                    : 'border-red-400/50 text-red-400 hover:bg-red-500/10'
+                }`}
+                title={!canBeRemoved ? 'This tier cannot be removed' : 'Delete this tier'}
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Mint action */}
         {showMintAction && (
           <div className="flex justify-end items-center">
@@ -558,6 +607,16 @@ export default function NFTTierCard({
         ethPrice={ethPrice}
         productName={onChainProductName || undefined}
         connectedChains={connectedChains}
+      />
+
+      {/* Edit popout */}
+      <TierEditPopout
+        tier={tier}
+        isOpen={showEditPopout}
+        onClose={() => setShowEditPopout(false)}
+        onSave={handleEditPopoutSave}
+        anchorRef={editButtonRef as React.RefObject<HTMLElement>}
+        canEditMetadata={canEditMetadata}
       />
     </div>
   )

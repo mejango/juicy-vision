@@ -1,0 +1,120 @@
+{
+  "sampleTransactionHash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "sampleBundleId": "bundle-test-123",
+  "chains": {
+    "ethereum": {
+      "chainId": 1,
+      "name": "Ethereum Mainnet",
+      "rpcUrl": "https://eth.llamarpc.com"
+    },
+    "optimism": {
+      "chainId": 10,
+      "name": "Optimism",
+      "rpcUrl": "https://mainnet.optimism.io"
+    },
+    "base": {
+      "chainId": 8453,
+      "name": "Base",
+      "rpcUrl": "https://mainnet.base.org"
+    },
+    "arbitrum": {
+      "chainId": 42161,
+      "name": "Arbitrum One",
+      "rpcUrl": "https://arb1.arbitrum.io/rpc"
+    }
+  },
+  "sampleProject": {
+    "id": 123,
+    "name": "TestStore",
+    "description": "A test project for E2E testing",
+    "owner": "0x1234567890123456789012345678901234567890",
+    "chainId": 1,
+    "createdAt": "2024-01-01T00:00:00.000Z"
+  },
+  "sampleTiers": [
+    {
+      "id": 1,
+      "name": "Bronze Tier",
+      "price": "0.01",
+      "supply": 1000,
+      "sold": 50,
+      "metadata": {
+        "image": "ipfs://QmBronze",
+        "description": "Entry level tier"
+      }
+    },
+    {
+      "id": 2,
+      "name": "Silver Tier",
+      "price": "0.05",
+      "supply": 500,
+      "sold": 20,
+      "metadata": {
+        "image": "ipfs://QmSilver",
+        "description": "Mid level tier"
+      }
+    },
+    {
+      "id": 3,
+      "name": "Gold Tier",
+      "price": "0.1",
+      "supply": 100,
+      "sold": 5,
+      "discount": 10,
+      "metadata": {
+        "image": "ipfs://QmGold",
+        "description": "Premium tier with 10% discount"
+      }
+    }
+  ],
+  "sampleTransactions": {
+    "launchProject": {
+      "to": "0x0000000000000000000000000000000000000001",
+      "data": "0x1234",
+      "value": "0"
+    },
+    "addTier": {
+      "to": "0x0000000000000000000000000000000000000002",
+      "data": "0x5678",
+      "value": "0"
+    },
+    "pay": {
+      "to": "0x0000000000000000000000000000000000000003",
+      "data": "0x9abc",
+      "value": "100000000000000000"
+    }
+  },
+  "sampleBalances": {
+    "eth": {
+      "balance": "1000000000000000000",
+      "decimals": 18,
+      "symbol": "ETH"
+    },
+    "usdc": {
+      "balance": "100000000",
+      "decimals": 6,
+      "symbol": "USDC",
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+    }
+  },
+  "sampleRelayrBundle": {
+    "bundleId": "test-bundle-001",
+    "status": "pending",
+    "transactions": [
+      {
+        "chainId": 1,
+        "target": "0x0000000000000000000000000000000000000001",
+        "data": "0x1234",
+        "value": "0",
+        "status": "pending"
+      },
+      {
+        "chainId": 10,
+        "target": "0x0000000000000000000000000000000000000001",
+        "data": "0x1234",
+        "value": "0",
+        "status": "pending"
+      }
+    ]
+  }
+}

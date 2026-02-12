@@ -1,0 +1,32 @@
+{
+  "greeting": {
+    "content": "Hello! I'm here to help you create and manage Juicebox projects. What would you like to do today?"
+  },
+  "projectCreation": {
+    "content": "I'll help you create a new project. Here's what I've prepared:\n\n<transaction-preview>\n{\n  \"type\": \"launchProject\",\n  \"name\": \"TestStore\",\n  \"description\": \"A test project\",\n  \"chainIds\": [1],\n  \"owner\": \"{{OWNER_ADDRESS}}\"\n}\n</transaction-preview>\n\nReview the transaction details above and click \"Deploy\" when ready."
+  },
+  "projectCreationSuccess": {
+    "content": "Your project has been deployed successfully!\n\n**Project Details:**\n- Name: TestStore\n- Project ID: 123\n- Chain: Ethereum Mainnet\n\nYou can manage your project at: [Dashboard](/project/123/1)"
+  },
+  "addTier": {
+    "content": "I'll add a new tier to your project:\n\n<transaction-preview>\n{\n  \"type\": \"addTier\",\n  \"projectId\": 123,\n  \"chainId\": 1,\n  \"tier\": {\n    \"name\": \"Gold Tier\",\n    \"price\": \"0.1\",\n    \"supply\": 100\n  }\n}\n</transaction-preview>\n\nReview and confirm to add this tier."
+  },
+  "editTier": {
+    "content": "I'll update the tier details:\n\n<transaction-preview>\n{\n  \"type\": \"editTier\",\n  \"projectId\": 123,\n  \"chainId\": 1,\n  \"tierId\": 1,\n  \"updates\": {\n    \"price\": \"0.15\",\n    \"discount\": 10\n  }\n}\n</transaction-preview>\n\nReview and confirm the changes."
+  },
+  "deleteTier": {
+    "content": "I'll remove the tier from your project:\n\n<transaction-preview>\n{\n  \"type\": \"deleteTier\",\n  \"projectId\": 123,\n  \"chainId\": 1,\n  \"tierId\": 2\n}\n</transaction-preview>\n\n⚠️ This action cannot be undone. Confirm to proceed."
+  },
+  "error": {
+    "content": "I encountered an error while processing your request. Please try again or contact support if the issue persists."
+  },
+  "clarification": {
+    "content": "I need a bit more information to help you:\n\n1. What would you like to name your project?\n2. Which chain(s) should it be deployed on? (Ethereum, Optimism, Base, or all)\n3. Any specific features you'd like to enable?"
+  },
+  "omnichainDeploy": {
+    "content": "I'll deploy your project across multiple chains:\n\n<transaction-preview>\n{\n  \"type\": \"launchOmnichainProject\",\n  \"name\": \"Global Store\",\n  \"chainIds\": [1, 10, 8453],\n  \"owner\": \"{{OWNER_ADDRESS}}\"\n}\n</transaction-preview>\n\nThis will create your project on Ethereum, Optimism, and Base with synchronized settings."
+  },
+  "paymentSetup": {
+    "content": "I'll set up payments for your project:\n\n<transaction-preview>\n{\n  \"type\": \"configurePayments\",\n  \"projectId\": 123,\n  \"acceptedTokens\": [\"ETH\", \"USDC\"],\n  \"payoutAddress\": \"{{OWNER_ADDRESS}}\"\n}\n</transaction-preview>\n\nYour store will accept ETH and USDC payments."
+  }
+}

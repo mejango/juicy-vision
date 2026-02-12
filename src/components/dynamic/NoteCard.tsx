@@ -391,7 +391,7 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
                       onChange={(e) => setPayUs(e.target.checked)}
                       className="w-3.5 h-3.5 rounded border-gray-300 text-juice-orange focus:ring-juice-orange"
                     />
-                    <span>{t('note.joinJuicy', 'Join Juicy (+{{percent}}%)', { percent: JUICY_FEE_PERCENT })}</span>
+                    <span>{t('note.joinJuicy', 'Pay for Juicy (+{{percent}}%)', { percent: JUICY_FEE_PERCENT })}</span>
                   </label>
                   {payUs && estimatedJuicyTokens > 0 && (
                     <div className={`ml-6 mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

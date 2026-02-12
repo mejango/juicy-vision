@@ -107,6 +107,7 @@ export default function PriceChart({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tokenSymbol, setTokenSymbol] = useState('TOKEN')
+  const [projectIsRevnet, setProjectIsRevnet] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -126,10 +127,11 @@ export default function PriceChart({
         setTokenSymbol(symbol || 'TOKEN')
 
         // Check if this is a Revnet - if so, fetch stages
-        const projectIsRevnet = isRevnet(project.owner)
+        const projectIsRevnetValue = isRevnet(project.owner)
+        setProjectIsRevnet(projectIsRevnetValue)
         let stageData: Stage[] = []
 
-        if (projectIsRevnet) {
+        if (projectIsRevnetValue) {
           const revnetStages = await fetchRevnetStages(projectId, parseInt(chainId))
           if (revnetStages && revnetStages.stages.length > 0) {
             // Convert Revnet stages to rulesets for price calculation
@@ -508,7 +510,7 @@ export default function PriceChart({
           )}
         </div>
 
-        {/* Footer with current price */}
+        {/* Footer with current price and disclaimer */}
         {!loading && !error && chartData.length > 0 && (() => {
           // Find the data point closest to "now"
           const now = Math.floor(Date.now() / 1000)
@@ -517,12 +519,18 @@ export default function PriceChart({
           , chartData[0])
           return (
             <div className={`px-4 py-2 text-xs border-t ${
-              isDark ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'
+              isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-100'
             }`}>
-              <span className="flex items-center gap-2">
+              <span className={`flex items-center gap-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 <span className="w-2 h-2 bg-emerald-400" />
                 Current: {currentPoint?.price?.toFixed(6)} ETH / {tokenSymbol}
               </span>
+              {/* Disclaimer for non-revnets */}
+              {!projectIsRevnet && !showHistory && (
+                <p className={`mt-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Only current and past prices are guaranteed. The project owner can change future prices at any time.
+                </p>
+              )}
             </div>
           )
         })()}

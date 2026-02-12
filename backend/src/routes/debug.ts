@@ -509,3 +509,277 @@ debugRouter.get('/ai/chat/:chatId', async (c) => {
   const usage = getChatToolUsage(chatId);
   return c.json({ success: true, data: usage });
 });
+
+// ============================================================================
+// E2E Test User Seeding
+// ============================================================================
+
+// Test user configurations
+const E2E_TEST_USERS = [
+  {
+    id: '11111111-1111-1111-1111-111111111111',
+    email: 'e2e-user@test.juicy.vision',
+    privacyMode: 'open_book',
+  },
+  {
+    id: '22222222-2222-2222-2222-222222222222',
+    email: 'e2e-power@test.juicy.vision',
+    privacyMode: 'open_book',
+  },
+  {
+    id: '33333333-3333-3333-3333-333333333333',
+    email: 'e2e-anon@test.juicy.vision',
+    privacyMode: 'anonymous',
+  },
+  {
+    id: '44444444-4444-4444-4444-444444444444',
+    email: 'e2e-ghost@test.juicy.vision',
+    privacyMode: 'ghost',
+  },
+];
+
+// POST /debug/seed-test-users - Seed E2E test users
+debugRouter.post('/seed-test-users', async (c) => {
+  const config = getConfig();
+
+  if (config.env !== 'development') {
+    return c.json({
+      success: false,
+      error: 'Test user seeding is ONLY available in development mode'
+    }, 403);
+  }
+
+  try {
+    const { getPool } = await import('../db/index.ts');
+    const pool = getPool();
+    const conn = await pool.connect();
+
+    try {
+      const seededUsers: Array<{ email: string; id: string }> = [];
+
+      for (const user of E2E_TEST_USERS) {
+        // Upsert user
+        await conn.queryObject(`
+          INSERT INTO users (id, email, email_verified, privacy_mode, custodial_address_index)
+          VALUES ($1, $2, true, $3, $4)
+          ON CONFLICT (email) DO UPDATE SET
+            email_verified = true,
+            privacy_mode = $3,
+            updated_at = NOW()
+        `, [
+          user.id,
+          user.email,
+          user.privacyMode,
+          1000 + E2E_TEST_USERS.indexOf(user),
+        ]);
+
+        // Clear old sessions
+        await conn.queryObject(`
+          DELETE FROM sessions WHERE user_id = $1
+        `, [user.id]);
+
+        // Create fresh session (30 days)
+        await conn.queryObject(`
+          INSERT INTO sessions (user_id, expires_at)
+          VALUES ($1, NOW() + INTERVAL '30 days')
+        `, [user.id]);
+
+        seededUsers.push({ email: user.email, id: user.id });
+      }
+
+      logDebugEvent('system', 'database', {
+        action: 'seed_test_users',
+        users: seededUsers.map(u => u.email),
+      });
+
+      return c.json({
+        success: true,
+        message: 'E2E test users seeded successfully',
+        users: seededUsers,
+      });
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error('Failed to seed test users:', error);
+    return c.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// POST /debug/seed-full-test-data - Seed comprehensive test data
+debugRouter.post('/seed-full-test-data', async (c) => {
+  const config = getConfig();
+
+  if (config.env !== 'development') {
+    return c.json({
+      success: false,
+      error: 'Test data seeding is ONLY available in development mode'
+    }, 403);
+  }
+
+  try {
+    const { getPool } = await import('../db/index.ts');
+    const pool = getPool();
+    const conn = await pool.connect();
+
+    const results: Record<string, number> = {};
+
+    try {
+      // 1. Seed test users
+      for (const user of E2E_TEST_USERS) {
+        await conn.queryObject(`
+          INSERT INTO users (id, email, email_verified, privacy_mode, custodial_address_index)
+          VALUES ($1, $2, true, $3, $4)
+          ON CONFLICT (email) DO UPDATE SET
+            email_verified = true,
+            privacy_mode = $3,
+            updated_at = NOW()
+        `, [user.id, user.email, user.privacyMode, 1000 + E2E_TEST_USERS.indexOf(user)]);
+      }
+      results.users = E2E_TEST_USERS.length;
+
+      // 2. Additional test users
+      const additionalUsers = [
+        { id: '55555555-5555-5555-5555-555555555555', email: 'e2e-new@test.juicy.vision', privacyMode: 'open_book' },
+        { id: '66666666-6666-6666-6666-666666666666', email: 'e2e-owner@test.juicy.vision', privacyMode: 'open_book' },
+      ];
+      for (const user of additionalUsers) {
+        await conn.queryObject(`
+          INSERT INTO users (id, email, email_verified, privacy_mode, custodial_address_index)
+          VALUES ($1, $2, true, $3, $4)
+          ON CONFLICT (email) DO UPDATE SET
+            email_verified = true,
+            updated_at = NOW()
+        `, [user.id, user.email, user.privacyMode, 1004 + additionalUsers.indexOf(user)]);
+      }
+      results.users += additionalUsers.length;
+
+      // 3. Create sessions for all users
+      const allUserIds = [
+        ...E2E_TEST_USERS.map(u => u.id),
+        ...additionalUsers.map(u => u.id),
+      ];
+
+      for (const userId of allUserIds) {
+        await conn.queryObject(`DELETE FROM sessions WHERE user_id = $1`, [userId]);
+        await conn.queryObject(`
+          INSERT INTO sessions (user_id, expires_at)
+          VALUES ($1, NOW() + INTERVAL '30 days')
+        `, [userId]);
+      }
+      results.sessions = allUserIds.length;
+
+      // 4. Seed chat sessions if table exists
+      try {
+        await conn.queryObject(`
+          INSERT INTO chat_sessions (id, user_id, title, created_at)
+          VALUES
+            ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', 'Project Planning', NOW() - INTERVAL '1 day'),
+            ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '11111111-1111-1111-1111-111111111111', 'Store Setup Help', NOW() - INTERVAL '2 hours'),
+            ('cccccccc-cccc-cccc-cccc-cccccccccccc', '22222222-2222-2222-2222-222222222222', 'Payment Questions', NOW() - INTERVAL '30 minutes')
+          ON CONFLICT DO NOTHING
+        `);
+        results.chatSessions = 3;
+      } catch {
+        results.chatSessions = 0; // Table doesn't exist
+      }
+
+      // 5. Seed juice balances if table exists
+      try {
+        await conn.queryObject(`
+          INSERT INTO juice_balances (user_id, balance)
+          VALUES
+            ('11111111-1111-1111-1111-111111111111', 1000),
+            ('22222222-2222-2222-2222-222222222222', 5000)
+          ON CONFLICT (user_id) DO UPDATE SET balance = EXCLUDED.balance
+        `);
+        results.juiceBalances = 2;
+      } catch {
+        results.juiceBalances = 0;
+      }
+
+      logDebugEvent('system', 'database', {
+        action: 'seed_full_test_data',
+        results,
+      });
+
+      return c.json({
+        success: true,
+        message: 'Full test data seeded successfully',
+        results,
+      });
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error('Failed to seed test data:', error);
+    return c.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// GET /debug/test-users - List E2E test users and their session status
+debugRouter.get('/test-users', async (c) => {
+  const config = getConfig();
+
+  if (config.env !== 'development') {
+    return c.json({
+      success: false,
+      error: 'Test user info is ONLY available in development mode'
+    }, 403);
+  }
+
+  try {
+    const { getPool } = await import('../db/index.ts');
+    const pool = getPool();
+    const conn = await pool.connect();
+
+    try {
+      const { rows } = await conn.queryObject<{
+        id: string;
+        email: string;
+        email_verified: boolean;
+        privacy_mode: string;
+        session_id: string | null;
+        session_expires: Date | null;
+      }>(`
+        SELECT
+          u.id,
+          u.email,
+          u.email_verified,
+          u.privacy_mode,
+          s.id as session_id,
+          s.expires_at as session_expires
+        FROM users u
+        LEFT JOIN sessions s ON u.id = s.user_id AND s.expires_at > NOW()
+        WHERE u.email LIKE 'e2e-%@test.juicy.vision'
+        ORDER BY u.email
+      `);
+
+      return c.json({
+        success: true,
+        data: rows.map(u => ({
+          id: u.id,
+          email: u.email,
+          emailVerified: u.email_verified,
+          privacyMode: u.privacy_mode,
+          hasActiveSession: !!u.session_id,
+          sessionExpires: u.session_expires,
+        })),
+      });
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error('Failed to get test users:', error);
+    return c.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
