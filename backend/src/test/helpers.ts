@@ -46,6 +46,7 @@ export function mockUser(overrides: Partial<User> = {}): User {
     emailVerified: false,
     privacyMode: 'open_book' as PrivacyMode,
     custodialAddressIndex: 0,
+    isAdmin: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

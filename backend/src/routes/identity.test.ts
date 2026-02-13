@@ -17,6 +17,11 @@ interface MockWalletSession {
   address: string;
 }
 
+// Hono context variables type
+type Variables = {
+  walletSession: MockWalletSession;
+};
+
 interface MockIdentity {
   id: string;
   address: string;
@@ -98,7 +103,7 @@ function getAllUserAddresses(address: string): {
 // ============================================================================
 
 function createTestApp() {
-  const app = new Hono();
+  const app = new Hono<{ Variables: Variables }>();
 
   // Mock auth middleware
   app.use('*', async (c, next) => {

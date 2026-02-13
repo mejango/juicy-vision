@@ -25,9 +25,8 @@ jobs:
         run: npm run build
 
       - name: Deploy to IPFS
-        env:
-          W3_PRINCIPAL: ${{ secrets.W3_PRINCIPAL }}
-          W3_PROOF: ${{ secrets.W3_PROOF }}
-        run: |
-          npm i -g @web3-storage/w3cli
-          w3 up dist --no-wrap
+        uses: storacha/add-to-web3@v4
+        with:
+          path: dist
+          secret_key: ${{ secrets.W3_PRINCIPAL }}
+          proof: ${{ secrets.W3_PROOF }}

@@ -236,9 +236,9 @@ Deno.test('securityAnalysis - Summary Calculation', async (t) => {
 
 Deno.test('securityAnalysis - Deployment Checks', async (t) => {
   await t.step('blocks deployment with critical findings', () => {
-    const criticalCount = 1;
-    const canDeploy = criticalCount === 0; // Intentional comparison
-    assertEquals(canDeploy as boolean, false);
+    const criticalCount: number = 1;
+    const canDeploy = criticalCount === 0;
+    assertEquals(canDeploy, false);
   });
 
   await t.step('allows deployment with no critical findings', () => {
