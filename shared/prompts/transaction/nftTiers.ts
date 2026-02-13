@@ -6,22 +6,59 @@
 export const NFT_TIERS_CONTEXT = `
 ### NFT Tier Configuration
 
-#### For New Projects: launch721Project
+#### For New Projects: ALWAYS use launch721Project
 
+**IMPORTANT: ALL projects should use launch721Project, even if no tiers are configured initially.**
+This makes it easy for project owners to add inventory, rewards, or merchandise later without redeploying.
+Assume every project will eventually want to sell something.
 
-**Project Type Decision Tree:**
-| User chose... | Action | Contract |
-|---------------|--------|----------|
-| "Nothing - it's a donation/gift" | launchProject | JBOmnichainDeployer5_1 |
-| "Pay them back later" | launchProject | JBOmnichainDeployer5_1 |
-| "Stake in the project" | launchProject | JBOmnichainDeployer5_1 |
-| **"Perks or rewards"** | **launch721Project** | JBOmnichainDeployer5_1 |
+**The 721 hook is your selling machine.** Use it for:
+- **Rewards**: Thank-you perks for supporters (stickers, t-shirts, exclusive content)
+- **Inventory**: Physical or digital products the project sells
+- **Collectibles**: Limited edition items, art, memorabilia
+- **Memberships**: Access passes, subscriptions, VIP tiers
+- **Services**: Consultations, lessons, commissioned work
 
 **launch721Project requires:**
-- deployTiersHookConfig: JBDeploy721TiersHookConfig (NFT collection + tiers)
+- deployTiersHookConfig: JBDeploy721TiersHookConfig (NFT collection + tiers - can be empty array initially)
 - launchProjectConfig: JBLaunchProjectConfig (project metadata + rulesets + terminals)
 - salt: bytes32 for deterministic hook deployment
 - suckerDeploymentConfiguration: JBSuckerDeploymentConfig for cross-chain
+
+#### Category System (Organizing Items for Sale)
+
+**Categories let projects organize their items into groups.** Use tiers 0-199 for custom categories.
+
+**How categories work:**
+- Each tier has a \`category\` field (uint24)
+- Categories are integers: 0, 1, 2, 3, etc.
+- The UI groups and filters tiers by category
+- **Store category names in projectUri metadata** using \`721Categories\` field
+
+**Example category setup:**
+- Category 0: "Rewards" (thank-you perks for supporters)
+- Category 1: "Merchandise" (t-shirts, stickers, hats)
+- Category 2: "Digital Goods" (downloads, access codes)
+- Category 3: "Services" (consultations, lessons)
+
+**projectUri metadata with categories:**
+\`\`\`json
+{
+  "name": "My Project",
+  "description": "...",
+  "721Categories": {
+    "0": "Rewards",
+    "1": "Merchandise",
+    "2": "Digital Goods",
+    "3": "Services"
+  }
+}
+\`\`\`
+
+**When adding tiers, always:**
+1. Ask what category the item belongs to (or suggest one based on context)
+2. Use an existing category integer if it fits, or assign the next available (0-199)
+3. Update projectUri metadata with any new category names via setUriOf
 
 **Struct Reference:**
 
@@ -154,7 +191,9 @@ export const NFT_TIERS_HINTS = [
   'founding member', 'supporter level',
   'adjustTiers', 'add tier', 'remove tier', 'delete tier', 'sell something',
   'setDiscount', 'discount', 'sale', 'price reduction',
-  'edit tier', 'update tier', 'tier metadata'
+  'edit tier', 'update tier', 'tier metadata',
+  'sell', 'selling', 'inventory', 'merchandise', 'merch', 'products',
+  'store', 'shop', 'category', 'categories', 'goods', 'items'
 ];
 
 export const NFT_TIERS_TOKEN_ESTIMATE = 1500;

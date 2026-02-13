@@ -8,8 +8,21 @@ export const METADATA_CONTEXT = `
 
 **Format:**
 \`\`\`json
-{"name": "Name", "description": "Desc", "tagline": "Short tagline", "tags": ["tag1", "tag2", "tag3"], "infoUri": "https://...", "logoUri": "ipfs://..."}
+{
+  "name": "Name",
+  "description": "Desc",
+  "tagline": "Short tagline",
+  "tags": ["tag1", "tag2", "tag3"],
+  "infoUri": "https://...",
+  "logoUri": "ipfs://...",
+  "721Categories": {"0": "Rewards", "1": "Merchandise"}
+}
 \`\`\`
+
+**721Categories field:** Maps category integers (0-199) to human-readable names.
+- Add when project has or will have 721 tiers
+- Update via setUriOf when adding new categories
+- Example: \`"721Categories": {"0": "Rewards", "1": "Inventory", "2": "Digital Goods"}\`
 
 **ALWAYS include AI-generated tags!** Tags help with project discovery and search. Generate 3-8 relevant tags based on:
 - Project category (farm, art, music, tech, community, dao, etc.)
@@ -66,7 +79,7 @@ export const METADATA_CONTEXT = `
 export const METADATA_HINTS = [
   'name', 'description', 'logo', 'setUriOf', 'rename', 'update metadata',
   'change name', 'update description', 'project info', 'tags', 'tagline',
-  'logoUri', 'infoUri'
+  'logoUri', 'infoUri', '721Categories', 'category names', 'tier categories'
 ];
 
 export const METADATA_TOKEN_ESTIMATE = 600;

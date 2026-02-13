@@ -67,6 +67,13 @@ export interface ProjectLocation {
   }
 }
 
+/**
+ * NFT category name mapping
+ * Maps category integers (0-199) to human-readable names
+ * Example: { "0": "Rewards", "1": "Merchandise", "2": "Digital Goods" }
+ */
+export type Jb721CategoryMapping = Record<string, string>
+
 // Full project metadata structure from IPFS
 export interface IpfsProjectMetadata {
   name: string
@@ -86,6 +93,12 @@ export interface IpfsProjectMetadata {
    * Omit this field entirely if you prefer not to share location.
    */
   location?: ProjectLocation
+  /**
+   * NFT tier category names
+   * Maps category integers to human-readable names for organizing items
+   * Use categories 0-199 for custom groupings (e.g., "Rewards", "Merchandise", "Services")
+   */
+  '721Categories'?: Jb721CategoryMapping
   // Additional fields that may be present
   [key: string]: unknown
 }
@@ -433,6 +446,12 @@ export interface JBProjectMetadata {
    * Omit this field entirely if you prefer not to share location.
    */
   location?: ProjectLocation
+  /**
+   * NFT tier category names
+   * Maps category integers (0-199) to human-readable names
+   * Example: { "0": "Rewards", "1": "Merchandise", "2": "Services" }
+   */
+  '721Categories'?: Jb721CategoryMapping
   // payButton and payDisclosure for custom pay UI
   payButton?: string
   payDisclosure?: string
