@@ -25,6 +25,7 @@ import WalletPanel from '../wallet/WalletPanel'
 import { getSessionId, getCachedPseudoAddress, getSessionPseudoAddress, getCurrentUserAddress } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
 import { getEmojiFromAddress } from './ParticipantAvatars'
+import { parseMessageContent } from '../../utils/messageParser'
 
 // getCurrentUserAddress is imported from session.ts - see that file for the
 // priority logic: SIWE wallet > Smart account (managed mode) > Pseudo-address
@@ -869,6 +870,46 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     }, 30000) // 30 seconds
     return () => clearTimeout(timeout)
   }, [isWaitingForAi, setWaitingForAiChatId])
+
+  // Detect truncated responses - show nudge when last AI message looks incomplete
+  // This catches cases where streaming stopped mid-response (not empty, but truncated)
+  useEffect(() => {
+    // Only check when not streaming and not waiting for AI
+    if (isStreaming || isWaitingForAi) return
+    if (messages.length === 0) return
+
+    // Find the last assistant message
+    const lastMessage = messages[messages.length - 1]
+    if (lastMessage.role !== 'assistant' || lastMessage.isStreaming) return
+
+    // Parse the message content
+    const parsed = parseMessageContent(lastMessage.content)
+
+    // Check if message has any interactive components
+    const hasInteractiveComponent = parsed.segments.some(seg =>
+      seg.type === 'component' &&
+      ['options-picker', 'transaction-preview', 'project-card', 'pay-modal',
+       'nft-gallery', 'storefront', 'holdings-grid'].includes(seg.component?.type || '')
+    )
+
+    // If there's an interactive component, response is complete
+    if (hasInteractiveComponent) return
+
+    // Get text content
+    const textContent = parsed.segments
+      .filter(seg => seg.type === 'text')
+      .map(seg => seg.content)
+      .join('')
+      .trim()
+
+    // Response looks truncated if short and doesn't end with punctuation
+    const endsWithPunctuation = /[.!?:"]$/.test(textContent)
+    const isVeryShort = textContent.length < 100
+
+    if (isVeryShort && !endsWithPunctuation && textContent.length > 0) {
+      setShowContinueButton(true)
+    }
+  }, [messages, isStreaming, isWaitingForAi])
 
   // When waiting for AI, scroll to bottom so the expanded padding pushes content up
   // This creates visible space for the AI response

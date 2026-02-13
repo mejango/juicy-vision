@@ -247,38 +247,8 @@ export default function MessageBubble({
     } catch { return null }
   }, [])
 
-  // Show "Nudge AI" button when the AI response appears to have stalled
-  // Conditions: last assistant message, not streaming, no interactive components, looks incomplete
-  const showContinue = useMemo(() => {
-    // Only for last assistant message that's not streaming
-    if (!isLastAssistant || isUser || message.isStreaming) return false
-
-    // Check if message has any interactive components (options-picker, transaction-preview, etc.)
-    const hasInteractiveComponent = parsed.segments.some(seg =>
-      seg.type === 'component' &&
-      ['options-picker', 'transaction-preview', 'project-card', 'pay-modal',
-       'nft-gallery', 'storefront', 'holdings-grid'].includes(seg.component?.type || '')
-    )
-
-    // If there's an interactive component, the response is likely complete
-    if (hasInteractiveComponent) return false
-
-    // Get the text content (excluding components)
-    const textContent = parsed.segments
-      .filter(seg => seg.type === 'text')
-      .map(seg => seg.content)
-      .join('')
-      .trim()
-
-    // Response looks incomplete if:
-    // 1. Very short (under 100 chars) without ending punctuation
-    // 2. Ends mid-sentence (no terminal punctuation)
-    const endsWithPunctuation = /[.!?:"]$/.test(textContent)
-    const isVeryShort = textContent.length < 100
-
-    // Show nudge if short without punctuation, or if it just trails off
-    return isVeryShort && !endsWithPunctuation
-  }, [isLastAssistant, isUser, message.isStreaming, parsed.segments])
+  // Nudge button is now unified in MessageList - controlled by ChatContainer
+  const showContinue = false
 
   // Show retry button for error messages (only on last assistant message)
   const showRetry = isLastAssistant && !isUser && hasErrorMessage(message.content)

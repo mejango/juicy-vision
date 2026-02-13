@@ -132,11 +132,11 @@ export default function MessageList({
             </div>
           </div>
         )}
-        {/* Nudge button - shows when AI gave an empty response */}
+        {/* Nudge button - shows when AI response is empty or truncated */}
         {showNudgeButton && !showGhostCard && (
           <div className="flex justify-start mb-4">
             <div className={`px-4 py-3 flex items-center gap-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              <span className="text-sm">Something stopped.</span>
+              <span className="text-sm">Response incomplete?</span>
               <button
                 onClick={onNudge}
                 className={`px-3 py-1.5 text-sm border transition-colors ${
@@ -145,7 +145,7 @@ export default function MessageList({
                     : 'border-juice-orange/60 text-juice-orange hover:border-juice-orange hover:bg-orange-50'
                 }`}
               >
-                Nudge
+                Nudge AI
               </button>
             </div>
           </div>
