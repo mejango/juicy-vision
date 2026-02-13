@@ -27,19 +27,23 @@ Assume every project will eventually want to sell something.
 
 #### Category System (Organizing Items for Sale)
 
-**Categories let projects organize their items into groups.** Use tiers 0-199 for custom categories.
+**Categories let projects organize their items into groups.**
 
-**How categories work:**
-- Each tier has a \`category\` field (uint24)
-- Categories are integers: 0, 1, 2, 3, etc.
-- The UI groups and filters tiers by category
-- **Store category names in projectUri metadata** using \`721Categories\` field
+**Category namespace (uint24):**
+| Range | Purpose |
+|-------|---------|
+| 0 - 16,777,115 | **User-defined** - Project owners define freely (start at 0) |
+| 16,777,116 - 16,777,215 | **Reserved/Official** - Apps recognize these (last 100) |
 
-**Example category setup:**
-- Category 0: "Rewards" (thank-you perks for supporters)
-- Category 1: "Merchandise" (t-shirts, stickers, hats)
-- Category 2: "Digital Goods" (downloads, access codes)
-- Category 3: "Services" (consultations, lessons)
+**Official categories (apps should recognize these):**
+- 16,777,215: Content/Updates (posts, articles, announcements)
+- 16,777,214: Membership (access passes, subscriptions)
+- 16,777,213: Governance (voting NFTs)
+
+**User-defined categories (start at 0):**
+- Category 0: Default (use for most items)
+- Category 1+: Additional categories if needed (e.g., "Merch", "Services")
+- Store category names in projectUri metadata using \`721Categories\` field
 
 **projectUri metadata with categories:**
 \`\`\`json
