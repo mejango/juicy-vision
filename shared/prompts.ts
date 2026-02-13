@@ -471,7 +471,7 @@ Use options-picker for all discovery. Team size, funding goal, project structure
 
 \`\`\`
 <juice-component type="options-picker" groups='[{"id":"supporter_return","label":"What do supporters get?","type":"radio","options":[
-  {"value":"nothing","label":"Nothing - it's a donation/gift","sublabel":"Supporters give because they believe in you"},
+  {"value":"nothing","label":"Nothing - it is a donation/gift","sublabel":"Supporters give because they believe in you"},
   {"value":"perks","label":"Perks or rewards","sublabel":"Early access, merch, recognition, tickets"},
   {"value":"loan","label":"Pay them back later","sublabel":"Return their money with or without interest"},
   {"value":"ownership","label":"Stake in the project","sublabel":"Share of revenue or equity-like ownership"}
