@@ -875,11 +875,12 @@ function TiersHookConfigSection({
                       ? `$${(Number(tier.price) / Math.pow(10, tierDecimals)).toLocaleString()}`
                       : `${(Number(tier.price) / 1e18).toFixed(4)} ETH`)
                     : '?'
+                  const supplyDisplay = tier.initialSupply && tier.initialSupply >= 999999999 ? 'Unlimited' : (tier.initialSupply || '?')
                   return (
                     <div key={idx} className="flex justify-between text-xs">
                       <span>Tier {idx + 1}</span>
                       <span className="font-mono">
-                        {tier.initialSupply || '?'} × {priceDisplay}
+                        {supplyDisplay} × {priceDisplay}
                       </span>
                     </div>
                   )
@@ -895,7 +896,10 @@ function TiersHookConfigSection({
 
           {/* Note about per-chain supply */}
           <div className={`pt-1.5 mt-1 text-[10px] leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Supply is set per network. {allChainIds.length} networks × {tierCount > 0 ? `${(tiersConfig?.tiers as Array<{ initialSupply?: number }>)?.[0]?.initialSupply || '?'} supply` : 'tiers'} = separate supplies on each.
+            Supply is set per network. {allChainIds.length} networks × {tierCount > 0 ? (() => {
+              const supply = (tiersConfig?.tiers as Array<{ initialSupply?: number }>)?.[0]?.initialSupply
+              return supply && supply >= 999999999 ? 'Unlimited supply' : `${supply || '?'} supply`
+            })() : 'tiers'} = separate supplies on each.
           </div>
         </div>
       )}
@@ -1122,7 +1126,7 @@ function TierPreview({ tier, index, isDark }: { tier: TierInfo; index: number; i
     ? `$${(tier.price / Math.pow(10, tier.decimals || 6)).toLocaleString()}`
     : `${(tier.price / 1e18).toFixed(4)} ETH`
 
-  const supplyText = tier.initialSupply >= 4294967290 ? 'Unlimited' : `${tier.initialSupply.toLocaleString()} available`
+  const supplyText = tier.initialSupply >= 999999999 ? 'Unlimited' : `${tier.initialSupply.toLocaleString()} available`
 
   // Get image URL from various possible sources - check all possible field names
   const getImageUrl = (): string | null => {
@@ -2151,7 +2155,7 @@ export default function TransactionPreview({
           price: t.price * (t.currency === 2 ? 1000000 : 1e18),
           currency: t.currency,
           decimals: t.currency === 2 ? 6 : 18,
-          initialSupply: 1000000000,
+          initialSupply: 999999999,
           description: t.description,
           resolvedUri: t.imageUrl,
         })),

@@ -426,7 +426,7 @@ describe('omnichainDeployer', () => {
     // Sample tier configurations
     const unlimitedTier: JB721TierConfig = {
       price: '5000000', // $5 USDC
-      initialSupply: 4294967295, // Max uint32 = "unlimited"
+      initialSupply: 999999999, // 1 billion - 1 = "unlimited" (contract max)
       votingUnits: 0,
       reserveFrequency: 0,
       reserveBeneficiary: '0x0000000000000000000000000000000000000000',

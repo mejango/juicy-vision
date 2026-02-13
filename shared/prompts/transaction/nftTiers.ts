@@ -74,7 +74,7 @@ Assume every project will eventually want to sell something.
 - **description**: What supporters get at this tier - REQUIRED
 - **media**: Raw IPFS URI for tier image (e.g., "ipfs://Qm...") - REQUIRED for preview
 - price: Cost in terminal token (6 decimals for USDC, 18 for ETH)
-- initialSupply: Max NFTs available (max uint32 = 4,294,967,295 for practical "unlimited")
+- initialSupply: Max NFTs available (use 999999999 for unlimited - contract max is 1 billion - 1)
 - discountPercent: Price decrease per cycle (0-100)
 - encodedIPFSUri: Set to zero ("0x0...0") - frontend encodes the media URI
 - reserveFrequency: Mint 1 reserved NFT per N minted (0 = no reserves)
@@ -98,7 +98,7 @@ Assume every project will eventually want to sell something.
 
 **Complete Tier Structure:**
 \`\`\`json
-{"name": "Tier Name", "description": "What supporters get", "price": 5000000, "initialSupply": 4294967295,
+{"name": "Tier Name", "description": "What supporters get", "price": 5000000, "initialSupply": 999999999,
   "media": "ipfs://TIER_IMAGE_CID", "encodedIPFSUri": "0x0000000000000000000000000000000000000000000000000000000000000000",
   "votingUnits": 0, "reserveFrequency": 0, "reserveBeneficiary": "0x0000000000000000000000000000000000000000",
   "category": 1, "discountPercent": 0, "allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false,
@@ -172,7 +172,7 @@ When helping users add tiers:
 4. Ask if limited or unlimited:
    - If LIMITED and quantity already provided in inline input: use that value
    - If LIMITED but no quantity provided: ask "How many should be available?"
-   - If UNLIMITED: Set initialSupply to 4294967295
+   - If UNLIMITED: Set initialSupply to 999999999
 5. Show preview with prices in USD and confirm before building transaction
 
 **Price display rules:**

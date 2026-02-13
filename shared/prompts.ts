@@ -1242,7 +1242,7 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 
 **Tier structure** (each tier):
 \`\`\`json
-{"name": "Tier Name", "description": "What supporters get", "price": 5000000, "initialSupply": 4294967295,
+{"name": "Tier Name", "description": "What supporters get", "price": 5000000, "initialSupply": 999999999,
   "media": "ipfs://TIER_IMAGE_CID", "encodedIPFSUri": "0x0000000000000000000000000000000000000000000000000000000000000000",
   "votingUnits": 0, "reserveFrequency": 0, "reserveBeneficiary": "0x0000000000000000000000000000000000000000",
   "category": 1, "discountPercent": 0, "allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false,
