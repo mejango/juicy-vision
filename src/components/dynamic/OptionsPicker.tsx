@@ -378,7 +378,15 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
         }
 
         const selected = options.find(o => o.value === sel)
-        return `${g.label}: ${selected?.label || sel}`
+        let result = `${g.label}: ${selected?.label || sel}`
+        // Include inputWhenSelected value if present (e.g., "Limited quantity (50)")
+        if (selected?.inputWhenSelected) {
+          const inputValue = selections[selected.inputWhenSelected.id]
+          if (inputValue) {
+            result += ` (${inputValue})`
+          }
+        }
+        return result
       }).filter(Boolean) // Remove null entries
       let message = parts.join(', ')
 
