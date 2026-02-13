@@ -315,4 +315,138 @@ describe('TransactionPreview', () => {
       dispatchSpy.mockRestore()
     })
   })
+
+  describe('NFT tier display', () => {
+    const launch721Props = {
+      action: 'launch721Project',
+      contract: 'JBOmnichainDeployer5_1',
+      chainId: '11155111',
+      explanation: 'Launch project with NFT tiers',
+      parameters: JSON.stringify({
+        deployTiersHookConfig: {
+          name: 'Test Collection',
+          symbol: 'TEST',
+          tiersConfig: {
+            tiers: [
+              {
+                name: 'Early Supporter',
+                description: 'Exclusive updates',
+                price: 25000000,
+                initialSupply: 10,
+              },
+              {
+                name: 'Super Fan',
+                description: 'VIP access',
+                price: 100000000,
+                initialSupply: 999999999,
+              },
+            ],
+            currency: 2,
+            decimals: 6,
+          },
+        },
+        launchProjectConfig: {
+          projectUri: 'ipfs://test',
+        },
+      }),
+    }
+
+    it('displays tier names instead of generic "Tier 1" labels', () => {
+      render(<TransactionPreview {...launch721Props} />)
+
+      // Expand technical details
+      const expandButton = screen.getByText(/Technical Details/i)
+      fireEvent.click(expandButton)
+
+      // Then expand the NFT Tier Hook Configuration section
+      const nftSection = screen.getByText(/NFT Tier Hook Configuration/i)
+      fireEvent.click(nftSection)
+
+      // Should show actual tier names (they appear in the tier list)
+      expect(screen.getByText('Early Supporter')).toBeInTheDocument()
+      expect(screen.getByText('Super Fan')).toBeInTheDocument()
+    })
+
+    it('displays limited supply correctly', () => {
+      render(<TransactionPreview {...launch721Props} />)
+
+      // Expand technical details
+      const expandButton = screen.getByText(/Technical Details/i)
+      fireEvent.click(expandButton)
+
+      // Should show "10" for limited tier
+      expect(screen.getByText(/10 ×/)).toBeInTheDocument()
+    })
+
+    it('displays "Unlimited" for tiers with supply >= 999999999', () => {
+      render(<TransactionPreview {...launch721Props} />)
+
+      // Expand technical details
+      const expandButton = screen.getByText(/Technical Details/i)
+      fireEvent.click(expandButton)
+
+      // Should show "Unlimited" for unlimited tier
+      expect(screen.getByText(/Unlimited ×/)).toBeInTheDocument()
+    })
+
+    it('shows correct supply note for limited tiers', () => {
+      const allLimitedProps = {
+        ...launch721Props,
+        parameters: JSON.stringify({
+          deployTiersHookConfig: {
+            name: 'Test Collection',
+            symbol: 'TEST',
+            tiersConfig: {
+              tiers: [
+                { name: 'Limited 1', price: 25000000, initialSupply: 10 },
+                { name: 'Limited 2', price: 50000000, initialSupply: 20 },
+              ],
+              currency: 2,
+              decimals: 6,
+            },
+          },
+          launchProjectConfig: { projectUri: 'ipfs://test' },
+        }),
+      }
+
+      render(<TransactionPreview {...allLimitedProps} />)
+
+      // Expand technical details
+      const expandButton = screen.getByText(/Technical Details/i)
+      fireEvent.click(expandButton)
+
+      // Should show note about limited tiers on primary chain only
+      expect(screen.getByText(/primary chain only/i)).toBeInTheDocument()
+    })
+
+    it('shows correct supply note for unlimited tiers', () => {
+      const allUnlimitedProps = {
+        ...launch721Props,
+        parameters: JSON.stringify({
+          deployTiersHookConfig: {
+            name: 'Test Collection',
+            symbol: 'TEST',
+            tiersConfig: {
+              tiers: [
+                { name: 'Unlimited 1', price: 25000000, initialSupply: 999999999 },
+                { name: 'Unlimited 2', price: 50000000, initialSupply: 999999999 },
+              ],
+              currency: 2,
+              decimals: 6,
+            },
+          },
+          launchProjectConfig: { projectUri: 'ipfs://test' },
+        }),
+      }
+
+      render(<TransactionPreview {...allUnlimitedProps} />)
+
+      // Expand technical details
+      const expandButton = screen.getByText(/Technical Details/i)
+      fireEvent.click(expandButton)
+
+      // Should show note about unlimited tiers on all networks
+      expect(screen.getByText(/all.*networks/i)).toBeInTheDocument()
+    })
+  })
 })

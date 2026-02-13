@@ -546,4 +546,91 @@ describe('OptionsPicker', () => {
       })
     })
   })
+
+  describe('inputWhenSelected', () => {
+    const radioWithInlineInput = [
+      {
+        id: 'quantity',
+        label: 'How many available?',
+        type: 'radio' as const,
+        options: [
+          { value: 'unlimited', label: 'Unlimited', sublabel: 'Anyone can get one' },
+          {
+            value: 'limited',
+            label: 'Limited quantity',
+            sublabel: 'First come, first served',
+            inputWhenSelected: {
+              id: 'quantity_amount',
+              placeholder: '100',
+              type: 'number' as const,
+              width: 'md' as const,
+            },
+          },
+        ],
+      },
+    ]
+
+    it('shows inline input when option with inputWhenSelected is selected', async () => {
+      render(<OptionsPicker groups={radioWithInlineInput} />)
+
+      // Initially no input visible
+      expect(screen.queryByPlaceholderText('100')).not.toBeInTheDocument()
+
+      // Select the limited option
+      fireEvent.click(screen.getByText('Limited quantity'))
+
+      // Now input should be visible
+      expect(screen.getByPlaceholderText('100')).toBeInTheDocument()
+    })
+
+    it('includes inputWhenSelected value in message when submitted', async () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const user = userEvent.setup()
+
+      render(<OptionsPicker groups={radioWithInlineInput} />)
+
+      // Select limited option - get all matching elements and click the first one
+      const limitedElements = screen.getAllByText('Limited quantity')
+      fireEvent.click(limitedElements[0])
+
+      // Type in the inline input
+      const input = screen.getByPlaceholderText('100')
+      await user.type(input, '50')
+
+      // Submit
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+      // Check the message includes the inline input value
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'juice:send-message',
+          detail: expect.objectContaining({
+            message: expect.stringContaining('Limited quantity (50)'),
+          }),
+        })
+      )
+    })
+
+    it('does not include empty inputWhenSelected value in message', async () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+
+      render(<OptionsPicker groups={radioWithInlineInput} />)
+
+      // Select limited option but don't type anything
+      const limitedElements = screen.getAllByText('Limited quantity')
+      fireEvent.click(limitedElements[0])
+
+      // Submit
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+      // Check the message does NOT include parentheses with empty value
+      const sendCall = dispatchSpy.mock.calls.find(
+        call => (call[0] as CustomEvent).type === 'juice:send-message'
+      )
+      expect(sendCall).toBeDefined()
+      const message = (sendCall![0] as CustomEvent).detail.message
+      expect(message).toContain('Limited quantity')
+      expect(message).not.toContain('Limited quantity ()')
+    })
+  })
 })
