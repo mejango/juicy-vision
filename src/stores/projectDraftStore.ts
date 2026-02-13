@@ -88,47 +88,46 @@ export const useProjectDraftStore = create<ProjectDraftState>((set, get) => ({
       updates.projectDescription = selections.description
     }
 
-    // Check for tier data (tier1_name, tier1_price, etc.)
-    const tierMatch = Object.keys(selections).find(k => k.match(/^tier\d+_name$/))
+    // Check for tier data - handles both simple (tier_name) and numbered (tier1_name) formats
+    const tierMatch = Object.keys(selections).find(k => k.match(/^tier\d*_?name$/))
     if (tierMatch) {
-      const tierNum = tierMatch.match(/^tier(\d+)_name$/)?.[1]
-      if (tierNum) {
-        const tierName = selections[`tier${tierNum}_name`]
-        const tierPrice = selections[`tier${tierNum}_price`]
-        const tierDescription = selections[`tier${tierNum}_custom_perks`] || selections[`tier${tierNum}_perks`]
+      // Extract tier number prefix if present (e.g., "tier1_" or just "tier_")
+      const tierPrefix = tierMatch.replace('name', '')
+      const tierName = selections[tierMatch]
+      const tierPrice = selections[`${tierPrefix}price`]
+      const tierDescription = selections[`${tierPrefix}custom_perks`] || selections[`${tierPrefix}perks`] || selections[`${tierPrefix}perk`]
 
-        if (tierName && typeof tierName === 'string' && tierPrice && typeof tierPrice === 'string') {
-          const priceNum = parseFloat(tierPrice.replace(/[^0-9.]/g, ''))
-          if (!isNaN(priceNum) && priceNum > 0) {
-            // Check for tier image/video (data URL or regular URL)
-            const tierImage = selections[`tier${tierNum}_media`] || selections[`tier${tierNum}_image`]
-            let imageUrl: string | undefined
-            if (tierImage && typeof tierImage === 'string') {
-              // Accept data URLs (image or video) or http URLs
-              if (tierImage.startsWith('data:image/') || tierImage.startsWith('data:video/') || tierImage.startsWith('http')) {
-                imageUrl = tierImage
-              }
+      if (tierName && typeof tierName === 'string' && tierPrice && typeof tierPrice === 'string') {
+        const priceNum = parseFloat(tierPrice.replace(/[^0-9.]/g, ''))
+        if (!isNaN(priceNum) && priceNum > 0) {
+          // Check for tier image/video (data URL or regular URL)
+          const tierImage = selections[`${tierPrefix}media`] || selections[`${tierPrefix}image`]
+          let imageUrl: string | undefined
+          if (tierImage && typeof tierImage === 'string') {
+            // Accept data URLs (image or video) or http URLs
+            if (tierImage.startsWith('data:image/') || tierImage.startsWith('data:video/') || tierImage.startsWith('http')) {
+              imageUrl = tierImage
             }
-
-            const newTier: DraftTier = {
-              name: tierName,
-              price: priceNum,
-              currency: 2, // Assume USD for now
-              description: typeof tierDescription === 'string' ? tierDescription : undefined,
-              imageUrl,
-            }
-
-            // Replace or add tier
-            set((state) => {
-              const existingIndex = state.tiers.findIndex(t => t.name === tierName)
-              if (existingIndex >= 0) {
-                const newTiers = [...state.tiers]
-                newTiers[existingIndex] = newTier
-                return { tiers: newTiers }
-              }
-              return { tiers: [...state.tiers, newTier] }
-            })
           }
+
+          const newTier: DraftTier = {
+            name: tierName,
+            price: priceNum,
+            currency: 2, // Assume USD for now
+            description: typeof tierDescription === 'string' ? tierDescription : undefined,
+            imageUrl,
+          }
+
+          // Replace or add tier
+          set((state) => {
+            const existingIndex = state.tiers.findIndex(t => t.name === tierName)
+            if (existingIndex >= 0) {
+              const newTiers = [...state.tiers]
+              newTiers[existingIndex] = newTier
+              return { tiers: newTiers }
+            }
+            return { tiers: [...state.tiers, newTier] }
+          })
         }
       }
     }

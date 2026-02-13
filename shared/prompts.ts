@@ -499,6 +499,7 @@ When users want to offer perks at different support levels, use NFT tiers. Each 
 <juice-component type="options-picker" groups='[
   {"id":"tier_name","label":"What should we call this reward level?","type":"text","value":"Early Supporter","placeholder":"Supporter, Founding Member, VIP"},
   {"id":"tier_perk","label":"What do supporters get at this level?","type":"textarea","value":"Get exclusive updates and behind-the-scenes content as we build","placeholder":"Early access, exclusive content, your name on our website"},
+  {"id":"tier_media","label":"Image for this tier","type":"file","optional":true,"autoGenerate":true},
   {"id":"tier_price","label":"How much for this reward?","type":"text","value":"25","placeholder":"25"},
   {"id":"tier_quantity","label":"How many available?","type":"radio","options":[
     {"value":"unlimited","label":"Unlimited","sublabel":"Anyone who wants one can get one"},

@@ -28,7 +28,7 @@ interface OptionGroup {
   optional?: boolean // Mark field as optional (shows "(optional)" label)
   expectedOptionCount?: number // Show ghost cards for remaining options during streaming
   suggestions?: string[] // Quick-pick suggestions for text inputs (shown as horizontally scrolling chips)
-  autoGenerate?: boolean | string // Show "Auto-generate" button for textarea (true or custom prompt)
+  autoGenerate?: boolean | string // Show "Auto-generate" button for textarea/file (true or custom prompt)
 }
 
 interface OptionsPickerProps {
@@ -212,7 +212,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
   // Track which fields are currently auto-generating
   const [generating, setGenerating] = useState<Record<string, boolean>>({})
 
-  // Listen for auto-generated content
+  // Listen for auto-generated content (text)
   useEffect(() => {
     const handleGenerated = (e: CustomEvent<{ fieldId: string; content: string }>) => {
       const { fieldId, content } = e.detail
@@ -222,6 +222,19 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     window.addEventListener('juice:generated-content' as never, handleGenerated as EventListener)
     return () => {
       window.removeEventListener('juice:generated-content' as never, handleGenerated as EventListener)
+    }
+  }, [])
+
+  // Listen for auto-generated images
+  useEffect(() => {
+    const handleGeneratedImage = (e: CustomEvent<{ fieldId: string; imageUrl: string }>) => {
+      const { fieldId, imageUrl } = e.detail
+      setSelections(prev => ({ ...prev, [fieldId]: imageUrl }))
+      setGenerating(prev => ({ ...prev, [fieldId]: false }))
+    }
+    window.addEventListener('juice:generated-image' as never, handleGeneratedImage as EventListener)
+    return () => {
+      window.removeEventListener('juice:generated-image' as never, handleGeneratedImage as EventListener)
     }
   }, [])
 
@@ -362,7 +375,18 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
         if (Array.isArray(sel) && sel.length === 0) return null
 
         if (Array.isArray(sel)) {
-          const labels = sel.map(v => options.find(o => o.value === v)?.label || v)
+          const labels = sel.map(v => {
+            const opt = options.find(o => o.value === v)
+            let label = opt?.label || v
+            // Include inputWhenSelected value if present (e.g., "Limited quantity (50)")
+            if (opt?.inputWhenSelected) {
+              const inputValue = selections[opt.inputWhenSelected.id]
+              if (inputValue) {
+                label += ` (${inputValue})`
+              }
+            }
+            return label
+          })
           return `${g.label}: ${labels.join(', ')}`
         }
 
@@ -904,7 +928,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                           : 'text-gray-400 hover:text-gray-600'
                       }`}
                     >
-                      ✨ Auto-generate
+                      Auto-generate
                     </button>
                   )}
                   {isGenerating && (
@@ -945,6 +969,8 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                              (currentValue && currentValue.startsWith('http') && /\.(mp4|webm|mov)(\?|$)/i.test(currentValue))
               const hasFile = isImage || isVideo
               const isLocked = hasSubmitted
+              const isGenerating = generating[group.id]
+              const canAutoGenerate = group.autoGenerate && !isLocked && !isGenerating && !hasFile
               // Use blob URL for preview if available (more reliable for large files like GIFs)
               const displayUrl = previewUrl || currentValue
 
@@ -997,6 +1023,30 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                 setSelections(prev => ({ ...prev, [group.id]: '' }))
               }
 
+              const handleAutoGenerateImage = () => {
+                setGenerating(prev => ({ ...prev, [group.id]: true }))
+                // Build context from other selections
+                const context = groups.map(g => {
+                  const sel = selections[g.id]
+                  if (!sel || (Array.isArray(sel) && sel.length === 0)) return null
+                  const options = g.options || []
+                  if (Array.isArray(sel)) {
+                    const labels = sel.map(v => options.find(o => o.value === v)?.label || v)
+                    return `${g.label}: ${labels.join(', ')}`
+                  }
+                  if (g.type === 'file') return null
+                  const opt = options.find(o => o.value === sel)
+                  return `${g.label}: ${opt?.label || sel}`
+                }).filter(Boolean).join('. ')
+
+                const customPrompt = typeof group.autoGenerate === 'string' ? group.autoGenerate : null
+                const prompt = customPrompt || `Generate an image for: ${context}`
+
+                window.dispatchEvent(new CustomEvent('juice:request-image-generation', {
+                  detail: { fieldId: group.id, prompt, context }
+                }))
+              }
+
               return (
                 <div className="space-y-2">
                   {hasFile ? (
@@ -1037,6 +1087,16 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                         </button>
                       )}
                     </div>
+                  ) : isGenerating ? (
+                    <div className={`w-48 h-48 border flex flex-col items-center justify-center gap-2 animate-pulse ${
+                      isDark ? 'border-white/20 bg-white/5' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <svg className={`w-8 h-8 animate-spin ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Generating...</span>
+                    </div>
                   ) : isLocked ? (
                     <div className={`w-48 h-48 border flex items-center justify-center ${
                       isDark ? 'border-white/10 bg-white/5 text-gray-600' : 'border-gray-200 bg-gray-50 text-gray-400'
@@ -1058,10 +1118,10 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                         <p className={`mb-1 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          <span className="font-semibold">Drop logo here</span> or click to browse
+                          <span className="font-semibold">Drop image here</span> or click to browse
                         </p>
                         <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                          PNG, JPG, SVG up to 2MB
+                          PNG, JPG, GIF up to 2MB
                         </p>
                       </div>
                       <input
@@ -1071,6 +1131,19 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                         className="hidden"
                       />
                     </label>
+                  )}
+                  {/* Auto-generate button */}
+                  {canAutoGenerate && (
+                    <button
+                      onClick={handleAutoGenerateImage}
+                      className={`text-xs transition-colors ${
+                        isDark
+                          ? 'text-gray-500 hover:text-gray-300'
+                          : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      Generate one for me
+                    </button>
                   )}
                 </div>
               )
