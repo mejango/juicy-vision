@@ -2268,7 +2268,8 @@ export default function TransactionPreview({
       { percent: 1000000000, projectId: 0, beneficiary: '' }, // 100% to owner initially
     ],
     payoutLimit: draftPayoutLimit * (draftPayoutCurrency === 2 ? 1000000 : 1e18),
-    hasEmptyFundAccessLimits: false
+    hasEmptyFundAccessLimits: false,
+    reservedPercent: undefined as number | undefined
   } : null
   const fundingInfo = hasStreamedFundingData ? streamedFundingInfo : draftFundingInfo
 
