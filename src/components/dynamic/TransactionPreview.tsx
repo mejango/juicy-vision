@@ -764,6 +764,62 @@ function SuckerConfigSection({
   )
 }
 
+// Expandable row for showing full tier technical details
+function TierDetailRow({
+  tier,
+  tierName,
+  priceDisplay,
+  supplyDisplay,
+  isDark
+}: {
+  tier: Record<string, unknown>;
+  tierName: string;
+  priceDisplay: string;
+  supplyDisplay: string;
+  isDark: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  // Fields to show in expanded view (exclude name since it's in the header)
+  const displayFields = Object.entries(tier).filter(([key]) => key !== 'name')
+
+  return (
+    <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={`flex items-center gap-1 w-full text-left py-0.5 hover:${isDark ? 'text-gray-300' : 'text-gray-600'}`}
+      >
+        <svg
+          className={`w-2.5 h-2.5 transition-transform shrink-0 ${expanded ? 'rotate-90' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="truncate" title={tier.description as string}>{tierName}</span>
+        <span className="font-mono ml-auto shrink-0">
+          {supplyDisplay} × {priceDisplay}
+        </span>
+      </button>
+      {expanded && (
+        <div className={`ml-3.5 mt-0.5 space-y-0.5 border-l pl-2 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
+          {displayFields.map(([key, value]) => (
+            <div key={key} className="flex justify-between gap-2 py-0.5">
+              <span className={`shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{key}</span>
+              <span className={`font-mono text-[10px] truncate text-right ${isDark ? 'text-gray-400' : 'text-gray-500'}`} title={String(value)}>
+                {typeof value === 'boolean' ? (value ? 'true' : 'false') :
+                 typeof value === 'string' && value.length > 30 ? `${value.slice(0, 15)}...${value.slice(-12)}` :
+                 String(value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Component to display 721 tier hook configuration with per-chain view
 function TiersHookConfigSection({
   allChainIds,
@@ -859,14 +915,14 @@ function TiersHookConfigSection({
             )}
           </div>
 
-          {/* Tiers summary */}
+          {/* Tiers with full details */}
           {tiersConfig?.tiers && Array.isArray(tiersConfig.tiers) && tiersConfig.tiers.length > 0 && (
             <div className={`pt-1 mt-1 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className={`text-xs py-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                 Tiers ({tiersConfig.tiers.length})
               </div>
-              <div className={`space-y-1 mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {(tiersConfig.tiers as Array<{ name?: string; price?: string | bigint; initialSupply?: number; description?: string }>).slice(0, 5).map((tier, idx) => {
+              <div className={`space-y-1 mt-1`}>
+                {(tiersConfig.tiers as Array<Record<string, unknown>>).map((tier, idx) => {
                   const tierCurrency = (tiersConfig as { currency?: number })?.currency || 2
                   const tierDecimals = (tiersConfig as { decimals?: number })?.decimals || 6
                   const isUsd = tierCurrency === 2 || isUsdcCurrency(tierCurrency)
@@ -875,22 +931,19 @@ function TiersHookConfigSection({
                       ? `$${(Number(tier.price) / Math.pow(10, tierDecimals)).toLocaleString()}`
                       : `${(Number(tier.price) / 1e18).toFixed(4)} ETH`)
                     : '?'
-                  const supplyDisplay = tier.initialSupply && tier.initialSupply >= 999999999 ? 'Unlimited' : (tier.initialSupply || '?')
-                  const tierName = tier.name || `Tier ${idx + 1}`
+                  const supplyDisplay = tier.initialSupply && (tier.initialSupply as number) >= 999999999 ? 'Unlimited' : (tier.initialSupply || '?')
+                  const tierName = (tier.name as string) || `Tier ${idx + 1}`
                   return (
-                    <div key={idx} className="flex justify-between text-xs gap-2">
-                      <span className="truncate" title={tier.description}>{tierName}</span>
-                      <span className="font-mono shrink-0">
-                        {supplyDisplay} × {priceDisplay}
-                      </span>
-                    </div>
+                    <TierDetailRow
+                      key={idx}
+                      tier={tier}
+                      tierName={tierName}
+                      priceDisplay={priceDisplay}
+                      supplyDisplay={String(supplyDisplay)}
+                      isDark={isDark}
+                    />
                   )
                 })}
-                {tiersConfig.tiers.length > 5 && (
-                  <div className={`text-xs italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    +{tiersConfig.tiers.length - 5} more tier{tiersConfig.tiers.length - 5 > 1 ? 's' : ''}
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -2467,19 +2520,22 @@ export default function TransactionPreview({
         : undefined,
     })
 
-    // Check if the only issues are sign-in-related (missing owner, unresolved USER_WALLET placeholders)
-    // In this case, we don't need to show scary warnings - just prompt to sign in
+    // Check if user needs to sign in - show friendly prompt instead of scary errors
+    // When user isn't signed in, most validation errors are expected (missing owner, placeholder addresses)
+    // Don't overwhelm first-time users with red "Critical" warnings - just nudge them to sign in
+    const needsSignIn = !effectiveUserAddress && !owner
     const signInRelatedDoubts = verification.doubts.filter(d =>
       d.field === 'owner' ||
       d.message.toLowerCase().includes('owner') ||
-      (!effectiveUserAddress && d.message.includes('USER_WALLET'))
+      d.message.includes('USER_WALLET')
     )
     const genuineDoubts = verification.doubts.filter(d => !signInRelatedDoubts.includes(d))
-    const onlySignInIssue = signInRelatedDoubts.length > 0 && genuineDoubts.length === 0 && !owner
+    // Show sign-in prompt when user needs to sign in, regardless of other validation issues
+    const onlySignInIssue = needsSignIn
 
-    // Filter out sign-in-related issues while waiting for managed wallet or if there's a wallet error
+    // Filter out ALL issues when user just needs to sign in (they'll see real issues after signing in)
     let filteredDoubts = (isWaitingForManagedWallet || hasWalletError || onlySignInIssue)
-      ? genuineDoubts
+      ? [] // Hide all validation errors when just prompting to sign in
       : verification.doubts
 
     // If there's a wallet error, add a specific doubt for it
