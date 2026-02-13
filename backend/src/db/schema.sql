@@ -1922,6 +1922,7 @@ CREATE TABLE public.users (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     passkey_enabled boolean DEFAULT false NOT NULL,
+    is_admin boolean DEFAULT false NOT NULL,
     CONSTRAINT users_privacy_mode_check CHECK (((privacy_mode)::text = ANY (ARRAY[('open_book'::character varying)::text, ('anonymous'::character varying)::text, ('private'::character varying)::text, ('ghost'::character varying)::text])))
 );
 
