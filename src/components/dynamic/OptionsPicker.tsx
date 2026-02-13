@@ -426,7 +426,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
       // Capture tier/payout/metadata in draft store for instant preview (non-blocking)
       try {
-        parseFormSubmission(selections as Record<string, string>)
+        parseFormSubmission(selections)
       } catch (err) {
         console.error('Failed to parse form submission for draft store:', err)
         // Continue anyway - this is just for preview, not critical

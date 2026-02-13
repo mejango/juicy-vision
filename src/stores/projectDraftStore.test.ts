@@ -57,6 +57,23 @@ describe('projectDraftStore', () => {
         expect(tiers[0].initialSupply).toBe(10)
       })
 
+      it('parses tier with limited supply from array values (real form data)', () => {
+        // This is what OptionsPicker actually sends - values are arrays from radio groups
+        const { parseFormSubmission } = useProjectDraftStore.getState()
+
+        parseFormSubmission({
+          tier_name: ['Limited Edition'],
+          tier_price: '50',
+          tier_quantity: ['limited'],
+          tier_quantity_amount: '10',
+        } as Record<string, string | string[]>)
+
+        const { tiers } = useProjectDraftStore.getState()
+        expect(tiers).toHaveLength(1)
+        expect(tiers[0].name).toBe('Limited Edition')
+        expect(tiers[0].initialSupply).toBe(10)
+      })
+
       it('parses tier with unlimited supply (no initialSupply set)', () => {
         const { parseFormSubmission } = useProjectDraftStore.getState()
 

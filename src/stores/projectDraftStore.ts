@@ -40,7 +40,7 @@ interface ProjectDraftState {
   clearDraft: () => void
 
   // Parse form submission and extract relevant data
-  parseFormSubmission: (selections: Record<string, string>) => void
+  parseFormSubmission: (selections: Record<string, string | string[]>) => void
 }
 
 const initialState = {
@@ -81,12 +81,22 @@ export const useProjectDraftStore = create<ProjectDraftState>((set, get) => ({
   parseFormSubmission: (selections) => {
     const updates: Partial<ProjectDraftState> = {}
 
-    // Check for project name
-    if (selections.name && typeof selections.name === 'string') {
-      updates.projectName = selections.name
+    // Helper to get string value from selections (handles arrays from radio/chips groups)
+    const getValue = (key: string): string | undefined => {
+      const val = selections[key]
+      if (Array.isArray(val)) return val[0]
+      if (typeof val === 'string') return val
+      return undefined
     }
-    if (selections.description && typeof selections.description === 'string') {
-      updates.projectDescription = selections.description
+
+    // Check for project name
+    const name = getValue('name')
+    if (name) {
+      updates.projectName = name
+    }
+    const description = getValue('description')
+    if (description) {
+      updates.projectDescription = description
     }
 
     // Check for tier data - handles both simple (tier_name) and numbered (tier1_name) formats
@@ -94,26 +104,26 @@ export const useProjectDraftStore = create<ProjectDraftState>((set, get) => ({
     if (tierMatch) {
       // Extract tier number prefix if present (e.g., "tier1_" or just "tier_")
       const tierPrefix = tierMatch.replace('name', '')
-      const tierName = selections[tierMatch]
-      const tierPrice = selections[`${tierPrefix}price`]
-      const tierDescription = selections[`${tierPrefix}custom_perks`] || selections[`${tierPrefix}perks`] || selections[`${tierPrefix}perk`]
+      const tierName = getValue(tierMatch)
+      const tierPrice = getValue(`${tierPrefix}price`)
+      const tierDescription = getValue(`${tierPrefix}custom_perks`) || getValue(`${tierPrefix}perks`) || getValue(`${tierPrefix}perk`)
 
-      if (tierName && typeof tierName === 'string' && tierPrice && typeof tierPrice === 'string') {
+      if (tierName && tierPrice) {
         const priceNum = parseFloat(tierPrice.replace(/[^0-9.]/g, ''))
         if (!isNaN(priceNum) && priceNum > 0) {
           // Check for tier image/video (data URL or regular URL)
-          const tierImage = selections[`${tierPrefix}media`] || selections[`${tierPrefix}image`]
+          const tierImage = getValue(`${tierPrefix}media`) || getValue(`${tierPrefix}image`)
           let imageUrl: string | undefined
-          if (tierImage && typeof tierImage === 'string') {
+          if (tierImage) {
             // Accept data URLs (image or video) or http URLs
             if (tierImage.startsWith('data:image/') || tierImage.startsWith('data:video/') || tierImage.startsWith('http')) {
               imageUrl = tierImage
             }
           }
 
-          // Check for supply/quantity
-          const tierQuantity = selections[`${tierPrefix}quantity`]
-          const tierQuantityAmount = selections[`${tierPrefix}quantity_amount`]
+          // Check for supply/quantity - getValue handles arrays from radio groups
+          const tierQuantity = getValue(`${tierPrefix}quantity`)
+          const tierQuantityAmount = getValue(`${tierPrefix}quantity_amount`)
           let initialSupply: number | undefined
           if (tierQuantity === 'limited' && tierQuantityAmount) {
             const supplyNum = parseInt(tierQuantityAmount.replace(/[^0-9]/g, ''), 10)
@@ -127,7 +137,7 @@ export const useProjectDraftStore = create<ProjectDraftState>((set, get) => ({
             name: tierName,
             price: priceNum,
             currency: 2, // Assume USD for now
-            description: typeof tierDescription === 'string' ? tierDescription : undefined,
+            description: tierDescription,
             imageUrl,
             initialSupply,
           }
@@ -147,8 +157,8 @@ export const useProjectDraftStore = create<ProjectDraftState>((set, get) => ({
     }
 
     // Check for funding goal
-    const goalValue = selections.funding_goal || selections.goal
-    if (goalValue && typeof goalValue === 'string') {
+    const goalValue = getValue('funding_goal') || getValue('goal')
+    if (goalValue) {
       const goalNum = parseFloat(goalValue.replace(/[^0-9.]/g, ''))
       if (!isNaN(goalNum) && goalNum > 0) {
         updates.payoutLimit = goalNum
