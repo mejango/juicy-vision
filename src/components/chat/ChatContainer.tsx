@@ -1090,6 +1090,22 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             useChatStore.getState().updateChat(targetChatId, updates)
             break
           }
+          case 'connection_status': {
+            // Handle connection status changes - clean up streaming messages on disconnect/failure
+            const statusData = msg.data as { status: string }
+            if (statusData.status === 'disconnected' || statusData.status === 'failed' || statusData.status === 'offline') {
+              // Mark all in-flight streaming messages as no longer streaming
+              // This prevents components from being stuck in loading state forever
+              streamingMessages.forEach(({ chatId: msgChatId }, messageId) => {
+                console.log(`[ChatContainer] Stream interrupted for message ${messageId}, marking as done`)
+                useChatStore.getState().updateMessage(msgChatId, messageId, { isStreaming: false })
+              })
+              streamingMessages.clear()
+              pendingUpdates.clear()
+              useChatStore.getState().setWaitingForAiChatId(null)
+            }
+            break
+          }
         }
       })
     }
