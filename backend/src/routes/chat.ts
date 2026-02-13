@@ -1503,6 +1503,13 @@ chatRouter.post(
       // Parse and strip confidence tag from AI response
       const { content: cleanedContent, confidence } = parseConfidence(fullContent);
 
+      // Debug: Log if content significantly changed (potential truncation)
+      if (fullContent.length > 0 && cleanedContent.length < fullContent.length * 0.9) {
+        console.warn(`[AI] ${chatId}: Content significantly shortened after parseConfidence - original: ${fullContent.length} chars, cleaned: ${cleanedContent.length} chars`);
+        console.warn(`[AI] ${chatId}: First 100 chars before: ${fullContent.substring(0, 100)}`);
+        console.warn(`[AI] ${chatId}: First 100 chars after: ${cleanedContent.substring(0, 100)}`);
+      }
+
       // Store the complete AI response as a message (with confidence tag stripped)
       const aiMessage = await importMessage({
         chatId,

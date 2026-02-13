@@ -499,7 +499,7 @@ When users want to offer perks at different support levels, use NFT tiers. Each 
   {"id":"tier_price","label":"How much for this reward?","type":"text","placeholder":"e.g. $25"},
   {"id":"tier_quantity","label":"How many available?","type":"radio","options":[
     {"value":"unlimited","label":"Unlimited","sublabel":"Anyone who wants one can get one"},
-    {"value":"limited","label":"Limited quantity","sublabel":"Creates scarcity - first come, first served"}
+    {"value":"limited","label":"Limited quantity","sublabel":"Creates scarcity - first come, first served","inputWhenSelected":{"id":"tier_quantity_amount","placeholder":"How many?","type":"number"}}
   ]}
 ]' submitLabel="Add this tier" />
 \`\`\`

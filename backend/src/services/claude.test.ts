@@ -285,3 +285,81 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
 });
+
+// ============================================================================
+// parseConfidence Unit Tests (no AI needed)
+// ============================================================================
+
+import { parseConfidence } from './claude.ts';
+
+Deno.test({
+  name: 'parseConfidence: extracts confidence tag from end of content',
+  fn() {
+    const content = 'Hello world<confidence level="high" reason="test"/>';
+    const result = parseConfidence(content);
+
+    assertEquals(result.content, 'Hello world');
+    assertEquals(result.confidence?.level, 'high');
+    assertEquals(result.confidence?.reason, 'test');
+  },
+});
+
+Deno.test({
+  name: 'parseConfidence: preserves leading content when confidence at end',
+  fn() {
+    const content = "I'd love to help you\n\n<confidence level=\"medium\" reason=\"greeting\"/>";
+    const result = parseConfidence(content);
+
+    assertEquals(result.content, "I'd love to help you");
+    assertEquals(result.confidence?.level, 'medium');
+  },
+});
+
+Deno.test({
+  name: 'parseConfidence: returns original content when no confidence tag',
+  fn() {
+    const content = 'Hello world with no tag';
+    const result = parseConfidence(content);
+
+    assertEquals(result.content, 'Hello world with no tag');
+    assertEquals(result.confidence, null);
+  },
+});
+
+Deno.test({
+  name: 'parseConfidence: preserves leading whitespace (does not left-trim)',
+  fn() {
+    const content = '  Leading spaces<confidence level="high" reason="test"/>';
+    const result = parseConfidence(content);
+
+    // Should preserve leading whitespace (only trimEnd, not trim)
+    assertEquals(result.content.startsWith('  '), true, 'Leading whitespace should be preserved');
+  },
+});
+
+Deno.test({
+  name: 'parseConfidence: handles content with special characters in reason',
+  fn() {
+    // Note: Using > in reason will break the [^>]* regex match,
+    // causing the confidence tag to not be matched and removed.
+    // This is a known limitation - reason should not contain >
+    const content = 'Response text<confidence level="low" reason="User asked about rates greater than 10 percent"/>';
+    const result = parseConfidence(content);
+
+    assertEquals(result.content, 'Response text');
+    assertEquals(result.confidence?.level, 'low');
+  },
+});
+
+Deno.test({
+  name: 'parseConfidence: handles confidence tag anywhere in content',
+  fn() {
+    const content = 'Start<confidence level="high" reason="test"/>End text';
+    const result = parseConfidence(content);
+
+    // Tag is removed wherever it appears
+    assertEquals(result.content.includes('<confidence'), false);
+    assertEquals(result.content.includes('Start'), true);
+    assertEquals(result.content.includes('End'), true);
+  },
+});

@@ -359,8 +359,11 @@ export function parseConfidence(content: string): {
   const match = content.match(/<confidence\s+level="(high|medium|low)"\s+reason="([^"]*)"\s*\/>/);
 
   if (match) {
+    // Remove confidence tag and only trim trailing whitespace to preserve
+    // any intentional leading content (e.g., "I'd love to help...")
+    const withoutTag = content.replace(/<confidence[^>]*\/>/, '');
     return {
-      content: content.replace(/<confidence[^>]*\/>/, '').trim(),
+      content: withoutTag.trimEnd(),
       confidence: {
         level: match[1] as ConfidenceLevel,
         reason: match[2],
