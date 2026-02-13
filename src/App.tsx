@@ -864,7 +864,7 @@ function MainApp() {
             <Route path="/merchant" element={<TerminalsPage />} />
             <Route path="/merchant/terminals" element={<TerminalsPage />} />
             <Route path="/join/:code" element={<JoinChatPage />} />
-            <Route path="/chat/:chatId" element={<ChatRouteHandler />} />
+            <Route path="/chat/:chatId/*" element={<ChatRouteHandler />} />
             <Route path="/:projectSlug" element={<ProjectRouteHandler />} />
             <Route path="/" element={<HomeRouteHandler />} />
             <Route path="*" element={<HomeRouteHandler />} />
