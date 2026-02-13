@@ -27,13 +27,19 @@ export const RULESETS_CONTEXT = `
 {"reservedPercent": 0, "cashOutTaxRate": 0, "baseCurrency": 2, "pausePay": false, "pauseCreditTransfers": false, "allowOwnerMinting": false, "allowSetCustomToken": true, "allowTerminalMigration": true, "allowSetTerminals": true, "allowSetController": true, "allowAddAccountingContext": true, "allowAddPriceFeed": true, "ownerMustSendPayouts": false, "holdFees": false, "useTotalSurplusForCashOuts": false, "useDataHookForPay": false, "useDataHookForCashOut": false, "dataHook": "0x0000000000000000000000000000000000000000", "metadata": 0}
 \`\`\`
 
-**IMPORTANT: reservedPercent and cashOutTaxRate are uint16! Scale is 10000 = 100%:**
-| Project's Cut | Supporters Get | reservedPercent |
-|---------------|----------------|-----------------|
-| 10% | 90% of tokens | 1000 |
-| 20% | 80% of tokens | 2000 |
-| 30% | 70% of tokens | 3000 |
-| 50% | 50% of tokens | 5000 |
+**IMPORTANT: reservedPercent = what project KEEPS, NOT what supporters get!**
+Scale is 10000 = 100%. If user says "X% to supporters", calculate: reservedPercent = (100 - X) * 100
+
+| User Says | Supporters Get | Project Keeps | reservedPercent |
+|-----------|----------------|---------------|-----------------|
+| "10% to supporters" | 10% | 90% | 9000 |
+| "20% to supporters" | 20% | 80% | 8000 |
+| "30% to supporters" | 30% | 70% | 7000 |
+| "50% to supporters" | 50% | 50% | 5000 |
+| "90% to supporters" | 90% | 10% | 1000 |
+
+**WRONG:** User says "10% to supporters" → reservedPercent: 1000 (this gives 90% to supporters!)
+**RIGHT:** User says "10% to supporters" → reservedPercent: 9000 (this gives 10% to supporters)
 
 **mustStartAtOrAfter** = Use any integer (e.g., 0 or 1). The frontend automatically sets this to 5 minutes from when the user clicks "Launch Project".
 
