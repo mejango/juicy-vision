@@ -1380,7 +1380,8 @@ function FundingBreakdown({
   onEdit,
   juicyFeeEnabled,
   onToggleJuicyFee,
-  hasEmptyFundAccessLimits
+  hasEmptyFundAccessLimits,
+  reservedPercent
 }: {
   payoutLimit?: number;
   splits: SplitInfo[];
@@ -1389,6 +1390,7 @@ function FundingBreakdown({
   juicyFeeEnabled: boolean;
   onToggleJuicyFee: (enabled: boolean) => void;
   hasEmptyFundAccessLimits?: boolean;
+  reservedPercent?: number;
 }) {
   const { t } = useTranslation()
   const [isEditing, setIsEditing] = useState(false)
@@ -1600,6 +1602,15 @@ function FundingBreakdown({
               </div>
             )}
           </div>
+          )}
+
+          {/* Reserved rate info - shows when payers get a share of tokens (reservedPercent < 100%) */}
+          {reservedPercent !== undefined && reservedPercent > 0 && reservedPercent < 10000 && (
+            <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Payers get {100 - reservedPercent / 100}% of shares which can later access funds if you choose.
+              </p>
+            </div>
           )}
         </>
       )}
@@ -2027,7 +2038,7 @@ export default function TransactionPreview({
       }
 
       // Extract funding info
-      let fundingInfo: { splits: SplitInfo[]; payoutLimit?: number; hasEmptyFundAccessLimits?: boolean } | null = null
+      let fundingInfo: { splits: SplitInfo[]; payoutLimit?: number; hasEmptyFundAccessLimits?: boolean; reservedPercent?: number } | null = null
       const rulesets = raw?.rulesetConfigurations || raw?.launchProjectConfig?.rulesetConfigurations
       if (rulesets && Array.isArray(rulesets) && rulesets.length > 0) {
         const firstRuleset = rulesets[0]
@@ -2081,7 +2092,10 @@ export default function TransactionPreview({
           }
         }
 
-        fundingInfo = { splits, payoutLimit, hasEmptyFundAccessLimits }
+        // Extract reserved percent from metadata (scale: 10000 = 100%)
+        const reservedPercent = firstRuleset.metadata?.reservedPercent
+
+        fundingInfo = { splits, payoutLimit, hasEmptyFundAccessLimits, reservedPercent }
       }
 
       // Check for multi-chain suckers
@@ -2810,6 +2824,7 @@ export default function TransactionPreview({
               juicyFeeEnabled={juicyFeeEnabled}
               onToggleJuicyFee={setJuicyFeeEnabled}
               hasEmptyFundAccessLimits={fundingInfo.hasEmptyFundAccessLimits}
+              reservedPercent={fundingInfo.reservedPercent}
             />
           ) : (
             <FundingSkeleton isDark={isDark} />
