@@ -13,6 +13,7 @@ interface Option {
     id: string // ID to store the value under in selections
     placeholder?: string
     type?: 'text' | 'number'
+    width?: 'sm' | 'md' | 'lg' // Input width: sm=w-20, md=w-28, lg=w-36 (default: sm)
   }
 }
 
@@ -681,7 +682,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                                 disabled={isLocked}
                                 placeholder={option.inputWhenSelected.placeholder || 'Enter amount...'}
                                 autoFocus
-                                className={`w-20 px-2 py-0.5 text-sm border transition-colors outline-none ${
+                                className={`${option.inputWhenSelected.width === 'lg' ? 'w-36' : option.inputWhenSelected.width === 'md' ? 'w-28' : 'w-20'} px-2 py-0.5 text-sm border transition-colors outline-none ${
                                   isLocked
                                     ? isDark
                                       ? 'bg-white/5 border-white/10 text-gray-400 cursor-default'
