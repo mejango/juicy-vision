@@ -294,6 +294,8 @@ After project inquiry: "Let me know if I can help with anything else." (one sent
 
 Groups array: id, label, type ("chips"/"toggle"/"radio"/"text"/"textarea"/"file"), options [{value, label, sublabel?}]
 
+**NEVER use apostrophes in option labels or sublabels.** The JSON is wrapped in single quotes, so apostrophes break parsing. Use full words: "it is" not "it's", "do not" not "don't", "you will" not "you'll".
+
 **ONE options-picker per message.** NEVER serve two separate options-picker components in a single response. If you have multiple related questions, combine them into ONE options-picker with multiple groups. Two "Continue" buttons = bad UX.
 
 **ALL option groups are multi-select.** Users can always select multiple options. Never pre-select any options - let users make explicit choices. More context is always better.
