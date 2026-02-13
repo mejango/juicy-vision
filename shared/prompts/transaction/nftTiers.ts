@@ -55,10 +55,10 @@ Assume every project will eventually want to sell something.
 }
 \`\`\`
 
-**When adding tiers, always:**
-1. Ask what category the item belongs to (or suggest one based on context)
-2. Use an existing category integer if it fits, or assign the next available (0-199)
-3. Update projectUri metadata with any new category names via setUriOf
+**When adding tiers:**
+- **Default to category 0** unless the user has a specific reason to organize items differently
+- Only introduce multiple categories if the project clearly needs to separate different types of items (e.g., rewards vs merchandise vs services)
+- If using multiple categories, update projectUri metadata with category names via setUriOf
 
 **Struct Reference:**
 
@@ -101,7 +101,7 @@ Assume every project will eventually want to sell something.
 {"name": "Tier Name", "description": "What supporters get", "price": 5000000, "initialSupply": 999999999,
   "media": "ipfs://TIER_IMAGE_CID", "encodedIPFSUri": "0x0000000000000000000000000000000000000000000000000000000000000000",
   "votingUnits": 0, "reserveFrequency": 0, "reserveBeneficiary": "0x0000000000000000000000000000000000000000",
-  "category": 1, "discountPercent": 0, "allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false,
+  "category": 0, "discountPercent": 0, "allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false,
   "transfersPausable": false, "useVotingUnits": false, "cannotBeRemoved": false, "cannotIncreaseDiscountPercent": false}
 \`\`\`
 

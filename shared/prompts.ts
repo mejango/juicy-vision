@@ -1245,7 +1245,7 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 {"name": "Tier Name", "description": "What supporters get", "price": 5000000, "initialSupply": 999999999,
   "media": "ipfs://TIER_IMAGE_CID", "encodedIPFSUri": "0x0000000000000000000000000000000000000000000000000000000000000000",
   "votingUnits": 0, "reserveFrequency": 0, "reserveBeneficiary": "0x0000000000000000000000000000000000000000",
-  "category": 1, "discountPercent": 0, "allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false,
+  "category": 0, "discountPercent": 0, "allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false,
   "transfersPausable": false, "useVotingUnits": false, "cannotBeRemoved": false, "cannotIncreaseDiscountPercent": false}
 \`\`\`
 
