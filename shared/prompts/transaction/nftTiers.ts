@@ -135,16 +135,29 @@ When user selects "Limited quantity", check if they provided the amount in the i
 - If amount IS provided: use that value, don't ask again
 - If amount is NOT provided: ask "How many should be available?"
 
-**IMPORTANT: Limited tiers go on ONE chain only to preserve true scarcity.**
-- Limited supply tiers (specific quantity): Deploy ONLY on the primary chain
-- Unlimited tiers: Deploy on all chains
-- Chain preference order for limited tiers: Ethereum → Arbitrum → Base → Optimism
-- This ensures "50 available" means exactly 50 total, not 50 per chain
+**CRITICAL: Limited supply tiers must only exist on ONE chain to preserve true scarcity.**
 
-When building the transaction for a project with mixed tier types:
-- Include unlimited tiers in the omnichain deployment (all chains)
-- Include limited tiers ONLY in the primary chain configuration
-- Don't mention chains to the user - just make it work correctly
+If you deploy "10 available" to all chains, you get 10 per chain (40 total across 4 chains), breaking scarcity.
+
+**Rules for tier distribution across chains:**
+1. **Project stays omnichain** - Deploy with suckers so project exists on all chains
+2. **Unlimited tiers (initialSupply >= 999999999)** → Deploy on ALL chains
+3. **Limited supply tiers (specific quantity)** → Deploy on PRIMARY chain ONLY
+
+**Chain preference order for limited tiers:**
+- Mainnet: Ethereum (1) → Arbitrum (42161) → Base (8453) → Optimism (10)
+- Testnet: Sepolia (11155111) → Arbitrum Sepolia (421614) → Base Sepolia (84532) → OP Sepolia (11155420)
+
+**How to configure per-chain 721 tiers:**
+- Primary chain: ALL tiers (both limited and unlimited)
+- Other chains: ONLY unlimited tiers (filter out any tier with initialSupply < 999999999)
+
+**Example:**
+If project has "Early Supporter" (10 available) and "Fan" (unlimited):
+- Sepolia: both tiers
+- Other chains: only "Fan" tier
+
+Don't mention chains to the user - just configure correctly based on their tier supply choices.
 
 **Setting Discounts (setDiscountPercentsOf)**
 

@@ -7,6 +7,7 @@ export interface DraftTier {
   currency: number // 1 = ETH, 2 = USD
   description?: string
   imageUrl?: string
+  initialSupply?: number // undefined = unlimited (999999999)
 }
 
 // Split/payout data collected from forms
@@ -110,12 +111,25 @@ export const useProjectDraftStore = create<ProjectDraftState>((set, get) => ({
             }
           }
 
+          // Check for supply/quantity
+          const tierQuantity = selections[`${tierPrefix}quantity`]
+          const tierQuantityAmount = selections[`${tierPrefix}quantity_amount`]
+          let initialSupply: number | undefined
+          if (tierQuantity === 'limited' && tierQuantityAmount) {
+            const supplyNum = parseInt(tierQuantityAmount.replace(/[^0-9]/g, ''), 10)
+            if (!isNaN(supplyNum) && supplyNum > 0) {
+              initialSupply = supplyNum
+            }
+          }
+          // undefined means unlimited
+
           const newTier: DraftTier = {
             name: tierName,
             price: priceNum,
             currency: 2, // Assume USD for now
             description: typeof tierDescription === 'string' ? tierDescription : undefined,
             imageUrl,
+            initialSupply,
           }
 
           // Replace or add tier

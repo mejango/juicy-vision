@@ -866,7 +866,7 @@ function TiersHookConfigSection({
                 Tiers ({tiersConfig.tiers.length})
               </div>
               <div className={`space-y-1 mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {(tiersConfig.tiers as Array<{ price?: string | bigint; initialSupply?: number }>).slice(0, 5).map((tier, idx) => {
+                {(tiersConfig.tiers as Array<{ name?: string; price?: string | bigint; initialSupply?: number; description?: string }>).slice(0, 5).map((tier, idx) => {
                   const tierCurrency = (tiersConfig as { currency?: number })?.currency || 2
                   const tierDecimals = (tiersConfig as { decimals?: number })?.decimals || 6
                   const isUsd = tierCurrency === 2 || isUsdcCurrency(tierCurrency)
@@ -876,10 +876,11 @@ function TiersHookConfigSection({
                       : `${(Number(tier.price) / 1e18).toFixed(4)} ETH`)
                     : '?'
                   const supplyDisplay = tier.initialSupply && tier.initialSupply >= 999999999 ? 'Unlimited' : (tier.initialSupply || '?')
+                  const tierName = tier.name || `Tier ${idx + 1}`
                   return (
-                    <div key={idx} className="flex justify-between text-xs">
-                      <span>Tier {idx + 1}</span>
-                      <span className="font-mono">
+                    <div key={idx} className="flex justify-between text-xs gap-2">
+                      <span className="truncate" title={tier.description}>{tierName}</span>
+                      <span className="font-mono shrink-0">
                         {supplyDisplay} × {priceDisplay}
                       </span>
                     </div>
@@ -895,12 +896,34 @@ function TiersHookConfigSection({
           )}
 
           {/* Note about per-chain supply */}
-          <div className={`pt-1.5 mt-1 text-[10px] leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Supply is set per network. {allChainIds.length} networks × {tierCount > 0 ? (() => {
-              const supply = (tiersConfig?.tiers as Array<{ initialSupply?: number }>)?.[0]?.initialSupply
-              return supply && supply >= 999999999 ? 'Unlimited supply' : `${supply || '?'} supply`
-            })() : 'tiers'} = separate supplies on each.
-          </div>
+          {(() => {
+            const tiers = tiersConfig?.tiers as Array<{ initialSupply?: number }> | undefined
+            const hasLimitedTiers = tiers?.some(t => t.initialSupply && t.initialSupply < 999999999)
+            const hasUnlimitedTiers = tiers?.some(t => !t.initialSupply || t.initialSupply >= 999999999)
+
+            if (hasLimitedTiers && !hasUnlimitedTiers) {
+              // All tiers are limited - deploy on primary chain only
+              return (
+                <div className={`pt-1.5 mt-1 text-[10px] leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Limited supply tiers deploy on primary chain only to preserve scarcity.
+                </div>
+              )
+            } else if (hasLimitedTiers && hasUnlimitedTiers) {
+              // Mix of limited and unlimited
+              return (
+                <div className={`pt-1.5 mt-1 text-[10px] leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Limited tiers on primary chain only. Unlimited tiers on all {allChainIds.length} networks.
+                </div>
+              )
+            } else {
+              // All unlimited
+              return (
+                <div className={`pt-1.5 mt-1 text-[10px] leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Unlimited tiers available on all {allChainIds.length} networks.
+                </div>
+              )
+            }
+          })()}
         </div>
       )}
     </div>
@@ -2155,7 +2178,7 @@ export default function TransactionPreview({
           price: t.price * (t.currency === 2 ? 1000000 : 1e18),
           currency: t.currency,
           decimals: t.currency === 2 ? 6 : 18,
-          initialSupply: 999999999,
+          initialSupply: t.initialSupply ?? 999999999, // undefined = unlimited
           description: t.description,
           resolvedUri: t.imageUrl,
         })),
