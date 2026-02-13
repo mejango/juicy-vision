@@ -1361,8 +1361,14 @@ chatRouter.post(
       let duplicatePreviewDetected = false;
       let firstPreviewComplete = false; // Track when first preview is complete
 
+      console.log(`[AI] ${chatId}: Starting AI stream with ${chatHistory.length} messages (userApiKey: ${userApiKey ? 'yes' : 'no'})`);
+      console.log(`[AI] ${chatId}: System prompt length: ${enhancedSystem.length} chars`);
+      console.log(`[AI] ${chatId}: Last user message: "${(chatHistory[chatHistory.length-1]?.content as string)?.substring(0, 100)}..."`);
       try {
         for await (const event of streamMessageWithTools(chatId, { messages: chatHistory, system: enhancedSystem }, userApiKey)) {
+          if (!streamingStarted) {
+            console.log(`[AI] ${chatId}: First event received, type: ${event.type}, data preview: ${JSON.stringify(event.data)?.substring(0, 100)}`);
+          }
           streamingStarted = true;
           if (event.type === 'text') {
             const token = event.data as string;

@@ -117,15 +117,22 @@ function parsePartialComponent(partialTag: string): ParsedComponent | null {
   }
 }
 
+// Strip AI confidence tags that shouldn't be rendered
+// Format: <confidence level="high|medium|low" reason="...">
+const CONFIDENCE_TAG_REGEX = /<confidence\s+[^>]*\/?>/gi
+
 export function parseMessageContent(content: string): ParsedContent {
   const segments: ParsedContent['segments'] = []
   let lastIndex = 0
 
+  // Strip confidence tags before processing (AI metadata, not for display)
+  const cleanedContent = content.replace(CONFIDENCE_TAG_REGEX, '')
+
   // Check if there's a partial component tag at the end (still streaming)
-  const partialCheck = hasPartialComponentTag(content)
+  const partialCheck = hasPartialComponentTag(cleanedContent)
   const contentToProcess = partialCheck.hasPartial
-    ? content.slice(0, partialCheck.index)
-    : content
+    ? cleanedContent.slice(0, partialCheck.index)
+    : cleanedContent
   const hasPartialComponent = partialCheck.hasPartial
 
   const matches = contentToProcess.matchAll(COMPONENT_REGEX)
@@ -179,7 +186,7 @@ export function parseMessageContent(content: string): ParsedContent {
 
   // If there's a partial component being streamed, try progressive rendering
   if (hasPartialComponent) {
-    const partialTag = content.slice(partialCheck.index)
+    const partialTag = cleanedContent.slice(partialCheck.index)
     const partialComponent = parsePartialComponent(partialTag)
 
     if (partialComponent) {
@@ -209,7 +216,7 @@ export function parseMessageContent(content: string): ParsedContent {
 
   // If no components found, return single text segment
   if (segments.length === 0) {
-    segments.push({ type: 'text', content })
+    segments.push({ type: 'text', content: cleanedContent })
   }
 
   return { segments }

@@ -346,6 +346,18 @@ export function streamAiToken(
   token: string,
   isDone: boolean
 ): void {
+  const clients = chatConnections.get(chatId);
+  const clientCount = clients?.size ?? 0;
+
+  // Debug logging for AI streaming
+  if (isDone) {
+    console.log(`[WS:AI] ${chatId}: Stream complete, broadcast to ${clientCount} clients`);
+  } else if (token.length > 0) {
+    // Only log first few characters to avoid log spam
+    const preview = token.substring(0, 30).replace(/\n/g, '\\n');
+    console.log(`[WS:AI] ${chatId}: Token "${preview}..." to ${clientCount} clients`);
+  }
+
   broadcastToChat(chatId, {
     type: 'ai_response',
     chatId,

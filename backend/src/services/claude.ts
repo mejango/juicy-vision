@@ -596,17 +596,23 @@ export async function* streamMessage(
   }
 
   // Stream the response
+  console.log(`[Claude] Starting stream with model: ${model}, tools: ${allTools.length}`);
   const stream = client.messages.stream(messageRequest);
 
   let inputTokens = 0;
   let outputTokens = 0;
   let stopReason = 'end_turn';
+  let eventCount = 0;
 
   // Track tool use blocks being built
   const toolUseBlocks: Map<number, { id: string; name: string; inputJson: string }> = new Map();
   let currentBlockIndex = -1;
 
   for await (const event of stream) {
+    eventCount++;
+    if (eventCount <= 5) {
+      console.log(`[Claude] Event ${eventCount}: type=${event.type}`);
+    }
     if (event.type === 'content_block_start') {
       currentBlockIndex = event.index;
       if (event.content_block.type === 'tool_use') {
@@ -656,6 +662,7 @@ export async function* streamMessage(
   }
 
   // Rate limit already checked at start; usage tracked via aiMetrics
+  console.log(`[Claude] Stream complete: ${eventCount} events, ${inputTokens} input tokens, ${outputTokens} output tokens, stopReason: ${stopReason}`);
   yield {
     type: 'usage',
     data: { inputTokens, outputTokens, stopReason },
