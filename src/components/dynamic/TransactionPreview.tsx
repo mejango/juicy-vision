@@ -2247,10 +2247,11 @@ export default function TransactionPreview({
   // Prefer draft data if streamed data exists but is empty
   const streamedFundingInfo = effectivePreviewData?.fundingInfo
   const hasStreamedFundingData = streamedFundingInfo && (streamedFundingInfo.payoutLimit || streamedFundingInfo.splits.length > 0 || streamedFundingInfo.hasEmptyFundAccessLimits)
+  // Draft funding info uses user's intended payout limit directly
+  // Don't include Juicy fee in draft splits - the toggle will add it dynamically
   const draftFundingInfo = draftPayoutLimit ? {
     splits: [
-      { percent: 975000000, projectId: 0, beneficiary: '' }, // 97.5% to owner
-      { percent: 25000000, projectId: 1, beneficiary: '' },  // 2.5% to Juicy
+      { percent: 1000000000, projectId: 0, beneficiary: '' }, // 100% to owner initially
     ],
     payoutLimit: draftPayoutLimit * (draftPayoutCurrency === 2 ? 1000000 : 1e18),
     hasEmptyFundAccessLimits: false
