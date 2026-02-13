@@ -52,10 +52,22 @@ const CHAINS = {
   421614: arbitrumSepolia,
 } as const;
 
-// Use official/reliable public RPC endpoints
-const RPC_URLS: Record<number, string> = {
+// Ankr chain slugs for premium RPC
+const ANKR_SLUGS: Record<number, string> = {
+  1: 'eth',
+  10: 'optimism',
+  8453: 'base',
+  42161: 'arbitrum',
+  11155111: 'eth_sepolia',
+  11155420: 'optimism_sepolia',
+  84532: 'base_sepolia',
+  421614: 'arbitrum_sepolia',
+};
+
+// Fallback public RPC endpoints (used when no API key configured)
+const FALLBACK_RPC_URLS: Record<number, string> = {
   // Mainnets
-  1: 'https://cloudflare-eth.com',
+  1: 'https://ethereum.publicnode.com',
   10: 'https://mainnet.optimism.io',
   8453: 'https://mainnet.base.org',
   42161: 'https://arb1.arbitrum.io/rpc',
@@ -65,6 +77,18 @@ const RPC_URLS: Record<number, string> = {
   84532: 'https://base-sepolia.drpc.org',
   421614: 'https://arbitrum-sepolia.drpc.org',
 };
+
+// Get RPC URL for chain, preferring Ankr with API key
+function getRpcUrl(chainId: number): string {
+  const config = getConfig();
+  const slug = ANKR_SLUGS[chainId];
+
+  if (config.ankrApiKey && slug) {
+    return `https://rpc.ankr.com/${slug}/${config.ankrApiKey}`;
+  }
+
+  return FALLBACK_RPC_URLS[chainId] || `https://rpc.ankr.com/${slug || 'eth'}`;
+}
 
 // ============================================================================
 // Smart Account Factory (SimpleAccount from eth-infinitism)
@@ -199,7 +223,7 @@ function getPublicClient(chainId: number) {
 
   return createPublicClient({
     chain,
-    transport: http(RPC_URLS[chainId]),
+    transport: http(getRpcUrl(chainId)),
   });
 }
 
@@ -211,7 +235,7 @@ function getWalletClient(chainId: number, privateKey: `0x${string}`) {
   return createWalletClient({
     account,
     chain,
-    transport: http(RPC_URLS[chainId]),
+    transport: http(getRpcUrl(chainId)),
   });
 }
 
