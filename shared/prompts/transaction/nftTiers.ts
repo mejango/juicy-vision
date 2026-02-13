@@ -78,7 +78,7 @@ Assume every project will eventually want to sell something.
 - **description**: What supporters get at this tier - REQUIRED
 - **media**: Raw IPFS URI for tier image (e.g., "ipfs://Qm...") - REQUIRED for preview
 - price: Cost in terminal token (6 decimals for USDC, 18 for ETH)
-- initialSupply: Max NFTs available. **IMPORTANT: Use exactly 999999999 for unlimited** (NOT uint32.max, NOT 4294967295)
+- initialSupply: Max NFTs available. **ALWAYS use 999999999 (one billion minus one) for unlimited supply.** Never use any other value for unlimited.
 - discountPercent: Price decrease per cycle (0-100)
 - encodedIPFSUri: Set to zero ("0x0...0") - frontend encodes the media URI
 - reserveFrequency: Mint 1 reserved NFT per N minted (0 = no reserves)
@@ -108,7 +108,7 @@ Assume every project will eventually want to sell something.
   "category": 0, "discountPercent": 0, "allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false,
   "transfersPausable": false, "useVotingUnits": false, "cannotBeRemoved": false, "cannotIncreaseDiscountPercent": false}
 \`\`\`
-Note: initialSupply MUST be 999999999 for unlimited. Do NOT use 4294967295 or other values.
+**Unlimited supply = 999999999 (one billion minus one). Always use this exact value.**
 
 ---
 
