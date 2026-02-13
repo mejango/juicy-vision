@@ -230,6 +230,18 @@ describe('projectDraftStore', () => {
         const { payoutLimit } = useProjectDraftStore.getState()
         expect(payoutLimit).toBe(10000)
       })
+
+      it('parses funding_goal from array values (real form data)', () => {
+        // Radio buttons send values as arrays
+        const { parseFormSubmission } = useProjectDraftStore.getState()
+
+        parseFormSubmission({
+          funding_goal: ['2500'],
+        } as Record<string, string | string[]>)
+
+        const { payoutLimit } = useProjectDraftStore.getState()
+        expect(payoutLimit).toBe(2500)
+      })
     })
   })
 
