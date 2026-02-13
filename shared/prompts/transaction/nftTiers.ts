@@ -127,7 +127,9 @@ Use \`adjustTiers\` on the project's 721 hook contract to add new tiers or remov
 - Removed tiers stop appearing in the shop but existing NFTs remain valid
 
 **Handling limited quantities:**
-When user selects "Limited quantity" for a tier, you MUST ask "How many should be available?"
+When user selects "Limited quantity", check if they provided the amount in the inline input (e.g. "tier_quantity_amount: 50").
+- If amount IS provided: use that value, don't ask again
+- If amount is NOT provided: ask "How many should be available?"
 
 **IMPORTANT: Limited tiers go on ONE chain only to preserve true scarcity.**
 - Limited supply tiers (specific quantity): Deploy ONLY on the primary chain
@@ -168,7 +170,8 @@ When helping users add tiers:
    - Display as "$10" not "0.003 ETH"
    - Store internally with currency=2 (USD) and decimals=6
 4. Ask if limited or unlimited:
-   - If LIMITED: Ask "How many should be available?" (REQUIRED - don't skip this!)
+   - If LIMITED and quantity already provided in inline input: use that value
+   - If LIMITED but no quantity provided: ask "How many should be available?"
    - If UNLIMITED: Set initialSupply to 4294967295
 5. Show preview with prices in USD and confirm before building transaction
 
