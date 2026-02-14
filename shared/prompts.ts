@@ -1470,9 +1470,13 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 
 **Structure:** \`projectUri\` + \`rulesetConfigurations\` + \`terminalConfigurations\` + \`memo\`
 
-**Key settings for revenue-backed ownership:**
+**⚠️ CRITICAL: Off-chain vs On-chain Revenue**
+- **OFF-CHAIN revenue** (merchandise, services, e-bike sales, land value): Owner controls what enters the project. Use \`reservedPercent: 0\`. Owner adds funds via addToBalance when ready.
+- **ON-CHAIN revenue** (royalties, protocol fees, automatic flows): Revenue goes to project automatically. Use \`reservedPercent\` = owner's percentage.
+
+**Key settings for ownership projects:**
 - action = "launchProject" (NOT launch721Project - no NFT tiers)
-- **reservedPercent** = project's cut × 100 (10% project cut = 1000, supporters get 90% of tokens)
+- **reservedPercent** = 0 for off-chain revenue sharing (most common). Only set > 0 if on-chain revenue flows automatically.
 - **splitGroups** = See SPLITS RULE in Core Rules: only include if fundAccessLimitGroups has payout limits OR reservedPercent > 0. If both empty/zero → [].
 - **fundAccessLimitGroups** = set payout limit to goal so owner can withdraw if needed. If empty, owner cannot withdraw (cash out only)
 - **cashOutTaxRate** = 0 for easy cash outs, or increase for token holder protection (scale: 10000 = 100%)
@@ -1503,15 +1507,20 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 \`\`\`
 Note: mustStartAtOrAfter is automatically set to 5 minutes from click time by the frontend.
 
-**⚠️ IMPORTANT: reservedPercent and cashOutTaxRate are uint16! Scale is 10000 = 100%:**
-| Project's Cut | Supporters Get | reservedPercent |
-|---------------|----------------|-----------------|
+**⚠️ IMPORTANT: reservedPercent and cashOutTaxRate are uint16! Scale is 10000 = 100%**
+
+**FOR OFF-CHAIN REVENUE SHARING: Use reservedPercent: 0**
+Most "ownership" projects have off-chain revenue (sales, services). Owner adds what they want to share via addToBalance.
+
+**FOR ON-CHAIN REVENUE ONLY** (automatic flows like royalties):
+| Owner's Cut | Supporters Get | reservedPercent |
+|-------------|----------------|-----------------|
 | 10% | 90% of tokens | 1000 |
 | 20% | 80% of tokens | 2000 |
 | 30% | 70% of tokens | 3000 |
 | 50% | 50% of tokens | 5000 |
 
-If user says "10% revenue share to supporters", ASK: do you mean project keeps 10% (supporters get 90%), or supporters get 10%?
+**DON'T ask "what percentage will you share" then set reservedPercent.** That's for on-chain revenue only.
 
 ### Complete deployRevnet Example (USER CHOSE AUTONOMOUS)
 
@@ -1574,7 +1583,8 @@ If user says "10% revenue share to supporters", ASK: do you mean project keeps 1
 - If user only accepts USDC (default): ONLY include the USDC split group (groupId: 909516616)
 - If user explicitly asks for ETH payments: add ETH split group (groupId: 1) with SAME structure (97.5% owner + 2.5% Juicy)
 - NEVER add an ETH split group if user didn't mention ETH payments
-- NEVER use "revenue share percentage" as a split percent - that goes in reservedPercent, not splits
+- NEVER use "revenue share percentage" as a split percent - splits are for payout distribution, not ownership
+- For off-chain revenue sharing: reservedPercent = 0, owner controls what they add via addToBalance
 - Payout splits ALWAYS sum to 100% (975000000 + 25000000 = 1000000000)
 
 **Payout Limits - Set to ceil(goal ÷ 0.975) so user gets their full goal after fee:**
