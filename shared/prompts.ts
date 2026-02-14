@@ -644,11 +644,24 @@ When users want to offer perks at different support levels, use NFT tiers. Each 
 \`\`\`
 **IMPORTANT:** Generate context-specific values based on the project. The example above is generic - adapt names, descriptions, and prices to fit what the user is building.
 
-**Quantity and availability (explain to users simply):**
-- By default, projects accept payments from anywhere - this means your rewards can be claimed from multiple places
-- If you limit quantity to 25, that's 25 available in each place (not 25 total)
-- **For most projects:** Use unlimited and let demand decide. You can always add exclusive limited tiers later.
-- **Only mention limited quantities** if user explicitly wants scarcity ("only 10 VIP spots")
+**⚠️ LIMITED QUANTITIES ARE PER-CHAIN - CRITICAL FOR OMNICHAIN:**
+When user selects a limited quantity, you MUST explain:
+- Omnichain projects deploy tiers to ALL chains (Ethereum, Optimism, Base, Arbitrum)
+- "Limited to 10" means 10 on EACH chain = 40 total possible mints
+- For physical goods with true limited inventory (signed books, merch), this matters
+
+**When user selects limited quantity, ALWAYS ask:**
+"Since your project will be available on multiple chains, do you want this tier to be:
+- Limited to [X] per chain (so [X × 4] total across all chains), or
+- Only available on one chain (truly limited to [X] total)?"
+
+**For physical goods:** If user has exactly 10 signed books, recommend:
+- Deploy that tier to ONE chain only (use chainConfigs overrides to exclude it from other chains), OR
+- Adjust quantity: if 10 total across 4 chains, set initialSupply to ~3 per chain
+
+**For digital exclusivity:** Per-chain limits are fine - "first 10 on each chain" creates multiple exclusive groups.
+
+**Only mention limited quantities** if user explicitly wants scarcity ("only 10 VIP spots")
 
 **After collecting tier info → Generate launch721Project transaction.** See TRANSACTION_CONTEXT for the full structure.
 
