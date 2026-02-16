@@ -47,9 +47,65 @@ Scale is 10000 = 100%. If user says "X% to supporters", calculate: reservedPerce
 
 **duration** = Ruleset length in seconds. 0 = no duration (runs until changed).
 
+### Multi-Ruleset Strategies
+
+**rulesetConfigurations is an ARRAY** - you can launch with multiple rulesets or queue multiple at once.
+Rulesets execute in sequence: when one ruleset's duration ends, the next one begins automatically.
+
+**Launch with staged rulesets:**
+\`\`\`json
+"rulesetConfigurations": [
+  { "duration": 2592000, "pausePay": false, ... },  // Ruleset 1: 30 days, payments open
+  { "duration": 0, "pausePay": true, ... }          // Ruleset 2: permanent, payments closed
+]
+\`\`\`
+
+**Common multi-ruleset patterns:**
+
+| Pattern | Rulesets | Use Case |
+|---------|----------|----------|
+| **Timed raise** | Open → Closed | Fundraiser with hard end date |
+| **Early bird** | High issuance → Lower issuance | Reward early supporters |
+| **Graduated access** | No payouts → Payouts enabled | Release funds after milestone |
+| **Seasonal** | Active → Paused → Active | Recurring campaign cycles |
+
+**Example: 30-day fundraiser that automatically closes:**
+\`\`\`json
+"rulesetConfigurations": [
+  {
+    "mustStartAtOrAfter": 0,
+    "duration": 2592000,
+    "weight": "1000000000000000000000000",
+    "metadata": { "pausePay": false, ... },
+    "fundAccessLimitGroups": [{ ... }],
+    "splitGroups": [{ ... }]
+  },
+  {
+    "mustStartAtOrAfter": 0,
+    "duration": 0,
+    "weight": "1000000000000000000000000",
+    "metadata": { "pausePay": true, ... },
+    "fundAccessLimitGroups": [],
+    "splitGroups": []
+  }
+]
+\`\`\`
+After 30 days, payments automatically stop. No manual intervention needed.
+
+**Key insight:** Design project lifecycles upfront. Users can schedule rule changes at launch instead of remembering to queue them later.
+
 ### queueRulesets (Update Project Rules)
 
 **Use when:** User wants to change ruleset-based properties (fund access, issuance, splits, hooks, etc.)
+
+**You can queue multiple rulesets at once** - same array pattern as launch:
+\`\`\`json
+"rulesetConfigurations": [
+  { "duration": 604800, ... },   // Week 1 rules
+  { "duration": 604800, ... },   // Week 2 rules
+  { "duration": 0, ... }         // Permanent rules after
+]
+\`\`\`
 
 **Ruleset changes are constrained by the CURRENT ruleset:**
 - **duration**: If current ruleset has a duration, new ruleset can only start after current one ends
@@ -84,7 +140,8 @@ parameters: {
 export const RULESETS_HINTS = [
   'ruleset', 'weight', 'duration', 'reserved', 'metadata', 'issuance',
   'queue ruleset', 'update rules', 'change settings', 'weightCutPercent',
-  'baseCurrency', 'pausePay', 'allowOwnerMinting'
+  'baseCurrency', 'pausePay', 'allowOwnerMinting', 'multiple rulesets',
+  'staged', 'schedule', 'end date', 'timed raise', 'stop payments', 'lifecycle'
 ];
 
-export const RULESETS_TOKEN_ESTIMATE = 1000;
+export const RULESETS_TOKEN_ESTIMATE = 1400;
