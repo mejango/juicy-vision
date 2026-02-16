@@ -48,8 +48,8 @@ interface OptionsPickerProps {
   userResponse?: string
 }
 
-// Values that indicate "other" / custom input
-const OTHER_VALUES = ['other', 'something-else', 'something_else', 'something else', 'custom', 'else', 'exploring']
+// Values that indicate "other" / custom input - must be exact matches only
+const OTHER_VALUES = ['other', 'something-else', 'something_else', 'something else', 'else', 'exploring']
 
 // Conversational confirmation words
 const DONE_WORDS = ['Great', 'Super', 'Got it', 'Ok', 'Nice']
@@ -270,7 +270,8 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
   const isOtherValue = (value: string) => {
     const normalized = normalizeValue(value)
-    return OTHER_VALUES.some(v => normalizeValue(v) === normalized || normalized.includes(normalizeValue(v)))
+    // Only exact matches - don't use includes() which caused "custom" to match partial values
+    return OTHER_VALUES.some(v => normalizeValue(v) === normalized)
   }
 
   const handleSelect = (groupId: string, value: string) => {
