@@ -734,10 +734,10 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   const activeChatId = forceActiveChatId || storeActiveChatId
   const activeChat = getActiveChat()
 
-  // Show chat mode if there's an active chat with messages
-  // Note: We don't include pendingNewChat here - the dock stays in WelcomeLayout until messages arrive
-  // This prevents the layout from switching prematurely and causing a visual glitch
-  const hasMessages = activeChat && activeChat.messages && activeChat.messages.length > 0
+  // Show chat mode if we're viewing a specific chat (via URL or store)
+  // This ensures the chat view shows immediately when navigating to a chat URL,
+  // even before messages have loaded - the chat view handles its own loading state
+  const inChatMode = !!activeChatId
 
   useEffect(() => {
     document.documentElement.className = theme
@@ -757,8 +757,8 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
       <div className={`h-screen overflow-hidden flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
         <TransactionExecutor />
         <ActionExecutor />
-        {/* Mobile header - only show when in chat mode (has messages) */}
-        {hasMessages && (
+        {/* Mobile header - only show when in chat mode */}
+        {inChatMode && (
           <div className="flex-shrink-0">
             <Header showActions />
           </div>
@@ -805,7 +805,7 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
 
       {/* Main content area (everything except activity) */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        {hasMessages ? (
+        {inChatMode ? (
           <>
             {/* Top border for chat mode (4px to match border-4) */}
             <div className="h-[4px] bg-juice-orange shrink-0" />
