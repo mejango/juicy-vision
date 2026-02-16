@@ -2799,8 +2799,8 @@ export default function TransactionPreview({
         </div>
       )}
 
-      {/* Tiers preview for launch721Project - show skeleton if expected but not loaded */}
-      {action === 'launch721Project' && (
+      {/* Tiers preview for launch721Project - show skeleton while parsing, show tiers if any, hide if empty */}
+      {action === 'launch721Project' && (!tiersInfo || (tiersInfo.tiers && tiersInfo.tiers.length > 0)) && (
         <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
           <TiersPreview
             tiers={tiersInfo?.tiers || []}
@@ -2808,7 +2808,7 @@ export default function TransactionPreview({
             decimals={tiersInfo?.decimals || 6}
             isDark={isDark}
             onEdit={() => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: 'I want to edit the reward tiers' } }))}
-            isLoading={!tiersInfo || tiersInfo.tiers.length === 0}
+            isLoading={!tiersInfo}
           />
         </div>
       )}
