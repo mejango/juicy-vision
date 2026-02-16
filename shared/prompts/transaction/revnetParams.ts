@@ -4,13 +4,13 @@
  */
 
 export const REVNET_PARAMS_CONTEXT = `
-### Revnet Configuration (deployRevnet)
+### Revnet Configuration (deploy721Revnet)
 
-**WHEN USER CHOSE "AUTONOMOUS OPERATION" (revnet), USE action="deployRevnet"**
+**WHEN USER CHOSE "AUTONOMOUS OPERATION" (revnet), USE action="deploy721Revnet"**
 
 **Key revnet parameters:**
-- action = "deployRevnet" (or "deploy721Revnet" if user has NFT tiers)
-- contract = "REV_BASIC_DEPLOYER" (or "REV_721_DEPLOYER" for NFT tiers)
+- action = "deploy721Revnet" (ALWAYS use 721 variant, even with empty tiers - enables future sales)
+- contract = "REV_721_DEPLOYER"
 - **startsAtOrAfter** = Math.floor(Date.now()/1000) + 300 (same as other projects!)
 - **splitPercent** = operator % × 10^9 (e.g., 30% to operator = 300000000, supporters get remaining 70%)
 - **splitOperator** = address that receives the operator split (creator's wallet)

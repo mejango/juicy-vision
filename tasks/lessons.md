@@ -1,5 +1,17 @@
 # Lessons Learned
 
+## 2026-02-16: Always deploy projects with 721 hooks
+
+**Bug**: AI was using `launchProject` for donations/loans/stakes and only using `launch721Project` for perks. Same for revnets: `deployRevnet` vs `deploy721Revnet`.
+
+**Problem**: Projects without a 721 hook cannot sell items later without redeploying. Users should be able to easily add inventory, rewards, or merchandise at any time.
+
+**Rule**: ALL projects should use `launch721Project` (and revnets should use `deploy721Revnet`), even when no tiers are specified. Use an empty tiers array. This makes it simple for project owners to add items for sale later by just adding new tiers.
+
+**Think of the 721 hook as the project's selling machine** - always deploy it, even if it starts empty.
+
+**Fix**: Updated decision tree in `shared/prompts.ts` and revnet params in `shared/prompts/transaction/revnetParams.ts` to always use 721 variants.
+
 ## 2026-02-06: Technical Details must show ALL transaction parameters
 
 **Bug**: TransactionPreview's technical details section was filtering out `launchProjectConfig` from display, hiding critical project parameters like duration, payout limits, reserved percent, etc.
