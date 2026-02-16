@@ -13,20 +13,21 @@ export const SPLITS_LIMITS_CONTEXT = `
 **Splits - Always include 2.5% platform fee:**
 \`\`\`json
 "splitGroups": [{
-  "groupId": "909516616",
+  "groupId": "918893084697899778867092505822379350428204718920",
   "splits": [
     {"percent": 975000000, "projectId": 0, "beneficiary": "USER_WALLET", "preferAddToBalance": false, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"},
     {"percent": 25000000, "projectId": 1, "beneficiary": "USER_WALLET", "preferAddToBalance": true, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"}
   ]
 }]
 \`\`\`
+Note: groupId for USDC on Ethereum = uint256(uint160(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48))
 - First split: 97.5% to owner (projectId: 0, beneficiary: user's wallet)
 - Second split: 2.5% to NANA (projectId: 1, beneficiary: user's wallet, preferAddToBalance: true) - user receives NANA tokens as the beneficiary
 - **groupId**: See JBSplitGroup in Struct Reference
 
 **CRITICAL: Only add split groups for tokens the project actually accepts!**
-- If user only accepts USDC (default): ONLY include the USDC split group (groupId: 909516616)
-- If user explicitly asks for ETH payments: add ETH split group (groupId: 1) with SAME structure (97.5% owner + 2.5% Juicy)
+- If user only accepts USDC (default): ONLY include the USDC split group (use full uint256 groupId, not truncated currency)
+- If user explicitly asks for ETH payments: add ETH split group (groupId: 61166) with SAME structure (97.5% owner + 2.5% Juicy)
 - NEVER add an ETH split group if user didn't mention ETH payments
 - NEVER use "revenue share percentage" as a split percent - that goes in reservedPercent, not splits
 - Payout splits ALWAYS sum to 100% (975000000 + 25000000 = 1000000000)
@@ -62,9 +63,18 @@ export const SPLITS_LIMITS_CONTEXT = `
 **Struct Reference:**
 
 **JBSplitGroup:** \`{ groupId: uint256, splits: JBSplit[] }\`
-- groupId for USDC payouts = USDC currency code (909516616 on Ethereum)
-- groupId for ETH payouts = 1 (native token currency)
-- groupId for reserved token distribution = 1 (JBSplitGroupIds.RESERVED_TOKENS) - but only use if distributing reserved tokens to multiple recipients
+
+**JBSplitGroup groupId rules:**
+- **Payout splits:** groupId = uint256(uint160(token)) - the FULL token address as uint256
+  - USDC on Ethereum: 918893084697899778867092505822379350428204718920
+  - USDC on Optimism: 63677651975084090027219091430485431588927
+  - USDC on Base: 750055151264976176895681429887502848627
+  - USDC on Arbitrum: 1002219449704601020763871664628665988657
+  - Native ETH: 61166 (coincidentally same as currency because address fits in 32 bits)
+- **Reserved token splits:** groupId = 1 (JBSplitGroupIds.RESERVED_TOKENS)
+
+⚠️ groupId ≠ currency! currency is uint32 (truncated), groupId is uint256 (full address).
+⚠️ Group 1 is ONLY for reserved token distribution, NEVER for payouts!
 
 **JBSplit:** \`{ percent: uint32 (of 1B), projectId: uint64, beneficiary: address, preferAddToBalance: bool, lockedUntil: uint48, hook: address }\`
 

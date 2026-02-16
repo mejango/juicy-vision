@@ -19,6 +19,9 @@ export * from './rulesets.ts';
 export * from './deployment.ts';
 export * from './metadata.ts';
 
+// Re-export reference modules for convenience
+export * from '../reference/index.ts';
+
 import { CHAINS_CONTEXT, CHAINS_HINTS, CHAINS_TOKEN_ESTIMATE } from './chains.ts';
 import { V51_ADDRESSES_CONTEXT, V51_ADDRESSES_HINTS, V51_ADDRESSES_TOKEN_ESTIMATE } from './v51Addresses.ts';
 import { V5_ADDRESSES_CONTEXT, V5_ADDRESSES_HINTS, V5_ADDRESSES_TOKEN_ESTIMATE } from './v5Addresses.ts';
@@ -29,6 +32,12 @@ import { REVNET_PARAMS_CONTEXT, REVNET_PARAMS_HINTS, REVNET_PARAMS_TOKEN_ESTIMAT
 import { RULESETS_CONTEXT, RULESETS_HINTS, RULESETS_TOKEN_ESTIMATE } from './rulesets.ts';
 import { DEPLOYMENT_CONTEXT, DEPLOYMENT_HINTS, DEPLOYMENT_TOKEN_ESTIMATE } from './deployment.ts';
 import { METADATA_CONTEXT, METADATA_HINTS, METADATA_TOKEN_ESTIMATE } from './metadata.ts';
+import {
+  REFERENCE_MODULES,
+  ADDRESSES_CONTEXT, ADDRESSES_HINTS, ADDRESSES_TOKEN_ESTIMATE,
+  CURRENCIES_CONTEXT, CURRENCIES_HINTS, CURRENCIES_TOKEN_ESTIMATE,
+  STRUCTURES_CONTEXT, STRUCTURES_HINTS, STRUCTURES_TOKEN_ESTIMATE,
+} from '../reference/index.ts';
 
 /**
  * Sub-module registry for dynamic loading
@@ -111,6 +120,28 @@ export const TRANSACTION_SUB_MODULES: SubModule[] = [
     hints: METADATA_HINTS,
     tokenEstimate: METADATA_TOKEN_ESTIMATE,
     description: 'Project metadata and setUriOf',
+  },
+  // Reference modules (single-source-of-truth)
+  {
+    id: 'ref_addresses',
+    content: ADDRESSES_CONTEXT,
+    hints: ADDRESSES_HINTS,
+    tokenEstimate: ADDRESSES_TOKEN_ESTIMATE,
+    description: 'All contract addresses (single source of truth)',
+  },
+  {
+    id: 'ref_currencies',
+    content: CURRENCIES_CONTEXT,
+    hints: CURRENCIES_HINTS,
+    tokenEstimate: CURRENCIES_TOKEN_ESTIMATE,
+    description: 'Currency codes and groupId rules (single source of truth)',
+  },
+  {
+    id: 'ref_structures',
+    content: STRUCTURES_CONTEXT,
+    hints: STRUCTURES_HINTS,
+    tokenEstimate: STRUCTURES_TOKEN_ESTIMATE,
+    description: 'Struct definitions (single source of truth)',
   },
 ];
 

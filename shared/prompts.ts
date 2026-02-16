@@ -1274,7 +1274,7 @@ Note: Owner === REVDeployer means revnet (always V5.0), but some non-revnet proj
 | Base | 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 | 3169378579 |
 | Arbitrum | 0xaf88d065e77c8cC2239327C5EDb3A432268e5831 | 1156540465 |
 
-NATIVE_TOKEN: 0x000000000000000000000000000000000000EEEe, currency = 4008636142
+NATIVE_TOKEN: 0x000000000000000000000000000000000000EEEe, currency = 61166
 
 **Currency in JBAccountingContext** = uint32(uint160(token)). **baseCurrency in metadata** = 1 (ETH) or 2 (USD).
 
@@ -1432,14 +1432,23 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 \`\`\`
 
 **JBSplitGroup:** \`{ groupId: uint256, splits: JBSplit[] }\`
-- groupId for USDC payouts = USDC currency code (909516616 on Ethereum)
-- groupId for ETH payouts = 1 (native token currency)
-- groupId for reserved token distribution = 1 (JBSplitGroupIds.RESERVED_TOKENS) - but only use if distributing reserved tokens to multiple recipients
+
+**JBSplitGroup groupId rules:**
+- **Payout splits:** groupId = uint256(uint160(token)) - the FULL token address as uint256
+  - USDC on Ethereum: 918893084697899778867092505822379350428204718920
+  - USDC on Optimism: 63677651975084090027219091430485431588927
+  - USDC on Base: 750055151264976176895681429887502848627
+  - USDC on Arbitrum: 1002219449704601020763871664628665988657
+  - Native ETH: 61166 (coincidentally same as currency because 0x...EEEe fits in 32 bits)
+- **Reserved token splits:** groupId = 1 (JBSplitGroupIds.RESERVED_TOKENS)
+
+⚠️ groupId ≠ currency! currency is uint32 (truncated), groupId is uint256 (full address).
+⚠️ Group 1 is ONLY for reserved token distribution, NEVER for payouts!
 
 **⚠️ DO NOT confuse payout splits with reserved token splits!**
 - Payout splits: distribute withdrawn funds to recipients
 - Reserved token splits: distribute minted reserved tokens (rarely needed)
-- If user only accepts USDC: only include USDC split group (909516616), NOT groupId "1"
+- If user only accepts USDC: only include USDC split group (full uint256 groupId), NOT groupId "1"
 
 **JBSplit:** \`{ percent: uint32 (of 1B), projectId: uint64, beneficiary: address, preferAddToBalance: bool, lockedUntil: uint48, hook: address }\`
 
@@ -1529,16 +1538,16 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 
 **Key 721 differences:** action="launch721Project", useDataHookForPay: true, price in 6 decimals for USDC
 
-### Complete launchProject Example (USER CHOSE OWNERSHIP/STAKE)
+### Complete launch721Project Example (USER CHOSE OWNERSHIP/STAKE)
 
-**Structure:** \`projectUri\` + \`rulesetConfigurations\` + \`terminalConfigurations\` + \`memo\`
+**Structure:** \`deployTiersHookConfig\` (empty tiers) + \`launchProjectConfig\` + \`salt\` + \`suckerDeploymentConfiguration\`
 
 **⚠️ CRITICAL: Off-chain vs On-chain Revenue**
 - **OFF-CHAIN revenue** (merchandise, services, e-bike sales, land value): Owner controls what enters the project. Use \`reservedPercent: 0\`. Owner adds funds via addToBalance when ready.
 - **ON-CHAIN revenue** (royalties, protocol fees, automatic flows): Revenue goes to project automatically. Use \`reservedPercent\` = owner's percentage.
 
 **Key settings for ownership projects:**
-- action = "launchProject" (NOT launch721Project - no NFT tiers)
+- action = "launch721Project" (with empty tiers if none specified - enables future tier additions)
 - **reservedPercent** = 0 for off-chain revenue sharing (most common). Only set > 0 if on-chain revenue flows automatically.
 - **splitGroups** = See SPLITS RULE in Core Rules: only include if fundAccessLimitGroups has payout limits OR reservedPercent > 0. If both empty/zero → [].
 - **fundAccessLimitGroups** = set payout limit to goal so owner can withdraw if needed. If empty, owner cannot withdraw (cash out only)
@@ -1576,12 +1585,18 @@ Note: mustStartAtOrAfter is automatically set to 5 minutes from click time by th
 Most "ownership" projects have off-chain revenue (sales, services). Owner adds what they want to share via addToBalance.
 
 **FOR ON-CHAIN REVENUE ONLY** (automatic flows like royalties):
-| Owner's Cut | Supporters Get | reservedPercent |
-|-------------|----------------|-----------------|
-| 10% | 90% of tokens | 1000 |
-| 20% | 80% of tokens | 2000 |
-| 30% | 70% of tokens | 3000 |
-| 50% | 50% of tokens | 5000 |
+
+**reservedPercent = what owner keeps from each payment's token minting (scale: 10000 = 100%)**
+
+| Supporters Get | Owner Keeps | reservedPercent |
+|----------------|-------------|-----------------|
+| 90% of tokens  | 10%         | 1000            |
+| 80% of tokens  | 20%         | 2000            |
+| 50% of tokens  | 50%         | 5000            |
+| 10% of tokens  | 90%         | 9000            |
+
+Example: User says "I want 10% of tokens to go to supporters"
+→ Owner keeps 90% → reservedPercent = 9000
 
 **DON'T ask "what percentage will you share" then set reservedPercent.** That's for on-chain revenue only.
 
@@ -1639,20 +1654,21 @@ When a revnet user mentions selling products (merchandise, songs, posters, album
 **Splits - Always include 2.5% platform fee:**
 \`\`\`json
 "splitGroups": [{
-  "groupId": "909516616",
+  "groupId": "918893084697899778867092505822379350428204718920",
   "splits": [
     {"percent": 975000000, "projectId": 0, "beneficiary": "USER_WALLET", "preferAddToBalance": false, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"},
     {"percent": 25000000, "projectId": 1, "beneficiary": "USER_WALLET", "preferAddToBalance": true, "lockedUntil": 0, "hook": "0x0000000000000000000000000000000000000000"}
   ]
 }]
 \`\`\`
+Note: groupId = uint256(uint160(tokenAddress)), NOT the truncated uint32 currency!
 - First split: 97.5% to owner (projectId: 0, beneficiary: user's wallet)
 - Second split: 2.5% to NANA (projectId: 1, beneficiary: user's wallet, preferAddToBalance: true) - user receives NANA tokens as the beneficiary
 - **groupId**: See JBSplitGroup in Struct Reference
 
 **⚠️ CRITICAL: Only add split groups for tokens the project actually accepts!**
-- If user only accepts USDC (default): ONLY include the USDC split group (groupId: 909516616)
-- If user explicitly asks for ETH payments: add ETH split group (groupId: 1) with SAME structure (97.5% owner + 2.5% Juicy)
+- If user only accepts USDC (default): ONLY include the USDC split group (groupId: 918893084697899778867092505822379350428204718920 on Ethereum)
+- If user explicitly asks for ETH payments: add ETH split group (groupId: 61166) with SAME structure (97.5% owner + 2.5% Juicy)
 - NEVER add an ETH split group if user didn't mention ETH payments
 - NEVER use "revenue share percentage" as a split percent - splits are for payout distribution, not ownership
 - For off-chain revenue sharing: reservedPercent = 0, owner controls what they add via addToBalance
