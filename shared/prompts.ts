@@ -739,6 +739,22 @@ When user selects a limited quantity, you MUST explain:
 
 **For digital exclusivity:** Per-chain limits are fine - "first 10 on each chain" creates multiple exclusive groups.
 
+**⚠️ WHEN GENERATING TRANSACTION FOR LIMITED TIERS:**
+If user selected limited quantity and didn't explicitly say "per chain", DEFAULT to single-chain:
+- Put the limited tier in base deployTiersHookConfig
+- Add deployTiersHookConfig overrides to other chains with empty tiers array:
+\`\`\`json
+"chainConfigs": [
+  {"chainId": "11155111", "label": "Sepolia", "overrides": {...terminalConfigurations only...}},
+  {"chainId": "11155420", "label": "OP Sepolia", "overrides": {
+    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6, "prices": "0x0000000000000000000000000000000000000000"}},
+    "terminalConfigurations": [...]
+  }},
+  ...same for other chains...
+]
+\`\`\`
+This ensures limited items (like 100 hardware units) stay truly limited.
+
 **Only mention limited quantities** if user explicitly wants scarcity ("only 10 VIP spots")
 
 **After collecting tier info → Generate launch721Project transaction.** See TRANSACTION_CONTEXT for the full structure.

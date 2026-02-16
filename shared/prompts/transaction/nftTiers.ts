@@ -152,11 +152,25 @@ If you deploy "10 available" to all chains, you get 10 per chain (40 total acros
 **How to configure per-chain 721 tiers:**
 - Primary chain: ALL tiers (both limited and unlimited)
 - Other chains: ONLY unlimited tiers (filter out any tier with initialSupply < 999999999)
+- If ALL tiers are limited: other chains get empty tiers array
 
-**Example:**
-If project has "Early Supporter" (10 available) and "Fan" (unlimited):
-- Sepolia: both tiers
-- Other chains: only "Fan" tier
+**Example - ALL limited tiers (100 units):**
+Base deployTiersHookConfig has the tier. Other chains override with empty tiers:
+\`\`\`json
+"chainConfigs": [
+  {"chainId": "11155111", "label": "Sepolia", "overrides": {...}},
+  {"chainId": "11155420", "label": "OP Sepolia", "overrides": {
+    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6, "prices": "0x0000000000000000000000000000000000000000"}}
+  }},
+  {"chainId": "84532", "label": "Base Sepolia", "overrides": {
+    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6, "prices": "0x0000000000000000000000000000000000000000"}}
+  }},
+  {"chainId": "421614", "label": "Arb Sepolia", "overrides": {
+    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6, "prices": "0x0000000000000000000000000000000000000000"}}
+  }}
+]
+\`\`\`
+The base deployTiersHookConfig at the top level has the tier. Primary chain (Sepolia) uses base config. Other chains override with empty tiers.
 
 Don't mention chains to the user - just configure correctly based on their tier supply choices.
 
