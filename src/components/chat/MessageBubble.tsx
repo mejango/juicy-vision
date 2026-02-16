@@ -432,8 +432,8 @@ export default function MessageBubble({
         </div>
       ) : (
         /* Assistant message */
-        <div className={`w-full bg-transparent px-4 py-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          <div className="flex items-start gap-3">
+        <div className={`w-full bg-transparent px-1 py-2 sm:px-4 sm:py-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          <div className="flex items-start gap-2 sm:gap-3">
             {/* Lightning bolt for AI - flickers when streaming */}
             <div
               className="shrink-0 pt-0.5 text-lg leading-none"

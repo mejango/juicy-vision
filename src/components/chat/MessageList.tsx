@@ -93,7 +93,7 @@ export default function MessageList({
   }, [messages.length, messages])
 
   return (
-    <div className="p-4">
+    <div className="px-2 py-4 sm:px-4">
       <div className="max-w-5xl mx-auto">
         {messages.map((message, index) => {
           // Find last assistant message index
@@ -127,7 +127,7 @@ export default function MessageList({
         {/* Ghost card - shows while waiting for first streaming token */}
         {showGhostCard && (
           <div className="flex justify-start mb-4">
-            <div className={`w-full bg-transparent px-4 py-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            <div className={`w-full bg-transparent px-1 py-2 sm:px-4 sm:py-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
               <ThinkingIndicator />
             </div>
           </div>
@@ -135,7 +135,7 @@ export default function MessageList({
         {/* Nudge button - shows when AI response is empty or truncated */}
         {showNudgeButton && !showGhostCard && (
           <div className="flex justify-start mb-4">
-            <div className={`px-4 py-3 flex items-center gap-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className={`px-1 py-2 sm:px-4 sm:py-3 flex items-center gap-2 sm:gap-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               <span className="text-sm">Response incomplete?</span>
               <button
                 onClick={onNudge}

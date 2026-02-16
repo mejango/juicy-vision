@@ -481,7 +481,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     >
       {/* Remote cursors overlay */}
       {collaborationEnabled && <RemoteCursors cursors={remoteCursors.get('_picker')} />}
-      <div className="p-4 space-y-4">
+      <div className="p-2 sm:p-4 space-y-3 sm:space-y-4">
         {groups.map(group => (
           <div key={group.id} className="space-y-1.5">
             <div className={`text-xs font-medium uppercase tracking-wide ${
@@ -1219,7 +1219,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
         const buttonLabel = allSelected ? allSelectedLabel : submitLabel
 
         return (
-          <div className={`px-4 py-3 border-t flex flex-col gap-3 ${
+          <div className={`px-2 py-2 sm:px-4 sm:py-3 border-t flex flex-col gap-2 sm:gap-3 ${
             isDark ? 'border-white/10' : 'border-gray-100'
           }`}>
             <div className={`text-xs leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
