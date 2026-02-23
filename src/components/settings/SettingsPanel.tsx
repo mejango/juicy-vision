@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useDisconnect } from 'wagmi'
 import { useSettingsStore, useThemeStore, useAuthStore } from '../../stores'
@@ -411,6 +411,30 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     }
   }, [anchorPosition])
 
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  // Handle mobile keyboard - scroll focused input into view
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement
+      const container = contentRef.current
+      if (!container || !container.contains(target)) return
+
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+      if (!isInput) return
+
+      // Delay to let keyboard animation start
+      setTimeout(() => {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+
+    document.addEventListener('focusin', handleFocusIn)
+    return () => document.removeEventListener('focusin', handleFocusIn)
+  }, [isOpen])
+
   if (!isOpen) return null
 
   const hasCustomKeys = localClaudeKey || localPinataJwt || localAnkrKey || localTheGraphKey || localRelayrKey
@@ -469,8 +493,8 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-4 max-h-80 overflow-y-auto">
+        {/* Content - max-h uses dvh for mobile keyboard support */}
+        <div ref={contentRef} className="p-4 max-h-[50dvh] overflow-y-auto">
           {activeTab === 'account' ? (
             <div className="space-y-3">
               {/* Signed in state */}

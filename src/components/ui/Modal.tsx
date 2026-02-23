@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useCallback, useMemo } from 'react'
+import { ReactNode, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useThemeStore } from '../../stores'
 
@@ -21,6 +21,7 @@ interface ModalProps {
 export default function Modal({ isOpen, onClose, title, children, size = 'md', anchorPosition }: ModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+  const contentRef = useRef<HTMLDivElement>(null)
 
   const handleEscape = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
@@ -34,6 +35,30 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', a
       document.removeEventListener('keydown', handleEscape)
     }
   }, [isOpen, handleEscape])
+
+  // Handle mobile keyboard - scroll focused input into view within the modal
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement
+      const container = contentRef.current
+      if (!container || !container.contains(target)) return
+
+      const isInput = target.tagName === 'INPUT' ||
+                      target.tagName === 'TEXTAREA' ||
+                      target.isContentEditable
+      if (!isInput) return
+
+      // Delay to let keyboard animation start
+      setTimeout(() => {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+
+    document.addEventListener('focusin', handleFocusIn)
+    return () => document.removeEventListener('focusin', handleFocusIn)
+  }, [isOpen])
 
   // Calculate popover position based on anchor
   const popoverStyle = useMemo(() => {
@@ -80,10 +105,11 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', a
         onMouseDown={onClose}
       />
       <div className="fixed z-50" style={popoverStyle}>
-        {/* Popover content */}
+        {/* Popover content - use dvh for mobile keyboard support */}
         <div
+          ref={contentRef}
           className={`
-            relative ${sizes[size]} max-h-[85vh] flex flex-col
+            relative ${sizes[size]} max-h-[85dvh] flex flex-col
             border shadow-xl
             ${isDark
               ? 'bg-juice-dark border-white/20'

@@ -129,6 +129,28 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
     }
   }, [isOpen])
 
+  // Handle mobile keyboard - scroll focused input into view
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement
+      const container = modalRef.current
+      if (!container || !container.contains(target)) return
+
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+      if (!isInput) return
+
+      // Delay to let keyboard animation start
+      setTimeout(() => {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+
+    document.addEventListener('focusin', handleFocusIn)
+    return () => document.removeEventListener('focusin', handleFocusIn)
+  }, [isOpen])
+
   const handleAmountSelect = (value: number) => {
     setAmount(value)
     setCustomAmount('')
@@ -200,11 +222,11 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
         onClick={step !== 'checkout' ? onClose : undefined}
       />
 
-      {/* Modal - matches app popover style */}
+      {/* Modal - matches app popover style, uses dvh for mobile keyboard */}
       <div
         ref={modalRef}
         style={useAnchoredPosition ? { position: 'fixed', top: position.top, left: position.left } : undefined}
-        className={`relative w-full max-w-sm border shadow-xl ${
+        className={`relative w-full max-w-sm max-h-[85dvh] overflow-y-auto border shadow-xl ${
           isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
         }`}
       >

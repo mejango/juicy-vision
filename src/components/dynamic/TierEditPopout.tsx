@@ -75,6 +75,28 @@ export default function TierEditPopout({
     }
   }, [isOpen, onClose, anchorRef])
 
+  // Handle mobile keyboard - scroll focused input into view
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement
+      const container = popoutRef.current
+      if (!container || !container.contains(target)) return
+
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+      if (!isInput) return
+
+      // Delay to let keyboard animation start
+      setTimeout(() => {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+
+    document.addEventListener('focusin', handleFocusIn)
+    return () => document.removeEventListener('focusin', handleFocusIn)
+  }, [isOpen])
+
   // Validate discount
   const validateDiscount = (value: string): boolean => {
     const num = parseFloat(value)
@@ -150,7 +172,7 @@ export default function TierEditPopout({
       role="dialog"
       data-testid="tier-form"
       style={style}
-      className={`w-72 p-4 shadow-xl border ${
+      className={`w-72 p-4 shadow-xl border max-h-[85dvh] overflow-y-auto ${
         isDark
           ? 'bg-juice-dark border-white/20'
           : 'bg-white border-gray-200'
