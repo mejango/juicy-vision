@@ -41,6 +41,7 @@ export {
   // Prepaid bundles
   createPrepaidBundle,
   getBundleStatus,
+  transformBundleResponse,
   sendBundlePayment,
   createPrepaidOmnichainQueue,
   // Types
@@ -97,4 +98,5 @@ export {
   type BundleTransactionStatus,
   type BundleStatusResponse,
   type BundlePaymentRequest,
+  type RawBundleResponse,
 } from './client'

@@ -111,14 +111,14 @@ debugRouter.get('/', async (c) => {
             'juice-dark-lighter': '#2a2a2a',
           },
           fontFamily: {
-            mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+            mono: ['Space Mono', 'Menlo', 'monospace'],
           },
         }
       }
     }
   </script>
   <style>
-    * { font-family: 'JetBrains Mono', monospace; }
+    * { font-family: 'Space Mono', monospace; }
     .event-row:hover { background: rgba(245, 166, 35, 0.08); }
     .pulse { animation: pulse 2s infinite; }
     @keyframes pulse {

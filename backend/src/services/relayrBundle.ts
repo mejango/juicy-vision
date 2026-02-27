@@ -406,3 +406,38 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
 
   return { bundleId };
 }
+
+// ============================================================================
+// Bundle Status
+// ============================================================================
+
+/**
+ * Get the status of a Relayr bundle.
+ * Proxies the call through the backend to keep API keys server-side.
+ */
+export async function getRelayrBundleStatus(bundleId: string): Promise<unknown> {
+  // Validate required env vars
+  if (!RELAYR_API_URL) {
+    throw new Error('RELAYR_API_URL not configured');
+  }
+
+  const response = await fetch(`${RELAYR_API_URL}/v1/bundle/${bundleId}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(RELAYR_API_KEY ? { 'x-api-key': RELAYR_API_KEY } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error('Relayr bundle status fetch failed', new Error(errorText), {
+      status: response.status,
+      bundleId,
+    });
+    throw new Error(`Relayr API error: ${response.status} - ${errorText}`);
+  }
+
+  const bundleStatus = await response.json();
+  return bundleStatus;
+}

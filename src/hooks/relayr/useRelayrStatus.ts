@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getBundleStatus, type BundleStatusResponse } from '../../services/relayr'
+import { getBundleStatus, transformBundleResponse, type BundleStatusResponse, type RawBundleResponse } from '../../services/relayr'
+import { useIsManagedMode, getManagedBundleStatus } from '../useManagedWallet'
 import type { UseRelayrStatusOptions, UseRelayrStatusReturn } from './types'
 
 const DEFAULT_POLLING_INTERVAL = 2000 // 2 seconds
@@ -27,6 +28,9 @@ export function useRelayrStatus({
   const [isPolling, setIsPolling] = useState(false)
   const [error, setError] = useState<Error | null>(null)
 
+  // Check if we should use backend proxy for status polling
+  const isManagedMode = useIsManagedMode()
+
   const intervalRef = useRef<number | null>(null)
   const isMountedRef = useRef(true)
 
@@ -34,7 +38,16 @@ export function useRelayrStatus({
     if (!bundleId) return
 
     try {
-      const response = await getBundleStatus(bundleId)
+      let response: BundleStatusResponse
+
+      if (isManagedMode) {
+        // Use backend proxy for managed mode - keeps API keys server-side
+        const rawResponse = await getManagedBundleStatus(bundleId) as RawBundleResponse
+        response = transformBundleResponse(rawResponse)
+      } else {
+        // Direct call for self-custody mode
+        response = await getBundleStatus(bundleId)
+      }
 
       if (!isMountedRef.current) return
 
@@ -57,7 +70,7 @@ export function useRelayrStatus({
       if (!isMountedRef.current) return
       setError(err instanceof Error ? err : new Error('Failed to fetch bundle status'))
     }
-  }, [bundleId, stopOnComplete])
+  }, [bundleId, stopOnComplete, isManagedMode])
 
   const startPolling = useCallback(() => {
     if (!bundleId || isPolling) return

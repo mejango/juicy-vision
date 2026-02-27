@@ -40,8 +40,8 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['JetBrains Mono', 'Menlo', 'monospace'],
-        mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+        sans: ['Space Mono', 'Menlo', 'monospace'],
+        mono: ['Space Mono', 'Menlo', 'monospace'],
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',

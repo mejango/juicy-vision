@@ -487,7 +487,7 @@ function deriveBundleStatus(
 }
 
 // Transform raw API response to simplified format
-function transformBundleResponse(raw: RawBundleResponse): BundleStatusResponse {
+export function transformBundleResponse(raw: RawBundleResponse): BundleStatusResponse {
   console.log('[Relayr] Raw bundle response:', JSON.stringify(raw, null, 2))
   const transactions: BundleTransactionStatus[] = raw.transactions.map(tx => {
     // Debug: log the status data structure

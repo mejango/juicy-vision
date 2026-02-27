@@ -26,7 +26,7 @@ import {
   cancelTransfer,
   getUserPendingTransfers,
 } from '../services/smartAccounts.ts';
-import { createRelayrBundle } from '../services/relayrBundle.ts';
+import { createRelayrBundle, getRelayrBundleStatus } from '../services/relayrBundle.ts';
 import type { Address } from 'viem';
 import { getConfig } from '../utils/config.ts';
 import { getPrimaryChainId, getAllChainIds } from '@shared/chains.ts';
@@ -272,6 +272,28 @@ walletRouter.post(
     } catch (error) {
       console.error('Relayr bundle creation failed:', error);
       const message = error instanceof Error ? error.message : 'Bundle creation failed';
+      return c.json({ success: false, error: message }, 400);
+    }
+  }
+);
+
+// GET /wallet/relayr-bundle/:id - Get status of a Relayr bundle (proxied)
+walletRouter.get(
+  '/relayr-bundle/:id',
+  requireAuth,
+  async (c) => {
+    const bundleId = c.req.param('id');
+
+    try {
+      const status = await getRelayrBundleStatus(bundleId);
+
+      return c.json({
+        success: true,
+        data: status,
+      });
+    } catch (error) {
+      console.error('Relayr bundle status fetch failed:', error);
+      const message = error instanceof Error ? error.message : 'Status fetch failed';
       return c.json({ success: false, error: message }, 400);
     }
   }

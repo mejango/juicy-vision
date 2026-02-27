@@ -296,3 +296,22 @@ export async function createManagedRelayrBundle(
 
   return result
 }
+
+/**
+ * Get bundle status via the backend proxy.
+ * Used for managed mode to keep Relayr API calls server-side.
+ */
+export async function getManagedBundleStatus(bundleId: string): Promise<unknown> {
+  const { token, isAuthenticated, mode } = useAuthStore.getState()
+
+  if (!isAuthenticated() || mode !== 'managed' || !token) {
+    throw new Error('Not authenticated in managed mode')
+  }
+
+  const result = await apiRequest<unknown>(
+    `/wallet/relayr-bundle/${bundleId}`,
+    token
+  )
+
+  return result
+}
