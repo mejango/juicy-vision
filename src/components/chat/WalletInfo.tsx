@@ -831,8 +831,8 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
                 : 'text-gray-400 hover:text-gray-600'
             }`}
           >
-            <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50 mr-1.5 shrink-0" />
-            <span>{t('wallet.signIn', 'Sign in')}</span>
+            <span className="w-2 h-2 rounded-full border border-current opacity-50 mr-2 shrink-0" />
+            <span className="text-sm">{t('wallet.signIn', 'Sign in')}</span>
           </button>
           {/* Set Juicy ID - available even before connecting */}
           {!identity && (
