@@ -1080,7 +1080,7 @@ export default function ConversationHistory() {
   return (
     <div className="px-6 mt-8">
       {/* Tab navigation */}
-      <div className={`flex mb-4 border-b ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
+      <div className="flex mb-4">
         <button
           onClick={() => setActiveTab('chats')}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
@@ -1129,7 +1129,7 @@ export default function ConversationHistory() {
       {activeTab === 'chats' && (
         <>
           {/* New chat button */}
-          <div className="flex justify-end mb-2">
+          <div className="flex justify-start mb-2">
             <button
               onClick={() => {
                 navigate('/chat/new')
@@ -1224,7 +1224,7 @@ export default function ConversationHistory() {
       {/* Projects Tab Content */}
       {activeTab === 'projects' && (
         <div>
-          <div className="flex justify-end mb-2">
+          <div className="flex justify-start mb-2">
             <button
               onClick={() => loadProjects()}
               className={`p-1.5 border transition-colors ${
@@ -1307,7 +1307,7 @@ export default function ConversationHistory() {
       {/* Payments Tab Content */}
       {activeTab === 'payments' && (
         <div>
-          <div className="flex justify-end mb-2">
+          <div className="flex justify-start mb-2">
             <button
               onClick={() => loadPayments()}
               className={`p-1.5 border transition-colors ${
