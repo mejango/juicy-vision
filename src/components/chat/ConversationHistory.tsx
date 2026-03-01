@@ -1128,22 +1128,19 @@ export default function ConversationHistory() {
       {/* Chats Tab Content */}
       {activeTab === 'chats' && (
         <>
-          {/* Header with create folder button on right */}
-          <div className="flex items-center justify-between mb-2">
-            <span className={`text-xs font-medium ${
-              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              {t('ui.recent', 'Recent')} ({totalChats || chats.length})
-            </span>
+          {/* New chat button */}
+          <div className="flex justify-end mb-2">
             <button
-              onClick={openFolderPopover}
-              className={`text-xs px-2 py-1 border transition-colors ${
+              onClick={() => {
+                navigate('/chat/new')
+              }}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                 theme === 'dark'
-                  ? 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
-                  : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
               }`}
             >
-              {t('ui.newFolder', 'New folder')}
+              + {t('chat.newChat', 'New Chat')}
             </button>
           </div>
 
@@ -1227,13 +1224,6 @@ export default function ConversationHistory() {
       {/* Projects Tab Content */}
       {activeTab === 'projects' && (
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className={`text-xs font-medium ${
-              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              {t('ui.projectsYouOwn', 'Projects you own')} ({ownedProjects.length})
-            </span>
-          </div>
           {!hasWalletAccess ? (
             <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
               <p className="text-sm">{t('wallet.connectToSeeProjects', 'Connect wallet to see your projects')}</p>
@@ -1302,13 +1292,6 @@ export default function ConversationHistory() {
       {/* Payments Tab Content */}
       {activeTab === 'payments' && (
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className={`text-xs font-medium ${
-              theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              {t('ui.projectsYouSupport', 'Projects you support')} ({supporterConversations.length})
-            </span>
-          </div>
           {!hasWalletAccess ? (
             <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
               <p className="text-sm">{t('wallet.connectToSeePayments', 'Connect wallet to see your payments')}</p>
