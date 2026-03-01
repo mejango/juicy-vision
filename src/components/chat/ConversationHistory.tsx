@@ -1134,10 +1134,10 @@ export default function ConversationHistory() {
               onClick={() => {
                 navigate('/chat/new')
               }}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-2.5 py-1 text-xs font-medium border transition-colors ${
                 theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  ? 'text-gray-400 border-white/10 hover:text-white hover:border-white/25'
+                  : 'text-gray-500 border-gray-200 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               + {t('chat.newChat', 'New Chat')}
@@ -1227,10 +1227,10 @@ export default function ConversationHistory() {
           <div className="flex justify-end mb-2">
             <button
               onClick={() => loadProjects()}
-              className={`p-1.5 rounded transition-colors ${
+              className={`p-1.5 border transition-colors ${
                 theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  ? 'text-gray-400 border-white/10 hover:text-white hover:border-white/25'
+                  : 'text-gray-500 border-gray-200 hover:text-gray-700 hover:border-gray-300'
               }`}
               title={t('ui.refresh', 'Refresh')}
             >
@@ -1310,10 +1310,10 @@ export default function ConversationHistory() {
           <div className="flex justify-end mb-2">
             <button
               onClick={() => loadPayments()}
-              className={`p-1.5 rounded transition-colors ${
+              className={`p-1.5 border transition-colors ${
                 theme === 'dark'
-                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  ? 'text-gray-400 border-white/10 hover:text-white hover:border-white/25'
+                  : 'text-gray-500 border-gray-200 hover:text-gray-700 hover:border-gray-300'
               }`}
               title={t('ui.refresh', 'Refresh')}
             >
