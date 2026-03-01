@@ -257,7 +257,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
                 }`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 14v4a2 2 0 01-2 2H7a2 2 0 01-2-2v-4M7 3h7l5 5v2M14 3v5h5M12 11v7m0 0l-3-3m3 3l3-3" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 {t('chat.export', 'Export')}
               </button>
@@ -267,7 +267,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
                 className="flex items-center gap-1.5 pl-3 pr-0 py-1.5 text-xs font-medium transition-colors text-green-500 hover:text-green-400"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 14v4a2 2 0 01-2 2H7a2 2 0 01-2-2v-4m10-4l-5 5m0 0l-5-5m5 5V3" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                 </svg>
                 {t('chat.save', 'Save')}
               </button>
