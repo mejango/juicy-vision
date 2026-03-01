@@ -222,13 +222,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [isPageDragging, setIsPageDragging] = useState(false)
   const dragCounterRef = useRef(0)
 
-  // Listen for sidebar toggle from logo click
-  useEffect(() => {
-    const handler = () => setShowHistorySidebar(prev => !prev)
-    window.addEventListener('juice:toggle-sidebar', handler)
-    return () => window.removeEventListener('juice:toggle-sidebar', handler)
-  }, [])
-
   // Page-level drag handlers for file attachments
   const handlePageDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()

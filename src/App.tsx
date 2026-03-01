@@ -194,10 +194,11 @@ function Header({ showActions = false }: { showActions?: boolean }) {
           ? 'bg-juice-dark/80'
           : 'bg-white/80'
       }`}>
-        {/* Logo - fixed position from top-left, toggles sidebar */}
+        {/* Logo - fixed position from top-left, navigates home */}
         <button
           onClick={() => {
-            window.dispatchEvent(new CustomEvent('juice:toggle-sidebar'))
+            setActiveChat(null)
+            navigate('/')
           }}
           onPointerDown={(e) => e.stopPropagation()}
           className={`absolute ${logoPosition} hover:opacity-80 transition-all duration-150 ease-out touch-manipulation cursor-pointer z-50`}
