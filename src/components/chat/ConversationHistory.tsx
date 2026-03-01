@@ -1224,6 +1224,21 @@ export default function ConversationHistory() {
       {/* Projects Tab Content */}
       {activeTab === 'projects' && (
         <div>
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={() => loadProjects()}
+              className={`p-1.5 rounded transition-colors ${
+                theme === 'dark'
+                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+              title={t('ui.refresh', 'Refresh')}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
           {!hasWalletAccess ? (
             <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
               <p className="text-sm">{t('wallet.connectToSeeProjects', 'Connect wallet to see your projects')}</p>
@@ -1292,6 +1307,21 @@ export default function ConversationHistory() {
       {/* Payments Tab Content */}
       {activeTab === 'payments' && (
         <div>
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={() => loadPayments()}
+              className={`p-1.5 rounded transition-colors ${
+                theme === 'dark'
+                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+              title={t('ui.refresh', 'Refresh')}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
           {!hasWalletAccess ? (
             <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
               <p className="text-sm">{t('wallet.connectToSeePayments', 'Connect wallet to see your payments')}</p>

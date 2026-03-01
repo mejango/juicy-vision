@@ -416,9 +416,9 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
             </button>
           </div>
 
-          {/* New chat button - chats tab only */}
-          {activeTab === 'chats' && (
-            <div className="flex justify-end px-4 py-2">
+          {/* Tab action buttons */}
+          <div className="flex justify-end px-4 py-2">
+            {activeTab === 'chats' && (
               <button
                 onClick={handleNewChat}
                 className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
@@ -430,8 +430,23 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
               >
                 + {t('chat.newChat', 'New Chat')}
               </button>
-            </div>
-          )}
+            )}
+            {(activeTab === 'projects' || activeTab === 'payments') && (
+              <button
+                onClick={() => activeTab === 'projects' ? loadProjects(true) : loadPayments()}
+                className={`p-1.5 rounded transition-colors ${
+                  theme === 'dark'
+                    ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+                title={t('ui.refresh', 'Refresh')}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Content area */}
