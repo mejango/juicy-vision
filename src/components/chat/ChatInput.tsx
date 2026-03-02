@@ -555,6 +555,24 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           }`}
           style={{ minHeight: '48px' }}
         />
+        <button
+          type="submit"
+          disabled={disabled || (!input.trim() && attachments.length === 0)}
+          className={`self-stretch flex items-center justify-center w-12 shrink-0 border-2 border-juice-cyan transition-colors ${
+            disabled || (!input.trim() && attachments.length === 0)
+              ? theme === 'dark'
+                ? 'bg-white/5 text-white/30'
+                : 'bg-black/5 text-gray-400'
+              : theme === 'dark'
+                ? 'bg-white/10 text-white hover:bg-white/20'
+                : 'bg-black/10 text-gray-900 hover:bg-black/20'
+          }`}
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5" />
+            <polyline points="5 12 12 5 19 12" />
+          </svg>
+        </button>
         {/* Drag overlay */}
         {isDragging && (
           <div className={`absolute inset-0 flex items-center justify-center pointer-events-none ${
