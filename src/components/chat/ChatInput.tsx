@@ -558,12 +558,14 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
         <button
           type="submit"
           disabled={disabled || (!input.trim() && attachments.length === 0)}
-          className={`self-stretch flex items-center justify-center w-12 shrink-0 transition-colors ${
+          className={`self-stretch flex items-center justify-center w-12 shrink-0 border transition-colors ${
             disabled || (!input.trim() && attachments.length === 0)
               ? theme === 'dark'
-                ? 'text-white/20'
-                : 'text-gray-300'
-              : 'text-juice-cyan'
+                ? 'text-white/20 border-white/10'
+                : 'text-gray-300 border-gray-200'
+              : theme === 'dark'
+                ? 'text-juice-cyan border-white/20'
+                : 'text-juice-cyan border-gray-300'
           }`}
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
