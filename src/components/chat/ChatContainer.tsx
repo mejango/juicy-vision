@@ -463,7 +463,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       if (hidden && chatId) {
         setWaitingForAiChatId(chatId)
         try {
-          await chatApi.invokeAi(chatId, content, undefined, true)
+          const aiMessage = await chatApi.invokeAi(chatId, content, undefined, true)
+          if (aiMessage) {
+            const chat = useChatStore.getState().chats.find(c => c.id === chatId)
+            if (!chat?.messages?.some(m => m.id === aiMessage.id)) {
+              addChatMessage(chatId!, { ...aiMessage, isStreaming: false })
+            }
+            setWaitingForAiChatId(null)
+          }
         } catch (aiErr) {
           console.error('Failed to invoke AI for hidden message:', aiErr)
           setWaitingForAiChatId(null)
@@ -517,7 +524,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
         // Uses store state so it persists across navigation
         setWaitingForAiChatId(chatId!)
         try {
-          await chatApi.invokeAi(chatId!, content, attachmentData)
+          const aiMessage = await chatApi.invokeAi(chatId!, content, attachmentData)
+          if (aiMessage) {
+            const chat = useChatStore.getState().chats.find(c => c.id === chatId)
+            if (!chat?.messages?.some(m => m.id === aiMessage.id)) {
+              addChatMessage(chatId!, { ...aiMessage, isStreaming: false })
+            }
+            setWaitingForAiChatId(null)
+          }
         } catch (aiErr) {
           console.error('Failed to invoke AI:', aiErr)
           setWaitingForAiChatId(null)
