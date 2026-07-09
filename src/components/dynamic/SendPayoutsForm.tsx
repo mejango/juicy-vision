@@ -170,10 +170,14 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
         // Fetch payout data from all chains in parallel
         const chainDataPromises = chainsToFetch.map(async (chain): Promise<ChainPayoutData> => {
           try {
-            const [payoutData, chainProject] = await Promise.all([
-              fetchDistributablePayout(String(chain.projectId), chain.chainId),
-              fetchProjectWithRuleset(String(chain.projectId), chain.chainId),
-            ])
+            // Fetch the ruleset first so the payout query can use the project's
+            // accounting currency (a USDC project's limit lives under USDC, not ETH).
+            const chainProject = await fetchProjectWithRuleset(String(chain.projectId), chain.chainId)
+            const payoutData = await fetchDistributablePayout(
+              String(chain.projectId),
+              chain.chainId,
+              chainProject?.currentRuleset?.baseCurrency ?? 1
+            )
 
             // Fetch splits if we have a ruleset
             let payoutSplits: JBSplitData[] = []

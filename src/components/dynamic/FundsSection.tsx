@@ -910,6 +910,13 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               isDark={isDark}
             />
 
+            {/* Protocol fee note — the value shown above is before the 2.5% fee */}
+            {cashOutEnabledChains.some(cd => cd.cashOutTaxRate > 0) && (
+              <div className={`text-xs mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                Cash outs take a 2.5% protocol fee, so members receive a little less than the value shown here.
+              </div>
+            )}
+
             {/* User token balance - right below tax rate */}
             {isSignedIn && (
               <div className="mb-3">
