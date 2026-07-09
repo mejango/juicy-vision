@@ -17,6 +17,7 @@ import {
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { calculateSynchronizedStartTime, type JBRulesetConfig, type JBRulesetMetadataConfig } from '../../services/relayr'
 import { QueueRulesetModal } from '../payment'
+import { ProjectLink } from './ProjectLink'
 import { ZERO_ADDRESS, USDC_ADDRESSES, type SupportedChainId, JB_CONTRACTS } from '../../constants'
 
 interface QueueRulesetFormProps {
@@ -424,7 +425,6 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
 
   const logoUrl = project?.logoUri ? resolveIpfsUri(project.logoUri) : null
   const chainInfo = CHAIN_INFO[parseInt(chainId)] || CHAIN_INFO[1]
-  const projectUrl = `https://juicebox.money/v6/${chainInfo.slug}:${projectId}`
 
   return (
     <div className="w-full">
@@ -444,14 +444,9 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
             <h3 className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
               Queue New Ruleset
             </h3>
-            <a
-              href={projectUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
-            >
+            <ProjectLink chainSlug={chainInfo.slug} projectId={projectId} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
               {project?.name || `Project #${projectId}`}
-            </a>
+            </ProjectLink>
           </div>
         </div>
 

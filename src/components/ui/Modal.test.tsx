@@ -197,7 +197,7 @@ describe('Modal', () => {
     it('modal has max height constraint', () => {
       render(<Modal {...defaultProps} />)
       const modalContent = screen.getByText('Modal content').closest('div[class*="max-h"]')
-      expect(modalContent?.className).toContain('max-h-[85vh]')
+      expect(modalContent?.className).toContain('max-h-[85dvh]')
     })
   })
 

@@ -3,6 +3,22 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import LaunchProjectModal from './LaunchProjectModal'
 import { useThemeStore, useAuthStore } from '../../stores'
+import { ALL_CHAIN_IDS, CHAINS } from '../../constants'
+
+// Derive chain IDs and labels from the same constants the component renders and
+// the verification util validates against, so these tests are env-independent
+// (testnet Sepolia vs mainnet) and don't trip the "Unsupported chain ID"
+// verification warning that would disable Create and add a second Cancel button.
+const CHAIN_IDS = [...ALL_CHAIN_IDS]
+const [C0, C1, C2, C3] = CHAIN_IDS
+const NAME0 = CHAINS[C0].name
+const NAME1 = CHAINS[C1].name
+const NAME2 = CHAINS[C2].name
+const NAME3 = CHAINS[C3].name
+const SHORT0 = CHAINS[C0].shortName
+const SHORT1 = CHAINS[C1].shortName
+const SHORT2 = CHAINS[C2].shortName
+const SHORT3 = CHAINS[C3].shortName
 
 // Mock wagmi
 vi.mock('wagmi', () => ({
@@ -71,7 +87,7 @@ describe('LaunchProjectModal', () => {
     projectName: 'Test Project',
     owner: '0x1234567890123456789012345678901234567890',
     projectUri: 'QmXyz123',
-    chainIds: [1, 10, 8453, 42161],
+    chainIds: CHAIN_IDS,
     rulesetConfig: {
       mustStartAtOrAfter: 0,
       duration: 0,
@@ -164,10 +180,10 @@ describe('LaunchProjectModal', () => {
       render(<LaunchProjectModal {...defaultProps} />)
 
       // Chain names from CHAINS constant
-      expect(screen.getByText('Ethereum')).toBeInTheDocument()
-      expect(screen.getByText('Optimism')).toBeInTheDocument()
-      expect(screen.getByText('Base')).toBeInTheDocument()
-      expect(screen.getByText('Arbitrum')).toBeInTheDocument()
+      expect(screen.getByText(NAME0)).toBeInTheDocument()
+      expect(screen.getByText(NAME1)).toBeInTheDocument()
+      expect(screen.getByText(NAME2)).toBeInTheDocument()
+      expect(screen.getByText(NAME3)).toBeInTheDocument()
       expect(screen.getAllByText('Waiting...')).toHaveLength(4)
     })
 
@@ -262,7 +278,7 @@ describe('LaunchProjectModal', () => {
   describe('chain status updates', () => {
     it('shows pending status', () => {
       mockHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'pending' },
+        { chainId: C0, status: 'pending' },
       ]
 
       render(<LaunchProjectModal {...defaultProps} />)
@@ -272,7 +288,7 @@ describe('LaunchProjectModal', () => {
 
     it('shows submitted/creating status', () => {
       mockHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'submitted' },
+        { chainId: C0, status: 'submitted' },
       ]
 
       render(<LaunchProjectModal {...defaultProps} />)
@@ -282,7 +298,7 @@ describe('LaunchProjectModal', () => {
 
     it('shows confirmed status with checkmark', () => {
       mockHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'confirmed', txHash: '0xtxhash123' },
+        { chainId: C0, status: 'confirmed', txHash: '0xtxhash123' },
       ]
 
       render(<LaunchProjectModal {...defaultProps} />)
@@ -292,7 +308,7 @@ describe('LaunchProjectModal', () => {
 
     it('shows view link for confirmed transactions', () => {
       mockHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'confirmed', txHash: '0xtxhash123' },
+        { chainId: C0, status: 'confirmed', txHash: '0xtxhash123' },
       ]
 
       render(<LaunchProjectModal {...defaultProps} />)
@@ -303,7 +319,7 @@ describe('LaunchProjectModal', () => {
 
     it('shows failed status', () => {
       mockHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'failed' },
+        { chainId: C0, status: 'failed' },
       ]
 
       render(<LaunchProjectModal {...defaultProps} />)
@@ -312,7 +328,7 @@ describe('LaunchProjectModal', () => {
     })
 
     it('shows project ID when available', () => {
-      mockHookState.createdProjectIds = { 1: 100 }
+      mockHookState.createdProjectIds = { [C0]: 100 }
 
       render(<LaunchProjectModal {...defaultProps} />)
 
@@ -324,12 +340,12 @@ describe('LaunchProjectModal', () => {
     beforeEach(() => {
       mockHookState.isComplete = true
       mockHookState.bundleState.status = 'completed'
-      mockHookState.createdProjectIds = { 1: 100, 10: 101, 8453: 102, 42161: 103 }
+      mockHookState.createdProjectIds = { [C0]: 100, [C1]: 101, [C2]: 102, [C3]: 103 }
       mockHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'confirmed', txHash: '0xtx1' },
-        { chainId: 10, status: 'confirmed', txHash: '0xtx10' },
-        { chainId: 8453, status: 'confirmed', txHash: '0xtx8453' },
-        { chainId: 42161, status: 'confirmed', txHash: '0xtx42161' },
+        { chainId: C0, status: 'confirmed', txHash: '0xtx1' },
+        { chainId: C1, status: 'confirmed', txHash: '0xtx10' },
+        { chainId: C2, status: 'confirmed', txHash: '0xtx8453' },
+        { chainId: C3, status: 'confirmed', txHash: '0xtx42161' },
       ]
     })
 
@@ -343,10 +359,10 @@ describe('LaunchProjectModal', () => {
       render(<LaunchProjectModal {...defaultProps} />)
 
       expect(screen.getByText('Created Project IDs')).toBeInTheDocument()
-      expect(screen.getByText(/ETH: #100/)).toBeInTheDocument()
-      expect(screen.getByText(/OP: #101/)).toBeInTheDocument()
-      expect(screen.getByText(/BASE: #102/)).toBeInTheDocument()
-      expect(screen.getByText(/ARB: #103/)).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${SHORT0}: #100`))).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${SHORT1}: #101`))).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${SHORT2}: #102`))).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${SHORT3}: #103`))).toBeInTheDocument()
     })
 
     it('shows sucker deployment hint for multi-chain', () => {
@@ -440,7 +456,7 @@ describe('LaunchProjectModal', () => {
     it('allows closing modal when complete', async () => {
       mockHookState.isComplete = true
       mockHookState.bundleState.status = 'completed'
-      mockHookState.createdProjectIds = { 1: 100 }
+      mockHookState.createdProjectIds = { [C0]: 100 }
 
       render(<LaunchProjectModal {...defaultProps} />)
 
@@ -465,28 +481,28 @@ describe('LaunchProjectModal', () => {
 
   describe('single chain', () => {
     it('shows singular text for single chain', () => {
-      render(<LaunchProjectModal {...defaultProps} chainIds={[1]} />)
+      render(<LaunchProjectModal {...defaultProps} chainIds={[C0]} />)
 
       expect(screen.getByText(/Project creation on all 1 chain is free/)).toBeInTheDocument()
     })
 
     it('shows Create Project (singular) button', () => {
-      render(<LaunchProjectModal {...defaultProps} chainIds={[1]} />)
+      render(<LaunchProjectModal {...defaultProps} chainIds={[C0]} />)
 
       expect(screen.getByRole('button', { name: 'Create Project' })).toBeInTheDocument()
     })
 
     it('does not show sucker hint for single chain when complete', () => {
       mockHookState.isComplete = true
-      mockHookState.createdProjectIds = { 1: 100 }
+      mockHookState.createdProjectIds = { [C0]: 100 }
 
-      render(<LaunchProjectModal {...defaultProps} chainIds={[1]} />)
+      render(<LaunchProjectModal {...defaultProps} chainIds={[C0]} />)
 
       expect(screen.queryByText(/Deploy suckers/)).not.toBeInTheDocument()
     })
 
     it('hides synchronized start subtitle for single chain', () => {
-      render(<LaunchProjectModal {...defaultProps} chainIds={[1]} />)
+      render(<LaunchProjectModal {...defaultProps} chainIds={[C0]} />)
 
       // Still shows the start time, but not the "all chains" subtitle
       expect(screen.getByText('Synchronized Start Time')).toBeInTheDocument()

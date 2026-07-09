@@ -53,6 +53,10 @@ export const RATE_LIMITS = {
   walletExport: { limit: 5, windowSeconds: 3600 }, // 5 export requests/hour
   walletExportConfirm: { limit: 3, windowSeconds: 3600 }, // 3 confirmations/hour
 
+  // Point-of-sale terminal endpoints
+  terminalRegister: { limit: 20, windowSeconds: 3600 }, // 20 device registrations/hour
+  terminalPay: { limit: 60, windowSeconds: 60 }, // 60 terminal payments/min
+
   // Admin endpoints - moderate limits
   admin: { limit: 100, windowSeconds: 60 }, // 100 admin requests/min
 

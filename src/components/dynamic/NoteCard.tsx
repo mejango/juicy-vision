@@ -6,6 +6,7 @@ import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchProjectToke
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
+import { ProjectLink } from './ProjectLink'
 
 interface NoteCardProps {
   projectId: string
@@ -235,7 +236,6 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
   }
 
   const logoUrl = resolveIpfsUri(project.logoUri)
-  const projectUrl = `https://juicebox.money/v6/${selectedChainInfo.slug}:${currentProjectId}`
   const amountNum = parseFloat(amount) || 0
 
   // Calculate fee and JUICY tokens
@@ -259,14 +259,9 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <a
-              href={projectUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`text-sm font-medium hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
-            >
+            <ProjectLink chainSlug={selectedChainInfo.slug} projectId={currentProjectId} className={`text-sm font-medium hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {project.name}
-            </a>
+            </ProjectLink>
           </div>
           {/* Chain selector - compact */}
           <select

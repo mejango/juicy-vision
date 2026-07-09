@@ -14,6 +14,7 @@ import { useWalletBalances } from '../../hooks/useWalletBalances'
 import { useManagedWallet } from '../../hooks'
 import { useProjectCardPaymentState, type ProjectCardPaymentState } from '../../hooks/useComponentState'
 import BuyJuiceModal from '../juice/BuyJuiceModal'
+import { ProjectLink } from './ProjectLink'
 
 // Parse HTML/markdown description to clean text with line breaks
 function parseDescription(html: string): string[] {
@@ -1219,7 +1220,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   }
 
   const logoUrl = resolveIpfsUri(project.logoUri)
-  const projectUrl = `https://juicebox.money/v6/${selectedChainInfo.slug}:${currentProjectId}`
 
   // Embedded mode: render sticky header + scrollable content for sidebar layout
   if (embedded) {
@@ -1722,14 +1722,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           <h3 className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
             {project.name}
           </h3>
-          <a
-            href={projectUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
-          >
+          <ProjectLink chainSlug={selectedChainInfo.slug} projectId={currentProjectId} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
             Project #{currentProjectId}
-          </a>
+          </ProjectLink>
         </div>
       </div>
 

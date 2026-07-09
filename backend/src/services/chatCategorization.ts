@@ -92,9 +92,8 @@ export async function generateChatTitle(
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5',
       max_tokens: 50,
-      temperature: 0.5,
       system: TITLE_GENERATION_PROMPT,
       messages: [{ role: 'user', content: conversationText }],
     });

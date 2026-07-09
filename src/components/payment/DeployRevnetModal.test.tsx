@@ -3,6 +3,22 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import DeployRevnetModal from './DeployRevnetModal'
 import { useThemeStore, useAuthStore } from '../../stores'
+import { ALL_CHAIN_IDS, CHAINS } from '../../constants'
+
+// Derive chain IDs and labels from the same constants the component renders and
+// the verification util validates against, so these tests are env-independent
+// (testnet Sepolia vs mainnet) and don't trip the "Unsupported chain ID"
+// verification warning that would disable Deploy and add a second Cancel button.
+const CHAIN_IDS = [...ALL_CHAIN_IDS]
+const [C0, C1, C2, C3] = CHAIN_IDS
+const NAME0 = CHAINS[C0].name
+const NAME1 = CHAINS[C1].name
+const NAME2 = CHAINS[C2].name
+const NAME3 = CHAINS[C3].name
+const SHORT0 = CHAINS[C0].shortName
+const SHORT1 = CHAINS[C1].shortName
+const SHORT2 = CHAINS[C2].shortName
+const SHORT3 = CHAINS[C3].shortName
 
 // Mock wagmi
 vi.mock('wagmi', () => ({
@@ -99,7 +115,7 @@ describe('DeployRevnetModal', () => {
     name: 'Test Revnet',
     tagline: 'A test revenue network',
     splitOperator: '0x1234567890123456789012345678901234567890',
-    chainIds: [1, 10, 8453, 42161],
+    chainIds: CHAIN_IDS,
     stageConfigurations: [{
       startsAtOrAfter: Math.floor(Date.now() / 1000) + 300,
       splitPercent: 2000, // 20% (out of 10,000)
@@ -171,10 +187,10 @@ describe('DeployRevnetModal', () => {
       render(<DeployRevnetModal {...defaultProps} />)
 
       // Chain names from CHAINS constant
-      expect(screen.getByText('Ethereum')).toBeInTheDocument()
-      expect(screen.getByText('Optimism')).toBeInTheDocument()
-      expect(screen.getByText('Base')).toBeInTheDocument()
-      expect(screen.getByText('Arbitrum')).toBeInTheDocument()
+      expect(screen.getByText(NAME0)).toBeInTheDocument()
+      expect(screen.getByText(NAME1)).toBeInTheDocument()
+      expect(screen.getByText(NAME2)).toBeInTheDocument()
+      expect(screen.getByText(NAME3)).toBeInTheDocument()
       expect(screen.getAllByText('Waiting...')).toHaveLength(4)
     })
 
@@ -313,7 +329,7 @@ describe('DeployRevnetModal', () => {
   describe('deploying suckers phase', () => {
     beforeEach(() => {
       mockRevnetHookState.isComplete = true
-      mockRevnetHookState.createdProjectIds = { 1: 100, 10: 101, 8453: 102, 42161: 103 }
+      mockRevnetHookState.createdProjectIds = { [C0]: 100, [C1]: 101, [C2]: 102, [C3]: 103 }
       mockSuckerHookState.isDeploying = true
       mockSuckerHookState.bundleState.status = 'processing'
     })
@@ -343,7 +359,7 @@ describe('DeployRevnetModal', () => {
   describe('chain status updates', () => {
     it('shows pending status', () => {
       mockRevnetHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'pending' },
+        { chainId: C0, status: 'pending' },
       ]
 
       render(<DeployRevnetModal {...defaultProps} />)
@@ -353,7 +369,7 @@ describe('DeployRevnetModal', () => {
 
     it('shows submitted status', () => {
       mockRevnetHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'submitted' },
+        { chainId: C0, status: 'submitted' },
       ]
 
       render(<DeployRevnetModal {...defaultProps} />)
@@ -363,7 +379,7 @@ describe('DeployRevnetModal', () => {
 
     it('shows confirmed status with checkmark', () => {
       mockRevnetHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'confirmed', txHash: '0xtxhash123' },
+        { chainId: C0, status: 'confirmed', txHash: '0xtxhash123' },
       ]
 
       render(<DeployRevnetModal {...defaultProps} />)
@@ -373,7 +389,7 @@ describe('DeployRevnetModal', () => {
 
     it('shows view link for confirmed transactions', () => {
       mockRevnetHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'confirmed', txHash: '0xtxhash123' },
+        { chainId: C0, status: 'confirmed', txHash: '0xtxhash123' },
       ]
 
       render(<DeployRevnetModal {...defaultProps} />)
@@ -384,7 +400,7 @@ describe('DeployRevnetModal', () => {
 
     it('shows failed status', () => {
       mockRevnetHookState.bundleState.chainStates = [
-        { chainId: 1, status: 'failed' },
+        { chainId: C0, status: 'failed' },
       ]
 
       render(<DeployRevnetModal {...defaultProps} />)
@@ -393,7 +409,7 @@ describe('DeployRevnetModal', () => {
     })
 
     it('shows project ID when available', () => {
-      mockRevnetHookState.createdProjectIds = { 1: 100 }
+      mockRevnetHookState.createdProjectIds = { [C0]: 100 }
 
       render(<DeployRevnetModal {...defaultProps} />)
 
@@ -405,7 +421,7 @@ describe('DeployRevnetModal', () => {
     beforeEach(() => {
       mockRevnetHookState.isComplete = true
       mockRevnetHookState.bundleState.status = 'completed'
-      mockRevnetHookState.createdProjectIds = { 1: 100, 10: 101, 8453: 102, 42161: 103 }
+      mockRevnetHookState.createdProjectIds = { [C0]: 100, [C1]: 101, [C2]: 102, [C3]: 103 }
       mockRevnetHookState.predictedTokenAddress = '0xtoken123456789012345678901234567890'
     })
 
@@ -425,10 +441,10 @@ describe('DeployRevnetModal', () => {
     it('shows created project IDs', () => {
       render(<DeployRevnetModal {...defaultProps} autoDeploySuckers={false} />)
 
-      expect(screen.getByText(/ETH: #100/)).toBeInTheDocument()
-      expect(screen.getByText(/OP: #101/)).toBeInTheDocument()
-      expect(screen.getByText(/BASE: #102/)).toBeInTheDocument()
-      expect(screen.getByText(/ARB: #103/)).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${SHORT0}: #100`))).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${SHORT1}: #101`))).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${SHORT2}: #102`))).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${SHORT3}: #103`))).toBeInTheDocument()
     })
 
     it('shows token address', () => {
@@ -449,7 +465,7 @@ describe('DeployRevnetModal', () => {
     beforeEach(() => {
       mockRevnetHookState.isComplete = true
       mockRevnetHookState.bundleState.status = 'completed'
-      mockRevnetHookState.createdProjectIds = { 1: 100, 10: 101, 8453: 102, 42161: 103 }
+      mockRevnetHookState.createdProjectIds = { [C0]: 100, [C1]: 101, [C2]: 102, [C3]: 103 }
       mockRevnetHookState.predictedTokenAddress = '0xtoken123456789012345678901234567890'
       mockSuckerHookState.isComplete = true
       mockSuckerHookState.suckerAddresses = { 1: '0xsucker1', 10: '0xsucker10' }
@@ -560,7 +576,7 @@ describe('DeployRevnetModal', () => {
     it('allows closing modal when complete', async () => {
       mockRevnetHookState.isComplete = true
       mockSuckerHookState.isComplete = true
-      mockRevnetHookState.createdProjectIds = { 1: 100 }
+      mockRevnetHookState.createdProjectIds = { [C0]: 100 }
 
       render(<DeployRevnetModal {...defaultProps} />)
 
@@ -586,13 +602,13 @@ describe('DeployRevnetModal', () => {
 
   describe('single chain', () => {
     it('shows singular text for single chain', () => {
-      render(<DeployRevnetModal {...defaultProps} chainIds={[1]} />)
+      render(<DeployRevnetModal {...defaultProps} chainIds={[C0]} />)
 
       expect(screen.getByText(/Revnet deployment on all 1 chain is free/)).toBeInTheDocument()
     })
 
     it('does not show sucker notice for single chain', () => {
-      render(<DeployRevnetModal {...defaultProps} chainIds={[1]} />)
+      render(<DeployRevnetModal {...defaultProps} chainIds={[C0]} />)
 
       expect(screen.queryByText('Auto-Deploy Suckers')).not.toBeInTheDocument()
     })
@@ -601,7 +617,7 @@ describe('DeployRevnetModal', () => {
   describe('without auto-deploy suckers', () => {
     it('completes after revnet deployment when suckers disabled', () => {
       mockRevnetHookState.isComplete = true
-      mockRevnetHookState.createdProjectIds = { 1: 100 }
+      mockRevnetHookState.createdProjectIds = { [C0]: 100 }
 
       render(<DeployRevnetModal {...defaultProps} autoDeploySuckers={false} />)
 
