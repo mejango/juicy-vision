@@ -114,7 +114,7 @@ export default function SharedChatContainer() {
           case 'message':
             addMessage(activeChatId!, msg.data as chatApi.WsMessage['data'] & { id: string; chatId: string; senderAddress: string; role: 'user' | 'assistant' | 'system'; content: string; isEncrypted: boolean; createdAt: string })
             break
-          case 'typing':
+          case 'typing': {
             const typingData = msg.data as { address: string; displayName?: string; isTyping: boolean }
             if (typingData.isTyping) {
               setTypingUsers((prev) => {
@@ -125,7 +125,8 @@ export default function SharedChatContainer() {
               setTypingUsers((prev) => prev.filter((u) => u.address !== typingData.address))
             }
             break
-          case 'member_joined':
+          }
+          case 'member_joined': {
             const joinedMember = msg.data as { address: string; role: 'founder' | 'admin' | 'member'; joinedAt: string }
             useChatStore.getState().addMember(activeChatId!, {
               address: joinedMember.address,
@@ -133,10 +134,12 @@ export default function SharedChatContainer() {
               joinedAt: joinedMember.joinedAt,
             })
             break
-          case 'member_left':
+          }
+          case 'member_left': {
             const leftData = msg.data as { address: string }
             useChatStore.getState().removeMember(activeChatId!, leftData.address)
             break
+          }
           // system_event type is reserved for future use
           // case 'system_event':
           //   break

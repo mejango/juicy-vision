@@ -2042,7 +2042,7 @@ export default function TransactionPreview({
       const rulesets = raw?.rulesetConfigurations || raw?.launchProjectConfig?.rulesetConfigurations
       if (rulesets && Array.isArray(rulesets) && rulesets.length > 0) {
         const firstRuleset = rulesets[0]
-        let splits: SplitInfo[] = []
+        const splits: SplitInfo[] = []
         let payoutLimit: number | undefined
         let payoutLimitGroupId: string | undefined
         // Track if fundAccessLimitGroups was explicitly set to empty array (means ZERO payouts, not unlimited!)

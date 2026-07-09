@@ -554,7 +554,7 @@ export async function getBundleStatus(bundleId: string): Promise<BundleStatusRes
  * Call this after user signs the payment tx on their chosen chain.
  */
 export async function sendBundlePayment(request: BundlePaymentRequest): Promise<void> {
-  await fetchApi<{}>('/v1/bundle/payment', {
+  await fetchApi<unknown>('/v1/bundle/payment', {
     method: 'POST',
     body: JSON.stringify(request),
   })
