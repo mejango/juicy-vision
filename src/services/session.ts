@@ -168,8 +168,10 @@ export function getCurrentUserAddress(): string | null {
 }
 
 // Pre-fetch pseudo-address on module load to populate cache early
-// This runs as soon as the module is imported, before React renders
-if (typeof window !== 'undefined') {
+// This runs as soon as the module is imported, before React renders.
+// Skip under test: firing a real network fetch on import makes any test that
+// transitively imports this module hang on the pending promise.
+if (typeof window !== 'undefined' && !import.meta.env.VITEST) {
   getSessionPseudoAddress().catch(() => {
     // Silently handle errors - components will use fallback
   })
