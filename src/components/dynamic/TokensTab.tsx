@@ -8,17 +8,19 @@ import {
   fetchProjectTokenSymbol,
   fetchProjectTokenAddress,
   fetchProjectTokenSupply,
+  fetchDistributablePayout,
   fetchConnectedChains,
   fetchProjectSplits,
   fetchPendingReservedTokens,
   calculateFloorPrice,
-  isRevnet,
+  isRevnetProject,
   type Project,
   type ConnectedChain,
   type JBSplitData,
   type ProjectRuleset,
 } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
+import { resolveAccountingToken } from '../../utils/currency'
 import { VIEM_CHAINS, RPC_ENDPOINTS, CHAINS, MAINNET_CHAINS, type SupportedChainId } from '../../constants'
 import { SendReservedTokensModal } from '../payment'
 import HoldersChart from './charts/HoldersChart'
@@ -78,8 +80,8 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   const [project, setProject] = useState<Project | null>(null)
   const [tokenSymbol, setTokenSymbol] = useState<string>('TOKEN')
   const [tokenAddress, setTokenAddress] = useState<string | null>(null)
-  const [totalSupply, setTotalSupply] = useState<string>('0')
   const [userBalance, setUserBalance] = useState<string>('0')
+  const [userBalanceByChain, setUserBalanceByChain] = useState<Record<number, string>>({})
   const [chainTokenData, setChainTokenData] = useState<ChainTokenData[]>([])
   const [selectedChainId, setSelectedChainId] = useState<number>(parseInt(chainId))
   const [showSplits, setShowSplits] = useState(false)
@@ -87,6 +89,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
   const [showReservedBreakdown, setShowReservedBreakdown] = useState(false)
   const [showIssuedBreakdown, setShowIssuedBreakdown] = useState(false)
+  const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false)
 
   const chainIdNum = parseInt(chainId)
   const chain = CHAINS[chainIdNum] || MAINNET_CHAINS[chainIdNum]
@@ -94,6 +97,12 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   // Get active chain data
   const activeChainData = chainTokenData.find(cd => cd.chainId === selectedChainId) || chainTokenData[0]
   const isOmnichain = chainTokenData.length > 1
+
+  // Cross-chain aggregate supply (project token is always 18 decimals). The headline
+  // shows the omnichain total; the per-chain "Breakdown" is the disclosure.
+  const totalSupplyAllChains = chainTokenData
+    .reduce((sum, cd) => sum + BigInt(cd.totalSupply || '0'), 0n)
+    .toString()
 
   // Calculate pending tokens
   const pendingTokens = activeChainData
@@ -151,8 +160,29 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
             const balance = BigInt(chainProject?.balance || '0')
             const supplyBigInt = BigInt(supply || '0')
             const baseCurrency = chainProject?.currentRuleset?.baseCurrency || 1
-            const decimals = baseCurrency === 2 ? 6 : 18
-            const cashOutPerToken = calculateFloorPrice(balance, supplyBigInt, cashOutTaxRate, decimals)
+            // Accounting-currency decimals (cashout VALUE). Project *token* amounts
+            // (supply, user balance, pending) are always 18 decimals — see below.
+            const decimals = resolveAccountingToken(baseCurrency).decimals
+
+            // Cash out draws from SURPLUS (balance net of the remaining payout
+            // limit) and dilutes across supply PLUS undistributed reserved tokens.
+            // Keeps this in lockstep with FundsSection so the two tabs agree.
+            let remainingPayout = 0n
+            if (!isRevnetProject(chainProject)) {
+              try {
+                const payoutData = await fetchDistributablePayout(
+                  String(chain.projectId),
+                  chain.chainId,
+                  baseCurrency
+                )
+                remainingPayout = payoutData?.available ?? 0n
+              } catch {
+                // ignore — treat as no payout limit
+              }
+            }
+            const reclaimableSurplus = balance > remainingPayout ? balance - remainingPayout : 0n
+            const cashOutSupply = supplyBigInt + BigInt(pendingReserved || '0')
+            const cashOutPerToken = calculateFloorPrice(reclaimableSurplus, cashOutSupply, cashOutTaxRate, decimals)
 
             return {
               chainId: chain.chainId,
@@ -192,11 +222,11 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         const allChainData = await Promise.all(chainDataPromises)
         setChainTokenData(allChainData)
 
-        // Set token address and supply from primary chain
+        // Token contract address for the display/copy link. The CREATE2 address is
+        // identical across chains; use the primary chain's for the explorer link.
         const primaryChainData = allChainData.find(cd => cd.chainId === chainIdNum)
         if (primaryChainData) {
           setTokenAddress(primaryChainData.tokenAddress)
-          setTotalSupply(primaryChainData.totalSupply)
         }
 
         // Resolve ENS names for split beneficiaries
@@ -230,40 +260,65 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
     load()
   }, [projectId, chainId, chainIdNum])
 
-  // Fetch user's token balance when connected
+  // Fetch the user's token balance across ALL connected chains and sum them.
+  // The project token is deployed at the same deterministic CREATE2 address on every
+  // chain, but each chain holds an independent balance — read balanceOf per chain and
+  // aggregate so an omnichain holder sees their true total. Always 18 decimals.
   useEffect(() => {
     async function fetchUserBalance() {
-      if (!address || !tokenAddress) {
+      if (!address || chainTokenData.length === 0) {
         setUserBalance('0')
+        setUserBalanceByChain({})
         return
       }
 
       try {
-        const viemChain = VIEM_CHAINS[chainIdNum as SupportedChainId]
-        if (!viemChain) return
+        const results = await Promise.all(
+          chainTokenData.map(async (cd): Promise<{ chainId: number; balance: bigint }> => {
+            if (!cd.tokenAddress) return { chainId: cd.chainId, balance: 0n }
 
-        const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
-        const publicClient = createPublicClient({
-          chain: viemChain,
-          transport: http(rpcUrl),
+            const viemChain = VIEM_CHAINS[cd.chainId as SupportedChainId]
+            if (!viemChain) return { chainId: cd.chainId, balance: 0n }
+
+            const rpcUrl = RPC_ENDPOINTS[cd.chainId]?.[0]
+            const publicClient = createPublicClient({
+              chain: viemChain,
+              transport: http(rpcUrl),
+            })
+
+            try {
+              const balance = await publicClient.readContract({
+                address: cd.tokenAddress as `0x${string}`,
+                abi: erc20Abi,
+                functionName: 'balanceOf',
+                args: [address as `0x${string}`],
+              })
+              return { chainId: cd.chainId, balance }
+            } catch (err) {
+              console.error(`Failed to fetch user token balance on chain ${cd.chainId}:`, err)
+              return { chainId: cd.chainId, balance: 0n }
+            }
+          })
+        )
+
+        let total = 0n
+        const byChain: Record<number, string> = {}
+        results.forEach(({ chainId, balance }) => {
+          total += balance
+          byChain[chainId] = balance.toString()
         })
 
-        const balance = await publicClient.readContract({
-          address: tokenAddress as `0x${string}`,
-          abi: erc20Abi,
-          functionName: 'balanceOf',
-          args: [address as `0x${string}`],
-        })
-
-        setUserBalance(balance.toString())
+        setUserBalance(total.toString())
+        setUserBalanceByChain(byChain)
       } catch (err) {
         console.error('Failed to fetch user token balance:', err)
         setUserBalance('0')
+        setUserBalanceByChain({})
       }
     }
 
     fetchUserBalance()
-  }, [address, tokenAddress, chainIdNum])
+  }, [address, chainTokenData])
 
   const reservedPercent = activeChainData?.reservedPercent || 0
   const hasPendingTokens = pendingTokens > 0
@@ -370,7 +425,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                 Total issued
               </span>
               <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {formatTokenAmount(totalSupply)}
+                {formatTokenAmount(totalSupplyAllChains)}
               </span>
             </div>
             {/* Per-chain breakdown */}
@@ -416,7 +471,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
             )}
           </div>
 
-          {/* Your membership - only shown when connected */}
+          {/* Your membership - only shown when connected. Balance is the cross-chain sum. */}
           {isConnected && (
             <div className={`pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
               <div className="flex items-center justify-between">
@@ -430,7 +485,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                 </div>
                 {(() => {
                   const userBalanceNum = parseFloat(userBalance) / 1e18
-                  const currencySymbol = activeChainData?.baseCurrency === 2 ? 'USDC' : 'ETH'
+                  const currencySymbol = resolveAccountingToken(activeChainData?.baseCurrency).symbol
                   const cashOutValue = userBalanceNum * (activeChainData?.cashOutPerToken || 0)
                   const isCashOutDisabled = activeChainData?.cashOutTaxRate === 10000
 
@@ -452,6 +507,47 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                   return null
                 })()}
               </div>
+              {/* Per-chain balance breakdown for omnichain holders */}
+              {isOmnichain && parseFloat(userBalance) > 0 && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => setShowBalanceBreakdown(!showBalanceBreakdown)}
+                    className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
+                  >
+                    <span>Breakdown</span>
+                    <svg
+                      className={`w-3 h-3 transition-transform ${showBalanceBreakdown ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showBalanceBreakdown && (
+                    <div className="mt-2 space-y-1">
+                      {chainTokenData.map(cd => {
+                        const chainInfo = CHAIN_INFO[cd.chainId]
+                        if (!chainInfo) return null
+                        return (
+                          <div key={cd.chainId} className="flex items-center gap-3">
+                            <span
+                              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: chainInfo.color }}
+                            />
+                            <span className={`text-xs w-10 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {chainInfo.shortName}
+                            </span>
+                            <span className={`text-xs font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                              {formatTokenAmount(userBalanceByChain[cd.chainId] || '0')}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -469,7 +565,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         {/* Description */}
         <p className={`text-xs mb-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
           A portion of new membership is currently set aside for recipients below.
-          {project && isRevnet(project.owner) && ' These recipients are locked in and cannot be changed.'}
+          {isRevnetProject(project) && ' These recipients are locked in and cannot be changed.'}
         </p>
 
         {/* Check for chain differences */}
@@ -679,7 +775,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         </h3>
         <p className={`text-xs mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
           Here's the cost to join over time.
-          {project && isRevnet(project.owner) && ' Earlier members pay less.'}
+          {isRevnetProject(project) && ' Earlier members pay less.'}
         </p>
 
         {/* Chart - includes disclaimer for non-revnets */}

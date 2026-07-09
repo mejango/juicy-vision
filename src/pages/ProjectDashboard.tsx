@@ -6,12 +6,12 @@ import { createPortal } from 'react-dom'
 import { useThemeStore, useChatStore } from '../stores'
 import { useManagedWallet, useIsMobile } from '../hooks'
 import { CHAINS, MAINNET_CHAINS } from '../constants'
-import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, fetchSuckerGroupBalance, isRevnet, fetchRevnetOperator, fetchEthPrice, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
+import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, fetchSuckerGroupBalance, isRevnetProject, fetchRevnetOperator, fetchEthPrice, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../utils/ens'
 import { getProjectSupporters, type ProjectConversation } from '../api/projectConversations'
 import { getWalletSession } from '../services/siwe'
 import { resolveIpfsUri } from '../utils/ipfs'
-import { formatUnits } from 'viem'
+import { formatBalanceUsd, formatBalanceNative } from '../utils/currency'
 
 // Chat components
 import { ChatInput, ProtocolActivity } from '../components/chat'
@@ -54,65 +54,6 @@ type ModalType =
 interface ProjectDashboardProps {
   chainId: number
   projectId: number
-}
-
-function formatBalanceUsd(
-  balanceString: string,
-  ethPrice: number | null,
-  currency: number = 1, // 1 = ETH, 2 = USD
-  decimals: number = 18
-): string {
-  try {
-    const balance = BigInt(balanceString)
-    const value = parseFloat(formatUnits(balance, decimals))
-
-    let usd: number
-    if (currency === 2) {
-      // Balance is already in USD (USDC project)
-      usd = value
-    } else {
-      // Balance is in ETH, convert to USD
-      if (!ethPrice) return '$--'
-      usd = value * ethPrice
-    }
-
-    if (usd === 0) return '$0'
-    if (usd < 0.01) return '<$0.01'
-    if (usd >= 1000000) return `$${(usd / 1000000).toFixed(2)}M`
-    if (usd >= 1000) return `$${(usd / 1000).toFixed(2)}K`
-    return `$${usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
-  } catch {
-    return '$0'
-  }
-}
-
-// Format balance in native currency (ETH or USDC)
-function formatBalanceNative(
-  balanceString: string,
-  currency: number = 1, // 1 = ETH, 2 = USD/USDC
-  decimals: number = 18
-): string {
-  try {
-    const balance = BigInt(balanceString)
-    const value = parseFloat(formatUnits(balance, decimals))
-
-    if (currency === 2) {
-      // USDC - show as dollar amount
-      if (value === 0) return '$0'
-      if (value < 0.01) return '<$0.01'
-      if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`
-      if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`
-      return `$${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
-    } else {
-      // ETH - show as ETH amount
-      if (value === 0) return '0 ETH'
-      if (value < 0.001) return '<0.001 ETH'
-      if (value >= 1000) return `${(value / 1000).toFixed(2)}K ETH`
-      return `${value.toLocaleString(undefined, { maximumFractionDigits: 3 })} ETH`
-    }
-  } catch {
-    return currency === 2 ? '$0' : '0 ETH'
-  }
 }
 
 // Chain info for balance tooltip
@@ -327,8 +268,8 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
   // Determine if revnet and fetch operator, then resolve ENS
   const projectIsRevnet = useMemo(() => {
-    return project?.owner ? isRevnet(project.owner) : false
-  }, [project?.owner])
+    return isRevnetProject(project)
+  }, [project])
 
   // The address to display: operator for revnets, owner otherwise
   const displayAddress = useMemo(() => {

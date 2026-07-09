@@ -9,6 +9,7 @@ vi.mock('../../../services/bendystraw', () => ({
   fetchProject: vi.fn(),
   fetchPayEventsHistory: vi.fn(),
   fetchConnectedChains: vi.fn(),
+  fetchSuckerGroupBalance: vi.fn(),
 }))
 
 // Mock recharts
@@ -63,6 +64,10 @@ describe('VolumeChart', () => {
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
     vi.clearAllMocks()
+    vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue({
+      currency: 1,
+      decimals: 18,
+    } as any)
   })
 
   describe('loading state', () => {

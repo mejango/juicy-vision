@@ -5,7 +5,7 @@ import {
   fetchProjectWithRuleset,
   fetchProjectTokenSymbol,
   fetchConnectedChains,
-  isRevnet,
+  isRevnetProject,
   fetchRevnetOperator,
   fetchRevnetStages,
   fetchQueuedRulesets,
@@ -21,6 +21,15 @@ import {
   type ProjectSplitsData,
 } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
+import { EXPLORER_URLS } from '../../constants'
+import { resolveAccountingToken } from '../../utils/currency'
+
+// Build a per-chain block-explorer address URL. EXPLORER_URLS holds the tx-prefix
+// (e.g. "https://optimistic.etherscan.io/tx/"), so swap the path segment for /address/.
+function explorerAddressUrl(address: string, chainId: number): string {
+  const base = EXPLORER_URLS[chainId] || EXPLORER_URLS[1]
+  return `${base.replace('/tx/', '/address/')}${address}`
+}
 
 // Chain info for display
 const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
@@ -87,7 +96,7 @@ function formatPercent(bps: number) {
 function formatIssuance(weight: string, tokenSymbol: string, baseCurrency: number = 1) {
   try {
     const num = parseFloat(weight) / 1e18
-    const currencyLabel = baseCurrency === 2 ? 'USD' : 'ETH'
+    const currencyLabel = resolveAccountingToken(baseCurrency).symbol
     // Show more precision for nuanced numbers
     if (num >= 1e9) return `${(num / 1e9).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}B ${tokenSymbol}/${currencyLabel}`
     if (num >= 1e6) return `${(num / 1e6).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}M ${tokenSymbol}/${currencyLabel}`
@@ -198,7 +207,7 @@ function generateJuicySummary(input: JuicySummaryInput): JuicySummaryOutput {
 
   // Determine tagline based on project type
   let tagline = ''
-  const currencyLabel = baseCurrency === 2 ? 'USD' : 'ETH'
+  const currencyLabel = resolveAccountingToken(baseCurrency).symbol
   const issuanceNum = parseFloat(ruleset.weight) / 1e18
   const issuanceStr = issuanceNum >= 1e6
     ? `${(issuanceNum / 1e6).toFixed(1)}M`
@@ -629,11 +638,14 @@ export default function RulesetSchedule({
 }: RulesetScheduleProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+  const chainIdNum = parseInt(chainId)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [ruleset, setRuleset] = useState<ProjectRuleset | null>(null)
   const [owner, setOwner] = useState<string>('')
+  // Definitive revnet flag from the indexer (isRevnetProject), set alongside owner.
+  const [projectIsRevnet, setProjectIsRevnet] = useState<boolean>(false)
   const [ownerEns, setOwnerEns] = useState<string | null>(null)
   const [operator, setOperator] = useState<string | null>(null)
   const [operatorEns, setOperatorEns] = useState<string | null>(null)
@@ -717,6 +729,7 @@ export default function RulesetSchedule({
         // Set primary chain data for backwards compatibility
         setProjectName(project.name)
         setOwner(project.owner)
+        setProjectIsRevnet(isRevnetProject(project))
         setRuleset(project.currentRuleset)
         setTokenSymbol(symbol || 'tokens')
 
@@ -803,7 +816,7 @@ export default function RulesetSchedule({
         }
 
         // Fetch Revnet-specific data if this is a Revnet
-        if (isRevnet(project.owner)) {
+        if (isRevnetProject(project)) {
           // Fetch operator
           const op = await fetchRevnetOperator(projectId, primaryChainId)
           setOperator(op)
@@ -1019,7 +1032,7 @@ export default function RulesetSchedule({
               const summary = generateJuicySummary({
                 ruleset,
                 upcomingRuleset,
-                isRevnet: isRevnet(owner),
+                isRevnet: projectIsRevnet,
                 isUnlocked,
                 isOmnichain: omnichainState.isOmnichain,
                 tokenSymbol,
@@ -1434,7 +1447,7 @@ export default function RulesetSchedule({
                           <span className="font-mono">{formatIssuance(displayRuleset?.weight || '0', tokenSymbol, ruleset?.baseCurrency)}</span>
                         </div>
                         <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                          {tokenSymbol} minted per {ruleset?.baseCurrency === 2 ? 'USD' : 'ETH'} contributed
+                          {tokenSymbol} minted per {resolveAccountingToken(ruleset?.baseCurrency).symbol} contributed
                         </div>
                         {!omnichainState.selectedChainId && omnichainState.differences.includes('issuance') && (
                           <DifferenceIndicator
@@ -1532,13 +1545,13 @@ export default function RulesetSchedule({
                           <div className="flex justify-between">
                             <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Data Hook</span>
                             <div className="flex items-center gap-2">
-                              {isRevnet(owner) && (
+                              {projectIsRevnet && (
                                 <span className={`text-xs px-1.5 py-0.5 ${isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
                                   Revnet
                                 </span>
                               )}
                               <a
-                                href={`https://etherscan.io/address/${displayRuleset.dataHook}`}
+                                href={explorerAddressUrl(displayRuleset.dataHook, chainIdNum)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="font-mono text-juice-orange hover:underline text-xs"
@@ -1548,7 +1561,7 @@ export default function RulesetSchedule({
                             </div>
                           </div>
                           <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                            {isRevnet(owner)
+                            {projectIsRevnet
                               ? 'Revnet buyback hook - optimizes token pricing via DEX arbitrage'
                               : 'Contract that customizes payment and cash out behavior'}
                           </div>
@@ -1607,7 +1620,7 @@ export default function RulesetSchedule({
             })()}
 
             {/* Revnet Stages - shows past, current, and future stages */}
-            {isRevnet(owner) && revnetStages && revnetStages.length > 0 && (
+            {projectIsRevnet && revnetStages && revnetStages.length > 0 && (
               <Section id="stages" title="Stages">
                 <div className="space-y-3">
                   {revnetStages.map((stage, idx) => {
@@ -1695,7 +1708,7 @@ export default function RulesetSchedule({
             )}
 
             {/* Upcoming Ruleset - for non-Revnet projects */}
-            {!isRevnet(owner) && upcomingRuleset && (
+            {!projectIsRevnet && upcomingRuleset && (
               <Section id="upcoming" title="Upcoming Cycle">
                 <div className={`p-3 border ${isDark ? 'border-purple-500/50 bg-purple-500/10' : 'border-purple-200 bg-purple-50'}`}>
                   <div className="flex items-center justify-between mb-2">
@@ -1794,13 +1807,13 @@ export default function RulesetSchedule({
                     <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Owner Minting</span>
                     <span className={`font-mono ${
                       ruleset.allowOwnerMinting
-                        ? isRevnet(owner) ? 'text-emerald-400' : 'text-amber-400'
+                        ? projectIsRevnet ? 'text-emerald-400' : 'text-amber-400'
                         : 'text-emerald-400'
                     }`}>
                       {ruleset.allowOwnerMinting ? 'Allowed' : 'Disabled'}
                     </span>
                   </div>
-                  {ruleset.allowOwnerMinting && isRevnet(owner) && (
+                  {ruleset.allowOwnerMinting && projectIsRevnet && (
                     <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                       Safe for Revnets - only used for pre-configured auto-issuance
                     </div>
@@ -1852,7 +1865,7 @@ export default function RulesetSchedule({
                     </div>
                     {ruleset.useDataHookForPay && (
                       <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        {isRevnet(owner)
+                        {projectIsRevnet
                           ? 'Used by Revnets for buyback delegate and other automations'
                           : 'Custom logic runs when payments are received'}
                       </div>
@@ -1871,7 +1884,7 @@ export default function RulesetSchedule({
                     </div>
                     {ruleset.useDataHookForCashOut && (
                       <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        {isRevnet(owner)
+                        {projectIsRevnet
                           ? 'Used by Revnets for exit fee and other automations'
                           : 'Custom logic runs when tokens are cashed out'}
                       </div>
@@ -1919,14 +1932,14 @@ export default function RulesetSchedule({
                 {/* Owner address with ENS and Revnet badge */}
                 <div className="flex items-center gap-2">
                   <a
-                    href={`https://etherscan.io/address/${owner}`}
+                    href={explorerAddressUrl(owner, chainIdNum)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-mono text-juice-orange hover:underline"
                   >
                     {ownerEns || truncateAddress(owner)}
                   </a>
-                  {isRevnet(owner) && (
+                  {projectIsRevnet && (
                     <span className="px-2 py-0.5 text-xs font-medium bg-purple-500/20 text-purple-400">
                       Revnet
                     </span>
@@ -1945,17 +1958,17 @@ export default function RulesetSchedule({
                       <span>Change ruleset</span>
                       <span className={
                         isUnlocked
-                          ? isRevnet(owner) ? 'text-emerald-400' : 'text-amber-400'
+                          ? projectIsRevnet ? 'text-emerald-400' : 'text-amber-400'
                           : 'text-emerald-400'
                       }>
                         {isUnlocked
-                          ? isRevnet(owner) ? 'Staged' : 'Anytime'
+                          ? projectIsRevnet ? 'Staged' : 'Anytime'
                           : `In ${formatRemainingTime(remainingSeconds)}`}
                       </span>
                     </div>
                     <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                       {isUnlocked
-                        ? isRevnet(owner)
+                        ? projectIsRevnet
                           ? 'Future stages are pre-committed and immutable'
                           : 'Owner can modify rules without waiting'
                         : 'Rules locked until current cycle ends'}
@@ -1968,18 +1981,18 @@ export default function RulesetSchedule({
                       <span>Mint tokens</span>
                       <span className={
                         ruleset.allowOwnerMinting
-                          ? isRevnet(owner) ? 'text-emerald-400' : 'text-amber-400'
+                          ? projectIsRevnet ? 'text-emerald-400' : 'text-amber-400'
                           : 'text-emerald-400'
                       }>
                         {ruleset.allowOwnerMinting ? 'Allowed' : 'Disabled'}
                       </span>
                     </div>
-                    {ruleset.allowOwnerMinting && isRevnet(owner) && (
+                    {ruleset.allowOwnerMinting && projectIsRevnet && (
                       <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                         Safe within Revnets - only used for auto-issuance to split recipients
                       </div>
                     )}
-                    {ruleset.allowOwnerMinting && !isRevnet(owner) && (
+                    {ruleset.allowOwnerMinting && !projectIsRevnet && (
                       <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                         Owner can create tokens without payment
                       </div>
@@ -2079,21 +2092,21 @@ export default function RulesetSchedule({
                 </div>
 
                 {/* Revnet explanation */}
-                {isRevnet(owner) && (
+                {projectIsRevnet && (
                   <div className={`text-xs p-2 ${isDark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-700'}`}>
                     This is a Revnet - owned by the REVDeployer contract. Rules are programmatically enforced.
                   </div>
                 )}
 
                 {/* Unlocked warning */}
-                {isUnlocked && !isRevnet(owner) && (
+                {isUnlocked && !projectIsRevnet && (
                   <div className={`text-xs p-2 ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
                     Unlocked means the owner can change rules at any time without warning.
                   </div>
                 )}
 
                 {/* Revnet Operator Section - inside Owner for Revnets */}
-                {isRevnet(owner) && (
+                {projectIsRevnet && (
                   <div className={`mt-4 pt-4 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                     <div className={`text-xs font-medium mb-3 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                       Operator
@@ -2103,7 +2116,7 @@ export default function RulesetSchedule({
                         {/* Operator address with ENS */}
                         <div className="flex items-center gap-2">
                           <a
-                            href={`https://etherscan.io/address/${operator}`}
+                            href={explorerAddressUrl(operator, chainIdNum)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="font-mono text-juice-orange hover:underline"
@@ -2230,7 +2243,7 @@ export default function RulesetSchedule({
                   const activeFundAccessLimits = activeSplits.fundAccessLimits
                   const payoutLimit = activeFundAccessLimits?.payoutLimits?.[0]
                   const surplusAllowance = activeFundAccessLimits?.surplusAllowances?.[0]
-                  const isRevnetProject = isRevnet(owner)
+                  const isRevnetProj = projectIsRevnet
 
                   // Helper to check if a value represents "unlimited" in the protocol
                   // The protocol uses various max values (uint256, uint224, uint128, etc.)
@@ -2310,8 +2323,8 @@ export default function RulesetSchedule({
                         <div>
                           <div className="flex justify-between text-xs">
                             <span>Surplus Allowance</span>
-                            <span className={isRevnetProject ? 'text-purple-400' : surplusAllowanceIsZero ? (isDark ? 'text-gray-500' : 'text-gray-400') : surplusAllowanceIsUnlimited ? 'text-emerald-400' : 'font-mono'}>
-                              {isRevnetProject
+                            <span className={isRevnetProj ? 'text-purple-400' : surplusAllowanceIsZero ? (isDark ? 'text-gray-500' : 'text-gray-400') : surplusAllowanceIsUnlimited ? 'text-emerald-400' : 'font-mono'}>
+                              {isRevnetProj
                                 ? 'Unlimited (loans only)'
                                 : surplusAllowanceIsZero
                                   ? 'None'
@@ -2322,7 +2335,7 @@ export default function RulesetSchedule({
                             </span>
                           </div>
                           <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                            {isRevnetProject
+                            {isRevnetProj
                               ? 'Funds cannot be withdrawn directly. REVDeployer uses allowance for loans only.'
                               : surplusAllowanceIsZero
                                 ? 'Owner cannot access surplus beyond payout limit'
@@ -2359,7 +2372,7 @@ export default function RulesetSchedule({
                       </div>
 
                       {/* Explanation based on project type */}
-                      {isRevnetProject ? (
+                      {isRevnetProj ? (
                         <div className={`text-xs p-2 ${isDark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-700'}`}>
                           {payoutLimitIsZero ? 'No payouts.' : payoutLimitIsUnlimited ? 'Unlimited payouts.' : `Payout limit: ${formatAmount(payoutLimit!.amount, payoutLimit!.currency)}.`}
                           {' '}
@@ -2433,7 +2446,7 @@ export default function RulesetSchedule({
                                           </span>
                                         ) : (
                                           <a
-                                            href={`https://etherscan.io/address/${split.beneficiary}`}
+                                            href={explorerAddressUrl(split.beneficiary, effectiveSplitsChainId ?? chainIdNum)}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="font-mono text-xs text-juice-orange hover:underline"
@@ -2543,7 +2556,7 @@ export default function RulesetSchedule({
                                     </span>
                                   ) : (
                                     <a
-                                      href={`https://etherscan.io/address/${split.beneficiary}`}
+                                      href={explorerAddressUrl(split.beneficiary, effectiveSplitsChainId ?? chainIdNum)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="font-mono text-xs text-juice-orange hover:underline"

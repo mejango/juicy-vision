@@ -15,6 +15,7 @@ import {
   fetchProjectSuckerGroupId,
   fetchConnectedChains,
   fetchProjectMoments,
+  fetchSuckerGroupBalance,
   type ProjectMoment,
 } from '../../../services/bendystraw'
 import {
@@ -22,13 +23,13 @@ import {
   RANGE_OPTIONS,
   formatXAxis,
   formatYAxis,
-  formatEthValue,
   filterToRange,
   calculateYDomain,
   CHART_COLORS,
   getChainColor,
   getChainName,
 } from './utils'
+import { resolveAccountingToken, toTokenFloat, formatAxisValue } from '../../../utils/currency'
 import ChainToggleBar from './ChainToggleBar'
 
 interface BalanceChartProps {
@@ -60,6 +61,7 @@ export default function BalanceChart({
   const [connectedChains, setConnectedChains] = useState<number[]>([])
   const [selectedChains, setSelectedChains] = useState<Set<number> | 'all'>('all')
   const [showBreakdown, setShowBreakdown] = useState(false)
+  const [token, setToken] = useState(resolveAccountingToken())
 
   useEffect(() => {
     async function loadData() {
@@ -67,11 +69,16 @@ export default function BalanceChart({
       setError(null)
 
       try {
-        // Fetch project, connected chains, and suckerGroupId in parallel
-        const [project, chains] = await Promise.all([
+        // Fetch project, connected chains, and sucker-group balance in parallel
+        const [project, chains, groupBalance] = await Promise.all([
           fetchProject(projectId, parseInt(chainId)),
           fetchConnectedChains(projectId, parseInt(chainId)),
+          fetchSuckerGroupBalance(projectId, parseInt(chainId)),
         ])
+
+        // Resolve the accounting token so balances render in the right unit/decimals
+        const decimals = groupBalance.decimals
+        setToken(resolveAccountingToken(groupBalance.currency, groupBalance.decimals))
 
         if (project?.metadata) {
           const metadata = typeof project.metadata === 'string'
@@ -95,13 +102,13 @@ export default function BalanceChart({
           const moments = await fetchSuckerGroupMoments(suckerGroupId, 1000, parseInt(chainId))
           aggregatedMoments = moments.map(m => ({
             timestamp: m.timestamp,
-            balance: parseFloat(m.balance) / 1e18,
+            balance: toTokenFloat(m.balance, decimals),
           }))
         }
 
         if (aggregatedMoments.length === 0) {
           // Fallback: create a single point with current balance
-          const currentBalance = project?.balance ? parseFloat(project.balance) / 1e18 : 0
+          const currentBalance = project?.balance ? toTokenFloat(project.balance, decimals) : 0
           aggregatedMoments = [{
             timestamp: Math.floor(Date.now() / 1000),
             balance: currentBalance,
@@ -123,7 +130,7 @@ export default function BalanceChart({
               const moments = await fetchProjectMoments(chainProjectId, cid)
               const points: DataPoint[] = moments.map((m: ProjectMoment) => ({
                 timestamp: m.timestamp,
-                balance: parseFloat(m.balance) / 1e18,
+                balance: toTokenFloat(m.balance, decimals),
               }))
               perChainMap.set(cid, points)
             } catch (err) {
@@ -281,7 +288,7 @@ export default function BalanceChart({
         {selectedChains === 'all' ? (
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.primary }} />
-            <span className="font-mono font-medium">{formatEthValue(data.balance)}</span>
+            <span className="font-mono font-medium">{formatAxisValue(data.balance, token)}</span>
           </div>
         ) : (
           Array.from(selectedChains as Set<number>).map(cid => {
@@ -291,7 +298,7 @@ export default function BalanceChart({
               <div key={cid} className="flex items-center gap-2 mb-1">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getChainColor(cid) }} />
                 <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>{getChainName(cid)}:</span>
-                <span className="font-mono">{formatEthValue(value)}</span>
+                <span className="font-mono">{formatAxisValue(value, token)}</span>
               </div>
             )
           })
@@ -442,7 +449,7 @@ export default function BalanceChart({
             {selectedChains === 'all' ? (
               <span className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART_COLORS.primary }} />
-                Current: {formatEthValue(chartData[chartData.length - 1]?.balance || 0)}
+                Current: {formatAxisValue(chartData[chartData.length - 1]?.balance || 0, token)}
               </span>
             ) : (
               Array.from(selectedChains as Set<number>).map(cid => {
@@ -451,7 +458,7 @@ export default function BalanceChart({
                 return (
                   <span key={cid} className="flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getChainColor(cid) }} />
-                    {getChainName(cid)}: {formatEthValue(value)}
+                    {getChainName(cid)}: {formatAxisValue(value, token)}
                   </span>
                 )
               })

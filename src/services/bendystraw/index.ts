@@ -33,6 +33,8 @@ export {
   fetchMultiChainParticipants,
   calculateFloorPrice,
   isRevnet,
+  isRevnetProject,
+  REVNET_OWNER_ADDRESSES,
   getContractsForProject,
   fetchRevnetOperator,
   fetchRevnetStages,

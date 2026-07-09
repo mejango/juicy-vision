@@ -4,7 +4,7 @@ import { createPublicClient, http, zeroAddress } from 'viem'
 import { VIEM_CHAINS, MAINNET_VIEM_CHAINS, RPC_ENDPOINTS, MAINNET_RPC_ENDPOINTS, JB_CONTRACTS, type SupportedChainId, MAINNET_CHAIN_IDS } from '../../constants/chains'
 import { REV_OWNER_ADDRESS, REV_OWNER_TIERED_721_HOOK_ABI } from '../../constants/abis/revDeployer'
 import { resolveIpfsUri, decodeEncodedIPFSUri, inlineSvgImages } from '../../utils/ipfs'
-import { isRevnet, fetchProject } from '../bendystraw'
+import { isRevnetProject, fetchProject } from '../bendystraw'
 import {
   JB721TierStoreAbi,
   JB721TiersHookAbi,
@@ -61,7 +61,7 @@ export async function getProjectDataHook(
       console.error('[NFT] fetchProject failed:', fetchErr)
     }
 
-    const projectIsRevnet = project?.owner ? isRevnet(project.owner) : false
+    const projectIsRevnet = isRevnetProject(project)
 
     console.log('[NFT] getProjectDataHook:', { projectId, chainId, owner: project?.owner, projectIsRevnet })
 

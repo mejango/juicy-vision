@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useThemeStore } from '../../stores'
-import { formatUnits } from 'viem'
+import { resolveAccountingToken, formatBalanceUsd, formatBalanceNative, toTokenFloat } from '../../utils/currency'
 
 interface ProjectSummaryProps {
   projectName: string
@@ -14,30 +14,6 @@ interface ProjectSummaryProps {
   ethPrice?: number | null
   currency?: number // 1 = ETH, 2 = USD
   decimals?: number // 18 for ETH, 6 for USDC
-}
-
-function formatUsd(
-  weiString: string,
-  ethPrice: number | null,
-  currency: number = 1,
-  decimals: number = 18
-): string {
-  try {
-    const wei = BigInt(weiString)
-    const value = parseFloat(formatUnits(wei, decimals))
-
-    // If already USD (currency=2), no conversion needed
-    const usd = currency === 2 ? value : (ethPrice ? value * ethPrice : 0)
-
-    if (usd === 0) return '$0'
-    if (!ethPrice && currency !== 2) return '' // Can't convert ETH without price
-    if (usd < 1) return '<$1'
-    if (usd >= 1000000) return `$${(usd / 1000000).toFixed(1)}M`
-    if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}K`
-    return `$${usd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-  } catch {
-    return ''
-  }
 }
 
 function getProjectAge(createdAt: number): { days: number; label: string } {
@@ -71,8 +47,21 @@ export default function ProjectSummary({
   const isDark = theme === 'dark'
 
   const summary = useMemo(() => {
-    const balanceUsd = formatUsd(balance, ethPrice ?? null, currency, decimals)
-    const volumeUsd = formatUsd(volume, ethPrice ?? null, currency, decimals)
+    // Resolve the project's accounting token so any unit phrasing is correct
+    // (a USDC project is 6 decimals and shown as "$", not "ETH").
+    const token = resolveAccountingToken(currency, decimals)
+    // USD phrasing works for USD-denominated projects always, and for ETH
+    // projects only when we have a price. Otherwise fall back to native units.
+    const usdReady = token.isUsd || !!ethPrice
+    const fmtValue = (raw: string) =>
+      usdReady
+        ? formatBalanceUsd(raw, ethPrice ?? null, currency, decimals)
+        : formatBalanceNative(raw, currency, decimals)
+
+    const balanceStr = fmtValue(balance)
+    const volumeStr = fmtValue(volume)
+    const balanceNum = toTokenFloat(balance, decimals)
+    const volumeNum = toTokenFloat(volume, decimals)
     const age = createdAt ? getProjectAge(createdAt) : null
 
     const parts: string[] = []
@@ -89,15 +78,23 @@ export default function ProjectSummary({
       parts[0] += ` launched ${age.label}`
     }
 
-    // Financial snapshot
-    const balanceNum = parseFloat(formatUnits(BigInt(balance), decimals))
-    const volumeNum = parseFloat(formatUnits(BigInt(volume), decimals))
+    // Omnichain context
+    if (connectedChainsCount && connectedChainsCount > 1) {
+      parts[0] += `, live across ${connectedChainsCount} chains`
+    }
 
+    // What a revnet is, in plain English
+    if (isRevnet) {
+      parts.push('where token issuance follows preset stages that decrease over time, so earlier supporters receive more for the same contribution')
+      parts.push('with its rules locked in and enforced automatically')
+    }
+
+    // Financial snapshot
     if (volumeNum > 0 || paymentsCount > 0) {
       let financialPart = ''
 
-      if (volumeUsd && volumeNum > 0) {
-        financialPart = `It has processed ${volumeUsd} in total volume`
+      if (volumeStr && volumeNum > 0) {
+        financialPart = `It has processed ${volumeStr} in total volume`
         if (paymentsCount > 0) {
           financialPart += ` across ${paymentsCount.toLocaleString()} payment${paymentsCount === 1 ? '' : 's'}`
         }
@@ -111,8 +108,8 @@ export default function ProjectSummary({
     }
 
     // Current state
-    if (balanceNum > 0 && balanceUsd) {
-      parts.push(`currently holding ${balanceUsd} in its treasury`)
+    if (balanceNum > 0 && balanceStr) {
+      parts.push(`currently holding ${balanceStr} in its treasury`)
     } else if (balanceNum === 0 && volumeNum > 0) {
       parts.push(`with funds actively deployed`)
     }
@@ -142,7 +139,7 @@ export default function ProjectSummary({
     }
 
     return result
-  }, [projectName, balance, volume, paymentsCount, createdAt, isRevnet, hasNftHook, ethPrice, currency, decimals])
+  }, [projectName, balance, volume, paymentsCount, createdAt, isRevnet, hasNftHook, connectedChainsCount, ethPrice, currency, decimals])
 
   return (
     <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>

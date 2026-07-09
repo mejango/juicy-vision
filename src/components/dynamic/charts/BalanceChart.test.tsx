@@ -11,6 +11,7 @@ vi.mock('../../../services/bendystraw', () => ({
   fetchSuckerGroupMoments: vi.fn(),
   fetchConnectedChains: vi.fn(),
   fetchProjectMoments: vi.fn(),
+  fetchSuckerGroupBalance: vi.fn(),
 }))
 
 // Mock recharts to avoid rendering issues in tests
@@ -63,6 +64,10 @@ describe('BalanceChart', () => {
     // Default mock for new dependencies
     vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([])
     vi.mocked(bendystraw.fetchProjectMoments).mockResolvedValue([])
+    vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue({
+      currency: 1,
+      decimals: 18,
+    } as any)
   })
 
   describe('loading state', () => {

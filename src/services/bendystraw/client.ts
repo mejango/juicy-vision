@@ -99,6 +99,11 @@ export interface Project {
   name: string
   description?: string
   logoUri?: string
+  // Definitive revnet flag from the bendystraw indexer. Prefer this over any
+  // owner-address heuristic. Optional because older cached objects / partial
+  // queries may omit it — fall back to isRevnetProject() which handles undefined.
+  isRevnet?: boolean
+  suckerGroupId?: string
   volume: string
   volumeUsd?: string
   balance: string
@@ -718,6 +723,9 @@ export interface ProjectWithRuleset {
   projectId: number
   chainId: number
   owner: string
+  // Definitive revnet flag from the bendystraw indexer (see Project.isRevnet).
+  isRevnet?: boolean
+  suckerGroupId?: string
   name: string
   balance: string
   createdAt?: number
@@ -917,6 +925,8 @@ export async function fetchProjectWithRuleset(
         projectId: number
         chainId: number
         owner: string
+        isRevnet?: boolean
+        suckerGroupId?: string
         metadata?: { name?: string } | string
         balance: string
         createdAt?: number
@@ -1039,6 +1049,8 @@ export async function fetchProjectWithRuleset(
       projectId: data.project.projectId,
       chainId: data.project.chainId,
       owner: data.project.owner,
+      isRevnet: data.project.isRevnet,
+      suckerGroupId: data.project.suckerGroupId,
       name,
       balance: data.project.balance,
       createdAt: data.project.createdAt,
@@ -1190,7 +1202,12 @@ const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffff
 // Returns available amount based on fund access limits, NOT the total balance
 export async function fetchDistributablePayout(
   projectId: string,
-  chainId: number
+  chainId: number,
+  // Accounting currency of the project (1 = ETH, 2 = USD/USDC). Payout limits are
+  // keyed by (terminal token, currency); a USDC project's limit lives under the
+  // USDC token + currency 2, so querying only ETH would miss it and overstate
+  // surplus. Defaults to ETH so existing callers are unchanged.
+  accountingCurrency: number = 1
 ): Promise<DistributablePayout | null> {
   const publicClient = getPublicClient(chainId)
   if (!publicClient) return null
@@ -1208,15 +1225,22 @@ export async function fetchDistributablePayout(
     })
 
     if (!ruleset.id) {
-      return { available: 0n, limit: 0n, used: 0n, currency: 1 }
+      return { available: 0n, limit: 0n, used: 0n, currency: accountingCurrency }
     }
 
-    // Get payout limit for ETH (currency 1) - use correct terminal
+    // Resolve the accounting token + currency the payout limit is keyed by.
+    const isUsd = accountingCurrency === 2
+    const limitToken = isUsd
+      ? (USDC_ADDRESSES[chainId as SupportedChainId] ?? NATIVE_TOKEN)
+      : NATIVE_TOKEN
+    const limitCurrency = BigInt(accountingCurrency)
+
+    // Get payout limit for the project's accounting token - use correct terminal
     const payoutLimit = await publicClient.readContract({
       address: JB_CONTRACTS.JBFundAccessLimits,
       abi: JB_FUND_ACCESS_LIMITS_ABI,
       functionName: 'payoutLimitOf',
-      args: [BigInt(projectId), BigInt(ruleset.id), contracts.JBMultiTerminal, NATIVE_TOKEN, 1n],
+      args: [BigInt(projectId), BigInt(ruleset.id), contracts.JBMultiTerminal, limitToken, limitCurrency],
     })
 
     // Get used payout limit - use correct terminal
@@ -1224,7 +1248,7 @@ export async function fetchDistributablePayout(
       address: JB_CONTRACTS.JBFundAccessLimits,
       abi: JB_FUND_ACCESS_LIMITS_ABI,
       functionName: 'usedPayoutLimitOf',
-      args: [contracts.JBMultiTerminal, BigInt(projectId), BigInt(ruleset.id), NATIVE_TOKEN, 1n],
+      args: [contracts.JBMultiTerminal, BigInt(projectId), BigInt(ruleset.id), limitToken, limitCurrency],
     })
 
     // Handle different payout limit scenarios:
@@ -1251,7 +1275,7 @@ export async function fetchDistributablePayout(
       available,
       limit: payoutLimit,
       used: usedPayoutLimit,
-      currency: 1,
+      currency: accountingCurrency,
     }
   } catch (err) {
     console.error('Failed to fetch distributable payout:', err)
@@ -1843,12 +1867,46 @@ export async function fetchPendingReservedTokens(
 // REVNET HELPERS
 // ============================================================================
 
-// Check if a project is a Revnet.
-// In V6 revnet project NFTs are owned by the REVOwner singleton
-// (the REVDeployer briefly holds them during deploy).
+// Known singleton addresses that own/deploy V6 revnet project NFTs. In V6 revnet
+// NFTs are owned by the REVOwner singleton; the REVDeployer briefly holds them
+// during deploy. Both use CREATE2 so the addresses are identical on every chain.
+//
+// This list is the OWNER-ONLY FALLBACK path (see isRevnet below). It is
+// deliberately exported and extendable: if a new REVDeployer/REVOwner version
+// ships, add its address here and every owner-based check picks it up. The
+// primary, version-proof signal is the indexer flag consumed by
+// isRevnetProject() — prefer that wherever a project object is available.
+export const REVNET_OWNER_ADDRESSES: readonly string[] = [
+  REV_OWNER.toLowerCase(),
+  REV_DEPLOYER.toLowerCase(),
+]
+
+// Owner-address heuristic for whether a project is a Revnet.
+//
+// LIMITATION: this only recognises the hardcoded REVNET_OWNER_ADDRESSES above.
+// A revnet deployed by a newer/different REVDeployer, or controlled by an owner
+// not in the allowlist, is NOT detected here and every project tab would
+// mis-render it as a plain custom project. When you have the project object,
+// call isRevnetProject(project) instead — it uses the definitive indexer flag
+// and falls back to this heuristic only when the flag is unavailable.
 export function isRevnet(owner: string): boolean {
-  // Both contracts use CREATE2 so the addresses are the same on all chains
-  return owner.toLowerCase() === REV_OWNER.toLowerCase() || owner.toLowerCase() === REV_DEPLOYER.toLowerCase()
+  if (!owner) return false
+  return REVNET_OWNER_ADDRESSES.includes(owner.toLowerCase())
+}
+
+// Definitive revnet detection. Prefer this over isRevnet(owner) everywhere a
+// project object is available.
+//
+// Primary signal: the bendystraw indexer's `isRevnet` boolean, set when the
+// REVDeployer configures the project — version-proof, no address allowlist.
+// Fallback: the owner-address heuristic (isRevnet) for objects that predate the
+// indexer field or came from a query that did not select it.
+export function isRevnetProject(
+  project: { isRevnet?: boolean; owner?: string } | null | undefined
+): boolean {
+  if (!project) return false
+  if (typeof project.isRevnet === 'boolean') return project.isRevnet
+  return project.owner ? isRevnet(project.owner) : false
 }
 
 // Get the contracts for a project by querying JBDirectory.
