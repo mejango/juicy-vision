@@ -124,8 +124,8 @@ export default function ActivityFeed({
         const [project, balanceInfo, payPage, cashOutPage] = await Promise.all([
           fetchProject(projectId, chainIdNum),
           fetchSuckerGroupBalance(projectId, chainIdNum),
-          fetchPayEventsPage(projectId, chainIdNum, 5, PAGE_SIZE * 2),
-          fetchCashOutEventsPage(projectId, chainIdNum, 5, PAGE_SIZE * 2),
+          fetchPayEventsPage(projectId, chainIdNum, 6, PAGE_SIZE * 2),
+          fetchCashOutEventsPage(projectId, chainIdNum, 6, PAGE_SIZE * 2),
         ])
 
         if (project?.name) {
@@ -207,10 +207,10 @@ export default function ActivityFeed({
     try {
       const [payPage, cashOutPage] = await Promise.all([
         payHasMore
-          ? fetchPayEventsPage(projectId, chainIdNum, 5, PAGE_SIZE, payCursor)
+          ? fetchPayEventsPage(projectId, chainIdNum, 6, PAGE_SIZE, payCursor)
           : Promise.resolve(null),
         cashOutHasMore
-          ? fetchCashOutEventsPage(projectId, chainIdNum, 5, PAGE_SIZE, cashOutCursor)
+          ? fetchCashOutEventsPage(projectId, chainIdNum, 6, PAGE_SIZE, cashOutCursor)
           : Promise.resolve(null),
       ])
 
