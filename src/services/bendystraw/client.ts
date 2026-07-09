@@ -3,6 +3,7 @@ import { createPublicClient, http } from 'viem'
 import { useSettingsStore, useDebugStore } from '../../stores'
 // REV_DEPLOYER holds the V6 REVDeployer address; REV_OWNER is the singleton that owns all V6 revnet project NFTs.
 import { VIEM_CHAINS, ZERO_ADDRESS, REV_DEPLOYER, REV_OWNER, JB_CONTRACTS, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
+import { fetchIpfsMetadata } from '../../utils/ipfs'
 import { IS_TESTNET } from '../../config/environment'
 import { createCache, CACHE_DURATIONS, bendystrawCircuit, rpcCircuit } from '../../utils'
 
@@ -379,27 +380,109 @@ export async function getProjectIdsFromReceipts(
   return result
 }
 
-export async function fetchProject(projectId: string, chainId: number = 1, version: number = 6): Promise<Project> {
-  const data = await safeRequest<{ project: Project & { metadata: ProjectMetadata | string } }>(
-    PROJECT_QUERY,
-    { projectId: parseFloat(projectId), chainId: parseFloat(String(chainId)), version: parseFloat(String(version)) },
-    getNetworkOption(chainId)
-  )
+// Minimal ABI fragments for the bendystraw-offline fallback (see fetchProjectOnChain).
+const JB_PROJECTS_OWNER_OF_ABI = [{
+  type: 'function', name: 'ownerOf', stateMutability: 'view',
+  inputs: [{ name: 'tokenId', type: 'uint256' }],
+  outputs: [{ name: '', type: 'address' }],
+}] as const
+const JB_CONTROLLER_URI_OF_ABI = [{
+  type: 'function', name: 'uriOf', stateMutability: 'view',
+  inputs: [{ name: 'projectId', type: 'uint256' }],
+  outputs: [{ name: '', type: 'string' }],
+}] as const
 
-  const project = data.project
-  if (!project) {
-    throw new Error(`Project ${projectId} not found on chain ${chainId}`)
+/**
+ * Contract fallback for {@link fetchProject} when bendystraw is unavailable
+ * (circuit open) or hasn't indexed a project yet. Bendystraw is the efficient
+ * primary; this only runs when it fails, reconstructing the critical fields from
+ * chain so the page renders instead of going blank: owner (JBProjects.ownerOf),
+ * name/description/logo (JBController.uriOf → IPFS), and isRevnet (owner-based).
+ * Indexer-only fields (volume, paymentsCount, balance, createdAt) have no cheap
+ * contract equivalent and degrade to defaults. Returns null when the project
+ * genuinely doesn't exist on chain (ownerOf reverts).
+ */
+async function fetchProjectOnChain(projectId: string, chainId: number): Promise<Project | null> {
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) return null
+  try {
+    const owner = await publicClient.readContract({
+      address: JB_CONTRACTS.JBProjects,
+      abi: JB_PROJECTS_OWNER_OF_ABI,
+      functionName: 'ownerOf',
+      args: [BigInt(projectId)],
+    })
+
+    let metadataUri = ''
+    try {
+      metadataUri = await publicClient.readContract({
+        address: JB_CONTRACTS.JBController,
+        abi: JB_CONTROLLER_URI_OF_ABI,
+        functionName: 'uriOf',
+        args: [BigInt(projectId)],
+      })
+    } catch {
+      // uri is optional — a project can exist without metadata
+    }
+
+    const metadata = metadataUri ? await fetchIpfsMetadata(metadataUri) : null
+
+    return {
+      id: `${chainId}-${projectId}`,
+      projectId: parseInt(projectId),
+      chainId,
+      version: 6,
+      owner: owner as string,
+      metadataUri: metadataUri || undefined,
+      metadata: (metadata as ProjectMetadata | null) || undefined,
+      name: metadata?.name || `Project #${projectId}`,
+      description: metadata?.description,
+      logoUri: metadata?.logoUri,
+      isRevnet: isRevnet(owner as string),
+      tokenSymbol: metadata?.tokenSymbol,
+      // Indexer-only fields — unavailable when bendystraw is down; degrade
+      // gracefully rather than block the page.
+      volume: '0',
+      balance: '0',
+      paymentsCount: 0,
+      createdAt: 0,
+    } as Project
+  } catch {
+    // ownerOf reverted → the project doesn't exist on this chain.
+    return null
   }
-  // metadata comes back as JSON scalar, parse if string
-  const metadata: ProjectMetadata | undefined =
-    typeof project.metadata === 'string' ? JSON.parse(project.metadata) : project.metadata
+}
 
-  return {
-    ...project,
-    metadata,
-    name: metadata?.name || `Project #${projectId}`,
-    description: metadata?.description,
-    logoUri: metadata?.logoUri,
+export async function fetchProject(projectId: string, chainId: number = 1, version: number = 6): Promise<Project> {
+  try {
+    const data = await safeRequest<{ project: Project & { metadata: ProjectMetadata | string } }>(
+      PROJECT_QUERY,
+      { projectId: parseFloat(projectId), chainId: parseFloat(String(chainId)), version: parseFloat(String(version)) },
+      getNetworkOption(chainId)
+    )
+
+    const project = data.project
+    if (!project) {
+      throw new Error(`Project ${projectId} not found on chain ${chainId}`)
+    }
+    // metadata comes back as JSON scalar, parse if string
+    const metadata: ProjectMetadata | undefined =
+      typeof project.metadata === 'string' ? JSON.parse(project.metadata) : project.metadata
+
+    return {
+      ...project,
+      metadata,
+      name: metadata?.name || `Project #${projectId}`,
+      description: metadata?.description,
+      logoUri: metadata?.logoUri,
+    }
+  } catch (err) {
+    // Bendystraw down (circuit open) or the project isn't indexed — fall back to
+    // on-chain reads so the page stays alive. Rethrow only if the project truly
+    // can't be found on chain either.
+    const onChain = await fetchProjectOnChain(projectId, chainId)
+    if (onChain) return onChain
+    throw err
   }
 }
 
