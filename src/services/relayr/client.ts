@@ -1,4 +1,5 @@
 import { useSettingsStore } from '../../stores'
+import type { JBDeployTiersHookConfig } from '../omnichainDeployer'
 import { RELAYR_API_KEY } from '../../config/environment'
 import {
   encodePayTransaction,
@@ -1069,6 +1070,8 @@ export interface JBDeployRevnetRequest {
     beneficiary: string
     count: number                       // Number of tokens to mint
   }>
+  /** When set, deploys a 721 tiers hook (NFT shop) atomically via the 6-arg deployFor. */
+  deployTiersHookConfig?: JBDeployTiersHookConfig
 }
 
 export interface JBDeployRevnetResponse {

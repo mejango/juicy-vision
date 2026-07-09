@@ -51,10 +51,12 @@ const CUSTOM_STEPS: { id: StepId; label: string }[] = [
   { id: 'deploy', label: 'Deploy' },
 ]
 
-// Revnet flavor: Basics → Stages → Deploy. Shop is gated (no REVDeployer 721 overload yet).
+// Revnet flavor: Basics → Stages → Shop → Deploy. Shop deploys 721 tiers via the
+// 6-arg REVDeployer.deployFor overload atomically with the revnet.
 const REVNET_STEPS: { id: StepId; label: string }[] = [
   { id: 'basics', label: 'Basics' },
   { id: 'stages', label: 'Stages' },
+  { id: 'shop', label: 'Shop' },
   { id: 'deploy', label: 'Deploy' },
 ]
 
@@ -628,13 +630,9 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
       return
     }
 
-    // Revnet routes straight to DeployRevnetModal (no 721 path).
-    if (flavor === 'revnet') {
-      setShowModal(true)
-      return
-    }
-
-    // Custom: build the 721 tiers config (pinning metadata) when the shop has items.
+    // Both flavors: build the 721 tiers config (pinning metadata) when the shop
+    // has items. Custom launches it via JBOmnichainDeployer; revnet via the 6-arg
+    // REVDeployer.deployFor overload — both consume the same JBDeployTiersHookConfig.
     if (activeTierCount > 0) {
       setBuildingTiers(true)
       try {
@@ -656,7 +654,7 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
       setDeployTiersConfig(undefined)
     }
     setShowModal(true)
-  }, [isValid, isConnected, isManagedMode, flavor, activeTierCount, formState.tiers, formState.name, formState.symbol, projectUri, pinataJwt])
+  }, [isValid, isConnected, isManagedMode, activeTierCount, formState.tiers, formState.name, formState.symbol, projectUri, pinataJwt])
 
   // --- shared class helpers ---
   const cardClass = `p-3 mb-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`
@@ -1329,6 +1327,7 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
         chainIds={selectedChains}
         stageConfigurations={stageConfigurations}
         autoDeploySuckers={autoDeploySuckers}
+        deployTiersHookConfig={deployTiersConfig}
       />
     </div>
   )

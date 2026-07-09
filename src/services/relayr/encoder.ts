@@ -17,6 +17,9 @@ import {
   REV_DEPLOYER_ADDRESS,
   NATIVE_TOKEN,
 } from '../../constants/abis'
+// Type-only import (erased at compile time) — avoids a runtime cycle with the
+// relayr barrel that omnichainDeployer imports.
+import type { JBDeployTiersHookConfig, JB721TierConfig } from '../omnichainDeployer'
 
 // ============================================================================
 // Types (matching client.ts interfaces)
@@ -461,6 +464,12 @@ export interface JBDeployRevnetRequest {
   }>
   /** V6: deployFor is payable (project creation fee). Wei value, defaults to '0'. */
   creationFeeWei?: string
+  /**
+   * V6: when set, encodes the 6-arg REVDeployer.deployFor overload so the revnet
+   * deploys with a 721 tiers hook (NFT shop) atomically. Croptop allowedPosts is
+   * left empty.
+   */
+  deployTiersHookConfig?: JBDeployTiersHookConfig
 }
 
 export interface JBDeploySuckersRequest {
@@ -545,6 +554,73 @@ export function encodeLaunchProjectTransaction(
   }
 }
 
+// Mirrors omnichainDeployer.formatTierConfig — the V6 JB721TierConfig tuple
+// (nested flags, encodedIpfsUri casing, splitPercent + splits). Duplicated here
+// rather than imported to keep the revnet encoder free of a runtime import cycle
+// with the relayr barrel. The on-chain ABI is frozen, so drift risk is nil.
+function toRevTierTuple(tier: JB721TierConfig) {
+  return {
+    price: BigInt(tier.price),
+    initialSupply: tier.initialSupply,
+    votingUnits: tier.votingUnits,
+    reserveFrequency: tier.reserveFrequency,
+    reserveBeneficiary: tier.reserveBeneficiary as Address,
+    encodedIpfsUri: tier.encodedIPFSUri as Hex,
+    category: tier.category,
+    discountPercent: tier.discountPercent,
+    flags: {
+      allowOwnerMint: tier.allowOwnerMint,
+      useReserveBeneficiaryAsDefault: tier.useReserveBeneficiaryAsDefault,
+      transfersPausable: tier.transfersPausable,
+      useVotingUnits: tier.useVotingUnits,
+      cantBeRemoved: tier.cannotBeRemoved,
+      cantIncreaseDiscountPercent: tier.cannotIncreaseDiscountPercent,
+      cantBuyWithCredits: tier.cannotBuyWithCredits ?? false,
+    },
+    splitPercent: tier.splitPercent ?? 0,
+    splits: (tier.splits ?? []).map(s => ({
+      percent: s.percent,
+      projectId: BigInt(s.projectId),
+      beneficiary: s.beneficiary as Address,
+      preferAddToBalance: s.preferAddToBalance,
+      lockedUntil: s.lockedUntil,
+      hook: (s.hook || ZERO_ADDRESS) as Address,
+    })),
+  }
+}
+
+// Build the REVDeploy721TiersHookConfig tuple (baseline hook + salt + 4
+// preventOperator* flags). REV721TiersHookFlags is the 4-flag subset of the
+// JB721 hook flags (no issueTokensForSplits). preventOperator* default false —
+// the wizard's split operator keeps full post-deploy control of the tiers.
+function toRevTiered721Config(config: JBDeployTiersHookConfig, salt: Hex) {
+  return {
+    baseline721HookConfiguration: {
+      name: config.name,
+      symbol: config.symbol,
+      baseUri: config.baseUri,
+      tokenUriResolver: config.tokenUriResolver as Address,
+      contractUri: config.contractUri,
+      tiersConfig: {
+        tiers: config.tiersConfig.tiers.map(toRevTierTuple),
+        currency: config.tiersConfig.currency,
+        decimals: config.tiersConfig.decimals,
+      },
+      flags: {
+        noNewTiersWithReserves: config.flags.noNewTiersWithReserves,
+        noNewTiersWithVotes: config.flags.noNewTiersWithVotes,
+        noNewTiersWithOwnerMinting: config.flags.noNewTiersWithOwnerMinting,
+        preventOverspending: config.flags.preventOverspending,
+      },
+    },
+    salt,
+    preventOperatorAdjustingTiers: false,
+    preventOperatorUpdatingMetadata: false,
+    preventOperatorMinting: false,
+    preventOperatorIncreasingDiscountPercent: false,
+  }
+}
+
 /**
  * Encode REVDeployer.deployFor() calldata (Juicebox V6).
  *
@@ -600,16 +676,25 @@ export function encodeDeployRevnetTransaction(
 
   const suckerConfig = toSuckerConfigTuple(request.suckerDeploymentConfiguration)
 
+  // Base overload args (revnetId, configuration, accountingContexts, suckerConfig).
+  // When the shop has tiers, append the 721 hook config + empty Croptop posts to
+  // hit the 6-arg deployFor overload — viem selects the overload by arity.
+  const args = request.deployTiersHookConfig
+    ? [
+        BigInt(revnetId),
+        configuration,
+        contexts,
+        suckerConfig,
+        toRevTiered721Config(request.deployTiersHookConfig, request.description.salt as Hex),
+        [], // allowedPosts (Croptop) — none from the wizard
+      ]
+    : [BigInt(revnetId), configuration, contexts, suckerConfig]
+
   const data = encodeFunctionData({
     abi: REV_DEPLOYER_ABI,
     functionName: 'deployFor',
-    args: [
-      BigInt(revnetId),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      configuration as any, // Complex struct - viem handles conversion
-      contexts,
-      suckerConfig,
-    ],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    args: args as any, // Complex struct + overload arity - viem handles conversion
   })
 
   return {
@@ -619,7 +704,8 @@ export function encodeDeployRevnetTransaction(
       value: request.creationFeeWei || '0',
       chainId,
     },
-    estimatedGas: '3000000', // Revnet deployment is complex
+    // 721 hook deployment adds a second contract creation to the revnet deploy.
+    estimatedGas: request.deployTiersHookConfig ? '4500000' : '3000000',
     description: `Deploy revnet ${request.description.name}`,
   }
 }

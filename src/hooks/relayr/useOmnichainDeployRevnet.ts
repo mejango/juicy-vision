@@ -10,6 +10,7 @@ import {
   type REVChainConfigOverride,
   type JBTerminalConfig,
 } from '../../services/relayr'
+import type { JBDeployTiersHookConfig } from '../../services/omnichainDeployer'
 import { getProjectIdsFromReceipts } from '../../services/bendystraw'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
@@ -32,6 +33,8 @@ export interface OmnichainDeployRevnetParams {
     beneficiary: string
     count: number
   }>
+  /** When set, deploys a 721 tiers hook (NFT shop) atomically with the revnet. */
+  deployTiersHookConfig?: JBDeployTiersHookConfig
 }
 
 export interface UseOmnichainDeployRevnetReturn {
@@ -186,6 +189,7 @@ export function useOmnichainDeployRevnet(
       chainConfigs,
       suckerDeploymentConfiguration,
       initialTokenReceivers,
+      deployTiersHookConfig,
     } = params
 
     // Use managed wallet as operator if not specified in managed mode
@@ -218,6 +222,7 @@ export function useOmnichainDeployRevnet(
         chainConfigs,
         suckerDeploymentConfiguration,
         initialTokenReceivers,
+        deployTiersHookConfig,
       }
 
       const deployResponse = await buildOmnichainDeployRevnetTransactions(deployRequest)
