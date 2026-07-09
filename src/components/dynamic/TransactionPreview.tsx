@@ -687,7 +687,7 @@ function SuckerConfigSection({
               <select
                 value={selectedChain}
                 onChange={(e) => setSelectedChain(Number(e.target.value))}
-                className={`text-xs px-2 py-0.5 rounded border ${
+                className={`text-xs select-caret pl-2 pr-6 py-0.5 rounded border ${
                   isDark
                     ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-300'
                     : 'bg-yellow-50 border-yellow-200 text-yellow-700'
@@ -879,7 +879,7 @@ function TiersHookConfigSection({
               <select
                 value={selectedChain}
                 onChange={(e) => setSelectedChain(Number(e.target.value))}
-                className={`text-xs px-2 py-0.5 rounded border ${
+                className={`text-xs select-caret pl-2 pr-6 py-0.5 rounded border ${
                   isDark
                     ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-300'
                     : 'bg-yellow-50 border-yellow-200 text-yellow-700'

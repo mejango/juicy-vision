@@ -227,7 +227,7 @@ export default function Storefront({
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortOption)}
-            className={`px-3 py-1.5 text-sm border ${
+            className={`select-caret pl-3 pr-6 py-1.5 text-sm border ${
               isDark
                 ? 'bg-juice-dark border-white/10 text-white'
                 : 'bg-white border-gray-200 text-gray-900'
@@ -244,7 +244,7 @@ export default function Storefront({
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className={`px-3 py-1.5 text-sm border ${
+              className={`select-caret pl-3 pr-6 py-1.5 text-sm border ${
                 isDark
                   ? 'bg-juice-dark border-white/10 text-white'
                   : 'bg-white border-gray-200 text-gray-900'
