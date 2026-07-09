@@ -5,6 +5,7 @@ import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { useOmnichainDeployRevnet, useOmnichainDeploySuckers } from '../../hooks/relayr'
 import { type REVStageConfig } from '../../services/relayr'
+import type { JBDeployTiersHookConfig } from '../../services/omnichainDeployer'
 import { CHAINS, EXPLORER_URLS, REV_DEPLOYER, JB_SUCKER_REGISTRY } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
@@ -28,6 +29,8 @@ interface DeployRevnetModalProps {
   chainIds: number[]
   stageConfigurations: REVStageConfig[]
   autoDeploySuckers: boolean
+  /** Optional 721 tiers hook (NFT shop) to deploy atomically with the revnet. */
+  deployTiersHookConfig?: JBDeployTiersHookConfig
 }
 
 type DeployPhase = 'revnet' | 'suckers' | 'complete'
@@ -42,6 +45,7 @@ export default function DeployRevnetModal({
   chainIds,
   stageConfigurations,
   autoDeploySuckers,
+  deployTiersHookConfig,
 }: DeployRevnetModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -182,8 +186,9 @@ export default function DeployRevnetModal({
       name,
       ticker,
       tagline,
+      deployTiersHookConfig,
     })
-  }, [splitOperator, chainIds, stageConfigurations, name, ticker, tagline, deploy])
+  }, [splitOperator, chainIds, stageConfigurations, name, ticker, tagline, deployTiersHookConfig, deploy])
 
   const handleClose = useCallback(() => {
     resetRevnet()
