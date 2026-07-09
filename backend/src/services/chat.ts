@@ -192,6 +192,10 @@ export interface ImportMessageParams {
   senderUserId?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  // Optional explicit id. Used so a streamed AI response persists under the same
+  // id the tokens streamed to — the client dedupes by id instead of rendering the
+  // streamed message and the persisted message as two separate replies.
+  id?: string;
 }
 
 // ============================================================================
@@ -1095,7 +1099,7 @@ export async function sendMessage(params: SendMessageParams): Promise<ChatMessag
  * Used when migrating local chats to persistent storage
  */
 export async function importMessage(params: ImportMessageParams): Promise<ChatMessage> {
-  const { chatId, senderAddress, senderUserId, role, content } = params;
+  const { chatId, senderAddress, senderUserId, role, content, id } = params;
 
   const chat = await getChatById(chatId);
   if (!chat) throw new Error('Chat not found');
@@ -1103,15 +1107,26 @@ export async function importMessage(params: ImportMessageParams): Promise<ChatMe
   // Estimate token count for context management
   const tokenCount = estimateTokenCount(content);
 
-  // Insert message directly without permission checks
-  const result = await query<{ id: string }>(
-    `INSERT INTO multi_chat_messages (
-       chat_id, sender_address, sender_user_id, role, content,
-       is_encrypted, signature, reply_to_id, token_count
-     ) VALUES ($1, $2, $3, $4, $5, FALSE, NULL, NULL, $6)
-     RETURNING id`,
-    [chatId, senderAddress, senderUserId ?? null, role, content, tokenCount]
-  );
+  // Insert message directly without permission checks. When an explicit id is
+  // provided (streamed AI response), insert under it so the client can reconcile
+  // the streamed message with the persisted one instead of rendering both.
+  const result = id
+    ? await query<{ id: string }>(
+        `INSERT INTO multi_chat_messages (
+           id, chat_id, sender_address, sender_user_id, role, content,
+           is_encrypted, signature, reply_to_id, token_count
+         ) VALUES ($1, $2, $3, $4, $5, $6, FALSE, NULL, NULL, $7)
+         RETURNING id`,
+        [id, chatId, senderAddress, senderUserId ?? null, role, content, tokenCount]
+      )
+    : await query<{ id: string }>(
+        `INSERT INTO multi_chat_messages (
+           chat_id, sender_address, sender_user_id, role, content,
+           is_encrypted, signature, reply_to_id, token_count
+         ) VALUES ($1, $2, $3, $4, $5, FALSE, NULL, NULL, $6)
+         RETURNING id`,
+        [chatId, senderAddress, senderUserId ?? null, role, content, tokenCount]
+      );
 
   const messageId = result[0].id;
 

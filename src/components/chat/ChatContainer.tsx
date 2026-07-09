@@ -466,7 +466,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           const aiMessage = await chatApi.invokeAi(chatId, content, undefined, true)
           if (aiMessage) {
             const chat = useChatStore.getState().chats.find(c => c.id === chatId)
-            if (!chat?.messages?.some(m => m.id === aiMessage.id)) {
+            if (chat?.messages?.some(m => m.id === aiMessage.id)) {
+              // Reconcile the streamed placeholder with the final persisted content
+              // instead of appending a second copy.
+              useChatStore.getState().updateMessage(chatId!, aiMessage.id, {
+                content: aiMessage.content,
+                isStreaming: false,
+              })
+            } else {
               addChatMessage(chatId!, { ...aiMessage, isStreaming: false })
             }
             setWaitingForAiChatId(null)
@@ -527,7 +534,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           const aiMessage = await chatApi.invokeAi(chatId!, content, attachmentData)
           if (aiMessage) {
             const chat = useChatStore.getState().chats.find(c => c.id === chatId)
-            if (!chat?.messages?.some(m => m.id === aiMessage.id)) {
+            if (chat?.messages?.some(m => m.id === aiMessage.id)) {
+              // The streamed placeholder already exists under this id — reconcile it
+              // with the final persisted content (cleaned, confidence tag stripped)
+              // instead of appending a second copy.
+              useChatStore.getState().updateMessage(chatId!, aiMessage.id, {
+                content: aiMessage.content,
+                isStreaming: false,
+              })
+            } else {
               addChatMessage(chatId!, { ...aiMessage, isStreaming: false })
             }
             setWaitingForAiChatId(null)
