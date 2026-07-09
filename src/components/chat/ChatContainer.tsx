@@ -1141,14 +1141,16 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             }
             break
           }
-          case 'member_joined':
+          case 'member_joined': {
             const joinedMember = msg.data as ChatMember
             useChatStore.getState().addMember(targetChatId, joinedMember)
             break
-          case 'member_left':
+          }
+          case 'member_left': {
             const leftData = msg.data as { address: string }
             useChatStore.getState().removeMember(targetChatId, leftData.address)
             break
+          }
           case 'presence': {
             const presenceData = msg.data as { address: string; status: 'online' | 'offline' }
             useChatStore.getState().updatePresence(targetChatId, presenceData.address, presenceData.status === 'online')

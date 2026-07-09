@@ -1146,7 +1146,7 @@ export default function RulesetSchedule({
               if (baseForFuture && baseForFuture.duration > 0) {
                 // Generate up to 20 future cycles
                 const futureCycles: RulesetHistoryEntry[] = []
-                let prevCycle = baseForFuture
+                const prevCycle = baseForFuture
                 const decayMultiplier = 1 - (baseForFuture.weightCutPercent / 1e9)
 
                 for (let i = 0; i < 20; i++) {
@@ -1278,7 +1278,7 @@ export default function RulesetSchedule({
                       const maxDots = 7
                       const halfWindow = Math.floor(maxDots / 2)
                       let startIdx = Math.max(0, displayViewingIndex - halfWindow)
-                      let endIdx = Math.min(displayCycles.length, startIdx + maxDots)
+                      const endIdx = Math.min(displayCycles.length, startIdx + maxDots)
                       // Adjust start if we're near the end
                       if (endIdx - startIdx < maxDots) {
                         startIdx = Math.max(0, endIdx - maxDots)

@@ -442,15 +442,11 @@ export const useAuthStore = create<AuthState>()(
         const state = get()
         if (!state.token) return
 
-        try {
-          await passkeyDelete(state.token, id)
-          set({ passkeys: state.passkeys.filter((p) => p.id !== id) })
-          // Check if user still has passkeys
-          if (state.passkeys.length <= 1 && state.user) {
-            set({ user: { ...state.user, passkeyEnabled: false } })
-          }
-        } catch (error) {
-          throw error
+        await passkeyDelete(state.token, id)
+        set({ passkeys: state.passkeys.filter((p) => p.id !== id) })
+        // Check if user still has passkeys
+        if (state.passkeys.length <= 1 && state.user) {
+          set({ user: { ...state.user, passkeyEnabled: false } })
         }
       },
 
@@ -458,16 +454,12 @@ export const useAuthStore = create<AuthState>()(
         const state = get()
         if (!state.token) return
 
-        try {
-          await passkeyRename(state.token, id, displayName)
-          set({
-            passkeys: state.passkeys.map((p) =>
-              p.id === id ? { ...p, displayName } : p
-            ),
-          })
-        } catch (error) {
-          throw error
-        }
+        await passkeyRename(state.token, id, displayName)
+        set({
+          passkeys: state.passkeys.map((p) =>
+            p.id === id ? { ...p, displayName } : p
+          ),
+        })
       },
 
       isPasskeyAvailable: () => isPasskeySupported(),
