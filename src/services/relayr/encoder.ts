@@ -450,6 +450,7 @@ export interface JBDeployRevnetRequest {
   splitOperator: string
   description: {
     name: string
+    ticker?: string
     tagline: string
     salt: string
   }
@@ -565,7 +566,9 @@ export function encodeDeployRevnetTransaction(
   const configuration = {
     description: {
       name: request.description.name,
-      ticker: request.description.tagline,
+      // ERC-20 symbol: use the explicit ticker; fall back to tagline for legacy
+      // callers (CreateRevnetForm) that don't collect one.
+      ticker: request.description.ticker || request.description.tagline,
       uri: '', // Project URI - typically IPFS
       salt: request.description.salt as Hex,
     },

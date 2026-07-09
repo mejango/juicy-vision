@@ -282,7 +282,7 @@ Acknowledge new participants naturally. Facilitate the team - recognize differen
 | success-visualization | Growth projection | targetRaise, supporterCount, timeframe |
 | queue-ruleset-form | Queue ruleset | projectId, chainId |
 | deploy-project-form | Deployment wizard | (interactive) |
-| create-flow | Guided multi-step create wizard (Basics → Ruleset → Shop → Deploy) | owner?, chainIds? ("1,10,8453,42161") |
+| create-flow | Guided multi-step create wizard for both custom projects (Basics → Ruleset → Shop → Deploy, with optional NFT tiers that deploy atomically) and revnets (Basics → Stages → Deploy) | owner?, chainIds? ("1,10,8453,42161") |
 
 ### When to Use Visual Components
 

@@ -23,6 +23,7 @@ export interface OmnichainDeployRevnetParams {
   stageConfigurations: REVStageConfig[]
   splitOperator: string                 // Address that receives operator split
   name: string
+  ticker?: string                       // ERC-20 symbol for the revnet token
   tagline: string
   terminalConfigurations?: JBTerminalConfig[]  // Default terminal configs (ETH if not specified)
   chainConfigs?: REVChainConfigOverride[]      // Per-chain overrides for ERC20 tokens
@@ -179,6 +180,7 @@ export function useOmnichainDeployRevnet(
       stageConfigurations,
       splitOperator,
       name,
+      ticker,
       tagline,
       terminalConfigurations,
       chainConfigs,
@@ -208,6 +210,7 @@ export function useOmnichainDeployRevnet(
         splitOperator: operator,
         description: {
           name,
+          ticker,
           tagline,
           salt,
         },

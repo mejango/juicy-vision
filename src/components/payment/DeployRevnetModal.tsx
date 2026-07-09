@@ -22,6 +22,7 @@ interface DeployRevnetModalProps {
   isOpen: boolean
   onClose: () => void
   name: string
+  ticker?: string
   tagline: string
   splitOperator: string
   chainIds: number[]
@@ -35,6 +36,7 @@ export default function DeployRevnetModal({
   isOpen,
   onClose,
   name,
+  ticker,
   tagline,
   splitOperator,
   chainIds,
@@ -178,9 +180,10 @@ export default function DeployRevnetModal({
       stageConfigurations,
       splitOperator,
       name,
+      ticker,
       tagline,
     })
-  }, [splitOperator, chainIds, stageConfigurations, name, tagline, deploy])
+  }, [splitOperator, chainIds, stageConfigurations, name, ticker, tagline, deploy])
 
   const handleClose = useCallback(() => {
     resetRevnet()

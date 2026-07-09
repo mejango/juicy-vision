@@ -669,6 +669,464 @@ function formatDeploy721Config(config: JBDeployTiersHookConfig, salt: `0x${strin
 }
 
 /**
+ * ABI containing ONLY the 721 launchProjectFor overload of JBOmnichainDeployer (V6).
+ *
+ * The `rulesetConfigurations.metadata` components are copied verbatim from
+ * JB_OMNICHAIN_DEPLOYER_ABI.launchProjectFor (the FULL JBRulesetMetadata variant —
+ * has scopeCashOutsToLocalBalances / useDataHookForPay / useDataHookForCashOut /
+ * dataHook) so the tuple hashing matches exactly what formatRulesetConfigurations
+ * produces for the non-721 encoder. Keeping this ABI to a single overload avoids
+ * viem overload-resolution ambiguity when encoding.
+ */
+const JB_OMNICHAIN_DEPLOYER_721_ABI = [
+  {
+    "type": "function",
+    "name": "launchProjectFor",
+    "inputs": [
+      { "name": "owner", "type": "address", "internalType": "address" },
+      { "name": "projectUri", "type": "string", "internalType": "string" },
+      {
+        "name": "deploy721Config",
+        "type": "tuple",
+        "internalType": "struct JBOmnichain721Config",
+        "components": [
+          {
+            "name": "deployTiersHookConfig",
+            "type": "tuple",
+            "internalType": "struct JBDeploy721TiersHookConfig",
+            "components": [
+              { "name": "name", "type": "string", "internalType": "string" },
+              { "name": "symbol", "type": "string", "internalType": "string" },
+              { "name": "baseUri", "type": "string", "internalType": "string" },
+              { "name": "tokenUriResolver", "type": "address", "internalType": "contract IJB721TokenUriResolver" },
+              { "name": "contractUri", "type": "string", "internalType": "string" },
+              {
+                "name": "tiersConfig",
+                "type": "tuple",
+                "internalType": "struct JB721InitTiersConfig",
+                "components": [
+                  {
+                    "name": "tiers",
+                    "type": "tuple[]",
+                    "internalType": "struct JB721TierConfig[]",
+                    "components": [
+                      { "name": "price", "type": "uint104", "internalType": "uint104" },
+                      { "name": "initialSupply", "type": "uint32", "internalType": "uint32" },
+                      { "name": "votingUnits", "type": "uint32", "internalType": "uint32" },
+                      { "name": "reserveFrequency", "type": "uint16", "internalType": "uint16" },
+                      { "name": "reserveBeneficiary", "type": "address", "internalType": "address" },
+                      { "name": "encodedIpfsUri", "type": "bytes32", "internalType": "bytes32" },
+                      { "name": "category", "type": "uint24", "internalType": "uint24" },
+                      { "name": "discountPercent", "type": "uint8", "internalType": "uint8" },
+                      {
+                        "name": "flags",
+                        "type": "tuple",
+                        "internalType": "struct JB721TierConfigFlags",
+                        "components": [
+                          { "name": "allowOwnerMint", "type": "bool", "internalType": "bool" },
+                          { "name": "useReserveBeneficiaryAsDefault", "type": "bool", "internalType": "bool" },
+                          { "name": "transfersPausable", "type": "bool", "internalType": "bool" },
+                          { "name": "useVotingUnits", "type": "bool", "internalType": "bool" },
+                          { "name": "cantBeRemoved", "type": "bool", "internalType": "bool" },
+                          { "name": "cantIncreaseDiscountPercent", "type": "bool", "internalType": "bool" },
+                          { "name": "cantBuyWithCredits", "type": "bool", "internalType": "bool" }
+                        ]
+                      },
+                      { "name": "splitPercent", "type": "uint32", "internalType": "uint32" },
+                      {
+                        "name": "splits",
+                        "type": "tuple[]",
+                        "internalType": "struct JBSplit[]",
+                        "components": [
+                          { "name": "percent", "type": "uint32", "internalType": "uint32" },
+                          { "name": "projectId", "type": "uint64", "internalType": "uint64" },
+                          { "name": "beneficiary", "type": "address", "internalType": "address payable" },
+                          { "name": "preferAddToBalance", "type": "bool", "internalType": "bool" },
+                          { "name": "lockedUntil", "type": "uint48", "internalType": "uint48" },
+                          { "name": "hook", "type": "address", "internalType": "contract IJBSplitHook" }
+                        ]
+                      }
+                    ]
+                  },
+                  { "name": "currency", "type": "uint32", "internalType": "uint32" },
+                  { "name": "decimals", "type": "uint8", "internalType": "uint8" }
+                ]
+              },
+              {
+                "name": "flags",
+                "type": "tuple",
+                "internalType": "struct JB721TiersHookFlags",
+                "components": [
+                  { "name": "noNewTiersWithReserves", "type": "bool", "internalType": "bool" },
+                  { "name": "noNewTiersWithVotes", "type": "bool", "internalType": "bool" },
+                  { "name": "noNewTiersWithOwnerMinting", "type": "bool", "internalType": "bool" },
+                  { "name": "preventOverspending", "type": "bool", "internalType": "bool" },
+                  { "name": "issueTokensForSplits", "type": "bool", "internalType": "bool" }
+                ]
+              }
+            ]
+          },
+          { "name": "useDataHookForCashOut", "type": "bool", "internalType": "bool" },
+          { "name": "salt", "type": "bytes32", "internalType": "bytes32" }
+        ]
+      },
+      {
+        "name": "rulesetConfigurations",
+        "type": "tuple[]",
+        "internalType": "struct JBRulesetConfig[]",
+        "components": [
+          { "name": "mustStartAtOrAfter", "type": "uint48", "internalType": "uint48" },
+          { "name": "duration", "type": "uint32", "internalType": "uint32" },
+          { "name": "weight", "type": "uint112", "internalType": "uint112" },
+          { "name": "weightCutPercent", "type": "uint32", "internalType": "uint32" },
+          { "name": "approvalHook", "type": "address", "internalType": "contract IJBRulesetApprovalHook" },
+          {
+            "name": "metadata",
+            "type": "tuple",
+            "internalType": "struct JBRulesetMetadata",
+            "components": [
+              { "name": "reservedPercent", "type": "uint16", "internalType": "uint16" },
+              { "name": "cashOutTaxRate", "type": "uint16", "internalType": "uint16" },
+              { "name": "baseCurrency", "type": "uint32", "internalType": "uint32" },
+              { "name": "pausePay", "type": "bool", "internalType": "bool" },
+              { "name": "pauseCreditTransfers", "type": "bool", "internalType": "bool" },
+              { "name": "allowOwnerMinting", "type": "bool", "internalType": "bool" },
+              { "name": "allowSetCustomToken", "type": "bool", "internalType": "bool" },
+              { "name": "allowTerminalMigration", "type": "bool", "internalType": "bool" },
+              { "name": "allowSetTerminals", "type": "bool", "internalType": "bool" },
+              { "name": "allowSetController", "type": "bool", "internalType": "bool" },
+              { "name": "allowAddAccountingContext", "type": "bool", "internalType": "bool" },
+              { "name": "allowAddPriceFeed", "type": "bool", "internalType": "bool" },
+              { "name": "ownerMustSendPayouts", "type": "bool", "internalType": "bool" },
+              { "name": "holdFees", "type": "bool", "internalType": "bool" },
+              { "name": "scopeCashOutsToLocalBalances", "type": "bool", "internalType": "bool" },
+              { "name": "useDataHookForPay", "type": "bool", "internalType": "bool" },
+              { "name": "useDataHookForCashOut", "type": "bool", "internalType": "bool" },
+              { "name": "dataHook", "type": "address", "internalType": "address" },
+              { "name": "metadata", "type": "uint16", "internalType": "uint16" }
+            ]
+          },
+          {
+            "name": "splitGroups",
+            "type": "tuple[]",
+            "internalType": "struct JBSplitGroup[]",
+            "components": [
+              { "name": "groupId", "type": "uint256", "internalType": "uint256" },
+              {
+                "name": "splits",
+                "type": "tuple[]",
+                "internalType": "struct JBSplit[]",
+                "components": [
+                  { "name": "percent", "type": "uint32", "internalType": "uint32" },
+                  { "name": "projectId", "type": "uint64", "internalType": "uint64" },
+                  { "name": "beneficiary", "type": "address", "internalType": "address payable" },
+                  { "name": "preferAddToBalance", "type": "bool", "internalType": "bool" },
+                  { "name": "lockedUntil", "type": "uint48", "internalType": "uint48" },
+                  { "name": "hook", "type": "address", "internalType": "contract IJBSplitHook" }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "fundAccessLimitGroups",
+            "type": "tuple[]",
+            "internalType": "struct JBFundAccessLimitGroup[]",
+            "components": [
+              { "name": "terminal", "type": "address", "internalType": "address" },
+              { "name": "token", "type": "address", "internalType": "address" },
+              {
+                "name": "payoutLimits",
+                "type": "tuple[]",
+                "internalType": "struct JBCurrencyAmount[]",
+                "components": [
+                  { "name": "amount", "type": "uint224", "internalType": "uint224" },
+                  { "name": "currency", "type": "uint32", "internalType": "uint32" }
+                ]
+              },
+              {
+                "name": "surplusAllowances",
+                "type": "tuple[]",
+                "internalType": "struct JBCurrencyAmount[]",
+                "components": [
+                  { "name": "amount", "type": "uint224", "internalType": "uint224" },
+                  { "name": "currency", "type": "uint32", "internalType": "uint32" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "terminalConfigurations",
+        "type": "tuple[]",
+        "internalType": "struct JBTerminalConfig[]",
+        "components": [
+          { "name": "terminal", "type": "address", "internalType": "contract IJBTerminal" },
+          {
+            "name": "accountingContextsToAccept",
+            "type": "tuple[]",
+            "internalType": "struct JBAccountingContext[]",
+            "components": [
+              { "name": "token", "type": "address", "internalType": "address" },
+              { "name": "decimals", "type": "uint8", "internalType": "uint8" },
+              { "name": "currency", "type": "uint32", "internalType": "uint32" }
+            ]
+          }
+        ]
+      },
+      { "name": "memo", "type": "string", "internalType": "string" },
+      {
+        "name": "suckerDeploymentConfiguration",
+        "type": "tuple",
+        "internalType": "struct JBSuckerDeploymentConfig",
+        "components": [
+          {
+            "name": "deployerConfigurations",
+            "type": "tuple[]",
+            "internalType": "struct JBSuckerDeployerConfig[]",
+            "components": [
+              { "name": "deployer", "type": "address", "internalType": "contract IJBSuckerDeployer" },
+              { "name": "peer", "type": "bytes32", "internalType": "bytes32" },
+              {
+                "name": "mappings",
+                "type": "tuple[]",
+                "internalType": "struct JBTokenMapping[]",
+                "components": [
+                  { "name": "localToken", "type": "address", "internalType": "address" },
+                  { "name": "minGas", "type": "uint32", "internalType": "uint32" },
+                  { "name": "remoteToken", "type": "bytes32", "internalType": "bytes32" }
+                ]
+              }
+            ]
+          },
+          { "name": "salt", "type": "bytes32", "internalType": "bytes32" }
+        ]
+      }
+    ],
+    "outputs": [
+      { "name": "projectId", "type": "uint256", "internalType": "uint256" },
+      { "name": "hook", "type": "address", "internalType": "contract IJB721TiersHook" },
+      { "name": "suckers", "type": "address[]", "internalType": "address[]" }
+    ],
+    "stateMutability": "payable"
+  }
+] as const
+
+/**
+ * Encode the 721 launchProjectFor overload for JBOmnichainDeployer (V6).
+ * Creates a NEW project WITH a 721 tiers hook (and optionally suckers) atomically.
+ *
+ * Mirrors encodeLaunchProjectFor exactly, with the JBOmnichain721Config
+ * `deploy721Config` argument inserted after projectUri.
+ */
+export function encodeLaunch721ProjectFor(params: {
+  chainId: number
+  owner: `0x${string}`
+  projectUri: string
+  deployTiersHookConfig: JBDeployTiersHookConfig
+  salt: `0x${string}`
+  rulesetConfigurations: JBRulesetConfig[]
+  terminalConfigurations: JBTerminalConfig[]
+  memo: string
+  suckerDeploymentConfiguration: JBSuckerDeploymentConfig
+}): `0x${string}` {
+  const {
+    chainId,
+    owner,
+    projectUri,
+    deployTiersHookConfig,
+    salt,
+    rulesetConfigurations,
+    terminalConfigurations,
+    memo,
+    suckerDeploymentConfiguration,
+  } = params
+
+  // Validate the owner address format
+  const validatedOwner = validateUserAddress(owner, 'owner')
+
+  // Reuse the shared formatting helpers (identical FULL metadata as the non-721 encoder)
+  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId)
+  const formattedTerminals = formatTerminalConfigurations(terminalConfigurations, chainId)
+  const formattedSuckerConfig = formatSuckerDeploymentConfiguration(suckerDeploymentConfiguration, 'suckerDeploymentConfiguration')
+
+  return encodeFunctionData({
+    abi: JB_OMNICHAIN_DEPLOYER_721_ABI,
+    functionName: 'launchProjectFor',
+    args: [
+      validatedOwner,
+      projectUri,
+      formatDeploy721Config(deployTiersHookConfig, salt),
+      formattedRulesets,
+      formattedTerminals,
+      memo,
+      formattedSuckerConfig,
+    ],
+  })
+}
+
+/**
+ * Build transaction data for launching a NEW project WITH 721 tiers via
+ * JBOmnichainDeployer.
+ *
+ * V6: launchProjectFor is payable — `creationFeeWei` must equal
+ * JBProjects.creationFee() exactly (fetch via fetchProjectCreationFee).
+ */
+export function buildLaunch721ProjectTransaction(params: {
+  chainId: number
+  owner: `0x${string}`
+  projectUri: string
+  deployTiersHookConfig: JBDeployTiersHookConfig
+  salt: `0x${string}`
+  rulesetConfigurations: JBRulesetConfig[]
+  terminalConfigurations: JBTerminalConfig[]
+  memo: string
+  suckerDeploymentConfiguration: JBSuckerDeploymentConfig
+  creationFeeWei?: string
+}): {
+  chainId: number
+  to: `0x${string}`
+  data: `0x${string}`
+  value: string
+} {
+  const data = encodeLaunch721ProjectFor(params)
+
+  return {
+    chainId: params.chainId,
+    to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
+    data,
+    value: params.creationFeeWei || '0x0',
+  }
+}
+
+/**
+ * Build transactions for launching a NEW project WITH 721 tiers on one or more chains.
+ *
+ * 721 twin of buildOmnichainLaunchTransactions: same per-chain sucker auto-generation,
+ * per-chain terminal overrides, creation-fee handling and shared deterministic salt,
+ * but threads the deployTiersHookConfig (with per-chain `tiers` override) and calls
+ * buildLaunch721ProjectTransaction.
+ *
+ * Single-chain works through this same JBOmnichainDeployer path (empty sucker config),
+ * exactly as buildOmnichainLaunchTransactions does when suckers aren't configured.
+ *
+ * For LIMITED SUPPLY TIERS: use chainConfigs with per-chain `tiers` to deploy limited
+ * tiers only on the primary chain while unlimited tiers deploy on all chains.
+ */
+export function buildOmnichainLaunch721Transactions(params: {
+  chainIds: number[]
+  owner: `0x${string}`
+  projectUri: string
+  deployTiersHookConfig: JBDeployTiersHookConfig
+  rulesetConfigurations: JBRulesetConfig[]
+  terminalConfigurations: JBTerminalConfig[]  // Default terminal configs (used if no chain override)
+  memo: string
+  suckerDeploymentConfiguration?: JBSuckerDeploymentConfig
+  chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs and tiers
+  /** V6 creation fee (wei) per chain; must equal JBProjects.creationFee() on each chain. */
+  creationFeesWei?: Record<number, string>
+}): Array<{
+  chainId: number
+  to: `0x${string}`
+  data: `0x${string}`
+  value: string
+}> {
+  const { chainIds, chainConfigs = [] } = params
+
+  // Shared deterministic salt for all chains — used for BOTH the 721 hook deploy
+  // (formatDeploy721Config) and the sucker deployment so peer addresses match.
+  const sharedSalt = (params.suckerDeploymentConfiguration?.salt as `0x${string}` | undefined) || createSalt()
+
+  // Build a map of chainId -> chain configuration from chainConfigs
+  const chainConfigMap = new Map<number, ChainConfigOverride>()
+  for (const cfg of chainConfigs) {
+    chainConfigMap.set(cfg.chainId, cfg)
+  }
+
+  // Extract per-chain token addresses from terminal configurations for sucker config
+  // This enables proper ERC20 bridging (e.g., USDC on each chain)
+  const tokenAddresses: Record<number, `0x${string}`> = {}
+  for (const chainId of chainIds) {
+    const chainConfig = chainConfigMap.get(chainId)
+    const terminalConfigs = chainConfig?.terminalConfigurations ?? params.terminalConfigurations
+    for (const terminal of terminalConfigs) {
+      for (const ctx of terminal.accountingContextsToAccept) {
+        // Skip native token (0xEEEe...) - we want ERC20 tokens
+        if (ctx.token && ctx.token.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
+          tokenAddresses[chainId] = ctx.token as `0x${string}`
+          break
+        }
+      }
+      if (tokenAddresses[chainId]) break
+    }
+  }
+
+  return chainIds.map(chainId => {
+    // Get per-chain terminal configurations (use override if available)
+    const chainConfig = chainConfigMap.get(chainId)
+    const terminalConfigurations = chainConfig?.terminalConfigurations ?? params.terminalConfigurations
+
+    // Get per-chain tier configurations (use override if available)
+    // This enables limited supply tiers to be deployed only on the primary chain
+    const tiers = chainConfig?.tiers ?? params.deployTiersHookConfig.tiersConfig.tiers
+    const deployTiersHookConfig: JBDeployTiersHookConfig = {
+      ...params.deployTiersHookConfig,
+      tiersConfig: {
+        ...params.deployTiersHookConfig.tiersConfig,
+        tiers,
+      },
+    }
+
+    // Generate per-chain sucker configuration
+    let suckerConfig: JBSuckerDeploymentConfig
+
+    const hasProvidedConfig = (params.suckerDeploymentConfiguration?.deployerConfigurations?.length ?? 0) > 0
+
+    if (hasProvidedConfig) {
+      suckerConfig = params.suckerDeploymentConfiguration!
+    } else if (shouldConfigureSuckers(chainIds)) {
+      const hasTokenAddresses = Object.keys(tokenAddresses).length > 0
+      const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, {
+        salt: sharedSalt,
+        tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
+      })
+      suckerConfig = {
+        deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
+          deployer: dc.deployer,
+          peer: dc.peer,
+          mappings: dc.mappings.map(m => ({
+            localToken: m.localToken,
+            minGas: m.minGas,
+            remoteToken: m.remoteToken,
+          })),
+        })),
+        salt: generatedConfig.salt,
+      }
+    } else {
+      // Single chain deployment - no suckers needed
+      suckerConfig = {
+        deployerConfigurations: [],
+        salt: ZERO_BYTES32,
+      }
+    }
+
+    return buildLaunch721ProjectTransaction({
+      chainId,
+      owner: params.owner,
+      projectUri: params.projectUri,
+      deployTiersHookConfig,
+      // Same deterministic salt as the sucker sharedSalt
+      salt: sharedSalt,
+      rulesetConfigurations: params.rulesetConfigurations,
+      terminalConfigurations,  // Use per-chain terminal configs
+      memo: params.memo,
+      suckerDeploymentConfiguration: suckerConfig,
+      creationFeeWei: params.creationFeesWei?.[chainId],
+    })
+  })
+}
+
+/**
  * Encode the 721 launchRulesetsFor overload for JBOmnichainDeployer (V6).
  * Launches rulesets with a 721 tiers hook for an existing project.
  */

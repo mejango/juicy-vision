@@ -12,7 +12,13 @@ import {
   type JBSuckerDeploymentConfig,
 } from '../../services/relayr'
 import { getProjectIdsFromReceipts } from '../../services/bendystraw'
-import { buildOmnichainLaunchTransactions, fetchProjectCreationFee, type ChainConfigOverride } from '../../services/omnichainDeployer'
+import {
+  buildOmnichainLaunchTransactions,
+  buildOmnichainLaunch721Transactions,
+  fetchProjectCreationFee,
+  type ChainConfigOverride,
+  type JBDeployTiersHookConfig,
+} from '../../services/omnichainDeployer'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
@@ -35,6 +41,13 @@ export interface OmnichainLaunchProjectParams {
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig  // Optional: deploy suckers atomically
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides (e.g., different USDC addresses)
   forceSelfCustody?: boolean  // Force wallet signing even if managed mode is available
+  /**
+   * Optional: deploy a 721 NFT tiers hook WITH the project atomically.
+   * When present, the launch always routes through JBOmnichainDeployer's 721
+   * launchProjectFor overload (for both single- AND multi-chain), since the
+   * backend single-chain path has no 721 support.
+   */
+  deployTiersHookConfig?: JBDeployTiersHookConfig
 }
 
 export interface UseOmnichainLaunchProjectReturn {
@@ -330,6 +343,7 @@ export function useOmnichainLaunchProject(
       suckerDeploymentConfiguration,
       chainConfigs,
       forceSelfCustody = false,
+      deployTiersHookConfig,
     } = params
 
     // Clear any persisted state from previous deployments (for this deployment key)
@@ -358,7 +372,9 @@ export function useOmnichainLaunchProject(
       // For multi-chain deployments, ALWAYS use JBOmnichainDeployer with auto-generated suckers.
       // This ensures cross-chain token bridging is set up correctly.
       // For single-chain, we can use either path (no suckers needed).
-      const useOmnichainDeployer = chainIds.length > 1 || suckerDeploymentConfiguration
+      // 721 launches ALWAYS go local via JBOmnichainDeployer (both single- and multi-chain):
+      // the backend single-chain path has no 721 support.
+      const useOmnichainDeployer = chainIds.length > 1 || !!suckerDeploymentConfiguration || !!deployTiersHookConfig
 
       if (useOmnichainDeployer) {
         // V6: launchProjectFor is payable and requires msg.value to equal
@@ -368,21 +384,34 @@ export function useOmnichainLaunchProject(
           creationFeesWei[chainId] = (await fetchProjectCreationFee(chainId)).toString()
         }))
 
-        // Use JBOmnichainDeployer.launchProjectFor() - encode calldata locally
-        // This creates projects AND deploys suckers atomically
-        // Note: buildOmnichainLaunchTransactions auto-generates per-chain sucker configs
-        // and applies per-chain terminal configuration overrides
-        const txs = buildOmnichainLaunchTransactions({
-          chainIds,
-          owner: projectOwner as `0x${string}`,
-          projectUri,
-          rulesetConfigurations,
-          terminalConfigurations,
-          memo,
-          suckerDeploymentConfiguration, // Optional - will be auto-generated if not provided
-          chainConfigs, // Per-chain overrides for terminal configs
-          creationFeesWei,
-        })
+        // Use JBOmnichainDeployer.launchProjectFor() - encode calldata locally.
+        // This creates projects (with 721 tiers when requested) AND deploys suckers atomically.
+        // Both builders auto-generate per-chain sucker configs and apply per-chain
+        // terminal configuration overrides.
+        const txs = deployTiersHookConfig
+          ? buildOmnichainLaunch721Transactions({
+              chainIds,
+              owner: projectOwner as `0x${string}`,
+              projectUri,
+              deployTiersHookConfig,
+              rulesetConfigurations,
+              terminalConfigurations,
+              memo,
+              suckerDeploymentConfiguration, // Optional - will be auto-generated if not provided
+              chainConfigs, // Per-chain overrides for terminal configs and tiers
+              creationFeesWei,
+            })
+          : buildOmnichainLaunchTransactions({
+              chainIds,
+              owner: projectOwner as `0x${string}`,
+              projectUri,
+              rulesetConfigurations,
+              terminalConfigurations,
+              memo,
+              suckerDeploymentConfiguration, // Optional - will be auto-generated if not provided
+              chainConfigs, // Per-chain overrides for terminal configs
+              creationFeesWei,
+            })
 
         transactions = txs.map(tx => ({
           chain: tx.chainId,
