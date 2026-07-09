@@ -1058,6 +1058,7 @@ export interface JBDeployRevnetRequest {
   splitOperator: string                 // Address that receives operator split
   description: {
     name: string
+    ticker?: string                     // ERC-20 symbol for the revnet token
     tagline: string
     salt: string                        // bytes32 for CREATE2
   }

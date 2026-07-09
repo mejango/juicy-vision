@@ -5,6 +5,7 @@ import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { useOmnichainLaunchProject } from '../../hooks/relayr'
 import { type JBRulesetConfig, type JBTerminalConfig } from '../../services/relayr'
+import { type JBDeployTiersHookConfig } from '../../services/omnichainDeployer'
 import { CHAINS, EXPLORER_URLS, JB_CONTRACTS } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
@@ -22,6 +23,12 @@ interface LaunchProjectModalProps {
   terminalConfigurations: JBTerminalConfig[]
   synchronizedStartTime: number
   memo: string
+  /**
+   * Optional: deploy a 721 NFT tiers hook WITH the project atomically (single-chain
+   * AND omnichain). When present the launch routes through JBOmnichainDeployer's 721
+   * launchProjectFor overload. Non-721 callers omit it → behavior unchanged.
+   */
+  deployTiersHookConfig?: JBDeployTiersHookConfig
 }
 
 export default function LaunchProjectModal({
@@ -35,6 +42,7 @@ export default function LaunchProjectModal({
   terminalConfigurations,
   synchronizedStartTime,
   memo,
+  deployTiersHookConfig,
 }: LaunchProjectModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -175,8 +183,9 @@ export default function LaunchProjectModal({
       terminalConfigurations,
       memo,
       forceSelfCustody,
+      deployTiersHookConfig,
     })
-  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, terminalConfigurations, memo, launch])
+  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, terminalConfigurations, memo, deployTiersHookConfig, launch])
 
   const handleClose = useCallback(() => {
     reset()

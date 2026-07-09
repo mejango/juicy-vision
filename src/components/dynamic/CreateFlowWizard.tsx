@@ -1,14 +1,17 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useAccount } from 'wagmi'
 import { parseEther } from 'viem'
-import { useThemeStore, useAuthStore } from '../../stores'
+import { useThemeStore, useAuthStore, useSettingsStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import {
   calculateSynchronizedStartTime,
   type JBRulesetConfig,
   type JBTerminalConfig,
+  type REVStageConfig,
 } from '../../services/relayr'
-import { LaunchProjectModal } from '../payment'
+import type { JBDeployTiersHookConfig, JB721TierConfig } from '../../services/omnichainDeployer'
+import { pinJson, encodeIpfsUri } from '../../utils/ipfs'
+import { LaunchProjectModal, DeployRevnetModal } from '../payment'
 import { JB_CONTRACTS, ZERO_ADDRESS, NATIVE_TOKEN, ALL_CHAIN_IDS, CHAINS } from '../../constants'
 
 // ============================================================================
@@ -37,14 +40,26 @@ function normalizeChainIds(input: number[] | string | undefined): number[] {
   return [...ALL_CHAIN_IDS]
 }
 
-type StepId = 'basics' | 'ruleset' | 'shop' | 'deploy'
+type Flavor = 'custom' | 'revnet'
+type StepId = 'basics' | 'ruleset' | 'stages' | 'shop' | 'deploy'
 
-const STEPS: { id: StepId; label: string }[] = [
+// Custom flavor: Basics → Ruleset → Shop → Deploy (Shop deploys 721 tiers atomically).
+const CUSTOM_STEPS: { id: StepId; label: string }[] = [
   { id: 'basics', label: 'Basics' },
   { id: 'ruleset', label: 'Ruleset' },
   { id: 'shop', label: 'Shop' },
   { id: 'deploy', label: 'Deploy' },
 ]
+
+// Revnet flavor: Basics → Stages → Deploy. Shop is gated (no REVDeployer 721 overload yet).
+const REVNET_STEPS: { id: StepId; label: string }[] = [
+  { id: 'basics', label: 'Basics' },
+  { id: 'stages', label: 'Stages' },
+  { id: 'deploy', label: 'Deploy' },
+]
+
+// bytes32 zero — encodedIPFSUri sentinel when no pinned metadata CID is available.
+const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000'
 
 // UINT224_MAX — unlimited sentinel for payout limits / surplus allowances (matches CreateProjectForm)
 const UINT224_MAX = '26959946667150639794667015087019630673637144422540572481103610249215'
@@ -83,6 +98,26 @@ interface TierRow {
   price: string // in accounting currency (ETH)
   unlimited: boolean
   supply: string
+}
+
+// Revnet stage — mirrors CreateRevnetForm's StageFormState exactly.
+interface StageFormState {
+  id: string
+  startsAtOrAfter: string // Relative days from previous stage (or absolute for first)
+  splitPercent: string    // 0-100 (to operator)
+  initialIssuance: string // Tokens per ETH
+  decayFrequency: string  // Days between decay
+  decayPercent: string    // 0-100 decay per frequency
+  cashOutTaxRate: string  // 0-100
+}
+
+const DEFAULT_STAGE: Omit<StageFormState, 'id'> = {
+  startsAtOrAfter: '0',
+  splitPercent: '20',
+  initialIssuance: '1000000',
+  decayFrequency: '7',
+  decayPercent: '5',
+  cashOutTaxRate: '10',
 }
 
 interface WizardFormState {
@@ -312,6 +347,131 @@ function buildRulesetConfig(state: WizardFormState, mustStartAtOrAfter: number):
   }
 }
 
+/**
+ * Convert a revnet form stage to REVStageConfig for the contract call.
+ * Copied verbatim from CreateRevnetForm.stageFormToConfig — the encoding
+ * (splitPercent out of 10000, initialIssuance parseEther, issuanceCutFrequency
+ * days*86400, issuanceCutPercent pct*1e7, cashOutTaxRate pct*100) is already correct.
+ */
+function stageFormToConfig(stage: StageFormState, previousEndTime: number, isFirst: boolean): REVStageConfig {
+  // For first stage, use synchronized start time; subsequent stages offset from previous.
+  let startsAtOrAfter: number
+  if (isFirst) {
+    const daysOffset = parseFloat(stage.startsAtOrAfter) || 0
+    startsAtOrAfter = previousEndTime + Math.floor(daysOffset * 24 * 60 * 60)
+  } else {
+    const daysOffset = parseFloat(stage.startsAtOrAfter) || 0
+    startsAtOrAfter = previousEndTime + Math.floor(daysOffset * 24 * 60 * 60)
+  }
+
+  const splitPercent = Math.floor((parseFloat(stage.splitPercent) || 0) * 100)
+  const initialIssuance = parseEther(stage.initialIssuance || '1000000').toString()
+  const decayDays = parseFloat(stage.decayFrequency) || 7
+  const issuanceCutFrequency = Math.floor(decayDays * 24 * 60 * 60)
+  const issuanceCutPercent = Math.floor((parseFloat(stage.decayPercent) || 0) * 10000000)
+  const cashOutTaxRate = Math.floor((parseFloat(stage.cashOutTaxRate) || 0) * 100)
+
+  return {
+    startsAtOrAfter,
+    splitPercent,
+    initialIssuance,
+    issuanceCutFrequency,
+    issuanceCutPercent,
+    cashOutTaxRate,
+    extraMetadata: 0,
+  }
+}
+
+/**
+ * Build a single JB721TierConfig from a wizard TierRow (V6 flat-flags shape).
+ * encodedIPFSUri: prefer pinning a minimal `{name, image}` metadata JSON (matches
+ * ManageTiersForm/TierEditor) when a Pinata JWT is set; otherwise encode a user-supplied
+ * ipfs://Qm... CID; otherwise fall back to zero bytes32 (deploy is never blocked).
+ */
+async function buildTierConfig(tier: TierRow, pinataJwt: string): Promise<JB721TierConfig> {
+  const price = parseEther(tier.price || '0').toString()
+  const initialSupply = tier.unlimited ? 999999999 : Math.max(parseInt(tier.supply) || 0, 0)
+
+  let encodedIPFSUri = ZERO_BYTES32
+  if (pinataJwt) {
+    try {
+      const cid = await pinJson(
+        { name: tier.name || 'Item', image: tier.imageUrl || undefined },
+        pinataJwt,
+        `tier-metadata-${tier.name || 'item'}`
+      )
+      const enc = encodeIpfsUri(cid)
+      if (enc) encodedIPFSUri = enc
+    } catch {
+      // Pinning failed — fall through to CID/zero fallback below.
+    }
+  }
+  // Fallback: if the user pasted an ipfs://Qm... CID directly, encode it.
+  if (encodedIPFSUri === ZERO_BYTES32 && tier.imageUrl) {
+    const enc = encodeIpfsUri(tier.imageUrl)
+    if (enc) encodedIPFSUri = enc
+  }
+
+  return {
+    price,
+    initialSupply,
+    votingUnits: 0,
+    reserveFrequency: 0,
+    reserveBeneficiary: ZERO_ADDRESS,
+    encodedIPFSUri,
+    category: 0,
+    discountPercent: 0,
+    allowOwnerMint: false,
+    useReserveBeneficiaryAsDefault: false,
+    transfersPausable: false,
+    useVotingUnits: false,
+    cannotBeRemoved: false,
+    cannotIncreaseDiscountPercent: false,
+    cannotBuyWithCredits: false,
+    splitPercent: 0,
+    splits: [],
+  }
+}
+
+/**
+ * Build the full JBDeployTiersHookConfig from the wizard shop state.
+ * Returns undefined when there are no tiers (base project deploys unchanged).
+ */
+async function buildDeployTiersHookConfig(
+  tiers: TierRow[],
+  projectName: string,
+  symbol: string,
+  contractUri: string,
+  pinataJwt: string
+): Promise<JBDeployTiersHookConfig | undefined> {
+  if (tiers.length === 0) return undefined
+
+  const tierConfigs = await Promise.all(tiers.map(t => buildTierConfig(t, pinataJwt)))
+  // Sort by ascending category (all 0 here → stable, insertion order preserved).
+  tierConfigs.sort((a, b) => a.category - b.category)
+
+  return {
+    name: projectName || 'Collection',
+    symbol: symbol || projectName.slice(0, 11) || 'NFT',
+    baseUri: 'ipfs://',
+    tokenUriResolver: ZERO_ADDRESS,
+    contractUri,
+    tiersConfig: {
+      tiers: tierConfigs,
+      currency: 1, // ETH
+      decimals: 18,
+    },
+    flags: {
+      noNewTiersWithReserves: false,
+      noNewTiersWithVotes: false,
+      noNewTiersWithOwnerMinting: false,
+      preventOverspending: false,
+      issueTokensForSplits: false,
+    },
+    useDataHookForCashOut: false,
+  }
+}
+
 function buildTerminalConfigurations(): JBTerminalConfig[] {
   return [{
     terminal: JB_CONTRACTS.JBMultiTerminal,
@@ -335,19 +495,32 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
 
   const { address, isConnected } = useAccount()
   const { address: managedAddress } = useManagedWallet()
+  const { pinataJwt } = useSettingsStore()
 
+  const [flavor, setFlavor] = useState<Flavor>('custom')
   const [step, setStep] = useState<StepId>('basics')
   const [formState, setFormState] = useState<WizardFormState>(DEFAULT_FORM_STATE)
   const [selectedChains, setSelectedChains] = useState<number[]>(() => normalizeChainIds(defaultChainIds))
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [showModal, setShowModal] = useState(false)
 
+  // Revnet-flavor state
+  const [stages, setStages] = useState<StageFormState[]>(() => [{ ...DEFAULT_STAGE, id: genId('stage') }])
+  const [splitOperator, setSplitOperator] = useState('')
+  const [autoDeploySuckers, setAutoDeploySuckers] = useState(true)
+
+  // Built 721 tiers config (async — pins metadata before opening the launch modal)
+  const [deployTiersConfig, setDeployTiersConfig] = useState<JBDeployTiersHookConfig | undefined>()
+  const [buildingTiers, setBuildingTiers] = useState(false)
+
   const ownerAddress = defaultOwner || (isManagedMode ? managedAddress : address) || ''
+  const operatorAddress = splitOperator.trim() || ownerAddress
 
   const synchronizedStartTime = calculateSynchronizedStartTime()
   const startDate = new Date(synchronizedStartTime * 1000)
 
-  const stepIndex = STEPS.findIndex(s => s.id === step)
+  const STEPS = flavor === 'revnet' ? REVNET_STEPS : CUSTOM_STEPS
+  const stepIndex = Math.max(0, STEPS.findIndex(s => s.id === step))
 
   // --- state updaters ---
   const update = useCallback(<K extends keyof WizardFormState>(key: K, value: WizardFormState[K]) => {
@@ -387,6 +560,20 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
   const updateTier = (id: string, patch: Partial<TierRow>) =>
     setFormState(prev => ({ ...prev, tiers: prev.tiers.map(t => t.id === id ? { ...t, ...patch } : t) }))
 
+  // Revnet stages
+  const addStage = () =>
+    setStages(prev => [...prev, { ...DEFAULT_STAGE, id: genId('stage'), startsAtOrAfter: '30' }])
+  const removeStage = (id: string) =>
+    setStages(prev => (prev.length <= 1 ? prev : prev.filter(s => s.id !== id)))
+  const updateStage = (id: string, key: keyof StageFormState, value: string) =>
+    setStages(prev => prev.map(s => s.id === id ? { ...s, [key]: value } : s))
+
+  // Switch flavor — reset to the first step so the (flavor-dependent) stepper stays valid.
+  const switchFlavor = useCallback((next: Flavor) => {
+    setFlavor(next)
+    setStep('basics')
+  }, [])
+
   // --- validation ---
   const reservedSum = useMemo(
     () => formState.reservedSplits.reduce((a, r) => a + (parseFloat(r.value) || 0), 0),
@@ -398,8 +585,13 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
   const payoutSplitsValid = formState.payoutType !== 'limited' ||
     formState.payoutSplits.every(r => (!r.beneficiary && !r.value) || (isValidAddress(r.beneficiary) && parseFloat(r.value) > 0))
 
-  const basicsValid = formState.name.trim().length > 0 && selectedChains.length > 0
-  const isValid = basicsValid && !!ownerAddress && reservedSplitsValid && payoutSplitsValid
+  const basicsValid = flavor === 'revnet'
+    ? formState.name.trim().length > 0 && formState.symbol.trim().length > 0 && selectedChains.length > 0 && !!operatorAddress
+    : formState.name.trim().length > 0 && selectedChains.length > 0
+
+  const isValid = flavor === 'revnet'
+    ? basicsValid && stages.length > 0
+    : basicsValid && !!ownerAddress && reservedSplitsValid && payoutSplitsValid
 
   // --- build configs ---
   const rulesetConfig = useMemo(
@@ -419,14 +611,52 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
     [formState.name, formState.description, formState.tagline, formState.logoUrl]
   )
 
-  const handleDeploy = useCallback(() => {
+  // Revnet stage configs — built exactly as CreateRevnetForm does.
+  const stageConfigurations = useMemo<REVStageConfig[]>(
+    () => stages.map((stage, index) =>
+      stageFormToConfig(stage, index === 0 ? synchronizedStartTime : 0, index === 0)
+    ),
+    [stages, synchronizedStartTime]
+  )
+
+  const activeTierCount = formState.shopEnabled ? formState.tiers.length : 0
+
+  const handleDeploy = useCallback(async () => {
     if (!isValid) return
     if (!isConnected && !isManagedMode) {
       window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
       return
     }
+
+    // Revnet routes straight to DeployRevnetModal (no 721 path).
+    if (flavor === 'revnet') {
+      setShowModal(true)
+      return
+    }
+
+    // Custom: build the 721 tiers config (pinning metadata) when the shop has items.
+    if (activeTierCount > 0) {
+      setBuildingTiers(true)
+      try {
+        const cfg = await buildDeployTiersHookConfig(
+          formState.tiers,
+          formState.name,
+          formState.symbol,
+          projectUri,
+          pinataJwt
+        )
+        setDeployTiersConfig(cfg)
+      } catch (err) {
+        console.error('Failed to build 721 tiers config:', err)
+        setDeployTiersConfig(undefined)
+      } finally {
+        setBuildingTiers(false)
+      }
+    } else {
+      setDeployTiersConfig(undefined)
+    }
     setShowModal(true)
-  }, [isValid, isConnected, isManagedMode])
+  }, [isValid, isConnected, isManagedMode, flavor, activeTierCount, formState.tiers, formState.name, formState.symbol, projectUri, pinataJwt])
 
   // --- shared class helpers ---
   const cardClass = `p-3 mb-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`
@@ -449,8 +679,6 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
         : isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-100 text-gray-500'
     }`
 
-  const activeTierCount = formState.shopEnabled ? formState.tiers.length : 0
-
   // ==========================================================================
   // Render
   // ==========================================================================
@@ -460,15 +688,43 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
       <div className={`max-w-lg border p-4 ${isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'}`}>
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
-          <div className={`w-14 h-14 flex items-center justify-center text-2xl ${isDark ? 'bg-juice-orange/20' : 'bg-orange-100'}`}>
-            +
+          <div className={`w-14 h-14 flex items-center justify-center text-2xl ${
+            flavor === 'revnet'
+              ? isDark ? 'bg-purple-500/20' : 'bg-purple-100'
+              : isDark ? 'bg-juice-orange/20' : 'bg-orange-100'
+          }`}>
+            {flavor === 'revnet' ? '🌀' : '+'}
           </div>
           <div>
-            <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Create a Project</h3>
+            <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {flavor === 'revnet' ? 'Deploy a Revnet' : 'Create a Project'}
+            </h3>
             <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               V6 · omnichain · {selectedChains.length} chain{selectedChains.length !== 1 ? 's' : ''}
             </p>
           </div>
+        </div>
+
+        {/* Flavor toggle */}
+        <div className="flex gap-1 mb-4">
+          {([['custom', 'Custom'], ['revnet', 'Revnet']] as const).map(([f, label]) => {
+            const active = flavor === f
+            return (
+              <button
+                key={f}
+                onClick={() => switchFlavor(f)}
+                className={`flex-1 py-1.5 text-xs font-semibold transition-colors border ${
+                  active
+                    ? f === 'revnet'
+                      ? isDark ? 'bg-purple-500/30 text-purple-300 border-purple-500/50' : 'bg-purple-100 text-purple-700 border-purple-300'
+                      : isDark ? 'bg-juice-orange/30 text-juice-orange border-juice-orange/50' : 'bg-orange-100 text-orange-700 border-orange-300'
+                    : isDark ? 'bg-white/5 text-gray-400 border-white/10' : 'bg-gray-100 text-gray-500 border-gray-200'
+                }`}
+              >
+                {label}
+              </button>
+            )
+          })}
         </div>
 
         {/* Stepper */}
@@ -508,7 +764,7 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
                   <input type="text" value={formState.name} onChange={e => update('name', e.target.value)} placeholder="My Project" className={inputClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>Token Ticker</label>
+                  <label className={labelClass}>Token Ticker{flavor === 'revnet' ? ' *' : ''}</label>
                   <input
                     type="text"
                     value={formState.symbol}
@@ -516,7 +772,9 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
                     placeholder="TOKEN"
                     className={`${inputClass} font-mono uppercase`}
                   />
-                  <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Up to 11 characters</span>
+                  <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {flavor === 'revnet' ? 'Names the revnet ERC-20 · up to 11 characters' : 'Up to 11 characters'}
+                  </span>
                 </div>
                 <div>
                   <label className={labelClass}>Tagline</label>
@@ -558,6 +816,101 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
               </div>
               <p className={`mt-2 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                 Same configuration deploys on every selected chain. Suckers auto-link them for cross-chain token bridging.
+              </p>
+            </div>
+
+            {/* Revnet-only: operator + suckers */}
+            {flavor === 'revnet' && (
+              <div className={cardClass}>
+                <div className={`text-xs font-medium mb-3 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Revnet Settings</div>
+                <div className="space-y-3">
+                  <div>
+                    <label className={labelClass}>Split Operator Address</label>
+                    <input
+                      type="text"
+                      value={splitOperator}
+                      onChange={e => setSplitOperator(e.target.value)}
+                      placeholder={ownerAddress || '0x...'}
+                      className={`${inputClass} font-mono`}
+                    />
+                    <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      Receives the operator split from each stage. Defaults to your wallet.
+                    </span>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoDeploySuckers}
+                      onChange={e => setAutoDeploySuckers(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                      Auto-deploy suckers for cross-chain token bridging
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ================= STEP: STAGES (revnet) ================= */}
+        {step === 'stages' && (
+          <>
+            <div className={cardClass}>
+              <div className="flex items-center justify-between mb-3">
+                <div className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Stages ({stages.length})</div>
+                <button onClick={addStage} className={`text-xs px-2 py-1 ${isDark ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'}`}>+ Add Stage</button>
+              </div>
+
+              <div className="space-y-4">
+                {stages.map((stage, index) => (
+                  <div key={stage.id} className={`p-3 border ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Stage {index + 1}</span>
+                      {stages.length > 1 && (
+                        <button onClick={() => removeStage(stage.id)} className={`text-xs px-2 py-0.5 ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-600 hover:bg-red-50'}`}>Remove</button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={`block text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{index === 0 ? 'Delay (days)' : 'Days after prev'}</label>
+                        <input type="number" min="0" value={stage.startsAtOrAfter} onChange={e => updateStage(stage.id, 'startsAtOrAfter', e.target.value)} className={smallInputClass} />
+                      </div>
+                      <div>
+                        <label className={`block text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Operator Split (%)</label>
+                        <input type="number" min="0" max="100" step="0.1" value={stage.splitPercent} onChange={e => updateStage(stage.id, 'splitPercent', e.target.value)} className={smallInputClass} />
+                      </div>
+                      <div>
+                        <label className={`block text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Issuance Rate</label>
+                        <input type="number" min="0" value={stage.initialIssuance} onChange={e => updateStage(stage.id, 'initialIssuance', e.target.value)} className={smallInputClass} />
+                        <span className={`text-[9px] ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>Tokens/ETH</span>
+                      </div>
+                      <div>
+                        <label className={`block text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Decay Every (days)</label>
+                        <input type="number" min="0" value={stage.decayFrequency} onChange={e => updateStage(stage.id, 'decayFrequency', e.target.value)} className={smallInputClass} />
+                      </div>
+                      <div>
+                        <label className={`block text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Decay (%)</label>
+                        <input type="number" min="0" max="100" step="0.1" value={stage.decayPercent} onChange={e => updateStage(stage.id, 'decayPercent', e.target.value)} className={smallInputClass} />
+                      </div>
+                      <div>
+                        <label className={`block text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Exit Tax (%)</label>
+                        <input type="number" min="0" max="100" step="0.1" value={stage.cashOutTaxRate} onChange={e => updateStage(stage.id, 'cashOutTaxRate', e.target.value)} className={smallInputClass} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className={`mt-3 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                Revnets use automated stage-based issuance decay. Once deployed, stage configurations cannot be changed.
+              </p>
+            </div>
+
+            <div className={`p-3 mb-3 ${isDark ? 'bg-purple-500/10' : 'bg-purple-50'}`}>
+              <div className={`text-xs font-medium ${isDark ? 'text-purple-400' : 'text-purple-700'}`}>NFT items coming to revnets</div>
+              <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Revnet NFT tiers need the REVDeployer 721 <code>deployFor</code> overload, which isn&apos;t wired up yet. Use the Custom flavor to launch a project with a shop.
               </p>
             </div>
           </>
@@ -764,15 +1117,24 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
 
             {formState.shopEnabled && (
               <>
-                {/* Deploy-path gate notice */}
-                <div className={`p-3 mb-3 ${isDark ? 'bg-amber-500/10' : 'bg-amber-50'}`}>
-                  <div className={`text-xs font-medium ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Items deploy separately (coming soon)</div>
+                {/* Atomic deploy notice */}
+                <div className={`p-3 mb-3 ${isDark ? 'bg-juice-orange/10' : 'bg-orange-50'}`}>
+                  <div className={`text-xs font-medium ${isDark ? 'text-juice-orange' : 'text-orange-700'}`}>Items deploy with your project</div>
                   <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Launching a brand-new project together with NFT items in a single omnichain transaction is not yet
-                    wired up. Your base project deploys now; add these items afterward from Manage Tiers. Configure them
-                    here so they are ready.
+                    These NFT tiers deploy atomically alongside the project in a single omnichain transaction.
                   </p>
                 </div>
+
+                {/* Pinned-CID note when no Pinata key is set */}
+                {!pinataJwt && (
+                  <div className={`p-3 mb-3 ${isDark ? 'bg-amber-500/10' : 'bg-amber-50'}`}>
+                    <div className={`text-xs font-medium ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Per-item media needs a pinned CID</div>
+                    <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Add a Pinata JWT in Settings to pin each item&apos;s metadata, or paste an <code>ipfs://Qm…</code> CID as the image.
+                      Items still deploy without one — their on-chain metadata URI is left empty.
+                    </p>
+                  </div>
+                )}
 
                 <div className={cardClass}>
                   <div className="flex items-center justify-between mb-3">
@@ -845,45 +1207,69 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
                 <SummaryRow isDark={isDark} label="Name" value={formState.name || '—'} />
                 <SummaryRow isDark={isDark} label="Ticker" value={formState.symbol ? `$${formState.symbol}` : '—'} />
                 <SummaryRow isDark={isDark} label="Chains" value={selectedChains.map(c => CHAINS[c]?.shortName || c).join(', ')} />
-                <SummaryRow isDark={isDark} label="Issuance" value={`${formState.weight} / ETH`} />
-                <SummaryRow isDark={isDark} label="Reserved" value={`${formState.reservedPercent || 0}%`} />
-                <SummaryRow isDark={isDark} label="Cash-out tax" value={`${resolveCashOutPercent(formState)}%`} />
-                <SummaryRow isDark={isDark} label="Cycle" value={formState.durationDays === 0 ? 'Flexible' : `${formState.durationDays} day${formState.durationDays === 1 ? '' : 's'}`} />
-                <SummaryRow isDark={isDark} label="Payouts" value={formState.payoutType} />
-                {activeTierCount > 0 && (
-                  <SummaryRow isDark={isDark} label="Shop items" value={`${activeTierCount} (deploy separately)`} />
+                {flavor === 'revnet' ? (
+                  <>
+                    <SummaryRow isDark={isDark} label="Stages" value={`${stages.length}`} />
+                    <SummaryRow isDark={isDark} label="Operator" value={operatorAddress ? `${operatorAddress.slice(0, 6)}...${operatorAddress.slice(-4)}` : '—'} />
+                    <SummaryRow isDark={isDark} label="Suckers" value={autoDeploySuckers ? 'Auto-deploy' : 'None'} />
+                  </>
+                ) : (
+                  <>
+                    <SummaryRow isDark={isDark} label="Issuance" value={`${formState.weight} / ETH`} />
+                    <SummaryRow isDark={isDark} label="Reserved" value={`${formState.reservedPercent || 0}%`} />
+                    <SummaryRow isDark={isDark} label="Cash-out tax" value={`${resolveCashOutPercent(formState)}%`} />
+                    <SummaryRow isDark={isDark} label="Cycle" value={formState.durationDays === 0 ? 'Flexible' : `${formState.durationDays} day${formState.durationDays === 1 ? '' : 's'}`} />
+                    <SummaryRow isDark={isDark} label="Payouts" value={formState.payoutType} />
+                    {activeTierCount > 0 && (
+                      <SummaryRow isDark={isDark} label="Shop items" value={`${activeTierCount} (deploy with project)`} />
+                    )}
+                  </>
                 )}
               </div>
             </div>
 
-            {/* Owner */}
+            {/* Owner / Operator */}
             <div className={cardClass}>
-              <div className={labelClass}>Project Owner</div>
-              <div className={`text-sm font-mono ${ownerAddress ? (isDark ? 'text-white' : 'text-gray-900') : 'text-red-400'}`}>
-                {ownerAddress ? `${ownerAddress.slice(0, 8)}...${ownerAddress.slice(-6)}` : 'Connect a wallet to continue'}
+              <div className={labelClass}>{flavor === 'revnet' ? 'Split Operator' : 'Project Owner'}</div>
+              <div className={`text-sm font-mono ${(flavor === 'revnet' ? operatorAddress : ownerAddress) ? (isDark ? 'text-white' : 'text-gray-900') : 'text-red-400'}`}>
+                {(flavor === 'revnet' ? operatorAddress : ownerAddress)
+                  ? `${(flavor === 'revnet' ? operatorAddress : ownerAddress).slice(0, 8)}...${(flavor === 'revnet' ? operatorAddress : ownerAddress).slice(-6)}`
+                  : 'Connect a wallet to continue'}
               </div>
             </div>
 
-            {/* Memo */}
-            <div className={cardClass}>
-              <label className={labelClass}>Creation memo (optional)</label>
-              <input type="text" value={formState.memo} onChange={e => update('memo', e.target.value)} placeholder="Launching my project..." className={inputClass} />
-            </div>
+            {/* Memo (custom only) */}
+            {flavor === 'custom' && (
+              <div className={cardClass}>
+                <label className={labelClass}>Creation memo (optional)</label>
+                <input type="text" value={formState.memo} onChange={e => update('memo', e.target.value)} placeholder="Launching my project..." className={inputClass} />
+              </div>
+            )}
 
             {/* Gas sponsorship */}
             <div className={`p-3 mb-4 ${isDark ? 'bg-green-500/10' : 'bg-green-50'}`}>
               <div className={`text-xs font-medium ${isDark ? 'text-green-400' : 'text-green-700'}`}>Gas Sponsored</div>
-              <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Project creation is free — gas is sponsored by the platform</div>
+              <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                {flavor === 'revnet' ? 'Revnet deployment' : 'Project creation'} is free — gas is sponsored by the platform
+              </div>
             </div>
 
             <button
               onClick={handleDeploy}
-              disabled={!isValid}
+              disabled={!isValid || buildingTiers}
               className={`w-full py-3 text-sm font-bold transition-colors ${
-                isValid ? 'bg-juice-orange hover:bg-juice-orange/90 text-black' : 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                !isValid || buildingTiers
+                  ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                  : flavor === 'revnet'
+                    ? 'bg-purple-500 hover:bg-purple-600 text-white'
+                    : 'bg-juice-orange hover:bg-juice-orange/90 text-black'
               }`}
             >
-              Create Project{selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}
+              {buildingTiers
+                ? 'Preparing items...'
+                : flavor === 'revnet'
+                  ? `Deploy Revnet${selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}`
+                  : `Create Project${selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}`}
             </button>
           </>
         )}
@@ -917,9 +1303,9 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
         </div>
       </div>
 
-      {/* Launch modal — reused as-is */}
+      {/* Custom flavor → LaunchProjectModal (with optional 721 tiers hook) */}
       <LaunchProjectModal
-        isOpen={showModal}
+        isOpen={showModal && flavor === 'custom'}
         onClose={() => setShowModal(false)}
         projectName={formState.name}
         owner={ownerAddress}
@@ -929,6 +1315,20 @@ export default function CreateFlowWizard({ defaultOwner, defaultChainIds }: Crea
         terminalConfigurations={terminalConfigurations}
         synchronizedStartTime={synchronizedStartTime}
         memo={formState.memo}
+        deployTiersHookConfig={deployTiersConfig}
+      />
+
+      {/* Revnet flavor → DeployRevnetModal */}
+      <DeployRevnetModal
+        isOpen={showModal && flavor === 'revnet'}
+        onClose={() => setShowModal(false)}
+        name={formState.name}
+        ticker={formState.symbol}
+        tagline={formState.tagline}
+        splitOperator={operatorAddress}
+        chainIds={selectedChains}
+        stageConfigurations={stageConfigurations}
+        autoDeploySuckers={autoDeploySuckers}
       />
     </div>
   )
