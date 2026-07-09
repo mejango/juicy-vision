@@ -16,10 +16,12 @@ import {
   fetchProjectTokenSymbol,
   fetchRulesetHistory,
   fetchRevnetStages,
-  isRevnet,
+  fetchSuckerGroupBalance,
+  isRevnetProject,
   type RulesetHistoryEntry,
   type RevnetStage,
 } from '../../services/bendystraw'
+import { resolveAccountingToken } from '../../utils/currency'
 
 type RangeValue = '3m' | '6m' | '1y' | '2y' | '5y' | '10y' | 'all'
 
@@ -108,6 +110,8 @@ export default function PriceChart({
   const [error, setError] = useState<string | null>(null)
   const [tokenSymbol, setTokenSymbol] = useState('TOKEN')
   const [projectIsRevnet, setProjectIsRevnet] = useState(false)
+  // Accounting currency the issuance price is denominated in (ETH or USDC).
+  const [accountingToken, setAccountingToken] = useState(resolveAccountingToken())
 
   useEffect(() => {
     async function loadData() {
@@ -126,8 +130,12 @@ export default function PriceChart({
         const symbol = await fetchProjectTokenSymbol(projectId, parseInt(chainId))
         setTokenSymbol(symbol || 'TOKEN')
 
+        // Resolve the accounting currency (ETH vs USDC) the price is denominated in
+        const groupBalance = await fetchSuckerGroupBalance(projectId, parseInt(chainId))
+        setAccountingToken(resolveAccountingToken(groupBalance.currency, groupBalance.decimals))
+
         // Check if this is a Revnet - if so, fetch stages
-        const projectIsRevnetValue = isRevnet(project.owner)
+        const projectIsRevnetValue = isRevnetProject(project)
         setProjectIsRevnet(projectIsRevnetValue)
         let stageData: Stage[] = []
 
@@ -303,7 +311,7 @@ export default function PriceChart({
           <span className="w-2 h-2 bg-emerald-400" />
           <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Price:</span>
           <span className="font-mono">
-            {value?.toFixed(6)} ETH / {tokenSymbol}
+            {value?.toFixed(6)} {accountingToken.symbol} / {tokenSymbol}
           </span>
         </div>
       </div>
@@ -523,7 +531,7 @@ export default function PriceChart({
             }`}>
               <span className={`flex items-center gap-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 <span className="w-2 h-2 bg-emerald-400" />
-                Current: {currentPoint?.price?.toFixed(6)} ETH / {tokenSymbol}
+                Current: {currentPoint?.price?.toFixed(6)} {accountingToken.symbol} / {tokenSymbol}
               </span>
               {/* Disclaimer for non-revnets */}
               {!projectIsRevnet && !showHistory && (

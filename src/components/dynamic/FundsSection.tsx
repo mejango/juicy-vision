@@ -11,6 +11,7 @@ import {
   fetchProjectWithRuleset,
   fetchProjectSplits,
   fetchProjectTokenSupply,
+  fetchPendingReservedTokens,
   fetchProjectTokenSymbol,
   fetchUpcomingRulesetWithMetadata,
   fetchUserTokenBalance,
@@ -54,9 +55,15 @@ interface ChainFundsData {
   baseCurrency: number
   decimals: number
   // Cash out related data
-  tokenSupply: string // Total token supply on this chain
+  tokenSupply: string // Total token supply on this chain (raw totalSupplyOf, 18 decimals)
   cashOutTaxRate: number // 0-10000 basis points (10000 = 100% = no cash out)
   cashOutPerToken: number // Calculated floor price per token
+  // Reclaimable surplus = balance NET of the remaining (undistributed) payout limit,
+  // in the accounting token's decimals. Cash outs draw only from this, never raw balance.
+  reclaimableSurplus: string
+  // Cash-out denominator = tokenSupply + pending (undistributed) reserved tokens (18 decimals).
+  // Pending reserved tokens still dilute each token's reclaim value.
+  cashOutSupply: string
 }
 
 function formatBalance(value: string, decimals: number = 18): string {
@@ -100,8 +107,9 @@ function CashOutCalculator({
 
   // Calculate return for a specific chain
   const calculateChainReturn = (chain: ChainFundsData, tokensHuman: number): { returnAmount: number; exceedsSupply: boolean; supplyHuman: number } => {
-    const supplyHuman = Number(BigInt(chain.tokenSupply)) / Math.pow(10, TOKEN_DECIMALS)
-    const balance = BigInt(chain.balance)
+    // Denominator includes pending reserved tokens; pool is surplus net of the payout limit.
+    const supplyHuman = Number(BigInt(chain.cashOutSupply)) / Math.pow(10, TOKEN_DECIMALS)
+    const balance = BigInt(chain.reclaimableSurplus)
     const r = chain.cashOutTaxRate / 10000
 
     if (supplyHuman === 0 || tokensHuman <= 0) {
@@ -569,16 +577,23 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         // Skip payout-related fetches for revnets since they don't have payouts
         const chainDataPromises = chainsToFetch.map(async (chain): Promise<ChainFundsData> => {
           try {
-            // Fetch project with ruleset and token supply
-            const [chainProject, tokenSupply] = await Promise.all([
+            // Fetch project with ruleset, token supply, and pending (undistributed) reserved tokens
+            const [chainProject, tokenSupply, pendingReserved] = await Promise.all([
               fetchProjectWithRuleset(String(chain.projectId), chain.chainId),
               fetchProjectTokenSupply(String(chain.projectId), chain.chainId),
+              fetchPendingReservedTokens(String(chain.projectId), chain.chainId),
             ])
 
             let payoutData: DistributablePayout | null = null
             if (!isRevnet) {
               try {
-                payoutData = await fetchDistributablePayout(String(chain.projectId), chain.chainId)
+                // Pass the project's accounting currency so USDC projects query
+                // their USDC payout limit (not the empty ETH one).
+                payoutData = await fetchDistributablePayout(
+                  String(chain.projectId),
+                  chain.chainId,
+                  chainProject?.currentRuleset?.baseCurrency ?? 1
+                )
               } catch {
                 // Silently ignore payout fetch errors (expected for some project types)
               }
@@ -603,8 +618,19 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
             const supply = BigInt(tokenSupply || '0')
             const chainDecimals = groupBalance.decimals
 
-            // Calculate floor price per token using bonding curve
-            const cashOutPerToken = calculateFloorPrice(balance, supply, cashOutTaxRate, chainDecimals)
+            // (A) Cash outs draw only from SURPLUS — balance net of the remaining
+            // (undistributed) payout limit. Funds still earmarked for payouts this
+            // cycle are not reclaimable by members. distributablePayout.available is
+            // that remaining limit (0 for revnets / no-limit projects; balance for
+            // unlimited-limit projects → surplus 0).
+            const remainingPayout = payoutData?.available ?? 0n
+            const reclaimableSurplus = balance > remainingPayout ? balance - remainingPayout : 0n
+            // (B) Pending (undistributed) reserved tokens still dilute each token's
+            // reclaim value, so they belong in the cash-out denominator.
+            const cashOutSupply = supply + BigInt(pendingReserved || '0')
+
+            // Calculate floor price per token using bonding curve over the surplus pool
+            const cashOutPerToken = calculateFloorPrice(reclaimableSurplus, cashOutSupply, cashOutTaxRate, chainDecimals)
 
             return {
               chainId: chain.chainId,
@@ -618,6 +644,8 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               tokenSupply: tokenSupply || '0',
               cashOutTaxRate,
               cashOutPerToken,
+              reclaimableSurplus: reclaimableSurplus.toString(),
+              cashOutSupply: cashOutSupply.toString(),
             }
           } catch (err) {
             console.error(`Failed to fetch funds data for chain ${chain.chainId}:`, err)
@@ -633,6 +661,8 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               tokenSupply: '0',
               cashOutTaxRate: 10000,
               cashOutPerToken: 0,
+              reclaimableSurplus: '0',
+              cashOutSupply: '0',
             }
           }
         })
@@ -730,15 +760,12 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
     return sum
   }, 0n)
 
-  // Calculate surplus (balance - used payout limit)
-  const totalUsedPayout = chainFundsData.reduce((sum, cd) => {
-    if (cd.distributablePayout?.used) {
-      return sum + BigInt(cd.distributablePayout.used)
-    }
-    return sum
-  }, 0n)
-
-  const surplus = BigInt(totalBalance) - totalUsedPayout
+  // Calculate surplus = balance NET of the REMAINING (undistributed) payout limit.
+  // Mirrors the protocol's currentSurplusOf: funds still earmarked for payouts this
+  // cycle (totalAvailable = remaining limit) are not part of member-reclaimable surplus.
+  // (Subtracting `used` here would overstate surplus, since used funds have already
+  // left the terminal balance.)
+  const surplus = BigInt(totalBalance) - totalAvailable
 
   if (loading) {
     return (

@@ -7,6 +7,9 @@ export const PROJECT_QUERY = `
       version
       handle
       owner
+      deployer
+      isRevnet
+      suckerGroupId
       metadataUri
       metadata
       volume
@@ -217,6 +220,9 @@ export const PROJECT_RULESET_QUERY = `
       projectId
       chainId
       owner
+      deployer
+      isRevnet
+      suckerGroupId
       metadata
       balance
     }
