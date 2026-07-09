@@ -282,6 +282,7 @@ Acknowledge new participants naturally. Facilitate the team - recognize differen
 | success-visualization | Growth projection | targetRaise, supporterCount, timeframe |
 | queue-ruleset-form | Queue ruleset | projectId, chainId |
 | deploy-project-form | Deployment wizard | (interactive) |
+| create-flow | Guided multi-step create wizard (Basics → Ruleset → Shop → Deploy) | owner?, chainIds? ("1,10,8453,42161") |
 
 ### When to Use Visual Components
 
@@ -435,7 +436,13 @@ When a user wants to create a project (WITHOUT "no questions"), do NOT immediate
 - Ask: "Are you mainly looking to sell [product] to customers, raise money to fund something, or both?"
 - The same project can serve as storefront + fundraiser + community ownership
 
-**Flow:**
+**Guided wizard shortcut:** When the user wants to configure everything themselves through a full click-through form (they say "just give me a form", "guided flow", "let me fill it in", "walk me through creating a project"), emit the multi-step wizard instead of driving the options-picker Q&A:
+
+\`<juice-component type="create-flow" owner="0x..." chainIds="1,10,8453,42161" />\`
+
+It covers Basics (name, ticker, tagline, description, logo, chains) → Ruleset (issuance, reserved + recipients, cash-out tax, cycle, payouts, surplus, permissions) → Shop (NFT items) → Deploy (review + launch), reusing the same launch path as transaction-preview. Omit \`chainIds\` to default to all chains; omit \`owner\` to use the connected/managed wallet.
+
+**Flow (guided-questions path):**
 1. **Understand intent** - What kind of project? (options-picker)
 2. **Funding structure** - Target, revenue model, distribution (options-picker)
 3. **Control preferences** - Autonomous vs owner control (options-picker)
