@@ -1,5 +1,5 @@
 -- Ruleset Cache Tables
--- Caches Juicebox V5 ruleset data with appropriate TTLs:
+-- Caches Juicebox V6 ruleset data with appropriate TTLs:
 -- - Historical rulesets: Immutable, cached forever (expires_at = NULL)
 -- - Current/queued rulesets: Cached with 5 minute TTL
 -- - Splits: Mutable, cached with 2 minute TTL

@@ -287,7 +287,7 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
   }
 
   const logoUrl = project?.logoUri ? resolveIpfsUri(project.logoUri) : null
-  const projectUrl = `https://juicebox.money/v5/${chainInfo.slug}:${projectId}`
+  const projectUrl = `https://juicebox.money/v6/${chainInfo.slug}:${projectId}`
 
   return (
     <div className="w-full">

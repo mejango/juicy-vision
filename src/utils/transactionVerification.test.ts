@@ -554,8 +554,8 @@ describe('transactionVerification', () => {
           startsAtOrAfter: Math.floor(Date.now() / 1000) + 300,
           splitPercent: 200000000, // 20%
           initialIssuance: 1000000000000000000000000n,
-          issuanceDecayFrequency: 604800,
-          issuanceDecayPercent: 50000000, // 5%
+          issuanceCutFrequency: 604800,
+          issuanceCutPercent: 50000000, // 5%
           cashOutTaxRate: 1000,
         },
       ],
@@ -615,21 +615,21 @@ describe('transactionVerification', () => {
       )
     })
 
-    it('warns on high issuance decay (>50%)', () => {
-      const highDecayParams = {
+    it('warns on high issuance cut (>50%)', () => {
+      const highCutParams = {
         ...validParams,
         stageConfigurations: [
           {
             ...validParams.stageConfigurations[0],
-            issuanceDecayPercent: 600000000, // 60%
+            issuanceCutPercent: 600000000, // 60%
           },
         ],
       }
-      const result = verifyDeployRevnetParams(highDecayParams)
+      const result = verifyDeployRevnetParams(highCutParams)
       expect(result.doubts).toContainEqual(
         expect.objectContaining({
           severity: 'warning',
-          message: expect.stringContaining('High issuance decay'),
+          message: expect.stringContaining('High issuance cut'),
         })
       )
     })
@@ -868,31 +868,31 @@ describe('transactionVerification', () => {
     })
 
     it('does not modify known canonical addresses', () => {
-      const result = autoCorrectAddress('0x52869db3d61dde1e391967f2ce5039ad0ecd371c')
+      const result = autoCorrectAddress('0x130f5dd2bd8805443cf41755253d778a75a67f53')
       expect(result.wasCorrected).toBe(false)
     })
 
-    it('corrects hallucinated JBSwapTerminalUSDCRegistry address (missing "05")', () => {
+    it('corrects hallucinated JBRouterTerminalRegistry address (missing "05")', () => {
       // AI dropped '05' from 'de05810' making it 'de1810'
-      const hallucinated = '0x1ce40d201cdec791de1810d17aaf501be167422'
-      const correct = '0x1ce40d201cdec791de05810d17aaf501be167422'
+      const hallucinated = '0xe0427f250fdb0379c88e884ee4570521208cbc'
+      const correct = '0xe0427f250fdb0379c8e98e884ee4570521208cbc'
 
       const result = autoCorrectAddress(hallucinated)
       expect(result.wasCorrected).toBe(true)
       expect(result.address).toBe(correct)
       expect(result.originalAddress).toBe(hallucinated)
-      expect(result.matchedContract).toBe('JBSwapTerminalUSDCRegistry')
+      expect(result.matchedContract).toBe('JBRouterTerminalRegistry')
     })
 
-    it('corrects hallucinated JBMultiTerminal5_1 address (missing characters)', () => {
+    it('corrects hallucinated JBMultiTerminal address (missing characters)', () => {
       // AI dropped 'd' from 'ad0ecd' making it 'a0ecd'
-      const hallucinated = '0x52869db3d61dde1e391967f2ce5039a0ecd371c'
-      const correct = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c'
+      const hallucinated = '0x130f5dd2bd8805443cf41755253d78a75a67f53'
+      const correct = '0x130f5dd2bd8805443cf41755253d778a75a67f53'
 
       const result = autoCorrectAddress(hallucinated)
       expect(result.wasCorrected).toBe(true)
       expect(result.address).toBe(correct)
-      expect(result.matchedContract).toBe('JBMultiTerminal5_1')
+      expect(result.matchedContract).toBe('JBMultiTerminal')
     })
 
     it('does not correct addresses with too many differences', () => {
@@ -912,7 +912,7 @@ describe('transactionVerification', () => {
     it('corrects hallucinated terminal addresses', () => {
       const configs = [
         {
-          terminal: '0x52869db3d61dde1e391967f2ce5039a0ecd371c', // Missing 'd'
+          terminal: '0x130f5dd2bd8805443cf41755253d78a75a67f53', // Missing 'd'
           accountingContextsToAccept: [
             { token: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' }
           ]
@@ -923,15 +923,15 @@ describe('transactionVerification', () => {
 
       expect(corrections.length).toBe(1)
       expect(corrections[0].field).toBe('terminalConfigurations[0].terminal')
-      expect(corrections[0].corrected).toBe('0x52869db3d61dde1e391967f2ce5039ad0ecd371c')
+      expect(corrections[0].corrected).toBe('0x130f5dd2bd8805443cf41755253d778a75a67f53')
       // Mutated in place
-      expect(configs[0].terminal).toBe('0x52869db3d61dde1e391967f2ce5039ad0ecd371c')
+      expect(configs[0].terminal).toBe('0x130f5dd2bd8805443cf41755253d778a75a67f53')
     })
 
     it('handles configs with no corrections needed', () => {
       const configs = [
         {
-          terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+          terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
           accountingContextsToAccept: []
         }
       ]
@@ -949,7 +949,7 @@ describe('transactionVerification', () => {
           overrides: {
             terminalConfigurations: [
               {
-                terminal: '0x1ce40d201cdec791de1810d17aaf501be167422', // Missing '05'
+                terminal: '0xe0427f250fdb0379c88e884ee4570521208cbc', // Missing '05'
                 accountingContextsToAccept: []
               }
             ]
@@ -960,10 +960,10 @@ describe('transactionVerification', () => {
       const corrections = autoCorrectChainConfigs(chainConfigs)
 
       expect(corrections.length).toBe(1)
-      expect(corrections[0].corrected).toBe('0x1ce40d201cdec791de05810d17aaf501be167422')
+      expect(corrections[0].corrected).toBe('0xe0427f250fdb0379c8e98e884ee4570521208cbc')
       // Mutated in place
       expect(chainConfigs[0].overrides?.terminalConfigurations?.[0].terminal)
-        .toBe('0x1ce40d201cdec791de05810d17aaf501be167422')
+        .toBe('0xe0427f250fdb0379c8e98e884ee4570521208cbc')
     })
   })
 
@@ -1193,8 +1193,8 @@ describe('transactionVerification', () => {
     describe('autoCorrectAddress edge cases', () => {
       // Known canonical addresses for testing
       const knownAddresses = [
-        '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
-        '0x1ce40d201cdec791de05810d17aaf501be167422',
+        '0x130f5dd2bd8805443cf41755253d778a75a67f53',
+        '0xe0427f250fdb0379c8e98e884ee4570521208cbc',
       ]
 
       it('never modifies valid addresses', () => {

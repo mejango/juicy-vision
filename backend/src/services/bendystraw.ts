@@ -41,6 +41,7 @@ const USER_PARTICIPANT_QUERY = `
         projectId: $projectId
         chainId: $chainId
         address: $address
+        version: 6
       }
       limit: 1
     ) {
@@ -175,7 +176,7 @@ export async function hasAddressPaidProject(
 export async function getProject(
   projectId: number,
   chainId: number,
-  version: number = 5
+  version: number = 6
 ): Promise<Project | null> {
   const data = await queryBendystraw<{ project: Project | null }>(
     PROJECT_QUERY,

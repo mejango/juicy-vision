@@ -23,43 +23,48 @@ export const CHAIN_COLORS: Record<string, string> = {
   [String(CHAIN_IDS.arbitrum)]: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
 }
 
-// Known JB ecosystem addresses (same on all chains)
+// Known JB ecosystem addresses (Juicebox V6 - same address on all chains)
 export const JB_ADDRESSES: Record<string, string> = {
-  // Shared contracts (V5 and V5.1)
-  '0x885f707efa18d2cb12f05a3a8eba6b4b26c8c1d4': 'JBProjects',
-  '0x4d0edd347fb1fa21589c1e109b3474924be87636': 'JBTokens',
-  '0x0061e516886a0540f63157f112c0588ee0651dcf': 'JBDirectory',
-  '0x7160a322fea44945a6ef9adfd65c322258df3c5e': 'JBSplits',
-  '0x3a46b21720c8b70184b0434a2293b2fdcc497ce7': 'JBFundAccessLimits',
-  '0xba948dab74e875b19cf0e2ca7a4546c0c2defc40': 'JBPermissions',
-  '0x6e92e3b5ce1e7a4344c6d27c0c54efd00df92fb6': 'JBPrices',
-  '0xf76f7124f73abc7c30b2f76121afd4c52be19442': 'JBFeelessAddresses',
-  // V5.1 contracts
-  '0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1': 'JBController5_1',
-  '0x52869db3d61dde1e391967f2ce5039ad0ecd371c': 'JBMultiTerminal5_1',
-  '0xd4257005ca8d27bbe11f356453b0e4692414b056': 'JBRulesets5_1',
-  '0x82239c5a21f0e09573942caa41c580fa36e27071': 'JBTerminalStore5_1',
-  '0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71': 'JBOmnichainDeployer5_1',
-  // V5 contracts (Revnets)
-  '0x27da30646502e2f642be5281322ae8c394f7668a': 'JBController',
-  '0x2db6d704058e552defe415753465df8df0361846': 'JBMultiTerminal',
-  '0x6292281d69c3593fcf6ea074e5797341476ab428': 'JBRulesets',
-  '0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d': 'REVDeployer',
+  // Core contracts
+  '0x3fcec3572e84b624477bcff4e2cf1f7deab648f1': 'JBController',
+  '0x130f5dd2bd8805443cf41755253d778a75a67f53': 'JBMultiTerminal',
+  '0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba': 'JBRulesets',
+  '0x7497ae014a60561925b51c0a3b4ade7460b9927c': 'JBTerminalStore',
+  '0x6017d1fba9dc279bfa0b03fd931c22e242ab3691': 'JBProjects',
+  '0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9': 'JBTokens',
+  '0x5aff29060e023e6fb87be5596652b33c65af535b': 'JBDirectory',
+  '0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3': 'JBSplits',
+  '0xc93360158f187fc8fc8f1062a1b31d06f185dbab': 'JBFundAccessLimits',
+  '0xf92ac1ab5a00033e35a3975739124f61928c36b0': 'JBPermissions',
+  '0xad45e4627f068d1e6b21e5301870d807543a8401': 'JBPrices',
+  '0x657d0e588fca6f8c49394c9ca8a1cf6505b10314': 'JBFeelessAddresses',
+  '0x62e77076b6e902e7aec8b2925acc9b46058e3d38': 'JBHeldFees',
+  // Deployers
+  '0xb853758a70a6b4216c09f1d071ea2344aba0a34f': 'JBOmnichainDeployer',
+  '0xb552eb94284f94b833837d4b2cbb237128415d4e': 'REVDeployer',
+  '0x2ba4705ad0332cdfb299b452068438bcba3faaf3': 'REVOwner',
+  '0x056265c31157748818f0910d1859acd2f7d427de': 'REVLoans',
+  '0xb7b8ec35e2dd84afff04ee769c6189e7a4d44a78': 'JB721TiersHookDeployer',
+  '0x3ffdc94e7f1de4b74c52158ec9dd3b965585f451': 'JB721TiersHookProjectDeployer',
+  '0x69913acf79dbba170d9efafe605ee62b42164f9c': 'JB721TiersHookStore',
   // Hooks and extensions
-  '0xfe9c4f3e5c27ffd8ee523c6ca388aaa95692c25d': 'JBBuybackHook',
-  '0x0c02e48e55f4451a499e48a53595de55c40f3574': 'JBSwapTerminal',
-  // Swap terminal registries (CREATE2 - same on all chains)
-  '0x1ce40d201cdec791de05810d17aaf501be167422': 'JBSwapTerminalUSDCRegistry',
-  '0x60b4f5595ee509c4c22921c7b7999f1616e6a4f6': 'JBSwapTerminalRegistry',
+  '0x77bee1ad2ac0ace98a9b5b58d75685c8b4d94948': 'JBBuybackHook',
+  '0x72f55a54cd53410a5ff175508a5a384227081788': 'JBBuybackHookRegistry',
+  // Router terminal (routes swaps into a project's accounting token)
+  '0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7': 'JBRouterTerminal',
+  '0xe0427f250fdb0379c8e98e884ee4570521208cbc': 'JBRouterTerminalRegistry',
   // Suckers
-  '0x696c7e794fe2a7c2e3b7da4ae91733345fc1bf68': 'JBSuckerRegistry',
-  // CCIP Sucker Deployers (cross-chain)
-  '0x34b40205b249e5733cf93d86b7c9783b015dd3e7': 'CCIPSuckerDeployer',
-  '0xde901ebafc70d545f9d43034308c136ce8c94a5c': 'CCIPSuckerDeployer_1',
-  '0x9d4858cc9d3552507eeabce722787afef64c615e': 'CCIPSuckerDeployer_2',
-  '0x39132ea75b9eae5cbff7ba1997c804302a7ff413': 'CCIPSuckerDeployer_1',
-  '0xb825f2f6995966eb6dd772a8707d4a547028ac26': 'CCIPSuckerDeployer_2',
-  '0x3d7fb0aa325ad5d2349274f9ef33d4424135d963': 'CCIPSuckerDeployer_2',
+  '0x7903a854ae91eaf635430d120a1a434085cef297': 'JBSuckerRegistry',
+  '0x298a775c030adcedb641a89d9047ec9972674e1a': 'JBOptimismSuckerDeployer',
+  '0x54140331902de5c3445eb0c26e15099a5a9d59e6': 'JBBaseSuckerDeployer',
+  '0xa12ebfca3d4e0810e4ed174e4c08277c26917acb': 'JBArbitrumSuckerDeployer',
+  // CCIP Sucker Deployers (per chain pair; same address on both sides)
+  '0x41d28bedd5b0fbf65424b48c0e1de92d5c882fc7': 'CCIPSuckerDeployer (ETH↔OP)',
+  '0x36a2e30029d87c46f77f71b7b6b97fec8a760660': 'CCIPSuckerDeployer (ETH↔ARB)',
+  '0x3955fec11fe15f0be4dfa2b0153feef55d55e1ee': 'CCIPSuckerDeployer (ETH↔BASE)',
+  '0x1d58d56fbdb753de44737be926c33b79cf009afa': 'CCIPSuckerDeployer (OP↔ARB)',
+  '0x8f6f0a70939997310309d7ab66b1b199faafe7f0': 'CCIPSuckerDeployer (OP↔BASE)',
+  '0x2845f919af9ed7d8dab188d42114bd590340a242': 'CCIPSuckerDeployer (ARB↔BASE)',
   // Native token (JBConstants.NATIVE_TOKEN)
   '0x000000000000000000000000000000000000eeee': 'NATIVE_TOKEN (ETH)',
   // Zero address

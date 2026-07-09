@@ -93,7 +93,7 @@ describe('LaunchProjectModal', () => {
         allowAddPriceFeed: true,
         ownerMustSendPayouts: false,
         holdFees: false,
-        useTotalSurplusForCashOuts: false,
+        scopeCashOutsToLocalBalances: false,
         useDataHookForPay: false,
         useDataHookForCashOut: false,
         dataHook: '0x0000000000000000000000000000000000000000',
@@ -103,7 +103,7 @@ describe('LaunchProjectModal', () => {
       fundAccessLimitGroups: [],
     },
     terminalConfigurations: [{
-      terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+      terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
       accountingContextsToAccept: [{
         token: '0x000000000000000000000000000000000000EEEe',
         decimals: 18,

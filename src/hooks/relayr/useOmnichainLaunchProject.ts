@@ -12,7 +12,7 @@ import {
   type JBSuckerDeploymentConfig,
 } from '../../services/relayr'
 import { getProjectIdsFromReceipts } from '../../services/bendystraw'
-import { buildOmnichainLaunchTransactions, type ChainConfigOverride } from '../../services/omnichainDeployer'
+import { buildOmnichainLaunchTransactions, fetchProjectCreationFee, type ChainConfigOverride } from '../../services/omnichainDeployer'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
@@ -361,6 +361,13 @@ export function useOmnichainLaunchProject(
       const useOmnichainDeployer = chainIds.length > 1 || suckerDeploymentConfiguration
 
       if (useOmnichainDeployer) {
+        // V6: launchProjectFor is payable and requires msg.value to equal
+        // JBProjects.creationFee() exactly - fetch it per chain before encoding.
+        const creationFeesWei: Record<number, string> = {}
+        await Promise.all(chainIds.map(async chainId => {
+          creationFeesWei[chainId] = (await fetchProjectCreationFee(chainId)).toString()
+        }))
+
         // Use JBOmnichainDeployer.launchProjectFor() - encode calldata locally
         // This creates projects AND deploys suckers atomically
         // Note: buildOmnichainLaunchTransactions auto-generates per-chain sucker configs
@@ -374,6 +381,7 @@ export function useOmnichainLaunchProject(
           memo,
           suckerDeploymentConfiguration, // Optional - will be auto-generated if not provided
           chainConfigs, // Per-chain overrides for terminal configs
+          creationFeesWei,
         })
 
         transactions = txs.map(tx => ({

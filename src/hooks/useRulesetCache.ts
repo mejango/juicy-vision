@@ -1,7 +1,7 @@
 /**
  * Ruleset Cache Hooks
  *
- * React Query hooks for cached Juicebox V5 ruleset data.
+ * React Query hooks for cached Juicebox V6 ruleset data.
  * Uses server-side caching with appropriate stale times:
  * - Historical rulesets: staleTime = Infinity (immutable)
  * - Current/queued rulesets: staleTime = 5 min
@@ -106,7 +106,7 @@ export interface RulesetMetadata {
   allowAddPriceFeed: boolean
   ownerMustSendPayouts: boolean
   holdFees: boolean
-  useTotalSurplusForCashOuts: boolean
+  scopeCashOutsToLocalBalances: boolean
   useDataHookForPay: boolean
   useDataHookForCashOut: boolean
   dataHook: string

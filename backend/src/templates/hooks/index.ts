@@ -1,7 +1,7 @@
 /**
  * Hook Templates Index
  *
- * Provides starter templates for Juicebox V5 hook development.
+ * Provides starter templates for Juicebox V6 hook development.
  * These templates include:
  * - Properly structured Solidity contracts
  * - Security best practices (terminal validation, project ID checks)

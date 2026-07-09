@@ -39,7 +39,7 @@ const sampleRulesetConfig: JBRulesetConfig = {
     allowAddPriceFeed: true,
     ownerMustSendPayouts: false,
     holdFees: false,
-    useTotalSurplusForCashOuts: false,
+    scopeCashOutsToLocalBalances: false,
     useDataHookForPay: false,
     useDataHookForCashOut: false,
     dataHook: '0x0000000000000000000000000000000000000000',
@@ -51,7 +51,7 @@ const sampleRulesetConfig: JBRulesetConfig = {
 
 // Sample terminal configuration for ETH
 const sampleEthTerminalConfig: JBTerminalConfig = {
-  terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+  terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
   accountingContextsToAccept: [{
     token: '0x000000000000000000000000000000000000EEEe',
     decimals: 18,
@@ -61,7 +61,7 @@ const sampleEthTerminalConfig: JBTerminalConfig = {
 
 // Sample terminal configuration for USDC (Sepolia)
 const sampleUsdcTerminalConfig: JBTerminalConfig = {
-  terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+  terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
   accountingContextsToAccept: [{
     token: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia USDC
     decimals: 6,
@@ -73,7 +73,7 @@ const sampleUsdcTerminalConfig: JBTerminalConfig = {
 // Uses real OPSuckerDeployer address from chains.ts
 const sampleSuckerConfig: JBSuckerDeploymentConfig = {
   deployerConfigurations: [{
-    deployer: '0x77cdb0f5eef8febd67dd6e594ff654fb12cc3057', // OPSuckerDeployer
+    deployer: '0x298a775c030adcedb641a89d9047ec9972674e1a', // OPSuckerDeployer
     mappings: [{
       localToken: '0x000000000000000000000000000000000000EEEe',
       minGas: 200000,
@@ -173,7 +173,7 @@ describe('omnichainDeployer', () => {
       const rulesetWithLimits: JBRulesetConfig = {
         ...sampleRulesetConfig,
         fundAccessLimitGroups: [{
-          terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+          terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
           token: '0x000000000000000000000000000000000000EEEe',
           payoutLimits: [{
             amount: '1000000000000000000', // 1 ETH
@@ -300,7 +300,7 @@ describe('omnichainDeployer', () => {
         {
           chainId: 11155111,
           terminalConfigurations: [{
-            terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+            terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
             accountingContextsToAccept: [{
               token: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia USDC
               decimals: 6,
@@ -311,7 +311,7 @@ describe('omnichainDeployer', () => {
         {
           chainId: 11155420,
           terminalConfigurations: [{
-            terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+            terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
             accountingContextsToAccept: [{
               token: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // OP Sepolia USDC
               decimals: 6,
@@ -468,9 +468,7 @@ describe('omnichainDeployer', () => {
         tiers: [unlimitedTier, limitedTier],
         currency: 2, // USD
         decimals: 6,
-        prices: '0x0000000000000000000000000000000000000000',
       },
-      reserveBeneficiary: '0x0000000000000000000000000000000000000000',
       flags: {
         noNewTiersWithReserves: false,
         noNewTiersWithVotes: false,
@@ -604,7 +602,7 @@ describe('omnichainDeployer', () => {
         {
           chainId: 11155420,
           terminalConfigurations: [{
-            terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+            terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
             accountingContextsToAccept: [{
               token: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // OP Sepolia USDC
               decimals: 6,

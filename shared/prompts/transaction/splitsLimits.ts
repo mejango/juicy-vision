@@ -35,7 +35,7 @@ Note: groupId for USDC on Ethereum = uint256(uint160(0xA0b86991c6218b36c1d19D4a2
 **Payout Limits - Set to ceil(goal ÷ 0.975) so user gets their full goal after fee:**
 \`\`\`json
 "fundAccessLimitGroups": [{
-  "terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c",
+  "terminal": "0x130f5dd2bd8805443cf41755253d778a75a67f53",
   "token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   "payoutLimits": [{"amount": "5129000000", "currency": 909516616}],
   "surplusAllowances": []

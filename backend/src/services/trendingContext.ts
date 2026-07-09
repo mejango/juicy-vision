@@ -31,6 +31,7 @@ interface ProjectsResponse {
 const TRENDING_PROJECTS_QUERY = `
   query TrendingProjects($limit: Int) {
     projects(
+      where: { version: 6 }
       limit: $limit
       orderBy: "trendingScore"
       orderDirection: "desc"

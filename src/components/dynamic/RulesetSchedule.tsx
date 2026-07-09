@@ -1824,19 +1824,19 @@ export default function RulesetSchedule({
                   </div>
                 )}
 
-                {/* Use Total Surplus for Cash Outs */}
-                {ruleset.useTotalSurplusForCashOuts !== undefined && (
+                {/* Cash out surplus scope (V6: scopeCashOutsToLocalBalances) */}
+                {ruleset.scopeCashOutsToLocalBalances !== undefined && (
                   <div>
                     <div className="flex justify-between">
                       <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Cash Out Surplus</span>
                       <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                        {ruleset.useTotalSurplusForCashOuts ? 'Total' : 'Terminal'}
+                        {ruleset.scopeCashOutsToLocalBalances ? 'Local chain' : 'All chains'}
                       </span>
                     </div>
                     <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      {ruleset.useTotalSurplusForCashOuts
-                        ? 'Cash outs calculated from total surplus across all terminals'
-                        : 'Cash outs calculated from individual terminal surplus'}
+                      {ruleset.scopeCashOutsToLocalBalances
+                        ? 'Cash outs calculated from this chain\'s balances only'
+                        : 'Cash outs calculated from cross-chain aggregate surplus'}
                     </div>
                   </div>
                 )}

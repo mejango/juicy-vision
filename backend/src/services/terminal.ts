@@ -936,7 +936,7 @@ export async function getMerchantStats(merchantId: string): Promise<{
 // ============================================================================
 
 // JBMultiTerminal contract addresses (CREATE2 - same on all chains)
-const JB_MULTI_TERMINAL = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c';
+const JB_MULTI_TERMINAL = '0x130f5dd2bd8805443cf41755253d778a75a67f53';
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe';
 
 /**

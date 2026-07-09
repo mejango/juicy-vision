@@ -1,9 +1,9 @@
 /**
- * Client-side Juicebox calldata encoding using viem
+ * Client-side Juicebox V6 calldata encoding using viem
  * Replaces non-existent /v1/juicebox/* API endpoints
  */
 
-import { encodeFunctionData, type Address, type Hex } from 'viem'
+import { encodeFunctionData, pad, type Address, type Hex } from 'viem'
 import {
   JB_CONTROLLER_ABI,
   JB_CONTROLLER_ADDRESS,
@@ -64,7 +64,11 @@ export interface JBRulesetMetadataConfig {
   allowAddPriceFeed: boolean
   ownerMustSendPayouts: boolean
   holdFees: boolean
-  useTotalSurplusForCashOuts: boolean
+  /**
+   * Signals omnichain data hooks to aggregate cross-chain surplus for cash-out pricing.
+   * If true, omnichain cash-out calculations use only the local chain's balances.
+   */
+  scopeCashOutsToLocalBalances: boolean
   useDataHookForPay: boolean
   useDataHookForCashOut: boolean
   dataHook: string
@@ -133,6 +137,16 @@ export interface JBTransactionResponse {
 // ============================================================================
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address
+const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex
+
+/**
+ * Convert a token address to the bytes32 form V6 sucker mappings expect.
+ * Accepts either a 20-byte address or an already-padded 32-byte value.
+ */
+function toRemoteTokenBytes32(value: string): Hex {
+  if (value.length === 66) return value as Hex
+  return pad(value as Address, { size: 32 })
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toRulesetConfigTuple(config: JBRulesetConfig): any {
@@ -157,7 +171,7 @@ function toRulesetConfigTuple(config: JBRulesetConfig): any {
       allowAddPriceFeed: config.metadata.allowAddPriceFeed,
       ownerMustSendPayouts: config.metadata.ownerMustSendPayouts,
       holdFees: config.metadata.holdFees,
-      useTotalSurplusForCashOuts: config.metadata.useTotalSurplusForCashOuts,
+      scopeCashOutsToLocalBalances: config.metadata.scopeCashOutsToLocalBalances,
       useDataHookForPay: config.metadata.useDataHookForPay,
       useDataHookForCashOut: config.metadata.useDataHookForCashOut,
       dataHook: (config.metadata.dataHook || ZERO_ADDRESS) as Address,
@@ -380,15 +394,22 @@ export interface JBTerminalConfig {
   }>
 }
 
+// V6 JBTokenMapping: remoteToken is bytes32 on-chain (a left-padded address);
+// callers may pass a plain address and it will be padded at encode time.
+// minBridgeAmount no longer exists in V6 and is accepted-but-ignored for
+// backward compatibility with older stored payloads.
 export interface JBSuckerTokenMapping {
   localToken: string
   minGas: number
   remoteToken: string
-  minBridgeAmount: string
+  /** @deprecated Removed in Juicebox V6 - ignored. */
+  minBridgeAmount?: string
 }
 
 export interface JBSuckerDeployerConfig {
   deployer: string
+  /** V6: explicit peer sucker (bytes32). Omit/zero for the default same-address peer. */
+  peer?: string
   mappings: JBSuckerTokenMapping[]
 }
 
@@ -405,14 +426,20 @@ export interface JBLaunchProjectRequest {
   terminalConfigurations: JBTerminalConfig[]
   memo: string
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig
+  /**
+   * V6: launchProjectFor is payable and requires msg.value to equal
+   * JBProjects.creationFee() exactly. Read from chain and pass here (wei).
+   * Defaults to '0' (correct while the creation fee is unset).
+   */
+  creationFeeWei?: string
 }
 
 export interface REVStageConfig {
   startsAtOrAfter: number
   splitPercent: number
   initialIssuance: string
-  issuanceDecayFrequency: number
-  issuanceDecayPercent: number
+  issuanceCutFrequency: number
+  issuanceCutPercent: number
   cashOutTaxRate: number
   extraMetadata: number
 }
@@ -431,6 +458,8 @@ export interface JBDeployRevnetRequest {
     beneficiary: string
     count: number
   }>
+  /** V6: deployFor is payable (project creation fee). Wei value, defaults to '0'. */
+  creationFeeWei?: string
 }
 
 export interface JBDeploySuckersRequest {
@@ -446,7 +475,29 @@ export interface JBDeploySuckersRequest {
 // ============================================================================
 
 /**
- * Encode JBOmnichainDeployer.launchProjectFor() calldata
+ * Format a sucker deployment config into the V6 tuple shape.
+ */
+function toSuckerConfigTuple(config?: JBSuckerDeploymentConfig) {
+  if (!config) {
+    return { deployerConfigurations: [], salt: ZERO_BYTES32 }
+  }
+  return {
+    deployerConfigurations: config.deployerConfigurations.map(dc => ({
+      deployer: dc.deployer as Address,
+      peer: (dc.peer && dc.peer !== ZERO_ADDRESS ? toRemoteTokenBytes32(dc.peer) : ZERO_BYTES32),
+      mappings: dc.mappings.map(m => ({
+        localToken: m.localToken as Address,
+        minGas: m.minGas,
+        remoteToken: toRemoteTokenBytes32(m.remoteToken),
+      })),
+    })),
+    salt: config.salt as Hex,
+  }
+}
+
+/**
+ * Encode JBOmnichainDeployer.launchProjectFor() calldata (Juicebox V6).
+ * V6 has no `controller` parameter and the call is payable (creation fee).
  */
 export function encodeLaunchProjectTransaction(
   chainId: number,
@@ -463,74 +514,29 @@ export function encodeLaunchProjectTransaction(
     })),
   }))
 
-  const suckerConfig = request.suckerDeploymentConfiguration
-    ? {
-        deployerConfigurations: request.suckerDeploymentConfiguration.deployerConfigurations.map(dc => ({
-          deployer: dc.deployer as Address,
-          mappings: dc.mappings.map(m => ({
-            localToken: m.localToken as Address,
-            minGas: m.minGas,
-            remoteToken: m.remoteToken as Address,
-            minBridgeAmount: BigInt(m.minBridgeAmount),
-          })),
-        })),
-        salt: request.suckerDeploymentConfiguration.salt as Hex,
-      }
-    : {
-        deployerConfigurations: [],
-        salt: '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex,
-      }
+  const suckerConfig = toSuckerConfigTuple(request.suckerDeploymentConfiguration)
 
-  // Log the exact args being encoded
-  console.log('\n=== ENCODER: launchProjectFor ARGS ===')
-  console.log('Chain ID:', chainId)
-  console.log('Owner:', request.owner)
-  console.log('Project URI:', request.projectUri)
-  console.log('Controller:', JB_CONTROLLER_ADDRESS)
-  console.log('Memo:', request.memo || '(empty)')
-  console.log('')
-  console.log('Terminal Configurations:')
-  terminalConfigs.forEach((tc, i) => {
-    console.log(`  [${i}] ${tc.terminal}`)
-    console.log(`      Accounting contexts: ${tc.accountingContextsToAccept.length}`)
-    tc.accountingContextsToAccept.forEach((ctx, j) => {
-      console.log(`        [${j}] token=${ctx.token} decimals=${ctx.decimals} currency=${ctx.currency}`)
-    })
-  })
-  console.log('')
-  console.log('Ruleset Configurations:', rulesetConfigs.length)
-  rulesetConfigs.forEach((rc, i) => {
-    console.log(`  [${i}] weight=${rc.weight} duration=${rc.duration} splitGroups=${rc.splitGroups.length}`)
-  })
-  console.log('')
-  console.log('Sucker Config:')
-  console.log(`  deployerConfigurations: ${suckerConfig.deployerConfigurations.length}`)
-  console.log(`  salt: ${suckerConfig.salt}`)
-  console.log('======================================\n')
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = encodeFunctionData({
     abi: JB_OMNICHAIN_DEPLOYER_ABI,
     functionName: 'launchProjectFor',
     args: [
       request.owner as Address,
       request.projectUri,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       rulesetConfigs as any, // Complex struct - viem handles conversion
       terminalConfigs,
       request.memo,
       suckerConfig,
-      JB_CONTROLLER_ADDRESS, // controller
     ],
   })
 
-  const selector = data.slice(0, 10)
-  console.log(`Chain ${chainId}: encoded selector=${selector}`)
+  const value = request.creationFeeWei || '0'
 
   return {
     txData: {
       to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
       data,
-      value: '0x0',
+      value,
       chainId,
     },
     estimatedGas: '2000000', // Complex deployment needs more gas
@@ -539,13 +545,22 @@ export function encodeLaunchProjectTransaction(
 }
 
 /**
- * Encode REVDeployer.deployFor() calldata
+ * Encode REVDeployer.deployFor() calldata (Juicebox V6).
+ *
+ * Encoding notes:
+ * - `terminalConfigurations` replaced by a flat `accountingContextsToAccept` array
+ *   (REVDeployer wires the canonical multi terminal + router terminal registry itself)
+ * - buyback hook / pay hook / dataHook params removed from the base overload
+ * - stage config renames: issuanceDecayFrequency -> issuanceCutFrequency,
+ *   issuanceDecayPercent -> issuanceCutPercent; adds autoIssuances + splits
+ * - `operator` (was splitOperator) and `scopeCashOutsToLocalBalances` on REVConfig
+ * - payable (project creation fee)
  */
 export function encodeDeployRevnetTransaction(
   chainId: number,
   revnetId: number,
   request: JBDeployRevnetRequest,
-  terminalConfigurations: JBTerminalConfig[]
+  accountingContexts: Array<{ token: string; decimals: number; currency: number }>
 ): JBTransactionResponse {
   const configuration = {
     description: {
@@ -555,67 +570,42 @@ export function encodeDeployRevnetTransaction(
       salt: request.description.salt as Hex,
     },
     baseCurrency: 1, // ETH
-    splitOperator: request.splitOperator as Address,
+    operator: request.splitOperator as Address,
+    scopeCashOutsToLocalBalances: false,
     stageConfigurations: request.stageConfigurations.map(sc => ({
       startsAtOrAfter: sc.startsAtOrAfter,
+      autoIssuances: (request.initialTokenReceivers || []).map(r => ({
+        chainId,
+        count: BigInt(r.count),
+        beneficiary: r.beneficiary as Address,
+      })),
       splitPercent: sc.splitPercent,
+      splits: [] as never[],
       initialIssuance: BigInt(sc.initialIssuance),
-      issuanceDecayFrequency: sc.issuanceDecayFrequency,
-      issuanceDecayPercent: sc.issuanceDecayPercent,
+      issuanceCutFrequency: sc.issuanceCutFrequency,
+      issuanceCutPercent: sc.issuanceCutPercent,
       cashOutTaxRate: sc.cashOutTaxRate,
       extraMetadata: sc.extraMetadata,
     })),
-    loanSources: [],
-    loans: [],
-    allowCrosschainSuckerExtension: true,
   }
 
-  const terminalConfigs = terminalConfigurations.map(tc => ({
-    terminal: tc.terminal as Address,
-    accountingContextsToAccept: tc.accountingContextsToAccept.map(ctx => ({
-      token: ctx.token as Address,
-      decimals: ctx.decimals,
-      currency: ctx.currency,
-    })),
+  const contexts = accountingContexts.map(ctx => ({
+    token: ctx.token as Address,
+    decimals: ctx.decimals,
+    currency: ctx.currency,
   }))
 
-  const buybackHookConfig = {
-    hook: ZERO_ADDRESS,
-    pools: [],
-  }
+  const suckerConfig = toSuckerConfigTuple(request.suckerDeploymentConfiguration)
 
-  const suckerConfig = request.suckerDeploymentConfiguration
-    ? {
-        deployerConfigurations: request.suckerDeploymentConfiguration.deployerConfigurations.map(dc => ({
-          deployer: dc.deployer as Address,
-          mappings: dc.mappings.map(m => ({
-            localToken: m.localToken as Address,
-            minGas: m.minGas,
-            remoteToken: m.remoteToken as Address,
-            minBridgeAmount: BigInt(m.minBridgeAmount),
-          })),
-        })),
-        salt: request.suckerDeploymentConfiguration.salt as Hex,
-      }
-    : {
-        deployerConfigurations: [],
-        salt: '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex,
-      }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = encodeFunctionData({
     abi: REV_DEPLOYER_ABI,
     functionName: 'deployFor',
     args: [
       BigInt(revnetId),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       configuration as any, // Complex struct - viem handles conversion
-      terminalConfigs,
-      buybackHookConfig,
+      contexts,
       suckerConfig,
-      [] as any, // hookConfiguration (empty tuple - ABI expects tuple, not object)
-      [], // otherPayHooksSpecifications
-      0, // extraHookMetadata
-      ZERO_ADDRESS, // dataHook
     ],
   })
 
@@ -623,7 +613,7 @@ export function encodeDeployRevnetTransaction(
     txData: {
       to: REV_DEPLOYER_ADDRESS,
       data,
-      value: '0x0',
+      value: request.creationFeeWei || '0',
       chainId,
     },
     estimatedGas: '3000000', // Revnet deployment is complex
@@ -632,7 +622,7 @@ export function encodeDeployRevnetTransaction(
 }
 
 /**
- * Encode JBSuckerRegistry.deploySuckersFor() calldata
+ * Encode JBSuckerRegistry.deploySuckersFor() calldata (Juicebox V6)
  */
 export function encodeDeploySuckersTransaction(
   chainId: number,
@@ -642,11 +632,11 @@ export function encodeDeploySuckersTransaction(
 ): JBTransactionResponse {
   const configs = configurations.map(c => ({
     deployer: c.deployer as Address,
+    peer: (c.peer && c.peer !== ZERO_ADDRESS ? toRemoteTokenBytes32(c.peer) : ZERO_BYTES32),
     mappings: c.mappings.map(m => ({
       localToken: m.localToken as Address,
       minGas: m.minGas,
-      remoteToken: m.remoteToken as Address,
-      minBridgeAmount: BigInt(m.minBridgeAmount),
+      remoteToken: toRemoteTokenBytes32(m.remoteToken),
     })),
   }))
 
@@ -671,4 +661,3 @@ export function encodeDeploySuckersTransaction(
     description: `Deploy suckers for project ${projectId}`,
   }
 }
-

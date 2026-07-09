@@ -15,7 +15,7 @@ describe('settingsStore', () => {
       pinataJwt: '',
       ankrApiKey: '',
       theGraphApiKey: '',
-      bendystrawEndpoint: 'https://api.bendystraw.xyz/graphql',
+      bendystrawEndpoint: 'https://bendystraw.xyz/graphql',
       relayrEndpoint: 'https://api.relayr.ba5ed.com',
       language: 'en',
       selectedFruit: null,
@@ -48,7 +48,7 @@ describe('settingsStore', () => {
 
     it('has default bendystraw endpoint', () => {
       const state = useSettingsStore.getState()
-      expect(state.bendystrawEndpoint).toBe('https://api.bendystraw.xyz/graphql')
+      expect(state.bendystrawEndpoint).toBe('https://bendystraw.xyz/graphql')
     })
 
     it('has default relayr endpoint', () => {

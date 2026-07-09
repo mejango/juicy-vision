@@ -2,7 +2,7 @@
 
 import { createPublicClient, http, zeroAddress } from 'viem'
 import { VIEM_CHAINS, MAINNET_VIEM_CHAINS, RPC_ENDPOINTS, MAINNET_RPC_ENDPOINTS, JB_CONTRACTS, type SupportedChainId, MAINNET_CHAIN_IDS } from '../../constants/chains'
-import { REV_DEPLOYER_ADDRESS, REV_DEPLOYER_TIERED_721_HOOK_ABI } from '../../constants/abis/revDeployer'
+import { REV_OWNER_ADDRESS, REV_OWNER_TIERED_721_HOOK_ABI } from '../../constants/abis/revDeployer'
 import { resolveIpfsUri, decodeEncodedIPFSUri, inlineSvgImages } from '../../utils/ipfs'
 import { isRevnet, fetchProject } from '../bendystraw'
 import {
@@ -66,12 +66,13 @@ export async function getProjectDataHook(
     console.log('[NFT] getProjectDataHook:', { projectId, chainId, owner: project?.owner, projectIsRevnet })
 
     if (projectIsRevnet) {
-      // For revnets, query the REVDeployer's tiered721HookOf function
+      // For revnets, query the REVOwner singleton's tiered721HookOf function
+      // (V6: revnet project NFTs are owned by REVOwner, which tracks the 721 hook)
       try {
-        console.log('[NFT] Querying tiered721HookOf for revnet:', projectId)
+        console.log('[NFT] Querying REVOwner.tiered721HookOf for revnet:', projectId)
         const hookAddress = await client.readContract({
-          address: REV_DEPLOYER_ADDRESS,
-          abi: REV_DEPLOYER_TIERED_721_HOOK_ABI,
+          address: REV_OWNER_ADDRESS,
+          abi: REV_OWNER_TIERED_721_HOOK_ABI,
           functionName: 'tiered721HookOf',
           args: [BigInt(projectId)],
         })
@@ -166,7 +167,8 @@ export async function fetchNFTTiers(
 
     console.log('[NFT] Fetched', tiers.length, 'tiers')
 
-    // Map raw tier data to our NFTTier type
+    // Map raw tier data to our NFTTier type (V6: per-tier booleans live in a
+    // nested `flags` tuple; encodedIpfsUri casing changed)
     return tiers.map((tier) => ({
       tierId: Number(tier.id),
       name: `Tier ${tier.id}`,
@@ -177,16 +179,16 @@ export async function fetchNFTTiers(
       reservedRate: Number(tier.reserveFrequency),
       votingUnits: BigInt(tier.votingUnits),
       category: Number(tier.category),
-      allowOwnerMint: tier.allowOwnerMint,
-      transfersPausable: tier.transfersPausable,
+      allowOwnerMint: tier.flags.allowOwnerMint,
+      transfersPausable: tier.flags.transfersPausable,
       // Decode IPFS URI if present (for IPFS-based projects)
-      encodedIPFSUri: tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
-        ? decodeEncodedIPFSUri(tier.encodedIPFSUri) || undefined
+      encodedIPFSUri: tier.encodedIpfsUri && tier.encodedIpfsUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
+        ? decodeEncodedIPFSUri(tier.encodedIpfsUri) || undefined
         : undefined,
       // Additional tier config
       discountPercent: Number(tier.discountPercent),
-      cannotBeRemoved: tier.cannotBeRemoved,
-      cannotIncreaseDiscountPercent: tier.cannotIncreaseDiscountPercent,
+      cannotBeRemoved: tier.flags.cantBeRemoved,
+      cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
     }))
   } catch (err) {
     console.error('[NFT] Failed to fetch NFT tiers:', err)
@@ -371,10 +373,10 @@ export async function fetchNFTTier(
       reservedRate: Number(tier.reserveFrequency),
       votingUnits: BigInt(tier.votingUnits),
       category: Number(tier.category),
-      allowOwnerMint: tier.allowOwnerMint,
-      transfersPausable: tier.transfersPausable,
-      encodedIPFSUri: tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
-        ? decodeEncodedIPFSUri(tier.encodedIPFSUri) || undefined
+      allowOwnerMint: tier.flags.allowOwnerMint,
+      transfersPausable: tier.flags.transfersPausable,
+      encodedIPFSUri: tier.encodedIpfsUri && tier.encodedIpfsUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
+        ? decodeEncodedIPFSUri(tier.encodedIpfsUri) || undefined
         : undefined,
     }
   } catch (err) {
@@ -626,14 +628,14 @@ export async function fetchNFTTiersWithPermissions(
       reservedRate: Number(tier.reserveFrequency),
       votingUnits: BigInt(tier.votingUnits),
       category: Number(tier.category),
-      allowOwnerMint: tier.allowOwnerMint,
-      transfersPausable: tier.transfersPausable,
-      encodedIPFSUri: tier.encodedIPFSUri && tier.encodedIPFSUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
-        ? decodeEncodedIPFSUri(tier.encodedIPFSUri) || undefined
+      allowOwnerMint: tier.flags.allowOwnerMint,
+      transfersPausable: tier.flags.transfersPausable,
+      encodedIPFSUri: tier.encodedIpfsUri && tier.encodedIpfsUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
+        ? decodeEncodedIPFSUri(tier.encodedIpfsUri) || undefined
         : undefined,
       permissions: {
-        cannotBeRemoved: tier.cannotBeRemoved,
-        cannotIncreaseDiscountPercent: tier.cannotIncreaseDiscountPercent,
+        cannotBeRemoved: tier.flags.cantBeRemoved,
+        cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
       },
     }))
   } catch (err) {

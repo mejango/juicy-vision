@@ -1,7 +1,7 @@
 /**
  * Ruleset Cache Service
  *
- * PostgreSQL-backed caching for Juicebox V5 ruleset data with TTL-based expiration.
+ * PostgreSQL-backed caching for Juicebox V6 ruleset data with TTL-based expiration.
  *
  * Cache TTL Strategy:
  * - Historical rulesets: Never expire (expires_at = NULL) - immutable
@@ -49,7 +49,6 @@ export interface RulesetMetadata {
   cashOutTaxRate: number
   baseCurrency: number
   pausePay: boolean
-  pauseCashOut: boolean
   pauseCreditTransfers: boolean
   allowOwnerMinting: boolean
   allowSetCustomToken: boolean
@@ -60,7 +59,7 @@ export interface RulesetMetadata {
   allowAddPriceFeed: boolean
   ownerMustSendPayouts: boolean
   holdFees: boolean
-  useTotalSurplusForCashOuts: boolean
+  scopeCashOutsToLocalBalances: boolean
   useDataHookForPay: boolean
   useDataHookForCashOut: boolean
   dataHook: string

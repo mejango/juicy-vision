@@ -2425,7 +2425,7 @@ export default function TransactionPreview({
       (launchConfig?.terminalConfigurations as unknown[]) || []
 
     // Auto-correct any hallucinated addresses in terminal configurations
-    // AI sometimes drops characters from addresses (e.g., 0x1ce40d201cdec791de1810d17... missing '05')
+    // AI sometimes drops characters from addresses (e.g., a known address with a dropped character)
     const terminalCorrections = autoCorrectTerminalConfigurations(
       terminalConfigurations as Array<{ terminal?: string; accountingContextsToAccept?: Array<{ token?: string }> }>
     )
@@ -2454,11 +2454,11 @@ export default function TransactionPreview({
     let suckerDeploymentConfiguration = raw.suckerDeploymentConfiguration as {
       deployerConfigurations: Array<{
         deployer: string
+        peer?: string
         mappings: Array<{
           localToken: string
           remoteToken: string
           minGas: number
-          minBridgeAmount: string
         }>
       }>
       salt: string
@@ -2504,11 +2504,11 @@ export default function TransactionPreview({
         suckerDeploymentConfiguration = {
           deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
             deployer: dc.deployer,
+            peer: dc.peer,
             mappings: dc.mappings.map(m => ({
               localToken: m.localToken,
               remoteToken: m.remoteToken,
               minGas: m.minGas,
-              minBridgeAmount: m.minBridgeAmount.toString(),
             })),
           })),
           salt: previewSaltRef.current!, // Must be valid bytes32, not a display string
@@ -3032,7 +3032,7 @@ export default function TransactionPreview({
                   )}
                   {/* For launch actions, show controller last (default value) */}
                   {(action === 'launchProject' || action === 'launch721Project') && (
-                    <ParamRow key="controller" name="controller" value="0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1" isDark={isDark} chainId={chainId} />
+                    <ParamRow key="deployer" name="deployer" value="0xb853758a70a6b4216c09f1d071ea2344aba0a34f" isDark={isDark} chainId={chainId} />
                   )}
                 </>
               )

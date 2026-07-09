@@ -21,10 +21,10 @@ import { assertEquals, assert, assertExists } from 'std/assert/mod.ts';
 const TEST_PAY_HOOK = `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IJBPayHook} from "@jb/interfaces/IJBPayHook.sol";
-import {JBPayHookPayload} from "@jb/structs/JBPayHookPayload.sol";
-import {IJBDirectory} from "@jb/interfaces/IJBDirectory.sol";
-import {IJBTerminal} from "@jb/interfaces/IJBTerminal.sol";
+import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
+import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 
 /// @notice A pay hook that caps individual payments at 1 ETH.
 contract CappedPayHook is IJBPayHook {
@@ -45,26 +45,23 @@ contract CappedPayHook is IJBPayHook {
         projectId = _projectId;
     }
 
-    /// @notice Called before a payment is recorded.
-    function beforePayRecordedWith(JBPayHookPayload calldata payload) external view {
+    /// @notice Called after a payment is recorded.
+    function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable {
         // Verify caller is a valid terminal
-        if (!directory.isTerminalOf(payload.projectId, IJBTerminal(msg.sender))) {
+        if (!directory.isTerminalOf(context.projectId, IJBTerminal(msg.sender))) {
             revert UnauthorizedTerminal(msg.sender);
         }
 
         // Verify project ID matches
-        if (payload.projectId != projectId) {
+        if (context.projectId != projectId) {
             revert UnauthorizedTerminal(msg.sender);
         }
 
         // Check payment cap
-        if (payload.amount.value > MAX_PAYMENT) {
-            revert PaymentTooLarge(payload.amount.value, MAX_PAYMENT);
+        if (context.amount.value > MAX_PAYMENT) {
+            revert PaymentTooLarge(context.amount.value, MAX_PAYMENT);
         }
     }
-
-    /// @notice Called after a payment is recorded (no-op for this hook).
-    function afterPayRecordedWith(JBPayHookPayload calldata) external {}
 
     /// @notice ERC-165 interface support.
     function supportsInterface(bytes4 interfaceId) public pure returns (bool) {
@@ -441,7 +438,7 @@ Deno.test('hooks workflow - Error Handling', async (t) => {
         {
           file: 'src/MyHook.sol',
           line: 3,
-          message: 'Source "@jb/NotReal.sol" not found',
+          message: 'Source "@bananapus/core-v6/src/NotReal.sol" not found',
           severity: 'error',
         },
       ],

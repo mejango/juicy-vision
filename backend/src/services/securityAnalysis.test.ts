@@ -27,7 +27,7 @@ Deno.test('securityAnalysis - Severity Levels', async (t) => {
 Deno.test('securityAnalysis - Juicebox Rules', async (t) => {
   await t.step('detects missing terminal validation pattern', () => {
     const code = `
-      function afterPayRecordedWith(JBPayHookPayload calldata payload) external {
+      function afterPayRecordedWith(JBAfterPayRecordedContext calldata payload) external {
         // No validation of msg.sender
         emit PaymentReceived(payload.amount);
       }
@@ -45,7 +45,7 @@ Deno.test('securityAnalysis - Juicebox Rules', async (t) => {
 
   await t.step('accepts code with terminal validation', () => {
     const code = `
-      function afterPayRecordedWith(JBPayHookPayload calldata payload) external {
+      function afterPayRecordedWith(JBAfterPayRecordedContext calldata payload) external {
         require(directory.isTerminalOf(payload.projectId, IJBTerminal(msg.sender)), "Unauthorized");
         emit PaymentReceived(payload.amount);
       }
@@ -57,7 +57,7 @@ Deno.test('securityAnalysis - Juicebox Rules', async (t) => {
 
   await t.step('detects reentrancy pattern in hooks', () => {
     const code = `
-      function afterPayRecordedWith(JBPayHookPayload calldata payload) external {
+      function afterPayRecordedWith(JBAfterPayRecordedContext calldata payload) external {
         recipient.call{value: msg.value}("");
       }
     `;
@@ -68,13 +68,13 @@ Deno.test('securityAnalysis - Juicebox Rules', async (t) => {
 
   await t.step('detects unchecked projectId', () => {
     const codeWithoutCheck = `
-      function afterPayRecordedWith(JBPayHookPayload calldata payload) external {
+      function afterPayRecordedWith(JBAfterPayRecordedContext calldata payload) external {
         doSomething();
       }
     `;
 
     const codeWithCheck = `
-      function afterPayRecordedWith(JBPayHookPayload calldata payload) external {
+      function afterPayRecordedWith(JBAfterPayRecordedContext calldata payload) external {
         require(payload.projectId == expectedProjectId, "Wrong project");
         doSomething();
       }
@@ -101,13 +101,13 @@ Deno.test('securityAnalysis - Juicebox Rules', async (t) => {
   await t.step('detects missing supportsInterface', () => {
     const codeWithout = `
       contract MyHook is IJBPayHook {
-        function afterPayRecordedWith(JBPayHookPayload calldata) external {}
+        function afterPayRecordedWith(JBAfterPayRecordedContext calldata) external {}
       }
     `;
 
     const codeWith = `
       contract MyHook is IJBPayHook {
-        function afterPayRecordedWith(JBPayHookPayload calldata) external {}
+        function afterPayRecordedWith(JBAfterPayRecordedContext calldata) external {}
         function supportsInterface(bytes4 interfaceId) public view returns (bool) {
           return interfaceId == type(IJBPayHook).interfaceId;
         }

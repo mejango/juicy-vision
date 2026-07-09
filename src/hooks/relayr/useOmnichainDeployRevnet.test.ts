@@ -97,8 +97,8 @@ describe('useOmnichainDeployRevnet', () => {
       startsAtOrAfter: Math.floor(Date.now() / 1000) + 300,
       splitPercent: 200000000, // 20%
       initialIssuance: '1000000000000000000000000',
-      issuanceDecayFrequency: 604800, // 7 days
-      issuanceDecayPercent: 50000000, // 5%
+      issuanceCutFrequency: 604800, // 7 days
+      issuanceCutPercent: 50000000, // 5%
       cashOutTaxRate: 1000, // 10%
       extraMetadata: 0,
     }],
@@ -293,8 +293,8 @@ describe('useOmnichainDeployRevnet', () => {
             startsAtOrAfter: Math.floor(Date.now() / 1000) + 300,
             splitPercent: 200000000,
             initialIssuance: '1000000000000000000000000',
-            issuanceDecayFrequency: 604800,
-            issuanceDecayPercent: 50000000,
+            issuanceCutFrequency: 604800,
+            issuanceCutPercent: 50000000,
             cashOutTaxRate: 1000,
             extraMetadata: 0,
           },
@@ -302,8 +302,8 @@ describe('useOmnichainDeployRevnet', () => {
             startsAtOrAfter: Math.floor(Date.now() / 1000) + 2592000, // 30 days later
             splitPercent: 100000000, // 10%
             initialIssuance: '500000000000000000000000',
-            issuanceDecayFrequency: 604800,
-            issuanceDecayPercent: 30000000, // 3%
+            issuanceCutFrequency: 604800,
+            issuanceCutPercent: 30000000, // 3%
             cashOutTaxRate: 500, // 5%
             extraMetadata: 0,
           },

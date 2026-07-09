@@ -5,7 +5,7 @@ import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { calculateSynchronizedStartTime, type JBRulesetConfig, type JBTerminalConfig } from '../../services/relayr'
 import { LaunchProjectModal } from '../payment'
-import { JB_CONTRACTS_5_1, ZERO_ADDRESS, NATIVE_TOKEN, ALL_CHAIN_IDS, CHAINS } from '../../constants'
+import { JB_CONTRACTS, ZERO_ADDRESS, NATIVE_TOKEN, ALL_CHAIN_IDS, CHAINS } from '../../constants'
 
 interface CreateProjectFormProps {
   defaultOwner?: string
@@ -120,7 +120,7 @@ function formStateToRulesetConfig(
 
     if (payoutLimits.length > 0 || surplusAllowances.length > 0) {
       fundAccessLimitGroups.push({
-        terminal: JB_CONTRACTS_5_1.JBMultiTerminal5_1,
+        terminal: JB_CONTRACTS.JBMultiTerminal,
         token: NATIVE_TOKEN,
         payoutLimits,
         surplusAllowances,
@@ -149,7 +149,7 @@ function formStateToRulesetConfig(
       allowAddPriceFeed: true,
       ownerMustSendPayouts: state.ownerMustSendPayouts,
       holdFees: false,
-      useTotalSurplusForCashOuts: false,
+      scopeCashOutsToLocalBalances: false,
       useDataHookForPay: false,
       useDataHookForCashOut: false,
       dataHook: ZERO_ADDRESS,
@@ -178,7 +178,7 @@ function buildTerminalConfigurations(state: ProjectFormState): JBTerminalConfig[
   // if (state.acceptUsdc) { ... }
 
   return [{
-    terminal: JB_CONTRACTS_5_1.JBMultiTerminal5_1,
+    terminal: JB_CONTRACTS.JBMultiTerminal,
     accountingContextsToAccept: accountingContexts,
   }]
 }

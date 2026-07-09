@@ -1,8 +1,8 @@
 import { type PublicClient, type Address, zeroAddress } from 'viem'
-import { JB_CONTRACTS, JB_SWAP_TERMINAL, USDC_ADDRESSES, type SupportedChainId } from '../constants'
+import { JB_CONTRACTS, JB_ROUTER_TERMINAL, JB_ROUTER_TERMINAL_REGISTRY, USDC_ADDRESSES, type SupportedChainId } from '../constants'
 
-// JBMultiTerminal5_1 address (same on all chains via CREATE2)
-const JB_MULTI_TERMINAL = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const
+// JBMultiTerminal address (Juicebox V6 - same on all chains)
+const JB_MULTI_TERMINAL = JB_CONTRACTS.JBMultiTerminal
 
 // Native token address for ETH payments
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
@@ -30,7 +30,12 @@ const JB_DIRECTORY_ABI = [
   },
 ] as const
 
-export type TerminalType = 'multi' | 'swap'
+// In V6 the JBSwapTerminal no longer exists. Its replacement is the
+// JBRouterTerminal (a universal terminal that accepts any token and converts
+// it to a token the project accepts) fronted by the JBRouterTerminalRegistry
+// (a forwarding layer projects register with empty accounting contexts).
+// 'router' is the V6 equivalent of the old 'swap' terminal type.
+export type TerminalType = 'multi' | 'router'
 
 export interface PaymentTerminal {
   address: Address
@@ -42,10 +47,15 @@ export interface PaymentTerminal {
  *
  * Queries JBDirectory.primaryTerminalOf(projectId, tokenAddress) to find which terminal
  * accepts the payment token. If no terminal is registered for that token (zero address),
- * falls back to the JBSwapTerminal which can swap tokens before crediting the project.
+ * falls back to the JBRouterTerminalRegistry, which forwards to the project's chosen
+ * router terminal (which swaps the payment into a token the project accepts).
+ *
+ * Note: the registry resolves per-project. Projects that never registered the
+ * registry (or have no accounting context the router can target yet) revert on
+ * router payments — callers should surface that as "token not accepted".
  *
  * @param client - Viem public client for the chain
- * @param chainId - Chain ID (1, 10, 8453, 42161)
+ * @param chainId - Chain ID (mainnets or sepolias)
  * @param projectId - Juicebox project ID
  * @param paymentToken - Token address the user wants to pay with (ETH native token or USDC)
  * @returns The terminal address and type to use for the payment
@@ -56,8 +66,6 @@ export async function getPaymentTerminal(
   projectId: bigint,
   paymentToken: Address
 ): Promise<PaymentTerminal> {
-  const supportedChainId = chainId as SupportedChainId
-
   // Query directory for the primary terminal that accepts this token
   const terminal = await client.readContract({
     address: JB_CONTRACTS.JBDirectory,
@@ -66,19 +74,20 @@ export async function getPaymentTerminal(
     args: [projectId, paymentToken],
   })
 
-  // Get swap terminal address for this chain
-  const swapTerminal = JB_SWAP_TERMINAL[supportedChainId]
-
-  // If no terminal registered for this token (zero address), use swap terminal
+  // If no terminal registered for this token (zero address), pay through the
+  // router terminal registry (V6 replacement for the swap terminal)
   if (terminal === zeroAddress) {
-    return { address: swapTerminal, type: 'swap' }
+    return { address: JB_ROUTER_TERMINAL_REGISTRY, type: 'router' }
   }
 
-  // Check if the returned terminal IS the swap terminal
-  const isSwapTerminal = terminal.toLowerCase() === swapTerminal?.toLowerCase()
+  // Check if the returned terminal IS the router terminal or its registry
+  const terminalLower = terminal.toLowerCase()
+  const isRouterTerminal =
+    terminalLower === JB_ROUTER_TERMINAL_REGISTRY.toLowerCase() ||
+    terminalLower === JB_ROUTER_TERMINAL.toLowerCase()
 
-  if (isSwapTerminal) {
-    return { address: terminal, type: 'swap' }
+  if (isRouterTerminal) {
+    return { address: terminal, type: 'router' }
   }
 
   // Otherwise it's the multi terminal
@@ -126,3 +135,6 @@ export async function getProjectController(
 
   return controller
 }
+
+// Re-export for existing consumers
+export { JB_MULTI_TERMINAL }

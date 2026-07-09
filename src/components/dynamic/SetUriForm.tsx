@@ -194,7 +194,7 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
 
   const logoUrl = project?.logoUri ? resolveIpfsUri(project.logoUri) : null
   const chainInfo = CHAIN_INFO[primaryChainId] || CHAIN_INFO[1]
-  const projectUrl = `https://juicebox.money/v5/${chainInfo.slug}:${projectId}`
+  const projectUrl = `https://juicebox.money/v6/${chainInfo.slug}:${projectId}`
 
   return (
     <div className="w-full">

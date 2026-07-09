@@ -50,7 +50,7 @@ export const METADATA_CONTEXT = `
 
 **How to tell if a project is omnichain:**
 - Check the conversation history - was it deployed with "chainConfigs" containing multiple chains?
-- If launchProject used JBOmnichainDeployer5_1 with chainConfigs → IT IS OMNICHAIN
+- If launchProject used JBOmnichainDeployer with chainConfigs → IT IS OMNICHAIN
 - If deployed to only one chain → IT IS SINGLE-CHAIN
 
 **IF OMNICHAIN (deployed with chainConfigs):**

@@ -1,16 +1,46 @@
 /**
  * Omnichain/Sucker Knowledge Base
  *
- * Comprehensive context about how Juicebox V5 omnichain projects work,
- * including suckers, cross-chain token bridging, and user flows.
+ * Comprehensive context about how Juicebox V6 omnichain projects work,
+ * including the V6 contract set, suckers, cross-chain token bridging, and user flows.
  */
 
 export const OMNICHAIN_CONTEXT = `
+## Juicebox V6
+
+Juicebox V6 is the protocol. There is a single contract set — every project, including Revnets, uses the same V6 contracts. There is no per-project version detection: resolve a project's controller and terminals through JBDirectory, never by guessing a version.
+
+### V6 Core Contracts (same address on every supported chain — mainnets and Sepolia testnets — via CREATE2)
+
+| Contract | Address | Role |
+|----------|---------|------|
+| JBController | 0x3fcec3572e84b624477bcff4e2cf1f7deab648f1 | Rulesets, token issuance, reserved splits, project URI |
+| JBMultiTerminal | 0x130f5dd2bd8805443cf41755253d778a75a67f53 | Payments, cash outs, payouts, surplus allowance |
+| JBRulesets | 0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba | Ruleset storage and cycling |
+| JBTerminalStore | 0x7497ae014a60561925b51c0a3b4ade7460b9927c | Terminal balance/accounting reads |
+| JBTokens | 0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9 | Project token + credit balances |
+| JBProjects | 0x6017d1fba9dc279bfa0b03fd931c22e242ab3691 | Project ownership NFTs |
+| JBDirectory | 0x5aff29060e023e6fb87be5596652b33c65af535b | controllerOf / terminalsOf / primaryTerminalOf |
+| JBSplits | 0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3 | Split storage |
+| JBPermissions | 0xf92ac1ab5a00033e35a3975739124f61928c36b0 | Operator permissions |
+| JBOmnichainDeployer | 0xb853758a70a6b4216c09f1d071ea2344aba0a34f | Project deployment (use this to deploy, not the controller) |
+| JBRouterTerminal | 0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7 | Routes arbitrary-token payments (V6 has NO swap terminal — the router terminal replaces it) |
+| JBSuckerRegistry | 0x7903a854ae91eaf635430d120a1a434085cef297 | Sucker deployments and pair discovery |
+| REVDeployer | 0xb552eb94284f94b833837d4b2cbb237128415d4e | Revnet deployment |
+| REVLoans | 0x056265c31157748818f0910d1859acd2f7d427de | Loans against revnet tokens |
+
+### V6 Flows in Brief
+
+- **Pay**: \`JBMultiTerminal.pay(projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata)\`. The terminal must have an accounting context for the token; use JBRouterTerminal for tokens the project doesn't accept natively.
+- **Cash out**: \`JBMultiTerminal.cashOutTokensOf(holder, projectId, cashOutCount, tokenToReclaim, minTokensReclaimed, beneficiary, metadata)\`. The ruleset's cashOutTaxRate is a bonding-curve parameter, not a flat fee.
+- **Payouts**: \`JBMultiTerminal.sendPayoutsOf(...)\` distributes up to the ruleset's payout limit to the payout splits.
+- **Rulesets**: queue with \`JBController.queueRulesetsOf(...)\`; metadata includes reservedPercent, cashOutTaxRate, baseCurrency, pause flags, and \`scopeCashOutsToLocalBalances\` (whether omnichain cash outs use only local-chain balances).
+
 ## Omnichain Juicebox Projects
 
 ### What is an Omnichain Project?
 
-An omnichain project exists as multiple independent instances across different blockchain networks (Ethereum mainnet, Optimism, Arbitrum, Base). Each chain has its own:
+An omnichain project exists as multiple independent instances across different blockchain networks (Ethereum mainnet, Optimism, Arbitrum, Base — plus their Sepolia testnets). Each chain has its own:
 - Project ID (may differ per chain)
 - ERC-20 token contract
 - Terminal (handles payments and cash outs)
@@ -32,7 +62,8 @@ Each chain pair has a sucker contract on both ends that communicate as peers.
 **The Complete Flow:**
 
 1. **Prepare Phase** (Source Chain)
-   - User calls \`prepare(projectTokenCount, beneficiary, minTokensReclaimed, token)\`
+   - User calls \`prepare(projectTokenCount, beneficiary, minTokensReclaimed, token, metadata)\`
+   - \`beneficiary\` is a bytes32 (an EVM address left-padded to 32 bytes, for cross-VM compatibility); \`metadata\` is an opaque bytes32 attribution payload — pass zero for ordinary bridges
    - Sucker burns the user's project tokens
    - Sucker cashes out from terminal, receiving proportional ETH/USDC
    - Transaction added as a leaf to the outbox merkle tree
@@ -88,9 +119,9 @@ If a bridge becomes non-functional:
 
 ### Key Addresses
 
-**JBSuckerRegistry** (same on all chains): Manages sucker deployments and tracks all sucker pairs for each project.
+**JBSuckerRegistry** (0x7903a854ae91eaf635430d120a1a434085cef297, same on all chains): Manages sucker deployments and tracks all sucker pairs for each project.
 
-**Sucker Discovery**: Call \`suckerPairsOf(projectId)\` on JBSuckerRegistry to get all available bridge destinations.
+**Sucker Discovery**: Call \`suckerPairsOf(projectId)\` on JBSuckerRegistry to get all available bridge destinations. Each pair's \`remote\` is a bytes32 (EVM addresses occupy the low 20 bytes).
 
 ### Important Considerations for Users
 
@@ -153,9 +184,9 @@ export const BRIDGE_PROTOCOLS: Record<string, string> = {
 };
 
 /**
- * JBSuckerRegistry addresses (same on all chains via CREATE2)
+ * V6 JBSuckerRegistry address (same on all chains via CREATE2)
  */
-export const SUCKER_REGISTRY_ADDRESS = '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3' as const;
+export const SUCKER_REGISTRY_ADDRESS = '0x7903a854ae91eaf635430d120a1a434085cef297' as const;
 
 /**
  * Tool definitions for omnichain operations
@@ -178,11 +209,6 @@ export const OMNICHAIN_TOOLS = [
           enum: ['developer', 'user', 'dao', 'ecosystem', 'all'],
           description: 'Category to search within (default: all)',
         },
-        version: {
-          type: 'string',
-          enum: ['v4', 'v5', 'all'],
-          description: 'Protocol version (default: v5)',
-        },
         limit: {
           type: 'number',
           description: 'Maximum results (default: 10)',
@@ -200,7 +226,7 @@ export const OMNICHAIN_TOOLS = [
       properties: {
         path: {
           type: 'string',
-          description: 'Document path like "dev/v5/build/examples/pay"',
+          description: 'Document path like "dev/v6/build/examples/pay"',
         },
       },
       required: ['path'],
@@ -209,7 +235,7 @@ export const OMNICHAIN_TOOLS = [
   {
     name: 'get_contracts',
     description:
-      'Get Juicebox V5 contract addresses. Use when users ask for contract addresses on specific chains.',
+      'Get Juicebox V6 contract addresses. Use when users ask for contract addresses on specific chains.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -261,10 +287,6 @@ export const OMNICHAIN_TOOLS = [
         chainId: {
           type: 'number',
           description: 'The chain ID (1=Ethereum, 10=Optimism, 8453=Base, 42161=Arbitrum). Default: 1',
-        },
-        version: {
-          type: 'number',
-          description: 'Protocol version (4 or 5). Default: 5. Use 4 for older V4 projects.',
         },
       },
       required: ['projectId'],
@@ -495,7 +517,9 @@ export const OMNICHAIN_TOOLS = [
 ];
 
 /**
- * JBSucker ABI fragments for encoding transactions
+ * V6 JBSucker ABI fragments for encoding transactions.
+ * Note: beneficiaries are bytes32 (EVM addresses left-padded to 32 bytes),
+ * and prepare/leaves carry an opaque bytes32 metadata field.
  */
 export const SUCKER_ABI = [
   {
@@ -503,9 +527,10 @@ export const SUCKER_ABI = [
     type: 'function',
     inputs: [
       { name: 'projectTokenCount', type: 'uint256' },
-      { name: 'beneficiary', type: 'address' },
+      { name: 'beneficiary', type: 'bytes32' },
       { name: 'minTokensReclaimed', type: 'uint256' },
       { name: 'token', type: 'address' },
+      { name: 'metadata', type: 'bytes32' },
     ],
     outputs: [],
     stateMutability: 'nonpayable',
@@ -531,9 +556,10 @@ export const SUCKER_ABI = [
             type: 'tuple',
             components: [
               { name: 'index', type: 'uint256' },
-              { name: 'beneficiary', type: 'address' },
+              { name: 'beneficiary', type: 'bytes32' },
               { name: 'projectTokenCount', type: 'uint256' },
               { name: 'terminalTokenAmount', type: 'uint256' },
+              { name: 'metadata', type: 'bytes32' },
             ],
           },
           { name: 'proof', type: 'bytes32[32]' },
@@ -556,7 +582,7 @@ export const SUCKER_ABI = [
 ] as const;
 
 /**
- * JBSuckerRegistry ABI fragment
+ * V6 JBSuckerRegistry ABI fragment (remote is bytes32 for cross-VM support)
  */
 export const SUCKER_REGISTRY_ABI = [
   {
@@ -569,7 +595,7 @@ export const SUCKER_REGISTRY_ABI = [
         type: 'tuple[]',
         components: [
           { name: 'local', type: 'address' },
-          { name: 'remote', type: 'address' },
+          { name: 'remote', type: 'bytes32' },
           { name: 'remoteChainId', type: 'uint256' },
         ],
       },

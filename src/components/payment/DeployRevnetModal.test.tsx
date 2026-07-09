@@ -102,10 +102,10 @@ describe('DeployRevnetModal', () => {
     chainIds: [1, 10, 8453, 42161],
     stageConfigurations: [{
       startsAtOrAfter: Math.floor(Date.now() / 1000) + 300,
-      splitPercent: 200000000, // 20%
+      splitPercent: 2000, // 20% (out of 10,000)
       initialIssuance: '1000000000000000000000000',
-      issuanceDecayFrequency: 604800, // 7 days
-      issuanceDecayPercent: 50000000, // 5%
+      issuanceCutFrequency: 604800, // 7 days
+      issuanceCutPercent: 50000000, // 5%
       cashOutTaxRate: 1000, // 10%
       extraMetadata: 0,
     }],
@@ -183,7 +183,7 @@ describe('DeployRevnetModal', () => {
 
       expect(screen.getByText('1 Stage Configured')).toBeInTheDocument()
       expect(screen.getByText(/20.0% operator split/)).toBeInTheDocument()
-      expect(screen.getByText(/5.0% decay every 7 days/)).toBeInTheDocument()
+      expect(screen.getByText(/5.0% issuance cut every 7 days/)).toBeInTheDocument()
     })
 
     it('shows split operator', () => {
@@ -220,10 +220,10 @@ describe('DeployRevnetModal', () => {
         { ...defaultProps.stageConfigurations[0] },
         {
           startsAtOrAfter: Math.floor(Date.now() / 1000) + 2592000,
-          splitPercent: 100000000,
+          splitPercent: 1000, // 10% (out of 10,000)
           initialIssuance: '500000000000000000000000',
-          issuanceDecayFrequency: 604800,
-          issuanceDecayPercent: 30000000,
+          issuanceCutFrequency: 604800,
+          issuanceCutPercent: 30000000,
           cashOutTaxRate: 500,
           extraMetadata: 0,
         },

@@ -417,6 +417,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   }
 
   // $JUICY project ID (using NANA as placeholder until real deployment)
+  // TODO(v6): update project ID once $JUICY is redeployed on V6
   const JUICY_PROJECT_ID = 1
   const JUICY_FEE_PERCENT = 2.5
   // Fallback issuance rate for NANA (~1M tokens per ETH) when rate can't be fetched
@@ -579,7 +580,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             id: currentProjectId,
             projectId: parseInt(currentProjectId),
             chainId: parseInt(selectedChainId),
-            version: 5,
+            version: 6,
             name: `Project #${currentProjectId}`,
             handle: undefined,
             owner: '',
@@ -1218,7 +1219,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   }
 
   const logoUrl = resolveIpfsUri(project.logoUri)
-  const projectUrl = `https://juicebox.money/v5/${selectedChainInfo.slug}:${currentProjectId}`
+  const projectUrl = `https://juicebox.money/v6/${selectedChainInfo.slug}:${currentProjectId}`
 
   // Embedded mode: render sticky header + scrollable content for sidebar layout
   if (embedded) {

@@ -70,9 +70,10 @@ Assume every project will eventually want to sell something.
 \`\`\`
 { name: string, description: string, media: string, price: uint104, initialSupply: uint32,
   votingUnits: uint32, reserveFrequency: uint16, reserveBeneficiary: address,
-  encodedIPFSUri: bytes32, category: uint24, discountPercent: uint8,
-  allowOwnerMint: bool, useReserveBeneficiaryAsDefault: bool, transfersPausable: bool,
-  useVotingUnits: bool, cannotBeRemoved: bool, cannotIncreaseDiscountPercent: bool }
+  encodedIpfsUri: bytes32, category: uint24, discountPercent: uint8,
+  flags: { allowOwnerMint: bool, useReserveBeneficiaryAsDefault: bool, transfersPausable: bool,
+    useVotingUnits: bool, cantBeRemoved: bool, cantIncreaseDiscountPercent: bool, cantBuyWithCredits: bool },
+  splitPercent: uint32, splits: JBSplit[] }
 \`\`\`
 - **name**: Tier name for display (e.g., "Founding Member") - REQUIRED
 - **description**: What supporters get at this tier - REQUIRED
@@ -80,33 +81,37 @@ Assume every project will eventually want to sell something.
 - price: Cost in terminal token (6 decimals for USDC, 18 for ETH)
 - initialSupply: Max NFTs available. **ALWAYS use 999999999 (one billion minus one) for unlimited supply.** Never use any other value for unlimited.
 - discountPercent: Price decrease per cycle (0-100)
-- encodedIPFSUri: Set to zero ("0x0...0") - frontend encodes the media URI
+- encodedIpfsUri: Set to zero ("0x0...0") - frontend encodes the media URI (note lowercase "pfs" casing: encodedIpfsUri)
 - reserveFrequency: Mint 1 reserved NFT per N minted (0 = no reserves)
+- flags: booleans live in a NESTED \`flags\` tuple, not at the top level
+- splitPercent: portion of this tier's sale routed to \`splits\` (0 = none); splits: JBSplit[] (usually [])
 
 **JB721InitTiersConfig:**
-\`{ tiers: JB721TierConfig[], currency: uint32, decimals: uint8, prices: address }\`
+\`{ tiers: JB721TierConfig[], currency: uint32, decimals: uint8 }\`
 - tiers: MUST be sorted by category (least to greatest)
 - currency: 1=ETH, 2=USD
 - decimals: 6 for USDC, 18 for ETH
-- prices: Zero address for single currency only
+- (There is NO prices field in V6)
 
 **JBDeploy721TiersHookConfig:**
 \`\`\`
 { name: string, symbol: string, baseUri: string, tokenUriResolver: address,
-  contractUri: string, tiersConfig: JB721InitTiersConfig, reserveBeneficiary: address,
-  flags: JB721TiersHookFlags }
+  contractUri: string, tiersConfig: JB721InitTiersConfig, flags: JB721TiersHookFlags }
 \`\`\`
+(There is NO top-level reserveBeneficiary field in V6 - reserve beneficiaries are per-tier)
 
 **JB721TiersHookFlags:**
-\`{ noNewTiersWithReserves: bool, noNewTiersWithVotes: bool, noNewTiersWithOwnerMinting: bool, preventOverspending: bool }\`
+\`{ noNewTiersWithReserves: bool, noNewTiersWithVotes: bool, noNewTiersWithOwnerMinting: bool, preventOverspending: bool, issueTokensForSplits: bool }\`
 
 **Complete Tier Structure (unlimited supply example):**
 \`\`\`json
 {"name": "Tier Name", "description": "What supporters get", "price": 5000000, "initialSupply": 999999999,
-  "media": "ipfs://TIER_IMAGE_CID", "encodedIPFSUri": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "media": "ipfs://TIER_IMAGE_CID", "encodedIpfsUri": "0x0000000000000000000000000000000000000000000000000000000000000000",
   "votingUnits": 0, "reserveFrequency": 0, "reserveBeneficiary": "0x0000000000000000000000000000000000000000",
-  "category": 0, "discountPercent": 0, "allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false,
-  "transfersPausable": false, "useVotingUnits": false, "cannotBeRemoved": false, "cannotIncreaseDiscountPercent": false}
+  "category": 0, "discountPercent": 0,
+  "flags": {"allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false, "transfersPausable": false,
+    "useVotingUnits": false, "cantBeRemoved": false, "cantIncreaseDiscountPercent": false, "cantBuyWithCredits": false},
+  "splitPercent": 0, "splits": []}
 \`\`\`
 **Unlimited supply = 999999999 (one billion minus one). Always use this exact value.**
 
@@ -128,7 +133,7 @@ Use \`adjustTiers\` on the project's 721 hook contract to add new tiers or remov
 
 **Removing tiers:**
 - tierIdsToRemove: Array of tier IDs to remove
-- A tier can only be removed if \`cannotBeRemoved\` was set to false when created
+- A tier can only be removed if \`flags.cantBeRemoved\` was set to false when created
 - Removed tiers stop appearing in the shop but existing NFTs remain valid
 
 **Handling limited quantities:**
@@ -160,13 +165,13 @@ Base deployTiersHookConfig has the tier. Other chains override with empty tiers:
 "chainConfigs": [
   {"chainId": "11155111", "label": "Sepolia", "overrides": {...}},
   {"chainId": "11155420", "label": "OP Sepolia", "overrides": {
-    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6, "prices": "0x0000000000000000000000000000000000000000"}}
+    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6}}
   }},
   {"chainId": "84532", "label": "Base Sepolia", "overrides": {
-    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6, "prices": "0x0000000000000000000000000000000000000000"}}
+    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6}}
   }},
   {"chainId": "421614", "label": "Arb Sepolia", "overrides": {
-    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6, "prices": "0x0000000000000000000000000000000000000000"}}
+    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6}}
   }}
 ]
 \`\`\`
@@ -183,7 +188,7 @@ Use \`setDiscountPercentsOf\` on the 721 hook to update discounts for multiple t
 
 - tierIds: Array of tier IDs to update
 - discountPercents: Matching array of new discount percentages (0-100)
-- Can only DECREASE discounts if \`cannotIncreaseDiscountPercent\` was set to true
+- Can only DECREASE discounts if \`flags.cantIncreaseDiscountPercent\` was set to true
 
 **Single tier discount:**
 \`setDiscountPercentOf(uint256 tierId, uint8 discountPercent)\`

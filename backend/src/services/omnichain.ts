@@ -11,8 +11,10 @@ import {
   createPublicClient,
   http,
   encodeFunctionData,
+  pad,
   type Address,
   type Chain,
+  type Hex,
   formatEther,
   parseUnits,
 } from 'viem';
@@ -37,13 +39,16 @@ const CHAINS: Record<number, { chain: Chain; rpcUrl: string }> = {
   42161: { chain: arbitrum, rpcUrl: 'https://arbitrum.llamarpc.com' },
 };
 
-// JBSuckerRegistry address (same on all chains via CREATE2)
+// V6 JBSuckerRegistry address (same on all chains via CREATE2)
 const SUCKER_REGISTRY: Record<number, Address> = {
-  1: '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3',
-  10: '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3',
-  8453: '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3',
-  42161: '0x07c8c5bf08f0361883728a8a5f8824ba5724ece3',
+  1: '0x7903a854ae91eaf635430d120a1a434085cef297',
+  10: '0x7903a854ae91eaf635430d120a1a434085cef297',
+  8453: '0x7903a854ae91eaf635430d120a1a434085cef297',
+  42161: '0x7903a854ae91eaf635430d120a1a434085cef297',
 };
+
+// 32 zero bytes — used for empty bytes32 metadata fields
+const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
 
 // Juicerkle API for merkle proofs
 const JUICERKLE_API = 'https://juicerkle-production.up.railway.app';
@@ -142,7 +147,6 @@ interface CrossChainBalance {
 export async function getProjectData(params: {
   projectId: number;
   chainId?: number;
-  version?: number;
 }): Promise<{
   projectId: number;
   chainId: number;
@@ -162,7 +166,7 @@ export async function getProjectData(params: {
   const config = getConfig();
   const apiKey = config.bendystrawApiKey;
   const chainId = params.chainId ?? 1;
-  const version = params.version ?? 5; // Default to V5
+  const version = 6; // Juicebox V6 — the only supported protocol version
 
   // Query project data and current cash out tax rate
   // Note: project() uses Float! types, but where clauses use Int
@@ -340,6 +344,7 @@ export async function searchProjects(params: {
     query SearchProjects($limit: Int!) {
       projects(
         where: {
+          version: 6,
           OR: [
             ${nameConditions},
             ${descConditions},
@@ -447,7 +452,8 @@ export async function getSuckerPairs(
 
     return pairs.map((p) => ({
       local: p.local,
-      remote: p.remote,
+      // V6 pairs store the remote as bytes32 (cross-VM); EVM addresses are the low 20 bytes
+      remote: `0x${p.remote.slice(-40)}` as Address,
       remoteChainId: Number(p.remoteChainId),
     }));
   } catch (error) {
@@ -461,7 +467,11 @@ export async function getSuckerPairs(
 }
 
 /**
- * Fallback: Get sucker pairs from Bendystraw subgraph
+ * Fallback: Get sucker pairs from Bendystraw sucker transactions.
+ *
+ * Bendystraw V6 has no suckerDeployments table; pairs are derived from
+ * sucker transactions the project has already processed. The on-chain
+ * registry (primary path) is authoritative for freshly deployed suckers.
  */
 async function getSuckerPairsFromSubgraph(
   projectId: number,
@@ -472,8 +482,9 @@ async function getSuckerPairsFromSubgraph(
 
   const query = `
     query GetSuckerPairs($projectId: Int!, $chainId: Int!) {
-      suckerDeployments(
-        where: { projectId: $projectId, chainId: $chainId }
+      suckerTransactions(
+        where: { projectId: $projectId, chainId: $chainId, version: 6 }
+        limit: 100
       ) {
         items {
           sucker
@@ -498,13 +509,18 @@ async function getSuckerPairsFromSubgraph(
     });
 
     const data = await response.json();
-    const deployments = data.data?.suckerDeployments?.items ?? [];
+    const transactions = data.data?.suckerTransactions?.items ?? [];
 
-    return deployments.map((d: { sucker: Address; peer: Address; peerChainId: number }) => ({
-      local: d.sucker,
-      remote: d.peer,
-      remoteChainId: d.peerChainId,
-    }));
+    // Deduplicate (sucker, peer, peerChainId) triples across transactions
+    const seen = new Set<string>();
+    const pairs: SuckerPair[] = [];
+    for (const t of transactions as Array<{ sucker: Address; peer: Address; peerChainId: number }>) {
+      const key = `${t.sucker}-${t.peer}-${t.peerChainId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pairs.push({ local: t.sucker, remote: t.peer, remoteChainId: t.peerChainId });
+    }
+    return pairs;
   } catch (error) {
     logger.error('Failed to fetch sucker pairs from subgraph', error as Error, {
       projectId,
@@ -528,7 +544,7 @@ export async function getBridgeTransactions(params: {
   const query = `
     query SuckerTransactions($suckerGroupId: String!, $status: suckerTransactionStatus, $beneficiary: String) {
       suckerTransactions(
-        where: { suckerGroupId: $suckerGroupId, status: $status, beneficiary: $beneficiary }
+        where: { suckerGroupId: $suckerGroupId, status: $status, beneficiary: $beneficiary, version: 6 }
         orderBy: "createdAt"
         orderDirection: "desc"
         limit: 100
@@ -641,9 +657,12 @@ export function prepareBridgeTransaction(params: {
     functionName: 'prepare',
     args: [
       BigInt(params.projectTokenAmount),
-      params.beneficiary,
+      // V6 beneficiaries are bytes32 (EVM address left-padded to 32 bytes)
+      pad(params.beneficiary, { size: 32 }),
       BigInt(params.minTokensReclaimed),
       params.terminalToken,
+      // No attribution metadata for an ordinary bridge
+      ZERO_BYTES32,
     ],
   });
 
@@ -694,6 +713,7 @@ interface JuicerkleClaim {
     Beneficiary: string;
     ProjectTokenCount: string;
     TerminalTokenAmount: string;
+    Metadata?: string; // bytes32 attribution payload (V6 leaves); zero when absent
   };
   Proof: number[][]; // Array of 32-byte arrays
 }
@@ -752,9 +772,13 @@ export async function claimBridgeTransaction(params: {
     token: params.token,
     leaf: {
       index: BigInt(claim.Leaf.Index),
-      beneficiary: claim.Leaf.Beneficiary as Address,
+      // V6 leaves store the beneficiary as bytes32 (EVM address left-padded)
+      beneficiary: pad(claim.Leaf.Beneficiary as Hex, { size: 32 }),
       projectTokenCount: BigInt(claim.Leaf.ProjectTokenCount),
       terminalTokenAmount: BigInt(claim.Leaf.TerminalTokenAmount),
+      metadata: claim.Leaf.Metadata
+        ? pad(claim.Leaf.Metadata as Hex, { size: 32 })
+        : ZERO_BYTES32,
     },
     proof: proofBytes,
   } as const;
@@ -890,7 +914,6 @@ export async function getCrossChainBalance(params: {
 export async function searchDocs(params: {
   query: string;
   category?: string;
-  version?: string;
   limit?: number;
 }): Promise<unknown> {
   const response = await fetchWithTimeout(`${MCP_API}/search`, {
@@ -899,7 +922,8 @@ export async function searchDocs(params: {
     body: JSON.stringify({
       query: params.query,
       category: params.category ?? 'all',
-      version: params.version ?? 'v5',
+      // Juicebox V6 is the only supported protocol version
+      version: 'v6',
       limit: params.limit ?? 10,
     }),
   });
@@ -1043,7 +1067,6 @@ export async function handleOmnichainTool(
       return getProjectData({
         projectId: input.projectId as number,
         chainId: input.chainId as number | undefined,
-        version: input.version as number | undefined,
       });
 
     case 'search_projects':
@@ -1108,7 +1131,6 @@ export async function handleOmnichainTool(
       return searchDocs({
         query: input.query as string,
         category: input.category as string | undefined,
-        version: input.version as string | undefined,
         limit: input.limit as number | undefined,
       });
 

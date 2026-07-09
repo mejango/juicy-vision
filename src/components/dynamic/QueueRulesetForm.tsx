@@ -106,7 +106,7 @@ function formStateToRulesetConfig(
     allowAddPriceFeed: true,
     ownerMustSendPayouts: state.ownerMustSendPayouts,
     holdFees: false,
-    useTotalSurplusForCashOuts: false,
+    scopeCashOutsToLocalBalances: false,
     useDataHookForPay: false,
     useDataHookForCashOut: false,
     dataHook: ZERO_ADDRESS,
@@ -424,7 +424,7 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
 
   const logoUrl = project?.logoUri ? resolveIpfsUri(project.logoUri) : null
   const chainInfo = CHAIN_INFO[parseInt(chainId)] || CHAIN_INFO[1]
-  const projectUrl = `https://juicebox.money/v5/${chainInfo.slug}:${projectId}`
+  const projectUrl = `https://juicebox.money/v6/${chainInfo.slug}:${projectId}`
 
   return (
     <div className="w-full">

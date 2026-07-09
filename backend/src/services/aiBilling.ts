@@ -25,6 +25,7 @@ import { MODEL_COSTS, type ClaudeModel } from './claude.ts';
 // ============================================================================
 
 // NANA Revnet - the project that receives AI payments
+// TODO(v6): update project ID once $JUICY is redeployed on V6
 export const NANA_PROJECT_ID = 1;
 
 // Supported chains for payment
@@ -35,12 +36,12 @@ export const SUPPORTED_CHAINS = {
   42161: { name: 'Arbitrum', chain: arbitrum, rpc: 'https://arbitrum.llamarpc.com' },
 };
 
-// JBMultiTerminal addresses per chain (v5)
+// V6 JBMultiTerminal address (same on every chain via CREATE2)
 export const MULTI_TERMINAL: Record<number, Address> = {
-  1: '0x1F0a07a04D2a1f1Dd0aCF7C3532A6d0b42e18e67', // Mainnet
-  10: '0x1F0a07a04D2a1f1Dd0aCF7C3532A6d0b42e18e67', // Optimism
-  8453: '0x1F0a07a04D2a1f1Dd0aCF7C3532A6d0b42e18e67', // Base
-  42161: '0x1F0a07a04D2a1f1Dd0aCF7C3532A6d0b42e18e67', // Arbitrum
+  1: '0x130f5dd2bd8805443cf41755253d778a75a67f53', // Mainnet
+  10: '0x130f5dd2bd8805443cf41755253d778a75a67f53', // Optimism
+  8453: '0x130f5dd2bd8805443cf41755253d778a75a67f53', // Base
+  42161: '0x130f5dd2bd8805443cf41755253d778a75a67f53', // Arbitrum
 };
 
 // Native token address (constant across all chains)
@@ -208,7 +209,7 @@ export function encodePayCalldata(payment: SqueezePaymentData): {
   }] as const;
 
   // Simple ABI encoding for pay function
-  const selector = '0x5bb24f77'; // pay() selector
+  const selector = '0xfef43257'; // pay(uint256,address,uint256,address,uint256,string,bytes) selector
 
   // Encode parameters (simplified - in production use viem's encodeFunctionData)
   const projectIdHex = payment.projectId.toString(16).padStart(64, '0');

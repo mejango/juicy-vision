@@ -27,7 +27,7 @@ export const REFERENCE_MODULES: ReferenceModule[] = [
     content: ADDRESSES_CONTEXT,
     hints: ADDRESSES_HINTS,
     tokenEstimate: ADDRESSES_TOKEN_ESTIMATE,
-    description: 'Contract addresses for V5.0, V5.1, shared, and suckers',
+    description: 'Contract addresses for V6 core, hooks, and suckers',
   },
   {
     id: 'currencies',

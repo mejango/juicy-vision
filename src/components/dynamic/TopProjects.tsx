@@ -89,8 +89,8 @@ export default function TopProjects({
           orderDirection: 'desc'
         })
 
-        // Group projects by projectId + version (V4 and V5 are different projects!)
-        // Same project can exist on multiple chains, but different versions are separate
+        // Group projects by projectId + version. Same project can exist on
+        // multiple chains, but different versions are separate projects.
         const isTrending = orderBy === 'trendingScore'
         const grouped = new Map<string, Project & {
           chainIds: number[]
@@ -100,8 +100,8 @@ export default function TopProjects({
         }>()
 
         for (const project of data) {
-          // Key includes version so V4 #1 and V5 #1 stay separate
-          const groupKey = `${project.projectId}-v${project.version || 4}`
+          // Key includes version so the same projectId across versions stays separate
+          const groupKey = `${project.projectId}-v${project.version || 6}`
           const existing = grouped.get(groupKey)
 
           // Get the score value based on orderBy
@@ -281,7 +281,7 @@ export default function TopProjects({
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {chainIds.map(chainId => {
                     const chain = CHAIN_INFO[chainId]
-                    const version = project.version || 4
+                    const version = project.version || 6
                     return (
                       <span
                         key={chainId}

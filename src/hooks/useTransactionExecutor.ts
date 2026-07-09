@@ -469,7 +469,7 @@ export function useTransactionExecutor() {
 
     // Dynamically detect which terminal to use
     let terminalAddress: Address
-    let terminalType: 'multi' | 'swap'
+    let terminalType: 'multi' | 'router'
     try {
       const terminal = await getPaymentTerminal(
         publicClient,

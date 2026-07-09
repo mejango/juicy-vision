@@ -9,8 +9,7 @@
  */
 
 export * from './chains.ts';
-export * from './v51Addresses.ts';
-export * from './v5Addresses.ts';
+export * from './v6Addresses.ts';
 export * from './terminals.ts';
 export * from './splitsLimits.ts';
 export * from './nftTiers.ts';
@@ -23,8 +22,7 @@ export * from './metadata.ts';
 export * from '../reference/index.ts';
 
 import { CHAINS_CONTEXT, CHAINS_HINTS, CHAINS_TOKEN_ESTIMATE } from './chains.ts';
-import { V51_ADDRESSES_CONTEXT, V51_ADDRESSES_HINTS, V51_ADDRESSES_TOKEN_ESTIMATE } from './v51Addresses.ts';
-import { V5_ADDRESSES_CONTEXT, V5_ADDRESSES_HINTS, V5_ADDRESSES_TOKEN_ESTIMATE } from './v5Addresses.ts';
+import { V6_ADDRESSES_CONTEXT, V6_ADDRESSES_HINTS, V6_ADDRESSES_TOKEN_ESTIMATE } from './v6Addresses.ts';
 import { TERMINALS_CONTEXT, TERMINALS_HINTS, TERMINALS_TOKEN_ESTIMATE } from './terminals.ts';
 import { SPLITS_LIMITS_CONTEXT, SPLITS_LIMITS_HINTS, SPLITS_LIMITS_TOKEN_ESTIMATE } from './splitsLimits.ts';
 import { NFT_TIERS_CONTEXT, NFT_TIERS_HINTS, NFT_TIERS_TOKEN_ESTIMATE } from './nftTiers.ts';
@@ -59,18 +57,11 @@ export const TRANSACTION_SUB_MODULES: SubModule[] = [
     description: 'Chain IDs and explorers',
   },
   {
-    id: 'v51_addresses',
-    content: V51_ADDRESSES_CONTEXT,
-    hints: V51_ADDRESSES_HINTS,
-    tokenEstimate: V51_ADDRESSES_TOKEN_ESTIMATE,
-    description: 'V5.1 contract addresses for new projects',
-  },
-  {
-    id: 'v5_addresses',
-    content: V5_ADDRESSES_CONTEXT,
-    hints: V5_ADDRESSES_HINTS,
-    tokenEstimate: V5_ADDRESSES_TOKEN_ESTIMATE,
-    description: 'V5.0 contract addresses for revnets',
+    id: 'v6_addresses',
+    content: V6_ADDRESSES_CONTEXT,
+    hints: V6_ADDRESSES_HINTS,
+    tokenEstimate: V6_ADDRESSES_TOKEN_ESTIMATE,
+    description: 'V6 contract addresses (same on every chain), including sucker deployers',
   },
   {
     id: 'terminals',

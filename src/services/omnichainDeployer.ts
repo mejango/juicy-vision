@@ -1,22 +1,30 @@
 /**
- * JBOmnichainDeployer transaction encoding service.
- * Encodes calldata for launchProjectFor, queueRulesetsOf, and 721 variants locally.
+ * JBOmnichainDeployer transaction encoding service (Juicebox V6).
+ * Encodes calldata for launchProjectFor, queueRulesetsOf, launchRulesetsFor and 721 variants locally.
+ *
+ * Encoding notes:
+ * - No `controller` parameter on any deployer function (the deployer is wired to the canonical JBController)
+ * - launchProjectFor is payable: msg.value must equal JBProjects.creationFee() exactly
+ * - 721 variants are overloads of launchProjectFor / launchRulesetsFor / queueRulesetsOf that take a
+ *   JBOmnichain721Config `deploy721Config` argument
+ * - Sucker mappings: remoteToken is bytes32, config has a `peer` field, minBridgeAmount removed
  */
 
-import { encodeFunctionData } from 'viem'
+import { createPublicClient, encodeFunctionData, http, pad } from 'viem'
 import {
   JB_OMNICHAIN_DEPLOYER_ABI,
   JB_OMNICHAIN_DEPLOYER_ADDRESS,
   JB_CONTROLLER_ABI,
-  JB_CONTROLLER_ADDRESS,
 } from '../constants/abis'
 import {
-  JB_CONTRACTS_5_1,
-  JB_SWAP_TERMINAL,
-  JB_SWAP_TERMINAL_USDC,
-  JB_SWAP_TERMINAL_REGISTRY,
-  JB_SWAP_TERMINAL_USDC_REGISTRY,
+  JB_CONTRACTS,
+  JB_ROUTER_TERMINAL,
+  JB_ROUTER_TERMINAL_REGISTRY,
   CHAIN_SUCKER_DEPLOYER,
+  VIEM_CHAINS,
+  MAINNET_VIEM_CHAINS,
+  RPC_ENDPOINTS,
+  MAINNET_RPC_ENDPOINTS,
   type SupportedChainId,
   ZERO_ADDRESS,
 } from '../constants/chains'
@@ -26,13 +34,53 @@ import {
   createSalt,
   shouldConfigureSuckers,
   CCIP_SUCKER_DEPLOYER_ADDRESSES,
-  type JBSuckerDeploymentConfig as SuckerConfig,
+  ZERO_BYTES32,
 } from '../utils/suckerConfig'
 import type {
   JBRulesetConfig,
   JBTerminalConfig,
   JBSuckerDeploymentConfig,
 } from './relayr'
+
+// ============================================================================
+// PROJECT CREATION FEE (V6)
+// ============================================================================
+
+// Minimal ABI for JBProjects.creationFee()
+const JB_PROJECTS_CREATION_FEE_ABI = [
+  {
+    name: 'creationFee',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const
+
+/**
+ * Fetch the exact project creation fee from JBProjects on the given chain.
+ * V6 launchProjectFor / deployFor calls revert unless msg.value equals this EXACTLY.
+ */
+export async function fetchProjectCreationFee(chainId: number): Promise<bigint> {
+  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
+    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
+  if (!chain) return 0n
+
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
+    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
+  const client = createPublicClient({ chain, transport: http(rpcUrl) })
+
+  try {
+    return await client.readContract({
+      address: JB_CONTRACTS.JBProjects,
+      abi: JB_PROJECTS_CREATION_FEE_ABI,
+      functionName: 'creationFee',
+    })
+  } catch (err) {
+    console.error(`Failed to read JBProjects.creationFee on chain ${chainId}:`, err)
+    return 0n
+  }
+}
 
 // ============================================================================
 // ADDRESS VALIDATION
@@ -61,26 +109,19 @@ function validateAddress(address: string, fieldName: string): `0x${string}` {
 }
 
 /**
- * Build a set of known valid terminal addresses for a given chain.
+ * Build a set of known valid terminal addresses.
+ * V6: all terminals have the same address on every chain.
  */
-function getKnownTerminalAddresses(chainId: number): Set<string> {
+function getKnownTerminalAddresses(_chainId: number): Set<string> {
   const addresses = new Set<string>()
-  const cid = chainId as SupportedChainId
 
-  // Add all known terminal addresses (lowercase for comparison)
-  // JBMultiTerminal 5.1 - same address on all chains via CREATE2
-  if (JB_CONTRACTS_5_1.JBMultiTerminal5_1) {
-    addresses.add(JB_CONTRACTS_5_1.JBMultiTerminal5_1.toLowerCase())
-  }
+  // JBMultiTerminal - same address on all chains
+  addresses.add(JB_CONTRACTS.JBMultiTerminal.toLowerCase())
 
-  // JBSwapTerminal variants - chain-specific addresses
-  if (JB_SWAP_TERMINAL[cid]) addresses.add(JB_SWAP_TERMINAL[cid].toLowerCase())
-  if (JB_SWAP_TERMINAL_USDC[cid]) addresses.add(JB_SWAP_TERMINAL_USDC[cid].toLowerCase())
-
-  // JBSwapTerminal registries - same address on all chains via CREATE2
-  // Used for omnichain projects to configure swap terminals
-  addresses.add(JB_SWAP_TERMINAL_REGISTRY.toLowerCase())
-  addresses.add(JB_SWAP_TERMINAL_USDC_REGISTRY.toLowerCase())
+  // JBRouterTerminal + registry (V6 replacement for the swap terminals)
+  // Projects register the REGISTRY (with empty accounting contexts).
+  addresses.add(JB_ROUTER_TERMINAL.toLowerCase())
+  addresses.add(JB_ROUTER_TERMINAL_REGISTRY.toLowerCase())
 
   return addresses
 }
@@ -105,13 +146,12 @@ function validateTerminalAddress(address: string, chainId: number, fieldName: st
 }
 
 /**
- * Build a set of known valid sucker deployer addresses.
- * Includes both mainnet deployers (from chains.ts) and testnet CCIP deployers (from suckerConfig.ts).
+ * Build a set of known valid sucker deployer addresses
+ * (native-bridge deployers + CCIP pair deployers).
  */
 function getKnownSuckerDeployers(): Set<string> {
   const addresses = new Set<string>()
 
-  // Add mainnet sucker deployers from all chains
   const chainIds = [CHAIN_IDS.ethereum, CHAIN_IDS.optimism, CHAIN_IDS.base, CHAIN_IDS.arbitrum] as SupportedChainId[]
   for (const chainId of chainIds) {
     const deployer = CHAIN_SUCKER_DEPLOYER[chainId]
@@ -120,7 +160,7 @@ function getKnownSuckerDeployers(): Set<string> {
     }
   }
 
-  // Add testnet CCIP sucker deployers (from suckerConfig.ts)
+  // CCIP pair sucker deployers (same addresses on mainnet and testnet families)
   for (const targetChain of Object.values(CCIP_SUCKER_DEPLOYER_ADDRESSES)) {
     for (const deployerAddress of Object.values(targetChain)) {
       addresses.add(deployerAddress.toLowerCase())
@@ -157,10 +197,23 @@ function validateUserAddress(address: string, fieldName: string): `0x${string}` 
 
 /**
  * Validate a token address. Allows native token (0xEEEE...) and validates format.
- * For ERC20 tokens on testnet/mainnet, we could add known token validation.
  */
 function validateTokenAddress(address: string, fieldName: string): `0x${string}` {
   return validateAddress(address, fieldName)
+}
+
+/**
+ * Validate + normalize a V6 remote token value (bytes32).
+ * Accepts a 20-byte address (padded to bytes32) or an already 32-byte value.
+ */
+function validateRemoteToken(value: string, fieldName: string): `0x${string}` {
+  if (typeof value === 'string' && value.startsWith('0x') && value.length === 66) {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
+      throw new Error(`${fieldName}: Invalid bytes32 value: "${value}"`)
+    }
+    return value as `0x${string}`
+  }
+  return pad(validateAddress(value, fieldName), { size: 32 })
 }
 
 /**
@@ -174,7 +227,7 @@ function validateHookAddress(address: string, fieldName: string): `0x${string}` 
   return validateAddress(address, fieldName)
 }
 
-// 721 Tier configuration for NFT hooks
+// 721 Tier configuration for NFT hooks (V6 shape)
 export interface JB721TierConfig {
   price: string
   initialSupply: number
@@ -190,13 +243,25 @@ export interface JB721TierConfig {
   useVotingUnits: boolean
   cannotBeRemoved: boolean
   cannotIncreaseDiscountPercent: boolean
+  /** V6: if true, the tier cannot be bought with pay credits. */
+  cannotBuyWithCredits?: boolean
+  /** V6: percent of tier price routed to the tier's splits (out of 1e9). */
+  splitPercent?: number
+  /** V6: splits receiving the tier's splitPercent. */
+  splits?: Array<{
+    percent: number
+    projectId: number
+    beneficiary: string
+    preferAddToBalance: boolean
+    lockedUntil: number
+    hook: string
+  }>
 }
 
 export interface JB721TiersConfig {
   tiers: JB721TierConfig[]
   currency: number
   decimals: number
-  prices: string
 }
 
 export interface JB721HookFlags {
@@ -204,6 +269,8 @@ export interface JB721HookFlags {
   noNewTiersWithVotes: boolean
   noNewTiersWithOwnerMinting: boolean
   preventOverspending: boolean
+  /** V6: if true, paying a tier's splits also issues project tokens. */
+  issueTokensForSplits?: boolean
 }
 
 export interface JBDeployTiersHookConfig {
@@ -213,8 +280,9 @@ export interface JBDeployTiersHookConfig {
   tokenUriResolver: string
   contractUri: string
   tiersConfig: JB721TiersConfig
-  reserveBeneficiary: string
   flags: JB721HookFlags
+  /** V6: whether the 721 hook should also be used as the cash out data hook. */
+  useDataHookForCashOut?: boolean
 }
 
 export interface JBQueueRulesetsConfig {
@@ -223,11 +291,27 @@ export interface JBQueueRulesetsConfig {
   memo: string
 }
 
-// Default controller address (JBController 5.1)
-const DEFAULT_CONTROLLER = JB_CONTRACTS_5_1.JBController5_1
+/**
+ * Format a sucker deployment configuration into the V6 tuple shape, with validation.
+ */
+function formatSuckerDeploymentConfiguration(config: JBSuckerDeploymentConfig, prefix: string) {
+  return {
+    deployerConfigurations: config.deployerConfigurations.map((dc, idx) => ({
+      deployer: validateSuckerDeployerAddress(dc.deployer, `${prefix}.deployerConfigurations[${idx}].deployer`),
+      // Zero peer = default same-address deterministic peer sucker
+      peer: (dc.peer && dc.peer !== ZERO_ADDRESS ? validateRemoteToken(dc.peer, `${prefix}.deployerConfigurations[${idx}].peer`) : ZERO_BYTES32),
+      mappings: dc.mappings.map((mapping, mapIdx) => ({
+        localToken: validateTokenAddress(mapping.localToken, `${prefix}.deployerConfigurations[${idx}].mappings[${mapIdx}].localToken`),
+        minGas: mapping.minGas,
+        remoteToken: validateRemoteToken(mapping.remoteToken, `${prefix}.deployerConfigurations[${idx}].mappings[${mapIdx}].remoteToken`),
+      })),
+    })),
+    salt: config.salt as `0x${string}`,
+  }
+}
 
 /**
- * Encode launchProjectFor calldata for JBOmnichainDeployer.
+ * Encode launchProjectFor calldata for JBOmnichainDeployer (V6).
  * This creates a project and optionally deploys suckers atomically.
  */
 export function encodeLaunchProjectFor(params: {
@@ -238,7 +322,6 @@ export function encodeLaunchProjectFor(params: {
   terminalConfigurations: JBTerminalConfig[]
   memo: string
   suckerDeploymentConfiguration: JBSuckerDeploymentConfig
-  controller?: `0x${string}`
 }): `0x${string}` {
   const {
     chainId,
@@ -248,7 +331,6 @@ export function encodeLaunchProjectFor(params: {
     terminalConfigurations,
     memo,
     suckerDeploymentConfiguration,
-    controller = DEFAULT_CONTROLLER,
   } = params
 
   // Validate the owner address format
@@ -257,34 +339,7 @@ export function encodeLaunchProjectFor(params: {
   // Use the shared formatting functions with address validation
   const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId)
   const formattedTerminals = formatTerminalConfigurations(terminalConfigurations, chainId)
-
-  // Transform sucker deployment configuration with validation
-  const formattedSuckerConfig = {
-    deployerConfigurations: suckerDeploymentConfiguration.deployerConfigurations.map((config, idx) => ({
-      deployer: validateSuckerDeployerAddress(config.deployer, `suckerDeploymentConfiguration.deployerConfigurations[${idx}].deployer`),
-      mappings: config.mappings.map((mapping, mapIdx) => ({
-        localToken: validateTokenAddress(mapping.localToken, `suckerDeploymentConfiguration.deployerConfigurations[${idx}].mappings[${mapIdx}].localToken`),
-        minGas: mapping.minGas,
-        remoteToken: validateTokenAddress(mapping.remoteToken, `suckerDeploymentConfiguration.deployerConfigurations[${idx}].mappings[${mapIdx}].remoteToken`),
-        minBridgeAmount: BigInt(mapping.minBridgeAmount),
-      })),
-    })),
-    salt: suckerDeploymentConfiguration.salt as `0x${string}`,
-  }
-
-  // Log the exact args being passed to encodeFunctionData
-  // Use contract parameter names for clarity
-  console.log('\n=== ENCODE ARGS (JSON) ===')
-  console.log(JSON.stringify({
-    owner: validatedOwner,
-    projectUri,
-    rulesetConfigurations: formattedRulesets,
-    terminalConfigurations: formattedTerminals,
-    memo,
-    suckerDeploymentConfiguration: formattedSuckerConfig,
-    controller,
-  }, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))
-  console.log('==========================\n')
+  const formattedSuckerConfig = formatSuckerDeploymentConfiguration(suckerDeploymentConfiguration, 'suckerDeploymentConfiguration')
 
   return encodeFunctionData({
     abi: JB_OMNICHAIN_DEPLOYER_ABI,
@@ -296,13 +351,15 @@ export function encodeLaunchProjectFor(params: {
       formattedTerminals,
       memo,
       formattedSuckerConfig,
-      controller,
     ],
   })
 }
 
 /**
  * Build transaction data for launching a project via JBOmnichainDeployer.
+ *
+ * V6: launchProjectFor is payable — `creationFeeWei` must equal
+ * JBProjects.creationFee() exactly (fetch via fetchProjectCreationFee).
  */
 export function buildLaunchProjectTransaction(params: {
   chainId: number
@@ -312,7 +369,7 @@ export function buildLaunchProjectTransaction(params: {
   terminalConfigurations: JBTerminalConfig[]
   memo: string
   suckerDeploymentConfiguration: JBSuckerDeploymentConfig
-  controller?: `0x${string}`
+  creationFeeWei?: string
 }): {
   chainId: number
   to: `0x${string}`
@@ -325,7 +382,7 @@ export function buildLaunchProjectTransaction(params: {
     chainId: params.chainId,
     to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
     data,
-    value: '0x0',
+    value: params.creationFeeWei || '0x0',
   }
 }
 
@@ -364,15 +421,15 @@ export function buildOmnichainLaunchTransactions(params: {
   terminalConfigurations: JBTerminalConfig[]  // Default terminal configs (used if no chain override)
   memo: string
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig
-  controller?: `0x${string}`
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs
+  /** V6 creation fee (wei) per chain; must equal JBProjects.creationFee() on each chain. */
+  creationFeesWei?: Record<number, string>
 }): Array<{
   chainId: number
   to: `0x${string}`
   data: `0x${string}`
   value: string
 }> {
-  const controller = params.controller || DEFAULT_CONTROLLER
   const { chainIds, chainConfigs = [] } = params
 
   // Generate a shared salt for all chains (ensures deterministic sucker addresses)
@@ -403,25 +460,6 @@ export function buildOmnichainLaunchTransactions(params: {
     }
   }
 
-  // Log decoded params in readable JSON format
-  const debugParams = {
-    owner: params.owner,
-    projectUri: params.projectUri,
-    memo: params.memo,
-    chainIds: params.chainIds,
-    controller,
-    rulesetConfigurations: params.rulesetConfigurations,
-    terminalConfigurations: params.terminalConfigurations,
-    chainConfigs: params.chainConfigs,
-    tokenAddresses,
-    sharedSalt,
-    autoGeneratingSuckers: shouldConfigureSuckers(chainIds) && !params.suckerDeploymentConfiguration,
-  }
-
-  console.log('\n=== OMNICHAIN DEPLOYER PARAMS ===')
-  console.log(JSON.stringify(debugParams, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))
-  console.log('=================================\n')
-
   const transactions = params.chainIds.map(chainId => {
     // Get per-chain terminal configurations (use override if available)
     const chainConfig = chainConfigMap.get(chainId)
@@ -448,12 +486,12 @@ export function buildOmnichainLaunchTransactions(params: {
       suckerConfig = {
         deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
           deployer: dc.deployer,
+          peer: dc.peer,
           mappings: dc.mappings.map(m => ({
-            // Order must match Solidity JBTokenMapping: localToken, minGas, remoteToken, minBridgeAmount
+            // V6 JBTokenMapping: localToken, minGas, remoteToken (bytes32)
             localToken: m.localToken,
             minGas: m.minGas,
             remoteToken: m.remoteToken,
-            minBridgeAmount: m.minBridgeAmount.toString(),
           })),
         })),
         salt: generatedConfig.salt,
@@ -462,29 +500,23 @@ export function buildOmnichainLaunchTransactions(params: {
       // Single chain deployment - no suckers needed
       suckerConfig = {
         deployerConfigurations: [],
-        salt: '0x0000000000000000000000000000000000000000000000000000000000000000',
+        salt: ZERO_BYTES32,
       }
     }
 
-    const tx = buildLaunchProjectTransaction({
+    return buildLaunchProjectTransaction({
       ...params,
       terminalConfigurations,  // Use per-chain terminal configs
       suckerDeploymentConfiguration: suckerConfig,
-      controller,
       chainId,
+      creationFeeWei: params.creationFeesWei?.[chainId],
     })
-
-    // Log each transaction's calldata with function selector
-    const selector = tx.data.slice(0, 10)
-    console.log(`Chain ${chainId}: selector=${selector}, to=${tx.to}, terminalConfigs=${JSON.stringify(terminalConfigurations.map(t => t.accountingContextsToAccept.map(c => c.token)))}`)
-
-    return tx
   })
 
   return transactions
 }
 
-// Launch rulesets config for launch721RulesetsFor
+// Launch rulesets config for launchRulesetsFor (721 variant)
 export interface JBLaunchRulesetsConfig {
   projectId: number
   rulesetConfigurations: JBRulesetConfig[]
@@ -533,7 +565,7 @@ function formatRulesetConfigurations(rulesetConfigurations: JBRulesetConfig[], c
       allowAddPriceFeed: ruleset.metadata.allowAddPriceFeed,
       ownerMustSendPayouts: ruleset.metadata.ownerMustSendPayouts,
       holdFees: ruleset.metadata.holdFees,
-      useTotalSurplusForCashOuts: ruleset.metadata.useTotalSurplusForCashOuts,
+      scopeCashOutsToLocalBalances: ruleset.metadata.scopeCashOutsToLocalBalances,
       useDataHookForPay: ruleset.metadata.useDataHookForPay,
       useDataHookForCashOut: ruleset.metadata.useDataHookForCashOut,
       dataHook: validateHookAddress(ruleset.metadata.dataHook, `rulesetConfigurations[${rulesetIdx}].metadata.dataHook`),
@@ -566,7 +598,42 @@ function formatRulesetConfigurations(rulesetConfigurations: JBRulesetConfig[], c
 }
 
 /**
- * Helper to format 721 tiers hook configuration.
+ * Helper to format a V6 JB721TierConfig (nested flags tuple, encodedIpfsUri casing,
+ * splitPercent + splits).
+ */
+function formatTierConfig(tier: JB721TierConfig) {
+  return {
+    price: BigInt(tier.price),
+    initialSupply: tier.initialSupply,
+    votingUnits: tier.votingUnits,
+    reserveFrequency: tier.reserveFrequency,
+    reserveBeneficiary: tier.reserveBeneficiary as `0x${string}`,
+    encodedIpfsUri: tier.encodedIPFSUri as `0x${string}`,
+    category: tier.category,
+    discountPercent: tier.discountPercent,
+    flags: {
+      allowOwnerMint: tier.allowOwnerMint,
+      useReserveBeneficiaryAsDefault: tier.useReserveBeneficiaryAsDefault,
+      transfersPausable: tier.transfersPausable,
+      useVotingUnits: tier.useVotingUnits,
+      cantBeRemoved: tier.cannotBeRemoved,
+      cantIncreaseDiscountPercent: tier.cannotIncreaseDiscountPercent,
+      cantBuyWithCredits: tier.cannotBuyWithCredits ?? false,
+    },
+    splitPercent: tier.splitPercent ?? 0,
+    splits: (tier.splits ?? []).map(s => ({
+      percent: s.percent,
+      projectId: BigInt(s.projectId),
+      beneficiary: s.beneficiary as `0x${string}`,
+      preferAddToBalance: s.preferAddToBalance,
+      lockedUntil: s.lockedUntil,
+      hook: (s.hook || ZERO_ADDRESS) as `0x${string}`,
+    })),
+  }
+}
+
+/**
+ * Helper to format 721 tiers hook configuration (V6 JBDeploy721TiersHookConfig).
  */
 function formatDeployTiersHookConfig(config: JBDeployTiersHookConfig) {
   return {
@@ -576,38 +643,33 @@ function formatDeployTiersHookConfig(config: JBDeployTiersHookConfig) {
     tokenUriResolver: config.tokenUriResolver as `0x${string}`,
     contractUri: config.contractUri,
     tiersConfig: {
-      tiers: config.tiersConfig.tiers.map(tier => ({
-        price: BigInt(tier.price),
-        initialSupply: tier.initialSupply,
-        votingUnits: tier.votingUnits,
-        reserveFrequency: tier.reserveFrequency,
-        reserveBeneficiary: tier.reserveBeneficiary as `0x${string}`,
-        encodedIPFSUri: tier.encodedIPFSUri as `0x${string}`,
-        category: tier.category,
-        discountPercent: tier.discountPercent,
-        allowOwnerMint: tier.allowOwnerMint,
-        useReserveBeneficiaryAsDefault: tier.useReserveBeneficiaryAsDefault,
-        transfersPausable: tier.transfersPausable,
-        useVotingUnits: tier.useVotingUnits,
-        cannotBeRemoved: tier.cannotBeRemoved,
-        cannotIncreaseDiscountPercent: tier.cannotIncreaseDiscountPercent,
-      })),
+      tiers: config.tiersConfig.tiers.map(formatTierConfig),
       currency: config.tiersConfig.currency,
       decimals: config.tiersConfig.decimals,
-      prices: config.tiersConfig.prices as `0x${string}`,
     },
-    reserveBeneficiary: config.reserveBeneficiary as `0x${string}`,
     flags: {
       noNewTiersWithReserves: config.flags.noNewTiersWithReserves,
       noNewTiersWithVotes: config.flags.noNewTiersWithVotes,
       noNewTiersWithOwnerMinting: config.flags.noNewTiersWithOwnerMinting,
       preventOverspending: config.flags.preventOverspending,
+      issueTokensForSplits: config.flags.issueTokensForSplits ?? false,
     },
   }
 }
 
 /**
- * Encode launch721RulesetsFor calldata for JBOmnichainDeployer.
+ * Helper to format the V6 JBOmnichain721Config wrapper struct.
+ */
+function formatDeploy721Config(config: JBDeployTiersHookConfig, salt: `0x${string}`) {
+  return {
+    deployTiersHookConfig: formatDeployTiersHookConfig(config),
+    useDataHookForCashOut: config.useDataHookForCashOut ?? false,
+    salt,
+  }
+}
+
+/**
+ * Encode the 721 launchRulesetsFor overload for JBOmnichainDeployer (V6).
  * Launches rulesets with a 721 tiers hook for an existing project.
  */
 export function encodeLaunch721RulesetsFor(params: {
@@ -615,7 +677,7 @@ export function encodeLaunch721RulesetsFor(params: {
   projectId: number | bigint
   deployTiersHookConfig: JBDeployTiersHookConfig
   launchRulesetsConfig: JBLaunchRulesetsConfig
-  controller?: `0x${string}`
+  projectUri?: string
   salt?: `0x${string}`
 }): `0x${string}` {
   const {
@@ -623,27 +685,20 @@ export function encodeLaunch721RulesetsFor(params: {
     projectId,
     deployTiersHookConfig,
     launchRulesetsConfig,
-    controller = DEFAULT_CONTROLLER,
-    salt = '0x0000000000000000000000000000000000000000000000000000000000000000',
+    projectUri = '',
+    salt = ZERO_BYTES32,
   } = params
-
-  const formattedDeployConfig = formatDeployTiersHookConfig(deployTiersHookConfig)
-  const formattedLaunchConfig = {
-    projectId: BigInt(launchRulesetsConfig.projectId),
-    rulesetConfigurations: formatRulesetConfigurations(launchRulesetsConfig.rulesetConfigurations, chainId),
-    terminalConfigurations: formatTerminalConfigurations(launchRulesetsConfig.terminalConfigurations, chainId),
-    memo: launchRulesetsConfig.memo,
-  }
 
   return encodeFunctionData({
     abi: JB_OMNICHAIN_DEPLOYER_ABI,
-    functionName: 'launch721RulesetsFor',
+    functionName: 'launchRulesetsFor',
     args: [
       BigInt(projectId),
-      formattedDeployConfig,
-      formattedLaunchConfig,
-      controller,
-      salt,
+      projectUri,
+      formatDeploy721Config(deployTiersHookConfig, salt),
+      formatRulesetConfigurations(launchRulesetsConfig.rulesetConfigurations, chainId),
+      formatTerminalConfigurations(launchRulesetsConfig.terminalConfigurations, chainId),
+      launchRulesetsConfig.memo,
     ],
   })
 }
@@ -656,7 +711,7 @@ export function buildLaunch721RulesetsTransaction(params: {
   projectId: number | bigint
   deployTiersHookConfig: JBDeployTiersHookConfig
   launchRulesetsConfig: JBLaunchRulesetsConfig
-  controller?: `0x${string}`
+  projectUri?: string
   salt?: `0x${string}`
 }): {
   chainId: number
@@ -689,7 +744,7 @@ export function buildOmnichainLaunch721RulesetsTransactions(params: {
   projectId: number | bigint
   deployTiersHookConfig: JBDeployTiersHookConfig
   launchRulesetsConfig: JBLaunchRulesetsConfig
-  controller?: `0x${string}`
+  projectUri?: string
   salt?: `0x${string}`
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs and tiers
 }): Array<{
@@ -735,7 +790,7 @@ export function buildOmnichainLaunch721RulesetsTransactions(params: {
 }
 
 /**
- * Encode queueRulesetsOf calldata for JBOmnichainDeployer.
+ * Encode queueRulesetsOf calldata for JBOmnichainDeployer (V6).
  * Queues new rulesets for an existing project (without 721 tiers hook).
  */
 export function encodeQueueRulesetsOf(params: {
@@ -743,14 +798,12 @@ export function encodeQueueRulesetsOf(params: {
   projectId: number | bigint
   rulesetConfigurations: JBRulesetConfig[]
   memo: string
-  controller?: `0x${string}`
 }): `0x${string}` {
   const {
     chainId,
     projectId,
     rulesetConfigurations,
     memo,
-    controller = DEFAULT_CONTROLLER,
   } = params
 
   const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId)
@@ -762,7 +815,6 @@ export function encodeQueueRulesetsOf(params: {
       BigInt(projectId),
       formattedRulesets,
       memo,
-      controller,
     ],
   })
 }
@@ -775,7 +827,6 @@ export function buildQueueRulesetsTransaction(params: {
   projectId: number | bigint
   rulesetConfigurations: JBRulesetConfig[]
   memo: string
-  controller?: `0x${string}`
 }): {
   chainId: number
   to: `0x${string}`
@@ -800,7 +851,6 @@ export function buildOmnichainQueueRulesetsTransactions(params: {
   projectId: number | bigint
   rulesetConfigurations: JBRulesetConfig[]
   memo: string
-  controller?: `0x${string}`
 }): Array<{
   chainId: number
   to: `0x${string}`
@@ -816,7 +866,7 @@ export function buildOmnichainQueueRulesetsTransactions(params: {
 }
 
 /**
- * Encode queue721RulesetsOf calldata for JBOmnichainDeployer.
+ * Encode the 721 queueRulesetsOf overload for JBOmnichainDeployer (V6).
  * Queues new rulesets with a 721 tiers hook for an existing project.
  */
 export function encodeQueue721RulesetsOf(params: {
@@ -824,7 +874,6 @@ export function encodeQueue721RulesetsOf(params: {
   projectId: number | bigint
   deployTiersHookConfig: JBDeployTiersHookConfig
   queueRulesetsConfig: JBQueueRulesetsConfig
-  controller?: `0x${string}`
   salt?: `0x${string}`
 }): `0x${string}` {
   const {
@@ -832,26 +881,17 @@ export function encodeQueue721RulesetsOf(params: {
     projectId,
     deployTiersHookConfig,
     queueRulesetsConfig,
-    controller = DEFAULT_CONTROLLER,
-    salt = '0x0000000000000000000000000000000000000000000000000000000000000000',
+    salt = ZERO_BYTES32,
   } = params
-
-  const formattedDeployConfig = formatDeployTiersHookConfig(deployTiersHookConfig)
-  const formattedQueueConfig = {
-    projectId: BigInt(queueRulesetsConfig.projectId),
-    rulesetConfigurations: formatRulesetConfigurations(queueRulesetsConfig.rulesetConfigurations, chainId),
-    memo: queueRulesetsConfig.memo,
-  }
 
   return encodeFunctionData({
     abi: JB_OMNICHAIN_DEPLOYER_ABI,
-    functionName: 'queue721RulesetsOf',
+    functionName: 'queueRulesetsOf',
     args: [
       BigInt(projectId),
-      formattedDeployConfig,
-      formattedQueueConfig,
-      controller,
-      salt,
+      formatDeploy721Config(deployTiersHookConfig, salt),
+      formatRulesetConfigurations(queueRulesetsConfig.rulesetConfigurations, chainId),
+      queueRulesetsConfig.memo,
     ],
   })
 }
@@ -864,7 +904,6 @@ export function buildQueue721RulesetsTransaction(params: {
   projectId: number | bigint
   deployTiersHookConfig: JBDeployTiersHookConfig
   queueRulesetsConfig: JBQueueRulesetsConfig
-  controller?: `0x${string}`
   salt?: `0x${string}`
 }): {
   chainId: number
@@ -890,7 +929,6 @@ export function buildOmnichainQueue721RulesetsTransactions(params: {
   projectId: number | bigint
   deployTiersHookConfig: JBDeployTiersHookConfig
   queueRulesetsConfig: JBQueueRulesetsConfig
-  controller?: `0x${string}`
   salt?: `0x${string}`
 }): Array<{
   chainId: number
@@ -930,14 +968,14 @@ export function encodeSetUriOf(params: {
 /**
  * Build transaction data for setting project URI via JBController.
  *
- * IMPORTANT: The controller address MUST be derived from JBDirectory.controllerOf(projectId)
- * since different projects may use different controller versions (V5 vs V5.1).
+ * The controller address should be derived from JBDirectory.controllerOf(projectId)
+ * (projects can set a custom controller, though most use the canonical JBController).
  */
 export function buildSetUriTransaction(params: {
   chainId: number
   projectId: number | bigint
   uri: string
-  controller: `0x${string}` // Must be fetched from JBDirectory.controllerOf
+  controller: `0x${string}` // Fetched from JBDirectory.controllerOf
 }): {
   chainId: number
   to: `0x${string}`
@@ -961,15 +999,12 @@ export function buildSetUriTransaction(params: {
 export interface ChainProjectMapping {
   chainId: number
   projectId: number | bigint
-  controller: `0x${string}` // Must be fetched from JBDirectory.controllerOf per chain
+  controller: `0x${string}` // Fetched from JBDirectory.controllerOf per chain
 }
 
 /**
  * Build transactions for setting project URI on multiple chains.
- * For omnichain projects, each chain may have a different projectId AND controller.
- *
- * IMPORTANT: The controller address MUST be derived from JBDirectory.controllerOf(projectId)
- * for each chain, since projects may use different controller versions.
+ * For omnichain projects, each chain may have a different projectId.
  */
 export function buildOmnichainSetUriTransactions(params: {
   chainProjectMappings: ChainProjectMapping[]
@@ -981,17 +1016,6 @@ export function buildOmnichainSetUriTransactions(params: {
   value: string
 }> {
   const { chainProjectMappings, uri } = params
-
-  console.log('\n=== OMNICHAIN SET URI PARAMS ===')
-  console.log(JSON.stringify({
-    chainProjectMappings: chainProjectMappings.map(m => ({
-      chainId: m.chainId,
-      projectId: typeof m.projectId === 'bigint' ? m.projectId.toString() : m.projectId,
-      controller: m.controller,
-    })),
-    uri,
-  }, null, 2))
-  console.log('================================\n')
 
   return chainProjectMappings.map(({ chainId, projectId, controller }) =>
     buildSetUriTransaction({

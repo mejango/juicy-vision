@@ -392,9 +392,9 @@ export default function DeployRevnetModal({
                 </div>
                 {stageConfigurations.map((stage, idx) => (
                   <div key={idx} className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                    Stage {idx + 1}: {(stage.splitPercent / 10000000).toFixed(1)}% operator split,{' '}
-                    {(stage.issuanceDecayPercent / 10000000).toFixed(1)}% decay every{' '}
-                    {Math.round(stage.issuanceDecayFrequency / 86400)} days
+                    Stage {idx + 1}: {(stage.splitPercent / 100).toFixed(1)}% operator split,{' '}
+                    {(stage.issuanceCutPercent / 10000000).toFixed(1)}% issuance cut every{' '}
+                    {Math.round(stage.issuanceCutFrequency / 86400)} days
                   </div>
                 ))}
               </div>
@@ -438,9 +438,9 @@ export default function DeployRevnetModal({
                   name,
                   chainIds,
                   stages: stageConfigurations.map((stage) => ({
-                    splitPercent: stage.splitPercent / 10000000,
-                    decayPercent: stage.issuanceDecayPercent / 10000000,
-                    decayFrequency: `${Math.round(stage.issuanceDecayFrequency / 86400)} days`,
+                    splitPercent: stage.splitPercent / 100,
+                    decayPercent: stage.issuanceCutPercent / 10000000,
+                    decayFrequency: `${Math.round(stage.issuanceCutFrequency / 86400)} days`,
                   })),
                   autoDeploySuckers,
                 }}

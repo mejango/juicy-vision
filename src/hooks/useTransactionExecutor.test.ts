@@ -96,7 +96,7 @@ vi.mock('../constants', () => ({
 // Mock utils
 vi.mock('../utils', () => ({
   getPaymentTerminal: vi.fn().mockResolvedValue({
-    address: '0x2db6d704058e552defe415753465df8df0361846',
+    address: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
     type: 'multi',
   }),
 }))

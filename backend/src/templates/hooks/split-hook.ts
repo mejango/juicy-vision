@@ -21,15 +21,15 @@ export const SPLIT_HOOK_TEMPLATE = {
       content: `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IJBSplitHook} from "@jb/interfaces/IJBSplitHook.sol";
-import {JBSplitHookPayload} from "@jb/structs/JBSplitHookPayload.sol";
-import {IJBDirectory} from "@jb/interfaces/IJBDirectory.sol";
-import {IJBTerminal} from "@jb/interfaces/IJBTerminal.sol";
+import {IJBSplitHook} from "@bananapus/core-v6/src/interfaces/IJBSplitHook.sol";
+import {JBSplitHookContext} from "@bananapus/core-v6/src/structs/JBSplitHookContext.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title MySplitHook
-/// @notice A custom split hook for Juicebox V5 projects.
+/// @notice A custom split hook for Juicebox V6 projects.
 /// @dev Implement your custom split handling logic in processSplitWith.
 contract MySplitHook is IJBSplitHook {
     // ═══════════════════════════════════════════════════════════════════════
@@ -70,8 +70,8 @@ contract MySplitHook is IJBSplitHook {
     /// @notice The beneficiary to receive funds.
     address public beneficiary;
 
-    /// @notice Native token address (0x0 for ETH).
-    address public constant NATIVE_TOKEN = address(0);
+    /// @notice The address Juicebox uses to represent the native token (JBConstants.NATIVE_TOKEN).
+    address public constant NATIVE_TOKEN = address(0x000000000000000000000000000000000000EEEe);
 
     // ═══════════════════════════════════════════════════════════════════════
     // CONSTRUCTOR
@@ -94,36 +94,40 @@ contract MySplitHook is IJBSplitHook {
     // SPLIT HOOK IMPLEMENTATION
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Called when this split is being distributed to.
-    /// @dev The hook receives the funds and can route them as needed.
-    /// @param payload The split payload containing amount, token, etc.
-    function processSplitWith(JBSplitHookPayload calldata payload) external payable {
-        // Verify caller is a valid terminal for this project
-        if (!DIRECTORY.isTerminalOf(payload.projectId, IJBTerminal(msg.sender))) {
+    /// @notice Called while a split is being processed. The split's tokens are optimistically
+    /// transferred to this hook before the call.
+    /// @dev Payout splits are processed by the project's terminal; reserved token splits are
+    /// processed by its controller (in which case the tokens are the project's ERC-20).
+    /// @param context The context containing the token, amount, decimals, group, and split.
+    function processSplitWith(JBSplitHookContext calldata context) external payable {
+        // Verify caller is a valid terminal for this project.
+        // NOTE: if this hook is used in the reserved token split group, also allow the
+        // project's controller: DIRECTORY.controllerOf(context.projectId) == msg.sender.
+        if (!DIRECTORY.isTerminalOf(context.projectId, IJBTerminal(msg.sender))) {
             revert UnauthorizedTerminal(msg.sender);
         }
 
         // Verify this is the correct project
-        if (payload.projectId != PROJECT_ID) {
-            revert WrongProject(PROJECT_ID, payload.projectId);
+        if (context.projectId != PROJECT_ID) {
+            revert WrongProject(PROJECT_ID, context.projectId);
         }
 
         // ════════════════════════════════════════════════════════════════════
         // Handle the incoming funds
         // ════════════════════════════════════════════════════════════════════
 
-        if (payload.token == NATIVE_TOKEN) {
+        if (context.token == NATIVE_TOKEN) {
             // Handle ETH
-            _processETH(payload.amount);
+            _processETH(context.amount);
         } else {
             // Handle ERC20 tokens
-            _processERC20(payload.token, payload.amount);
+            _processERC20(context.token, context.amount);
         }
 
         emit SplitProcessed(
-            payload.projectId,
-            payload.token,
-            payload.amount,
+            context.projectId,
+            context.token,
+            context.amount,
             beneficiary
         );
     }
@@ -210,8 +214,8 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {MySplitHook} from "../src/MySplitHook.sol";
-import {IJBDirectory} from "@jb/interfaces/IJBDirectory.sol";
-import {IJBSplitHook} from "@jb/interfaces/IJBSplitHook.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBSplitHook} from "@bananapus/core-v6/src/interfaces/IJBSplitHook.sol";
 
 contract MySplitHookTest is Test {
     MySplitHook hook;
@@ -281,9 +285,9 @@ solc = "0.8.28"
 optimizer = true
 optimizer_runs = 200
 
-# Remappings
+# Remappings (forge install Bananapus/nana-core-v6)
 remappings = [
-  "@jb/=lib/juice-contracts-v5/src/",
+  "@bananapus/core-v6/=lib/nana-core-v6/",
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
   "forge-std/=lib/forge-std/src/"
 ]

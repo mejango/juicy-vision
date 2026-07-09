@@ -1,4 +1,33 @@
-// ABI definitions for 721 tier hook contracts
+// ABI definitions for 721 tier hook contracts (Juicebox V6)
+
+// V6 JB721Tier struct components (returned by the store's tiersOf/tierOf)
+// V6 moved the per-tier booleans into a nested `flags` tuple, renamed
+// encodedIPFSUri -> encodedIpfsUri, and added splitPercent.
+const JB721_TIER_COMPONENTS = [
+  { name: 'id', type: 'uint32' },
+  { name: 'price', type: 'uint104' },
+  { name: 'remainingSupply', type: 'uint32' },
+  { name: 'initialSupply', type: 'uint32' },
+  { name: 'votingUnits', type: 'uint104' },
+  { name: 'reserveFrequency', type: 'uint16' },
+  { name: 'reserveBeneficiary', type: 'address' },
+  { name: 'encodedIpfsUri', type: 'bytes32' },
+  { name: 'category', type: 'uint24' },
+  { name: 'discountPercent', type: 'uint8' },
+  {
+    name: 'flags',
+    type: 'tuple',
+    components: [
+      { name: 'allowOwnerMint', type: 'bool' },
+      { name: 'transfersPausable', type: 'bool' },
+      { name: 'cantBeRemoved', type: 'bool' },
+      { name: 'cantIncreaseDiscountPercent', type: 'bool' },
+      { name: 'cantBuyWithCredits', type: 'bool' },
+    ],
+  },
+  { name: 'splitPercent', type: 'uint32' },
+  { name: 'resolvedUri', type: 'string' },
+] as const
 
 /**
  * JB721TiersHook ABI (partial - functions we need)
@@ -25,29 +54,10 @@ export const JB721TiersHookAbi = [
     inputs: [],
     outputs: [{ name: '', type: 'address' }],
   },
-  {
-    name: 'FLAGS',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'noNewTiersWithReserves', type: 'bool' },
-          { name: 'noNewTiersWithVotes', type: 'bool' },
-          { name: 'noNewTiersWithOwnerMinting', type: 'bool' },
-          { name: 'preventOverspending', type: 'bool' },
-        ],
-      },
-    ],
-  },
 ] as const
 
 /**
- * JB721TierStore ABI (partial - functions we need)
- * Must match juice-sdk-core's jb721TiersHookStoreAbi exactly
+ * JB721TiersHookStore ABI (partial - functions we need)
  */
 export const JB721TierStoreAbi = [
   {
@@ -65,23 +75,7 @@ export const JB721TierStoreAbi = [
       {
         name: 'tiers',
         type: 'tuple[]',
-        components: [
-          { name: 'id', type: 'uint32' },
-          { name: 'price', type: 'uint104' },
-          { name: 'remainingSupply', type: 'uint32' },
-          { name: 'initialSupply', type: 'uint32' },
-          { name: 'votingUnits', type: 'uint104' },
-          { name: 'reserveFrequency', type: 'uint16' },
-          { name: 'reserveBeneficiary', type: 'address' },
-          { name: 'encodedIPFSUri', type: 'bytes32' },
-          { name: 'category', type: 'uint24' },
-          { name: 'discountPercent', type: 'uint8' },
-          { name: 'allowOwnerMint', type: 'bool' },
-          { name: 'transfersPausable', type: 'bool' },
-          { name: 'cannotBeRemoved', type: 'bool' },
-          { name: 'cannotIncreaseDiscountPercent', type: 'bool' },
-          { name: 'resolvedUri', type: 'string' },
-        ],
+        components: JB721_TIER_COMPONENTS,
       },
     ],
   },
@@ -98,23 +92,7 @@ export const JB721TierStoreAbi = [
       {
         name: 'tier',
         type: 'tuple',
-        components: [
-          { name: 'id', type: 'uint32' },
-          { name: 'price', type: 'uint104' },
-          { name: 'remainingSupply', type: 'uint32' },
-          { name: 'initialSupply', type: 'uint32' },
-          { name: 'votingUnits', type: 'uint104' },
-          { name: 'reserveFrequency', type: 'uint16' },
-          { name: 'reserveBeneficiary', type: 'address' },
-          { name: 'encodedIPFSUri', type: 'bytes32' },
-          { name: 'category', type: 'uint24' },
-          { name: 'discountPercent', type: 'uint8' },
-          { name: 'allowOwnerMint', type: 'bool' },
-          { name: 'transfersPausable', type: 'bool' },
-          { name: 'cannotBeRemoved', type: 'bool' },
-          { name: 'cannotIncreaseDiscountPercent', type: 'bool' },
-          { name: 'resolvedUri', type: 'string' },
-        ],
+        components: JB721_TIER_COMPONENTS,
       },
     ],
   },
@@ -146,6 +124,7 @@ export const JB721TierStoreAbi = [
           { name: 'noNewTiersWithVotes', type: 'bool' },
           { name: 'noNewTiersWithOwnerMinting', type: 'bool' },
           { name: 'preventOverspending', type: 'bool' },
+          { name: 'issueTokensForSplits', type: 'bool' },
         ],
       },
     ],
@@ -166,7 +145,8 @@ export const JBDirectoryDataHookAbi = [
 ] as const
 
 /**
- * JBController ABI (to get ruleset with data hook)
+ * JBController ABI (to get ruleset with data hook) - Juicebox V6.
+ * V6 renamed useTotalSurplusForCashOuts -> scopeCashOutsToLocalBalances.
  */
 export const JBControllerRulesetAbi = [
   {
@@ -208,7 +188,7 @@ export const JBControllerRulesetAbi = [
           { name: 'allowAddPriceFeed', type: 'bool' },
           { name: 'ownerMustSendPayouts', type: 'bool' },
           { name: 'holdFees', type: 'bool' },
-          { name: 'useTotalSurplusForCashOuts', type: 'bool' },
+          { name: 'scopeCashOutsToLocalBalances', type: 'bool' },
           { name: 'useDataHookForPay', type: 'bool' },
           { name: 'useDataHookForCashOut', type: 'bool' },
           { name: 'dataHook', type: 'address' },
