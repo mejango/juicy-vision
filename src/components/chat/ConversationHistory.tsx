@@ -1128,8 +1128,18 @@ export default function ConversationHistory() {
       {/* Chats Tab Content */}
       {activeTab === 'chats' && (
         <>
-          {/* New chat button */}
-          <div className="flex justify-end mb-2">
+          {/* New chat / new folder buttons */}
+          <div className="flex justify-end gap-2 mb-2">
+            <button
+              onClick={openFolderPopover}
+              className={`px-2.5 py-1 text-xs font-medium border transition-colors ${
+                theme === 'dark'
+                  ? 'text-gray-400 border-white/10 hover:text-white hover:border-white/25'
+                  : 'text-gray-500 border-gray-200 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {t('chat.newFolder', 'New folder')}
+            </button>
             <button
               onClick={() => {
                 navigate('/chat/new')

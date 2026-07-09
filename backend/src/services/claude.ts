@@ -22,15 +22,21 @@ export function cleanupRateLimits(): void {
 
 // Available Claude models with cost per 1M tokens
 export const MODEL_COSTS = {
-  'claude-3-5-haiku-20241022': { inputPer1M: 1.00, outputPer1M: 5.00 },
-  'claude-sonnet-4-20250514': { inputPer1M: 3.00, outputPer1M: 15.00 },
+  'claude-haiku-4-5': { inputPer1M: 1.00, outputPer1M: 5.00 },
+  'claude-sonnet-5': { inputPer1M: 3.00, outputPer1M: 15.00 },
 } as const;
 
 export type ClaudeModel = keyof typeof MODEL_COSTS;
 
 // Default models for different use cases
-const DEFAULT_MODEL: ClaudeModel = 'claude-sonnet-4-20250514';
-const FAST_MODEL: ClaudeModel = 'claude-3-5-haiku-20241022';
+const DEFAULT_MODEL: ClaudeModel = 'claude-sonnet-5';
+const FAST_MODEL: ClaudeModel = 'claude-haiku-4-5';
+
+// Sonnet 5 (and Opus 4.7+/Fable 5) reject non-default sampling params with a 400;
+// Haiku 4.5 still accepts them.
+function modelAcceptsSamplingParams(model: ClaudeModel): boolean {
+  return model === 'claude-haiku-4-5';
+}
 
 // Patterns that indicate complex queries needing Sonnet
 const COMPLEX_INTENT_PATTERNS = [
@@ -453,7 +459,7 @@ export async function sendMessage(
     }));
   }
 
-  if (request.temperature !== undefined) {
+  if (request.temperature !== undefined && modelAcceptsSamplingParams(model)) {
     messageRequest.temperature = request.temperature;
   }
 
@@ -591,7 +597,7 @@ export async function* streamMessage(
     }));
   }
 
-  if (request.temperature !== undefined) {
+  if (request.temperature !== undefined && modelAcceptsSamplingParams(model)) {
     messageRequest.temperature = request.temperature;
   }
 

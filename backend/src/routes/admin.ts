@@ -657,7 +657,7 @@ adminRouter.post('/escalations/:id/resolve', zValidator('json', ResolveEscalatio
     const result = await resolveEscalation({
       id,
       status: body.status,
-      reviewedBy: user?.address || 'admin',
+      reviewedBy: user?.email || 'admin',
       adminCorrection: body.adminCorrection,
       reviewNotes: body.reviewNotes,
     });

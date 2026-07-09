@@ -7,6 +7,7 @@ import { resolveIpfsUri, fetchIpfsMetadata, pinFile, type IpfsProjectMetadata } 
 import ProjectCard from './ProjectCard'
 import ActivityFeed from './ActivityFeed'
 import NFTGallery from './NFTGallery'
+import { JUICEBOX_MONEY_V6_LIVE } from './ProjectLink'
 
 interface LandingPagePreviewProps {
   projectId: string
@@ -473,7 +474,7 @@ function generateStaticHtml(
         <div class="stat-label">Payments</div>
       </div>
     </div>
-    <a href="https://juicebox.money/v6/p/${project?.projectId}" target="_blank" class="pay-btn">
+    <a ${JUICEBOX_MONEY_V6_LIVE ? `href="https://juicebox.money/v6/p/${project?.projectId}" target="_blank" ` : ''}class="pay-btn">
       Support This Project
     </a>
     ` : ''}

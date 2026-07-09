@@ -100,7 +100,7 @@ const SUMMARIZATION_CONFIG = {
   maxSummaryTokens: 2000,
 
   // Model to use for summarization
-  model: 'claude-sonnet-4-20250514',
+  model: 'claude-sonnet-5',
 };
 
 // ============================================================================

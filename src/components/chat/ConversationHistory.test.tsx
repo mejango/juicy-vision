@@ -180,7 +180,7 @@ describe('ConversationHistory', () => {
       })
     })
 
-    it('renders header with recent count', () => {
+    it('renders the chats tab header and lists the chat', () => {
       const chat = createMockChat({
         messages: [createMockMessage('chat-1')],
       })
@@ -188,8 +188,10 @@ describe('ConversationHistory', () => {
 
       renderWithProviders(<ConversationHistory />)
 
-      // The header shows "Recent (N)" as combined text
-      expect(screen.getByText(/Recent.*\(1\)/)).toBeInTheDocument()
+      // Section headers (the old "Recent (N)" label) were replaced by a tab
+      // bar; the "Chats" tab is now the panel header.
+      expect(screen.getByText('Chats')).toBeInTheDocument()
+      expect(screen.getByText(chat.name)).toBeInTheDocument()
     })
 
     it('renders create folder button', () => {

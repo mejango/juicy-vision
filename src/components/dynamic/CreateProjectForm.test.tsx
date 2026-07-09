@@ -3,6 +3,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import CreateProjectForm from './CreateProjectForm'
 import { useThemeStore, useAuthStore } from '../../stores'
+import { ALL_CHAIN_IDS, CHAINS } from '../../constants'
+
+// Chain toggle labels come from the same constants the component renders, so
+// these tests pass in either mainnet or testnet build mode without drifting.
+const [ETH_LABEL, OP_LABEL, BASE_LABEL, ARB_LABEL] = ALL_CHAIN_IDS.map(
+  id => CHAINS[id].shortName
+)
 
 // Mock wagmi
 vi.mock('wagmi', () => ({
@@ -67,10 +74,10 @@ describe('CreateProjectForm', () => {
     it('renders chain selection with all chains selected by default', () => {
       render(<CreateProjectForm />)
 
-      expect(screen.getByText('ETH')).toBeInTheDocument()
-      expect(screen.getByText('OP')).toBeInTheDocument()
-      expect(screen.getByText('BASE')).toBeInTheDocument()
-      expect(screen.getByText('ARB')).toBeInTheDocument()
+      expect(screen.getByText(ETH_LABEL)).toBeInTheDocument()
+      expect(screen.getByText(OP_LABEL)).toBeInTheDocument()
+      expect(screen.getByText(BASE_LABEL)).toBeInTheDocument()
+      expect(screen.getByText(ARB_LABEL)).toBeInTheDocument()
     })
 
     it('renders project info fields', () => {
@@ -120,10 +127,10 @@ describe('CreateProjectForm', () => {
       await user.type(nameInput, 'Test Project')
 
       // Deselect all chains
-      const ethButton = screen.getByText('ETH')
-      const opButton = screen.getByText('OP')
-      const baseButton = screen.getByText('BASE')
-      const arbButton = screen.getByText('ARB')
+      const ethButton = screen.getByText(ETH_LABEL)
+      const opButton = screen.getByText(OP_LABEL)
+      const baseButton = screen.getByText(BASE_LABEL)
+      const arbButton = screen.getByText(ARB_LABEL)
 
       await user.click(ethButton)
       await user.click(opButton)
@@ -139,7 +146,7 @@ describe('CreateProjectForm', () => {
     it('toggles chain selection on click', async () => {
       render(<CreateProjectForm />)
 
-      const ethButton = screen.getByText('ETH')
+      const ethButton = screen.getByText(ETH_LABEL)
 
       // Initially selected (has orange styling)
       expect(ethButton.className).toContain('bg-juice-orange')
@@ -166,9 +173,9 @@ describe('CreateProjectForm', () => {
       render(<CreateProjectForm />)
 
       // Deselect all but one chain
-      await user.click(screen.getByText('OP'))
-      await user.click(screen.getByText('BASE'))
-      await user.click(screen.getByText('ARB'))
+      await user.click(screen.getByText(OP_LABEL))
+      await user.click(screen.getByText(BASE_LABEL))
+      await user.click(screen.getByText(ARB_LABEL))
 
       expect(screen.queryByText('Synchronized Start Time')).not.toBeInTheDocument()
     })

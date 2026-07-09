@@ -10,6 +10,7 @@ import {
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { SetUriModal } from '../payment'
+import { ProjectLink } from './ProjectLink'
 
 interface SetUriFormProps {
   projectId: string
@@ -194,7 +195,6 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
 
   const logoUrl = project?.logoUri ? resolveIpfsUri(project.logoUri) : null
   const chainInfo = CHAIN_INFO[primaryChainId] || CHAIN_INFO[1]
-  const projectUrl = `https://juicebox.money/v6/${chainInfo.slug}:${projectId}`
 
   return (
     <div className="w-full">
@@ -215,14 +215,9 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
               <h3 className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 Update Project Metadata
               </h3>
-              <a
-                href={projectUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
-              >
+              <ProjectLink chainSlug={chainInfo.slug} projectId={projectId} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
                 {project?.name || `Project #${projectId}`}
-              </a>
+              </ProjectLink>
             </div>
           </div>
         </div>
