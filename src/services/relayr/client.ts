@@ -706,7 +706,9 @@ export interface JBRulesetMetadataConfig {
   allowAddPriceFeed: boolean
   ownerMustSendPayouts: boolean
   holdFees: boolean
-  useTotalSurplusForCashOuts: boolean
+  // If true, omnichain cash-out
+  // calculations use only the local chain's balances.
+  scopeCashOutsToLocalBalances: boolean
   useDataHookForPay: boolean
   useDataHookForCashOut: boolean
   dataHook: string
@@ -915,17 +917,19 @@ export interface JBTerminalConfig {
 }
 
 // Token mapping for cross-chain bridging via suckers
-// Order matches Solidity struct: localToken, minGas, remoteToken, minBridgeAmount
+// V6 Solidity struct: localToken, minGas, remoteToken (bytes32)
 export interface JBSuckerTokenMapping {
   localToken: string                    // Token address on local chain (0xEEEe... for native)
   minGas: number                        // Minimum gas for bridge operation (uint32)
-  remoteToken: string                   // Token address on remote chain
-  minBridgeAmount: string               // Minimum amount to bridge (in wei, uint256)
+  remoteToken: string                   // Token on remote chain (address or bytes32; padded at encode time)
+  /** @deprecated Removed in Juicebox V6 - ignored. */
+  minBridgeAmount?: string
 }
 
 // Sucker deployer configuration for a specific bridge type
 export interface JBSuckerDeployerConfig {
   deployer: string                      // Sucker deployer contract address
+  peer?: string                         // V6: explicit peer sucker (bytes32); omit for default same-address peer
   mappings: JBSuckerTokenMapping[]      // Token mappings for this deployer
 }
 
@@ -1020,8 +1024,8 @@ export interface REVStageConfig {
   startsAtOrAfter: number               // Unix timestamp
   splitPercent: number                  // To operator (0-1000000000, 1B = 100%)
   initialIssuance: string               // Tokens per currency unit (as string for bigint)
-  issuanceDecayFrequency: number        // Seconds between decay applications
-  issuanceDecayPercent: number          // Decay amount (0-1000000000)
+  issuanceCutFrequency: number          // V6 (was issuanceDecayFrequency): seconds between cuts
+  issuanceCutPercent: number            // V6 (was issuanceDecayPercent): cut amount (0-1000000000)
   cashOutTaxRate: number                // Exit tax (0-10000, 10000 = 100%)
   extraMetadata: number                 // Additional stage metadata
 }
@@ -1029,11 +1033,13 @@ export interface REVStageConfig {
 export interface REVSuckerDeploymentConfig {
   deployerConfigurations: Array<{
     deployer: string                    // Sucker deployer address
+    peer?: string                       // V6: explicit peer sucker (bytes32); omit for default
     mappings: Array<{
       localToken: string                // Token on this chain
-      remoteToken: string               // Token on remote chain
+      remoteToken: string               // Token on remote chain (address or bytes32)
       minGas: number                    // Minimum gas for bridge
-      minBridgeAmount: string           // Minimum amount to bridge
+      /** @deprecated Removed in Juicebox V6 - ignored. */
+      minBridgeAmount?: string
     }>
   }>
   salt: string                          // bytes32 for deterministic addresses
@@ -1093,13 +1099,13 @@ export function buildOmnichainDeployRevnetTransactions(
   const { parseSuckerDeployerConfig, createSalt, shouldConfigureSuckers } =
     require('../../utils/suckerConfig')
 
-  // Default terminal configuration for ETH
+  // Default terminal configuration for ETH (V6 JBMultiTerminal; native currency = uint32(uint160(0xEEEe)))
   const defaultTerminalConfig: JBTerminalConfig[] = request.terminalConfigurations || [{
-    terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c', // JBMultiTerminal
+    terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53', // JBMultiTerminal (V6)
     accountingContextsToAccept: [{
       token: '0x000000000000000000000000000000000000EEEe', // Native ETH
       decimals: 18,
-      currency: 1,
+      currency: 61166, // NATIVE_TOKEN_CURRENCY = uint32(uint160(NATIVE_TOKEN))
     }],
   }]
 
@@ -1159,25 +1165,29 @@ export function buildOmnichainDeployRevnetTransactions(
         tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
       })
       suckerConfig = {
-        deployerConfigurations: generatedConfig.deployerConfigurations.map((dc: { deployer: string; mappings: Array<{ localToken: string; minGas: number; remoteToken: string; minBridgeAmount: bigint }> }) => ({
+        deployerConfigurations: generatedConfig.deployerConfigurations.map((dc: { deployer: string; peer: string; mappings: Array<{ localToken: string; minGas: number; remoteToken: string }> }) => ({
           deployer: dc.deployer,
-          mappings: dc.mappings.map((m: { localToken: string; minGas: number; remoteToken: string; minBridgeAmount: bigint }) => ({
-            // Order must match Solidity JBTokenMapping: localToken, minGas, remoteToken, minBridgeAmount
+          peer: dc.peer,
+          mappings: dc.mappings.map((m: { localToken: string; minGas: number; remoteToken: string }) => ({
+            // V6 Solidity JBTokenMapping: localToken, minGas, remoteToken (bytes32)
             localToken: m.localToken,
             minGas: m.minGas,
             remoteToken: m.remoteToken,
-            minBridgeAmount: m.minBridgeAmount.toString(),
           })),
         })),
         salt: generatedConfig.salt,
       }
     }
 
+    // V6 REVDeployer.deployFor takes accounting contexts directly (it wires the
+    // canonical multi terminal + router terminal registry itself).
+    const accountingContexts = terminalConfigurations.flatMap(tc => tc.accountingContextsToAccept)
+
     const txResponse = encodeDeployRevnetTransaction(
       chainId,
       revnetId,
       { ...request, suckerDeploymentConfiguration: suckerConfig },
-      terminalConfigurations
+      accountingContexts
     )
 
     return {
@@ -1236,9 +1246,10 @@ export async function sponsoredOmnichainDeployRevnet(
 
 export interface SuckerTokenMapping {
   localToken: string                    // Token address on this chain
-  remoteToken: string                   // Token address on remote chain
+  remoteToken: string                   // Token on remote chain (address or bytes32)
   minGas: number                        // Minimum gas for bridge operation
-  minBridgeAmount: string               // Minimum amount to bridge (as string)
+  /** @deprecated Removed in Juicebox V6 - ignored. */
+  minBridgeAmount?: string
 }
 
 export interface JBDeploySuckersRequest {

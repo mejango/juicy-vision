@@ -7,9 +7,13 @@ export const DEPLOYMENT_CONTEXT = `
 ### Deployment Configuration
 
 **CONTRACTS FOR DEPLOYMENT:**
-- **launchProject / launch721Project → JBOmnichainDeployer5_1** (deploys across all chains)
-- **NEVER use JBMultiTerminal5_1 for deployment** - that's for payments only
-- **NEVER use JBController5_1 for deployment** - use JBOmnichainDeployer5_1 instead
+- **launchProject / launch721Project → JBOmnichainDeployer** (0xb853758a70a6b4216c09f1d071ea2344aba0a34f, same address on every chain)
+- **NEVER use JBMultiTerminal for deployment** - that's for payments only
+- **NEVER use JBController for deployment** - use JBOmnichainDeployer instead
+
+**Creation fee:** \`launchProjectFor\` (JBController, JBOmnichainDeployer) and \`REVDeployer.deployFor\` are payable and require \`msg.value == JBProjects.creationFee()\` EXACTLY (currently ≤ 0.001 ETH). The fee must be read from chain at execution time - never hardcode it. The frontend attaches it automatically.
+
+**JBOmnichainDeployer.launchProjectFor signature:** \`(owner, projectUri, rulesetConfigurations, terminalConfigurations, memo, suckerDeploymentConfiguration)\` - there is NO trailing controller param. The 721 overload inserts a \`deploy721Config\` struct as the 3rd argument.
 
 **NEVER USE these hallucinated field names:**
 - ~~nftRewardsDeploymentConfiguration~~ → use \`deployTiersHookConfig\`
@@ -17,14 +21,17 @@ export const DEPLOYMENT_CONTEXT = `
 - ~~projectUri~~ at top level → use \`launchProjectConfig.projectUri\`
 - ~~rulesetConfigurations~~ at top level → use \`launchProjectConfig.rulesetConfigurations\`
 
-**suckerDeploymentConfiguration** = Standard 4-chain config:
+**suckerDeploymentConfiguration** = Standard 4-chain config (from Ethereum, using the CCIP pair deployers):
 \`\`\`json
 {"deployerConfigurations": [
-  {"deployer": "0x34B40205B249e5733CF93d86B7C9783b015dD3e7", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "remoteToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "minBridgeAmount": "10000000000000000"}]},
-  {"deployer": "0xdE901EbaFC70d545F9D43034308C136Ce8c94A5C", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "remoteToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "minBridgeAmount": "10000000000000000"}]},
-  {"deployer": "0x9d4858cc9d3552507EEAbce722787AfEf64C615e", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "remoteToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "minBridgeAmount": "10000000000000000"}]}
+  {"deployer": "0x41d28bedd5b0fbf65424b48c0e1de92d5c882fc7", "peer": "0x0000000000000000000000000000000000000000000000000000000000000000", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "remoteToken": "0x000000000000000000000000000000000000000000000000000000000000EEEe"}]},
+  {"deployer": "0x36a2e30029d87c46f77f71b7b6b97fec8a760660", "peer": "0x0000000000000000000000000000000000000000000000000000000000000000", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "remoteToken": "0x000000000000000000000000000000000000000000000000000000000000EEEe"}]},
+  {"deployer": "0x3955fec11fe15f0be4dfa2b0153feef55d55e1ee", "peer": "0x0000000000000000000000000000000000000000000000000000000000000000", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "remoteToken": "0x000000000000000000000000000000000000000000000000000000000000EEEe"}]}
 ], "salt": "0x0000000000000000000000000000000000000000000000000000000000000001"}
 \`\`\`
+- **remoteToken** is bytes32: the remote token ADDRESS left-padded with zeros to 32 bytes
+- **peer** = zero bytes32 to use the default deterministic peer (sucker has the same address on both chains)
+- There is NO minBridgeAmount field in V6
 
 **salt** = Non-zero bytes32 (e.g., 0x...01). NEVER all zeros.
 
@@ -38,9 +45,9 @@ export const DEPLOYMENT_CONTEXT = `
 
 **JBSuckerDeploymentConfig:** \`{ deployerConfigurations: JBSuckerDeployerConfig[], salt: bytes32 }\`
 
-**JBSuckerDeployerConfig:** \`{ deployer: address, mappings: JBTokenMapping[] }\`
+**JBSuckerDeployerConfig:** \`{ deployer: address, peer: bytes32, mappings: JBTokenMapping[] }\`
 
-**JBTokenMapping:** \`{ localToken: address, minGas: uint32, remoteToken: address, minBridgeAmount: uint256 }\`
+**JBTokenMapping:** \`{ localToken: address, minGas: uint32, remoteToken: bytes32 }\`
 
 **JBLaunchProjectConfig (for 721 projects):**
 \`{ projectUri: string, rulesetConfigurations: JBPayDataHookRulesetConfig[], terminalConfigurations: JBTerminalConfig[], memo: string }\`
@@ -57,7 +64,7 @@ export const DEPLOYMENT_CONTEXT = `
 export const DEPLOYMENT_HINTS = [
   'deploy', 'launch', 'create', 'omnichain', 'sucker', 'cross-chain',
   'all chains', 'multi-chain', 'suckerDeploymentConfiguration',
-  'JBOmnichainDeployer', 'projectUri', 'salt'
+  'JBOmnichainDeployer', 'projectUri', 'salt', 'creation fee'
 ];
 
 export const DEPLOYMENT_TOKEN_ESTIMATE = 800;

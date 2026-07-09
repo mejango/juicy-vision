@@ -1,68 +1,240 @@
-// JBMultiTerminal ABI - Version 5.1
-// Contract Address: 0x52869db3d61dde1e391967f2ce5039ad0ecd371c
+// JBMultiTerminal ABI - Juicebox V6
+// Contract Address: 0x130f5dd2bd8805443cf41755253d778a75a67f53 (same on all chains)
+// Generated from deploy-all-v6/deployments/ethereum/JBMultiTerminal.json (Juicebox V6).
+// Regenerate with scripts in deploy-all-v6; do not hand-edit ABI fragments.
 
-export const JB_MULTI_TERMINAL_ADDRESS = '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const
+export const JB_MULTI_TERMINAL_ADDRESS = '0x130f5dd2bd8805443cf41755253d778a75a67f53' as const
 
 export const JB_MULTI_TERMINAL_ABI = [
   {
-    name: 'pay',
-    type: 'function',
-    stateMutability: 'payable',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'beneficiary', type: 'address' },
-      { name: 'minReturnedTokens', type: 'uint256' },
-      { name: 'memo', type: 'string' },
-      { name: 'metadata', type: 'bytes' },
+    "type": "function",
+    "name": "addToBalanceOf",
+    "inputs": [
+      {
+        "name": "projectId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "shouldReturnHeldFees",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "memo",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "metadata",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
     ],
-    outputs: [{ name: 'beneficiaryTokenCount', type: 'uint256' }],
+    "outputs": [],
+    "stateMutability": "payable"
   },
   {
-    name: 'cashOutTokensOf',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'holder', type: 'address' },
-      { name: 'projectId', type: 'uint256' },
-      { name: 'cashOutCount', type: 'uint256' },
-      { name: 'tokenToReclaim', type: 'address' },
-      { name: 'minTokensReclaimed', type: 'uint256' },
-      { name: 'beneficiary', type: 'address' },
-      { name: 'metadata', type: 'bytes' },
+    "type": "function",
+    "name": "cashOutTokensOf",
+    "inputs": [
+      {
+        "name": "holder",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "projectId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "cashOutCount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokenToReclaim",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "minTokensReclaimed",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "internalType": "address payable"
+      },
+      {
+        "name": "metadata",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
     ],
-    outputs: [{ name: 'reclaimAmount', type: 'uint256' }],
+    "outputs": [
+      {
+        "name": "reclaimAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
   },
   {
-    name: 'sendPayoutsOf',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'currency', type: 'uint256' },
-      { name: 'minTokensPaidOut', type: 'uint256' },
+    "type": "function",
+    "name": "pay",
+    "inputs": [
+      {
+        "name": "projectId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "minReturnedTokens",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "memo",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "metadata",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
     ],
-    outputs: [{ name: 'amountPaidOut', type: 'uint256' }],
+    "outputs": [
+      {
+        "name": "beneficiaryTokenCount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "payable"
   },
   {
-    name: 'useAllowanceOf',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'currency', type: 'uint256' },
-      { name: 'minTokensPaidOut', type: 'uint256' },
-      { name: 'beneficiary', type: 'address' },
-      { name: 'feeBeneficiary', type: 'address' },
-      { name: 'memo', type: 'string' },
+    "type": "function",
+    "name": "sendPayoutsOf",
+    "inputs": [
+      {
+        "name": "projectId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "currency",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "minTokensPaidOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
     ],
-    outputs: [{ name: 'amountPaidOut', type: 'uint256' }],
+    "outputs": [
+      {
+        "name": "amountPaidOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
   },
+  {
+    "type": "function",
+    "name": "useAllowanceOf",
+    "inputs": [
+      {
+        "name": "projectId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "currency",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "minTokensPaidOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "internalType": "address payable"
+      },
+      {
+        "name": "feeBeneficiary",
+        "type": "address",
+        "internalType": "address payable"
+      },
+      {
+        "name": "memo",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "netAmountPaidOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  }
 ] as const
 
 // Native token constant used by JBMultiTerminal

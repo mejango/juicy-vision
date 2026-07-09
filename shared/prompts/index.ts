@@ -50,16 +50,10 @@ export {
 } from './transaction/chains.ts';
 
 export {
-  V51_ADDRESSES_CONTEXT,
-  V51_ADDRESSES_HINTS,
-  V51_ADDRESSES_TOKEN_ESTIMATE,
-} from './transaction/v51Addresses.ts';
-
-export {
-  V5_ADDRESSES_CONTEXT,
-  V5_ADDRESSES_HINTS,
-  V5_ADDRESSES_TOKEN_ESTIMATE,
-} from './transaction/v5Addresses.ts';
+  V6_ADDRESSES_CONTEXT,
+  V6_ADDRESSES_HINTS,
+  V6_ADDRESSES_TOKEN_ESTIMATE,
+} from './transaction/v6Addresses.ts';
 
 export {
   TERMINALS_CONTEXT,
@@ -109,8 +103,7 @@ export {
  */
 export const SUB_MODULE_HINTS = {
   chains: ['chain', 'network', 'ethereum', 'optimism', 'base', 'arbitrum'],
-  v51_addresses: ['deploy', 'launch', 'create project', 'new project', 'v5.1'],
-  v5_addresses: ['revnet', 'autonomous', 'REVDeployer', 'v5.0', 'sucker'],
+  v6_addresses: ['deploy', 'launch', 'create project', 'new project', 'revnet', 'autonomous', 'REVDeployer', 'sucker'],
   terminals: ['terminal', 'USDC', 'accountingContext', 'payment', 'accept'],
   splits_limits: ['payout', 'split', 'withdraw', 'fund access', 'goal', 'surplus'],
   nft_tiers: ['tier', 'NFT', '721', 'perks', 'rewards', 'collectible'],
@@ -125,9 +118,8 @@ export const SUB_MODULE_HINTS = {
  */
 export const SUB_MODULE_DESCRIPTIONS = {
   chains: 'Information about blockchain networks, chain IDs, and block explorers',
-  v51_addresses: 'Contract addresses for deploying new V5.1 projects',
-  v5_addresses: 'Contract addresses for revnets and V5.0 projects, including sucker deployers',
-  terminals: 'Terminal configuration, USDC addresses, accounting contexts, and swap terminals',
+  v6_addresses: 'V6 contract addresses (same on every chain) for projects, revnets, and sucker deployers',
+  terminals: 'Terminal configuration, USDC addresses, accounting contexts, and the router terminal registry',
   splits_limits: 'Split groups, fund access limits, payout configuration, and withdrawal settings',
   nft_tiers: 'NFT tier configuration for 721 projects with perks and rewards',
   revnet_params: 'Revnet deployment parameters including issuance decay and split percentages',
@@ -146,13 +138,11 @@ export const SUB_MODULE_EXAMPLES = {
     'What is the chain ID for Base?',
     'Show me the explorer link',
   ],
-  v51_addresses: [
+  v6_addresses: [
     'Deploy a new project',
     'Launch my project',
     'What contract do I use to create a project?',
     'Give me the JBController address',
-  ],
-  v5_addresses: [
     'I want to create a revnet',
     'What is the REVDeployer address?',
     'How do I bridge tokens?',

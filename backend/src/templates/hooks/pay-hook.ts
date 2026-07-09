@@ -1,15 +1,15 @@
 /**
  * Pay Hook Template
  *
- * Pay hooks are called when someone pays a Juicebox project.
- * They can execute custom logic before or after the payment is recorded.
+ * Pay hooks are called after someone pays a Juicebox project.
+ * The ruleset's data hook decides which pay hooks run and how much is
+ * forwarded to each; the pay hook then executes custom post-payment logic.
  *
  * Common use cases:
- * - Payment caps (limit per-payment or total amounts)
- * - Allowlists (only allow specific addresses to pay)
  * - NFT minting on payment
  * - Custom token distribution
  * - Payment routing to external contracts
+ * - Loyalty/reward accounting
  */
 
 export const PAY_HOOK_TEMPLATE = {
@@ -21,15 +21,17 @@ export const PAY_HOOK_TEMPLATE = {
       content: `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IJBPayHook} from "@jb/interfaces/IJBPayHook.sol";
-import {JBPayHookPayload} from "@jb/structs/JBPayHookPayload.sol";
-import {IJBDirectory} from "@jb/interfaces/IJBDirectory.sol";
-import {IJBTerminal} from "@jb/interfaces/IJBTerminal.sol";
+import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
+import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /// @title MyPayHook
-/// @notice A custom pay hook for Juicebox V5 projects.
-/// @dev Implement your custom payment logic in beforePayRecordedWith and/or afterPayRecordedWith.
+/// @notice A custom pay hook for Juicebox V6 projects.
+/// @dev Implement your custom post-payment logic in afterPayRecordedWith. To validate or reshape
+/// payments BEFORE they're recorded, implement a data hook (IJBRulesetDataHook.beforePayRecordedWith)
+/// and set it as the ruleset's dataHook with useDataHookForPay enabled.
 contract MyPayHook is IJBPayHook {
     // ═══════════════════════════════════════════════════════════════════════
     // ERRORS
@@ -66,48 +68,35 @@ contract MyPayHook is IJBPayHook {
     // PAY HOOK IMPLEMENTATION
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Called before a payment is recorded.
-    /// @dev Use this to validate payments or revert if conditions aren't met.
-    /// @param payload The payment payload containing amount, payer, memo, etc.
-    function beforePayRecordedWith(JBPayHookPayload calldata payload) external view {
+    /// @notice Called by the terminal after a payment has been recorded.
+    /// @dev Use this for post-payment actions like minting NFTs or logging.
+    /// @param context The context passed in by the terminal, including payer, amount, and metadata.
+    function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable {
         // Verify caller is a valid terminal for this project
-        if (!DIRECTORY.isTerminalOf(payload.projectId, IJBTerminal(msg.sender))) {
+        if (!DIRECTORY.isTerminalOf(context.projectId, IJBTerminal(msg.sender))) {
             revert UnauthorizedTerminal(msg.sender);
         }
 
         // Verify this is the correct project
-        if (payload.projectId != PROJECT_ID) {
-            revert WrongProject(PROJECT_ID, payload.projectId);
-        }
-
-        // ════════════════════════════════════════════════════════════════════
-        // TODO: Add your custom pre-payment validation logic here
-        // ════════════════════════════════════════════════════════════════════
-        //
-        // Examples:
-        // - Check payment amount: require(payload.amount.value <= MAX_PAYMENT, "Too large");
-        // - Check payer allowlist: require(allowlist[payload.payer], "Not allowed");
-        // - Check time window: require(block.timestamp >= startTime, "Too early");
-        //
-    }
-
-    /// @notice Called after a payment is recorded.
-    /// @dev Use this for post-payment actions like minting NFTs or logging.
-    /// @param payload The payment payload containing amount, payer, memo, etc.
-    function afterPayRecordedWith(JBPayHookPayload calldata payload) external {
-        // Verify caller is a valid terminal
-        if (!DIRECTORY.isTerminalOf(payload.projectId, IJBTerminal(msg.sender))) {
-            revert UnauthorizedTerminal(msg.sender);
+        if (context.projectId != PROJECT_ID) {
+            revert WrongProject(PROJECT_ID, context.projectId);
         }
 
         // ════════════════════════════════════════════════════════════════════
         // TODO: Add your custom post-payment logic here
         // ════════════════════════════════════════════════════════════════════
         //
+        // Useful context fields:
+        // - context.payer: who paid
+        // - context.beneficiary: who receives the minted project tokens
+        // - context.amount.value: the payment amount (in context.amount.token)
+        // - context.forwardedAmount.value: funds forwarded to this hook by the data hook
+        // - context.newlyIssuedTokenCount: project tokens minted for this payment
+        //
         // Examples:
-        // - Mint an NFT: nft.mint(payload.payer, tokenId);
-        // - Emit an event: emit PaymentReceived(payload.payer, payload.amount.value);
-        // - Update state: totalPayments += payload.amount.value;
+        // - Mint an NFT: nft.mint(context.payer, tokenId);
+        // - Emit an event: emit PaymentReceived(context.payer, context.amount.value);
+        // - Update state: totalPayments += context.amount.value;
         //
     }
 
@@ -132,10 +121,10 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {MyPayHook} from "../src/MyPayHook.sol";
-import {IJBDirectory} from "@jb/interfaces/IJBDirectory.sol";
-import {IJBPayHook} from "@jb/interfaces/IJBPayHook.sol";
-import {JBPayHookPayload} from "@jb/structs/JBPayHookPayload.sol";
-import {JBTokenAmount} from "@jb/structs/JBTokenAmount.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
+import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {JBTokenAmount} from "@bananapus/core-v6/src/structs/JBTokenAmount.sol";
 
 contract MyPayHookTest is Test {
     MyPayHook hook;
@@ -163,8 +152,7 @@ contract MyPayHookTest is Test {
     // ═══════════════════════════════════════════════════════════════════════
     //
     // Examples:
-    // function test_RejectsOverMaxPayment() public { ... }
-    // function test_AllowsAllowlistedPayer() public { ... }
+    // function test_RejectsUnauthorizedTerminal() public { ... }
     // function test_MintsNFTOnPayment() public { ... }
     //
 }
@@ -181,9 +169,9 @@ solc = "0.8.28"
 optimizer = true
 optimizer_runs = 200
 
-# Remappings
+# Remappings (forge install Bananapus/nana-core-v6)
 remappings = [
-  "@jb/=lib/juice-contracts-v5/src/",
+  "@bananapus/core-v6/=lib/nana-core-v6/",
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
   "forge-std/=lib/forge-std/src/"
 ]

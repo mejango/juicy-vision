@@ -41,29 +41,28 @@ const MIN_REASONABLE_AMOUNT = BigInt('1000000000000') // 0.000001 ETH (1e12 wei)
 // addresses and auto-corrects them before validation.
 //
 // Example hallucination:
-//   Wrong:   0x1ce40d201cdec791de1810d17aaf501be167422  (missing '05')
-//   Correct: 0x1ce40d201cdec791de05810d17aaf501be167422
+//   Wrong:   0xe0427f250fdb0379c88e884ee4570521208cbc  (missing 'e9')
+//   Correct: 0xe0427f250fdb0379c8e98e884ee4570521208cbc
 // ============================================================================
 
 // Known canonical addresses that AI might hallucinate
-// These are JB V5.1 terminal addresses (same on all chains via CREATE2)
+// These are Juicebox V6 addresses (same on all chains)
 const KNOWN_ADDRESSES: Record<string, string> = {
-  // JB V5.1 Terminals (deterministic addresses)
-  '0x52869db3d61dde1e391967f2ce5039ad0ecd371c': 'JBMultiTerminal5_1',
-  '0x1ce40d201cdec791de05810d17aaf501be167422': 'JBSwapTerminalUSDCRegistry',
-  // JB Shared Contracts
-  '0x4d0edd347fb1fa21589c1e109b3474924be87636': 'JBTokens',
-  '0x885f707efa18d2cb12f05a3a8eba6b4b26c8c1d4': 'JBProjects',
-  '0x0061e516886a0540f63157f112c0588ee0651dcf': 'JBDirectory',
-  '0x7160a322fea44945a6ef9adfd65c322258df3c5e': 'JBSplits',
-  '0x3a46b21720c8b70184b0434a2293b2fdcc497ce7': 'JBFundAccessLimits',
-  // JB V5 Terminals (for Revnets)
-  '0x27da30646502e2f642be5281322ae8c394f7668a': 'JBController_V5',
-  '0x2db6d704058e552defe415753465df8df0361846': 'JBMultiTerminal_V5',
-  // V5.1 Specific
-  '0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1': 'JBController5_1',
-  '0xd4257005ca8d27bbe11f356453b0e4692414b056': 'JBRulesets5_1',
-  '0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71': 'JBOmnichainDeployer5_1',
+  // Terminals
+  '0x130f5dd2bd8805443cf41755253d778a75a67f53': 'JBMultiTerminal',
+  '0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7': 'JBRouterTerminal',
+  '0xe0427f250fdb0379c8e98e884ee4570521208cbc': 'JBRouterTerminalRegistry',
+  // Core contracts
+  '0x3fcec3572e84b624477bcff4e2cf1f7deab648f1': 'JBController',
+  '0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba': 'JBRulesets',
+  '0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9': 'JBTokens',
+  '0x6017d1fba9dc279bfa0b03fd931c22e242ab3691': 'JBProjects',
+  '0x5aff29060e023e6fb87be5596652b33c65af535b': 'JBDirectory',
+  '0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3': 'JBSplits',
+  '0xc93360158f187fc8fc8f1062a1b31d06f185dbab': 'JBFundAccessLimits',
+  // Deployers
+  '0xb853758a70a6b4216c09f1d071ea2344aba0a34f': 'JBOmnichainDeployer',
+  '0xb552eb94284f94b833837d4b2cbb237128415d4e': 'REVDeployer',
 }
 
 // Compute Levenshtein edit distance between two strings
@@ -1036,8 +1035,8 @@ export function verifyDeployRevnetParams(params: {
     startsAtOrAfter?: number
     splitPercent?: number
     initialIssuance?: bigint | string | number
-    issuanceDecayFrequency?: number
-    issuanceDecayPercent?: number
+    issuanceCutFrequency?: number
+    issuanceCutPercent?: number
     cashOutTaxRate?: number
   }>
 }): VerificationResult {
@@ -1090,21 +1089,21 @@ export function verifyDeployRevnetParams(params: {
   }
 
   params.stageConfigurations?.forEach((stage, index) => {
-    // High split percent warning (>50%)
-    if (stage.splitPercent && stage.splitPercent > 500000000) {
+    // High split percent warning (>50%) - V6 splitPercent is out of 10,000
+    if (stage.splitPercent && stage.splitPercent > 5000) {
       doubts.push({
         severity: 'warning',
         field: `stageConfigurations[${index}].splitPercent`,
-        message: `High operator split: ${(stage.splitPercent / 10000000).toFixed(1)}%`,
+        message: `High operator split: ${(stage.splitPercent / 100).toFixed(1)}%`,
       })
     }
 
-    // High decay percent warning (>50%)
-    if (stage.issuanceDecayPercent && stage.issuanceDecayPercent > 500000000) {
+    // High issuance cut warning (>50%) - out of 1,000,000,000
+    if (stage.issuanceCutPercent && stage.issuanceCutPercent > 500000000) {
       doubts.push({
         severity: 'warning',
-        field: `stageConfigurations[${index}].issuanceDecayPercent`,
-        message: `High issuance decay: ${(stage.issuanceDecayPercent / 10000000).toFixed(1)}%`,
+        field: `stageConfigurations[${index}].issuanceCutPercent`,
+        message: `High issuance cut: ${(stage.issuanceCutPercent / 10000000).toFixed(1)}%`,
         technicalNote: 'Token issuance will decrease rapidly',
       })
     }

@@ -489,7 +489,7 @@ optimizer_runs = 200
 # Remappings for common dependencies
 remappings = [
   "@openzeppelin/=lib/openzeppelin-contracts/",
-  "@jb/=lib/juice-contracts-v5/",
+  "@bananapus/core-v6/=lib/nana-core-v6/",
   "forge-std/=lib/forge-std/src/"
 ]
 

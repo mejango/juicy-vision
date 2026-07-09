@@ -2,16 +2,20 @@
  * Sucker deployment configuration for multi-chain JB projects.
  * Suckers enable cross-chain token bridging between the same project on different chains.
  *
- * Addresses from: https://docs.juicebox.money/dev/v5/addresses/
+ * Juicebox V6: CCIP sucker deployers are deployed per chain PAIR, with the SAME
+ * address on both sides of the pair — and the same addresses on the mainnet and
+ * sepolia families, so no testnet switch is needed.
+ *
+ * Addresses from deploy-all-v6/deployments (JBCCIPSuckerDeployer__*).
  */
 
-import { toHex, toBytes, parseEther } from 'viem'
+import { toHex, toBytes, pad } from 'viem'
 
 // Native token address used by Juicebox
 export const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
 
-// Default minimum bridge amount (0.01 ETH)
-export const DEFAULT_MIN_BRIDGE_AMOUNT = parseEther('0.01')
+// Zero bytes32 - used for the default `peer` (same-address deterministic peer sucker)
+export const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000' as const
 
 // Chain IDs
 const CHAIN_IDS = {
@@ -26,41 +30,138 @@ const CHAIN_IDS = {
 } as const
 
 /**
- * CCIP Sucker Deployer addresses - organized by chain PAIR.
+ * V6 CCIP Sucker Deployer addresses - organized by chain PAIR.
  * Each deployer handles bridging between a specific pair of chains.
- * The same deployer address is used on both chains in the pair.
- *
- * From juice-docs: https://docs.juicebox.money/dev/v5/addresses/
+ * The same deployer address is used on both chains in the pair, and the
+ * mainnet and sepolia families share the same addresses.
  */
-
-// Sepolia Testnet Deployers (same address on both sides of each pair)
-const SEPOLIA_DEPLOYERS = {
-  // Ethereum Sepolia <-> Optimism Sepolia
-  ETH_OP: '0x172ad9b3df724ee0422ea85b7799a3f7ca761816' as `0x${string}`,
-  // Ethereum Sepolia <-> Arbitrum Sepolia
-  ETH_ARB: '0xf816d238aef247f86cc73593961cb8fb55ca4bcf' as `0x${string}`,
-  // Ethereum Sepolia <-> Base Sepolia
-  ETH_BASE: '0x195b4dce646eba3c3e9ae56708558b1a96f88814' as `0x${string}`,
-  // Optimism Sepolia <-> Arbitrum Sepolia
-  OP_ARB: '0xaa0dbdf6354dd238d289c359c74f998ddec8bcd1' as `0x${string}`,
-  // Optimism Sepolia <-> Base Sepolia
-  OP_BASE: '0x58683931b146697d094c660aec1f4a8f564a3d7d' as `0x${string}`,
-  // Arbitrum Sepolia <-> Base Sepolia
-  ARB_BASE: '0xc295a8926f1ed0a6e3b6cbdb1d28b9d6b388c8a7' as `0x${string}`,
+const CCIP_PAIR_DEPLOYERS = {
+  // Ethereum <-> Optimism
+  ETH_OP: '0x41d28bedd5b0fbf65424b48c0e1de92d5c882fc7' as `0x${string}`,
+  // Ethereum <-> Arbitrum
+  ETH_ARB: '0x36a2e30029d87c46f77f71b7b6b97fec8a760660' as `0x${string}`,
+  // Ethereum <-> Base
+  ETH_BASE: '0x3955fec11fe15f0be4dfa2b0153feef55d55e1ee' as `0x${string}`,
+  // Optimism <-> Arbitrum
+  OP_ARB: '0x1d58d56fbdb753de44737be926c33b79cf009afa' as `0x${string}`,
+  // Optimism <-> Base
+  OP_BASE: '0x8f6f0a70939997310309d7ab66b1b199faafe7f0' as `0x${string}`,
+  // Arbitrum <-> Base
+  ARB_BASE: '0x2845f919af9ed7d8dab188d42114bd590340a242' as `0x${string}`,
 }
 
 /**
  * Human-readable labels for sucker deployer addresses.
  * Maps deployer address -> { label, chainPair: [chainIdA, chainIdB] }
+ * (Pairs listed for both the mainnet and sepolia families since addresses match.)
  */
 export const SUCKER_DEPLOYER_LABELS: Record<string, { label: string; chainPair: [number, number] }> = {
-  // Testnets (SEP, OPSEP, BASESEP, ARBSEP)
-  [SEPOLIA_DEPLOYERS.ETH_OP.toLowerCase()]: { label: 'SEP ↔ OPSEP', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.optimismSepolia] },
-  [SEPOLIA_DEPLOYERS.ETH_ARB.toLowerCase()]: { label: 'SEP ↔ ARBSEP', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.arbitrumSepolia] },
-  [SEPOLIA_DEPLOYERS.ETH_BASE.toLowerCase()]: { label: 'SEP ↔ BASESEP', chainPair: [CHAIN_IDS.sepolia, CHAIN_IDS.baseSepolia] },
-  [SEPOLIA_DEPLOYERS.OP_ARB.toLowerCase()]: { label: 'OPSEP ↔ ARBSEP', chainPair: [CHAIN_IDS.optimismSepolia, CHAIN_IDS.arbitrumSepolia] },
-  [SEPOLIA_DEPLOYERS.OP_BASE.toLowerCase()]: { label: 'OPSEP ↔ BASESEP', chainPair: [CHAIN_IDS.optimismSepolia, CHAIN_IDS.baseSepolia] },
-  [SEPOLIA_DEPLOYERS.ARB_BASE.toLowerCase()]: { label: 'ARBSEP ↔ BASESEP', chainPair: [CHAIN_IDS.arbitrumSepolia, CHAIN_IDS.baseSepolia] },
+  [CCIP_PAIR_DEPLOYERS.ETH_OP.toLowerCase()]: { label: 'ETH ↔ OP', chainPair: [CHAIN_IDS.mainnet, CHAIN_IDS.optimism] },
+  [CCIP_PAIR_DEPLOYERS.ETH_ARB.toLowerCase()]: { label: 'ETH ↔ ARB', chainPair: [CHAIN_IDS.mainnet, CHAIN_IDS.arbitrum] },
+  [CCIP_PAIR_DEPLOYERS.ETH_BASE.toLowerCase()]: { label: 'ETH ↔ BASE', chainPair: [CHAIN_IDS.mainnet, CHAIN_IDS.base] },
+  [CCIP_PAIR_DEPLOYERS.OP_ARB.toLowerCase()]: { label: 'OP ↔ ARB', chainPair: [CHAIN_IDS.optimism, CHAIN_IDS.arbitrum] },
+  [CCIP_PAIR_DEPLOYERS.OP_BASE.toLowerCase()]: { label: 'OP ↔ BASE', chainPair: [CHAIN_IDS.optimism, CHAIN_IDS.base] },
+  [CCIP_PAIR_DEPLOYERS.ARB_BASE.toLowerCase()]: { label: 'ARB ↔ BASE', chainPair: [CHAIN_IDS.arbitrum, CHAIN_IDS.base] },
+}
+
+/**
+ * CCIP Sucker Deployer addresses mapping.
+ * Structure: CCIP_SUCKER_DEPLOYER_ADDRESSES[targetChainId][remoteChainId] = deployerAddress
+ *
+ * Each chain pair uses the SAME deployer contract address on both chains, and
+ * the mainnet and sepolia families share addresses — so both are listed here
+ * without an IS_TESTNET switch.
+ */
+export const CCIP_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${string}`>> = {
+  // Ethereum mainnet -> other mainnets
+  [CHAIN_IDS.mainnet]: {
+    [CHAIN_IDS.optimism]: CCIP_PAIR_DEPLOYERS.ETH_OP,
+    [CHAIN_IDS.arbitrum]: CCIP_PAIR_DEPLOYERS.ETH_ARB,
+    [CHAIN_IDS.base]: CCIP_PAIR_DEPLOYERS.ETH_BASE,
+  },
+  [CHAIN_IDS.optimism]: {
+    [CHAIN_IDS.mainnet]: CCIP_PAIR_DEPLOYERS.ETH_OP,
+    [CHAIN_IDS.arbitrum]: CCIP_PAIR_DEPLOYERS.OP_ARB,
+    [CHAIN_IDS.base]: CCIP_PAIR_DEPLOYERS.OP_BASE,
+  },
+  [CHAIN_IDS.arbitrum]: {
+    [CHAIN_IDS.mainnet]: CCIP_PAIR_DEPLOYERS.ETH_ARB,
+    [CHAIN_IDS.optimism]: CCIP_PAIR_DEPLOYERS.OP_ARB,
+    [CHAIN_IDS.base]: CCIP_PAIR_DEPLOYERS.ARB_BASE,
+  },
+  [CHAIN_IDS.base]: {
+    [CHAIN_IDS.mainnet]: CCIP_PAIR_DEPLOYERS.ETH_BASE,
+    [CHAIN_IDS.optimism]: CCIP_PAIR_DEPLOYERS.OP_BASE,
+    [CHAIN_IDS.arbitrum]: CCIP_PAIR_DEPLOYERS.ARB_BASE,
+  },
+  // Sepolia testnets (same pair addresses as mainnet)
+  [CHAIN_IDS.sepolia]: {
+    [CHAIN_IDS.optimismSepolia]: CCIP_PAIR_DEPLOYERS.ETH_OP,
+    [CHAIN_IDS.arbitrumSepolia]: CCIP_PAIR_DEPLOYERS.ETH_ARB,
+    [CHAIN_IDS.baseSepolia]: CCIP_PAIR_DEPLOYERS.ETH_BASE,
+  },
+  [CHAIN_IDS.optimismSepolia]: {
+    [CHAIN_IDS.sepolia]: CCIP_PAIR_DEPLOYERS.ETH_OP,
+    [CHAIN_IDS.arbitrumSepolia]: CCIP_PAIR_DEPLOYERS.OP_ARB,
+    [CHAIN_IDS.baseSepolia]: CCIP_PAIR_DEPLOYERS.OP_BASE,
+  },
+  [CHAIN_IDS.arbitrumSepolia]: {
+    [CHAIN_IDS.sepolia]: CCIP_PAIR_DEPLOYERS.ETH_ARB,
+    [CHAIN_IDS.optimismSepolia]: CCIP_PAIR_DEPLOYERS.OP_ARB,
+    [CHAIN_IDS.baseSepolia]: CCIP_PAIR_DEPLOYERS.ARB_BASE,
+  },
+  [CHAIN_IDS.baseSepolia]: {
+    [CHAIN_IDS.sepolia]: CCIP_PAIR_DEPLOYERS.ETH_BASE,
+    [CHAIN_IDS.optimismSepolia]: CCIP_PAIR_DEPLOYERS.OP_BASE,
+    [CHAIN_IDS.arbitrumSepolia]: CCIP_PAIR_DEPLOYERS.ARB_BASE,
+  },
+}
+
+/**
+ * Generate a random salt for deterministic sucker deployment.
+ * The same salt should be used across all chains in a multi-chain deployment
+ * to ensure suckers have matching addresses.
+ */
+export function createSalt(): `0x${string}` {
+  const base = '0x' + Math.random().toString(16).slice(2)
+  const salt = toHex(toBytes(base, { size: 32 }))
+  return salt as `0x${string}`
+}
+
+/**
+ * Left-pad an EVM address to bytes32, as expected by the V6 JBTokenMapping.remoteToken field.
+ */
+export function addressToBytes32(address: `0x${string}`): `0x${string}` {
+  return pad(address, { size: 32 })
+}
+
+// V6 JBTokenMapping: remoteToken is bytes32 (address left-padded); minBridgeAmount was removed.
+export interface JBTokenMapping {
+  localToken: `0x${string}`
+  minGas: number
+  remoteToken: `0x${string}` // bytes32
+}
+
+// V6 JBSuckerDeployerConfig: `peer` is the explicit peer sucker address on the
+// remote chain as bytes32. Leave zero to use the default same-address deterministic peer.
+export interface JBSuckerDeployerConfig {
+  deployer: `0x${string}`
+  peer: `0x${string}` // bytes32
+  mappings: JBTokenMapping[]
+}
+
+export interface JBSuckerDeploymentConfig {
+  deployerConfigurations: JBSuckerDeployerConfig[]
+  salt: `0x${string}`
+}
+
+export interface ParseSuckerDeployerConfigOptions {
+  /**
+   * Per-chain token addresses for bridging.
+   * Maps chainId -> token address. Required for ERC20 (e.g., USDC) projects.
+   * If not provided, defaults to NATIVE_TOKEN for all chains.
+   */
+  tokenAddresses?: Record<number, `0x${string}`>
 }
 
 /**
@@ -81,105 +182,14 @@ export function getAllChainSuckerConfigs(
   return result
 }
 
-// TODO: Add mainnet deployer addresses when available
-// const MAINNET_DEPLOYERS = {
-//   ETH_OP: '0x...',
-//   ETH_ARB: '0x...',
-//   ETH_BASE: '0x...',
-//   OP_ARB: '0x...',
-//   OP_BASE: '0x...',
-//   ARB_BASE: '0x...',
-// }
-
-/**
- * CCIP Sucker Deployer addresses mapping.
- * Structure: CCIP_SUCKER_DEPLOYER_ADDRESSES[targetChainId][remoteChainId] = deployerAddress
- *
- * Each chain pair uses the SAME deployer contract address on both chains.
- */
-export const CCIP_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${string}`>> = {
-  // Ethereum Sepolia -> other testnets
-  [CHAIN_IDS.sepolia]: {
-    [CHAIN_IDS.optimismSepolia]: SEPOLIA_DEPLOYERS.ETH_OP,
-    [CHAIN_IDS.arbitrumSepolia]: SEPOLIA_DEPLOYERS.ETH_ARB,
-    [CHAIN_IDS.baseSepolia]: SEPOLIA_DEPLOYERS.ETH_BASE,
-  },
-  // Optimism Sepolia -> other testnets
-  [CHAIN_IDS.optimismSepolia]: {
-    [CHAIN_IDS.sepolia]: SEPOLIA_DEPLOYERS.ETH_OP,
-    [CHAIN_IDS.arbitrumSepolia]: SEPOLIA_DEPLOYERS.OP_ARB,
-    [CHAIN_IDS.baseSepolia]: SEPOLIA_DEPLOYERS.OP_BASE,
-  },
-  // Arbitrum Sepolia -> other testnets
-  [CHAIN_IDS.arbitrumSepolia]: {
-    [CHAIN_IDS.sepolia]: SEPOLIA_DEPLOYERS.ETH_ARB,
-    [CHAIN_IDS.optimismSepolia]: SEPOLIA_DEPLOYERS.OP_ARB,
-    [CHAIN_IDS.baseSepolia]: SEPOLIA_DEPLOYERS.ARB_BASE,
-  },
-  // Base Sepolia -> other testnets
-  [CHAIN_IDS.baseSepolia]: {
-    [CHAIN_IDS.sepolia]: SEPOLIA_DEPLOYERS.ETH_BASE,
-    [CHAIN_IDS.optimismSepolia]: SEPOLIA_DEPLOYERS.OP_BASE,
-    [CHAIN_IDS.arbitrumSepolia]: SEPOLIA_DEPLOYERS.ARB_BASE,
-  },
-  // TODO: Add mainnet mappings when addresses are available
-}
-
-/**
- * Generate a random salt for deterministic sucker deployment.
- * The same salt should be used across all chains in a multi-chain deployment
- * to ensure suckers have matching addresses.
- */
-export function createSalt(): `0x${string}` {
-  const base = '0x' + Math.random().toString(16).slice(2)
-  const salt = toHex(toBytes(base, { size: 32 }))
-  return salt as `0x${string}`
-}
-
-export interface JBTokenMapping {
-  localToken: `0x${string}`
-  minGas: number
-  remoteToken: `0x${string}`
-  minBridgeAmount: bigint
-}
-
-export interface JBSuckerDeployerConfig {
-  deployer: `0x${string}`
-  mappings: JBTokenMapping[]
-}
-
-export interface JBSuckerDeploymentConfig {
-  deployerConfigurations: JBSuckerDeployerConfig[]
-  salt: `0x${string}`
-}
-
-export interface ParseSuckerDeployerConfigOptions {
-  minBridgeAmount?: bigint
-  /**
-   * Per-chain token addresses for bridging.
-   * Maps chainId -> token address. Required for ERC20 (e.g., USDC) projects.
-   * If not provided, defaults to NATIVE_TOKEN for all chains.
-   */
-  tokenAddresses?: Record<number, `0x${string}`>
-}
-
 /**
  * Parse sucker deployer configuration for a target chain.
  * Creates deployer configurations for connecting to all other chains in the deployment.
  *
  * @param targetChainId - The chain this configuration is for
  * @param allChainIds - All chains in the multi-chain deployment
- * @param opts - Optional configuration (minBridgeAmount)
+ * @param opts - Optional configuration (tokenAddresses, salt)
  * @returns Sucker deployment configuration with deployer configs and salt
- *
- * @example
- * // Deploy to Sepolia, OP Sepolia, Base Sepolia, Arb Sepolia
- * const chains = [11155111, 11155420, 84532, 421614]
- * const salt = createSalt() // Generate once, reuse for all chains
- *
- * // For Sepolia deployment
- * const sepoliaConfig = parseSuckerDeployerConfig(11155111, chains, { salt })
- * // deployerConfigurations will have 3 entries (one for each remote chain)
  */
 export function parseSuckerDeployerConfig(
   targetChainId: number,
@@ -209,12 +219,14 @@ export function parseSuckerDeployerConfig(
 
       return {
         deployer,
+        // Zero peer = default same-address deterministic peer sucker
+        peer: ZERO_BYTES32,
         mappings: [
           {
             localToken,
             minGas: 200_000,
-            remoteToken,
-            minBridgeAmount: opts.minBridgeAmount ?? DEFAULT_MIN_BRIDGE_AMOUNT,
+            // V6 expects the remote token as bytes32 (left-padded address)
+            remoteToken: addressToBytes32(remoteToken),
           },
         ],
       }
@@ -238,20 +250,6 @@ export function shouldConfigureSuckers(chainIds: number[]): boolean {
 /**
  * Generate sucker deployment configurations for all chains in a multi-chain deployment.
  * Uses the same salt across all chains for deterministic addresses.
- *
- * @param chainIds - All chains in the deployment
- * @param opts - Optional configuration including per-chain token addresses
- * @returns Map of chainId to sucker deployment config
- *
- * @example
- * // USDC-based project - pass per-chain USDC addresses
- * const usdcAddresses = {
- *   11155111: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia
- *   11155420: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // OP Sepolia
- *   84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',    // Base Sepolia
- *   421614: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',   // Arb Sepolia
- * }
- * const configs = generateOmnichainSuckerConfigs(chainIds, { tokenAddresses: usdcAddresses })
  */
 export function generateOmnichainSuckerConfigs(
   chainIds: number[],

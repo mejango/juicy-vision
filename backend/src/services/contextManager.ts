@@ -49,9 +49,14 @@ import {
 import {
   generateChainTable,
   generateChainConfigs,
-  CONTRACTS,
   getPrimaryChainId,
 } from '@shared/chains.ts';
+
+// Juicebox V6 terminal addresses (same on every chain, mainnets and testnets, via CREATE2)
+const JB_V6_CONTRACTS = {
+  JBMultiTerminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
+  JBRouterTerminal: '0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7',
+} as const;
 
 // ============================================================================
 // Types
@@ -244,11 +249,11 @@ export async function detectIntentsWithContext(
     if (transactionSubModules.length === 0) {
       // Default to deployment-related modules for new projects
       if (transactionState?.designPhase === 'configuration' || transactionState?.designPhase === 'ready') {
-        transactionSubModules = ['v51_addresses', 'terminals', 'deployment'];
+        transactionSubModules = ['v6_addresses', 'terminals', 'deployment'];
         reasons.push('default transaction sub-modules (design phase)');
       } else {
         // Generic transaction context
-        transactionSubModules = ['chains', 'v51_addresses'];
+        transactionSubModules = ['chains', 'v6_addresses'];
         reasons.push('default transaction sub-modules (generic)');
       }
     } else {
@@ -299,7 +304,7 @@ export function detectIntents(messages: ChatMessage[]): DetectedIntents {
   if (needsTransaction) {
     transactionSubModules = matchSubModulesByKeywords(recentUserMessages);
     if (transactionSubModules.length === 0) {
-      transactionSubModules = ['chains', 'v51_addresses'];
+      transactionSubModules = ['chains', 'v6_addresses'];
       reasons.push('default transaction sub-modules');
     } else {
       reasons.push(`sub-modules: ${transactionSubModules.join(', ')}`);
@@ -844,8 +849,8 @@ ${chainTable}
 \`\`\`
 
 **Terminal addresses (same on mainnet and testnet via CREATE2):**
-- JBMultiTerminal5_1: ${CONTRACTS.JBMultiTerminal5_1}
-- JBSwapTerminalUSDCRegistry: ${CONTRACTS.JBSwapTerminalUSDCRegistry}
+- JBMultiTerminal: ${JB_V6_CONTRACTS.JBMultiTerminal}
+- JBRouterTerminal: ${JB_V6_CONTRACTS.JBRouterTerminal} (V6 has no swap terminal — the router terminal routes arbitrary-token payments)
 
 `);
   }

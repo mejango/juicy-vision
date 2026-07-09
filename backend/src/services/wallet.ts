@@ -163,13 +163,13 @@ export async function getTokenBalance(
 }
 
 // Bendystraw GraphQL endpoint
-const BENDYSTRAW_ENDPOINT = 'https://api.bendystraw.xyz/graphql';
+const BENDYSTRAW_ENDPOINT = 'https://bendystraw.xyz/graphql';
 
 // Query to get user's token holdings across all projects
 const USER_HOLDINGS_QUERY = `
   query UserHoldings($address: String!, $chainId: Int!) {
     participants(
-      where: { address: $address, chainId: $chainId }
+      where: { address: $address, chainId: $chainId, version: 6 }
       orderBy: "balance"
       orderDirection: "desc"
       limit: 100
@@ -179,9 +179,7 @@ const USER_HOLDINGS_QUERY = `
         balance
         volume
         project {
-          metadata {
-            name
-          }
+          name
           handle
         }
       }
@@ -194,9 +192,7 @@ interface BendystrawParticipant {
   balance: string;
   volume: string;
   project?: {
-    metadata?: {
-      name?: string;
-    };
+    name?: string;
     handle?: string;
   };
 }
@@ -248,7 +244,7 @@ export async function getProjectTokenBalances(
     return participants
       .filter(p => BigInt(p.balance) > 0n)
       .map(p => {
-        const projectName = p.project?.metadata?.name || p.project?.handle || `Project #${p.projectId}`;
+        const projectName = p.project?.name || p.project?.handle || `Project #${p.projectId}`;
         return {
           chainId,
           tokenAddress: `jb:${p.projectId}`, // Special prefix for JB project tokens

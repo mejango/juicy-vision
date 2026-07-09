@@ -19,7 +19,7 @@ export const STRUCTURES_CONTEXT = `
   pauseCreditTransfers: bool, allowOwnerMinting: bool, allowSetCustomToken: bool,
   allowTerminalMigration: bool, allowSetTerminals: bool, allowSetController: bool,
   allowAddAccountingContext: bool, allowAddPriceFeed: bool, ownerMustSendPayouts: bool,
-  holdFees: bool, useTotalSurplusForCashOuts: bool, useDataHookForPay: bool,
+  holdFees: bool, scopeCashOutsToLocalBalances: bool, useDataHookForPay: bool,
   useDataHookForCashOut: bool, dataHook: address, metadata: uint16 }
 \`\`\`
 
@@ -37,29 +37,28 @@ export const STRUCTURES_CONTEXT = `
 
 **JBSuckerDeploymentConfig:** \`{ deployerConfigurations: JBSuckerDeployerConfig[], salt: bytes32 }\`
 
-**JBSuckerDeployerConfig:** \`{ deployer: address, mappings: JBTokenMapping[] }\`
+**JBSuckerDeployerConfig:** \`{ deployer: address, peer: bytes32, mappings: JBTokenMapping[] }\` (peer = zero bytes32 for the default same-address peer sucker)
 
-**JBTokenMapping:** \`{ localToken: address, minGas: uint32, remoteToken: address, minBridgeAmount: uint256 }\`
+**JBTokenMapping:** \`{ localToken: address, minGas: uint32, remoteToken: bytes32 }\` (remoteToken = remote token address left-padded to 32 bytes; NO minBridgeAmount in V6)
 
-**JB721TierConfig:**
+**JB721TierConfig (V6):**
 \`\`\`
-{ name: string, description: string, media: string, price: uint104, initialSupply: uint32,
-  votingUnits: uint32, reserveFrequency: uint16, reserveBeneficiary: address,
-  encodedIPFSUri: bytes32, category: uint24, discountPercent: uint8,
-  allowOwnerMint: bool, useReserveBeneficiaryAsDefault: bool, transfersPausable: bool,
-  useVotingUnits: bool, cannotBeRemoved: bool, cannotIncreaseDiscountPercent: bool }
+{ price: uint104, initialSupply: uint32, votingUnits: uint32, reserveFrequency: uint16,
+  reserveBeneficiary: address, encodedIpfsUri: bytes32, category: uint24, discountPercent: uint8,
+  flags: JB721TierConfigFlags, splitPercent: uint32, splits: JBSplit[] }
 \`\`\`
 
-**JB721InitTiersConfig:** \`{ tiers: JB721TierConfig[], currency: uint32, decimals: uint8, prices: address }\`
+**JB721TierConfigFlags:** \`{ allowOwnerMint: bool, useReserveBeneficiaryAsDefault: bool, transfersPausable: bool, useVotingUnits: bool, cantBeRemoved: bool, cantIncreaseDiscountPercent: bool, cantBuyWithCredits: bool }\`
+
+**JB721InitTiersConfig:** \`{ tiers: JB721TierConfig[], currency: uint32, decimals: uint8 }\`
 
 **JBDeploy721TiersHookConfig:**
 \`\`\`
 { name: string, symbol: string, baseUri: string, tokenUriResolver: address,
-  contractUri: string, tiersConfig: JB721InitTiersConfig, reserveBeneficiary: address,
-  flags: JB721TiersHookFlags }
+  contractUri: string, tiersConfig: JB721InitTiersConfig, flags: JB721TiersHookFlags }
 \`\`\`
 
-**JB721TiersHookFlags:** \`{ noNewTiersWithReserves: bool, noNewTiersWithVotes: bool, noNewTiersWithOwnerMinting: bool, preventOverspending: bool }\`
+**JB721TiersHookFlags:** \`{ noNewTiersWithReserves: bool, noNewTiersWithVotes: bool, noNewTiersWithOwnerMinting: bool, preventOverspending: bool, issueTokensForSplits: bool }\`
 
 **JBLaunchProjectConfig:** \`{ projectUri: string, rulesetConfigurations: JBPayDataHookRulesetConfig[], terminalConfigurations: JBTerminalConfig[], memo: string }\`
 `;

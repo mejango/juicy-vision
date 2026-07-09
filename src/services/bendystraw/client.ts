@@ -1,7 +1,8 @@
 import { GraphQLClient, RequestDocument, Variables } from 'graphql-request'
 import { createPublicClient, http } from 'viem'
 import { useSettingsStore, useDebugStore } from '../../stores'
-import { VIEM_CHAINS, ZERO_ADDRESS, REV_DEPLOYER, JB_CONTRACTS, JB_CONTRACTS_V5, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
+// REV_DEPLOYER holds the V6 REVDeployer address; REV_OWNER is the singleton that owns all V6 revnet project NFTs.
+import { VIEM_CHAINS, ZERO_ADDRESS, REV_DEPLOYER, REV_OWNER, JB_CONTRACTS, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
 import { IS_TESTNET } from '../../config/environment'
 import { createCache, CACHE_DURATIONS, bendystrawCircuit, rpcCircuit } from '../../utils'
 
@@ -74,7 +75,7 @@ export interface ProjectRuleset {
   allowAddPriceFeed?: boolean
   ownerMustSendPayouts?: boolean
   holdFees?: boolean
-  useTotalSurplusForCashOuts?: boolean
+  scopeCashOutsToLocalBalances?: boolean
   useDataHookForPay?: boolean
   useDataHookForCashOut?: boolean
   dataHook?: string
@@ -373,7 +374,7 @@ export async function getProjectIdsFromReceipts(
   return result
 }
 
-export async function fetchProject(projectId: string, chainId: number = 1, version: number = 5): Promise<Project> {
+export async function fetchProject(projectId: string, chainId: number = 1, version: number = 6): Promise<Project> {
   const data = await safeRequest<{ project: Project & { metadata: ProjectMetadata | string } }>(
     PROJECT_QUERY,
     { projectId: parseFloat(projectId), chainId: parseFloat(String(chainId)), version: parseFloat(String(version)) },
@@ -776,7 +777,7 @@ const JB_CONTROLLER_ABI = [
           { name: 'allowAddPriceFeed', type: 'bool' },
           { name: 'ownerMustSendPayouts', type: 'bool' },
           { name: 'holdFees', type: 'bool' },
-          { name: 'useTotalSurplusForCashOuts', type: 'bool' },
+          { name: 'scopeCashOutsToLocalBalances', type: 'bool' },
           { name: 'useDataHookForPay', type: 'bool' },
           { name: 'useDataHookForCashOut', type: 'bool' },
           { name: 'dataHook', type: 'address' },
@@ -801,26 +802,27 @@ const RULESET_COMPONENTS = [
 ] as const
 
 // Decode packed ruleset metadata from uint256
-// JB V5 metadata packing (from JBRulesetMetadataResolver):
-// - reservedPercent: bits 0-15 (uint16)
-// - cashOutTaxRate: bits 16-31 (uint16)
-// - baseCurrency: bits 32-63 (uint32)
-// - pausePay: bit 64
-// - pauseCreditTransfers: bit 65
-// - allowOwnerMinting: bit 66
-// - allowSetCustomToken: bit 67
-// - allowTerminalMigration: bit 68
-// - allowSetTerminals: bit 69
-// - allowSetController: bit 70
-// - allowAddAccountingContext: bit 71
-// - allowAddPriceFeed: bit 72
-// - ownerMustSendPayouts: bit 73
-// - holdFees: bit 74
-// - useTotalSurplusForCashOuts: bit 75
-// - useDataHookForPay: bit 76
-// - useDataHookForCashOut: bit 77
-// - dataHook: bits 80-239 (address, 160 bits)
-// - metadata: bits 240-255 (uint16)
+// JB V6 metadata packing (from nana-core-v6 JBRulesetMetadataResolver.packRulesetMetadata):
+// - version: bits 0-3 (4 bits, currently 1)
+// - reservedPercent: bits 4-19 (uint16)
+// - cashOutTaxRate: bits 20-35 (uint16)
+// - baseCurrency: bits 36-67 (uint32)
+// - pausePay: bit 68
+// - pauseCreditTransfers: bit 69
+// - allowOwnerMinting: bit 70
+// - allowSetCustomToken: bit 71
+// - allowTerminalMigration: bit 72
+// - allowSetTerminals: bit 73
+// - allowSetController: bit 74
+// - allowAddAccountingContext: bit 75
+// - allowAddPriceFeed: bit 76
+// - ownerMustSendPayouts: bit 77
+// - holdFees: bit 78
+// - scopeCashOutsToLocalBalances: bit 79
+// - useDataHookForPay: bit 80
+// - useDataHookForCashOut: bit 81
+// - dataHook: bits 82-241 (address, 160 bits)
+// - metadata: bits 242-255 (14 bits)
 function decodeRulesetMetadata(packed: bigint) {
   const getBits = (value: bigint, start: number, length: number): bigint => {
     const mask = (1n << BigInt(length)) - 1n
@@ -831,25 +833,25 @@ function decodeRulesetMetadata(packed: bigint) {
   }
 
   return {
-    reservedPercent: Number(getBits(packed, 0, 16)),
-    cashOutTaxRate: Number(getBits(packed, 16, 16)),
-    baseCurrency: Number(getBits(packed, 32, 32)),
-    pausePay: getBit(packed, 64),
-    pauseCreditTransfers: getBit(packed, 65),
-    allowOwnerMinting: getBit(packed, 66),
-    allowSetCustomToken: getBit(packed, 67),
-    allowTerminalMigration: getBit(packed, 68),
-    allowSetTerminals: getBit(packed, 69),
-    allowSetController: getBit(packed, 70),
-    allowAddAccountingContext: getBit(packed, 71),
-    allowAddPriceFeed: getBit(packed, 72),
-    ownerMustSendPayouts: getBit(packed, 73),
-    holdFees: getBit(packed, 74),
-    useTotalSurplusForCashOuts: getBit(packed, 75),
-    useDataHookForPay: getBit(packed, 76),
-    useDataHookForCashOut: getBit(packed, 77),
-    dataHook: `0x${getBits(packed, 80, 160).toString(16).padStart(40, '0')}` as `0x${string}`,
-    metadata: Number(getBits(packed, 240, 16)),
+    reservedPercent: Number(getBits(packed, 4, 16)),
+    cashOutTaxRate: Number(getBits(packed, 20, 16)),
+    baseCurrency: Number(getBits(packed, 36, 32)),
+    pausePay: getBit(packed, 68),
+    pauseCreditTransfers: getBit(packed, 69),
+    allowOwnerMinting: getBit(packed, 70),
+    allowSetCustomToken: getBit(packed, 71),
+    allowTerminalMigration: getBit(packed, 72),
+    allowSetTerminals: getBit(packed, 73),
+    allowSetController: getBit(packed, 74),
+    allowAddAccountingContext: getBit(packed, 75),
+    allowAddPriceFeed: getBit(packed, 76),
+    ownerMustSendPayouts: getBit(packed, 77),
+    holdFees: getBit(packed, 78),
+    scopeCashOutsToLocalBalances: getBit(packed, 79),
+    useDataHookForPay: getBit(packed, 80),
+    useDataHookForCashOut: getBit(packed, 81),
+    dataHook: `0x${getBits(packed, 82, 160).toString(16).padStart(40, '0')}` as `0x${string}`,
+    metadata: Number(getBits(packed, 242, 14)),
   }
 }
 
@@ -905,7 +907,7 @@ const JB_RULESETS_ABI = [
 export async function fetchProjectWithRuleset(
   projectId: string,
   chainId: number = 1,
-  version: number = 5
+  version: number = 6
 ): Promise<ProjectWithRuleset | null> {
   try {
     // Fetch basic project info from API
@@ -939,14 +941,13 @@ export async function fetchProjectWithRuleset(
     }
 
     // Fetch ruleset from on-chain via the project's controller
-    // Important: Projects can have different controllers, so we must look up via JBDirectory
-    // The controller address is the ONLY authoritative way to determine which contract version to use
+    // Important: Projects can have custom controllers, so we look up the controller via JBDirectory.
+    // V6 has a single contract set — all projects share the same JBRulesets.
     let currentRuleset: ProjectRuleset | null = null
     const publicClient = getPublicClient(chainId)
     if (publicClient) {
       try {
         // Get the controller address for this project from JBDirectory
-        // This is the authoritative source for determining contract version
         const controllerAddress = await publicClient.readContract({
           address: JB_CONTRACTS.JBDirectory,
           abi: JB_DIRECTORY_ABI,
@@ -954,11 +955,8 @@ export async function fetchProjectWithRuleset(
           args: [BigInt(projectId)],
         })
 
-        // Determine JBRulesets contract based on controller version, not ownership
-        // V5 JBController: 0x27da30646502e2f642be5281322ae8c394f7668a → V5 JBRulesets
-        // V5.1 JBController: 0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1 → V5.1 JBRulesets
-        const isV5Controller = controllerAddress?.toLowerCase() === JB_CONTRACTS_V5.JBController.toLowerCase()
-        const rulesetsContract = isV5Controller ? JB_CONTRACTS_V5.JBRulesets : JB_CONTRACTS.JBRulesets
+        // V6 single contract set: every project reads rulesets from the same JBRulesets
+        const rulesetsContract = JB_CONTRACTS.JBRulesets
 
         if (controllerAddress && controllerAddress !== ZERO_ADDRESS) {
           // Call the controller's currentRulesetOf - returns both ruleset AND decoded metadata
@@ -972,7 +970,6 @@ export async function fetchProjectWithRuleset(
           // If cycleNumber is 0, try JBRulesets.currentOf directly, then fallback to upcomingOf
           if (ruleset.cycleNumber === 0) {
             // First try currentOf from JBRulesets (controller may return zeros for some projects)
-            // Use the correct JBRulesets version based on project type
             const currentRulesetDirect = await publicClient.readContract({
               address: rulesetsContract,
               abi: JB_RULESETS_ABI,
@@ -1021,7 +1018,7 @@ export async function fetchProjectWithRuleset(
               allowAddPriceFeed: metadata.allowAddPriceFeed,
               ownerMustSendPayouts: metadata.ownerMustSendPayouts,
               holdFees: metadata.holdFees,
-              useTotalSurplusForCashOuts: metadata.useTotalSurplusForCashOuts,
+              scopeCashOutsToLocalBalances: metadata.scopeCashOutsToLocalBalances,
               useDataHookForPay: metadata.useDataHookForPay,
               useDataHookForCashOut: metadata.useDataHookForCashOut,
               dataHook: metadata.dataHook,
@@ -1073,7 +1070,6 @@ const rulesetHistoryCache = createCache<RulesetHistoryEntry[]>(CACHE_DURATIONS.L
 
 // Permanent caches for revnets (immutable data - no TTL)
 const revnetRulesetHistoryCache = new Map<string, RulesetHistoryEntry[]>()
-const revnetStagesCache = new Map<string, { stages: RevnetStage[]; currentStage: number }>()
 
 // Clear the projects by owner cache (call after deployment completes)
 export function clearProjectsByOwnerCache(ownerAddress?: string): void {
@@ -1192,7 +1188,6 @@ const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffff
 // Fetch the distributable payout amount for a project
 // This is the payout limit minus what's already been distributed this ruleset
 // Returns available amount based on fund access limits, NOT the total balance
-// IMPORTANT: Uses V5 or V5.1 contracts based on whether project is a Revnet
 export async function fetchDistributablePayout(
   projectId: string,
   chainId: number
@@ -1201,10 +1196,10 @@ export async function fetchDistributablePayout(
   if (!publicClient) return null
 
   try {
-    // Get the correct contracts for this project (V5 for Revnets, V5.1 for others)
+    // Resolve the project's controller (V6 single contract set)
     const contracts = await getContractsForProject(projectId, chainId)
 
-    // Get current ruleset from the correct JBRulesets version
+    // Get current ruleset from JBRulesets
     const ruleset = await publicClient.readContract({
       address: contracts.JBRulesets,
       abi: JB_RULESETS_ABI,
@@ -1275,7 +1270,7 @@ export interface ConnectedChain {
 export async function fetchConnectedChains(
   projectId: string,
   chainId: number,
-  version: number = 5
+  version: number = 6
 ): Promise<ConnectedChain[]> {
   try {
     const data = await safeRequest<{
@@ -1317,7 +1312,7 @@ export interface IssuanceRate {
 export async function fetchIssuanceRate(
   projectId: string,
   chainId: number,
-  version: number = 5
+  version: number = 6
 ): Promise<IssuanceRate | null> {
   try {
     const data = await safeRequest<{
@@ -1383,7 +1378,7 @@ export interface SuckerGroupBalance {
 export async function fetchSuckerGroupBalance(
   projectId: string,
   chainId: number,
-  version: number = 5
+  version: number = 6
 ): Promise<SuckerGroupBalance> {
   const client = getClient(getNetworkOption(chainId))
 
@@ -1533,7 +1528,7 @@ export async function fetchSuckerGroupBalance(
 export async function fetchProjectSuckerGroupId(
   projectId: string,
   chainId: number,
-  version: number = 5
+  version: number = 6
 ): Promise<string | null> {
   const client = getClient(getNetworkOption(chainId))
 
@@ -1558,7 +1553,7 @@ export async function fetchProjectSuckerGroupId(
 export async function fetchOwnersCount(
   projectId: string,
   chainId: number,
-  version: number = 5
+  version: number = 6
 ): Promise<number> {
   const client = getClient(getNetworkOption(chainId))
 
@@ -1695,7 +1690,7 @@ const tokenSymbolCache = createCache<string>(CACHE_DURATIONS.LONG)
 export async function fetchProjectTokenSymbol(
   projectId: string,
   chainId: number,
-  version: number = 5
+  version: number = 6
 ): Promise<string | null> {
   const cacheKey = `${chainId}-${projectId}-v${version}`
   const cached = tokenSymbolCache.get(cacheKey)
@@ -1742,7 +1737,7 @@ const tokenAddressCache = createCache<string>(CACHE_DURATIONS.LONG)
 export async function fetchProjectTokenAddress(
   projectId: string,
   chainId: number,
-  version: number = 5
+  version: number = 6
 ): Promise<string | null> {
   const cacheKey = `token-addr-${chainId}-${projectId}-v${version}`
   const cached = tokenAddressCache.get(cacheKey)
@@ -1848,15 +1843,17 @@ export async function fetchPendingReservedTokens(
 // REVNET HELPERS
 // ============================================================================
 
-// Check if a project is a Revnet (owned by the REVDeployer on any version)
+// Check if a project is a Revnet.
+// In V6 revnet project NFTs are owned by the REVOwner singleton
+// (the REVDeployer briefly holds them during deploy).
 export function isRevnet(owner: string): boolean {
-  // REVDeployer uses CREATE2 so same address on all chains
-  return owner.toLowerCase() === REV_DEPLOYER.toLowerCase()
+  // Both contracts use CREATE2 so the addresses are the same on all chains
+  return owner.toLowerCase() === REV_OWNER.toLowerCase() || owner.toLowerCase() === REV_DEPLOYER.toLowerCase()
 }
 
-// Get the correct versioned contracts for a project by querying JBDirectory
-// JBDirectory.controllerOf and primaryTerminalOf tell us exactly which contracts the project uses
-// V5 JBController uses V5 JBRulesets, V5.1 JBController uses V5.1 JBRulesets
+// Get the contracts for a project by querying JBDirectory.
+// V6 has a single contract set; the controller lookup remains useful for
+// projects that use a custom controller.
 export async function getContractsForProject(
   projectId: string,
   chainId: number
@@ -1866,15 +1863,20 @@ export async function getContractsForProject(
   JBMultiTerminal: `0x${string}`
   isRevnet: boolean
 }> {
+  // Note: the isRevnet field is retained for signature compatibility but is no
+  // longer derived here (V6 has no version-specific contract sets). It is only
+  // consumed in this file to pick a ruleset-history cache; hardcoding false
+  // means all projects use the TTL cache. Use isRevnet(owner) for real checks.
+  const defaults = {
+    JBRulesets: JB_CONTRACTS.JBRulesets,
+    JBController: JB_CONTRACTS.JBController,
+    JBMultiTerminal: JB_CONTRACTS.JBMultiTerminal,
+    isRevnet: false,
+  }
+
   const publicClient = getPublicClient(chainId)
   if (!publicClient) {
-    // Default to V5.1 if we can't check
-    return {
-      JBRulesets: JB_CONTRACTS.JBRulesets,
-      JBController: JB_CONTRACTS.JBController,
-      JBMultiTerminal: JB_CONTRACTS.JBMultiTerminal,
-      isRevnet: false,
-    }
+    return defaults
   }
 
   try {
@@ -1886,102 +1888,19 @@ export async function getContractsForProject(
       args: [BigInt(projectId)],
     })
 
-    // Check if the controller is V5 or V5.1 by comparing addresses
-    // V5 JBController: 0x27da30646502e2f642be5281322ae8c394f7668a
-    // V5.1 JBController: 0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1
-    const isV5Controller = controllerAddress.toLowerCase() === JB_CONTRACTS_V5.JBController.toLowerCase()
-
-    if (isV5Controller) {
-      // V5 controller means V5 rulesets and terminal
-      return {
-        JBRulesets: JB_CONTRACTS_V5.JBRulesets,
-        JBController: JB_CONTRACTS_V5.JBController,
-        JBMultiTerminal: JB_CONTRACTS_V5.JBMultiTerminal,
-        isRevnet: true, // V5 is typically used for Revnets
-      }
+    if (!controllerAddress || controllerAddress === ZERO_ADDRESS) {
+      return defaults
     }
 
-    // V5.1 controller (or any other) uses V5.1 rulesets
     return {
-      JBRulesets: JB_CONTRACTS.JBRulesets,
+      ...defaults,
       JBController: controllerAddress as `0x${string}`,
-      JBMultiTerminal: JB_CONTRACTS.JBMultiTerminal,
-      isRevnet: false,
     }
   } catch (err) {
-    console.error('Failed to determine project version from JBDirectory:', err)
-    // Default to V5.1 on error
-    return {
-      JBRulesets: JB_CONTRACTS.JBRulesets,
-      JBController: JB_CONTRACTS.JBController,
-      JBMultiTerminal: JB_CONTRACTS.JBMultiTerminal,
-      isRevnet: false,
-    }
+    console.error('Failed to read project controller from JBDirectory:', err)
+    return defaults
   }
 }
-
-// ABI for REVDeployer.configurationOf
-// REVStageConfig components for reading Revnet stages
-const REV_STAGE_CONFIG_COMPONENTS = [
-  { name: 'startsAtOrAfter', type: 'uint40' },
-  { name: 'splitPercent', type: 'uint16' },
-  { name: 'initialIssuance', type: 'uint112' },
-  { name: 'issuanceDecayFrequency', type: 'uint32' },
-  { name: 'issuanceDecayPercent', type: 'uint32' },
-  { name: 'cashOutTaxRate', type: 'uint16' },
-  { name: 'extraMetadata', type: 'uint16' },
-] as const
-
-// Simplified ABI for fetching operator - uses raw bytes decoding approach
-const REV_DEPLOYER_ABI = [
-  {
-    name: 'configurationOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'revnetId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'description', type: 'tuple', components: [
-            { name: 'name', type: 'string' },
-            { name: 'ticker', type: 'string' },
-            { name: 'uri', type: 'string' },
-            { name: 'salt', type: 'bytes32' },
-          ]},
-          { name: 'baseCurrency', type: 'uint32' },
-          { name: 'splitOperator', type: 'address' },
-          { name: 'stageConfigurations', type: 'tuple[]', components: REV_STAGE_CONFIG_COMPONENTS },
-          { name: 'loanSources', type: 'tuple[]', components: [
-            { name: 'token', type: 'address' },
-            { name: 'terminal', type: 'address' },
-          ]},
-          { name: 'loans', type: 'tuple[]', components: [
-            { name: 'amount', type: 'uint112' },
-            { name: 'source', type: 'uint32' },
-            { name: 'prepaidDuration', type: 'uint32' },
-            { name: 'prepaidFeePercent', type: 'uint32' },
-            { name: 'beneficiary', type: 'address' },
-          ]},
-          { name: 'hookConfigurations', type: 'tuple[]', components: [
-            { name: 'hook', type: 'address' },
-            { name: 'data', type: 'bytes' },
-          ]},
-          { name: 'suckerDeploymentConfiguration', type: 'tuple', components: [
-            { name: 'deployer', type: 'address' },
-            { name: 'mappings', type: 'tuple[]', components: [
-              { name: 'localToken', type: 'address' },
-              { name: 'remoteToken', type: 'address' },
-              { name: 'minGas', type: 'uint32' },
-              { name: 'minBridgeAmount', type: 'uint256' },
-            ]},
-          ]},
-        ],
-      },
-    ],
-  },
-] as const
 
 // Cache for Revnet operator addresses
 const revnetOperatorCache = createCache<string>(CACHE_DURATIONS.LONG)
@@ -2088,87 +2007,18 @@ export interface AllRulesetsData {
 
 // Fetch Revnet stages configuration
 export async function fetchRevnetStages(
-  projectId: string,
-  chainId: number
+  _projectId: string,
+  _chainId: number
 ): Promise<{ stages: RevnetStage[]; currentStage: number } | null> {
-  const cacheKey = `${chainId}-${projectId}`
-
-  // Check cache first - revnet stages are immutable
-  const cached = revnetStagesCache.get(cacheKey)
-  if (cached) {
-    // Recompute current stage status (time-dependent)
-    const now = Math.floor(Date.now() / 1000)
-    let currentStageNum = 1
-    for (const stage of cached.stages) {
-      if (stage.startsAtOrAfter <= now) {
-        currentStageNum = stage.stageNumber
-      }
-    }
-    return {
-      stages: cached.stages.map(stage => ({
-        ...stage,
-        isCurrent: stage.stageNumber === currentStageNum,
-        isPast: stage.stageNumber < currentStageNum,
-        isFuture: stage.stageNumber > currentStageNum,
-      })),
-      currentStage: currentStageNum,
-    }
-  }
-
-  const publicClient = getPublicClient(chainId)
-  if (!publicClient) return null
-
-  try {
-    // Get full configuration including stages
-    const config = await publicClient.readContract({
-      address: REV_DEPLOYER,
-      abi: REV_DEPLOYER_ABI,
-      functionName: 'configurationOf',
-      args: [BigInt(projectId)],
-    })
-
-    const stageConfigs = config.stageConfigurations
-    if (!stageConfigs || stageConfigs.length === 0) {
-      return null
-    }
-
-    // Calculate current stage from timestamps
-    // The current stage is the last stage whose startsAtOrAfter has passed
-    const now = Math.floor(Date.now() / 1000)
-    let currentStageNum = 1
-    for (let i = 0; i < stageConfigs.length; i++) {
-      const startsAt = Number(stageConfigs[i].startsAtOrAfter)
-      if (startsAt <= now) {
-        currentStageNum = i + 1
-      }
-    }
-
-    const stages: RevnetStage[] = stageConfigs.map((stage, index) => ({
-      stageNumber: index + 1,
-      startsAtOrAfter: Number(stage.startsAtOrAfter),
-      splitPercent: Number(stage.splitPercent),
-      initialIssuance: String(stage.initialIssuance),
-      issuanceDecayFrequency: Number(stage.issuanceDecayFrequency),
-      issuanceDecayPercent: Number(stage.issuanceDecayPercent),
-      cashOutTaxRate: Number(stage.cashOutTaxRate),
-      isCurrent: index + 1 === currentStageNum,
-      isPast: index + 1 < currentStageNum,
-      isFuture: index + 1 > currentStageNum,
-    }))
-
-    // Cache the result (permanent - revnet stages are immutable)
-    revnetStagesCache.set(cacheKey, { stages, currentStage: currentStageNum })
-
-    return { stages, currentStage: currentStageNum }
-  } catch {
-    // Silently fail - configurationOf may not exist on older REVDeployer versions
-    return null
-  }
+  // V6 REVDeployer does not expose configurationOf; the full configuration is
+  // only stored on-chain as a hash (hashedEncodedConfigurationOf), so stages
+  // must come from the indexer. Returning null degrades the UI the same way as
+  // the previous silent-catch path (callers null-check and skip stage display).
+  return null
 }
 
 // Fetch historical rulesets by enumerating all cycles from cycle 1 to current
 // Returns array with current first, then past rulesets (newest to oldest)
-// IMPORTANT: Uses V5 or V5.1 JBRulesets based on whether project is a Revnet
 export async function fetchRulesetHistory(
   projectId: string,
   chainId: number,
@@ -2193,7 +2043,7 @@ export async function fetchRulesetHistory(
   if (!publicClient) return []
 
   try {
-    // Get the correct contracts for this project (V5 for Revnets, V5.1 for others)
+    // Resolve the project's controller (V6 single contract set)
     const contracts = await getContractsForProject(projectId, chainId)
 
     // First, get the ACTUAL current ruleset to know what cycle we're on
@@ -2326,7 +2176,6 @@ export interface SimpleRuleset {
 
 // Fetch all rulesets using allOf for reliable historical data
 // This matches the approach used by revnet-app
-// IMPORTANT: Uses V5 or V5.1 JBRulesets based on whether project is a Revnet
 export async function fetchAllRulesets(
   projectId: string,
   chainId: number
@@ -2335,7 +2184,7 @@ export async function fetchAllRulesets(
   if (!publicClient) return []
 
   try {
-    // Get the correct contracts for this project (V5 for Revnets, V5.1 for others)
+    // Resolve the project's controller (V6 single contract set)
     const contracts = await getContractsForProject(projectId, chainId)
 
     const MAX_RULESETS = 100
@@ -2367,7 +2216,6 @@ export async function fetchAllRulesets(
 }
 
 // Fetch queued and upcoming rulesets
-// IMPORTANT: Uses V5 or V5.1 JBRulesets based on whether project is a Revnet
 export async function fetchQueuedRulesets(
   projectId: string,
   chainId: number
@@ -2376,7 +2224,7 @@ export async function fetchQueuedRulesets(
   if (!publicClient) return {}
 
   try {
-    // Get the correct contracts for this project (V5 for Revnets, V5.1 for others)
+    // Resolve the project's controller (V6 single contract set)
     const contracts = await getContractsForProject(projectId, chainId)
 
     const result: { queued?: RulesetHistoryEntry; upcoming?: RulesetHistoryEntry } = {}
@@ -2585,13 +2433,13 @@ const JB_FUND_ACCESS_LIMITS_SPLITS_ABI = [
   },
 ] as const
 
-// Split group IDs (JB v5) - see JBSplitGroupIds.sol and JBMultiTerminal
+// Split group IDs (JB V6) - see JBSplitGroupIds.sol and JBMultiTerminal
 // Reserved token splits = group 1 (JBSplitGroupIds.RESERVED_TOKENS)
 // Payout splits = uint256(uint160(token)) - computed from the payout token address
 const SPLIT_GROUP_RESERVED = 1n
 
 // Helper to compute payout split group ID from token address
-// In JB v5, payout split groups are keyed by uint256(uint160(token))
+// In JB V6, payout split groups are keyed by uint256(uint160(token))
 function getPayoutSplitGroup(tokenAddress: `0x${string}`): bigint {
   // Convert address to uint160, then to bigint
   return BigInt(tokenAddress)
@@ -2882,7 +2730,7 @@ export async function fetchSuckerGroupMoments(
 export async function fetchPayEventsHistory(
   projectId: string,
   chainId: number,
-  version: number = 5,
+  version: number = 6,
   limit: number = 1000
 ): Promise<PayEventHistoryItem[]> {
   const client = getClient(getNetworkOption(chainId))
@@ -2929,7 +2777,7 @@ export type PayEventsPage = {
 export async function fetchPayEventsPage(
   projectId: string,
   chainId: number,
-  version: number = 5,
+  version: number = 6,
   limit: number = 15,
   after?: string | null
 ): Promise<PayEventsPage> {
@@ -2966,7 +2814,7 @@ export async function fetchPayEventsPage(
 export async function fetchCashOutEventsHistory(
   projectId: string,
   chainId: number,
-  version: number = 5,
+  version: number = 6,
   limit: number = 1000
 ): Promise<CashOutEventHistoryItem[]> {
   const client = getClient(getNetworkOption(chainId))
@@ -3013,7 +2861,7 @@ export type CashOutEventsPage = {
 export async function fetchCashOutEventsPage(
   projectId: string,
   chainId: number,
-  version: number = 5,
+  version: number = 6,
   limit: number = 15,
   after?: string | null
 ): Promise<CashOutEventsPage> {
@@ -3186,7 +3034,7 @@ export async function fetchAggregatedParticipants(
         }>(PROJECT_QUERY, {
           projectId: parseInt(fallbackProjectId),
           chainId: fallbackChainId,
-          version: 5
+          version: 6
         })
       ])
 
@@ -3239,7 +3087,7 @@ export async function fetchMultiChainParticipants(
           }>(PROJECT_QUERY, {
             projectId,
             chainId,
-            version: 5
+            version: 6
           })
         ])
 
@@ -3319,7 +3167,7 @@ export interface ProjectMoment {
 export async function fetchProjectMoments(
   projectId: string,
   chainId: number,
-  version: number = 5,
+  version: number = 6,
   limit: number = 1000
 ): Promise<ProjectMoment[]> {
   const client = getClient(getNetworkOption(chainId))

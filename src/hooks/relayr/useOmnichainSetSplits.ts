@@ -3,7 +3,7 @@
  * Calls setSplitGroupsOf on JBController (not JBSplits directly) for each chain.
  *
  * The controller is fetched from JBDirectory.controllerOf for each chain since
- * different projects may use different controller versions (V5 vs V5.1).
+ * all projects use the single V6 controller set.
  */
 
 import { useCallback, useEffect, useRef, useMemo } from 'react'

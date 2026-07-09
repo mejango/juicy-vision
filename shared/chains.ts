@@ -119,42 +119,40 @@ export const TESTNET_CHAINS: Record<string, ChainConfig> = {
 };
 
 // =============================================================================
-// Contract Addresses (same on mainnet and testnet via CREATE2)
+// Contract Addresses (Juicebox V6 - same address on ALL chains, mainnet and testnet)
 // =============================================================================
 
 export const CONTRACTS = {
-  // Shared contracts (both V5 and V5.1)
-  JBProjects: '0x885f707efa18d2cb12f05a3a8eba6b4b26c8c1d4',
-  JBTokens: '0x4d0edd347fb1fa21589c1e109b3474924be87636',
-  JBDirectory: '0x0061e516886a0540f63157f112c0588ee0651dcf',
-  JBSplits: '0x7160a322fea44945a6ef9adfd65c322258df3c5e',
-  JBFundAccessLimits: '0x3a46b21720c8b70184b0434a2293b2fdcc497ce7',
-  JBPermissions: '0xba948dab74e875b19cf0e2ca7a4546c0c2defc40',
-  JBPrices: '0x6e92e3b5ce1e7a4344c6d27c0c54efd00df92fb6',
-  JBFeelessAddresses: '0xf76f7124f73abc7c30b2f76121afd4c52be19442',
+  // Core contracts
+  JBController: '0x3fcec3572e84b624477bcff4e2cf1f7deab648f1',
+  JBMultiTerminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
+  JBRulesets: '0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba',
+  JBTerminalStore: '0x7497ae014a60561925b51c0a3b4ade7460b9927c',
+  JBProjects: '0x6017d1fba9dc279bfa0b03fd931c22e242ab3691',
+  JBTokens: '0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9',
+  JBDirectory: '0x5aff29060e023e6fb87be5596652b33c65af535b',
+  JBSplits: '0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3',
+  JBFundAccessLimits: '0xc93360158f187fc8fc8f1062a1b31d06f185dbab',
+  JBPermissions: '0xf92ac1ab5a00033e35a3975739124f61928c36b0',
+  JBPrices: '0xad45e4627f068d1e6b21e5301870d807543a8401',
+  JBFeelessAddresses: '0x657d0e588fca6f8c49394c9ca8a1cf6505b10314',
+  JBHeldFees: '0x62e77076b6e902e7aec8b2925acc9b46058e3d38',
 
-  // V5.1 contracts (new projects)
-  JBController5_1: '0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1',
-  JBMultiTerminal5_1: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
-  JBRulesets5_1: '0xd4257005ca8d27bbe11f356453b0e4692414b056',
-  JBTerminalStore5_1: '0x82239c5a21f0e09573942caa41c580fa36e27071',
-  JBOmnichainDeployer5_1: '0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71',
-  JB721TiersHookDeployer5_1: '0x7e6e7db5081c59f2df3c83b54eb0c4d029e9898e',
+  // Deployers
+  JBOmnichainDeployer: '0xb853758a70a6b4216c09f1d071ea2344aba0a34f',
+  REVDeployer: '0xb552eb94284f94b833837d4b2cbb237128415d4e',
+  JB721TiersHookDeployer: '0xb7b8ec35e2dd84afff04ee769c6189e7a4d44a78',
+  JB721TiersHookProjectDeployer: '0x3ffdc94e7f1de4b74c52158ec9dd3b965585f451',
+  JB721TiersHookStore: '0x69913acf79dbba170d9efafe605ee62b42164f9c',
 
-  // V5 contracts (revnets)
-  JBController: '0x27da30646502e2f642be5281322ae8c394f7668a',
-  JBMultiTerminal: '0x2db6d704058e552defe415753465df8df0361846',
-  JBRulesets: '0x6292281d69c3593fcf6ea074e5797341476ab428',
-  REVDeployer: '0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d',
-  JB721TiersHookDeployer: '0x7e4f7bfeab74bbae3eb12a62f2298bf2be16fc93',
+  // Router terminal (routes swaps into a project's accounting token)
+  JBRouterTerminal: '0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7',
+  JBRouterTerminalRegistry: '0xe0427f250fdb0379c8e98e884ee4570521208cbc',
 
-  // Swap terminal registries
-  JBSwapTerminalUSDCRegistry: '0x1ce40d201cdec791de05810d17aaf501be167422',
-  JBSwapTerminalRegistry: '0x60b4f5595ee509c4c22921c7b7999f1616e6a4f6',
-
-  // Sucker registry
-  JBSuckerRegistry: '0x696c7e794fe2a7c2e3b7da4ae91733345fc1bf68',
-  JBBuybackHook: '0xfe9c4f3e5c27ffd8ee523c6ca388aaa95692c25d',
+  // Suckers + hooks
+  JBSuckerRegistry: '0x7903a854ae91eaf635430d120a1a434085cef297',
+  JBBuybackHook: '0x77bee1ad2ac0ace98a9b5b58d75685c8b4d94948',
+  JBBuybackHookRegistry: '0x72f55a54cd53410a5ff175508a5a384227081788',
 } as const;
 
 // Native token address
@@ -204,7 +202,7 @@ export function generateTerminalConfigExample(isTestnet: boolean, chainKey: stri
 
   return JSON.stringify([
     {
-      terminal: CONTRACTS.JBMultiTerminal5_1,
+      terminal: CONTRACTS.JBMultiTerminal,
       accountingContextsToAccept: [{
         token: chain.usdc.address,
         decimals: 6,
@@ -212,7 +210,7 @@ export function generateTerminalConfigExample(isTestnet: boolean, chainKey: stri
       }],
     },
     {
-      terminal: CONTRACTS.JBSwapTerminalUSDCRegistry,
+      terminal: CONTRACTS.JBRouterTerminalRegistry,
       accountingContextsToAccept: [],
     },
   ], null, 2);
@@ -226,7 +224,7 @@ export function generateChainConfigs(isTestnet: boolean): string {
     overrides: {
       terminalConfigurations: [
         {
-          terminal: CONTRACTS.JBMultiTerminal5_1,
+          terminal: CONTRACTS.JBMultiTerminal,
           accountingContextsToAccept: [{
             token: chain.usdc.address,
             decimals: 6,
@@ -234,7 +232,7 @@ export function generateChainConfigs(isTestnet: boolean): string {
           }],
         },
         {
-          terminal: CONTRACTS.JBSwapTerminalUSDCRegistry,
+          terminal: CONTRACTS.JBRouterTerminalRegistry,
           accountingContextsToAccept: [],
         },
       ],

@@ -235,7 +235,7 @@ Added client-side caching to bendystraw for ruleset history and revnet stages:
 
 - [x] **Sub-Module System** (`shared/prompts/transaction/*.ts`)
   - Decomposed TRANSACTION_CONTEXT (8k tokens) into 10 granular modules (~200-1500 tokens each)
-  - Created: chains, v51Addresses, v5Addresses, terminals, splitsLimits, nftTiers, revnetParams, rulesets, deployment, metadata
+  - Created: chains, v6Addresses, terminals, splitsLimits, nftTiers, revnetParams, rulesets, deployment, metadata
   - Each module has its own hints, token estimate, and description
 
 - [x] **Sub-Module Aggregator** (`shared/prompts/index.ts`, `shared/prompts/transaction/index.ts`)

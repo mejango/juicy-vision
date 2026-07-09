@@ -1,4 +1,4 @@
-// Consolidated ABI exports for Juicebox V5 contracts
+// Consolidated ABI exports for Juicebox V6 contracts
 
 export {
   JB_MULTI_TERMINAL_ADDRESS,

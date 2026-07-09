@@ -48,7 +48,7 @@ export const DEFAULT_RELAYR_ENDPOINT = IS_TESTNET
  */
 export const DEFAULT_BENDYSTRAW_ENDPOINT = IS_TESTNET
   ? 'https://testnet.bendystraw.xyz/graphql'
-  : 'https://api.bendystraw.xyz/graphql'
+  : 'https://bendystraw.xyz/graphql'
 
 /**
  * Relayr App ID for the current environment.

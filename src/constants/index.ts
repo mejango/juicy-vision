@@ -66,7 +66,7 @@ export const PAGINATION = {
 // =============================================================================
 // API Endpoints (public - configure custom endpoints in settings)
 // =============================================================================
-export const BENDYSTRAW_ENDPOINT = 'https://api.bendystraw.xyz/graphql'
+export const BENDYSTRAW_ENDPOINT = 'https://bendystraw.xyz/graphql'
 export const RELAYR_ENDPOINT = 'https://api.relayr.ba5ed.com'
 export const ENS_RPC_ENDPOINT = 'https://rpc.ankr.com/eth'
 

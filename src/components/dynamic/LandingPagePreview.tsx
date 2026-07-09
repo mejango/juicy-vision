@@ -473,7 +473,7 @@ function generateStaticHtml(
         <div class="stat-label">Payments</div>
       </div>
     </div>
-    <a href="https://juicebox.money/v5/p/${project?.projectId}" target="_blank" class="pay-btn">
+    <a href="https://juicebox.money/v6/p/${project?.projectId}" target="_blank" class="pay-btn">
       Support This Project
     </a>
     ` : ''}

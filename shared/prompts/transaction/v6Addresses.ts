@@ -1,13 +1,12 @@
 /**
- * Contract Addresses Reference Module (~800 tokens)
- * Single source of truth for all contract addresses
- * Hints: address, contract, terminal, controller, deployer
+ * V6 Contract Addresses sub-module (~900 tokens)
+ * Hints: deploy, launch, create project, new project, revnet, sucker, bridge
  */
 
-export const ADDRESSES_CONTEXT = `
-### Contract Addresses
+export const V6_ADDRESSES_CONTEXT = `
+### Juicebox V6 Contracts
 
-**Juicebox V6 - every core contract has the SAME address on all 8 chains** (Ethereum, Optimism, Base, Arbitrum + their Sepolia testnets). There is only one Juicebox version - never try to detect a version.
+**Every core V6 contract has the SAME address on all 8 chains** (Ethereum, Optimism, Base, Arbitrum + their Sepolia testnets). There is only one Juicebox version - no version detection needed.
 
 | Contract | Address |
 |----------|---------|
@@ -37,16 +36,18 @@ export const ADDRESSES_CONTEXT = `
 | JBRouterTerminal | 0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7 |
 | JBRouterTerminalRegistry | 0xe0427f250fdb0379c8e98e884ee4570521208cbc |
 
-Revnet project NFTs are owned by the REVOwner singleton (0x2ba4705ad0332cdfb299b452068438bcba3faaf3) - owner === REVOwner means the project is a revnet. \`tiered721HookOf\` lives on REVOwner.
+Revnets are deployed via REVDeployer. Revnet project NFTs are owned by the REVOwner singleton (0x2ba4705ad0332cdfb299b452068438bcba3faaf3) - owner === REVOwner means the project is a revnet. \`tiered721HookOf\` lives on REVOwner.
 
-**Native-Bridge Sucker Deployers (Ethereum ↔ L2, same address on both sides):**
+### Native-Bridge Sucker Deployers (Ethereum ↔ L2, same address on both sides)
+
 | Deployer | Address |
 |----------|---------|
 | JBOptimismSuckerDeployer | 0x298a775c030adcedb641a89d9047ec9972674e1a |
 | JBBaseSuckerDeployer | 0x54140331902de5c3445eb0c26e15099a5a9d59e6 |
 | JBArbitrumSuckerDeployer | 0xa12ebfca3d4e0810e4ed174e4c08277c26917acb |
 
-**CCIP Sucker Deployers (per chain PAIR, same address on both sides; identical for mainnet and testnet families):**
+### CCIP Sucker Deployers (per chain PAIR, same address on both sides; identical for mainnet and testnet families)
+
 | Chain Pair | Deployer |
 |------------|----------|
 | Ethereum ↔ Optimism | 0x41d28bedd5b0fbf65424b48c0e1de92d5c882fc7 |
@@ -57,10 +58,10 @@ Revnet project NFTs are owned by the REVOwner singleton (0x2ba4705ad0332cdfb299b
 | Arbitrum ↔ Base | 0x2845f919af9ed7d8dab188d42114bd590340a242 |
 `;
 
-export const ADDRESSES_HINTS = [
-  'address', 'contract', 'terminal', 'controller', 'deployer',
-  'JBController', 'JBMultiTerminal', 'REVDeployer', 'sucker',
-  'registry'
+export const V6_ADDRESSES_HINTS = [
+  'deploy', 'launch', 'create project', 'new project', 'start project',
+  'revnet', 'autonomous', 'REVDeployer', 'sucker', 'bridge', 'cross-chain',
+  'buyback hook', 'controller', 'terminal address', 'contract address'
 ];
 
-export const ADDRESSES_TOKEN_ESTIMATE = 800;
+export const V6_ADDRESSES_TOKEN_ESTIMATE = 900;

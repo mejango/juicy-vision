@@ -18,13 +18,15 @@ export const RULESETS_CONTEXT = `
   pauseCreditTransfers: bool, allowOwnerMinting: bool, allowSetCustomToken: bool,
   allowTerminalMigration: bool, allowSetTerminals: bool, allowSetController: bool,
   allowAddAccountingContext: bool, allowAddPriceFeed: bool, ownerMustSendPayouts: bool,
-  holdFees: bool, useTotalSurplusForCashOuts: bool, useDataHookForPay: bool,
+  holdFees: bool, scopeCashOutsToLocalBalances: bool, useDataHookForPay: bool,
   useDataHookForCashOut: bool, dataHook: address, metadata: uint16 }
 \`\`\`
 
+**scopeCashOutsToLocalBalances:** If true, omnichain cash-out calculations use only the local chain's balances (not cross-chain aggregates). Standard is \`false\` (aggregate cross-chain surplus and supply).
+
 **Standard metadata template:**
 \`\`\`json
-{"reservedPercent": 0, "cashOutTaxRate": 0, "baseCurrency": 2, "pausePay": false, "pauseCreditTransfers": false, "allowOwnerMinting": false, "allowSetCustomToken": true, "allowTerminalMigration": true, "allowSetTerminals": true, "allowSetController": true, "allowAddAccountingContext": true, "allowAddPriceFeed": true, "ownerMustSendPayouts": false, "holdFees": false, "useTotalSurplusForCashOuts": false, "useDataHookForPay": false, "useDataHookForCashOut": false, "dataHook": "0x0000000000000000000000000000000000000000", "metadata": 0}
+{"reservedPercent": 0, "cashOutTaxRate": 0, "baseCurrency": 2, "pausePay": false, "pauseCreditTransfers": false, "allowOwnerMinting": false, "allowSetCustomToken": true, "allowTerminalMigration": true, "allowSetTerminals": true, "allowSetController": true, "allowAddAccountingContext": true, "allowAddPriceFeed": true, "ownerMustSendPayouts": false, "holdFees": false, "scopeCashOutsToLocalBalances": false, "useDataHookForPay": false, "useDataHookForCashOut": false, "dataHook": "0x0000000000000000000000000000000000000000", "metadata": 0}
 \`\`\`
 
 **IMPORTANT: reservedPercent = what project KEEPS, NOT what supporters get!**
@@ -114,7 +116,7 @@ After 30 days, payments automatically stop. No manual intervention needed.
 **Single-chain project:**
 \`\`\`
 action="queueRulesets"
-contract="JBController5_1"
+contract="JBController"
 parameters: {
   "projectId": 123,
   "rulesetConfigurations": [/* new ruleset config */],
@@ -125,7 +127,7 @@ parameters: {
 **Omnichain project (MUST include per-chain projectIds):**
 \`\`\`
 action="queueRulesets"
-contract="JBController5_1"
+contract="JBController"
 parameters: {
   "chainProjectMappings": [
     {"chainId": "1", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"},

@@ -74,7 +74,7 @@ vi.mock('../../hooks/relayr', () => ({
 describe('TransactionPreview', () => {
   const defaultProps = {
     action: 'pay',
-    contract: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+    contract: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
     chainId: '1',
     parameters: JSON.stringify({ amount: '1000000000000000000' }),
     explanation: 'Pay 1 ETH to project #42',
@@ -212,7 +212,7 @@ describe('TransactionPreview', () => {
             allowAddPriceFeed: true,
             ownerMustSendPayouts: false,
             holdFees: false,
-            useTotalSurplusForCashOuts: false,
+            scopeCashOutsToLocalBalances: false,
             useDataHookForPay: false,
             useDataHookForCashOut: false,
             dataHook: '0x0000000000000000000000000000000000000000',
@@ -224,7 +224,7 @@ describe('TransactionPreview', () => {
       ],
       terminalConfigurations: [
         {
-          terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+          terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
           accountingContextsToAccept: [],
         },
       ],
@@ -319,7 +319,7 @@ describe('TransactionPreview', () => {
   describe('NFT tier display', () => {
     const launch721Props = {
       action: 'launch721Project',
-      contract: 'JBOmnichainDeployer5_1',
+      contract: 'JBOmnichainDeployer',
       chainId: '11155111',
       explanation: 'Launch project with NFT tiers',
       parameters: JSON.stringify({

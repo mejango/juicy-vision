@@ -1,8 +1,8 @@
 /**
  * Chain Reader Service
  *
- * Reads Juicebox V5 ruleset and splits data directly from the blockchain.
- * Supports both V5 (Revnets) and V5.1 (standard JB projects) contracts.
+ * Reads Juicebox V6 ruleset and splits data directly from the blockchain.
+ * All projects (including Revnets) use the same V6 contract set.
  */
 
 import { createPublicClient, http, type Address } from 'viem'
@@ -28,14 +28,6 @@ const TESTNET_CHAINS = {
   421614: arbitrumSepolia,
 } as const
 
-// Map testnet chain IDs to mainnet equivalents for contract addresses
-const TESTNET_TO_MAINNET: Record<number, number> = {
-  11155111: 1,
-  11155420: 10,
-  84532: 8453,
-  421614: 42161,
-}
-
 const MAINNET_RPC_URLS: Record<number, string> = {
   1: 'https://ethereum.publicnode.com',
   10: 'https://mainnet.optimism.io',
@@ -54,28 +46,16 @@ const TESTNET_RPC_URLS: Record<number, string> = {
 // JB Contract Addresses (same via CREATE2 on all chains)
 // ============================================================================
 
-// V5 contracts (for Revnets)
-const JB_V5 = {
-  JBController: '0x27da30646502e2f642be5281322ae8c394f7668a' as const,
-  JBRulesets: '0x6292281d69c3593fcf6ea074e5797341476ab428' as const,
-  JBMultiTerminal: '0x2db6d704058e552defe415753465df8df0361846' as const,
+// V6 contracts (same address on every supported chain, mainnets and testnets)
+const JB_V6 = {
+  JBController: '0x3fcec3572e84b624477bcff4e2cf1f7deab648f1' as const,
+  JBRulesets: '0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba' as const,
+  JBMultiTerminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53' as const,
+  JBDirectory: '0x5aff29060e023e6fb87be5596652b33c65af535b' as const,
+  JBSplits: '0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3' as const,
+  JBFundAccessLimits: '0xc93360158f187fc8fc8f1062a1b31d06f185dbab' as const,
 }
 
-// V5.1 contracts (for standard JB projects)
-const JB_V5_1 = {
-  JBController: '0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1' as const,
-  JBRulesets: '0xd4257005ca8d27bbe11f356453b0e4692414b056' as const,
-  JBMultiTerminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c' as const,
-}
-
-// Shared contracts (work with both V5 and V5.1)
-const JB_SHARED = {
-  JBDirectory: '0x0061e516886a0540f63157f112c0588ee0651dcf' as const,
-  JBSplits: '0x7160a322fea44945a6ef9adfd65c322258df3c5e' as const,
-  JBFundAccessLimits: '0x3a46b21720c8b70184b0434a2293b2fdcc497ce7' as const,
-}
-
-const REV_DEPLOYER = '0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d' as const
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
 const SPLIT_GROUP_RESERVED = 1n
 
@@ -90,16 +70,6 @@ const USDC_ADDRESSES: Record<number, `0x${string}`> = {
 // ============================================================================
 // ABIs
 // ============================================================================
-
-const JB_DIRECTORY_ABI = [
-  {
-    name: 'controllerOf',
-    type: 'function',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'address' }],
-    stateMutability: 'view',
-  },
-] as const
 
 const JB_CONTROLLER_ABI = [
   {
@@ -130,7 +100,6 @@ const JB_CONTROLLER_ABI = [
           { name: 'cashOutTaxRate', type: 'uint16' },
           { name: 'baseCurrency', type: 'uint32' },
           { name: 'pausePay', type: 'bool' },
-          { name: 'pauseCashOut', type: 'bool' },
           { name: 'pauseCreditTransfers', type: 'bool' },
           { name: 'allowOwnerMinting', type: 'bool' },
           { name: 'allowSetCustomToken', type: 'bool' },
@@ -141,7 +110,7 @@ const JB_CONTROLLER_ABI = [
           { name: 'allowAddPriceFeed', type: 'bool' },
           { name: 'ownerMustSendPayouts', type: 'bool' },
           { name: 'holdFees', type: 'bool' },
-          { name: 'useTotalSurplusForCashOuts', type: 'bool' },
+          { name: 'scopeCashOutsToLocalBalances', type: 'bool' },
           { name: 'useDataHookForPay', type: 'bool' },
           { name: 'useDataHookForCashOut', type: 'bool' },
           { name: 'dataHook', type: 'address' },
@@ -305,50 +274,25 @@ function getPublicClient(chainId: number) {
 }
 
 /**
- * Get the correct JB contracts for a project (V5 for Revnets, V5.1 for others)
+ * The V6 contracts used for every project. Kept as a function so call sites
+ * read the same as before; V6 has a single contract set with no per-project
+ * version detection.
  */
-async function getContractsForProject(chainId: number, projectId: number): Promise<{
+function getContractsForProject(_chainId: number, _projectId: number): {
   JBController: `0x${string}`
   JBRulesets: `0x${string}`
   JBMultiTerminal: `0x${string}`
-}> {
-  const client = getPublicClient(chainId)
-
-  try {
-    const controllerAddress = await client.readContract({
-      address: JB_SHARED.JBDirectory,
-      abi: JB_DIRECTORY_ABI,
-      functionName: 'controllerOf',
-      args: [BigInt(projectId)],
-    })
-
-    // V5 controller means Revnet → use V5 contracts
-    if (controllerAddress.toLowerCase() === JB_V5.JBController.toLowerCase()) {
-      return {
-        JBController: JB_V5.JBController,
-        JBRulesets: JB_V5.JBRulesets,
-        JBMultiTerminal: JB_V5.JBMultiTerminal,
-      }
-    }
-
-    // Otherwise use V5.1 contracts
-    return {
-      JBController: controllerAddress as `0x${string}`,
-      JBRulesets: JB_V5_1.JBRulesets,
-      JBMultiTerminal: JB_V5_1.JBMultiTerminal,
-    }
-  } catch {
-    // Default to V5.1 on error
-    return {
-      JBController: JB_V5_1.JBController,
-      JBRulesets: JB_V5_1.JBRulesets,
-      JBMultiTerminal: JB_V5_1.JBMultiTerminal,
-    }
+} {
+  return {
+    JBController: JB_V6.JBController,
+    JBRulesets: JB_V6.JBRulesets,
+    JBMultiTerminal: JB_V6.JBMultiTerminal,
   }
 }
 
 /**
- * Decode packed ruleset metadata from uint256
+ * Decode packed ruleset metadata from uint256 (V6 bit layout, see
+ * nana-core-v6 JBRulesetMetadataResolver)
  */
 function decodeRulesetMetadata(packed: bigint): RulesetMetadata {
   return {
@@ -356,22 +300,21 @@ function decodeRulesetMetadata(packed: bigint): RulesetMetadata {
     cashOutTaxRate: Number((packed >> 20n) & 0xFFFFn),
     baseCurrency: Number((packed >> 36n) & 0xFFFFFFFFn),
     pausePay: Boolean((packed >> 68n) & 1n),
-    pauseCashOut: Boolean((packed >> 69n) & 1n),
-    pauseCreditTransfers: Boolean((packed >> 70n) & 1n),
-    allowOwnerMinting: Boolean((packed >> 71n) & 1n),
-    allowSetCustomToken: Boolean((packed >> 72n) & 1n),
-    allowTerminalMigration: Boolean((packed >> 73n) & 1n),
-    allowSetTerminals: Boolean((packed >> 74n) & 1n),
-    allowSetController: Boolean((packed >> 75n) & 1n),
-    allowAddAccountingContext: Boolean((packed >> 76n) & 1n),
-    allowAddPriceFeed: Boolean((packed >> 77n) & 1n),
-    ownerMustSendPayouts: Boolean((packed >> 78n) & 1n),
-    holdFees: Boolean((packed >> 79n) & 1n),
-    useTotalSurplusForCashOuts: Boolean((packed >> 80n) & 1n),
-    useDataHookForPay: Boolean((packed >> 81n) & 1n),
-    useDataHookForCashOut: Boolean((packed >> 82n) & 1n),
-    dataHook: `0x${((packed >> 83n) & ((1n << 160n) - 1n)).toString(16).padStart(40, '0')}`,
-    metadata: Number((packed >> 243n) & 0xFFFFn),
+    pauseCreditTransfers: Boolean((packed >> 69n) & 1n),
+    allowOwnerMinting: Boolean((packed >> 70n) & 1n),
+    allowSetCustomToken: Boolean((packed >> 71n) & 1n),
+    allowTerminalMigration: Boolean((packed >> 72n) & 1n),
+    allowSetTerminals: Boolean((packed >> 73n) & 1n),
+    allowSetController: Boolean((packed >> 74n) & 1n),
+    allowAddAccountingContext: Boolean((packed >> 75n) & 1n),
+    allowAddPriceFeed: Boolean((packed >> 76n) & 1n),
+    ownerMustSendPayouts: Boolean((packed >> 77n) & 1n),
+    holdFees: Boolean((packed >> 78n) & 1n),
+    scopeCashOutsToLocalBalances: Boolean((packed >> 79n) & 1n),
+    useDataHookForPay: Boolean((packed >> 80n) & 1n),
+    useDataHookForCashOut: Boolean((packed >> 81n) & 1n),
+    dataHook: `0x${((packed >> 82n) & ((1n << 160n) - 1n)).toString(16).padStart(40, '0')}`,
+    metadata: Number((packed >> 242n) & 0xFFFFn),
   }
 }
 
@@ -391,7 +334,7 @@ export async function fetchCurrentRuleset(
   projectId: number
 ): Promise<{ ruleset: RulesetData; metadata: RulesetMetadata } | null> {
   const client = getPublicClient(chainId)
-  const contracts = await getContractsForProject(chainId, projectId)
+  const contracts = getContractsForProject(chainId, projectId)
 
   try {
     const [ruleset, metadata] = await client.readContract({
@@ -440,7 +383,6 @@ export async function fetchCurrentRuleset(
           cashOutTaxRate: metadata.cashOutTaxRate,
           baseCurrency: metadata.baseCurrency,
           pausePay: metadata.pausePay,
-          pauseCashOut: metadata.pauseCashOut,
           pauseCreditTransfers: metadata.pauseCreditTransfers,
           allowOwnerMinting: metadata.allowOwnerMinting,
           allowSetCustomToken: metadata.allowSetCustomToken,
@@ -451,7 +393,7 @@ export async function fetchCurrentRuleset(
           allowAddPriceFeed: metadata.allowAddPriceFeed,
           ownerMustSendPayouts: metadata.ownerMustSendPayouts,
           holdFees: metadata.holdFees,
-          useTotalSurplusForCashOuts: metadata.useTotalSurplusForCashOuts,
+          scopeCashOutsToLocalBalances: metadata.scopeCashOutsToLocalBalances,
           useDataHookForPay: metadata.useDataHookForPay,
           useDataHookForCashOut: metadata.useDataHookForCashOut,
           dataHook: metadata.dataHook,
@@ -463,7 +405,6 @@ export async function fetchCurrentRuleset(
         cashOutTaxRate: metadata.cashOutTaxRate,
         baseCurrency: metadata.baseCurrency,
         pausePay: metadata.pausePay,
-        pauseCashOut: metadata.pauseCashOut,
         pauseCreditTransfers: metadata.pauseCreditTransfers,
         allowOwnerMinting: metadata.allowOwnerMinting,
         allowSetCustomToken: metadata.allowSetCustomToken,
@@ -474,7 +415,7 @@ export async function fetchCurrentRuleset(
         allowAddPriceFeed: metadata.allowAddPriceFeed,
         ownerMustSendPayouts: metadata.ownerMustSendPayouts,
         holdFees: metadata.holdFees,
-        useTotalSurplusForCashOuts: metadata.useTotalSurplusForCashOuts,
+        scopeCashOutsToLocalBalances: metadata.scopeCashOutsToLocalBalances,
         useDataHookForPay: metadata.useDataHookForPay,
         useDataHookForCashOut: metadata.useDataHookForCashOut,
         dataHook: metadata.dataHook,
@@ -495,7 +436,7 @@ export async function fetchQueuedRuleset(
   projectId: number
 ): Promise<{ ruleset: RulesetData; approvalStatus: number } | null> {
   const client = getPublicClient(chainId)
-  const contracts = await getContractsForProject(chainId, projectId)
+  const contracts = getContractsForProject(chainId, projectId)
 
   try {
     const [ruleset, approvalStatus] = await client.readContract({
@@ -535,7 +476,7 @@ export async function fetchRulesetHistory(
   maxRulesets: number = 100
 ): Promise<RulesetData[]> {
   const client = getPublicClient(chainId)
-  const contracts = await getContractsForProject(chainId, projectId)
+  const contracts = getContractsForProject(chainId, projectId)
 
   try {
     const rulesets = await client.readContract({
@@ -572,7 +513,7 @@ export async function getCurrentCycleNumber(
   projectId: number
 ): Promise<number | null> {
   const client = getPublicClient(chainId)
-  const contracts = await getContractsForProject(chainId, projectId)
+  const contracts = getContractsForProject(chainId, projectId)
 
   try {
     const ruleset = await client.readContract({
@@ -597,7 +538,7 @@ export async function fetchSplits(
   rulesetId: string
 ): Promise<{ payoutSplits: SplitData[]; reservedSplits: SplitData[]; fundAccessLimits: FundAccessLimits | null }> {
   const client = getPublicClient(chainId)
-  const contracts = await getContractsForProject(chainId, projectId)
+  const contracts = getContractsForProject(chainId, projectId)
   const rsId = BigInt(rulesetId)
 
   const result: { payoutSplits: SplitData[]; reservedSplits: SplitData[]; fundAccessLimits: FundAccessLimits | null } = {
@@ -609,7 +550,7 @@ export async function fetchSplits(
   // Fetch reserved splits
   try {
     const reservedRaw = await client.readContract({
-      address: JB_SHARED.JBSplits,
+      address: JB_V6.JBSplits,
       abi: JB_SPLITS_ABI,
       functionName: 'splitsOf',
       args: [BigInt(projectId), rsId, SPLIT_GROUP_RESERVED],
@@ -636,7 +577,7 @@ export async function fetchSplits(
     try {
       const payoutGroup = getPayoutSplitGroup(token)
       const payoutRaw = await client.readContract({
-        address: JB_SHARED.JBSplits,
+        address: JB_V6.JBSplits,
         abi: JB_SPLITS_ABI,
         functionName: 'splitsOf',
         args: [BigInt(projectId), rsId, payoutGroup],
@@ -664,13 +605,13 @@ export async function fetchSplits(
     try {
       const [payoutLimits, surplusAllowances] = await Promise.all([
         client.readContract({
-          address: JB_SHARED.JBFundAccessLimits,
+          address: JB_V6.JBFundAccessLimits,
           abi: JB_FUND_ACCESS_LIMITS_ABI,
           functionName: 'payoutLimitsOf',
           args: [BigInt(projectId), rsId, contracts.JBMultiTerminal, token],
         }),
         client.readContract({
-          address: JB_SHARED.JBFundAccessLimits,
+          address: JB_V6.JBFundAccessLimits,
           abi: JB_FUND_ACCESS_LIMITS_ABI,
           functionName: 'surplusAllowancesOf',
           args: [BigInt(projectId), rsId, contracts.JBMultiTerminal, token],

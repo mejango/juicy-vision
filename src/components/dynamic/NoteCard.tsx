@@ -235,7 +235,7 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
   }
 
   const logoUrl = resolveIpfsUri(project.logoUri)
-  const projectUrl = `https://juicebox.money/v5/${selectedChainInfo.slug}:${currentProjectId}`
+  const projectUrl = `https://juicebox.money/v6/${selectedChainInfo.slug}:${currentProjectId}`
   const amountNum = parseFloat(amount) || 0
 
   // Calculate fee and JUICY tokens

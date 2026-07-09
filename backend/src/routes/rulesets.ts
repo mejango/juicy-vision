@@ -1,7 +1,7 @@
 /**
  * Rulesets API Routes
  *
- * Cached endpoints for Juicebox V5 ruleset data.
+ * Cached endpoints for Juicebox V6 ruleset data.
  * Uses server-side caching with appropriate TTLs:
  * - Historical rulesets: Never expire (immutable)
  * - Current/queued rulesets: 5 minute TTL

@@ -78,6 +78,7 @@ const mockBuildOmnichainLaunchTransactions = vi.fn()
 
 vi.mock('../../services/omnichainDeployer', () => ({
   buildOmnichainLaunchTransactions: (...args: unknown[]) => mockBuildOmnichainLaunchTransactions(...args),
+  fetchProjectCreationFee: () => Promise.resolve(1000000000000000n),
 }))
 
 // Mock bendystraw service (for project ID extraction from receipts)
@@ -200,7 +201,7 @@ describe('useOmnichainLaunchProject', () => {
         allowAddPriceFeed: true,
         ownerMustSendPayouts: false,
         holdFees: false,
-        useTotalSurplusForCashOuts: false,
+        scopeCashOutsToLocalBalances: false,
         useDataHookForPay: false,
         useDataHookForCashOut: false,
         dataHook: '0x0000000000000000000000000000000000000000',
@@ -210,7 +211,7 @@ describe('useOmnichainLaunchProject', () => {
       fundAccessLimitGroups: [],
     }],
     terminalConfigurations: [{
-      terminal: '0x52869db3d61dde1e391967f2ce5039ad0ecd371c',
+      terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
       accountingContextsToAccept: [{
         token: '0x000000000000000000000000000000000000EEEe',
         decimals: 18,
@@ -270,6 +271,12 @@ describe('useOmnichainLaunchProject', () => {
         memo: defaultParams.memo,
         suckerDeploymentConfiguration: undefined,
         chainConfigs: undefined,
+        creationFeesWei: {
+          1: '1000000000000000',
+          10: '1000000000000000',
+          8453: '1000000000000000',
+          42161: '1000000000000000',
+        },
       })
       // Should NOT call the API-based builder for multi-chain
       expect(mockBuildOmnichainLaunchProjectTransactions).not.toHaveBeenCalled()
@@ -338,8 +345,8 @@ describe('useOmnichainLaunchProject', () => {
       expect(mockCreateBalanceBundle).toHaveBeenCalledWith({
         app_id: expect.any(String),
         transactions: [
-          { chain: 1, target: '0xc29d6995ab3b0df4650ad643adeac55e7acbb566', data: expect.any(String), value: '0' },
-          { chain: 10, target: '0xc29d6995ab3b0df4650ad643adeac55e7acbb566', data: expect.any(String), value: '0' },
+          { chain: 1, target: '0x3ba60b60933916a7c87d0860dcee62a0ce34e3e2', data: expect.any(String), value: '0' },
+          { chain: 10, target: '0x3ba60b60933916a7c87d0860dcee62a0ce34e3e2', data: expect.any(String), value: '0' },
         ],
         perform_simulation: true,
         virtual_nonce_mode: 'Disabled',
@@ -846,7 +853,7 @@ describe('useOmnichainLaunchProject', () => {
 
       // In self-custody mode, transactions are wrapped via ERC-2771 TrustedForwarder
       // The forwarder address is the same on all chains
-      const TRUSTED_FORWARDER = '0xc29d6995ab3b0df4650ad643adeac55e7acbb566'
+      const TRUSTED_FORWARDER = '0x3ba60b60933916a7c87d0860dcee62a0ce34e3e2'
 
       expect(mockCreateBalanceBundle).toHaveBeenCalledWith({
         app_id: expect.any(String),

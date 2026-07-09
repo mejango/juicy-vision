@@ -79,18 +79,18 @@ function stageFormToConfig(
     startsAtOrAfter = previousEndTime + Math.floor(daysOffset * 24 * 60 * 60)
   }
 
-  // Convert split percent (0-100) to protocol scale (0-1000000000)
-  const splitPercent = Math.floor((parseFloat(stage.splitPercent) || 0) * 10000000)
+  // Convert split percent (0-100) to V6 protocol scale (0-10000)
+  const splitPercent = Math.floor((parseFloat(stage.splitPercent) || 0) * 100)
 
   // Convert issuance to wei (18 decimals)
   const initialIssuance = parseEther(stage.initialIssuance || '1000000').toString()
 
-  // Convert decay frequency from days to seconds
+  // Convert cut frequency from days to seconds (V6: issuanceCutFrequency)
   const decayDays = parseFloat(stage.decayFrequency) || 7
-  const issuanceDecayFrequency = Math.floor(decayDays * 24 * 60 * 60)
+  const issuanceCutFrequency = Math.floor(decayDays * 24 * 60 * 60)
 
-  // Convert decay percent (0-100) to protocol scale (0-1000000000)
-  const issuanceDecayPercent = Math.floor((parseFloat(stage.decayPercent) || 0) * 10000000)
+  // Convert cut percent (0-100) to protocol scale (0-1000000000)
+  const issuanceCutPercent = Math.floor((parseFloat(stage.decayPercent) || 0) * 10000000)
 
   // Convert cash out tax (0-100) to protocol scale (0-10000)
   const cashOutTaxRate = Math.floor((parseFloat(stage.cashOutTaxRate) || 0) * 100)
@@ -99,8 +99,8 @@ function stageFormToConfig(
     startsAtOrAfter,
     splitPercent,
     initialIssuance,
-    issuanceDecayFrequency,
-    issuanceDecayPercent,
+    issuanceCutFrequency,
+    issuanceCutPercent,
     cashOutTaxRate,
     extraMetadata: 0,
   }

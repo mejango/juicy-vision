@@ -19,7 +19,7 @@ const mockProjects = [
     id: '1-1-5',
     projectId: 1,
     chainId: 1,
-    version: 5,
+    version: 6,
     name: 'Project Alpha',
     handle: 'alpha',
     logoUri: 'ipfs://Qm123',
@@ -37,7 +37,7 @@ const mockProjects = [
     id: '1-2-5',
     projectId: 2,
     chainId: 1,
-    version: 5,
+    version: 6,
     name: 'Project Beta',
     handle: 'beta',
     logoUri: undefined,
@@ -55,7 +55,7 @@ const mockProjects = [
     id: '10-1-5',
     projectId: 1,
     chainId: 10,
-    version: 5,
+    version: 6,
     name: 'Project Alpha',
     handle: 'alpha',
     logoUri: 'ipfs://Qm123',
@@ -177,8 +177,8 @@ describe('TopProjects', () => {
 
       await waitFor(() => {
         // Project Alpha should show both ETH and OP badges
-        expect(screen.getByText(/V5 ETH #1/)).toBeInTheDocument()
-        expect(screen.getByText(/V5 OP #1/)).toBeInTheDocument()
+        expect(screen.getByText(/V6 ETH #1/)).toBeInTheDocument()
+        expect(screen.getByText(/V6 OP #1/)).toBeInTheDocument()
       })
     })
 

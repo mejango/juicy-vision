@@ -365,8 +365,8 @@ Always clarify - 3 different actions:
 
 | Change | Action | Contract |
 |--------|--------|----------|
-| Name, description, logo | setUriOf | JBController5_1 |
-| Fund access, splits, token settings | queueRulesets | JBController5_1 |
+| Name, description, logo | setUriOf | JBController |
+| Fund access, splits, token settings | queueRulesets | JBController |
 
 **⚠️ setUriOf - MUST ASK FOR VALUE FIRST:**
 
@@ -402,7 +402,7 @@ See TRANSACTION_CONTEXT for detailed parameters and examples.
 
 1. **Project owner** - The wallet/contract that controls the project
    - Query project data to get \`owner\` address
-   - If owner = REVDeployer (0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d), it's autonomous (no human control)
+   - If owner = REVOwner (0x2ba4705ad0332cdfb299b452068438bcba3faaf3), it's a revnet - autonomous (no human control)
    - Otherwise, show the owner address and explain they can modify settings, queue rulesets, send payouts
 
 2. **Share holders** - Who holds the project's tokens
@@ -747,7 +747,7 @@ If user selected limited quantity and didn't explicitly say "per chain", DEFAULT
 "chainConfigs": [
   {"chainId": "11155111", "label": "Sepolia", "overrides": {...terminalConfigurations only...}},
   {"chainId": "11155420", "label": "OP Sepolia", "overrides": {
-    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6, "prices": "0x0000000000000000000000000000000000000000"}},
+    "deployTiersHookConfig": {"tiersConfig": {"tiers": [], "currency": 2, "decimals": 6}},
     "terminalConfigurations": [...]
   }},
   ...same for other chains...
@@ -1001,14 +1001,14 @@ export const HOOK_DEVELOPER_CONTEXT = `
 
 | User Need | Off-the-Shelf Solution |
 |-----------|------------------------|
-| Token buybacks via Uniswap | Deploy **nana-buyback-hook-v5** |
-| Tiered NFT rewards | Deploy **nana-721-hook-v5** |
+| Token buybacks via Uniswap | Deploy **nana-buyback-hook-v6** |
+| Tiered NFT rewards | Deploy **nana-721-hook-v6** |
 | Autonomous tokenized treasury | Deploy a **Revnet** |
 | Revnet with NFT tiers | Use **Tiered721RevnetDeployer** |
 | Fee extraction on cash outs | Deploy a **Revnet** (2.5% fees) |
-| Burn NFTs to reclaim funds | Deploy **nana-721-hook-v5** |
-| Phase-based games/competitions | Reference **defifa-collection-deployer-v5** |
-| Automated LP from splits | Reference **uniswapv3-lp-split-hook** |
+| Burn NFTs to reclaim funds | Deploy **nana-721-hook-v6** |
+| Phase-based games/competitions | Reference **defifa** |
+| Automated LP from splits | Reference **nana-univ4-lp-split-hook-v6** |
 | Custom logic for revnets | Use **terminal wrappers** (revnets have baked-in data hook) |
 
 ### Pay Hooks (IJBPayHook)
@@ -1182,18 +1182,18 @@ Queue ruleset → approvalHook.approvalStatusOf() called
 
 | Implementation | Type | Use Case |
 |----------------|------|----------|
-| **nana-buyback-hook-v5** | Data + Pay Hook | Route payments through Uniswap when swap yields more tokens |
-| **nana-721-hook-v5** | Data + Pay + Cash Out Hook | Tiered NFT rewards with custom redemption |
-| **revnet-core-v5** | Contract-as-Owner | Autonomous tokenized treasuries with staged parameters |
-| **defifa-collection-deployer-v5** | Full Stack | Phase-based games with governance, hooks, and custom owner |
-| **uniswapv3-lp-split-hook** | Split Hook | Automated LP provision from reserved token splits |
+| **nana-buyback-hook-v6** | Data + Pay Hook | Route payments through Uniswap when swap yields more tokens |
+| **nana-721-hook-v6** | Data + Pay + Cash Out Hook | Tiered NFT rewards with custom redemption |
+| **revnet-core-v6** | Contract-as-Owner | Autonomous tokenized treasuries with staged parameters |
+| **defifa** | Full Stack | Phase-based games with governance, hooks, and custom owner |
+| **nana-univ4-lp-split-hook-v6** | Split Hook | Automated LP provision from reserved token splits |
 
 **GitHub URLs:**
-- github.com/Bananapus/nana-buyback-hook-v5
-- github.com/Bananapus/nana-721-hook-v5
-- github.com/rev-net/revnet-core-v5
-- github.com/BallKidz/defifa-collection-deployer-v5
-- github.com/kyzooghost/uniswapv3-lp-split-hook`;
+- github.com/Bananapus/nana-buyback-hook-v6
+- github.com/Bananapus/nana-721-hook-v6
+- github.com/rev-net/revnet-core-v6
+- github.com/BallKidz/defifa
+- github.com/Bananapus/nana-univ4-lp-split-hook-v6`;
 
 // =============================================================================
 // TRANSACTION CONTEXT (~8k tokens)
@@ -1212,58 +1212,47 @@ export const TRANSACTION_CONTEXT = `
 | Base | 8453 | basescan.org |
 | Arbitrum | 42161 | arbiscan.io |
 
-### Version Rules
+### Juicebox V6 Contracts
 
-**V5.0 and V5.1 NEVER mix.** V5.1 project = V5.1 terminal. V5.0 project = V5.0 terminal.
-
-**Determine version:** Query JBDirectory.controllerOf(projectId):
-- Returns 0x27da30646502e2f642be5281322ae8c394f7668a → V5.0
-- Returns 0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1 → V5.1
-
-Note: Owner === REVDeployer means revnet (always V5.0), but some non-revnet projects also use V5.0.
-
-### Shared Contracts (Both Versions)
+**Every core V6 contract has the SAME address on all 8 chains** (Ethereum, Optimism, Base, Arbitrum + their Sepolia testnets). There is only one Juicebox version - never try to detect a version.
 
 | Contract | Address |
 |----------|---------|
-| JBProjects | 0x885f707efa18d2cb12f05a3a8eba6b4b26c8c1d4 |
-| JBTokens | 0x4d0edd347fb1fa21589c1e109b3474924be87636 |
-| JBDirectory | 0x0061e516886a0540f63157f112c0588ee0651dcf |
-| JBSplits | 0x7160a322fea44945a6ef9adfd65c322258df3c5e |
-| JBFundAccessLimits | 0x3a46b21720c8b70184b0434a2293b2fdcc497ce7 |
-| JBPermissions | 0xba948dab74e875b19cf0e2ca7a4546c0c2defc40 |
-| JBPrices | 0x6e92e3b5ce1e7a4344c6d27c0c54efd00df92fb6 |
-| JBFeelessAddresses | 0xf76f7124f73abc7c30b2f76121afd4c52be19442 |
+| JBController | 0x3fcec3572e84b624477bcff4e2cf1f7deab648f1 |
+| JBMultiTerminal | 0x130f5dd2bd8805443cf41755253d778a75a67f53 |
+| JBRulesets | 0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba |
+| JBTerminalStore | 0x7497ae014a60561925b51c0a3b4ade7460b9927c |
+| JBTokens | 0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9 |
+| JBProjects | 0x6017d1fba9dc279bfa0b03fd931c22e242ab3691 |
+| JBDirectory | 0x5aff29060e023e6fb87be5596652b33c65af535b |
+| JBSplits | 0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3 |
+| JBFundAccessLimits | 0xc93360158f187fc8fc8f1062a1b31d06f185dbab |
+| JBPermissions | 0xf92ac1ab5a00033e35a3975739124f61928c36b0 |
+| JBPrices | 0xad45e4627f068d1e6b21e5301870d807543a8401 |
+| JBFeelessAddresses | 0x657d0e588fca6f8c49394c9ca8a1cf6505b10314 |
+| JBHeldFees | 0x62e77076b6e902e7aec8b2925acc9b46058e3d38 |
+| JBOmnichainDeployer | 0xb853758a70a6b4216c09f1d071ea2344aba0a34f |
+| REVDeployer | 0xb552eb94284f94b833837d4b2cbb237128415d4e |
+| REVLoans | 0x056265c31157748818f0910d1859acd2f7d427de |
+| REVOwner | 0x2ba4705ad0332cdfb299b452068438bcba3faaf3 |
+| JB721TiersHookStore | 0x69913acf79dbba170d9efafe605ee62b42164f9c |
+| JB721TiersHookDeployer | 0xb7b8ec35e2dd84afff04ee769c6189e7a4d44a78 |
+| JB721TiersHookProjectDeployer | 0x3ffdc94e7f1de4b74c52158ec9dd3b965585f451 |
+| JBBuybackHook | 0x77bee1ad2ac0ace98a9b5b58d75685c8b4d94948 |
+| JBBuybackHookRegistry | 0x72f55a54cd53410a5ff175508a5a384227081788 |
 
-### V5.1 Contracts (New Projects)
+Revnet project NFTs are owned by the REVOwner singleton (0x2ba4705ad0332cdfb299b452068438bcba3faaf3) - owner === REVOwner means the project is a revnet.
+
+### Router Terminal
+
+Token conversion is handled by **JBRouterTerminal**, resolved through **JBRouterTerminalRegistry**. Same addresses on every chain, for both ETH and USDC projects - no per-token variants.
 
 | Contract | Address |
 |----------|---------|
-| JBController5_1 | 0xf3cc99b11bd73a2e3b8815fb85fe0381b29987e1 |
-| JBMultiTerminal5_1 | 0x52869db3d61dde1e391967f2ce5039ad0ecd371c |
-| JBRulesets5_1 | 0xd4257005ca8d27bbe11f356453b0e4692414b056 |
-| JBTerminalStore5_1 | 0x82239c5a21f0e09573942caa41c580fa36e27071 |
-| JBOmnichainDeployer5_1 | 0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71 |
-| JB721TiersHookDeployer5_1 | 0x7e6e7db5081c59f2df3c83b54eb0c4d029e9898e |
+| JBRouterTerminal | 0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7 |
+| JBRouterTerminalRegistry | 0xe0427f250fdb0379c8e98e884ee4570521208cbc |
 
-### V5 Contracts (Revnets)
-
-| Contract | Address |
-|----------|---------|
-| JBController | 0x27da30646502e2f642be5281322ae8c394f7668a |
-| JBMultiTerminal | 0x2db6d704058e552defe415753465df8df0361846 |
-| JBRulesets | 0x6292281d69c3593fcf6ea074e5797341476ab428 |
-| REVDeployer | 0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d |
-| JB721TiersHookDeployer | 0x7e4f7bfeab74bbae3eb12a62f2298bf2be16fc93 |
-
-### Swap Terminals
-
-**NEVER use JBSwapTerminal directly** - different addresses per chain, never use any.
-
-| Registry | Address | Use |
-|----------|---------|-----|
-| JBSwapTerminalUSDCRegistry | 0x1ce40d201cdec791de05810d17aaf501be167422 | USDC projects |
-| JBSwapTerminalRegistry | 0x60b4f5595ee509c4c22921c7b7999f1616e6a4f6 | ETH projects |
+In terminalConfigurations, always use the REGISTRY (0xe042...8cbc) as the second terminal with empty accountingContextsToAccept - regardless of ETH vs USDC.
 
 ### USDC by Chain
 
@@ -1278,27 +1267,30 @@ NATIVE_TOKEN: 0x000000000000000000000000000000000000EEEe, currency = 61166
 
 **Currency in JBAccountingContext** = uint32(uint160(token)). **baseCurrency in metadata** = 1 (ETH) or 2 (USD).
 
-### CCIP Sucker Deployers
+### Sucker Deployers
 
-| From → To | Deployer |
-|-----------|----------|
-| Ethereum → Optimism | 0x34B40205B249e5733CF93d86B7C9783b015dD3e7 |
-| Ethereum → Base | 0xdE901EbaFC70d545F9D43034308C136Ce8c94A5C |
-| Ethereum → Arbitrum | 0x9d4858cc9d3552507EEAbce722787AfEf64C615e |
-| Optimism → Ethereum | 0x34B40205B249e5733CF93d86B7C9783b015dD3e7 |
-| Optimism → Arbitrum | 0x39132eA75B9eaE5CBfF7BA1997C804302a7fF413 |
-| Optimism → Base | 0xb825F2f6995966eB6dD772a8707D4A547028Ac26 |
-| Base → Ethereum | 0xdE901EbaFC70d545F9D43034308C136Ce8c94A5C |
-| Base → Optimism | 0xb825F2f6995966eB6dD772a8707D4A547028Ac26 |
-| Base → Arbitrum | 0x3D7Fb0aa325aD5D2349274f9eF33D4424135d963 |
-| Arbitrum → Ethereum | 0x9d4858cc9d3552507EEAbce722787AfEf64C615e |
-| Arbitrum → Optimism | 0x39132eA75B9eaE5CBfF7BA1997C804302a7fF413 |
-| Arbitrum → Base | 0x3D7Fb0aa325aD5D2349274f9eF33D4424135d963 |
+**Native-bridge deployers (Ethereum ↔ L2, same address on both sides):**
+
+| Deployer | Address |
+|----------|---------|
+| JBOptimismSuckerDeployer | 0x298a775c030adcedb641a89d9047ec9972674e1a |
+| JBBaseSuckerDeployer | 0x54140331902de5c3445eb0c26e15099a5a9d59e6 |
+| JBArbitrumSuckerDeployer | 0xa12ebfca3d4e0810e4ed174e4c08277c26917acb |
+
+**CCIP deployers (per chain PAIR, same address on both sides; identical for mainnet and testnet families):**
+
+| Chain Pair | Deployer |
+|------------|----------|
+| Ethereum ↔ Optimism | 0x41d28bedd5b0fbf65424b48c0e1de92d5c882fc7 |
+| Ethereum ↔ Arbitrum | 0x36a2e30029d87c46f77f71b7b6b97fec8a760660 |
+| Ethereum ↔ Base | 0x3955fec11fe15f0be4dfa2b0153feef55d55e1ee |
+| Optimism ↔ Arbitrum | 0x1d58d56fbdb753de44737be926c33b79cf009afa |
+| Optimism ↔ Base | 0x8f6f0a70939997310309d7ab66b1b199faafe7f0 |
+| Arbitrum ↔ Base | 0x2845f919af9ed7d8dab188d42114bd590340a242 |
 
 | Other | Address |
 |-------|---------|
-| JBSuckerRegistry | 0x696c7e794fe2a7c2e3b7da4ae91733345fc1bf68 |
-| JBBuybackHook | 0xfe9c4f3e5c27ffd8ee523c6ca388aaa95692c25d |
+| JBSuckerRegistry | 0x7903a854ae91eaf635430d120a1a434085cef297 |
 
 ## Transaction Requirements
 
@@ -1325,15 +1317,19 @@ Fails? Don't show button - explain and offer guidance.
 
 | User chose... | Action | Contract | Notes |
 |---------------|--------|----------|-------|
-| "Nothing - it's a donation/gift" | launch721Project | JBOmnichainDeployer5_1 | Empty tiers array |
-| "Pay them back later" | launch721Project | JBOmnichainDeployer5_1 | Empty tiers array |
-| "Stake in the project" | launch721Project | JBOmnichainDeployer5_1 | Empty tiers array |
-| "Perks or rewards" | launch721Project | JBOmnichainDeployer5_1 | Include tier configs |
+| "Nothing - it's a donation/gift" | launch721Project | JBOmnichainDeployer | Empty tiers array |
+| "Pay them back later" | launch721Project | JBOmnichainDeployer | Empty tiers array |
+| "Stake in the project" | launch721Project | JBOmnichainDeployer | Empty tiers array |
+| "Perks or rewards" | launch721Project | JBOmnichainDeployer | Include tier configs |
 
 **⚠️ CONTRACTS FOR DEPLOYMENT:**
-- **launchProject / launch721Project → JBOmnichainDeployer5_1** (deploys across all chains)
-- **NEVER use JBMultiTerminal5_1 for deployment** - that's for payments only
-- **NEVER use JBController5_1 for deployment** - use JBOmnichainDeployer5_1 instead
+- **launchProject / launch721Project → JBOmnichainDeployer** (0xb853758a70a6b4216c09f1d071ea2344aba0a34f, same address on every chain)
+- **NEVER use JBMultiTerminal for deployment** - that's for payments only
+- **NEVER use JBController for deployment** - use JBOmnichainDeployer instead
+
+**Creation fee:** launchProjectFor (JBController, JBOmnichainDeployer) and REVDeployer.deployFor are payable and require \`msg.value == JBProjects.creationFee()\` EXACTLY (currently ≤ 0.001 ETH). The fee is read from chain at execution time - never hardcode it. The frontend attaches it automatically.
+
+**JBOmnichainDeployer.launchProjectFor signature:** \`(owner, projectUri, rulesetConfigurations, terminalConfigurations, memo, suckerDeploymentConfiguration)\` - there is NO trailing controller param. The 721 overload inserts a \`deploy721Config\` struct as the 3rd argument.
 
 **launch721Project requires:**
 - deployTiersHookConfig: JBDeploy721TiersHookConfig (NFT collection + tiers)
@@ -1354,20 +1350,24 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 **2. splitGroups** = Include 97.5% to owner + 2.5% platform fee to NANA (Project #1). See "Fund Access Limits & Splits" section for full example and groupId rules.
 
 **3. terminalConfigurations** = Two terminals with accounting context
-- JBMultiTerminal5_1: 0x52869db3d61dde1e391967f2ce5039ad0ecd371c - **MUST include token in accountingContextsToAccept**
-- Swap terminal registry (see below) - accountingContextsToAccept stays empty (registry handles it)
-- NEVER JBSwapTerminal directly
+- JBMultiTerminal: 0x130f5dd2bd8805443cf41755253d778a75a67f53 - **MUST include token in accountingContextsToAccept**
+- JBRouterTerminalRegistry: 0xe0427f250fdb0379c8e98e884ee4570521208cbc - accountingContextsToAccept stays empty (registry handles it), SAME for ETH and USDC projects
 
-**Choose based on payment token (default to USDC unless user explicitly wants native token):**
+**Second terminal is ALWAYS:**
+\`\`\`json
+{"terminal": "0xe0427f250fdb0379c8e98e884ee4570521208cbc", "accountingContextsToAccept": []}
+\`\`\`
 
-| User wants | JBMultiTerminal accountingContextsToAccept | Swap Terminal Registry |
-|------------|-------------------------------------------|------------------------|
-| USDC (default) | USDC token + decimals 6 + currency code | JBSwapTerminalUSDCRegistry (0x1ce4...1422) |
-| Native token | NATIVE_TOKEN + decimals 18 + currency 61166 | JBSwapTerminalRegistry (0x60b4...6a4f6) |
+**Choose the JBMultiTerminal accounting context based on payment token (default to USDC unless user explicitly wants native token):**
+
+| User wants | JBMultiTerminal accountingContextsToAccept |
+|------------|-------------------------------------------|
+| USDC (default) | USDC token + decimals 6 + currency code |
+| Native token | NATIVE_TOKEN + decimals 18 + currency 61166 |
 
 **USDC example (default):**
 \`\`\`json
-{"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [
+{"terminal": "0x130f5dd2bd8805443cf41755253d778a75a67f53", "accountingContextsToAccept": [
   {"token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "decimals": 6, "currency": 909516616}
 ]}
 \`\`\`
@@ -1375,19 +1375,22 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 
 **Native token example (only if user explicitly requests):**
 \`\`\`json
-{"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [
+{"terminal": "0x130f5dd2bd8805443cf41755253d778a75a67f53", "accountingContextsToAccept": [
   {"token": "0x000000000000000000000000000000000000EEEe", "decimals": 18, "currency": 61166}
 ]}
 \`\`\`
 
-**4. suckerDeploymentConfiguration** = Standard 4-chain config:
+**4. suckerDeploymentConfiguration** = Standard 4-chain config (from Ethereum, using the CCIP pair deployers):
 \`\`\`json
 {"deployerConfigurations": [
-  {"deployer": "0x34B40205B249e5733CF93d86B7C9783b015dD3e7", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "remoteToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "minBridgeAmount": "10000000000000000"}]},
-  {"deployer": "0xdE901EbaFC70d545F9D43034308C136Ce8c94A5C", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "remoteToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "minBridgeAmount": "10000000000000000"}]},
-  {"deployer": "0x9d4858cc9d3552507EEAbce722787AfEf64C615e", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "remoteToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "minBridgeAmount": "10000000000000000"}]}
+  {"deployer": "0x41d28bedd5b0fbf65424b48c0e1de92d5c882fc7", "peer": "0x0000000000000000000000000000000000000000000000000000000000000000", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "remoteToken": "0x000000000000000000000000000000000000000000000000000000000000EEEe"}]},
+  {"deployer": "0x36a2e30029d87c46f77f71b7b6b97fec8a760660", "peer": "0x0000000000000000000000000000000000000000000000000000000000000000", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "remoteToken": "0x000000000000000000000000000000000000000000000000000000000000EEEe"}]},
+  {"deployer": "0x3955fec11fe15f0be4dfa2b0153feef55d55e1ee", "peer": "0x0000000000000000000000000000000000000000000000000000000000000000", "mappings": [{"localToken": "0x000000000000000000000000000000000000EEEe", "minGas": 200000, "remoteToken": "0x000000000000000000000000000000000000000000000000000000000000EEEe"}]}
 ], "salt": "0x0000000000000000000000000000000000000000000000000000000000000001"}
 \`\`\`
+- **remoteToken** is bytes32: the remote token ADDRESS left-padded with zeros to 32 bytes
+- **peer** = zero bytes32 to use the default deterministic peer (sucker has the same address on both chains)
+- There is NO minBridgeAmount field
 
 **5. salt** = Non-zero bytes32 (e.g., 0x...01). NEVER all zeros.
 
@@ -1395,7 +1398,7 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 
 **7. Standard metadata** (customize reservedPercent, cashOutTaxRate, useDataHookForPay as needed):
 \`\`\`json
-{"reservedPercent": 0, "cashOutTaxRate": 0, "baseCurrency": 2, "pausePay": false, "pauseCreditTransfers": false, "allowOwnerMinting": false, "allowSetCustomToken": true, "allowTerminalMigration": true, "allowSetTerminals": true, "allowSetController": true, "allowAddAccountingContext": true, "allowAddPriceFeed": true, "ownerMustSendPayouts": false, "holdFees": false, "useTotalSurplusForCashOuts": false, "useDataHookForPay": false, "useDataHookForCashOut": false, "dataHook": "0x0000000000000000000000000000000000000000", "metadata": 0}
+{"reservedPercent": 0, "cashOutTaxRate": 0, "baseCurrency": 2, "pausePay": false, "pauseCreditTransfers": false, "allowOwnerMinting": false, "allowSetCustomToken": true, "allowTerminalMigration": true, "allowSetTerminals": true, "allowSetController": true, "allowAddAccountingContext": true, "allowAddPriceFeed": true, "ownerMustSendPayouts": false, "holdFees": false, "scopeCashOutsToLocalBalances": false, "useDataHookForPay": false, "useDataHookForCashOut": false, "dataHook": "0x0000000000000000000000000000000000000000", "metadata": 0}
 \`\`\`
 
 **Omnichain default:** Deploy all 4 chains unless user requests single-chain.
@@ -1427,9 +1430,11 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
   pauseCreditTransfers: bool, allowOwnerMinting: bool, allowSetCustomToken: bool,
   allowTerminalMigration: bool, allowSetTerminals: bool, allowSetController: bool,
   allowAddAccountingContext: bool, allowAddPriceFeed: bool, ownerMustSendPayouts: bool,
-  holdFees: bool, useTotalSurplusForCashOuts: bool, useDataHookForPay: bool,
+  holdFees: bool, scopeCashOutsToLocalBalances: bool, useDataHookForPay: bool,
   useDataHookForCashOut: bool, dataHook: address, metadata: uint16 }
 \`\`\`
+
+**scopeCashOutsToLocalBalances:** If true, omnichain cash-out calculations use only the local chain's balances (not cross-chain aggregates). Standard is \`false\` (aggregate cross-chain surplus and supply).
 
 **JBSplitGroup:** \`{ groupId: uint256, splits: JBSplit[] }\`
 
@@ -1462,17 +1467,19 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 
 **JBSuckerDeploymentConfig:** \`{ deployerConfigurations: JBSuckerDeployerConfig[], salt: bytes32 }\`
 
-**JBSuckerDeployerConfig:** \`{ deployer: address, mappings: JBTokenMapping[] }\`
+**JBSuckerDeployerConfig:** \`{ deployer: address, peer: bytes32, mappings: JBTokenMapping[] }\`
 
-**JBTokenMapping:** \`{ localToken: address, minGas: uint32, remoteToken: address, minBridgeAmount: uint256 }\`
+**JBTokenMapping:** \`{ localToken: address, minGas: uint32, remoteToken: bytes32 }\`
+(remoteToken = remote token address left-padded to 32 bytes; peer = zero bytes32 for the default deterministic peer)
 
 **JB721TierConfig (NFT Tiers):**
 \`\`\`
 { name: string, description: string, media: string, price: uint104, initialSupply: uint32,
   votingUnits: uint32, reserveFrequency: uint16, reserveBeneficiary: address,
-  encodedIPFSUri: bytes32, category: uint24, discountPercent: uint8,
-  allowOwnerMint: bool, useReserveBeneficiaryAsDefault: bool, transfersPausable: bool,
-  useVotingUnits: bool, cannotBeRemoved: bool, cannotIncreaseDiscountPercent: bool }
+  encodedIpfsUri: bytes32, category: uint24, discountPercent: uint8,
+  flags: { allowOwnerMint: bool, useReserveBeneficiaryAsDefault: bool, transfersPausable: bool,
+    useVotingUnits: bool, cantBeRemoved: bool, cantIncreaseDiscountPercent: bool, cantBuyWithCredits: bool },
+  splitPercent: uint32, splits: JBSplit[] }
 \`\`\`
 - **name**: Tier name for display (e.g., "Founding Member") - REQUIRED
 - **description**: What supporters get at this tier - REQUIRED
@@ -1480,26 +1487,27 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 - price: Cost in terminal token (6 decimals for USDC, 18 for ETH)
 - initialSupply: Max NFTs available (max uint32 = 4,294,967,295 for practical "unlimited")
 - discountPercent: Price decrease per cycle (0-100)
-- cannotIncreaseDiscountPercent: Lock discount schedule permanently
-- encodedIPFSUri: Set to zero ("0x0...0") - frontend encodes the media URI
+- flags: booleans live in a NESTED \`flags\` tuple; flags.cantIncreaseDiscountPercent locks the discount schedule permanently
+- encodedIpfsUri: Set to zero ("0x0...0") - frontend encodes the media URI (note casing: encodedIpfsUri)
 - reserveFrequency: Mint 1 reserved NFT per N minted (0 = no reserves)
+- splitPercent: portion of this tier's sale routed to \`splits\` (0 = none); splits: JBSplit[] (usually [])
 
 **JB721InitTiersConfig (Tier Collection):**
-\`{ tiers: JB721TierConfig[], currency: uint32, decimals: uint8, prices: address }\`
+\`{ tiers: JB721TierConfig[], currency: uint32, decimals: uint8 }\`
 - tiers: MUST be sorted by price (least to greatest)
 - currency: 1=ETH, 2=USD
 - decimals: 6 for USDC, 18 for ETH
-- prices: Zero address for single currency only
+- (There is NO prices field in V6)
 
 **JBDeploy721TiersHookConfig (721 Hook Deployment):**
 \`\`\`
 { name: string, symbol: string, baseUri: string, tokenUriResolver: address,
-  contractUri: string, tiersConfig: JB721InitTiersConfig, reserveBeneficiary: address,
-  flags: JB721TiersHookFlags }
+  contractUri: string, tiersConfig: JB721InitTiersConfig, flags: JB721TiersHookFlags }
 \`\`\`
+(There is NO top-level reserveBeneficiary field in V6 - reserve beneficiaries are per-tier)
 
 **JB721TiersHookFlags:**
-\`{ noNewTiersWithReserves: bool, noNewTiersWithVotes: bool, noNewTiersWithOwnerMinting: bool, preventOverspending: bool }\`
+\`{ noNewTiersWithReserves: bool, noNewTiersWithVotes: bool, noNewTiersWithOwnerMinting: bool, preventOverspending: bool, issueTokensForSplits: bool }\`
 
 **JBLaunchProjectConfig (for 721 projects):**
 \`{ projectUri: string, rulesetConfigurations: JBPayDataHookRulesetConfig[], terminalConfigurations: JBTerminalConfig[], memo: string }\`
@@ -1511,18 +1519,19 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
 **deployTiersHookConfig** (unique per project):
 \`\`\`json
 {"name": "Collection Name", "symbol": "SYM", "baseUri": "", "tokenUriResolver": "0x0000000000000000000000000000000000000000", "contractUri": "ipfs://CID",
-  "tiersConfig": {"tiers": [/* see tier structure below */], "currency": 2, "decimals": 6, "prices": "0x0000000000000000000000000000000000000000"},
-  "reserveBeneficiary": "0x0000000000000000000000000000000000000000",
-  "flags": {"noNewTiersWithReserves": false, "noNewTiersWithVotes": false, "noNewTiersWithOwnerMinting": false, "preventOverspending": false}}
+  "tiersConfig": {"tiers": [/* see tier structure below */], "currency": 2, "decimals": 6},
+  "flags": {"noNewTiersWithReserves": false, "noNewTiersWithVotes": false, "noNewTiersWithOwnerMinting": false, "preventOverspending": false, "issueTokensForSplits": false}}
 \`\`\`
 
 **Tier structure** (each tier):
 \`\`\`json
 {"name": "Tier Name", "description": "What supporters get", "price": 5000000, "initialSupply": 999999999,
-  "media": "ipfs://TIER_IMAGE_CID", "encodedIPFSUri": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "media": "ipfs://TIER_IMAGE_CID", "encodedIpfsUri": "0x0000000000000000000000000000000000000000000000000000000000000000",
   "votingUnits": 0, "reserveFrequency": 0, "reserveBeneficiary": "0x0000000000000000000000000000000000000000",
-  "category": 0, "discountPercent": 0, "allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false,
-  "transfersPausable": false, "useVotingUnits": false, "cannotBeRemoved": false, "cannotIncreaseDiscountPercent": false}
+  "category": 0, "discountPercent": 0,
+  "flags": {"allowOwnerMint": false, "useReserveBeneficiaryAsDefault": false, "transfersPausable": false,
+    "useVotingUnits": false, "cantBeRemoved": false, "cantIncreaseDiscountPercent": false, "cantBuyWithCredits": false},
+  "splitPercent": 0, "splits": []}
 \`\`\`
 
 **launchProjectConfig:**
@@ -1570,7 +1579,7 @@ Only use parameters from Struct Reference section. If unsure whether a parameter
     "pauseCreditTransfers": false, "allowOwnerMinting": false, "allowSetCustomToken": true,
     "allowTerminalMigration": true, "allowSetTerminals": true, "allowSetController": true,
     "allowAddAccountingContext": true, "allowAddPriceFeed": true, "ownerMustSendPayouts": false,
-    "holdFees": false, "useTotalSurplusForCashOuts": false, "useDataHookForPay": false,
+    "holdFees": false, "scopeCashOutsToLocalBalances": false, "useDataHookForPay": false,
     "useDataHookForCashOut": false, "dataHook": "0x0000000000000000000000000000000000000000", "metadata": 0
   },
   "splitGroups": [],
@@ -1608,24 +1617,24 @@ Example: User says "I want 10% of tokens to go to supporters"
 - action = "deploy721Revnet" (ALWAYS use 721 variant, even with empty tiers - enables future sales)
 - contract = "REV_721_DEPLOYER"
 - **startsAtOrAfter** = Math.floor(Date.now()/1000) + 300 (same as other projects!)
-- **splitPercent** = operator % × 10^9 (e.g., 30% to operator = 300000000, supporters get remaining 70%)
+- **splitPercent** = operator % out of 10,000 (uint16; e.g., 30% to operator = 3000, supporters get remaining 70%)
 - **splitOperator** = address that receives the operator split (creator's wallet)
 - **initialIssuance** = starting tokens per payment unit (e.g., 1M tokens per dollar = "1000000000000000000000000")
-- **issuanceDecayFrequency** = seconds between decay (604800 = 1 week)
-- **issuanceDecayPercent** = % decay each period × 10^9 (50000000 = 5% decay per week)
-- **cashOutTaxRate** = tax on cash outs × 10^9 (200000000 = 20% tax)
+- **issuanceCutFrequency** (V6; was issuanceDecayFrequency) = seconds between issuance cuts (604800 = 1 week; must be >= 24 hours)
+- **issuanceCutPercent** (V6; was issuanceDecayPercent) = % cut each period × 10^9 (50000000 = 5% cut per week)
+- **cashOutTaxRate** = tax on cash outs out of 10,000 (uint16; 2000 = 20% tax)
 
-**splitPercent values (what operator/creator keeps):**
+**splitPercent values (what operator/creator keeps, out of 10,000):**
 | Operator % | Supporter % | splitPercent value |
 |------------|-------------|-------------------|
-| 70% | 30% | 700000000 |
-| 50% | 50% | 500000000 |
-| 30% | 70% | 300000000 |
-| 20% | 80% | 200000000 |
+| 70% | 30% | 7000 |
+| 50% | 50% | 5000 |
+| 30% | 70% | 3000 |
+| 20% | 80% | 2000 |
 
-**issuanceDecayPercent values:**
-| Decay Rate | Per Period | issuanceDecayPercent |
-|------------|------------|---------------------|
+**issuanceCutPercent values (out of 1,000,000,000):**
+| Cut Rate | Per Period | issuanceCutPercent |
+|----------|------------|--------------------|
 | 1% | per week | 10000000 |
 | 5% | per week | 50000000 |
 | 10% | per week | 100000000 |
@@ -1677,7 +1686,7 @@ Note: groupId = uint256(uint160(tokenAddress)), NOT the truncated uint32 currenc
 **Payout Limits - Set to ceil(goal ÷ 0.975) so user gets their full goal after fee:**
 \`\`\`json
 "fundAccessLimitGroups": [{
-  "terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c",
+  "terminal": "0x130f5dd2bd8805443cf41755253d778a75a67f53",
   "token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   "payoutLimits": [{"amount": "5129000000", "currency": 909516616}],
   "surplusAllowances": []
@@ -1729,7 +1738,7 @@ This applies to ALL project operations (queueRulesets, setUriOf, setSplits, dist
 - **approvalHook**: If current ruleset has an approval hook (e.g., JBDeadline), new ruleset must be approved by it first
 
 **⚠️ CONTRACT-OWNED PROJECTS (revnets) CANNOT use queueRulesets:**
-- If owner = REVDeployer (0x2ca27bde7e7d33e353b44c27acfcf6c78dde251d), project is a revnet
+- If owner = REVOwner (0x2ba4705ad0332cdfb299b452068438bcba3faaf3) or REVDeployer (0xb552eb94284f94b833837d4b2cbb237128415d4e), project is a revnet
 - Revnets have staged parameters baked in - no human can change them
 - **Revnet operators CAN call setUriOf** to update metadata (name, description, logo)
 - Check project owner before suggesting queueRulesets
@@ -1744,7 +1753,7 @@ This applies to ALL project operations (queueRulesets, setUriOf, setSplits, dist
 **Single-chain project:**
 \`\`\`
 action="queueRulesets"
-contract="JBController5_1"
+contract="JBController"
 parameters: {
   "projectId": 123,
   "rulesetConfigurations": [/* new ruleset config */],
@@ -1755,7 +1764,7 @@ parameters: {
 **Omnichain project (MUST include per-chain projectIds from conversation history or bendystraw):**
 \`\`\`
 action="queueRulesets"
-contract="JBController5_1"
+contract="JBController"
 parameters: {
   "chainProjectMappings": [
     {"chainId": "1", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"},
@@ -1777,7 +1786,7 @@ parameters: {
 
 **How to tell if a project is omnichain:**
 - Check the conversation history - was it deployed with "chainConfigs" containing multiple chains?
-- If launchProject used JBOmnichainDeployer5_1 with chainConfigs → IT IS OMNICHAIN
+- If launchProject used JBOmnichainDeployer with chainConfigs → IT IS OMNICHAIN
 - If deployed to only one chain → IT IS SINGLE-CHAIN
 
 **IF OMNICHAIN (deployed with chainConfigs):**
@@ -1826,12 +1835,12 @@ parameters: {
 
 **Example: Omnichain project (4 chains) - replace placeholder IDs with ACTUAL looked-up values:**
 \`\`\`
-<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="11155111" explanation="Update your project name to NEWNAME." parameters='{"uri": "ipfs://QmNewCID...", "chainProjectMappings": [{"chainId": "11155111", "projectId": PRIMARY_ID}, {"chainId": "11155420", "projectId": LOOKED_UP_ID}, {"chainId": "84532", "projectId": LOOKED_UP_ID}, {"chainId": "421614", "projectId": LOOKED_UP_ID}]}' />
+<juice-component type="transaction-preview" action="setUriOf" contract="JBController" chainId="11155111" explanation="Update your project name to NEWNAME." parameters='{"uri": "ipfs://QmNewCID...", "chainProjectMappings": [{"chainId": "11155111", "projectId": PRIMARY_ID}, {"chainId": "11155420", "projectId": LOOKED_UP_ID}, {"chainId": "84532", "projectId": LOOKED_UP_ID}, {"chainId": "421614", "projectId": LOOKED_UP_ID}]}' />
 \`\`\`
 
 **Example: Single-chain project:**
 \`\`\`
-<juice-component type="transaction-preview" action="setUriOf" contract="JBController5_1" chainId="1" explanation="Update your project name to NEWNAME." parameters='{"projectId": 123, "uri": "ipfs://QmNewCID..."}' />
+<juice-component type="transaction-preview" action="setUriOf" contract="JBController" chainId="1" explanation="Update your project name to NEWNAME." parameters='{"projectId": 123, "uri": "ipfs://QmNewCID..."}' />
 \`\`\`
 
 ### Multi-Chain Transaction Preview
@@ -1841,8 +1850,8 @@ Include chainConfigs for per-chain overrides. Each chain needs its own USDC toke
 **Pattern for each chain's terminalConfigurations:**
 \`\`\`json
 [
-  {"terminal": "0x52869db3d61dde1e391967f2ce5039ad0ecd371c", "accountingContextsToAccept": [{"token": "CHAIN_USDC", "decimals": 6, "currency": "CHAIN_CURRENCY"}]},
-  {"terminal": "0x1ce40d201cdec791de05810d17aaf501be167422", "accountingContextsToAccept": []}
+  {"terminal": "0x130f5dd2bd8805443cf41755253d778a75a67f53", "accountingContextsToAccept": [{"token": "CHAIN_USDC", "decimals": 6, "currency": "CHAIN_CURRENCY"}]},
+  {"terminal": "0xe0427f250fdb0379c8e98e884ee4570521208cbc", "accountingContextsToAccept": []}
 ]
 \`\`\`
 

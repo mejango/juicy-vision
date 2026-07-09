@@ -1735,43 +1735,29 @@ CREATE TABLE chat_summaries (
 | Base Sepolia (84532) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Arb Sepolia (421614) | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
 
-### Juicebox V5 Core (Shared)
+### Juicebox V6 Core
 
-| Contract | Address |
+One contract set for every project (revnets included). Every core contract has the
+SAME address on all supported chains, mainnet and testnet alike. Canonical source:
+`deploy-all-v6/deployments/<chain>/<Contract>.json`.
+
+| Contract | Address (all chains) |
 |----------|---------|
-| JBTokens | `0x4d0edd347fb1fa21589c1e109b3474924be87636` |
-| JBProjects | `0x885f707efa18d2cb12f05a3a8eba6b4b26c8c1d4` |
-| JBDirectory | `0x0061e516886a0540f63157f112c0588ee0651dcf` |
-| JBSplits | `0x7160a322fea44945a6ef9adfd65c322258df3c5e` |
-| JBPermissions | `0xba948dab74e875b19cf0e2ca7a4546c0c2defc40` |
-
-### Juicebox V5 (Revnets)
-
-| Contract | Address |
-|----------|---------|
-| JBController | `0x27da30646502e2f642be5281322ae8c394f7668a` |
-| JBMultiTerminal | `0x52869db3d61dde1e391967f2ce5039ad0ecd371c` |
-
-### Juicebox V5.1 (New Projects)
-
-| Contract | Address |
-|----------|---------|
-| JBController5_1 | `0x3bfa0e1b39a78855e12155a4d6e2f1823fa5f5ad` |
-| JBMultiTerminal5_1 | `0x587bf86677ec0d1b766d9ba0d7ac2a51c6c2fc71` |
-
-### Version Rules
-
-**CRITICAL:** Never mix V5 and V5.1 versioned contracts.
-
-- Revnets → Always V5 (owned by REVDeployer)
-- New projects → Always V5.1
-- Shared contracts (JBTokens, JBSplits, etc.) → Work with both
+| JBController | `0x3fcec3572e84b624477bcff4e2cf1f7deab648f1` |
+| JBMultiTerminal | `0x130f5dd2bd8805443cf41755253d778a75a67f53` |
+| JBDirectory | `0x5aff29060e023e6fb87be5596652b33c65af535b` |
+| JBRulesets | `0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba` |
+| JBTokens | `0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9` |
+| JBProjects | `0x6017d1fba9dc279bfa0b03fd931c22e242ab3691` |
+| JBSplits | `0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3` |
+| JBPermissions | `0xf92ac1ab5a00033e35a3975739124f61928c36b0` |
+| REVDeployer | `0xb552eb94284f94b833837d4b2cbb237128415d4e` |
 
 ### External APIs
 
 | Service | Endpoint |
 |---------|----------|
-| Bendystraw | `https://api.bendystraw.xyz/graphql` |
+| Bendystraw | `https://bendystraw.xyz/graphql` (testnet: `https://testnet.bendystraw.xyz/graphql`; all queries filter `version: 6`) |
 | Relayr | `https://api.relayr.ba5ed.com` |
 | IPFS (Pinata) | `https://gateway.pinata.cloud/ipfs/` |
 
