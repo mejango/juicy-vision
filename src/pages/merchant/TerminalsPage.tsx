@@ -563,7 +563,7 @@ export default function TerminalsPage() {
                     <select
                       value={newTerminalChainId}
                       onChange={(e) => setNewTerminalChainId(e.target.value)}
-                      className={`w-full px-3 py-2 text-sm border ${
+                      className={`w-full select-caret pl-3 pr-6 py-2 text-sm border ${
                         isDark
                           ? 'bg-white/5 border-white/10 text-white'
                           : 'bg-gray-50 border-gray-200 text-gray-900'

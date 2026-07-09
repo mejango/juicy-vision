@@ -267,7 +267,7 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
           <select
             value={selectedChainId}
             onChange={(e) => setSelectedChainId(e.target.value)}
-            className={`text-xs px-2 py-1 border ${
+            className={`text-xs select-caret pl-2 pr-6 py-1 border ${
               isDark
                 ? 'bg-juice-dark border-white/10 text-gray-300'
                 : 'bg-white border-gray-200 text-gray-600'
@@ -336,7 +336,7 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
                 <select
                   value={selectedToken}
                   onChange={(e) => setSelectedToken(e.target.value)}
-                  className={`px-2 py-2 text-sm border ${
+                  className={`select-caret pl-2 pr-6 py-2 text-sm border ${
                     isDark
                       ? 'bg-juice-dark border-white/10 text-white'
                       : 'bg-white border-gray-200 text-gray-900'
