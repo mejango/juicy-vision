@@ -1516,12 +1516,15 @@ chatRouter.post(
         console.warn(`[AI] ${chatId}: First 100 chars after: ${cleanedContent.substring(0, 100)}`);
       }
 
-      // Store the complete AI response as a message (with confidence tag stripped)
+      // Store the complete AI response as a message (with confidence tag stripped),
+      // reusing the streaming id so the client reconciles the streamed message with
+      // the persisted one instead of showing two replies.
       const aiMessage = await importMessage({
         chatId,
         senderAddress: assistantAddress,
         role: 'assistant',
         content: cleanedContent,
+        id: messageId,
       });
 
       // Store confidence metadata and create escalation if low confidence
