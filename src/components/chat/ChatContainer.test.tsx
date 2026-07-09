@@ -64,6 +64,19 @@ vi.mock('../../services/session', () => ({
   getSessionPseudoAddress: vi.fn(() => Promise.resolve('0xtest1234567890abcdef1234567890abcdef1234')),
 }))
 
+// WelcomeScreen is a ~2700-line component that renders synchronously but is heavy
+// enough to flake on CPU-starvation timeouts under full-suite parallelism. These
+// tests verify ChatContainer's own behavior (input presence, modes, permissions),
+// so stub the child with a lightweight welcome area that keeps the Shuffle affordance
+// the topOnly test asserts on.
+vi.mock('./WelcomeScreen', () => ({
+  default: () => (
+    <div data-testid="welcome-screen">
+      <button>Shuffle</button>
+    </div>
+  ),
+}))
+
 vi.mock('wagmi', async () => {
   const actual = await vi.importActual('wagmi')
   return {
