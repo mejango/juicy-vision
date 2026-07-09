@@ -22,6 +22,7 @@ const DeployERC20Form = lazy(() => import('./DeployERC20Form'))
 const QueueRulesetForm = lazy(() => import('./QueueRulesetForm'))
 const CreateProjectForm = lazy(() => import('./CreateProjectForm'))
 const CreateRevnetForm = lazy(() => import('./CreateRevnetForm'))
+const CreateFlowWizard = lazy(() => import('./CreateFlowWizard'))
 const PriceChart = lazy(() => import('./PriceChart'))
 const ActivityFeed = lazy(() => import('./ActivityFeed'))
 const RulesetSchedule = lazy(() => import('./RulesetSchedule'))
@@ -118,6 +119,10 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
   'create-revnet-form': {
     component: CreateRevnetForm,
     mapProps: (p) => ({ defaultOperator: p.operator, defaultChainIds: p.chainIds }),
+  },
+  'create-flow': {
+    component: CreateFlowWizard,
+    mapProps: (p) => ({ defaultOwner: p.owner, defaultChainIds: p.chainIds }),
   },
 
   // Transactions
