@@ -4,7 +4,7 @@ import { resolveIpfsUri } from '../../utils/ipfs'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { getEventInfo, formatTimeAgo } from '../../utils/activityEvents'
 import { MAINNET_CHAINS } from '../../constants'
-import type { ActivityEvent } from '../../services/bendystraw/client'
+import { resolveProjectNameOnChain, type ActivityEvent } from '../../services/bendystraw/client'
 
 interface ActivityItemProps {
   event: ActivityEvent
@@ -16,9 +16,13 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
   const { action, amount, txHash, from } = getEventInfo(event)
   // Activity feed always shows mainnet data, so always use MAINNET_CHAINS
   const chain = MAINNET_CHAINS[event.chainId] || { name: '?', color: '#888', explorer: 'https://etherscan.io' }
-  const projectName = event.project?.name || 'Unknown Project'
   const logoUri = resolveIpfsUri(event.project?.logoUri)
   const [ensName, setEnsName] = useState<string | null>(null)
+  const [resolvedName, setResolvedName] = useState<string | null>(null)
+  // Bendystraw returns null metadata for many V6 projects; fall back to the
+  // on-chain name (JBController.uriOf → IPFS) instead of "Unknown Project".
+  const effectiveName = event.project?.name || resolvedName
+  const projectName = effectiveName || 'Unknown Project'
 
   // Resolve ENS name
   useEffect(() => {
@@ -27,12 +31,20 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
     }
   }, [from])
 
+  // Resolve the project name on-chain when the indexer didn't supply one.
+  useEffect(() => {
+    const pid = event.project?.projectId
+    if (!event.project?.name && pid != null) {
+      resolveProjectNameOnChain(pid, event.chainId).then(setResolvedName)
+    }
+  }, [event.project?.name, event.project?.projectId, event.chainId])
+
   const handleClick = () => {
-    if (onProjectClick && event.project?.name) {
+    if (onProjectClick && effectiveName) {
       // Activity comes from mainnet, so use MAINNET_CHAINS for chain name
       // Include chain ID so the AI knows to query mainnet regardless of staging mode
       const chainName = MAINNET_CHAINS[event.chainId]?.name || 'Ethereum'
-      onProjectClick(`Tell me about "${event.project.name}" on ${chainName} (chain ID ${event.chainId}). What's the project's current state, treasury balance, and recent activity?`)
+      onProjectClick(`Tell me about "${effectiveName}" on ${chainName} (chain ID ${event.chainId}). What's the project's current state, treasury balance, and recent activity?`)
     }
   }
 

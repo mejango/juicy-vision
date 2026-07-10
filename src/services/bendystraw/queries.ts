@@ -532,6 +532,7 @@ export const ACTIVITY_EVENTS_QUERY = `
         from
         txHash
         project {
+          projectId
           name
           handle
           logoUri
