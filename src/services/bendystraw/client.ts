@@ -453,6 +453,35 @@ async function fetchProjectOnChain(projectId: string, chainId: number): Promise<
   }
 }
 
+// Cached on-chain project-name resolver. Bendystraw returns null metadata for
+// many V6 projects, so the activity feed would show "Unknown Project"; this fills
+// the gap by reading JBController.uriOf → IPFS name. Cached + deduped by
+// chain+id (activity events frequently repeat the same project); negative results
+// are cached too so a nameless project is only probed once.
+const projectNameCache = new Map<string, string | null>()
+export async function resolveProjectNameOnChain(projectId: number, chainId: number): Promise<string | null> {
+  const key = `${chainId}-${projectId}`
+  const cached = projectNameCache.get(key)
+  if (cached !== undefined) return cached
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) return null
+  try {
+    const uri = await publicClient.readContract({
+      address: JB_CONTRACTS.JBController,
+      abi: JB_CONTROLLER_URI_OF_ABI,
+      functionName: 'uriOf',
+      args: [BigInt(projectId)],
+    })
+    const metadata = uri ? await fetchIpfsMetadata(uri) : null
+    const name = metadata?.name ?? null
+    projectNameCache.set(key, name)
+    return name
+  } catch {
+    projectNameCache.set(key, null)
+    return null
+  }
+}
+
 export async function fetchProject(projectId: string, chainId: number = 1, version: number = 6): Promise<Project> {
   try {
     const data = await safeRequest<{ project: Project & { metadata: ProjectMetadata | string } }>(
@@ -559,6 +588,7 @@ interface BaseActivityEvent {
   chainId: number
   timestamp: number
   project: {
+    projectId?: number
     name?: string
     handle?: string
     logoUri?: string
@@ -687,6 +717,7 @@ interface RawActivityEvent {
   from?: string
   txHash?: string
   project: {
+    projectId?: number
     name?: string
     handle?: string
     logoUri?: string

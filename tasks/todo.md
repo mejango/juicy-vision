@@ -1,3 +1,27 @@
+# Juicy Vision Protocol-Truth Audit (2026-07-09)
+
+**Goal:** Keep the normie-facing experience accountable to v6 contracts and
+Bendystraw, using `website/` as the full-featured reference. Never invite a user
+to sign a transaction that is unavailable, misrouted, misleading, or based on
+stale/incorrect protocol state.
+
+## Audit Checklist
+
+- [ ] Inventory every read model, write action, chain/address source, and AI tool
+- [ ] Cross-check transaction encoders and preconditions against v6 interfaces
+- [ ] Cross-check indexed fields and derived values against Bendystraw schemas
+- [ ] Compare user-facing project/payment/cash-out/owner flows with `website/`
+- [ ] Fix correctness and safety issues with focused regression coverage
+- [ ] Run frontend and backend type checks/tests plus a production build
+- [ ] Exercise critical user journeys in a real browser at desktop and mobile sizes
+- [ ] Record findings, fixes, verification, and any residual risks below
+
+## Review
+
+_In progress._
+
+---
+
 # Cost Management, Vibeengineering, and Security Hardening
 
 ## Latest: Reward Tier Creation Flow Improvements
