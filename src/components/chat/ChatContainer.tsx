@@ -212,8 +212,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [reportSuccess, setReportSuccess] = useState(false)
   const [showAiPausedPopover, setShowAiPausedPopover] = useState(false)
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
+  const [overflowAnchorPosition, setOverflowAnchorPosition] = useState<{ bottom: number; right: number } | null>(null)
   const [showHistorySidebar, setShowHistorySidebar] = useState(false)
   const [showOptionsMenu, setShowOptionsMenu] = useState(false)
+  const [optionsAnchorPosition, setOptionsAnchorPosition] = useState<{ bottom: number; right: number } | null>(null)
   // AI controls expanded state - shows "Skip for all" and "Skip for you" toggles
   const [aiControlsExpanded, setAiControlsExpanded] = useState(false)
   // Track when AI gives empty response - show "Continue" button
@@ -1635,10 +1637,20 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       >
                         Beta
                       </button>
-                      {/* Three-dot options menu */}
+                      {/* Three-dot options menu (portaled below to escape clipping ancestor) */}
                       <div className="relative">
                         <button
-                          onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                          onClick={(e) => {
+                            if (!showOptionsMenu) {
+                              closeAllPopovers()
+                              const rect = e.currentTarget.getBoundingClientRect()
+                              setOptionsAnchorPosition({
+                                bottom: window.innerHeight - rect.top + 8,
+                                right: window.innerWidth - rect.right
+                              })
+                            }
+                            setShowOptionsMenu(!showOptionsMenu)
+                          }}
                           className={`p-1 transition-colors ${
                             theme === 'dark' ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
                           }`}
@@ -1649,54 +1661,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                             <circle cx="12" cy="19" r="2" />
                           </svg>
                         </button>
-                        {showOptionsMenu && (
-                          <>
-                            <div className="fixed inset-0 z-[98]" onClick={() => setShowOptionsMenu(false)} />
-                            <div className={`absolute right-0 bottom-full mb-2 py-1 min-w-[160px] border shadow-lg z-[99] ${
-                              theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
-                            }`}>
-                              {/* Privacy toggle */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setPrivateMode(!privateMode)
-                                  setShowOptionsMenu(false)
-                                }}
-                                className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between transition-colors ${
-                                  theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'
-                                }`}
-                              >
-                                <span className={privateMode ? 'text-juice-orange' : theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
-                                  {privateMode ? t('chat.incognitoOn', 'Incognito on') : t('chat.incognitoOff', 'Incognito off')}
-                                </span>
-                                {privateMode && (
-                                  <svg className="w-3 h-3 text-juice-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                )}
-                              </button>
-                              {/* Report */}
-                              <button
-                                onClick={() => {
-                                  handleReport()
-                                  setShowOptionsMenu(false)
-                                }}
-                                disabled={isReporting}
-                                className={`w-full px-3 py-2 text-left text-xs transition-colors ${
-                                  reportSuccess
-                                    ? 'text-green-500'
-                                    : isReporting
-                                      ? theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-                                      : theme === 'dark'
-                                        ? 'text-gray-300 hover:bg-white/5 hover:text-red-400'
-                                        : 'text-gray-700 hover:bg-gray-50 hover:text-red-500'
-                                }`}
-                              >
-                                {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
-                              </button>
-                            </div>
-                          </>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -1883,7 +1847,17 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                           {/* Three-dot overflow menu for small screens */}
                           <div className="relative sm:hidden">
                             <button
-                              onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+                              onClick={(e) => {
+                                if (!showOverflowMenu) {
+                                  closeAllPopovers()
+                                  const rect = e.currentTarget.getBoundingClientRect()
+                                  setOverflowAnchorPosition({
+                                    bottom: window.innerHeight - rect.top + 8,
+                                    right: window.innerWidth - rect.right
+                                  })
+                                }
+                                setShowOverflowMenu(!showOverflowMenu)
+                              }}
                               className={`p-1.5 transition-colors ${
                                 theme === 'dark' ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
                               }`}
@@ -1895,70 +1869,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                                 <circle cx="12" cy="19" r="2" />
                               </svg>
                             </button>
-                            {showOverflowMenu && (
-                              <>
-                                <div className="fixed inset-0 z-[98]" onClick={() => setShowOverflowMenu(false)} />
-                                <div className={`absolute right-0 bottom-full mb-2 py-1 min-w-[140px] border shadow-lg z-[99] ${
-                                  theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
-                                }`}>
-                                  {/* Chat history */}
-                                  <button
-                                    onClick={() => {
-                                      setShowHistorySidebar(true)
-                                      setShowOverflowMenu(false)
-                                    }}
-                                    className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
-                                      theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    {t('chat.chatHistory', 'Chat history')}
-                                  </button>
-                                  {canPauseAi && (
-                                    <button
-                                      onClick={() => {
-                                        setAiControlsExpanded(true)
-                                        setPersonalAiSkip(true)
-                                        setShowOverflowMenu(false)
-                                      }}
-                                      className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
-                                        theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
-                                      }`}
-                                    >
-                                      {t('chat.pauseAi', 'Pause AI')}
-                                    </button>
-                                  )}
-                                  {!canPauseAi && chatAiEnabled && (
-                                    <button
-                                      onClick={() => {
-                                        setPersonalAiSkip(!personalAiSkip)
-                                        setShowOverflowMenu(false)
-                                      }}
-                                      className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
-                                        personalAiSkip ? 'text-orange-400' : theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
-                                      }`}
-                                    >
-                                      {personalAiSkip ? t('chat.skipping', 'Skipping AI') : t('chat.skipAi', 'Skip AI')}
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => {
-                                      handleReport()
-                                      setShowOverflowMenu(false)
-                                    }}
-                                    disabled={isReporting}
-                                    className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
-                                      reportSuccess
-                                        ? 'text-green-500'
-                                        : isReporting
-                                          ? 'text-gray-500 cursor-wait'
-                                          : theme === 'dark' ? 'text-gray-300 hover:bg-white/5 hover:text-red-400' : 'text-gray-600 hover:bg-gray-50 hover:text-red-400'
-                                    }`}
-                                  >
-                                    {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
-                                  </button>
-                                </div>
-                              </>
-                            )}
                           </div>
                           {/* Collapsible AI controls - only for users with canPauseAi permission - hidden on small screens */}
                           {activeChatId && canPauseAi && (
@@ -2231,6 +2141,130 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             </button>
           </div>
         </div>
+        </>,
+        document.body
+      )}
+
+      {/* Options menu - portaled to document.body to escape backdrop-filter/overflow-hidden clipping ancestor */}
+      {showOptionsMenu && optionsAnchorPosition && createPortal(
+        <>
+          <div className="fixed inset-0 z-[99]" onClick={() => setShowOptionsMenu(false)} />
+          <div
+            className={`fixed py-1 min-w-[160px] border shadow-lg z-[100] ${
+              theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+            }`}
+            style={{ bottom: optionsAnchorPosition.bottom, right: optionsAnchorPosition.right }}
+          >
+            {/* Privacy toggle */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setPrivateMode(!privateMode)
+                setShowOptionsMenu(false)
+              }}
+              className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between transition-colors ${
+                theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'
+              }`}
+            >
+              <span className={privateMode ? 'text-juice-orange' : theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
+                {privateMode ? t('chat.incognitoOn', 'Incognito on') : t('chat.incognitoOff', 'Incognito off')}
+              </span>
+              {privateMode && (
+                <svg className="w-3 h-3 text-juice-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+            {/* Report */}
+            <button
+              onClick={() => {
+                handleReport()
+                setShowOptionsMenu(false)
+              }}
+              disabled={isReporting}
+              className={`w-full px-3 py-2 text-left text-xs transition-colors ${
+                reportSuccess
+                  ? 'text-green-500'
+                  : isReporting
+                    ? theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                    : theme === 'dark'
+                      ? 'text-gray-300 hover:bg-white/5 hover:text-red-400'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-red-500'
+              }`}
+            >
+              {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
+            </button>
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* Mobile overflow menu - portaled to document.body to escape backdrop-filter/overflow-hidden clipping ancestor */}
+      {showOverflowMenu && overflowAnchorPosition && createPortal(
+        <>
+          <div className="fixed inset-0 z-[99]" onClick={() => setShowOverflowMenu(false)} />
+          <div
+            className={`fixed py-1 min-w-[140px] border shadow-lg z-[100] ${
+              theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
+            }`}
+            style={{ bottom: overflowAnchorPosition.bottom, right: overflowAnchorPosition.right }}
+          >
+            {/* Chat history */}
+            <button
+              onClick={() => {
+                setShowHistorySidebar(true)
+                setShowOverflowMenu(false)
+              }}
+              className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {t('chat.chatHistory', 'Chat history')}
+            </button>
+            {canPauseAi && (
+              <button
+                onClick={() => {
+                  setAiControlsExpanded(true)
+                  setPersonalAiSkip(true)
+                  setShowOverflowMenu(false)
+                }}
+                className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                  theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {t('chat.pauseAi', 'Pause AI')}
+              </button>
+            )}
+            {!canPauseAi && chatAiEnabled && (
+              <button
+                onClick={() => {
+                  setPersonalAiSkip(!personalAiSkip)
+                  setShowOverflowMenu(false)
+                }}
+                className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                  personalAiSkip ? 'text-orange-400' : theme === 'dark' ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {personalAiSkip ? t('chat.skipping', 'Skipping AI') : t('chat.skipAi', 'Skip AI')}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                handleReport()
+                setShowOverflowMenu(false)
+              }}
+              disabled={isReporting}
+              className={`w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                reportSuccess
+                  ? 'text-green-500'
+                  : isReporting
+                    ? 'text-gray-500 cursor-wait'
+                    : theme === 'dark' ? 'text-gray-300 hover:bg-white/5 hover:text-red-400' : 'text-gray-600 hover:bg-gray-50 hover:text-red-400'
+              }`}
+            >
+              {reportSuccess ? t('chat.reported', 'Reported') : isReporting ? '...' : t('chat.report', 'Report')}
+            </button>
+          </div>
         </>,
         document.body
       )}
