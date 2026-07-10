@@ -726,7 +726,7 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
 
 function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   const { theme } = useThemeStore()
-  const { activeChatId: storeActiveChatId, getActiveChat } = useChatStore()
+  const { activeChatId: storeActiveChatId, getActiveChat, pendingNewChat } = useChatStore()
   const isMobile = useIsMobile()
   const [showMobileActivity, setShowMobileActivity] = useState(false)
 
@@ -734,10 +734,14 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   const activeChatId = forceActiveChatId || storeActiveChatId
   const activeChat = getActiveChat()
 
-  // Show chat mode if we're viewing a specific chat (via URL or store)
-  // This ensures the chat view shows immediately when navigating to a chat URL,
-  // even before messages have loaded - the chat view handles its own loading state
-  const inChatMode = !!activeChatId
+  // Show chat mode if we're viewing a specific chat (via URL or store) OR a new
+  // chat is being created (pendingNewChat). Including pendingNewChat keeps this
+  // layout switch in the SAME commit as ChatContainer's welcome->messages switch,
+  // so we never render the WelcomeLayout (mascot/split dock) around chat content
+  // during the async createChat window. This ensures the chat view shows
+  // immediately when navigating to a chat URL, even before messages have loaded -
+  // the chat view handles its own loading state.
+  const inChatMode = !!activeChatId || pendingNewChat
 
   useEffect(() => {
     document.documentElement.className = theme
