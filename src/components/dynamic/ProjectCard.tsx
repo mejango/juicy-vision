@@ -1698,7 +1698,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
                   />
                   {/* Token selector - inline after input */}
-                  <div className="relative flex-shrink-0">
+                  <div className="relative ml-auto flex-shrink-0">
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -1719,7 +1719,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       </svg>
                     </button>
                     {tokenDropdownOpen && (
-                      <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'}`}>
+                      <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'}`}>
                         {paymentTokenOptions.map((token) => (
                           <button
                             key={token.symbol}
@@ -1746,7 +1746,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       </div>
                     )}
                   </div>
-                  <div className="flex-1" />
                 </div>
               </div>
               <div className="relative">
@@ -2165,7 +2164,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
                 />
                 {/* Token selector - inline after input */}
-                <div className="relative flex-shrink-0">
+                <div className="relative ml-auto flex-shrink-0">
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
@@ -2186,7 +2185,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     </svg>
                   </button>
                   {tokenDropdownOpen && (
-                    <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'}`}>
+                    <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'}`}>
                       {paymentTokenOptions.map((token) => (
                         <button
                           key={token.symbol}
@@ -2213,8 +2212,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     </div>
                   )}
                 </div>
-                {/* Spacer to fill remaining width - clicking focuses input */}
-                <div className="flex-1" />
               </div>
             </div>
             <div className="relative">
