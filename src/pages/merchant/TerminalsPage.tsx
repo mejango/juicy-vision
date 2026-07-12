@@ -103,7 +103,7 @@ export default function TerminalsPage() {
       if (devicesData.success) setDevices(devicesData.data.devices)
       if (transactionsData.success) setTransactions(transactionsData.data.transactions)
       if (statsData.success) setStats(statsData.data)
-    } catch (err) {
+    } catch {
       setError('Failed to load data')
     } finally {
       setLoading(false)

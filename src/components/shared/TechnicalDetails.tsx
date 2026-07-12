@@ -376,7 +376,6 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
 }
 
 export default function TechnicalDetails({
-  contract,
   contractAddress,
   functionName,
   chainId,

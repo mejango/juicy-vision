@@ -1,7 +1,7 @@
 // Chain and contract constants
 export * from './chains'
 
-import { IS_TESTNET, CHAIN_IDS, SUPPORTED_CHAIN_IDS } from '../config/environment'
+import { IS_TESTNET, SUPPORTED_CHAIN_IDS } from '../config/environment'
 
 // =============================================================================
 // WebSocket Configuration

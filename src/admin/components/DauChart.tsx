@@ -7,6 +7,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  type TooltipContentProps,
 } from 'recharts'
 import { useThemeStore } from '../../stores'
 import { useDauData, type DauDataPoint } from '../hooks/useDauData'
@@ -74,7 +75,7 @@ export default function DauChart({ includeAnonymous = false, onToggleAnonymous }
     }
   }, [filteredData])
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
     if (!active || !payload?.length) return null
 
     const point = payload[0].payload as DauDataPoint
@@ -194,7 +195,7 @@ export default function DauChart({ includeAnonymous = false, onToggleAnonymous }
                     width={40}
                     tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v}
                   />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={CustomTooltip} />
                   <Area
                     type="monotone"
                     dataKey="dau"

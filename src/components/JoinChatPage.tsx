@@ -62,7 +62,7 @@ export default function JoinChatPage() {
         console.log('[JoinChatPage] Navigating to:', `/chat/${data.data.chatId}`)
         console.log('[JoinChatPage] Session ID after join:', getSessionId())
         navigate(`/chat/${data.data.chatId}`)
-      } catch (err) {
+      } catch {
         setError('Failed to join chat')
         setIsLoading(false)
       }
@@ -96,7 +96,9 @@ export default function JoinChatPage() {
       }`}
     >
       <div className="text-center max-w-md px-4">
-        <h1 className="text-xl font-semibold mb-6">{t('join.invalidInvite', 'Invalid Invite')}</h1>
+        <h1 className="text-xl font-semibold mb-6">
+          {error || t('join.invalidInvite', 'Invalid Invite')}
+        </h1>
         <button
           onClick={() => navigate('/')}
           className={`px-6 py-2 text-sm transition-colors ${

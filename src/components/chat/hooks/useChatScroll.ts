@@ -8,7 +8,7 @@
  * - Global scroll forwarding when cursor leaves dock
  */
 
-import { useEffect, useRef, useState, useCallback, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { UI_TIMING, SCROLL_THRESHOLDS } from '../../../constants'
 
 // Type for dock scroll tracking

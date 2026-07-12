@@ -118,26 +118,6 @@ async function registerCredentialWithServer(
 }
 
 /**
- * Look up existing wallet for a credential from the server
- */
-async function lookupCredentialWallet(credentialId: string): Promise<string | null> {
-  try {
-    const response = await fetch(`${API_URL}/passkey/wallet/${encodeURIComponent(credentialId)}`)
-
-    if (response.ok) {
-      const data = await response.json()
-      if (data.success && data.data) {
-        return data.data.walletAddress
-      }
-    }
-  } catch (error) {
-    console.warn('Failed to look up credential wallet:', error)
-  }
-
-  return null
-}
-
-/**
  * Create SIWE session with the backend using the derived private key
  * If a different wallet address is specified (linked account), sign for that address
  */

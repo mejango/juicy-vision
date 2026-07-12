@@ -79,8 +79,8 @@ vi.mock('../../hooks/useWalletBalances', () => ({
     loading: false,
     available: false,
   })),
-  formatEthBalance: vi.fn((val) => '0'),
-  formatUsdcBalance: vi.fn((val) => '0'),
+  formatEthBalance: vi.fn(() => '0'),
+  formatUsdcBalance: vi.fn(() => '0'),
 }))
 
 vi.mock('../../hooks', () => ({

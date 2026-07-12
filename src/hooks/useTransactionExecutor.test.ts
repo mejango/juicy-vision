@@ -82,7 +82,7 @@ vi.mock('ethers', () => ({
       toUtf8Bytes: vi.fn(() => new Uint8Array(32)),
     },
     BigNumber: {
-      from: vi.fn((value: string) => ({
+      from: vi.fn(() => ({
         xor: vi.fn(() => ({
           toHexString: vi.fn(() => '0x' + '12345678'.repeat(5)),
         })),
@@ -252,7 +252,7 @@ describe('useTransactionExecutor', () => {
     })
 
     it('ignores legacy fee-routing fields and creates only the reviewed project spend', async () => {
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -286,7 +286,7 @@ describe('useTransactionExecutor', () => {
         token: null,
       } as any)
 
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -315,7 +315,7 @@ describe('useTransactionExecutor', () => {
 
   describe('ETH payment', () => {
     it('executes ETH payment with correct parameters', async () => {
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -348,7 +348,7 @@ describe('useTransactionExecutor', () => {
     it('switches chain if necessary', async () => {
       mockGetChainId.mockResolvedValueOnce(1) // Start on mainnet
 
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -432,7 +432,7 @@ describe('useTransactionExecutor', () => {
         .mockResolvedValueOnce(BigInt('1000000000'))
         .mockResolvedValueOnce(BigInt('1000000000'))
 
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -462,7 +462,7 @@ describe('useTransactionExecutor', () => {
         .mockResolvedValueOnce(BigInt('0'))
         .mockResolvedValueOnce(BigInt('0'))
 
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -514,7 +514,7 @@ describe('useTransactionExecutor', () => {
 
   describe('NFT tier minting', () => {
     it('includes NFT metadata when tier is selected', async () => {
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -540,7 +540,7 @@ describe('useTransactionExecutor', () => {
     })
 
     it('uses exact tier price when preventOverspending is enabled', async () => {
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -624,7 +624,7 @@ describe('useTransactionExecutor', () => {
     it('handles user rejection', async () => {
       mockSendTransaction.mockRejectedValue(new Error('User rejected the request'))
 
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -653,7 +653,7 @@ describe('useTransactionExecutor', () => {
     it('handles transaction failure', async () => {
       mockSendTransaction.mockRejectedValue(new Error('Insufficient funds'))
 
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -681,7 +681,7 @@ describe('useTransactionExecutor', () => {
     it('handles wallet not connected', async () => {
       mockGetWalletClient.mockResolvedValue(null)
 
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -708,7 +708,7 @@ describe('useTransactionExecutor', () => {
     })
 
     it('handles unsupported chain', async () => {
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -743,7 +743,7 @@ describe('useTransactionExecutor', () => {
         status: 'reverted',
       })
 
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -772,7 +772,7 @@ describe('useTransactionExecutor', () => {
 
   describe('backend transaction tracking', () => {
     it('creates backend transaction record', async () => {
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -801,7 +801,7 @@ describe('useTransactionExecutor', () => {
     })
 
     it('updates backend with transaction hash', async () => {
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {
@@ -833,7 +833,7 @@ describe('useTransactionExecutor', () => {
     it('continues even if backend save fails', async () => {
       mockCreateTransactionRecord.mockRejectedValue(new Error('Backend error'))
 
-      const { result } = renderHook(() => useTransactionExecutor())
+      renderHook(() => useTransactionExecutor())
 
       await act(async () => {
         window.dispatchEvent(new CustomEvent('juice:pay-project', {

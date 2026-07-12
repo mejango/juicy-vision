@@ -136,7 +136,7 @@ export function LinkedAccountsInfo() {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const { isLinked, primaryAddress, linkedAddresses, unlinkAccount } = useAccountLinking()
+  const { isLinked, linkedAddresses, unlinkAccount } = useAccountLinking()
   const [unlinking, setUnlinking] = useState<string | null>(null)
 
   if (!isLinked || linkedAddresses.length === 0) {

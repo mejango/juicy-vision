@@ -12,7 +12,6 @@ import {
   verifyDeployRevnetParams,
   createVerificationResult,
   type TransactionDoubt,
-  type VerificationResult,
 } from './transactionVerification'
 import { NATIVE_TOKEN } from '../constants/abis'
 import { ALL_CHAIN_IDS, JB_CONTRACTS } from '../constants'

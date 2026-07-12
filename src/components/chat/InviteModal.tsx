@@ -15,7 +15,6 @@ interface InvitePopoverProps {
   isOpen: boolean
   onClose: () => void
   chatId: string
-  chatName: string
   // Whether the current user has permission to invite at all
   canInvite?: boolean
   // Current user's permissions - affects what they can grant
@@ -31,7 +30,6 @@ export default function InviteModal({
   isOpen,
   onClose,
   chatId,
-  chatName,
   canInvite = true,
   canGrantAdmin = false,
   canGrantInvitePermission = true,
@@ -129,7 +127,6 @@ export default function InviteModal({
     }
 
     const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
-    const popoverHeight = 400 // Approximate max height
     const gap = 8 // Gap between button and popover
 
     // Check if button is in lower half of viewport

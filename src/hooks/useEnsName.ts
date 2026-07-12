@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createPublicClient, http, namehash, getAddress } from 'viem'
+import { createPublicClient, http, getAddress } from 'viem'
 import { mainnet } from 'viem/chains'
 
 // Use PublicNode's free RPC - no auth required, CORS-friendly
@@ -63,7 +63,7 @@ export function useEnsNameResolved(address: string | undefined): {
           ensCache.set(normalizedAddress, { name, timestamp: Date.now() })
           setEnsName(name)
         }
-      } catch (err) {
+      } catch {
         // Fallback to classic reverse resolver
         try {
           const name = await mainnetClient.readContract({

@@ -9,7 +9,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
 import { useAuthStore } from '../stores'
 import { useManagedWallet } from './useManagedWallet'
-import { getPasskeyWallet } from '../services/passkeyWallet'
 import { getWalletSession } from '../services/siwe'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -153,7 +152,6 @@ async function unlinkAddressApi(address: string): Promise<boolean> {
 
 export function useAccountLinking(): AccountLinkingState {
   const { address: walletAddress, isConnected: isWalletConnected } = useAccount()
-  const { token: authToken, isAuthenticated } = useAuthStore()
   const { address: managedAddress, isManagedMode } = useManagedWallet()
 
   const [isLinked, setIsLinked] = useState(false)
@@ -203,7 +201,6 @@ export function useAccountLinking(): AccountLinkingState {
 
       // Check if the other address can be linked
       // The "other" address is the one that's not currently the primary
-      const primaryIsManaged = managedAccountAddress
       const targetAddress = connectedWalletAddress
 
       if (targetAddress) {
@@ -218,7 +215,7 @@ export function useAccountLinking(): AccountLinkingState {
     } finally {
       setLoading(false)
     }
-  }, [hasMultipleAuthMethods, connectedWalletAddress, managedAccountAddress])
+  }, [hasMultipleAuthMethods, connectedWalletAddress])
 
   // Refresh linked addresses
   const refreshLinkedAddresses = useCallback(async () => {

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useChatStore, useSettingsStore, useThemeStore, LANGUAGES, type Message, type Attachment, type ChatMessage, type ChatMember } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
 import * as chatApi from '../../services/chat'
-import { useChatScroll, usePopoverPositioning, useChatActions } from './hooks'
+import { useChatScroll, usePopoverPositioning } from './hooks'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
@@ -14,7 +14,7 @@ import ConversationHistory from './ConversationHistory'
 import ChatHistorySidebar from './ChatHistorySidebar'
 import { useIsMobile } from '../../hooks'
 import WalletInfo, { type JuicyIdentity } from './WalletInfo'
-import { SettingsPanel, PrivacySelector } from '../settings'
+import { SettingsPanel } from '../settings'
 import InviteModal from './InviteModal'
 import SaveModal from './SaveModal'
 import AuthOptionsModal from './AuthOptionsModal'
@@ -22,14 +22,16 @@ import AuthOptionsModal from './AuthOptionsModal'
 import { useAccount } from 'wagmi'
 import { type PasskeyWallet, getPasskeyWallet } from '../../services/passkeyWallet'
 import WalletPanel from '../wallet/WalletPanel'
-import { getSessionId, getCachedPseudoAddress, getSessionPseudoAddress, getCurrentUserAddress } from '../../services/session'
+import { getSessionId, getSessionPseudoAddress, getCurrentUserAddress } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
-import { getEmojiFromAddress } from './ParticipantAvatars'
 import { parseMessageContent } from '../../utils/messageParser'
 
 // getCurrentUserAddress is imported from session.ts - see that file for the
 // priority logic: SIWE wallet > Smart account (managed mode) > Pseudo-address
 
+const EMPTY_MESSAGES: ChatMessage[] = []
+const EMPTY_MEMBERS: ChatMember[] = []
+const EMPTY_ONLINE_MEMBERS: string[] = []
 
 interface ChatContainerProps {
   topOnly?: boolean
@@ -61,7 +63,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     setMessages: setChatMessages,
     setMembers,
     setOnlineMembers,
-    updatePresence,
     setConnected,
     clearUnread,
     updateMember,
@@ -87,9 +88,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const activeChat = activeChatId
     ? useChatStore.getState().chats.find(c => c && c.id === activeChatId)
     : undefined
-  const chatMessages = activeChat?.messages || []
-  const members = activeChat?.members || []
-  const onlineMembers = activeChat?.onlineMembers || []
+  const chatMessages = activeChat?.messages || EMPTY_MESSAGES
+  const members = activeChat?.members || EMPTY_MEMBERS
+  const onlineMembers = activeChat?.onlineMembers || EMPTY_ONLINE_MEMBERS
   const isChatMode = !!activeChatId
 
   // Check if current user can write to this chat
@@ -187,8 +188,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [showWalletPanel, setShowWalletPanel] = useState(false)
   const [walletPanelInitialView, setWalletPanelInitialView] = useState<'select' | 'self_custody'>('select')
   const [inviteChatId, setInviteChatId] = useState<string | null>(null)
-  const [inviteChatName, setInviteChatName] = useState('')
-  const [isCreatingInvite, setIsCreatingInvite] = useState(false)
   // Anchor positions for popovers
   const [inviteAnchorPosition, setInviteAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [saveAnchorPosition, setSaveAnchorPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
@@ -294,13 +293,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     }
   }, [forceActiveChatId, isReporting])
 
-  const abortControllerRef = useRef<AbortController | null>(null)
   const dockRef = useRef<HTMLDivElement | null>(null)
   const stickyPromptRef = useRef<HTMLDivElement | null>(null)
   const messagesScrollRef = useRef<HTMLDivElement | null>(null)
 
   // Scroll behavior hooks
-  const { isPromptStuck, showActionBar } = useChatScroll({
+  const { showActionBar } = useChatScroll({
     dockRef,
     stickyPromptRef,
     messagesScrollRef,
@@ -566,7 +564,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     } finally {
       setIsStreaming(false)
     }
-  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress, effectiveAiEnabled, chatAiEnabled, setPendingNewChat, privateMode])
+  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress, effectiveAiEnabled, chatAiEnabled, setPendingNewChat, setWaitingForAiChatId, privateMode])
 
   const handleSuggestionClick = (text: string) => {
     handleSend(text)
@@ -579,7 +577,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     await handleSend('nudge')
   }, [handleSend])
 
-  const handleExport = () => {
+  const handleExport = useCallback(() => {
     if (messages.length === 0) return
     const title = activeChat?.name || 'Chat'
 
@@ -607,22 +605,21 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-  }
+  }, [messages, activeChat?.name])
 
   // Share chat - all chats are now on server, just open invite modal
-  const handleInvite = () => {
+  const handleInvite = useCallback(() => {
     if (!activeChatId) {
       setError('Start a conversation first to share it')
       return
     }
 
     setInviteChatId(activeChatId)
-    setInviteChatName(activeChat?.name || 'Chat')
     setShowInviteModal(true)
-  }
+  }, [activeChatId])
 
   // Handle successful passkey wallet creation/authentication
-  const handlePasskeySuccess = async () => {
+  const handlePasskeySuccess = useCallback(async () => {
     // Refresh passkey wallet state
     setPasskeyWallet(getPasskeyWallet())
 
@@ -700,7 +697,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       // Don't show error to user - passkey wallet was created successfully
       // The merge failing isn't critical
     }
-  }
+  }, [forceActiveChatId, addChat, setMembers, setChatMessages])
 
   // Listen for passkey wallet connect/disconnect events
   useEffect(() => {
@@ -725,7 +722,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => {
       window.removeEventListener('juice:managed-auth-success', handleManagedAuthSuccess)
     }
-  }, [])
+  }, [handlePasskeySuccess])
 
   // Close auth modal when user becomes authenticated
   // This handles cases where the modal doesn't close properly after signup/login
@@ -759,7 +756,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
           if (data.success && data.data) {
             setCurrentUserIdentity(data.data)
             // Cache for instant display on remount
-            try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {}
+            try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {
+              // Identity caching is best-effort.
+            }
           }
         }
       } catch {
@@ -890,7 +889,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       window.removeEventListener('chat:ai-empty-response', handleEmptyResponse as EventListener)
       window.removeEventListener('chat:ai-streaming-started', handleStreamingStarted as EventListener)
     }
-  }, [forceActiveChatId])
+  }, [forceActiveChatId, setWaitingForAiChatId])
 
   // Timeout fallback: if waiting for AI for 30+ seconds with no response, show Continue button
   useEffect(() => {
@@ -1192,7 +1191,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       chatApi.disconnectFromChat()
       setConnected(false)
     }
-  }, [activeChatId, setChatMessages, setMembers, addChatMessage, setConnected, clearUnread, addChat])
+  }, [activeChatId, setChatMessages, setMembers, setOnlineMembers, addChatMessage, setConnected, clearUnread, addChat, removeChat, setActiveChat, navigate])
 
   // Listen for wallet panel open events - show wallet panel if connected, auth options if not
   useEffect(() => {
@@ -2012,7 +2011,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 setInviteChatId(null)
               }}
               chatId={inviteChatId}
-              chatName={inviteChatName}
               canInvite={canInvite}
               canGrantAdmin={currentUserMember?.role === 'founder' || currentUserMember?.role === 'admin'}
               canGrantInvitePermission={canInvite}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createCircuitBreaker, type CircuitState } from './circuitBreaker'
+import { createCircuitBreaker } from './circuitBreaker'
 
 // Mock the logger
 vi.mock('./logger', () => ({

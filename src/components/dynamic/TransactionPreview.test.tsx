@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import TransactionPreview from './TransactionPreview'
 import { useThemeStore } from '../../stores'
 
@@ -18,7 +18,7 @@ vi.mock('wagmi', () => ({
 // Mock the stores and hooks that TransactionPreview depends on
 // useProjectDraftStore is a zustand hook that uses selectors
 vi.mock('../../stores/projectDraftStore', () => ({
-  useProjectDraftStore: (selector?: (state: any) => any) => {
+  useProjectDraftStore: (selector?: (state: Record<string, unknown>) => unknown) => {
     const mockState = {
       projectName: null,
       projectDescription: null,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useThemeStore, useChatStore } from '../../stores'
+import { useThemeStore, useChatStore, type ChatMember, type ChatMessage } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
 import * as chatApi from '../../services/chat'
 import { getSessionId } from '../../services/session'
@@ -17,15 +17,8 @@ interface TypingUser {
   displayName?: string
 }
 
-interface SystemEvent {
-  id: string
-  eventType: string
-  actorId?: string
-  actorAddress?: string
-  targetId?: string
-  metadata?: Record<string, unknown>
-  createdAt: string
-}
+const EMPTY_MESSAGES: ChatMessage[] = []
+const EMPTY_MEMBERS: ChatMember[] = []
 
 export default function SharedChatContainer() {
   const { theme } = useThemeStore()
@@ -48,16 +41,13 @@ export default function SharedChatContainer() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
   void showInviteModal // Used for invite modal visibility
-  const [systemEvents, setSystemEvents] = useState<SystemEvent[]>([])
-  void systemEvents // Used for system event tracking
-  void setSystemEvents // Used for system event updates
   const [loadError, setLoadError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const chat = getActiveChat()
-  const messages = chat?.messages || []
-  const members = chat?.members || []
+  const messages = chat?.messages || EMPTY_MESSAGES
+  const members = chat?.members || EMPTY_MEMBERS
 
   // Find current user's membership to check permissions
   const currentUserMember = members.find(m => m.userId === user?.id)
@@ -154,7 +144,7 @@ export default function SharedChatContainer() {
       chatApi.disconnectFromChat()
       setConnected(false)
     }
-  }, [activeChatId, setMessages, setMembers, addMessage, setConnected, clearUnread])
+  }, [activeChatId, getActiveChat, addChat, setMessages, setMembers, addMessage, setConnected, clearUnread])
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {

@@ -13,9 +13,6 @@ const INITIAL_STATE: BundleState = {
   expiresAt: undefined,
 }
 
-// Buffer before expiration to warn user (30 seconds)
-const EXPIRATION_BUFFER_MS = 30_000
-
 /**
  * Hook for managing bundle lifecycle state.
  * Handles status transitions and chain-level transaction tracking.

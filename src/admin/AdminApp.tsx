@@ -124,49 +124,6 @@ function AdminLogin() {
   )
 }
 
-function AccessDenied() {
-  const { theme } = useThemeStore()
-  const { user, logout } = useAuthStore()
-  const isDark = theme === 'dark'
-
-  return (
-    <div className={`min-h-screen flex items-center justify-center ${
-      isDark ? 'bg-zinc-950' : 'bg-gray-50'
-    }`}>
-      <div className={`w-full max-w-md p-8 text-center ${
-        isDark ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-gray-200'
-      }`}>
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/10 flex items-center justify-center">
-          <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-        </div>
-        <h1 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Access Denied
-        </h1>
-        <p className={`text-sm mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-          You don't have admin privileges.
-          {user?.email && (
-            <span className="block mt-1">
-              Signed in as: {user.email}
-            </span>
-          )}
-        </p>
-        <button
-          onClick={() => logout()}
-          className={`mt-6 px-4 py-2 text-sm font-medium transition-colors ${
-            isDark
-              ? 'bg-white/10 text-white hover:bg-white/20'
-              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
-          }`}
-        >
-          Sign Out
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export default function AdminApp() {
   const { theme } = useThemeStore()
 

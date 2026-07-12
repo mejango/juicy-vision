@@ -55,16 +55,6 @@ const sampleEthTerminalConfig: JBTerminalConfig = {
   }],
 }
 
-// Sample terminal configuration for USDC (Sepolia)
-const sampleUsdcTerminalConfig: JBTerminalConfig = {
-  terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
-  accountingContextsToAccept: [{
-    token: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia USDC
-    decimals: 6,
-    currency: 932999736,
-  }],
-}
-
 // Sample sucker deployment configuration
 // Uses real OPSuckerDeployer address from chains.ts
 const sampleSuckerConfig: JBSuckerDeploymentConfig = {

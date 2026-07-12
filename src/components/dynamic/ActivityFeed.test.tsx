@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import ActivityFeed from './ActivityFeed'
 import { useThemeStore } from '../../stores'
 import * as bendystraw from '../../services/bendystraw'

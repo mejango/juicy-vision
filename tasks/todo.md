@@ -45,8 +45,9 @@ Completed the protocol-truth audit and the recovered maintainability pass.
   its lint quarantine.
 - Cached viem read clients and lazy-loaded route-level pages. The main production
   entry chunk fell from about 2.34 MB to 1.29 MB while preserving all routes.
-- Changed frontend production files lint with zero warnings; full-project lint
-  debt fell from 332 to 200 warnings, with zero errors.
+- Changed frontend production files lint with zero warnings; the follow-up simple
+  debt pass reduced full-project lint debt from 332 to 69 warnings, with zero
+  errors.
 
 ### Verification (2026-07-11)
 
@@ -60,8 +61,13 @@ Completed the protocol-truth audit and the recovered maintainability pass.
 
 ### Residual risks
 
-- The repository still has 200 non-gating frontend lint warnings in untouched
-  legacy/test code and a 1.29 MB main chunk that merits further splitting.
+- The repository still has 69 non-gating frontend lint warnings: 60 explicit
+  `any` types (mostly test and WebAuthn mocks), 5 Fast Refresh file-layout
+  suggestions, and 4 hook dependency decisions. Fixing these cleanly requires
+  real type modeling, file moves, or behavioral review rather than simple edits.
+- The 1.29 MB main chunk still merits further splitting, but the remaining shared
+  chat/wallet boundary would add loading and dependency complexity; this pass
+  intentionally stops at the existing route-level split.
 - Ignored backend tests and the browser journey do not submit live-chain
   transactions; RPC, indexer, bundler, wallet, and contract integrations still
   need normal staging smoke tests before release.
@@ -81,6 +87,14 @@ Completed the protocol-truth audit and the recovered maintainability pass.
   coverage
 - [x] Run focused regressions and critical desktop/mobile browser journeys
 - [x] Record completed audit coverage, verification, and residual risks below
+
+## Simple Debt Pass (2026-07-12)
+
+- [x] Publish the recovered audit baseline before further cleanup
+- [x] Remove clearly dead production imports, state, helpers, and handlers
+- [x] Remove simple unused test bindings without weakening assertions
+- [x] Leave debt that requires new abstractions or behavior changes documented
+- [x] Re-run frontend gates and push the follow-up cleanup
 
 ---
 

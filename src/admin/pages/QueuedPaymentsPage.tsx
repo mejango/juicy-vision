@@ -168,7 +168,7 @@ export default function QueuedPaymentsPage() {
   const [processingId, setProcessingId] = useState<string | null>(null)
 
   const { data: spendsData, isLoading: spendsLoading } = useAdminJuiceSpends(page, 50, statusFilter)
-  const { data: stats, isLoading: statsLoading } = useAdminJuiceStats()
+  const { data: stats } = useAdminJuiceStats()
   const processSpendMutation = useProcessSpend()
 
   const handleProcess = async (spendId: string) => {

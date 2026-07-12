@@ -5,7 +5,7 @@
  * to their trigger elements. Uses capture phase to catch all scroll events.
  */
 
-import { useEffect, useCallback, type RefObject } from 'react'
+import { useEffect, type RefObject } from 'react'
 
 interface AnchorPosition {
   top: number

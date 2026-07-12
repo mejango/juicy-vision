@@ -30,7 +30,7 @@ vi.mock('recharts', () => ({
   ),
   Cell: () => <div data-testid="cell" />,
   Tooltip: () => <div data-testid="tooltip" />,
-  Legend: ({ content }: { content: React.FC<any> }) => {
+  Legend: ({ content }: { content: React.FC<{ payload?: readonly unknown[] }> }) => {
     const Content = content
     return <Content payload={[]} />
   },

@@ -80,7 +80,6 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
   const {
     remoteSelections,
     remoteTyping,
-    remoteHovers,
     remoteCursors,
     sendSelection,
     sendTyping,
@@ -240,8 +239,9 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
   // Cleanup blob URLs on unmount
   useEffect(() => {
+    const blobUrls = blobUrlsRef.current
     return () => {
-      blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
+      blobUrls.forEach(url => URL.revokeObjectURL(url))
     }
   }, [])
 
@@ -307,11 +307,6 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     const groupSelections = remoteSelections.get(groupId) || []
     return groupSelections.filter(s => s.value === value)
   }, [remoteSelections])
-
-  // Get remote hovers for a specific group
-  const getRemoteHoversForGroup = useCallback((groupId: string) => {
-    return remoteHovers.get(groupId) || []
-  }, [remoteHovers])
 
   // Get remote typing for a specific group
   const getRemoteTypingForGroup = useCallback((groupId: string) => {
@@ -509,7 +504,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
               return (
                 <div className="flex flex-wrap gap-2">
-                  {options.map((option, idx) => {
+                  {options.map((option) => {
                     const selected = isSelected(group.id, option.value)
                     const remoteSelectionsForOption = getRemoteSelectionsForOption(group.id, option.value)
                     return (
@@ -638,7 +633,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
               return (
                 <div className="space-y-2">
-                  {options.map((option, idx) => {
+                  {options.map((option) => {
                     const selected = isSelected(group.id, option.value)
                     const remoteSelectionsForOption = getRemoteSelectionsForOption(group.id, option.value)
                     // After submission: locked state with subtle styling

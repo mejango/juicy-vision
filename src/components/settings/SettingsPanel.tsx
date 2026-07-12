@@ -141,7 +141,9 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
           setIdentity(data.data)
           setIdentityUsername(data.data.username)
           // Cache for instant display next time
-          try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {}
+          try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {
+            // Identity caching is best-effort.
+          }
           // Notify other components (like ChatInput) of the loaded identity
           window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
         }
@@ -214,7 +216,9 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
         setIdentityError(null)
         setPendingIdentity(null)
         // Cache for instant display
-        try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {}
+        try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {
+          // Identity caching is best-effort.
+        }
         // Notify other components of identity change
         window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
       } else {
@@ -240,7 +244,9 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
       setIdentity(e.detail)
       setIdentityUsername(e.detail.username)
       // Cache for instant display next time
-      try { localStorage.setItem('juicy-identity', JSON.stringify(e.detail)) } catch {}
+      try { localStorage.setItem('juicy-identity', JSON.stringify(e.detail)) } catch {
+        // Identity caching is best-effort.
+      }
     }
     window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
     return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)

@@ -83,6 +83,9 @@ export function useComponentCollaboration({
   useEffect(() => {
     if (!chatId || !messageId || !enabled) return
 
+    const activeTypingTimeouts = typingTimeouts.current
+    const activeCursorTimeouts = cursorTimeouts.current
+
     const unsubscribe = onWsMessage((msg: WsMessage) => {
       if (
         msg.type !== 'component_interaction' ||
@@ -278,11 +281,11 @@ export function useComponentCollaboration({
     return () => {
       unsubscribe()
       // Clear all typing timeouts
-      typingTimeouts.current.forEach((timeout) => clearTimeout(timeout))
-      typingTimeouts.current.clear()
+      activeTypingTimeouts.forEach((timeout) => clearTimeout(timeout))
+      activeTypingTimeouts.clear()
       // Clear all cursor timeouts
-      cursorTimeouts.current.forEach((timeout) => clearTimeout(timeout))
-      cursorTimeouts.current.clear()
+      activeCursorTimeouts.forEach((timeout) => clearTimeout(timeout))
+      activeCursorTimeouts.clear()
     }
   }, [chatId, messageId, enabled])
 
@@ -381,9 +384,10 @@ export function useComponentCollaboration({
 
   // Cleanup on unmount - clear all debounce timers
   useEffect(() => {
+    const activeDebounceTimers = typingDebounceMap.current
     return () => {
-      typingDebounceMap.current.forEach((timeout) => clearTimeout(timeout))
-      typingDebounceMap.current.clear()
+      activeDebounceTimers.forEach((timeout) => clearTimeout(timeout))
+      activeDebounceTimers.clear()
     }
   }, [])
 

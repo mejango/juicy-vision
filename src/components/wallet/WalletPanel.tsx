@@ -17,7 +17,7 @@ import { getPasskeyWallet, clearPasskeyWallet, forgetPasskeyWallet, type Passkey
 import { FRUIT_EMOJIS, getEmojiFromAddress } from '../chat/ParticipantAvatars'
 import { getSessionId } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
-import { AccountLinkingBanner, LinkedAccountsInfo } from './AccountLinkingBanner'
+import { AccountLinkingBanner } from './AccountLinkingBanner'
 
 export interface AnchorPosition {
   top: number
@@ -1356,18 +1356,18 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
 }
 
 // Managed account view
-function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }: { onDisconnect: () => void; onTopUp: () => void; onSettings: () => void; onSetJuicyId: () => void }) {
+function ManagedAccountView({ onDisconnect, onTopUp, onSetJuicyId }: {
+  onDisconnect: () => void
+  onTopUp: () => void
+  onSetJuicyId: () => void
+}) {
   const { theme } = useThemeStore()
   const { t } = useTranslation()
   const isDark = theme === 'dark'
-  const { user, token, passkeys, loadPasskeys, registerPasskey, deletePasskey, isPasskeyAvailable, isLoading } = useAuthStore()
+  const { user, token } = useAuthStore()
   const { address, balances, loading, error: walletError, refetch: refetchWallet } = useManagedWallet()
   const { balance: juiceBalance, loading: juiceLoading } = useJuiceBalance()
   const [copied, setCopied] = useState(false)
-  const [showPasskeys, setShowPasskeys] = useState(false)
-  const [passkeyError, setPasskeyError] = useState<string | null>(null)
-  const [addingPasskey, setAddingPasskey] = useState(false)
-  const [newPasskeyName, setNewPasskeyName] = useState('')
   const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(null)
 
   // Fetch identity with auth token
@@ -1409,56 +1409,6 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }:
     return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
   }, [token, address])
 
-  const handleShowPasskeys = async () => {
-    setShowPasskeys(true)
-    await loadPasskeys()
-  }
-
-  // Get default device name suggestion
-  const getDefaultDeviceName = (): string => {
-    if (typeof navigator === 'undefined') return 'My Device'
-    const ua = navigator.userAgent
-    if (/Mac/i.test(ua)) return 'My Mac'
-    if (/iPhone/i.test(ua)) return 'My iPhone'
-    if (/iPad/i.test(ua)) return 'My iPad'
-    if (/Android/i.test(ua)) return 'My Android'
-    if (/Windows/i.test(ua)) return 'My PC'
-    return 'My Device'
-  }
-
-  const handleStartAddPasskey = () => {
-    setNewPasskeyName(getDefaultDeviceName())
-    setAddingPasskey(true)
-    setPasskeyError(null)
-  }
-
-  const handleConfirmAddPasskey = async () => {
-    setPasskeyError(null)
-    try {
-      await registerPasskey(newPasskeyName.trim() || getDefaultDeviceName())
-      setAddingPasskey(false)
-      setNewPasskeyName('')
-    } catch (err) {
-      setPasskeyError(err instanceof Error ? err.message : 'Failed to add passkey')
-    }
-  }
-
-  const handleCancelAddPasskey = () => {
-    setAddingPasskey(false)
-    setNewPasskeyName('')
-    setPasskeyError(null)
-  }
-
-  const handleDeletePasskey = async (id: string) => {
-    if (confirm('Remove this passkey?')) {
-      try {
-        await deletePasskey(id)
-      } catch (err) {
-        setPasskeyError(err instanceof Error ? err.message : 'Failed to remove passkey')
-      }
-    }
-  }
-
   if (!user) return null
 
   const copyAddress = () => {
@@ -1467,43 +1417,6 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSettings, onSetJuicyId }:
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
-  }
-
-  // Format device type for display
-  const formatDeviceType = (deviceType: string | null | undefined): string => {
-    if (!deviceType) return 'Passkey'
-    switch (deviceType) {
-      case 'platform':
-        // Try to detect platform from user agent
-        if (typeof navigator !== 'undefined') {
-          const ua = navigator.userAgent
-          if (/Mac/i.test(ua)) return 'Touch ID (Mac)'
-          if (/iPhone|iPad/i.test(ua)) return 'Face ID / Touch ID'
-          if (/Android/i.test(ua)) return 'Biometric (Android)'
-          if (/Windows/i.test(ua)) return 'Windows Hello'
-        }
-        return 'This Device'
-      case 'cross-platform':
-      case 'security_key':
-        return 'Security Key'
-      default:
-        return 'Passkey'
-    }
-  }
-
-  // Get auth method display
-  const getAuthMethod = (): string => {
-    if (user.email?.includes('@passkey.local')) {
-      if (typeof navigator !== 'undefined') {
-        const ua = navigator.userAgent
-        if (/Mac/i.test(ua)) return 'Touch ID'
-        if (/iPhone|iPad/i.test(ua)) return 'Face ID'
-        if (/Android/i.test(ua)) return 'Biometric'
-        if (/Windows/i.test(ua)) return 'Windows Hello'
-      }
-      return 'Passkey'
-    }
-    return 'Email'
   }
 
   return (
@@ -1614,8 +1527,7 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { selectedFruit, setSelectedFruit } = useSettingsStore()
-  const { token, isAuthenticated } = useAuthStore()
-  const isLoggedIn = isAuthenticated()
+  const { token } = useAuthStore()
 
   // Wallet hooks for SIWE sign-in
   const { address: walletAddress, chainId, isConnected: isWalletConnected } = useAccount()
@@ -1712,7 +1624,7 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
           )
           // Refresh wallet session after sign-in
           walletSession = getWalletSession()
-        } catch (signInErr) {
+        } catch {
           setIdentityError('Sign-in cancelled or failed')
           setIdentityLoading(false)
           setSigningIn(false)
@@ -1737,7 +1649,9 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
       if (data.success && data.data) {
         setIdentity(data.data)
         setIdentityError(null)
-        try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {}
+        try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {
+          // Identity caching is best-effort.
+        }
         window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
         onBack() // Go back after successful save
       } else {
@@ -1909,7 +1823,6 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     token,
   } = useAuthStore()
   const isLoggedIn = isAuthenticated()
-  const { address: managedAddress } = useManagedWallet()
 
   // Wallet connection
   const { address: walletAddress, isConnected: isWalletConnected } = useAccount()
@@ -1985,7 +1898,9 @@ function SettingsView({ onBack }: { onBack: () => void }) {
           setIdentity(data.data)
           setIdentityUsername(data.data.username)
           // Cache for instant display
-          try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {}
+          try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {
+            // Identity caching is best-effort.
+          }
         }
       }
     } catch (err) {
@@ -2054,7 +1969,9 @@ function SettingsView({ onBack }: { onBack: () => void }) {
         setIdentityError(null)
         setPendingIdentity(null)
         // Cache for instant display
-        try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {}
+        try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {
+          // Identity caching is best-effort.
+        }
         // Notify other components of identity change
         window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
       } else {
@@ -2079,7 +1996,9 @@ function SettingsView({ onBack }: { onBack: () => void }) {
       setIdentity(e.detail)
       setIdentityUsername(e.detail.username)
       // Cache for instant display
-      try { localStorage.setItem('juicy-identity', JSON.stringify(e.detail)) } catch {}
+      try { localStorage.setItem('juicy-identity', JSON.stringify(e.detail)) } catch {
+        // Identity caching is best-effort.
+      }
     }
     window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
     return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
@@ -2158,32 +2077,6 @@ function SettingsView({ onBack }: { onBack: () => void }) {
       setEmailError(err instanceof Error ? err.message : 'Verification failed')
     } finally {
       setEmailLoading(false)
-    }
-  }
-
-  // Passkey handler
-  const handleAddPasskey = async () => {
-    setPasskeyLoading(true)
-    setPasskeyError(null)
-
-    try {
-      if (isLoggedIn && token) {
-        // Already logged in - register additional passkey
-        await registerPasskey()
-      } else {
-        // Not logged in - authenticate with passkey (creates managed user)
-        await loginWithPasskey()
-      }
-    } catch (err) {
-      console.error('Passkey error:', err)
-      if (err instanceof Error) {
-        const msg = err.message.toLowerCase()
-        if (!msg.includes('cancelled') && !msg.includes('abort')) {
-          setPasskeyError(err.message)
-        }
-      }
-    } finally {
-      setPasskeyLoading(false)
     }
   }
 
@@ -3250,7 +3143,6 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
               setPreviousView('managed')
               setView('buy_juice')
             }}
-            onSettings={() => setView('settings')}
             onSetJuicyId={() => setView('juicy_id')}
           />
         )}

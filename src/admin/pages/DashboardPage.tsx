@@ -44,7 +44,7 @@ export default function DashboardPage() {
   const isDark = theme === 'dark'
   const [includeAnonymous, setIncludeAnonymous] = useState(false)
 
-  const { data: metrics, isLoading } = useAdminMetrics()
+  const { data: metrics } = useAdminMetrics()
 
   return (
     <div className="p-6">

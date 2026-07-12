@@ -3,7 +3,6 @@ import {
   isUsdcCurrency,
   getCurrencyLabel,
   USDC_CURRENCIES,
-  CHAIN_NAMES,
 } from './technicalDetails'
 
 describe('isUsdcCurrency', () => {

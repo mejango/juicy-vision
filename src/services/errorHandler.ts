@@ -136,7 +136,7 @@ function handleError(error: Error | unknown, context?: ErrorContext): HandledErr
  * Placeholder for error reporting service integration
  * In production, this could send to Sentry, LogRocket, etc.
  */
-function reportToService(error: Error | unknown, context?: ErrorContext): boolean {
+function reportToService(_error: Error | unknown, _context?: ErrorContext): boolean {
   // TODO: Integrate with error reporting service
   // For now, just return false (not reported)
   // Future: Check privacy settings before reporting

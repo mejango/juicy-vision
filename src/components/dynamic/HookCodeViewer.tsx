@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useThemeStore } from '../../stores'
 
 interface HookCodeViewerProps {
@@ -97,16 +97,6 @@ export default function HookCodeViewer({
   const isDark = theme === 'dark'
   const [copied, setCopied] = useState(false)
   const [showExplanation, setShowExplanation] = useState(true)
-
-  const highlightedCode = useMemo(() => {
-    if (language === 'solidity') {
-      return highlightSolidity(code, isDark)
-    }
-    return code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-  }, [code, isDark, language])
 
   const lines = code.split('\n')
   const lineNumbers = lines.map((_, i) => i + 1)

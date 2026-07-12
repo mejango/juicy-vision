@@ -65,31 +65,6 @@ export function getEmojiForUser(
   return getEmojiFromAddress(address)
 }
 
-function getInitials(member: ChatMember): string {
-  // If user has a display name (ENS or custom), use initials
-  if (member.displayName) {
-    const parts = member.displayName.split(' ')
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    }
-    return member.displayName.slice(0, 2).toUpperCase()
-  }
-  // For anonymous users, return null to use emoji instead
-  return ''
-}
-
-function getColorFromAddress(address: string | undefined): string {
-  if (!address) return 'hsl(0, 0%, 50%)'
-  // Generate a consistent color from address
-  const hash = address.slice(-6)
-  const hue = parseInt(hash, 16) % 360
-  return `hsl(${hue}, 60%, 45%)`
-}
-
-function truncateAddress(address: string): string {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`
-}
-
 // Juicy Identity type
 interface JuicyIdentity {
   emoji: string
