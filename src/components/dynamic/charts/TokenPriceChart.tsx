@@ -20,6 +20,8 @@ import {
   fetchSuckerGroupMoments,
   fetchCashOutTaxSnapshots,
   calculateFloorPrice,
+  fetchAllRulesets,
+  isRevnetProject,
   type SuckerGroupMoment,
   type CashOutTaxSnapshot,
 } from '../../../services/bendystraw'
@@ -161,7 +163,21 @@ export default function TokenPriceChart({
         setAccountingToken(resolveAccountingToken(currentBalance.currency, currentBalance.decimals))
 
         const current = project.currentRuleset
-        if (!current.useDataHookForPay && current.baseCurrency === currentBalance.currency && current.start) {
+        if (isRevnetProject(project) && current.baseCurrency === currentBalance.currency) {
+          try {
+            const stageRulesets = await fetchAllRulesets(projectId, parseInt(chainId))
+            setRulesets(stageRulesets)
+            setProjectStart(stageRulesets.length > 0
+              ? Math.min(...stageRulesets.map(stage => stage.start))
+              : current.start || Math.floor(Date.now() / 1000))
+          } catch (err) {
+            // Keep independently available pool and cash-out series visible if
+            // this one on-chain schedule read is temporarily unavailable.
+            console.error('Failed to load Revnet issuance series:', err)
+            setRulesets([])
+            setProjectStart(current.start || Math.floor(Date.now() / 1000))
+          }
+        } else if (!current.useDataHookForPay && current.baseCurrency === currentBalance.currency && current.start) {
           setRulesets([{
             start: current.start,
             duration: current.duration,

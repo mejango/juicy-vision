@@ -15,11 +15,10 @@ import {
   fetchProjectWithRuleset,
   fetchProjectTokenSymbol,
   fetchRulesetHistory,
-  fetchRevnetStages,
+  fetchAllRulesets,
   fetchSuckerGroupBalance,
   isRevnetProject,
   type RulesetHistoryEntry,
-  type RevnetStage,
 } from '../../services/bendystraw'
 import { resolveAccountingToken } from '../../utils/currency'
 import { deriveCycledWeight, issuancePriceFromWeight } from '../../utils/rulesetMath'
@@ -137,40 +136,40 @@ export default function PriceChart({
         if (groupBalance.balanceAvailable === false) {
           throw new Error('Issuance denomination unavailable')
         }
-        if (project.currentRuleset.useDataHookForPay) {
-          throw new Error('Issuance price unavailable because this project uses a payment hook')
-        }
         if (project.currentRuleset.baseCurrency !== groupBalance.currency) {
           throw new Error('Issuance price unavailable because this project converts payment currencies')
         }
         setAccountingToken(resolveAccountingToken(groupBalance.currency, groupBalance.decimals))
 
-        // Check if this is a Revnet - if so, fetch stages
+        // A Revnet's REVOwner data hook does not make its issuance schedule
+        // indeterminate. Its immutable stages are the rulesets stored on-chain,
+        // which is the same source website/ uses for its issuance ladder.
         const projectIsRevnetValue = isRevnetProject(project)
         setProjectIsRevnet(projectIsRevnetValue)
         let stageData: Stage[] = []
 
         if (projectIsRevnetValue) {
-          const revnetStages = await fetchRevnetStages(projectId, parseInt(chainId))
-          if (revnetStages && revnetStages.stages.length > 0) {
-            // Convert Revnet stages to rulesets for price calculation
-            const stageRulesets: Ruleset[] = revnetStages.stages.map((stage: RevnetStage) => ({
-              start: stage.startsAtOrAfter,
-              duration: stage.issuanceDecayFrequency,
-              weight: stage.initialIssuance,
-              weightCutPercent: stage.issuanceDecayPercent,
-            }))
+          const stageRulesets = await fetchAllRulesets(projectId, parseInt(chainId))
+          if (stageRulesets.length > 0) {
             setRulesets(stageRulesets)
 
-            // Build stage labels
-            stageData = revnetStages.stages.map((s: RevnetStage, i: number) => ({
-              name: `Stage ${i + 1}`,
-              start: s.startsAtOrAfter,
-            }))
+            stageData = [...stageRulesets]
+              .sort((a, b) => a.start - b.start)
+              .map((stage, i) => ({
+                name: `Stage ${i + 1}`,
+                start: stage.start,
+              }))
             setStages(stageData)
             setLoading(false)
             return
           }
+          throw new Error('No Revnet issuance stages found onchain')
+        }
+
+        // Unknown hooks can replace the ruleset weight, so a generic project
+        // still needs to fail closed instead of presenting a false forecast.
+        if (project.currentRuleset.useDataHookForPay) {
+          throw new Error('Issuance price unavailable because this project uses an unrecognized payment hook')
         }
 
         // For regular projects, fetch ruleset history
@@ -336,7 +335,7 @@ export default function PriceChart({
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
         {/* Header */}
-        <div className={`px-4 py-3 border-b flex items-center justify-between ${
+        <div className={`px-4 py-3 border-b flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${
           isDark ? 'border-white/10' : 'border-gray-100'
         }`}>
           <div>
@@ -344,7 +343,7 @@ export default function PriceChart({
               {showHistory ? 'Issuance History' : 'Current Rules Forecast'}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center justify-between gap-1 sm:w-auto sm:justify-start sm:gap-2">
             {/* Zoom out (longer range) */}
             <button
               onClick={() => {
@@ -364,12 +363,12 @@ export default function PriceChart({
               −
             </button>
             {/* Range options */}
-            <div className="flex gap-1">
+            <div className="flex min-w-0 gap-0.5 sm:gap-1">
               {RANGE_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
                   onClick={() => setRange(opt.value as RangeValue)}
-                  className={`px-2 py-0.5 text-xs transition-colors ${
+                  className={`px-1.5 py-0.5 text-xs transition-colors sm:px-2 ${
                     range === opt.value
                       ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
                       : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
@@ -409,7 +408,7 @@ export default function PriceChart({
               Loading...
             </div>
           ) : error ? (
-            <div className="h-[200px] flex items-center justify-center text-red-400">
+            <div className="h-[200px] max-w-full overflow-hidden px-4 text-center text-sm text-red-400">
               {error}
             </div>
           ) : chartData.length === 0 ? (
@@ -543,6 +542,11 @@ export default function PriceChart({
               {!projectIsRevnet && !showHistory && (
                 <p className={`mt-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                   Only current and past prices are guaranteed. The project owner can change future prices at any time.
+                </p>
+              )}
+              {projectIsRevnet && !showHistory && (
+                <p className={`mt-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Configured issuance price. A live payment may use the buyback pool when it returns more tokens; the Pay preview shows the current route.
                 </p>
               )}
             </div>

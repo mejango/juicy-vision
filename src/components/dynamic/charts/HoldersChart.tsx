@@ -111,7 +111,8 @@ export default function HoldersChart({
 
         setData(chartData)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load member data')
+        console.error('Failed to load member data:', err)
+        setError('Member data is temporarily unavailable. Try again shortly.')
       } finally {
         setLoading(false)
       }
@@ -221,7 +222,7 @@ export default function HoldersChart({
               Loading...
             </div>
           ) : error ? (
-            <div className={`h-[300px] flex items-center justify-center text-red-400`}>
+            <div className="h-[300px] max-w-full overflow-hidden px-4 text-center text-sm text-red-400" role="alert">
               {error}
             </div>
           ) : data.length === 0 ? (

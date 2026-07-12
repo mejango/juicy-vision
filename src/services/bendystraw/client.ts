@@ -2721,14 +2721,53 @@ export interface AllRulesetsData {
 
 // Fetch Revnet stages configuration
 export async function fetchRevnetStages(
-  _projectId: string,
-  _chainId: number
+  projectId: string,
+  chainId: number
 ): Promise<{ stages: RevnetStage[]; currentStage: number } | null> {
-  // V6 REVDeployer does not expose configurationOf; the full configuration is
-  // only stored on-chain as a hash (hashedEncodedConfigurationOf), so stages
-  // must come from the indexer. Returning null degrades the UI the same way as
-  // the previous silent-catch path (callers null-check and skip stage display).
-  return null
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) throw new Error(`Revnet stages unavailable on unsupported chain ${chainId}`)
+
+  try {
+    // REVDeployer stores the complete launch payload only as a hash, but every
+    // stage's economic terms are queued as a JBRuleset. Read those canonical
+    // records directly, as website/ does, and verify live REVOwner ownership.
+    const [rulesets, currentRuleset, owner] = await Promise.all([
+      fetchAllRulesets(projectId, chainId),
+      publicClient.readContract({
+        address: JB_CONTRACTS.JBRulesets,
+        abi: JB_RULESETS_ABI,
+        functionName: 'currentOf',
+        args: [BigInt(projectId)],
+      }),
+      publicClient.readContract({
+        address: JB_CONTRACTS.JBProjects,
+        abi: JB_PROJECTS_OWNER_OF_ABI,
+        functionName: 'ownerOf',
+        args: [BigInt(projectId)],
+      }),
+    ])
+    if (!isRevnet(owner)) throw new Error(`Revnet owner not recognized: ${owner}`)
+    if (rulesets.length === 0) return null
+
+    const currentIndex = rulesets.findIndex(ruleset => ruleset.id === String(currentRuleset.id))
+    const stages = rulesets.map((ruleset, index): RevnetStage => ({
+      stageNumber: index + 1,
+      startsAtOrAfter: ruleset.start,
+      splitPercent: ruleset.reservedPercent,
+      initialIssuance: ruleset.weight,
+      issuanceDecayFrequency: ruleset.duration,
+      issuanceDecayPercent: ruleset.weightCutPercent,
+      cashOutTaxRate: ruleset.cashOutTaxRate,
+      isCurrent: index === currentIndex,
+      isPast: currentIndex >= 0 && index < currentIndex,
+      isFuture: currentIndex < 0 || index > currentIndex,
+    }))
+
+    return { stages, currentStage: currentIndex >= 0 ? currentIndex + 1 : 0 }
+  } catch (err) {
+    console.error('Failed to fetch Revnet stages:', err)
+    throw new Error(`Revnet stages unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
+  }
 }
 
 // Fetch historical rulesets by enumerating all cycles from cycle 1 to current
@@ -2891,10 +2930,14 @@ export async function fetchRulesetHistory(
 
 // Simple ruleset type for price charts (avoids cycle expansion complexity)
 export interface SimpleRuleset {
+  id: string
+  cycleNumber: number
   start: number
   duration: number
   weight: string
   weightCutPercent: number
+  reservedPercent: number
+  cashOutTaxRate: number
 }
 
 // Fetch all rulesets using allOf for reliable historical data
@@ -2910,31 +2953,51 @@ export async function fetchAllRulesets(
     // Resolve the project's controller (V6 single contract set)
     const contracts = await getContractsForProject(projectId, chainId)
 
-    const MAX_RULESETS = 100
-    const rulesets = await publicClient.readContract({
-      address: contracts.JBRulesets,
-      abi: JB_RULESETS_ABI,
-      functionName: 'allOf',
-      args: [BigInt(projectId), 0n, BigInt(MAX_RULESETS)],
-    })
-    if (rulesets.length === MAX_RULESETS) {
-      throw new Error('Ruleset history may be incomplete')
+    // allOf is newest-first and follows basedOnId. Page through the exact
+    // deployed JBRulesets linked list so a large schedule is never truncated.
+    const PAGE_SIZE = 100
+    const MAX_RULESETS = 1_000
+    const result: SimpleRuleset[] = []
+    const seen = new Set<string>()
+    let startingId = 0n
+
+    while (true) {
+      const page = await publicClient.readContract({
+        address: contracts.JBRulesets,
+        abi: JB_RULESETS_ABI,
+        functionName: 'allOf',
+        args: [BigInt(projectId), startingId, BigInt(PAGE_SIZE)],
+      })
+      if (page.length === 0) break
+
+      for (const ruleset of page) {
+        const id = String(ruleset.id)
+        if (seen.has(id)) throw new Error('Ruleset history is cyclic')
+        seen.add(id)
+        if (ruleset.cycleNumber > 0) {
+          const metadata = decodeRulesetMetadata(ruleset.metadata)
+          result.push({
+            id,
+            cycleNumber: Number(ruleset.cycleNumber),
+            start: Number(ruleset.start),
+            duration: Number(ruleset.duration),
+            weight: String(ruleset.weight),
+            weightCutPercent: Number(ruleset.weightCutPercent),
+            reservedPercent: metadata.reservedPercent,
+            cashOutTaxRate: metadata.cashOutTaxRate,
+          })
+        }
+      }
+
+      const nextId = BigInt(page[page.length - 1].basedOnId)
+      if (page.length < PAGE_SIZE || nextId === 0n) break
+      if (result.length >= MAX_RULESETS || seen.has(nextId.toString())) {
+        throw new Error('Ruleset history exceeds the safe traversal limit')
+      }
+      startingId = nextId
     }
 
-    if (!rulesets || rulesets.length === 0) return []
-
-    // Convert to simple ruleset format and filter out empty entries
-    const result: SimpleRuleset[] = rulesets
-      .filter((r) => r.cycleNumber > 0)
-      .map((r) => ({
-        start: Number(r.start),
-        duration: Number(r.duration),
-        weight: String(r.weight),
-        weightCutPercent: Number(r.weightCutPercent),
-      }))
-      .sort((a, b) => a.start - b.start) // Sort chronologically
-
-    return result
+    return result.sort((a, b) => a.start - b.start)
   } catch (err) {
     console.error('Failed to fetch all rulesets:', err)
     throw new Error(`Ruleset history unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
@@ -4031,7 +4094,7 @@ export async function fetchMultiChainParticipants(
     const chainResults = await Promise.all(
       connectedChains.map(async ({ chainId, projectId }) => {
         const client = getClient(getNetworkOption(chainId))
-        const [participantsData, projectData] = await Promise.all([
+        const [participantsResult, projectResult] = await Promise.allSettled([
           client.request<{
             participants: {
               totalCount: number
@@ -4051,12 +4114,18 @@ export async function fetchMultiChainParticipants(
           })
         ])
 
-        const tokenSupply = projectData.project?.tokenSupply
+        if (projectResult.status === 'rejected') throw projectResult.reason
+        const tokenSupply = projectResult.value.project?.tokenSupply
         if (!isRawAmount(tokenSupply)) {
           throw new Error(`Project token supply is unavailable on chain ${chainId}`)
         }
+        // Bendystraw can reject an empty participants query even when its
+        // project row correctly reports zero supply. Zero supply proves there
+        // are no members, so do not turn that indexer edge case into an error.
+        if (BigInt(tokenSupply) === 0n) return { items: [], tokenSupply: 0n }
+        if (participantsResult.status === 'rejected') throw participantsResult.reason
         return {
-          items: parseParticipantPage(participantsData.participants, chainId),
+          items: parseParticipantPage(participantsResult.value.participants, chainId),
           tokenSupply: BigInt(tokenSupply),
         }
       })

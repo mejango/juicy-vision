@@ -80,14 +80,19 @@ describe('HoldersChart', () => {
   })
 
   describe('error state', () => {
-    it('shows error message when fetch fails', async () => {
-      vi.mocked(bendystraw.fetchConnectedChains).mockRejectedValue(new Error('API error'))
+    it('shows a concise error without leaking backend details when fetch fails', async () => {
+      vi.mocked(bendystraw.fetchConnectedChains).mockRejectedValue(
+        new Error('Unexpected error: {"response":{"errors":[{"extensions":{"code":"INTERNAL_SERVER_ERROR"}}]}}'),
+      )
 
       render(<HoldersChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText('API error')).toBeInTheDocument()
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'Member data is temporarily unavailable. Try again shortly.',
+        )
       })
+      expect(screen.queryByText(/INTERNAL_SERVER_ERROR/)).not.toBeInTheDocument()
     })
 
     it('shows error when no holders found', async () => {
