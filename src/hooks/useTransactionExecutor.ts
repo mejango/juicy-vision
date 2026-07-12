@@ -1,8 +1,7 @@
 import { useEffect, useCallback } from 'react'
 import { useAccount, useSwitchChain } from 'wagmi'
 import { getWalletClient } from 'wagmi/actions'
-import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, encodeAbiParameters, erc20Abi, keccak256, toBytes, type Hex, type Address, type Chain } from 'viem'
-import { ethers } from 'ethers'
+import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, erc20Abi, type Hex, type Address, type Chain } from 'viem'
 import { useTransactionStore, useAuthStore } from '../stores'
 import { wagmiConfig } from '../config/wagmi'
 import { ALL_VIEM_CHAINS, RPC_ENDPOINTS, USDC_ADDRESSES, type SupportedChainId } from '../constants'
@@ -14,6 +13,7 @@ import { assertCurrentProjectPayConfigurationTrusted, requireRecognizedRuntimeHo
 import { createTransactionRecord, updateTransactionRecord, type TransactionReceipt } from '../api/transactions'
 import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../utils/terminalPreview'
 import { executeManagedTransaction, useManagedWallet } from './useManagedWallet'
+import { buildNftPayMetadata } from '../utils/nftPayMetadata'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -58,69 +58,6 @@ const TERMINAL_ADD_TO_BALANCE_ABI = [
 
 // Chain configs
 const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
-
-// =============================================================================
-// NFT 721 Metadata Encoding
-// =============================================================================
-
-/**
- * Compute the V6 721 pay metadata ID.
- * The target is the hook's METADATA_ID_TARGET implementation address, not the clone.
- */
-function computeNFTMetadataId(metadataIdTarget: Address): Hex {
-  const purposeHash = keccak256(toBytes('pay'))
-
-  // bytes20 takes the FIRST 20 bytes of the hash
-  const purposeBytes20 = purposeHash.slice(0, 42)
-  const targetBytes20 = metadataIdTarget.toLowerCase()
-
-  // Convert to BigNumber for XOR
-  const purposeBN = ethers.BigNumber.from(purposeBytes20)
-  const targetBN = ethers.BigNumber.from(targetBytes20)
-  const xorResult = purposeBN.xor(targetBN)
-
-  // Pad to exactly 40 hex chars (20 bytes) and take FIRST 4 bytes (8 hex chars)
-  const xorHex = xorResult.toHexString().slice(2).padStart(40, '0')
-  const first4Bytes = xorHex.slice(0, 8)
-
-  return ('0x' + first4Bytes) as Hex
-}
-
-/**
- * Build NFT mint metadata with tier IDs
- * Format for JBMetadataResolver:
- * - 32B reserved
- * - Lookup table entries (4B ID + 1B offset), padded to 32B
- * - Data section (allowOverspending, tier IDs)
- */
-function buildNFTMintMetadata(metadataIdTarget: Address, tierIds: number[]): Hex {
-  if (tierIds.length === 0 || tierIds.some((id) => !Number.isInteger(id) || id <= 0 || id > 0xffff)) {
-    throw new Error('Invalid NFT tier selection')
-  }
-  const nftId = computeNFTMetadataId(metadataIdTarget)
-
-  // The payer allows leftover value to become hook credits when the collection
-  // permits it. A collection with preventOverspending still enforces exact value.
-  const tierData = encodeAbiParameters([{ type: 'bool' }, { type: 'uint16[]' }], [true, tierIds])
-
-  // The raw data bytes (without 0x prefix)
-  const dataHex = tierData.slice(2)
-  const dataBytes = dataHex.length / 2
-
-  // Data must be padded to 32-byte boundary
-  const paddedDataBytes = Math.ceil(dataBytes / 32) * 32
-  const paddedDataHex = dataHex.padEnd(paddedDataBytes * 2, '0')
-
-  // Build metadata:
-  const reserved = '00'.repeat(32)
-  const idHex = nftId.slice(2)
-  const offsetHex = '02' // Offset in words = 2
-  const lookupPadding = '00'.repeat(27)
-
-  const metadata = '0x' + reserved + idHex + offsetHex + lookupPadding + paddedDataHex
-
-  return metadata as Hex
-}
 
 interface PayEventDetail {
   txId: string
@@ -585,7 +522,7 @@ export function useTransactionExecutor() {
             paymentAmount: projectAmount,
             paymentDecimals: isUsdc ? 6 : 18,
           })
-          nftMetadata = buildNFTMintMetadata(identity.metadataIdTarget, tierIds)
+          nftMetadata = buildNftPayMetadata(identity.metadataIdTarget, tierIds)
         } catch (err) {
           const message = err instanceof Error ? err.message : 'NFT purchase configuration is unavailable'
           updateTransaction(txId, {

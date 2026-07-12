@@ -1,21 +1,20 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
-import { createPublicClient, http, formatEther, formatUnits, parseUnits, erc20Abi } from 'viem'
+import { createPublicClient, http, formatEther, formatUnits, parseUnits, erc20Abi, type Address, type Hex } from 'viem'
 import {
   fetchProject,
   fetchSuckerGroupBalance,
   fetchOwnersCount,
   fetchEthPrice,
   fetchProjectTokenSymbol,
-  fetchProjectWithRuleset,
   fetchProjectAccountingContexts,
   type Project,
   type ConnectedChain,
   type SuckerGroupBalance,
 } from '../../services/bendystraw'
 import type { IpfsProjectMetadata } from '../../utils/ipfs'
-import { getProjectDataHook, fetchResolvedNFTTiers, fetchHookFlags, getEffectiveTierPrice, resolveTierUri, type ResolvedNFTTier, type JB721HookFlags } from '../../services/nft'
+import { getProjectDataHook, fetchResolvedNFTTiers, fetchHookFlags, getEffectiveTierPrice, requireRecognized721HookIdentity, resolveTierUri, type ResolvedNFTTier, type JB721HookFlags } from '../../services/nft'
 import { inlineSvgImages } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore, type PaymentStage, type TransactionStatus } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, CHAINS, type SupportedChainId } from '../../constants'
@@ -28,10 +27,11 @@ import BuyJuiceModal from '../juice/BuyJuiceModal'
 import { ProjectLink } from './ProjectLink'
 import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
 import { assertCurrentProjectPayConfigurationTrusted } from '../../utils/projectTrust'
-import { calculatePayerTokenCount } from '../../utils/rulesetMath'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
+import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../../utils/terminalPreview'
+import { buildNftPayMetadata } from '../../utils/nftPayMetadata'
 
 // Metadata extracted from on-chain resolver
 interface OnChainTierMetadata {
@@ -166,19 +166,26 @@ const CHAIN_INFO: Record<string, { name: string; slug: string }> = {
   '421614': { name: 'Arb Sepolia', slug: 'arbsepolia' },
 }
 
-interface IssuancePreview {
-  weight: bigint
-  paymentDecimals: number
-  reservedPercent: number
-}
+type PayCardPreview =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'unavailable'; reason: string }
+  | {
+      status: 'ready'
+      beneficiaryTokenCount: bigint
+      reservedTokenCount: bigint
+      route: 'issuance' | 'amm'
+    }
 
 function formatExactTokenEstimate(value: bigint, maximumFractionDigits = 2): string {
   const tokenScale = 10n ** 18n
   const displayScale = 10n ** BigInt(maximumFractionDigits)
   const rounded = (value * displayScale + tokenScale / 2n) / tokenScale
   const whole = rounded / displayScale
-  const fraction = (rounded % displayScale).toString().padStart(maximumFractionDigits, '0').replace(/0+$/, '')
-  return `${whole.toLocaleString('en-US')}${fraction ? `.${fraction}` : ''}`
+  const hadFraction = value % tokenScale !== 0n
+  const fraction = (rounded % displayScale).toString().padStart(maximumFractionDigits, '0')
+  if (hadFraction) return `${whole.toLocaleString('en-US')}.${fraction}`
+  return whole.toLocaleString('en-US')
 }
 
 export type PaymentToken = 'ETH' | 'USDC' | 'PAY_CREDITS'
@@ -195,6 +202,8 @@ const ONCHAIN_PAYMENT_CANDIDATES = [
   { symbol: 'ETH' as const, name: 'Ether', decimals: 18 },
   { symbol: 'USDC' as const, name: 'USD Coin', decimals: 6 },
 ]
+
+const PREVIEW_BENEFICIARY = '0x000000000000000000000000000000000000dEaD' as Address
 
 // Stage labels for payment progress
 const STAGE_LABELS: Record<PaymentStage, string> = {
@@ -344,12 +353,13 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [amount, setAmount] = useState('25')
+  const [amount, setAmount] = useState('1')
   const [memo, setMemo] = useState('')
   const [contributionOnly, setContributionOnly] = useState(false)
   const [paying, setPaying] = useState(false)
   const [selectedChainId, setSelectedChainId] = useState(initialChainId)
-  const [selectedToken, setSelectedToken] = useState<PaymentToken>('PAY_CREDITS')
+  const [selectedToken, setSelectedToken] = useState<PaymentToken>('ETH')
+  const [actionDropdownOpen, setActionDropdownOpen] = useState(false)
   const [chainDropdownOpen, setChainDropdownOpen] = useState(false)
   const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false)
   const [showBuyJuiceModal, setShowBuyJuiceModal] = useState(false)
@@ -358,8 +368,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   // Connected chains with their project IDs (may differ per chain)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
   const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
-  // Current issuance rate for token calculation
-  const [issuancePreview, setIssuancePreview] = useState<IssuancePreview | null>(null)
+  const [payPreview, setPayPreview] = useState<PayCardPreview>({ status: 'idle' })
   // Full metadata from IPFS (has complete description)
   const [fullMetadata, setFullMetadata] = useState<IpfsProjectMetadata | null>(null)
   // Sucker group balance (total + per-chain breakdown)
@@ -391,12 +400,18 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   // Track quantity for each selected tier: { tierId: quantity }
   const [tierQuantities, setTierQuantities] = useState<Record<number, number>>({})
   // Derived: array of tier IDs (each ID repeated by quantity) for payment encoding
-  const selectedTierIds = Object.entries(tierQuantities).flatMap(([id, qty]) => Array(qty).fill(Number(id)))
+  const selectedTierIds = useMemo(
+    () => Object.entries(tierQuantities).flatMap(([id, qty]) => Array(qty).fill(Number(id))),
+    [tierQuantities],
+  )
   const selectedPaymentOption = paymentTokenOptions.find((option) => option.symbol === selectedToken)
   const canContributeOnly = selectedToken !== 'PAY_CREDITS' && selectedPaymentOption?.route === 'direct' && selectedTierIds.length === 0
   const addsToBalance = contributionOnly && canContributeOnly
   useEffect(() => {
-    if (!canContributeOnly) setContributionOnly(false)
+    if (!canContributeOnly) {
+      setContributionOnly(false)
+      setActionDropdownOpen(false)
+    }
   }, [canContributeOnly])
   // Cache for on-chain metadata (productName, categoryName) by tierId
   const [tierMetadata, setTierMetadata] = useState<Record<number, OnChainTierMetadata>>({})
@@ -526,7 +541,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       .finally(() => setEthPriceLoading(false))
   }, [])
 
-  // Fetch project data and issuance rate when chain changes
+  // Fetch project data when chain changes.
   const hasLoadedProjectRef = useRef(false)
   useEffect(() => {
     async function load() {
@@ -547,22 +562,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         setSuckerBalance(groupBalance)
         setOwnersCount(owners)
         setProjectTokenSymbol(tokenSymbol)
-
-        // Show an issuance estimate only when the current on-chain ruleset is
-        // the complete pricing formula: no pay hook and no currency conversion.
-        // Historical payment averages can become stale at a ruleset boundary.
-        let preview: IssuancePreview | null = null
-        const projectRuleset = await fetchProjectWithRuleset(currentProjectId, chainIdNum)
-        const currentRuleset = projectRuleset?.currentRuleset
-        if (currentRuleset?.weight && !currentRuleset.useDataHookForPay && currentRuleset.baseCurrency === groupBalance.currency) {
-          const weight = BigInt(currentRuleset.weight)
-          const decimals = groupBalance.decimals ?? 18
-          const reservedPercent = currentRuleset.reservedPercent
-          if (Number.isSafeInteger(reservedPercent) && reservedPercent >= 0 && reservedPercent <= 10_000) {
-            preview = { weight, paymentDecimals: decimals, reservedPercent }
-          }
-        }
-        setIssuancePreview(preview)
 
         setFullMetadata((data.metadata as IpfsProjectMetadata | undefined) ?? null)
       } catch (err) {
@@ -735,29 +734,134 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     }
   }, [balanceLoading, ethPriceLoading, ethPrice, walletEthBalance, walletUsdcBalance, juiceBalance, paymentTokenOptions])
 
-  // Mirror JBTerminalStore token issuance and JBController's reserved split with
-  // integer math. Cross-currency and data-hook payments require a live quote.
-  const expectedTokens = useMemo(() => {
-    if (addsToBalance || !issuancePreview || !amount) return null
+  // The card uses the same hook-aware terminal preview as final transaction review.
+  // This covers issuance, buyback/AMM routing, cross-currency payments, and reserved splits.
+  useEffect(() => {
+    let cancelled = false
 
-    try {
-      const projectCurrency = suckerBalance?.currency
-      if (projectCurrency !== 1 && projectCurrency !== 2) return null
-      if (selectedToken === 'PAY_CREDITS') return null
-      if ((projectCurrency === 1 && selectedToken !== 'ETH') || (projectCurrency === 2 && selectedToken !== 'USDC')) return null
-
-      const paymentAmount = parseUnits(amount, issuancePreview.paymentDecimals)
-      if (paymentAmount <= 0n) return null
-      const payerTokenCount = calculatePayerTokenCount(paymentAmount, issuancePreview.paymentDecimals, issuancePreview.weight, issuancePreview.reservedPercent)
-      if (payerTokenCount === 0n) return null
-      return formatExactTokenEstimate(payerTokenCount)
-    } catch {
-      return null
+    if (
+      addsToBalance ||
+      selectedToken === 'PAY_CREDITS' ||
+      !selectedPaymentOption ||
+      paymentSafetyLoading ||
+      paymentSafetyError ||
+      !amount
+    ) {
+      setPayPreview({ status: 'idle' })
+      return
     }
-  }, [amount, issuancePreview, selectedToken, suckerBalance?.currency, addsToBalance])
+
+    let paymentAmount: bigint
+    try {
+      paymentAmount = parseUnits(amount, selectedPaymentOption.decimals)
+    } catch {
+      setPayPreview({ status: 'idle' })
+      return
+    }
+    if (paymentAmount <= 0n) {
+      setPayPreview({ status: 'idle' })
+      return
+    }
+
+    setPayPreview({ status: 'loading' })
+    const timer = setTimeout(async () => {
+      try {
+        const chainIdNum = parseInt(selectedChainId)
+        const chain = VIEM_CHAINS[chainIdNum as SupportedChainId]
+        const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
+        if (!chain || !rpcUrl) throw new Error('Unsupported payment chain')
+
+        const client = createPublicClient({ chain, transport: http(rpcUrl) })
+        const tokenAddress = getPaymentTokenAddress(selectedToken, chainIdNum)
+        const terminal = await getPaymentTerminal(
+          client,
+          chainIdNum,
+          BigInt(currentProjectId),
+          tokenAddress,
+        )
+
+        let metadata: Hex = '0x'
+        if (selectedTierIds.length > 0) {
+          if (!nftHookAddress) throw new Error('NFT payment configuration is unavailable')
+          const currentHook = await getProjectDataHook(currentProjectId, chainIdNum)
+          if (!currentHook || currentHook.toLowerCase() !== nftHookAddress.toLowerCase()) {
+            throw new Error('The project NFT hook changed')
+          }
+          const identity = await requireRecognized721HookIdentity(
+            client,
+            nftHookAddress,
+            BigInt(currentProjectId),
+          )
+          metadata = buildNftPayMetadata(identity.metadataIdTarget, selectedTierIds)
+        }
+
+        const beneficiary = (activeWalletAddress ?? PREVIEW_BENEFICIARY) as Address
+        const preview = await client.readContract({
+          account: beneficiary,
+          address: terminal.address,
+          abi: TERMINAL_PREVIEW_PAY_ABI,
+          functionName: 'previewPayFor',
+          args: [BigInt(currentProjectId), tokenAddress, paymentAmount, beneficiary, metadata],
+        })
+        const outcome = resolvePayPreviewOutcome({
+          beneficiaryTokenCount: preview[1],
+          reservedTokenCount: preview[2],
+          hookSpecifications: preview[3],
+        })
+        if (outcome.beneficiaryTokenCount <= 0n && selectedTierIds.length === 0) {
+          throw new Error('This payment currently returns no project tokens')
+        }
+        if (!cancelled) {
+          setPayPreview({
+            status: 'ready',
+            beneficiaryTokenCount: outcome.beneficiaryTokenCount,
+            reservedTokenCount: outcome.reservedTokenCount,
+            route: outcome.route,
+          })
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const reason = err instanceof Error
+            ? err.message.split('\n')[0].slice(0, 160)
+            : 'Live pay preview unavailable'
+          setPayPreview({ status: 'unavailable', reason })
+        }
+      }
+    }, 250)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [
+    activeWalletAddress,
+    addsToBalance,
+    amount,
+    currentProjectId,
+    nftHookAddress,
+    paymentSafetyError,
+    paymentSafetyLoading,
+    selectedChainId,
+    selectedPaymentOption,
+    selectedTierIds,
+    selectedToken,
+  ])
+
+  const requiresLivePayPreview = selectedToken !== 'PAY_CREDITS' && !addsToBalance
+  const livePayPreviewReady = payPreview.status === 'ready'
 
   // Check if form should be locked due to active/completed payment
   const isPaymentLocked = persistedPayment?.status && persistedPayment.status !== 'pending'
+  const paymentButtonDisabled = Boolean(
+    nftSafetyError ||
+    paymentSafetyError ||
+    paymentSafetyLoading ||
+    paying ||
+    !amount ||
+    parseFloat(amount) <= 0 ||
+    isPaymentLocked ||
+    (requiresLivePayPreview && !livePayPreviewReady),
+  )
 
   // Check if user has sufficient balance for the payment
   const checkSufficientBalance = useCallback(
@@ -997,6 +1101,212 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       })
     }
   }, [activePayment?.status, activePayment?.hash, activePayment?.error, refetchJuiceBalance, updatePersistedPayment])
+
+  const renderPayOutcomePreview = () => {
+    const muted = isDark ? 'text-gray-400' : 'text-gray-500'
+
+    if (addsToBalance) {
+      return (
+        <div className={`mt-3 text-xs ${muted}`}>
+          Add to Balance does not issue project tokens. Choose Pay to receive them.
+        </div>
+      )
+    }
+    if (selectedToken === 'PAY_CREDITS' || payPreview.status === 'idle') return null
+    if (payPreview.status === 'loading') {
+      return <div className={`mt-3 text-xs ${muted}`} aria-live="polite">Checking live token quote…</div>
+    }
+    if (payPreview.status === 'unavailable') {
+      return (
+        <div className={`mt-3 text-xs ${isDark ? 'text-amber-300' : 'text-amber-700'}`} role="status">
+          Live token quote unavailable: {payPreview.reason}
+        </div>
+      )
+    }
+
+    const tokenSymbol = projectTokenSymbol || project?.name.split(' ')[0].toUpperCase().slice(0, 6) || 'TOKENS'
+    return (
+      <div className={`mt-4 min-w-0 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`} aria-live="polite">
+        <div className={`text-xs ${muted}`}>You get</div>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent('juice:switch-tab', {
+                  detail: { tab: 'tokens' },
+                }),
+              )
+            }
+            className={`min-w-0 break-all text-left text-lg font-semibold hover:underline ${
+              isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'
+            }`}
+          >
+            {formatExactTokenEstimate(payPreview.beneficiaryTokenCount)} {tokenSymbol}
+          </button>
+          <span className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold uppercase ${
+            payPreview.route === 'amm'
+              ? isDark
+                ? 'border-purple-400/40 text-purple-300'
+                : 'border-purple-300 text-purple-700'
+              : isDark
+                ? 'border-gray-500 text-gray-300'
+                : 'border-gray-300 text-gray-700'
+          }`}>
+            {payPreview.route}
+          </span>
+        </div>
+        {payPreview.reservedTokenCount > 0n && (
+          <div className={`mt-1 break-all text-xs font-medium ${muted}`}>
+            Splits get {formatExactTokenEstimate(payPreview.reservedTokenCount)} {tokenSymbol}
+          </div>
+        )}
+        <div className={`mt-1 text-[10px] ${muted}`}>Live preview · exact minimum checked before signing.</div>
+        {Object.keys(tierQuantities).length > 0 && (
+          <div className="mt-2">
+            {Object.entries(tierQuantities).map(([tierId, qty]) => {
+              const tier = nftTiers.find((candidate) => candidate.tierId === Number(tierId))
+              if (!tier) return null
+              const exceedsSupply = qty > tier.remainingSupply
+              return (
+                <div key={tierId} className={exceedsSupply ? 'text-orange-400' : ''}>
+                  {qty > 1 ? `${qty}x ` : ''}
+                  {getTierDisplayName(tier)}
+                  {exceedsSupply && <span className="ml-1 text-xs">(only {tier.remainingSupply} left)</span>}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderPaymentModeAndChainSelector = () => {
+    const canSelectChain = availableChains.length > 1
+    const selectorColor = isDark
+      ? 'text-gray-300 hover:text-white'
+      : 'text-gray-700 hover:text-gray-900'
+    const disabledColor = isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
+
+    return (
+      <div className="relative mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <div className="relative">
+          <button
+            type="button"
+            aria-label={`Payment action: ${addsToBalance ? 'Add to balance' : 'Pay'}`}
+            aria-haspopup={canContributeOnly ? 'menu' : undefined}
+            aria-expanded={canContributeOnly ? actionDropdownOpen : undefined}
+            onClick={() => {
+              if (isPaymentLocked || !canContributeOnly) return
+              setActionDropdownOpen(!actionDropdownOpen)
+              setChainDropdownOpen(false)
+              setTokenDropdownOpen(false)
+            }}
+            disabled={Boolean(isPaymentLocked) || !canContributeOnly}
+            className={`flex items-center gap-1 font-semibold underline underline-offset-2 ${selectorColor} ${disabledColor}`}
+          >
+            {addsToBalance ? 'Add to balance' : 'Pay'}
+            {canContributeOnly && (
+              <svg className={`h-3 w-3 transition-transform ${actionDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            )}
+          </button>
+          {actionDropdownOpen && canContributeOnly && (
+            <div className={`absolute left-0 top-full z-30 mt-1 min-w-[170px] border py-1 shadow-lg ${isDark ? 'border-white/10 bg-juice-dark' : 'border-gray-200 bg-white'}`} role="menu">
+              {[
+                { label: 'Pay', contributionOnly: false },
+                { label: 'Add to balance', contributionOnly: true },
+              ].map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setContributionOnly(option.contributionOnly)
+                    setActionDropdownOpen(false)
+                  }}
+                  className={`w-full px-3 py-2 text-left text-sm ${
+                    contributionOnly === option.contributionOnly
+                      ? isDark
+                        ? 'bg-white/10 text-white'
+                        : 'bg-gray-100 text-gray-900'
+                      : isDark
+                        ? 'text-gray-300 hover:bg-white/5'
+                        : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <span className="text-gray-500">on</span>
+
+        <div className="relative">
+          <button
+            type="button"
+            aria-label={`Payment chain: ${selectedChainInfo.name}`}
+            aria-haspopup={canSelectChain ? 'menu' : undefined}
+            aria-expanded={canSelectChain ? chainDropdownOpen : undefined}
+            onClick={() => {
+              if (isPaymentLocked || !canSelectChain) return
+              setChainDropdownOpen(!chainDropdownOpen)
+              setActionDropdownOpen(false)
+              setTokenDropdownOpen(false)
+            }}
+            disabled={Boolean(isPaymentLocked) || !canSelectChain}
+            className={`flex items-center gap-1 font-semibold underline underline-offset-2 ${selectorColor} ${disabledColor}`}
+          >
+            {selectedChainInfo.name}
+            {canSelectChain && (
+              <svg className={`h-3 w-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            )}
+          </button>
+          {chainDropdownOpen && canSelectChain && (
+            <div className={`absolute left-0 top-full z-30 mt-1 min-w-[150px] border py-1 shadow-lg ${isDark ? 'border-white/10 bg-juice-dark' : 'border-gray-200 bg-white'}`} role="menu">
+              {availableChains.map((chain) => {
+                const info = CHAIN_INFO[chain.chainId.toString()]
+                if (!info) return null
+                return (
+                  <button
+                    key={chain.chainId}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setSelectedChainId(chain.chainId.toString())
+                      setChainDropdownOpen(false)
+                    }}
+                    className={`w-full px-3 py-2 text-left text-sm ${
+                      chain.chainId.toString() === selectedChainId
+                        ? isDark
+                          ? 'bg-white/10 text-white'
+                          : 'bg-gray-100 text-gray-900'
+                        : isDark
+                          ? 'text-gray-300 hover:bg-white/5'
+                          : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {info.name}
+                    {chain.projectId !== 0 && chain.projectId.toString() !== projectId && (
+                      <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                        (#{chain.projectId})
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   if (loading) {
     return (
@@ -1355,6 +1665,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
           {/* Sticky pay controls - sticks to top when scrolling */}
           <div className={`sticky top-0 z-20 px-4 ${nftTiers.length > 0 ? 'py-3' : 'pt-4 pb-3'} ${isDark ? 'bg-[#222]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
+            {renderPaymentModeAndChainSelector()}
             <div className="flex gap-2">
               <div className="flex-1">
                 <div
@@ -1373,6 +1684,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     onFocus={() => {
+                      setActionDropdownOpen(false)
                       setChainDropdownOpen(false)
                       setTokenDropdownOpen(false)
                     }}
@@ -1392,6 +1704,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                         e.stopPropagation()
                         if (!isPaymentLocked) {
                           setTokenDropdownOpen(!tokenDropdownOpen)
+                          setActionDropdownOpen(false)
                           setChainDropdownOpen(false)
                         }
                       }}
@@ -1439,23 +1752,17 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               <div className="relative">
                 <button
                   onClick={(e) => handlePay(e)}
-                  disabled={
-                    !!nftSafetyError ||
-                    !!paymentSafetyError ||
-                    paymentSafetyLoading ||
-                    paying ||
-                    !amount ||
-                    parseFloat(amount) <= 0 ||
-                    (persistedPayment?.status && persistedPayment.status !== 'pending')
-                  }
+                  disabled={paymentButtonDisabled}
                   className={`px-4 py-2 text-sm font-medium transition-colors border border-transparent ${
-                    nftSafetyError || paymentSafetyError || paymentSafetyLoading || paying || !amount || parseFloat(amount) <= 0 || (persistedPayment?.status && persistedPayment.status !== 'pending')
+                    paymentButtonDisabled
                       ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                       : 'bg-green-500 hover:bg-green-600 text-black'
                   }`}
                 >
                   {paymentSafetyLoading
                     ? 'Checking...'
+                    : requiresLivePayPreview && payPreview.status === 'loading'
+                    ? 'Quoting...'
                     : paying
                     ? '...'
                     : persistedPayment?.status === 'completed'
@@ -1468,59 +1775,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     ? 'Add'
                     : 'Pay'}
                 </button>
-                {/* Chain selector - only show for ETH/USDC, positioned absolutely */}
-                {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
-                  <div className="absolute top-full right-0 mt-1">
-                    <button
-                      onClick={() => {
-                        if (!isPaymentLocked) {
-                          setChainDropdownOpen(!chainDropdownOpen)
-                          setTokenDropdownOpen(false)
-                        }
-                      }}
-                      disabled={isPaymentLocked}
-                      className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'} ${
-                        isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
-                      }`}
-                    >
-                      on <span className="underline">{selectedChainInfo.name}</span>
-                      <svg className={`w-3 h-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {chainDropdownOpen && (
-                      <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'}`}>
-                        {availableChains.map((chain) => {
-                          const info = CHAIN_INFO[chain.chainId.toString()]
-                          if (!info) return null
-                          return (
-                            <button
-                              key={chain.chainId}
-                              onClick={() => {
-                                setSelectedChainId(chain.chainId.toString())
-                                setChainDropdownOpen(false)
-                              }}
-                              className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
-                                chain.chainId.toString() === selectedChainId
-                                  ? isDark
-                                    ? 'bg-white/10 text-white'
-                                    : 'bg-gray-100 text-gray-900'
-                                  : isDark
-                                  ? 'text-gray-300 hover:bg-white/5'
-                                  : 'text-gray-700 hover:bg-gray-50'
-                              }`}
-                            >
-                              {info.name}
-                              {chain.projectId !== 0 && chain.projectId.toString() !== projectId && (
-                                <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>(#{chain.projectId})</span>
-                              )}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -1528,42 +1782,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           {/* Content below sticky with lighter background */}
           <div className={isDark ? 'bg-[#222]' : 'bg-gray-50'}>
             <div className="px-4">
-              {/* Token preview - always show */}
-              {expectedTokens !== null ? (
-                <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Current rules estimate:</span>
-                  <span> {expectedTokens} </span>
-                  <button
-                    onClick={() =>
-                      window.dispatchEvent(
-                        new CustomEvent('juice:switch-tab', {
-                          detail: { tab: 'tokens' },
-                        })
-                      )
-                    }
-                    className={`font-medium hover:underline ${isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'}`}
-                  >
-                    {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}
-                  </button>
-                  <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Exact minimum checked before signing.</span>
-                  {Object.keys(tierQuantities).length > 0 && (
-                    <div className="mt-1">
-                      {Object.entries(tierQuantities).map(([tierId, qty]) => {
-                        const tier = nftTiers.find((t) => t.tierId === Number(tierId))
-                        if (!tier) return null
-                        const exceedsSupply = qty > tier.remainingSupply
-                        return (
-                          <div key={tierId} className={exceedsSupply ? 'text-orange-400' : ''}>
-                            {qty > 1 ? `${qty}x ` : ''}
-                            {getTierDisplayName(tier)}
-                            {exceedsSupply && <span className="text-xs ml-1">(only {tier.remainingSupply} left)</span>}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              ) : null}
+              {renderPayOutcomePreview()}
 
               {/* Memo input */}
               <input
@@ -1576,13 +1795,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
                 }`}
               />
-              {canContributeOnly && (
-                <label className={`mt-2 flex cursor-pointer items-center gap-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                  <input type="checkbox" checked={contributionOnly} onChange={(event) => setContributionOnly(event.target.checked)} disabled={isPaymentLocked} />
-                  Add to the project balance without receiving project tokens
-                </label>
-              )}
-
               <div className="pb-10" />
 
               {/* Payment progress indicator */}
@@ -1917,6 +2129,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             </div>
           )}
 
+          {renderPaymentModeAndChainSelector()}
+
           {/* Amount input with token selector and pay button */}
           <div className="flex gap-2">
             <div className="flex-1">
@@ -1937,6 +2151,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   onFocus={() => {
+                    setActionDropdownOpen(false)
                     setChainDropdownOpen(false)
                     setTokenDropdownOpen(false)
                   }}
@@ -1956,6 +2171,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       e.stopPropagation()
                       if (!isPaymentLocked) {
                         setTokenDropdownOpen(!tokenDropdownOpen)
+                        setActionDropdownOpen(false)
                         setChainDropdownOpen(false)
                       }
                     }}
@@ -2004,23 +2220,17 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             <div className="relative">
               <button
                 onClick={(e) => handlePay(e)}
-                disabled={
-                  !!nftSafetyError ||
-                  !!paymentSafetyError ||
-                  paymentSafetyLoading ||
-                  paying ||
-                  !amount ||
-                  parseFloat(amount) <= 0 ||
-                  (persistedPayment?.status && persistedPayment.status !== 'pending')
-                }
+                disabled={paymentButtonDisabled}
                 className={`px-4 py-2 text-sm font-medium transition-colors border border-transparent ${
-                  nftSafetyError || paymentSafetyError || paymentSafetyLoading || paying || !amount || parseFloat(amount) <= 0 || (persistedPayment?.status && persistedPayment.status !== 'pending')
+                  paymentButtonDisabled
                     ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                     : 'bg-green-500 hover:bg-green-600 text-black'
                 }`}
               >
                 {paymentSafetyLoading
                   ? 'Checking...'
+                  : requiresLivePayPreview && payPreview.status === 'loading'
+                  ? 'Quoting...'
                   : paying
                   ? '...'
                   : persistedPayment?.status === 'completed'
@@ -2033,59 +2243,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   ? 'Add'
                   : 'Pay'}
               </button>
-              {/* Chain selector - only show for ETH/USDC, positioned absolutely */}
-              {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
-                <div className="absolute top-full right-0 mt-1">
-                  <button
-                    onClick={() => {
-                      if (!isPaymentLocked) {
-                        setChainDropdownOpen(!chainDropdownOpen)
-                        setTokenDropdownOpen(false)
-                      }
-                    }}
-                    disabled={isPaymentLocked}
-                    className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'} ${
-                      isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
-                    }`}
-                  >
-                    on <span className="underline">{selectedChainInfo.name}</span>
-                    <svg className={`w-3 h-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {chainDropdownOpen && (
-                    <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'}`}>
-                      {availableChains.map((chain) => {
-                        const info = CHAIN_INFO[chain.chainId.toString()]
-                        if (!info) return null
-                        return (
-                          <button
-                            key={chain.chainId}
-                            onClick={() => {
-                              setSelectedChainId(chain.chainId.toString())
-                              setChainDropdownOpen(false)
-                            }}
-                            className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
-                              chain.chainId.toString() === selectedChainId
-                                ? isDark
-                                  ? 'bg-white/10 text-white'
-                                  : 'bg-gray-100 text-gray-900'
-                                : isDark
-                                ? 'text-gray-300 hover:bg-white/5'
-                                : 'text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            {info.name}
-                            {chain.projectId !== 0 && chain.projectId.toString() !== projectId && (
-                              <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>(#{chain.projectId})</span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
@@ -2102,42 +2259,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             />
           )}
 
-          {/* Token preview - always show */}
-          {expectedTokens !== null ? (
-            <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-              <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Current rules estimate:</span>
-              <span> {expectedTokens} </span>
-              <button
-                onClick={() =>
-                  window.dispatchEvent(
-                    new CustomEvent('juice:switch-tab', {
-                      detail: { tab: 'tokens' },
-                    })
-                  )
-                }
-                className={`font-medium hover:underline ${isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'}`}
-              >
-                {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}
-              </button>
-              <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Exact minimum checked before signing.</span>
-              {Object.keys(tierQuantities).length > 0 && (
-                <div className="mt-1">
-                  {Object.entries(tierQuantities).map(([tierId, qty]) => {
-                    const tier = nftTiers.find((t) => t.tierId === Number(tierId))
-                    if (!tier) return null
-                    const exceedsSupply = qty > tier.remainingSupply
-                    return (
-                      <div key={tierId} className={exceedsSupply ? 'text-orange-400' : ''}>
-                        {qty > 1 ? `${qty}x ` : ''}
-                        {getTierDisplayName(tier)}
-                        {exceedsSupply && <span className="text-xs ml-1">(only {tier.remainingSupply} left)</span>}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          ) : null}
+          {renderPayOutcomePreview()}
 
           {/* Memo input */}
           <input
@@ -2150,12 +2272,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
             }`}
           />
-          {canContributeOnly && (
-            <label className={`mt-2 flex cursor-pointer items-center gap-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              <input type="checkbox" checked={contributionOnly} onChange={(event) => setContributionOnly(event.target.checked)} disabled={isPaymentLocked} />
-              Add to the project balance without receiving project tokens
-            </label>
-          )}
         </div>
       </div>
 

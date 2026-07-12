@@ -4,6 +4,10 @@ import ProjectCard from './ProjectCard'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import * as bendystraw from '../../services/bendystraw'
 
+const { mockReadContract } = vi.hoisted(() => ({
+  mockReadContract: vi.fn(),
+}))
+
 // Mock wagmi
 vi.mock('wagmi', () => ({
   useAccount: vi.fn(() => ({
@@ -20,7 +24,7 @@ vi.mock('viem', () => ({
   parseUnits: vi.fn((val, decimals) => BigInt(Math.floor(Number(val) * Math.pow(10, decimals)))),
   createPublicClient: vi.fn(() => ({
     getBalance: vi.fn().mockResolvedValue(BigInt(0)),
-    readContract: vi.fn().mockResolvedValue(BigInt(0)),
+    readContract: mockReadContract,
   })),
   http: vi.fn(),
   erc20Abi: [],
@@ -30,10 +34,8 @@ vi.mock('viem', () => ({
 vi.mock('../../services/bendystraw', () => ({
   fetchProject: vi.fn(),
   fetchConnectedChains: vi.fn(),
-  fetchIssuanceRate: vi.fn(),
   fetchSuckerGroupBalance: vi.fn(),
   fetchOwnersCount: vi.fn(),
-  fetchProjectWithRuleset: vi.fn(),
   fetchProjectTokenSymbol: vi.fn(),
   fetchProjectAccountingContexts: vi.fn(),
   fetchEthPrice: vi.fn(),
@@ -124,11 +126,6 @@ describe('ProjectCard', () => {
     dataScope: 'project',
   }
 
-  const mockIssuanceRate = {
-    tokensPerEth: 1000,
-    basedOnPayments: 10,
-  }
-
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
     useTransactionStore.setState({ transactions: [] })
@@ -138,10 +135,8 @@ describe('ProjectCard', () => {
     // Setup default mocks
     ;(bendystraw.fetchProject as Mock).mockResolvedValue(mockProject)
     ;(bendystraw.fetchConnectedChains as Mock).mockResolvedValue([])
-    ;(bendystraw.fetchIssuanceRate as Mock).mockResolvedValue(mockIssuanceRate)
     ;(bendystraw.fetchSuckerGroupBalance as Mock).mockResolvedValue(mockSuckerBalance)
     ;(bendystraw.fetchOwnersCount as Mock).mockResolvedValue(100)
-    ;(bendystraw.fetchProjectWithRuleset as Mock).mockResolvedValue(null)
     ;(bendystraw.fetchProjectTokenSymbol as Mock).mockResolvedValue(null)
     ;(bendystraw.fetchProjectAccountingContexts as Mock).mockResolvedValue([{
       terminal: '0x130f5Dd2bD8805443Cf41755253D778a75a67f53',
@@ -152,6 +147,17 @@ describe('ProjectCard', () => {
       balance: 1n,
     }])
     ;(bendystraw.fetchEthPrice as Mock).mockResolvedValue(2500)
+    mockReadContract.mockImplementation(async ({ functionName }: { functionName: string }) => {
+      if (functionName === 'previewPayFor') {
+        return [
+          { id: 1n },
+          568_002_355_840_000_000_000n,
+          348_130_476_160_000_000_000n,
+          [],
+        ]
+      }
+      return 0n
+    })
 
     mockedUseAccount.mockReturnValue({
       address: undefined,
@@ -222,13 +228,38 @@ describe('ProjectCard', () => {
 
       const payButton = await screen.findByRole('button', { name: 'Pay' })
       await waitFor(() => expect(payButton).toBeEnabled())
-      fireEvent.click(screen.getByRole('button', { name: 'Credits' }))
-      expect(screen.queryByRole('button', { name: 'USDC' })).not.toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: 'ETH' }))
       fireEvent.click(payButton)
 
       expect(openWallet).toHaveBeenCalledOnce()
       window.removeEventListener('juice:open-wallet-panel', openWallet)
+    })
+
+    it('shows the live beneficiary, split, and route preview for a normal payment', async () => {
+      ;(bendystraw.fetchProjectTokenSymbol as Mock).mockResolvedValue('REV')
+      render(<ProjectCard projectId="1" chainId="11155111" />)
+
+      expect(await screen.findByText('You get')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '568.00 REV' })).toBeInTheDocument()
+      expect(screen.getByText('Splits get 348.13 REV')).toBeInTheDocument()
+      expect(screen.getByText('issuance')).toBeInTheDocument()
+      expect(mockReadContract).toHaveBeenCalledWith(expect.objectContaining({
+        functionName: 'previewPayFor',
+      }))
+    })
+
+    it('uses a compact Pay/Add to balance action selector instead of a checkbox', async () => {
+      render(<ProjectCard projectId="1" chainId="11155111" />)
+
+      const action = await screen.findByRole('button', { name: 'Payment action: Pay' })
+      expect(screen.getByRole('button', { name: 'Payment chain: Sepolia' })).toBeInTheDocument()
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+
+      fireEvent.click(action)
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Add to balance' }))
+
+      expect(screen.getByRole('button', { name: 'Payment action: Add to balance' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument()
+      expect(screen.getByText(/does not issue project tokens/i)).toBeInTheDocument()
     })
   })
 
