@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { formatEther } from 'viem'
+import { formatUnits } from 'viem'
 import { useThemeStore } from '../../stores'
-import type { ResolvedNFTTier } from '../../services/nft'
+import { getEffectiveTierPrice, type ResolvedNFTTier } from '../../services/nft'
 import { fetchMultiChainTierSupply, type MultiChainTierSupply } from '../../services/nft/multichain'
 import { isUsdcCurrency } from '../../utils/technicalDetails'
+import { IpfsMedia } from '../ui/IpfsMedia'
 
 interface TierDetailModalProps {
   isOpen: boolean
@@ -71,10 +72,14 @@ export default function TierDetailModal({
 
   // Price display: USD-based tiers show USD primary, ETH-based show ETH primary
   const isUsdBased = tier.currency === 2 || isUsdcCurrency(tier.currency)
-  const priceEth = parseFloat(formatEther(tier.price))
-  // For USD-based tiers, price is already in USD (with 6 decimals for USDC)
+  const pricingRecognized = tier.currency === 1 || isUsdBased
+  const priceInPricingCurrency = parseFloat(formatUnits(
+    getEffectiveTierPrice(tier),
+    tier.pricingDecimals,
+  ))
+  const priceEth = isUsdBased ? 0 : priceInPricingCurrency
   const priceUsd = isUsdBased
-    ? Number(tier.price) / Math.pow(10, 6) // USDC has 6 decimals
+    ? priceInPricingCurrency
     : (ethPrice ? priceEth * ethPrice : null)
   const displayName = /^Tier \d+$/.test(tier.name) ? (productName || tier.name) : tier.name
   const isSvgImage = imageUrl?.startsWith('data:image/svg') || imageUrl?.endsWith('.svg')
@@ -147,7 +152,11 @@ export default function TierDetailModal({
 
           {/* Price */}
           <div className="mb-4">
-            {isUsdBased ? (
+            {!pricingRecognized ? (
+              <span className={`text-sm font-medium ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
+                Pricing unavailable
+              </span>
+            ) : isUsdBased ? (
               <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 ${priceUsd?.toFixed(2)}
               </span>
@@ -170,6 +179,19 @@ export default function TierDetailModal({
             <p className={`text-sm mb-6 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
               {tier.description}
             </p>
+          )}
+
+          {tier.animationUrl && (
+            <div className="mb-6">
+              <IpfsMedia
+                uri={tier.animationUrl}
+                mediaType={tier.mediaType}
+                title={`${displayName} media`}
+                poster={imageUrl}
+                isDark={isDark}
+                className="w-full max-h-80 object-contain"
+              />
+            </div>
           )}
 
           {/* Inventory - prominent only when low/sold out */}
@@ -236,7 +258,7 @@ export default function TierDetailModal({
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
                   <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Tier</span> #{tier.tierId}</span>
                   <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Category</span> {tier.category}</span>
-                  <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Currency</span> {tier.currency === 1 ? 'ETH' : tier.currency === 2 ? 'USD' : tier.currency}</span>
+                  <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Currency</span> {tier.currency === 1 ? 'ETH' : isUsdBased ? 'USD' : `Unrecognized (${tier.currency})`}</span>
                   {tier.reservedRate > 0 && (
                     <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Reserved</span> 1/{tier.reservedRate}</span>
                   )}
@@ -244,7 +266,10 @@ export default function TierDetailModal({
                     <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Votes</span> {tier.votingUnits.toString()}</span>
                   )}
                   {(tier.discountPercent ?? 0) > 0 && (
-                    <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Discount</span> {tier.discountPercent}%</span>
+                    <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Discount</span> {((tier.discountPercent ?? 0) / 2).toLocaleString()}%</span>
+                  )}
+                  {tier.mediaType && (
+                    <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Media</span> {tier.mediaType}</span>
                   )}
                 </div>
 

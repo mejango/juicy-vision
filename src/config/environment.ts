@@ -56,11 +56,6 @@ export const DEFAULT_BENDYSTRAW_ENDPOINT = IS_TESTNET
 export const RELAYR_APP_ID = import.meta.env.VITE_RELAYR_APP_ID || (IS_TESTNET ? '43a6827c-3407-43c1-89c6-deeb8994696d' : 'juicy-vision')
 
 /**
- * Relayr API Key from environment (required for authenticated API calls).
- */
-export const RELAYR_API_KEY = import.meta.env.VITE_RELAYR_API_KEY || ''
-
-/**
  * Environment label for display purposes.
  */
 export const ENVIRONMENT_LABEL = IS_TESTNET ? 'Testnet' : 'Mainnet'

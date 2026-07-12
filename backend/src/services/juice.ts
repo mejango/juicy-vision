@@ -7,28 +7,36 @@
  * Flow: Purchase (Stripe) → Balance → Spend (Project) or Cash Out (Crypto)
  */
 
-import { query, queryOne, execute, transaction } from '../db/index.ts';
+import { execute, query, queryOne, transaction } from '../db/index.ts';
 import { logger } from '../utils/logger.ts';
 import { getConfig } from '../utils/config.ts';
 import {
+  type Address,
+  type Chain,
   createPublicClient,
   createWalletClient,
-  http,
+  decodeEventLog,
+  decodeFunctionData,
+  encodeFunctionData,
   formatEther,
-  type Chain,
+  type Hex,
+  http,
+  isAddressEqual,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { mainnet, optimism, arbitrum, base } from 'viem/chains';
+import { arbitrum, base, mainnet, optimism } from 'viem/chains';
+import { CONTRACTS, NATIVE_TOKEN as SHARED_NATIVE_TOKEN } from '@shared/chains.ts';
+import { fetchPrimaryTerminal, getPublicClient } from './chainReader.ts';
+import {
+  requireRecognizedProjectPayConfiguration,
+  requireRecognizedRuntimeHook,
+} from './projectTrust.ts';
 
 // Maximum retries before marking as failed
 const MAX_RETRIES = 5;
 
 // Default cash out delay in hours (fraud protection)
 const CASH_OUT_DELAY_HOURS = 24;
-
-// Preferred operating chain for Juice transactions
-// Arbitrum has the lowest fees for JB operations
-export const DEFAULT_OPERATING_CHAIN = 42161; // Arbitrum
 
 // Chain configurations
 const CHAINS: Record<number, { chain: Chain; rpcUrl: string }> = {
@@ -57,9 +65,72 @@ const TERMINAL_ABI = [
   },
 ] as const;
 
-// JBMultiTerminal address (same on all chains)
-const JB_MULTI_TERMINAL = '0x130f5dd2bd8805443cf41755253d778a75a67f53' as const;
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const;
+const NATIVE_TOKEN = SHARED_NATIVE_TOKEN;
+const RECOGNIZED_MULTI_TERMINAL = CONTRACTS.JBMultiTerminal as Address;
+const RECOGNIZED_PAYMENT_ENTRYPOINTS = new Set([
+  RECOGNIZED_MULTI_TERMINAL.toLowerCase(),
+  CONTRACTS.JBRouterTerminal.toLowerCase(),
+  CONTRACTS.JBRouterTerminalRegistry.toLowerCase(),
+]);
+
+const TERMINAL_PREVIEW_PAY_ABI = [{
+  name: 'previewPayFor',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [
+    { name: 'projectId', type: 'uint256' },
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'beneficiary', type: 'address' },
+    { name: 'metadata', type: 'bytes' },
+  ],
+  outputs: [
+    {
+      name: 'ruleset',
+      type: 'tuple',
+      components: [
+        { name: 'cycleNumber', type: 'uint256' },
+        { name: 'id', type: 'uint256' },
+        { name: 'basedOnId', type: 'uint256' },
+        { name: 'start', type: 'uint256' },
+        { name: 'duration', type: 'uint256' },
+        { name: 'weight', type: 'uint256' },
+        { name: 'weightCutPercent', type: 'uint256' },
+        { name: 'approvalHook', type: 'address' },
+        { name: 'metadata', type: 'uint256' },
+      ],
+    },
+    { name: 'beneficiaryTokenCount', type: 'uint256' },
+    { name: 'reservedTokenCount', type: 'uint256' },
+    {
+      name: 'hookSpecifications',
+      type: 'tuple[]',
+      components: [
+        { name: 'hook', type: 'address' },
+        { name: 'noop', type: 'bool' },
+        { name: 'amount', type: 'uint256' },
+        { name: 'metadata', type: 'bytes' },
+      ],
+    },
+  ],
+}] as const;
+
+const PAY_EVENT_ABI = [{
+  name: 'Pay',
+  type: 'event',
+  inputs: [
+    { name: 'rulesetId', type: 'uint256', indexed: true },
+    { name: 'rulesetCycleNumber', type: 'uint256', indexed: true },
+    { name: 'projectId', type: 'uint256', indexed: true },
+    { name: 'payer', type: 'address', indexed: false },
+    { name: 'beneficiary', type: 'address', indexed: false },
+    { name: 'amount', type: 'uint256', indexed: false },
+    { name: 'newlyIssuedTokenCount', type: 'uint256', indexed: false },
+    { name: 'memo', type: 'string', indexed: false },
+    { name: 'metadata', type: 'bytes', indexed: false },
+    { name: 'caller', type: 'address', indexed: false },
+  ],
+}] as const;
 
 // Chainlink ETH/USD price feed (mainnet)
 const CHAINLINK_ETH_USD = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419' as const;
@@ -137,6 +208,171 @@ export interface JuiceTransaction {
   chainId: number | null;
 }
 
+export async function assertJuiceProjectPaymentRoute(
+  chainId: number,
+  projectId: number,
+): Promise<Address> {
+  const terminal = await fetchPrimaryTerminal(chainId, projectId, NATIVE_TOKEN);
+  await requireRecognizedProjectPayConfiguration({
+    client: getPublicClient(chainId),
+    projectId: BigInt(projectId),
+  });
+  return terminal;
+}
+
+export async function executeJuiceProjectPayment(params: {
+  privateKey: Hex;
+  chainId: number;
+  projectId: number;
+  beneficiary: Address;
+  amountWei: bigint;
+  memo: string;
+  onSubmitted?: (txHash: Hex) => Promise<void>;
+}): Promise<{ txHash: Hex; tokensReceived: string }> {
+  const chainConfig = CHAINS[params.chainId];
+  if (!chainConfig) throw new Error(`Unsupported chain: ${params.chainId}`);
+
+  const account = privateKeyToAccount(params.privateKey);
+  const walletClient = createWalletClient({
+    account,
+    chain: chainConfig.chain,
+    transport: http(chainConfig.rpcUrl),
+  });
+  const publicClient = getPublicClient(params.chainId);
+  const terminal = await assertJuiceProjectPaymentRoute(params.chainId, params.projectId);
+  const preview = await publicClient.readContract({
+    account: account.address,
+    address: terminal,
+    abi: TERMINAL_PREVIEW_PAY_ABI,
+    functionName: 'previewPayFor',
+    args: [
+      BigInt(params.projectId),
+      NATIVE_TOKEN,
+      params.amountWei,
+      params.beneficiary,
+      '0x',
+    ],
+  });
+  for (const specification of preview[3]) {
+    if (!specification.noop) {
+      await requireRecognizedRuntimeHook({
+        client: publicClient,
+        projectId: BigInt(params.projectId),
+        rulesetId: preview[0].id,
+        hook: specification.hook,
+      });
+    }
+  }
+
+  if (preview[1] <= 0n) throw new Error('The payment quote returns no project tokens');
+  const quotedMinimum = (preview[1] * 99n) / 100n;
+  const minReturnedTokens = quotedMinimum > 0n ? quotedMinimum : 1n;
+  const data = encodeFunctionData({
+    abi: TERMINAL_ABI,
+    functionName: 'pay',
+    args: [
+      BigInt(params.projectId),
+      NATIVE_TOKEN,
+      params.amountWei,
+      params.beneficiary,
+      minReturnedTokens,
+      params.memo,
+      '0x',
+    ],
+  });
+  await publicClient.call({
+    account: account.address,
+    to: terminal,
+    data,
+    value: params.amountWei,
+  });
+  const txHash = await walletClient.sendTransaction({
+    account,
+    chain: chainConfig.chain,
+    to: terminal,
+    data,
+    value: params.amountWei,
+  });
+  await params.onSubmitted?.(txHash);
+  const tokensReceived = await verifyJuiceProjectPayment({
+    client: publicClient,
+    txHash,
+    payer: account.address,
+    projectId: params.projectId,
+    beneficiary: params.beneficiary,
+    amountWei: params.amountWei,
+    memo: params.memo,
+  });
+  return { txHash, tokensReceived: tokensReceived.toString() };
+}
+
+export async function verifyJuiceProjectPayment(params: {
+  client: ReturnType<typeof getPublicClient>;
+  txHash: Hex;
+  payer: Address;
+  projectId: number;
+  beneficiary: Address;
+  amountWei: bigint;
+  memo: string;
+}): Promise<bigint> {
+  const [chainTransaction, receipt] = await Promise.all([
+    params.client.getTransaction({ hash: params.txHash }),
+    params.client.getTransactionReceipt({ hash: params.txHash }),
+  ]);
+  if (receipt.status !== 'success') throw new Error('Project payment reverted');
+  if (
+    !chainTransaction.to ||
+    !RECOGNIZED_PAYMENT_ENTRYPOINTS.has(chainTransaction.to.toLowerCase())
+  ) {
+    throw new Error('Project payment target is not recognized');
+  }
+  if (!isAddressEqual(chainTransaction.from, params.payer)) {
+    throw new Error('Project payment was sent by a different wallet');
+  }
+  const decodedCall = decodeFunctionData({ abi: TERMINAL_ABI, data: chainTransaction.input });
+  if (decodedCall.functionName !== 'pay') throw new Error('Transaction is not a project payment');
+  const [projectId, token, amount, beneficiary, minimum, memo, metadata] = decodedCall.args;
+  if (
+    projectId !== BigInt(params.projectId) ||
+    !isAddressEqual(token, NATIVE_TOKEN) ||
+    amount !== params.amountWei ||
+    !isAddressEqual(beneficiary, params.beneficiary) ||
+    minimum <= 0n ||
+    memo !== params.memo ||
+    metadata !== '0x' ||
+    chainTransaction.value !== params.amountWei
+  ) {
+    throw new Error('Project payment does not match the reviewed request');
+  }
+
+  for (const log of receipt.logs) {
+    if (!isAddressEqual(log.address, RECOGNIZED_MULTI_TERMINAL)) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi: PAY_EVENT_ABI,
+        data: log.data,
+        topics: log.topics,
+      });
+      if (
+        decoded.eventName === 'Pay' &&
+        decoded.args.projectId === BigInt(params.projectId) &&
+        isAddressEqual(decoded.args.payer, params.payer) &&
+        isAddressEqual(decoded.args.beneficiary, params.beneficiary) &&
+        decoded.args.amount === params.amountWei &&
+        decoded.args.memo === params.memo &&
+        decoded.args.metadata === '0x' &&
+        decoded.args.newlyIssuedTokenCount >= minimum &&
+        decoded.args.newlyIssuedTokenCount > 0n
+      ) {
+        return decoded.args.newlyIssuedTokenCount;
+      }
+    } catch {
+      // Ignore unrelated logs.
+    }
+  }
+  throw new Error('Confirmed payment did not emit the expected Pay event');
+}
+
 // ============================================================================
 // Balance Operations
 // ============================================================================
@@ -157,7 +393,7 @@ export async function getBalance(userId: string): Promise<JuiceBalance> {
     `SELECT user_id, balance, lifetime_purchased, lifetime_spent,
             lifetime_cashed_out, expires_at
      FROM juice_balances WHERE user_id = $1`,
-    [userId]
+    [userId],
   );
 
   // Create if doesn't exist
@@ -166,14 +402,14 @@ export async function getBalance(userId: string): Promise<JuiceBalance> {
       `INSERT INTO juice_balances (user_id)
        VALUES ($1)
        ON CONFLICT (user_id) DO NOTHING`,
-      [userId]
+      [userId],
     );
 
     row = await queryOne(
       `SELECT user_id, balance, lifetime_purchased, lifetime_spent,
               lifetime_cashed_out, expires_at
        FROM juice_balances WHERE user_id = $1`,
-      [userId]
+      [userId],
     );
   }
 
@@ -196,30 +432,25 @@ export async function getBalance(userId: string): Promise<JuiceBalance> {
  */
 export async function creditJuice(
   userId: string,
-  amount: number,
-  purchaseId: string
-): Promise<void> {
-  await transaction(async (client) => {
-    // Verify purchase exists and is in clearing status
-    const { rows: purchases } = await client.queryObject<{ status: string }>(
-      `SELECT status FROM juice_purchases WHERE id = $1 AND user_id = $2`,
-      [purchaseId, userId]
+  purchaseId: string,
+): Promise<boolean> {
+  return await transaction(async (client) => {
+    const { rows: purchases } = await client.queryObject<{ juice_amount: string }>(
+      `UPDATE juice_purchases
+       SET status = 'credited', credited_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status = 'clearing'
+       RETURNING juice_amount`,
+      [purchaseId, userId],
     );
-
-    if (!purchases[0]) {
-      throw new Error('Purchase not found');
-    }
-
-    if (purchases[0].status !== 'clearing') {
-      throw new Error(`Cannot credit purchase with status: ${purchases[0].status}`);
-    }
+    if (!purchases[0]) return false;
+    const amount = purchases[0].juice_amount;
 
     // Ensure balance record exists
     await client.queryObject(
       `INSERT INTO juice_balances (user_id)
        VALUES ($1)
        ON CONFLICT (user_id) DO NOTHING`,
-      [userId]
+      [userId],
     );
 
     // Credit the balance and update activity timestamp
@@ -230,44 +461,12 @@ export async function creditJuice(
            last_activity_at = NOW(),
            updated_at = NOW()
        WHERE user_id = $2`,
-      [amount, userId]
-    );
-
-    // Mark purchase as credited
-    await client.queryObject(
-      `UPDATE juice_purchases
-       SET status = 'credited', credited_at = NOW()
-       WHERE id = $1`,
-      [purchaseId]
+      [amount, userId],
     );
 
     logger.info('Juice credited', { userId, amount, purchaseId });
+    return true;
   });
-}
-
-/**
- * Debit Juice from user's balance (internal use)
- */
-async function debitJuice(
-  userId: string,
-  amount: number,
-  type: 'spend' | 'cash_out'
-): Promise<void> {
-  const lifetimeColumn = type === 'spend' ? 'lifetime_spent' : 'lifetime_cashed_out';
-
-  const count = await execute(
-    `UPDATE juice_balances
-     SET balance = balance - $1,
-         ${lifetimeColumn} = ${lifetimeColumn} + $1,
-         updated_at = NOW()
-     WHERE user_id = $2
-     AND balance >= $1`,
-    [amount, userId]
-  );
-
-  if (count === 0) {
-    throw new Error('Insufficient Juice balance');
-  }
 }
 
 /**
@@ -276,7 +475,7 @@ async function debitJuice(
 async function refundJuice(
   userId: string,
   amount: number,
-  type: 'spend' | 'cash_out'
+  type: 'spend' | 'cash_out',
 ): Promise<void> {
   const lifetimeColumn = type === 'spend' ? 'lifetime_spent' : 'lifetime_cashed_out';
 
@@ -286,10 +485,60 @@ async function refundJuice(
          ${lifetimeColumn} = ${lifetimeColumn} - $1,
          updated_at = NOW()
      WHERE user_id = $2`,
-    [amount, userId]
+    [amount, userId],
   );
 
   logger.info('Juice refunded', { userId, amount, type });
+}
+
+async function refundSubmittedSpend(spendId: string, errorMessage: string): Promise<boolean> {
+  return await transaction(async (client) => {
+    const { rows } = await client.queryObject<{
+      user_id: string;
+      juice_amount: string;
+    }>(
+      `UPDATE juice_spends
+       SET status = 'failed', error_message = $1, updated_at = NOW()
+       WHERE id = $2 AND status = 'executing' AND tx_hash IS NOT NULL
+       RETURNING user_id, juice_amount`,
+      [errorMessage, spendId],
+    );
+    if (!rows[0]) return false;
+    await client.queryObject(
+      `UPDATE juice_balances
+       SET balance = balance + $1,
+           lifetime_spent = lifetime_spent - $1,
+           updated_at = NOW()
+       WHERE user_id = $2`,
+      [rows[0].juice_amount, rows[0].user_id],
+    );
+    return true;
+  });
+}
+
+async function refundSubmittedCashOut(cashOutId: string, errorMessage: string): Promise<boolean> {
+  return await transaction(async (client) => {
+    const { rows } = await client.queryObject<{
+      user_id: string;
+      juice_amount: string;
+    }>(
+      `UPDATE juice_cash_outs
+       SET status = 'failed', error_message = $1, updated_at = NOW()
+       WHERE id = $2 AND status = 'processing' AND tx_hash IS NOT NULL
+       RETURNING user_id, juice_amount`,
+      [errorMessage, cashOutId],
+    );
+    if (!rows[0]) return false;
+    await client.queryObject(
+      `UPDATE juice_balances
+       SET balance = balance + $1,
+           lifetime_cashed_out = lifetime_cashed_out - $1,
+           updated_at = NOW()
+       WHERE user_id = $2`,
+      [rows[0].juice_amount, rows[0].user_id],
+    );
+    return true;
+  });
 }
 
 // ============================================================================
@@ -335,7 +584,7 @@ export async function createPurchase(params: {
       params.settlementDelayDays === 0 ? 'clearing' : 'clearing',
       params.settlementDelayDays,
       clearsAt,
-    ]
+    ],
   );
 
   logger.info('Juice purchase created', {
@@ -355,14 +604,14 @@ export async function createPurchase(params: {
  * Mark purchase as disputed (from Stripe webhook)
  */
 export async function markPurchaseDisputed(
-  stripePaymentIntentId: string
+  stripePaymentIntentId: string,
 ): Promise<boolean> {
   const count = await execute(
     `UPDATE juice_purchases
      SET status = 'disputed'
      WHERE stripe_payment_intent_id = $1
      AND status IN ('pending', 'clearing')`,
-    [stripePaymentIntentId]
+    [stripePaymentIntentId],
   );
 
   if (count > 0) {
@@ -376,14 +625,14 @@ export async function markPurchaseDisputed(
  * Mark purchase as refunded (from Stripe webhook)
  */
 export async function markPurchaseRefunded(
-  stripePaymentIntentId: string
+  stripePaymentIntentId: string,
 ): Promise<boolean> {
   const count = await execute(
     `UPDATE juice_purchases
      SET status = 'refunded'
      WHERE stripe_payment_intent_id = $1
      AND status IN ('pending', 'clearing')`,
-    [stripePaymentIntentId]
+    [stripePaymentIntentId],
   );
 
   if (count > 0) {
@@ -411,10 +660,10 @@ export async function getUserPurchases(userId: string): Promise<JuicePurchase[]>
      FROM juice_purchases
      WHERE user_id = $1
      ORDER BY created_at DESC`,
-    [userId]
+    [userId],
   );
 
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     userId: r.user_id,
     stripePaymentIntentId: r.stripe_payment_intent_id,
@@ -437,11 +686,12 @@ export async function spendJuice(params: {
   userId: string;
   amount: number;
   projectId: number;
-  chainId?: number; // Defaults to Arbitrum
+  chainId: number;
   beneficiaryAddress: string;
   memo?: string;
 }): Promise<string> {
-  const chainId = params.chainId || DEFAULT_OPERATING_CHAIN;
+  const chainId = params.chainId;
+  if (!CHAINS[chainId]) throw new Error(`Unsupported chain: ${chainId}`);
 
   return await transaction(async (client) => {
     // Deduct from balance first and update activity timestamp
@@ -453,7 +703,7 @@ export async function spendJuice(params: {
            updated_at = NOW()
        WHERE user_id = $2
        AND balance >= $1`,
-      [params.amount, params.userId]
+      [params.amount, params.userId],
     );
 
     if ((debitResult.rowCount ?? 0) === 0) {
@@ -473,7 +723,7 @@ export async function spendJuice(params: {
         params.beneficiaryAddress,
         params.memo || null,
         params.amount,
-      ]
+      ],
     );
 
     logger.info('Juice spend created', {
@@ -508,10 +758,10 @@ export async function getUserSpends(userId: string): Promise<JuiceSpend[]> {
      FROM juice_spends
      WHERE user_id = $1
      ORDER BY created_at DESC`,
-    [userId]
+    [userId],
   );
 
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     userId: r.user_id,
     projectId: r.project_id,
@@ -536,9 +786,21 @@ export async function initiateCashOut(params: {
   userId: string;
   amount: number;
   destinationAddress: string;
-  chainId?: number;
+  chainId: number;
 }): Promise<string> {
-  const chainId = params.chainId || DEFAULT_OPERATING_CHAIN;
+  const chainId = params.chainId;
+  if (!CHAINS[chainId]) throw new Error(`Unsupported chain: ${chainId}`);
+  if (!Number.isFinite(params.amount) || params.amount <= 0) {
+    throw new Error('Cash-out amount must be greater than zero');
+  }
+  const destination = params.destinationAddress.toLowerCase();
+  if (
+    !/^0x[a-f0-9]{40}$/.test(destination) ||
+    destination === '0x0000000000000000000000000000000000000000' ||
+    destination === '0x000000000000000000000000000000000000dead'
+  ) {
+    throw new Error('Cash-out destination must be an explicit wallet address');
+  }
   const availableAt = new Date();
   availableAt.setHours(availableAt.getHours() + CASH_OUT_DELAY_HOURS);
 
@@ -552,7 +814,7 @@ export async function initiateCashOut(params: {
            updated_at = NOW()
        WHERE user_id = $2
        AND balance >= $1`,
-      [params.amount, params.userId]
+      [params.amount, params.userId],
     );
 
     if ((debitResult.rowCount ?? 0) === 0) {
@@ -571,7 +833,7 @@ export async function initiateCashOut(params: {
         chainId,
         params.amount,
         availableAt,
-      ]
+      ],
     );
 
     logger.info('Cash out initiated', {
@@ -592,14 +854,14 @@ export async function initiateCashOut(params: {
  */
 export async function cancelCashOut(
   cashOutId: string,
-  userId: string
+  userId: string,
 ): Promise<void> {
   await transaction(async (client) => {
     // Get the cash out
     const { rows: cashOuts } = await client.queryObject<{ juice_amount: string; status: string }>(
       `SELECT juice_amount, status FROM juice_cash_outs
        WHERE id = $1 AND user_id = $2`,
-      [cashOutId, userId]
+      [cashOutId, userId],
     );
 
     if (!cashOuts[0]) {
@@ -619,7 +881,7 @@ export async function cancelCashOut(
            lifetime_cashed_out = lifetime_cashed_out - $1,
            updated_at = NOW()
        WHERE user_id = $2`,
-      [amount, userId]
+      [amount, userId],
     );
 
     // Mark as cancelled
@@ -627,7 +889,7 @@ export async function cancelCashOut(
       `UPDATE juice_cash_outs
        SET status = 'cancelled', updated_at = NOW()
        WHERE id = $1`,
-      [cashOutId]
+      [cashOutId],
     );
 
     logger.info('Cash out cancelled', { cashOutId, userId, amount });
@@ -654,10 +916,10 @@ export async function getUserCashOuts(userId: string): Promise<JuiceCashOut[]> {
      FROM juice_cash_outs
      WHERE user_id = $1
      ORDER BY created_at DESC`,
-    [userId]
+    [userId],
   );
 
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     userId: r.user_id,
     destinationAddress: r.destination_address,
@@ -680,7 +942,7 @@ export async function getUserCashOuts(userId: string): Promise<JuiceCashOut[]> {
 export async function getTransactions(
   userId: string,
   limit = 50,
-  offset = 0
+  offset = 0,
 ): Promise<JuiceTransaction[]> {
   const rows = await query<{
     id: string;
@@ -696,10 +958,10 @@ export async function getTransactions(
      WHERE user_id = $1
      ORDER BY created_at DESC
      LIMIT $2 OFFSET $3`,
-    [userId, limit, offset]
+    [userId, limit, offset],
   );
 
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     userId: r.user_id,
     type: r.type as 'purchase' | 'spend' | 'cash_out',
@@ -739,8 +1001,13 @@ export async function getEthUsdRate(): Promise<number> {
   const now = Math.floor(Date.now() / 1000);
   const age = now - updatedAt;
 
-  if (age > CHAINLINK_MAX_STALENESS_SECONDS) {
-    throw new Error(`Chainlink price data is stale (${age}s old, max ${CHAINLINK_MAX_STALENESS_SECONDS}s)`);
+  if (updatedAt <= 0 || age < 0 || age > CHAINLINK_MAX_STALENESS_SECONDS) {
+    throw new Error(
+      `Chainlink price data is stale (${age}s old, max ${CHAINLINK_MAX_STALENESS_SECONDS}s)`,
+    );
+  }
+  if (data[0] <= 0n || data[4] < data[0] || data[1] <= 0n) {
+    throw new Error('Chainlink returned an incomplete ETH/USD round');
   }
 
   // Chainlink returns price with 8 decimals
@@ -764,18 +1031,17 @@ export async function processCredits(): Promise<{
   failed: number;
   pending: number;
 }> {
-  // Get purchases ready to credit with row locking
+  // creditJuice performs the authoritative conditional transition and balance
+  // update in one transaction, so overlapping workers remain idempotent.
   const purchases = await query<{
     id: string;
     user_id: string;
-    juice_amount: string;
   }>(
-    `SELECT id, user_id, juice_amount
+    `SELECT id, user_id
      FROM juice_purchases
      WHERE status = 'clearing'
      AND clears_at <= NOW()
-     LIMIT 50
-     FOR UPDATE SKIP LOCKED`
+     LIMIT 50`,
   );
 
   let credited = 0;
@@ -783,12 +1049,7 @@ export async function processCredits(): Promise<{
 
   for (const purchase of purchases) {
     try {
-      await creditJuice(
-        purchase.user_id,
-        parseFloat(purchase.juice_amount),
-        purchase.id
-      );
-      credited++;
+      if (await creditJuice(purchase.user_id, purchase.id)) credited++;
     } catch (error) {
       logger.error('Failed to credit Juice', error as Error, {
         purchaseId: purchase.id,
@@ -799,7 +1060,7 @@ export async function processCredits(): Promise<{
 
   // Get remaining pending count
   const [{ count }] = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM juice_purchases WHERE status = 'clearing'`
+    `SELECT COUNT(*) as count FROM juice_purchases WHERE status = 'clearing'`,
   );
 
   return {
@@ -825,8 +1086,58 @@ export async function processSpends(): Promise<{
     return { executed: 0, failed: 0, pending: 0 };
   }
 
-  // Get pending spends with row locking to prevent race conditions
-  // SKIP LOCKED ensures multiple workers don't process the same record
+  let executed = 0;
+  let failed = 0;
+  const payer = privateKeyToAccount(privateKey).address;
+
+  const submittedSpends = await query<{
+    id: string;
+    project_id: number;
+    chain_id: number;
+    beneficiary_address: string;
+    memo: string | null;
+    juice_amount: string;
+    crypto_amount: string;
+    tx_hash: string;
+  }>(
+    `SELECT id, project_id, chain_id, beneficiary_address, memo,
+            juice_amount, crypto_amount, tx_hash
+     FROM juice_spends
+     WHERE status = 'executing' AND tx_hash IS NOT NULL AND crypto_amount IS NOT NULL
+     LIMIT 50`,
+  );
+  for (const spend of submittedSpends) {
+    const client = getPublicClient(spend.chain_id);
+    try {
+      const receipt = await client.getTransactionReceipt({ hash: spend.tx_hash as Hex });
+      if (receipt.status === 'reverted') {
+        if (await refundSubmittedSpend(spend.id, 'Project payment reverted')) failed++;
+        continue;
+      }
+      const amountUsd = parseFloat(spend.juice_amount);
+      const tokensReceived = await verifyJuiceProjectPayment({
+        client,
+        txHash: spend.tx_hash as Hex,
+        payer,
+        projectId: spend.project_id,
+        beneficiary: spend.beneficiary_address as Address,
+        amountWei: BigInt(spend.crypto_amount),
+        memo: spend.memo || `Juice payment: $${amountUsd}`,
+      });
+      const count = await execute(
+        `UPDATE juice_spends
+         SET status = 'completed', tokens_received = $1, updated_at = NOW()
+         WHERE id = $2 AND status = 'executing' AND tx_hash = $3`,
+        [tokensReceived.toString(), spend.id, spend.tx_hash],
+      );
+      if (count === 1) executed++;
+    } catch {
+      // Pending transactions and temporary RPC failures remain non-retryable.
+    }
+  }
+
+  // Claim work atomically. A SELECT ... FOR UPDATE through the pooled query
+  // helper would release its lock before the later status update.
   const spends = await query<{
     id: string;
     user_id: string;
@@ -837,34 +1148,33 @@ export async function processSpends(): Promise<{
     juice_amount: string;
     retry_count: number;
   }>(
-    `SELECT id, user_id, project_id, chain_id, beneficiary_address,
-            memo, juice_amount, retry_count
-     FROM juice_spends
-     WHERE status = 'pending'
-     AND retry_count < $1
-     ORDER BY created_at ASC
-     LIMIT 20
-     FOR UPDATE SKIP LOCKED`,
-    [MAX_RETRIES]
+    `WITH candidates AS (
+       SELECT id
+       FROM juice_spends
+       WHERE status = 'pending' AND retry_count < $1
+       ORDER BY created_at ASC
+       LIMIT 20
+       FOR UPDATE SKIP LOCKED
+     )
+     UPDATE juice_spends AS spend
+     SET status = 'executing', updated_at = NOW()
+     FROM candidates
+     WHERE spend.id = candidates.id
+     RETURNING spend.id, spend.user_id, spend.project_id, spend.chain_id,
+               spend.beneficiary_address, spend.memo, spend.juice_amount,
+               spend.retry_count`,
+    [MAX_RETRIES],
   );
 
-  let executed = 0;
-  let failed = 0;
-
   for (const spend of spends) {
+    let submittedTxHash: Hex | null = null;
     try {
-      // Mark as executing
-      await execute(
-        `UPDATE juice_spends SET status = 'executing', updated_at = NOW()
-         WHERE id = $1`,
-        [spend.id]
-      );
-
       // Get ETH/USD rate
       const ethUsdRate = await getEthUsdRate();
       const amountUsd = parseFloat(spend.juice_amount);
       const amountEth = amountUsd / ethUsdRate;
       const amountWei = BigInt(Math.floor(amountEth * 1e18));
+      if (amountWei <= 0n) throw new Error('Project payment amount is too small to transfer');
 
       logger.info('Executing Juice spend', {
         spendId: spend.id,
@@ -873,45 +1183,24 @@ export async function processSpends(): Promise<{
         amountEth: formatEther(amountWei),
       });
 
-      // Execute on-chain payment
-      const chainConfig = CHAINS[spend.chain_id];
-      if (!chainConfig) {
-        throw new Error(`Unsupported chain: ${spend.chain_id}`);
-      }
-
-      const account = privateKeyToAccount(privateKey);
-      const walletClient = createWalletClient({
-        account,
-        chain: chainConfig.chain,
-        transport: http(chainConfig.rpcUrl),
+      const { txHash, tokensReceived } = await executeJuiceProjectPayment({
+        privateKey,
+        chainId: spend.chain_id,
+        projectId: spend.project_id,
+        beneficiary: spend.beneficiary_address as Address,
+        amountWei,
+        memo: spend.memo || `Juice payment: $${amountUsd}`,
+        onSubmitted: async (hash) => {
+          submittedTxHash = hash;
+          const recorded = await execute(
+            `UPDATE juice_spends
+             SET tx_hash = $1, crypto_amount = $2, eth_usd_rate = $3, updated_at = NOW()
+             WHERE id = $4 AND status = 'executing' AND tx_hash IS NULL`,
+            [hash, amountWei.toString(), ethUsdRate, spend.id],
+          );
+          if (recorded !== 1) throw new Error('Could not bind submitted project payment');
+        },
       });
-
-      const publicClient = createPublicClient({
-        chain: chainConfig.chain,
-        transport: http(chainConfig.rpcUrl),
-      });
-
-      const txHash = await walletClient.writeContract({
-        address: JB_MULTI_TERMINAL,
-        abi: TERMINAL_ABI,
-        functionName: 'pay',
-        args: [
-          BigInt(spend.project_id),
-          NATIVE_TOKEN,
-          amountWei,
-          spend.beneficiary_address as `0x${string}`,
-          0n, // minReturnedTokens
-          spend.memo || `Juice payment: $${amountUsd}`,
-          '0x',
-        ],
-        value: amountWei,
-      });
-
-      // Wait for confirmation
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-
-      // TODO: Parse logs to get tokens received
-      const tokensReceived = '0';
 
       // Mark as completed
       await execute(
@@ -922,8 +1211,8 @@ export async function processSpends(): Promise<{
           eth_usd_rate = $3,
           tokens_received = $4,
           updated_at = NOW()
-         WHERE id = $5`,
-        [txHash, amountWei.toString(), ethUsdRate, tokensReceived, spend.id]
+         WHERE id = $5 AND status = 'executing' AND tx_hash = $1`,
+        [txHash, amountWei.toString(), ethUsdRate, tokensReceived, spend.id],
       );
 
       logger.info('Juice spend completed', {
@@ -935,6 +1224,20 @@ export async function processSpends(): Promise<{
       executed++;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+
+      if (submittedTxHash) {
+        await execute(
+          `UPDATE juice_spends
+           SET error_message = $1, updated_at = NOW()
+           WHERE id = $2 AND status = 'executing' AND tx_hash = $3`,
+          [errorMessage, spend.id, submittedTxHash],
+        );
+        logger.error('Submitted Juice spend awaits reconciliation', error as Error, {
+          spendId: spend.id,
+          txHash: submittedTxHash,
+        });
+        continue;
+      }
 
       // Check if we've hit max retries
       if (spend.retry_count + 1 >= MAX_RETRIES) {
@@ -949,7 +1252,7 @@ export async function processSpends(): Promise<{
             last_retry_at = NOW(),
             updated_at = NOW()
            WHERE id = $2`,
-          [errorMessage, spend.id]
+          [errorMessage, spend.id],
         );
       } else {
         // Reset to pending for retry
@@ -961,7 +1264,7 @@ export async function processSpends(): Promise<{
             last_retry_at = NOW(),
             updated_at = NOW()
            WHERE id = $2`,
-          [errorMessage, spend.id]
+          [errorMessage, spend.id],
         );
       }
 
@@ -976,7 +1279,7 @@ export async function processSpends(): Promise<{
 
   // Get remaining pending count
   const [{ count }] = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM juice_spends WHERE status = 'pending'`
+    `SELECT COUNT(*) as count FROM juice_spends WHERE status = 'pending'`,
   );
 
   return {
@@ -1005,7 +1308,61 @@ export async function processCashOuts(): Promise<{
     return { processed: 0, failed: 0, pending: 0 };
   }
 
-  // Get available cash outs with row locking to prevent race conditions
+  let processed = 0;
+  let failed = 0;
+  const payer = privateKeyToAccount(privateKey).address;
+
+  const submittedCashOuts = await query<{
+    id: string;
+    destination_address: string;
+    chain_id: number;
+    crypto_amount: string;
+    tx_hash: string;
+  }>(
+    `SELECT id, destination_address, chain_id, crypto_amount, tx_hash
+     FROM juice_cash_outs
+     WHERE status = 'processing' AND tx_hash IS NOT NULL AND crypto_amount IS NOT NULL
+     LIMIT 50`,
+  );
+  for (const cashOut of submittedCashOuts) {
+    try {
+      const chainConfig = CHAINS[cashOut.chain_id];
+      if (!chainConfig) throw new Error(`Unsupported chain: ${cashOut.chain_id}`);
+      const client = createPublicClient({
+        chain: chainConfig.chain,
+        transport: http(chainConfig.rpcUrl),
+      });
+      const hash = cashOut.tx_hash as Hex;
+      const [receipt, chainTransaction] = await Promise.all([
+        client.getTransactionReceipt({ hash }),
+        client.getTransaction({ hash }),
+      ]);
+      if (receipt.status === 'reverted') {
+        if (await refundSubmittedCashOut(cashOut.id, 'Cash-out transfer reverted')) failed++;
+        continue;
+      }
+      if (
+        !chainTransaction.to ||
+        !isAddressEqual(chainTransaction.from, payer) ||
+        !isAddressEqual(chainTransaction.to, cashOut.destination_address as Address) ||
+        chainTransaction.value !== BigInt(cashOut.crypto_amount) ||
+        chainTransaction.input !== '0x'
+      ) {
+        throw new Error('Confirmed cash-out transaction does not match the withdrawal');
+      }
+      const count = await execute(
+        `UPDATE juice_cash_outs
+         SET status = 'completed', updated_at = NOW()
+         WHERE id = $1 AND status = 'processing' AND tx_hash = $2`,
+        [cashOut.id, cashOut.tx_hash],
+      );
+      if (count === 1) processed++;
+    } catch {
+      // Pending transactions and temporary RPC failures remain non-retryable.
+    }
+  }
+
+  // Claim withdrawals atomically before doing any rate lookup or broadcast.
   const cashOuts = await query<{
     id: string;
     user_id: string;
@@ -1014,34 +1371,34 @@ export async function processCashOuts(): Promise<{
     juice_amount: string;
     retry_count: number;
   }>(
-    `SELECT id, user_id, destination_address, chain_id, juice_amount, retry_count
-     FROM juice_cash_outs
-     WHERE status = 'pending'
-     AND available_at <= NOW()
-     AND retry_count < $1
-     ORDER BY available_at ASC
-     LIMIT 20
-     FOR UPDATE SKIP LOCKED`,
-    [MAX_RETRIES]
+    `WITH candidates AS (
+       SELECT id
+       FROM juice_cash_outs
+       WHERE status = 'pending'
+         AND available_at <= NOW()
+         AND retry_count < $1
+       ORDER BY available_at ASC
+       LIMIT 20
+       FOR UPDATE SKIP LOCKED
+     )
+     UPDATE juice_cash_outs AS cash_out
+     SET status = 'processing', updated_at = NOW()
+     FROM candidates
+     WHERE cash_out.id = candidates.id
+     RETURNING cash_out.id, cash_out.user_id, cash_out.destination_address,
+               cash_out.chain_id, cash_out.juice_amount, cash_out.retry_count`,
+    [MAX_RETRIES],
   );
 
-  let processed = 0;
-  let failed = 0;
-
   for (const cashOut of cashOuts) {
+    let submittedTxHash: Hex | null = null;
     try {
-      // Mark as processing
-      await execute(
-        `UPDATE juice_cash_outs SET status = 'processing', updated_at = NOW()
-         WHERE id = $1`,
-        [cashOut.id]
-      );
-
       // Get ETH/USD rate
       const ethUsdRate = await getEthUsdRate();
       const amountUsd = parseFloat(cashOut.juice_amount);
       const amountEth = amountUsd / ethUsdRate;
       const amountWei = BigInt(Math.floor(amountEth * 1e18));
+      if (amountWei <= 0n) throw new Error('Cash-out amount is too small to transfer');
 
       logger.info('Processing cash out', {
         cashOutId: cashOut.id,
@@ -1069,13 +1426,28 @@ export async function processCashOuts(): Promise<{
         transport: http(chainConfig.rpcUrl),
       });
 
-      const txHash = await walletClient.sendTransaction({
-        to: cashOut.destination_address as `0x${string}`,
+      const destination = cashOut.destination_address as Address;
+      await publicClient.call({
+        account: account.address,
+        to: destination,
         value: amountWei,
       });
+      const txHash = await walletClient.sendTransaction({
+        to: destination,
+        value: amountWei,
+      });
+      submittedTxHash = txHash;
+      const recorded = await execute(
+        `UPDATE juice_cash_outs
+         SET tx_hash = $1, crypto_amount = $2, eth_usd_rate = $3, updated_at = NOW()
+         WHERE id = $4 AND status = 'processing' AND tx_hash IS NULL`,
+        [txHash, amountWei.toString(), ethUsdRate, cashOut.id],
+      );
+      if (recorded !== 1) throw new Error('Could not bind submitted cash-out transfer');
 
       // Wait for confirmation
-      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status !== 'success') throw new Error('Cash-out transfer reverted');
 
       // Mark as completed
       await execute(
@@ -1085,8 +1457,8 @@ export async function processCashOuts(): Promise<{
           crypto_amount = $2,
           eth_usd_rate = $3,
           updated_at = NOW()
-         WHERE id = $4`,
-        [txHash, amountWei.toString(), ethUsdRate, cashOut.id]
+         WHERE id = $4 AND status = 'processing' AND tx_hash = $1`,
+        [txHash, amountWei.toString(), ethUsdRate, cashOut.id],
       );
 
       logger.info('Cash out completed', {
@@ -1098,6 +1470,20 @@ export async function processCashOuts(): Promise<{
       processed++;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+
+      if (submittedTxHash) {
+        await execute(
+          `UPDATE juice_cash_outs
+           SET error_message = $1, updated_at = NOW()
+           WHERE id = $2 AND status = 'processing' AND tx_hash = $3`,
+          [errorMessage, cashOut.id, submittedTxHash],
+        );
+        logger.error('Submitted cash out awaits reconciliation', error as Error, {
+          cashOutId: cashOut.id,
+          txHash: submittedTxHash,
+        });
+        continue;
+      }
 
       // Check if we've hit max retries
       if (cashOut.retry_count + 1 >= MAX_RETRIES) {
@@ -1111,7 +1497,7 @@ export async function processCashOuts(): Promise<{
             retry_count = retry_count + 1,
             updated_at = NOW()
            WHERE id = $2`,
-          [errorMessage, cashOut.id]
+          [errorMessage, cashOut.id],
         );
       } else {
         // Reset to pending for retry
@@ -1122,7 +1508,7 @@ export async function processCashOuts(): Promise<{
             retry_count = retry_count + 1,
             updated_at = NOW()
            WHERE id = $2`,
-          [errorMessage, cashOut.id]
+          [errorMessage, cashOut.id],
         );
       }
 
@@ -1137,7 +1523,7 @@ export async function processCashOuts(): Promise<{
 
   // Get remaining pending count
   const [{ count }] = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM juice_cash_outs WHERE status = 'pending'`
+    `SELECT COUNT(*) as count FROM juice_cash_outs WHERE status = 'pending'`,
   );
 
   return {
@@ -1173,7 +1559,7 @@ export async function processExpiredCredits(): Promise<{
      AND last_activity_at < $1
      LIMIT 100
      FOR UPDATE SKIP LOCKED`,
-    [expirationDate.toISOString()]
+    [expirationDate.toISOString()],
   );
 
   let expired = 0;
@@ -1182,14 +1568,24 @@ export async function processExpiredCredits(): Promise<{
 
   for (const balance of expiredBalances) {
     try {
-      const amount = parseFloat(balance.balance);
+      const amount = await transaction(async (client) => {
+        const { rows } = await client.queryObject<{
+          balance: string;
+          last_activity_at: string;
+        }>(
+          `SELECT balance, last_activity_at
+           FROM juice_balances
+           WHERE user_id = $1 AND balance > 0 AND last_activity_at < $2
+           FOR UPDATE`,
+          [balance.user_id, expirationDate.toISOString()],
+        );
+        if (!rows[0]) return null;
 
-      await transaction(async (client) => {
         // Record the expiration
         await client.queryObject(
           `INSERT INTO credit_expirations (user_id, amount, last_activity_at)
            VALUES ($1, $2, $3)`,
-          [balance.user_id, amount, balance.last_activity_at]
+          [balance.user_id, rows[0].balance, rows[0].last_activity_at],
         );
 
         // Zero the balance
@@ -1198,9 +1594,11 @@ export async function processExpiredCredits(): Promise<{
            SET balance = 0,
                updated_at = NOW()
            WHERE user_id = $1`,
-          [balance.user_id]
+          [balance.user_id],
         );
+        return parseFloat(rows[0].balance);
       });
+      if (amount === null) continue;
 
       logger.info('Credits expired', {
         userId: balance.user_id,
@@ -1238,7 +1636,7 @@ export async function updateLastActivity(userId: string): Promise<void> {
     `UPDATE juice_balances
      SET last_activity_at = NOW()
      WHERE user_id = $1`,
-    [userId]
+    [userId],
   );
 }
 
@@ -1252,7 +1650,7 @@ export async function updateLastActivity(userId: string): Promise<void> {
  */
 export async function processSingleSpend(spendId: string): Promise<{
   spendId: string;
-  status: 'completed' | 'failed';
+  status: 'completed' | 'submitted' | 'failed';
   txHash?: string;
   error?: string;
 }> {
@@ -1263,7 +1661,8 @@ export async function processSingleSpend(spendId: string): Promise<{
     throw new Error('RESERVES_PRIVATE_KEY not configured');
   }
 
-  // Get the spend record with row locking
+  // Atomically claim only an untouched pending spend. Failed spends have already
+  // been refunded and must never be sent later by an admin retry.
   const [spend] = await query<{
     id: string;
     user_id: string;
@@ -1272,42 +1671,28 @@ export async function processSingleSpend(spendId: string): Promise<{
     beneficiary_address: string;
     memo: string | null;
     juice_amount: string;
-    status: string;
     retry_count: number;
   }>(
-    `SELECT id, user_id, project_id, chain_id, beneficiary_address,
-            memo, juice_amount, status, retry_count
-     FROM juice_spends
-     WHERE id = $1
-     FOR UPDATE`,
-    [spendId]
+    `UPDATE juice_spends
+     SET status = 'executing', updated_at = NOW()
+     WHERE id = $1 AND status = 'pending'
+     RETURNING id, user_id, project_id, chain_id, beneficiary_address,
+               memo, juice_amount, retry_count`,
+    [spendId],
   );
 
   if (!spend) {
-    throw new Error('Spend not found');
+    throw new Error('Spend is not pending and cannot be executed');
   }
 
-  if (spend.status === 'completed') {
-    throw new Error('Spend already completed');
-  }
-
-  if (spend.status === 'refunded') {
-    throw new Error('Spend was refunded');
-  }
-
+  let submittedTxHash: Hex | null = null;
   try {
-    // Mark as executing
-    await execute(
-      `UPDATE juice_spends SET status = 'executing', updated_at = NOW()
-       WHERE id = $1`,
-      [spend.id]
-    );
-
     // Get ETH/USD rate
     const ethUsdRate = await getEthUsdRate();
     const amountUsd = parseFloat(spend.juice_amount);
     const amountEth = amountUsd / ethUsdRate;
     const amountWei = BigInt(Math.floor(amountEth * 1e18));
+    if (amountWei <= 0n) throw new Error('Project payment amount is too small to transfer');
 
     logger.info('Processing single spend', {
       spendId: spend.id,
@@ -1316,45 +1701,24 @@ export async function processSingleSpend(spendId: string): Promise<{
       amountEth: formatEther(amountWei),
     });
 
-    // Execute on-chain payment
-    const chainConfig = CHAINS[spend.chain_id];
-    if (!chainConfig) {
-      throw new Error(`Unsupported chain: ${spend.chain_id}`);
-    }
-
-    const account = privateKeyToAccount(privateKey);
-    const walletClient = createWalletClient({
-      account,
-      chain: chainConfig.chain,
-      transport: http(chainConfig.rpcUrl),
+    const { txHash, tokensReceived } = await executeJuiceProjectPayment({
+      privateKey,
+      chainId: spend.chain_id,
+      projectId: spend.project_id,
+      beneficiary: spend.beneficiary_address as Address,
+      amountWei,
+      memo: spend.memo || `Juice payment: $${amountUsd}`,
+      onSubmitted: async (hash) => {
+        submittedTxHash = hash;
+        const recorded = await execute(
+          `UPDATE juice_spends
+           SET tx_hash = $1, crypto_amount = $2, eth_usd_rate = $3, updated_at = NOW()
+           WHERE id = $4 AND status = 'executing' AND tx_hash IS NULL`,
+          [hash, amountWei.toString(), ethUsdRate, spend.id],
+        );
+        if (recorded !== 1) throw new Error('Could not bind submitted project payment');
+      },
     });
-
-    const publicClient = createPublicClient({
-      chain: chainConfig.chain,
-      transport: http(chainConfig.rpcUrl),
-    });
-
-    const txHash = await walletClient.writeContract({
-      address: JB_MULTI_TERMINAL,
-      abi: TERMINAL_ABI,
-      functionName: 'pay',
-      args: [
-        BigInt(spend.project_id),
-        NATIVE_TOKEN,
-        amountWei,
-        spend.beneficiary_address as `0x${string}`,
-        0n, // minReturnedTokens
-        spend.memo || `Juice payment: $${amountUsd}`,
-        '0x',
-      ],
-      value: amountWei,
-    });
-
-    // Wait for confirmation
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-
-    // TODO: Parse logs to get tokens received
-    const tokensReceived = '0';
 
     // Mark as completed
     await execute(
@@ -1365,8 +1729,8 @@ export async function processSingleSpend(spendId: string): Promise<{
         eth_usd_rate = $3,
         tokens_received = $4,
         updated_at = NOW()
-       WHERE id = $5`,
-      [txHash, amountWei.toString(), ethUsdRate, tokensReceived, spend.id]
+       WHERE id = $5 AND status = 'executing' AND tx_hash = $1`,
+      [txHash, amountWei.toString(), ethUsdRate, tokensReceived, spend.id],
     );
 
     logger.info('Single spend completed', {
@@ -1383,6 +1747,21 @@ export async function processSingleSpend(spendId: string): Promise<{
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
+    if (submittedTxHash) {
+      await execute(
+        `UPDATE juice_spends
+         SET error_message = $1, updated_at = NOW()
+         WHERE id = $2 AND status = 'executing' AND tx_hash = $3`,
+        [errorMessage, spend.id, submittedTxHash],
+      );
+      return {
+        spendId: spend.id,
+        status: 'submitted',
+        txHash: submittedTxHash,
+        error: 'Payment submitted and awaiting receipt verification',
+      };
+    }
+
     // Check if we've hit max retries
     if (spend.retry_count + 1 >= MAX_RETRIES) {
       // Refund the Juice
@@ -1396,7 +1775,7 @@ export async function processSingleSpend(spendId: string): Promise<{
           last_retry_at = NOW(),
           updated_at = NOW()
          WHERE id = $2`,
-        [errorMessage, spend.id]
+        [errorMessage, spend.id],
       );
 
       logger.error('Single spend failed permanently', error as Error, {
@@ -1419,7 +1798,7 @@ export async function processSingleSpend(spendId: string): Promise<{
           last_retry_at = NOW(),
           updated_at = NOW()
          WHERE id = $2`,
-        [errorMessage, spend.id]
+        [errorMessage, spend.id],
       );
 
       logger.error('Single spend failed, will retry', error as Error, {
@@ -1427,7 +1806,9 @@ export async function processSingleSpend(spendId: string): Promise<{
         retryCount: spend.retry_count + 1,
       });
 
-      throw new Error(`Spend failed (attempt ${spend.retry_count + 1}/${MAX_RETRIES}): ${errorMessage}`);
+      throw new Error(
+        `Spend failed (attempt ${spend.retry_count + 1}/${MAX_RETRIES}): ${errorMessage}`,
+      );
     }
   }
 }

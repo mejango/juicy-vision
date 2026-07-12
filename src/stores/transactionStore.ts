@@ -5,8 +5,7 @@ import { persist } from 'zustand/middleware'
 export type PaymentStage =
   | 'checking'      // Checking balances and chain
   | 'switching'     // Switching chains
-  | 'approving'     // Waiting for USDC→Permit2 approval tx
-  | 'signing'       // Waiting for Permit2 signature
+  | 'approving'     // Waiting for the direct USDC approval transaction
   | 'submitting'    // Sending the pay transaction
   | 'confirming'    // Waiting for transaction to be mined
   | 'queueing'      // Queuing Pay Credits payment for admin processing

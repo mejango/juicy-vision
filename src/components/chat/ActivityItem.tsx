@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useThemeStore } from '../../stores'
-import { resolveIpfsUri } from '../../utils/ipfs'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { getEventInfo, formatTimeAgo } from '../../utils/activityEvents'
 import { MAINNET_CHAINS } from '../../constants'
-import { resolveProjectNameOnChain, type ActivityEvent } from '../../services/bendystraw/client'
+import { resolveProjectNameForDisplay, type ActivityEvent } from '../../services/bendystraw/client'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface ActivityItemProps {
   event: ActivityEvent
@@ -16,11 +16,9 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
   const { action, amount, txHash, from } = getEventInfo(event)
   // Activity feed always shows mainnet data, so always use MAINNET_CHAINS
   const chain = MAINNET_CHAINS[event.chainId] || { name: '?', color: '#888', explorer: 'https://etherscan.io' }
-  const logoUri = resolveIpfsUri(event.project?.logoUri)
   const [ensName, setEnsName] = useState<string | null>(null)
   const [resolvedName, setResolvedName] = useState<string | null>(null)
-  // Bendystraw returns null metadata for many V6 projects; fall back to the
-  // on-chain name (JBController.uriOf → IPFS) instead of "Unknown Project".
+  // Use the shared Bendystraw-first resolver when this event did not embed a name.
   const effectiveName = event.project?.name || resolvedName
   const projectName = effectiveName || 'Unknown Project'
 
@@ -31,11 +29,11 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
     }
   }, [from])
 
-  // Resolve the project name on-chain when the indexer didn't supply one.
+  // Resolve the project name when the event row did not embed it.
   useEffect(() => {
     const pid = event.project?.projectId
     if (!event.project?.name && pid != null) {
-      resolveProjectNameOnChain(pid, event.chainId).then(setResolvedName)
+      resolveProjectNameForDisplay(pid, event.chainId).then(setResolvedName)
     }
   }, [event.project?.name, event.project?.projectId, event.chainId])
 
@@ -58,15 +56,11 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
       }`}
     >
       {/* Background logo */}
-      {logoUri && (
-        <div
-          className="absolute right-0 top-1/2 -translate-y-1/2 w-16 h-16 opacity-20"
-          style={{
-            backgroundImage: `url(${logoUri})`,
-            backgroundSize: 'contain',
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'center',
-          }}
+      {event.project?.logoUri && (
+        <IpfsImage
+          uri={event.project.logoUri}
+          alt=""
+          className="absolute right-0 top-1/2 -translate-y-1/2 w-16 h-16 object-contain opacity-20"
         />
       )}
 

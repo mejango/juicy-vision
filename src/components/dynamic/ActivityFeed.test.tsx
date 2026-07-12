@@ -274,6 +274,7 @@ describe('ActivityFeed', () => {
             timestamp: Math.floor(Date.now() / 1000) - 60,
             from: '0x1234567890abcdef1234567890abcdef12345678',
             amount: '1000000', // 1 USDC (6 decimals)
+            amountUsd: '1000000000000000000', // Explicit $1 indexed value
             newlyIssuedTokenCount: '100000000000000000000',
             memo: null,
           },
@@ -284,11 +285,11 @@ describe('ActivityFeed', () => {
       vi.mocked(bendystraw.fetchCashOutEventsPage).mockResolvedValue({ items: [], hasNextPage: false, endCursor: null })
     })
 
-    it('displays USDC amounts correctly', async () => {
+    it('uses the explicitly indexed USD amount instead of guessing a token', async () => {
       render(<ActivityFeed projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText(/USDC/)).toBeInTheDocument()
+        expect(screen.getByText('$1.00')).toBeInTheDocument()
       })
     })
   })
@@ -335,9 +336,9 @@ describe('ActivityFeed', () => {
 
       render(<ActivityFeed projectId="1" />)
 
-      // Should not crash and should show empty state
+      // A failed read is not the same thing as an empty history.
       await waitFor(() => {
-        expect(screen.getByText('No activity yet')).toBeInTheDocument()
+        expect(screen.getByText('Activity unavailable')).toBeInTheDocument()
       })
     })
   })

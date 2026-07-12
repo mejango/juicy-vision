@@ -1,22 +1,24 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
-import { isAddress } from 'viem'
 import { useThemeStore } from '../../stores'
 import { useSetSplitsFormState } from '../../hooks/useComponentState'
 import {
   fetchProject,
   fetchProjectWithRuleset,
   fetchProjectSplits,
-  fetchConnectedChains,
   type Project,
   type JBSplitData,
-  type ConnectedChain,
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { resolveEnsName } from '../../utils/ens'
 import { SetSplitsModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
 import { ZERO_ADDRESS } from '../../constants'
+import { useManagedWallet } from '../../hooks'
+import { buildSplit } from '../../utils/splitSafety'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface SetSplitsFormProps {
   projectId: string
@@ -40,6 +42,10 @@ interface ChainSplitsData {
   payoutSplits: JBSplitData[]
   reservedSplits: JBSplitData[]
   baseCurrency: number
+  payoutGroupId: string | null
+  payoutToken: string | null
+  configurationComplete: boolean
+  error?: string
   selected: boolean
 }
 
@@ -52,13 +58,16 @@ interface EditableSplit {
   preferAddToBalance: boolean
   lockedUntil: number
   hook: string
+  routeMode: 'wallet' | 'project'
   isLocked: boolean // computed from lockedUntil
   isNew: boolean // true if added in this session
 }
 
 // Convert JBSplitData percent (0-1_000_000_000) to display percent (0-100)
 function toDisplayPercent(basisPoints: number): string {
-  return ((basisPoints / 1_000_000_000) * 100).toFixed(2).replace(/\.?0+$/, '')
+  const whole = Math.floor(basisPoints / 10_000_000)
+  const fraction = String(basisPoints % 10_000_000).padStart(7, '0').replace(/0+$/, '')
+  return fraction ? `${whole}.${fraction}` : String(whole)
 }
 
 // Convert JBSplitData to EditableSplit
@@ -72,6 +81,7 @@ function toEditableSplit(split: JBSplitData, index: number): EditableSplit {
     preferAddToBalance: split.preferAddToBalance,
     lockedUntil: split.lockedUntil,
     hook: split.hook,
+    routeMode: split.projectId > 0 ? 'project' : 'wallet',
     isLocked: split.lockedUntil > now,
     isNew: false,
   }
@@ -87,6 +97,7 @@ function createEmptySplit(): EditableSplit {
     preferAddToBalance: false,
     lockedUntil: 0,
     hook: ZERO_ADDRESS,
+    routeMode: 'wallet',
     isLocked: false,
     isNew: true,
   }
@@ -97,10 +108,29 @@ function getTotalPercent(splits: EditableSplit[]): number {
   return splits.reduce((sum, s) => sum + (parseFloat(s.percent) || 0), 0)
 }
 
+function splitFingerprint(split: JBSplitData): string {
+  return [
+    split.percent,
+    split.projectId,
+    split.beneficiary.toLowerCase(),
+    split.preferAddToBalance,
+    split.lockedUntil,
+    split.hook.toLowerCase(),
+  ].join(':')
+}
+
+function splitSetsMatch(left: JBSplitData[], right: JBSplitData[]): boolean {
+  return left.length === right.length && left.every((split, index) =>
+    splitFingerprint(split) === splitFingerprint(right[index])
+  )
+}
+
 export default function SetSplitsForm({ projectId, chainId = '1', messageId }: SetSplitsFormProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { isConnected } = useAccount()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected
 
   // Persistent state
   const { state: persistedState, updateState: updatePersistedState } = useSetSplitsFormState(messageId)
@@ -113,6 +143,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
 
   // Chain state
   const [chainSplitsData, setChainSplitsData] = useState<ChainSplitsData[]>([])
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const primaryChainId = parseInt(chainId)
 
   // Editing state
@@ -120,27 +151,67 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
   const [payoutSplits, setPayoutSplits] = useState<EditableSplit[]>([])
   const [reservedSplits, setReservedSplits] = useState<EditableSplit[]>([])
   const [showModal, setShowModal] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   // ENS resolution
   const [ensNames, setEnsNames] = useState<Record<string, string>>({})
+  const [destinationProjects, setDestinationProjects] = useState<Record<string, Project>>({})
 
   // Derived state
   const selectedChains = chainSplitsData.filter(cd => cd.selected)
   const isOmnichain = chainSplitsData.length > 1
   const primaryData = chainSplitsData.find(cd => cd.chainId === primaryChainId) || chainSplitsData[0]
   const baseCurrency = primaryData?.baseCurrency || 1
-  const currencyLabel = baseCurrency === 2 ? 'USDC' : 'ETH'
 
   // Calculate changes
   const payoutTotal = getTotalPercent(payoutSplits)
   const reservedTotal = getTotalPercent(reservedSplits)
-  const payoutValid = payoutTotal <= 100
-  const reservedValid = reservedTotal <= 100
+  const splitIsValid = (split: EditableSplit, kind: 'payout' | 'reserved') => {
+    if ((split.routeMode === 'project') !== Boolean(split.projectId)) return false
+    try {
+      buildSplit(split, 'Split', {
+        kind,
+        sourceProjectId: primaryData?.projectId ?? projectId,
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+  const payoutValid = payoutTotal <= 100 && payoutSplits.every(split => splitIsValid(split, 'payout'))
+  const reservedValid = reservedTotal <= 100 && reservedSplits.every(split => splitIsValid(split, 'reserved'))
 
-  const hasChanges = payoutSplits.some(s => s.isNew) ||
-    reservedSplits.some(s => s.isNew) ||
-    payoutSplits.length !== (primaryData?.payoutSplits.length || 0) ||
-    reservedSplits.length !== (primaryData?.reservedSplits.length || 0)
+  const editableFingerprint = (split: EditableSplit, kind: 'payout' | 'reserved') => {
+    try {
+      const built = buildSplit(split, 'Split', {
+        kind,
+        sourceProjectId: primaryData?.projectId ?? projectId,
+      })
+      return [
+        built.percent,
+        built.projectId,
+        built.beneficiary.toLowerCase(),
+        built.preferAddToBalance,
+        built.lockedUntil,
+        built.hook.toLowerCase(),
+      ].join(':')
+    } catch {
+      return 'invalid'
+    }
+  }
+  const hasChanges = !!primaryData && (
+    payoutSplits.map(split => editableFingerprint(split, 'payout')).join('|') !== primaryData.payoutSplits.map(splitFingerprint).join('|') ||
+    reservedSplits.map(split => editableFingerprint(split, 'reserved')).join('|') !== primaryData.reservedSplits.map(splitFingerprint).join('|')
+  )
+  const clearsEffectiveSplits = !!primaryData && (
+    (primaryData.payoutSplits.length > 0 && payoutSplits.length === 0) ||
+    (primaryData.reservedSplits.length > 0 && reservedSplits.length === 0)
+  )
+  const chainIsCompatible = useCallback((chainData: ChainSplitsData) => !primaryData || (
+    chainData.configurationComplete &&
+    splitSetsMatch(chainData.payoutSplits, primaryData.payoutSplits) &&
+    splitSetsMatch(chainData.reservedSplits, primaryData.reservedSplits)
+  ), [primaryData])
 
   // Dispatch event to open wallet panel
   const openWalletPanel = () => {
@@ -154,25 +225,25 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
       setError(null)
 
       try {
-        const [projectData, connectedChains] = await Promise.all([
+        const [projectData, chainResolution] = await Promise.all([
           fetchProject(projectId, primaryChainId),
-          fetchConnectedChains(projectId, primaryChainId),
+          resolveProjectChains(projectId, primaryChainId),
         ])
         setProject(projectData)
-
-        // Determine chains to fetch
-        const chainsToFetch: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: primaryChainId, projectId: parseInt(projectId) }]
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
         // Fetch splits from all chains
-        const splitsPromises = chainsToFetch.map(async (chain): Promise<ChainSplitsData> => {
+        const splitsPromises = chainResolution.chains.map(async (chain): Promise<ChainSplitsData> => {
           try {
             const chainProject = await fetchProjectWithRuleset(String(chain.projectId), chain.chainId)
             const rulesetId = chainProject?.currentRuleset?.id || '0'
 
             let payoutSplits: JBSplitData[] = []
             let reservedSplits: JBSplitData[] = []
+            let payoutGroupId: string | null = null
+            let payoutToken: string | null = null
+            let configurationComplete = false
+            let configurationError: string | undefined
 
             if (rulesetId !== '0') {
               const splitsData = await fetchProjectSplits(
@@ -182,6 +253,20 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
               )
               payoutSplits = splitsData.payoutSplits
               reservedSplits = splitsData.reservedSplits
+              const contexts = splitsData.accountingContexts || []
+              if (contexts.length === 1) {
+                payoutToken = contexts[0].token
+                payoutGroupId = BigInt(contexts[0].token).toString()
+                payoutSplits = splitsData.splitGroups?.find(
+                  group => group.groupId === payoutGroupId,
+                )?.splits ?? []
+              }
+              configurationComplete = splitsData.configurationComplete === true && !!payoutGroupId
+              if (contexts.length !== 1) {
+                configurationError = 'Split editing requires one unambiguous live payout token'
+              } else if (!payoutGroupId) {
+                configurationError = 'The payout token could not be determined unambiguously'
+              }
             }
 
             return {
@@ -190,8 +275,16 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
               rulesetId,
               payoutSplits,
               reservedSplits,
-              baseCurrency: chainProject?.currentRuleset?.baseCurrency || 1,
-              selected: true,
+              baseCurrency: chainProject?.currentRuleset?.baseCurrency ?? 1,
+              payoutGroupId,
+              payoutToken,
+              configurationComplete: rulesetId !== '0' && configurationComplete,
+              error: rulesetId === '0'
+                ? 'Current ruleset unavailable'
+                : configurationError,
+              selected: chain.chainId === primaryChainId &&
+                chain.projectId === parseInt(projectId) &&
+                rulesetId !== '0' && configurationComplete,
             }
           } catch (err) {
             console.error(`Failed to fetch splits for chain ${chain.chainId}:`, err)
@@ -202,7 +295,11 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
               payoutSplits: [],
               reservedSplits: [],
               baseCurrency: 1,
-              selected: true,
+              payoutGroupId: null,
+              payoutToken: null,
+              configurationComplete: false,
+              error: err instanceof Error ? err.message : 'Could not verify the current split configuration',
+              selected: false,
             }
           }
         })
@@ -245,15 +342,34 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
     load()
   }, [projectId, primaryChainId])
 
+  useEffect(() => {
+    const ids = [...payoutSplits, ...reservedSplits]
+      .filter(split => split.routeMode === 'project' && /^\d+$/.test(split.projectId))
+      .map(split => split.projectId)
+    const missing = [...new Set(ids)].filter(id => !destinationProjects[id])
+    if (missing.length === 0) return
+    let cancelled = false
+    Promise.all(missing.map(async id => [id, await fetchProject(id, primaryChainId)] as const))
+      .then(entries => {
+        if (!cancelled) setDestinationProjects(current => ({ ...current, ...Object.fromEntries(entries) }))
+      })
+      .catch(() => {
+        // The route remains editable by verified project ID when display metadata is unavailable.
+      })
+    return () => { cancelled = true }
+  }, [payoutSplits, reservedSplits, destinationProjects, primaryChainId])
+
   // Toggle chain selection
   const toggleChainSelection = useCallback((chainId: number) => {
     if (isLocked) return
     setChainSplitsData(prev =>
       prev.map(cd =>
-        cd.chainId === chainId ? { ...cd, selected: !cd.selected } : cd
+        cd.chainId === chainId
+          ? { ...cd, selected: cd.configurationComplete && chainIsCompatible(cd) ? !cd.selected : false }
+          : cd
       )
     )
-  }, [isLocked])
+  }, [isLocked, chainIsCompatible])
 
   // Add a new split
   const handleAddSplit = useCallback((type: 'payout' | 'reserved') => {
@@ -270,9 +386,9 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
   const handleRemoveSplit = useCallback((type: 'payout' | 'reserved', id: string) => {
     if (isLocked) return
     if (type === 'payout') {
-      setPayoutSplits(prev => prev.filter(s => s.id !== id && !s.isLocked))
+      setPayoutSplits(prev => prev.filter(s => s.id !== id))
     } else {
-      setReservedSplits(prev => prev.filter(s => s.id !== id && !s.isLocked))
+      setReservedSplits(prev => prev.filter(s => s.id !== id))
     }
   }, [isLocked])
 
@@ -312,33 +428,38 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
   }, [updatePersistedState])
 
   // Submit handler
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (isLocked || selectedChains.length === 0) return
-    if (!payoutValid || !reservedValid) return
+    if (!payoutValid || !reservedValid || clearsEffectiveSplits || !hasChanges) return
 
-    if (!isConnected) {
+    if (!hasActiveWallet) {
       openWalletPanel()
       return
     }
 
-    // Persist in_progress state
-    updatePersistedState({
-      status: 'in_progress',
-      splitType: 'both',
-      payoutSplitsCount: payoutSplits.length,
-      reservedSplitsCount: reservedSplits.length,
-      selectedChains: selectedChains.map(c => c.chainId),
-      submittedAt: new Date().toISOString(),
-    })
-
-    setShowModal(true)
-  }, [isLocked, selectedChains, payoutValid, reservedValid, isConnected, payoutSplits.length, reservedSplits.length, updatePersistedState])
+    setSubmitError(null)
+    try {
+      const fresh = await Promise.all(selectedChains.map(cd =>
+        fetchProjectSplits(String(cd.projectId), cd.chainId, cd.rulesetId)
+      ))
+      fresh.forEach((configuration, index) => {
+        const reviewed = selectedChains[index]
+        if (
+          !splitSetsMatch(configuration.payoutSplits, reviewed.payoutSplits) ||
+          !splitSetsMatch(configuration.reservedSplits, reviewed.reservedSplits)
+        ) {
+          throw new Error(`Splits changed on ${CHAIN_INFO[reviewed.chainId]?.name || `chain ${reviewed.chainId}`}. Reload before editing.`)
+        }
+      })
+      setShowModal(true)
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Could not verify the current split configuration')
+    }
+  }, [isLocked, selectedChains, payoutValid, reservedValid, clearsEffectiveSplits, hasChanges, hasActiveWallet])
 
   // Render split row
   const renderSplitRow = (split: EditableSplit, type: 'payout' | 'reserved') => {
     const ensName = ensNames[split.beneficiary.toLowerCase()]
-    const isValidAddress = split.beneficiary && isAddress(split.beneficiary)
-
     return (
       <div
         key={split.id}
@@ -373,35 +494,115 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
             </div>
           </div>
 
-          {/* Beneficiary */}
+          {/* Destination */}
           <div className="flex-1">
+            <div className={`mb-2 inline-flex border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+              {(['wallet', 'project'] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    handleUpdateSplit(type, split.id, 'routeMode', mode)
+                    if (mode === 'wallet') {
+                      handleUpdateSplit(type, split.id, 'projectId', '')
+                      handleUpdateSplit(type, split.id, 'preferAddToBalance', false)
+                    }
+                  }}
+                  disabled={split.isLocked || isLocked || !primaryData?.configurationComplete}
+                  className={`px-2 py-1 text-[10px] font-medium ${
+                    split.routeMode === mode
+                      ? isDark ? 'bg-white/15 text-white' : 'bg-gray-200 text-gray-900'
+                      : isDark ? 'text-gray-400' : 'text-gray-500'
+                  }`}
+                >
+                  {mode === 'wallet' ? 'Wallet' : 'Project'}
+                </button>
+              ))}
+            </div>
+            {split.routeMode === 'project' && (
+              <>
+                <label className={`text-[10px] block mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Destination project ID
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={split.projectId}
+                  onChange={(e) => handleUpdateSplit(type, split.id, 'projectId', e.target.value)}
+                  disabled={split.isLocked || isLocked || !primaryData?.configurationComplete}
+                  placeholder="Project ID"
+                  className={`w-full px-2 py-1.5 mb-2 text-sm font-mono outline-none ${
+                    isDark
+                      ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-600'
+                      : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
+                  }`}
+                />
+              </>
+            )}
             <label className={`text-[10px] block mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              {split.projectId ? 'Project ID' : 'Address'}
+              {split.routeMode === 'wallet'
+                ? 'Wallet address'
+                : type === 'reserved'
+                  ? 'Fallback beneficiary'
+                  : split.preferAddToBalance
+                    ? 'Beneficiary (unused)'
+                    : 'Destination-token beneficiary'}
             </label>
             <input
               type="text"
-              value={split.projectId || split.beneficiary}
-              onChange={(e) => {
-                const val = e.target.value
-                if (/^\d+$/.test(val)) {
-                  handleUpdateSplit(type, split.id, 'projectId', val)
-                  handleUpdateSplit(type, split.id, 'beneficiary', '')
-                } else {
-                  handleUpdateSplit(type, split.id, 'beneficiary', val)
-                  handleUpdateSplit(type, split.id, 'projectId', '')
-                }
-              }}
-              disabled={split.isLocked || isLocked}
-              placeholder="0x... or project ID"
+              value={split.beneficiary}
+              onChange={(e) => handleUpdateSplit(type, split.id, 'beneficiary', e.target.value)}
+              disabled={split.isLocked || isLocked || !primaryData?.configurationComplete}
+              placeholder={split.routeMode === 'project' && type === 'payout' && split.preferAddToBalance ? 'Optional' : '0x...'}
               className={`w-full px-2 py-1.5 text-sm font-mono outline-none ${
                 isDark
                   ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-600'
                   : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
-              } ${split.isLocked || isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+              } ${split.isLocked || isLocked || !primaryData?.configurationComplete ? 'opacity-50 cursor-not-allowed' : ''}`}
             />
             {ensName && (
               <div className={`text-[10px] mt-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                 {ensName}
+              </div>
+            )}
+            {split.routeMode === 'project' && split.projectId && (
+              <div className={`mt-1 text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                <ProjectLink chainSlug={chainInfo.slug} projectId={split.projectId} className="hover:underline">
+                  {destinationProjects[split.projectId]?.name || `Project #${split.projectId}`}
+                </ProjectLink>
+              </div>
+            )}
+            {split.routeMode === 'project' && type === 'payout' && (
+              <label className={`mt-2 flex items-center gap-2 text-[10px] ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                <input
+                  type="checkbox"
+                  checked={split.preferAddToBalance}
+                  onChange={(e) => handleUpdateSplit(type, split.id, 'preferAddToBalance', e.target.checked)}
+                  disabled={split.isLocked || isLocked}
+                />
+                Add to balance instead of paying the project
+              </label>
+            )}
+            {split.routeMode === 'project' && (
+              <div className={`mt-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                {type === 'reserved'
+                  ? 'Reserved project recipient. Source tokens must be claimed ERC-20s, and the destination needs a primary terminal accepting that token; credits cannot use this route. Missing or reverting routes send source tokens to the fallback beneficiary.'
+                  : split.preferAddToBalance
+                    ? 'add to balance · no tokens minted'
+                    : 'pay project · destination project tokens go to the beneficiary'}
+              </div>
+            )}
+            {split.routeMode === 'project' &&
+              split.beneficiary.toLowerCase() === ZERO_ADDRESS.toLowerCase() &&
+              !split.isNew &&
+              !split.preferAddToBalance && (
+              <div className="mt-1 text-[10px] text-amber-500">
+                No beneficiary is stored. The account triggering distribution receives destination tokens.
+              </div>
+            )}
+            {split.hook.toLowerCase() !== ZERO_ADDRESS.toLowerCase() && (
+              <div className={`mt-1 text-[10px] font-mono ${isDark ? 'text-cyan-300' : 'text-cyan-700'}`}>
+                Recognized split hook · {split.hook.slice(0, 6)}...{split.hook.slice(-4)}
               </div>
             )}
           </div>
@@ -412,7 +613,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
               <span className={`text-[10px] px-2 py-1 ${isDark ? 'text-amber-400 bg-amber-500/10' : 'text-amber-600 bg-amber-50'}`}>
                 Locked until {new Date(split.lockedUntil * 1000).toLocaleDateString()}
               </span>
-            ) : !isLocked && (
+            ) : !isLocked && primaryData?.configurationComplete && (
               <button
                 onClick={() => handleRemoveSplit(type, split.id)}
                 className={`px-2 py-1 text-xs ${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-600 hover:text-red-700'}`}
@@ -423,22 +624,6 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
           </div>
         </div>
 
-        {/* Advanced options toggle (for new splits) */}
-        {split.isNew && !isLocked && (
-          <div className="mt-2 pt-2 border-t border-dashed border-white/10">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={split.preferAddToBalance}
-                onChange={(e) => handleUpdateSplit(type, split.id, 'preferAddToBalance', e.target.checked)}
-                className="w-3 h-3"
-              />
-              <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {type === 'payout' ? 'Add to project balance instead of sending' : 'Prefer add to balance'}
-              </span>
-            </label>
-          </div>
-        )}
       </div>
     )
   }
@@ -481,11 +666,12 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
       <div className={`max-w-2xl border ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Header */}
         <div className="p-4 border-b border-gray-600/50">
           <div className="flex items-center gap-3">
             {logoUrl ? (
-              <img src={logoUrl} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" />
+              <IpfsImage uri={project?.logoUri} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" fallback={<div className="w-14 h-14 bg-green-500/20" />} />
             ) : (
               <div className="w-14 h-14 bg-green-500/20 flex items-center justify-center">
                 <span className="text-2xl">📊</span>
@@ -515,9 +701,10 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
                   <button
                     key={cd.chainId}
                     onClick={() => toggleChainSelection(cd.chainId)}
-                    disabled={isLocked}
+                    disabled={isLocked || !cd.configurationComplete || !chainIsCompatible(cd)}
+                    title={cd.error || (!chainIsCompatible(cd) ? 'Split configuration differs from the selected source chain' : undefined)}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium transition-colors ${
-                      isLocked
+                      isLocked || !cd.configurationComplete || !chainIsCompatible(cd)
                         ? 'opacity-50 cursor-not-allowed'
                         : cd.selected
                           ? isDark
@@ -534,6 +721,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
                     />
                     {chain?.shortName || cd.chainId}
                     {cd.selected && <span>✓</span>}
+                    {!cd.configurationComplete && <span>Unavailable</span>}
                   </button>
                 )
               })}
@@ -597,7 +785,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
                 )}
               </div>
 
-              {!isLocked && (
+              {!isLocked && primaryData?.configurationComplete && (
                 <button
                   onClick={() => handleAddSplit('payout')}
                   className={`w-full py-2 text-sm font-medium border-2 border-dashed transition-colors ${
@@ -627,7 +815,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
                 )}
               </div>
 
-              {!isLocked && (
+              {!isLocked && primaryData?.configurationComplete && (
                 <button
                   onClick={() => handleAddSplit('reserved')}
                   className={`w-full py-2 text-sm font-medium border-2 border-dashed transition-colors ${
@@ -714,16 +902,34 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
           {/* Validation warnings */}
           {(!payoutValid || !reservedValid) && (
             <div className={`mb-3 p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-              {!payoutValid && <div>Payout splits exceed 100%</div>}
-              {!reservedValid && <div>Reserved splits exceed 100%</div>}
+              {!payoutValid && <div>Every payout split needs a valid positive percent and destination, with a total no greater than 100%.</div>}
+              {!reservedValid && <div>Every reserved split needs a valid positive percent and destination, with a total no greater than 100%.</div>}
+            </div>
+          )}
+
+          {submitError && (
+            <div className={`mb-3 p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
+              {submitError}
+            </div>
+          )}
+
+          {clearsEffectiveSplits && (
+            <div className={`mb-3 p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
+              Removing every effective split is blocked because default splits may remain active on-chain. Use the full configuration site to change default split groups explicitly.
+            </div>
+          )}
+
+          {chainSplitsData.some(cd => !cd.configurationComplete) && (
+            <div className={`mb-3 p-3 text-xs ${isDark ? 'bg-red-500/10 text-red-300' : 'bg-red-50 text-red-700'}`}>
+              {primaryData?.error || 'Unavailable chains could not be tied to one verified payout-token group and cannot be selected.'}
             </div>
           )}
 
           <button
             onClick={handleSubmit}
-            disabled={isLocked || selectedChains.length === 0 || !payoutValid || !reservedValid}
+            disabled={isLocked || selectedChains.length === 0 || !payoutValid || !reservedValid || clearsEffectiveSplits || !hasChanges}
             className={`w-full py-3 text-sm font-bold transition-colors ${
-              isLocked || selectedChains.length === 0 || !payoutValid || !reservedValid
+              isLocked || selectedChains.length === 0 || !payoutValid || !reservedValid || clearsEffectiveSplits || !hasChanges
                 ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                 : 'bg-green-500 hover:bg-green-500/90 text-black'
             }`}

@@ -1,10 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
-import { useAccount } from 'wagmi'
+import { useState, useEffect } from 'react'
+import { formatUnits } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
   fetchProjectWithRuleset,
   fetchProjectTokenSymbol,
-  fetchConnectedChains,
   isRevnetProject,
   fetchRevnetOperator,
   fetchRevnetStages,
@@ -17,12 +16,14 @@ import {
   type RulesetHistoryEntry,
   type JBSplitData,
   type FundAccessLimits,
-  type ConnectedChain,
   type ProjectSplitsData,
 } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
-import { EXPLORER_URLS } from '../../constants'
-import { resolveAccountingToken } from '../../utils/currency'
+import { EXPLORER_URLS, NATIVE_TOKEN, USDC_ADDRESSES } from '../../constants'
+import { resolveBaseCurrency } from '../../utils/currency'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { ProjectSplitRoute } from './ProjectSplitRoute'
 
 // Build a per-chain block-explorer address URL. EXPLORER_URLS holds the tx-prefix
 // (e.g. "https://optimistic.etherscan.io/tx/"), so swap the path segment for /address/.
@@ -37,6 +38,10 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; color: strin
   10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
   8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
   42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
+  11155111: { name: 'Sepolia', shortName: 'SEP', color: '#627EEA' },
+  11155420: { name: 'OP Sepolia', shortName: 'OP-SEP', color: '#FF0420' },
+  84532: { name: 'Base Sepolia', shortName: 'BASE-SEP', color: '#0052FF' },
+  421614: { name: 'Arb Sepolia', shortName: 'ARB-SEP', color: '#28A0F0' },
 }
 
 // Per-chain ruleset data
@@ -48,6 +53,7 @@ interface ChainRuleset {
   pendingReserved: string
   owner: string
   projectName: string
+  configurationError?: string
 }
 
 // Omnichain state
@@ -96,7 +102,7 @@ function formatPercent(bps: number) {
 function formatIssuance(weight: string, tokenSymbol: string, baseCurrency: number = 1) {
   try {
     const num = parseFloat(weight) / 1e18
-    const currencyLabel = resolveAccountingToken(baseCurrency).symbol
+    const currencyLabel = resolveBaseCurrency(baseCurrency)
     // Show more precision for nuanced numbers
     if (num >= 1e9) return `${(num / 1e9).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}B ${tokenSymbol}/${currencyLabel}`
     if (num >= 1e6) return `${(num / 1e6).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}M ${tokenSymbol}/${currencyLabel}`
@@ -141,6 +147,9 @@ function compareRulesets(r1: ProjectRuleset | null, r2: ProjectRuleset | null): 
 
 // Compare all chain rulesets and find differences
 function findOmnichainDifferences(chainRulesets: ChainRuleset[]): { match: boolean; differences: string[] } {
+  if (chainRulesets.some(chain => chain.configurationError)) {
+    return { match: false, differences: ['configuration unavailable'] }
+  }
   if (chainRulesets.length <= 1) return { match: true, differences: [] }
 
   const first = chainRulesets[0]
@@ -207,7 +216,7 @@ function generateJuicySummary(input: JuicySummaryInput): JuicySummaryOutput {
 
   // Determine tagline based on project type
   let tagline = ''
-  const currencyLabel = resolveAccountingToken(baseCurrency).symbol
+  const currencyLabel = resolveBaseCurrency(baseCurrency)
   const issuanceNum = parseFloat(ruleset.weight) / 1e18
   const issuanceStr = issuanceNum >= 1e6
     ? `${(issuanceNum / 1e6).toFixed(1)}M`
@@ -285,13 +294,13 @@ function generateJuicySummary(input: JuicySummaryInput): JuicySummaryOutput {
     const returnPercent = (y * 100).toFixed(1)
     actionItems.push({
       action: 'cash-out',
-      message: `Cashing out 10% of ${tokenSymbol} gets ~${returnPercent}% of treasury`,
+      message: `Curve baseline: 10% of ${tokenSymbol} maps to ~${returnPercent}% of reclaimable surplus before hooks and fees`,
       urgency: 'info',
     })
   } else {
     actionItems.push({
       action: 'cash-out',
-      message: 'Full proportional treasury redemption (no exit tax)',
+      message: 'Linear cash-out curve; the live return still depends on surplus, hooks, and protocol fees',
       urgency: 'info',
     })
   }
@@ -516,7 +525,7 @@ function CashOutCurve({ taxRate, isDark }: { taxRate: number; isDark: boolean })
 
   // Calculate y for a given x (% of supply being cashed out)
   // y represents the % of treasury reclaimable
-  const calcY = (x: number) => x * ((1 - r) + (r * x))
+  const calcY = (x: number) => r >= 1 ? 0 : x * ((1 - r) + (r * x))
 
   // Generate path points
   const points: string[] = []
@@ -628,6 +637,9 @@ function CashOutCurve({ taxRate, isDark }: { taxRate: number; isDark: boolean })
           <div className="font-mono text-amber-400">{(at100 * 100).toFixed(1)}%</div>
         </div>
       </div>
+      <div className={`mt-2 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+        Protocol baseline only. The live terminal quote accounts for surplus scope, active hooks, and fees.
+      </div>
     </div>
   )
 }
@@ -644,12 +656,11 @@ export default function RulesetSchedule({
   const [error, setError] = useState<string | null>(null)
   const [ruleset, setRuleset] = useState<ProjectRuleset | null>(null)
   const [owner, setOwner] = useState<string>('')
-  // Definitive revnet flag from the indexer (isRevnetProject), set alongside owner.
+  // Revnet classification follows the live JBProjects owner set above.
   const [projectIsRevnet, setProjectIsRevnet] = useState<boolean>(false)
   const [ownerEns, setOwnerEns] = useState<string | null>(null)
   const [operator, setOperator] = useState<string | null>(null)
   const [operatorEns, setOperatorEns] = useState<string | null>(null)
-  const [projectName, setProjectName] = useState<string>('')
   const [tokenSymbol, setTokenSymbol] = useState<string>('tokens')
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0)
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
@@ -668,6 +679,7 @@ export default function RulesetSchedule({
   const [fundAccessLimits, setFundAccessLimits] = useState<FundAccessLimits | null>(null)
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
   const [pendingReservedTokens, setPendingReservedTokens] = useState<string>('0')
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
 
   // Omnichain state
   const [omnichainState, setOmnichainState] = useState<OmnichainRulesetState>({
@@ -689,23 +701,6 @@ export default function RulesetSchedule({
     ? omnichainState.selectedChainId
     : splitsChainId
 
-  // Get wallet for permission checking
-  const { address } = useAccount()
-
-  // Check if connected wallet is project owner or operator
-  const canManage = useMemo(() => {
-    if (!address) return false
-    const walletAddr = address.toLowerCase()
-    // Check if owner (direct ownership)
-    if (owner && walletAddr === owner.toLowerCase()) return true
-    // Check if operator (for Revnets)
-    if (operator && walletAddr === operator.toLowerCase()) return true
-    return false
-  }, [address, owner, operator])
-
-  // Get chain name for prompts
-  const getChainName = (cId: number) => CHAIN_INFO[cId]?.name || `Chain ${cId}`
-
   useEffect(() => {
     async function loadData() {
       setLoading(true)
@@ -715,11 +710,12 @@ export default function RulesetSchedule({
         const primaryChainId = parseInt(chainId)
 
         // 1. First fetch basic project data and connected chains in parallel
-        const [project, symbol, connectedChains] = await Promise.all([
+        const [project, symbol, chainResolution] = await Promise.all([
           fetchProjectWithRuleset(projectId, primaryChainId),
           fetchProjectTokenSymbol(projectId, primaryChainId),
-          fetchConnectedChains(projectId, primaryChainId),
+          resolveProjectChains(projectId, primaryChainId),
         ])
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
         if (!project) {
           setError('Project not found')
@@ -727,7 +723,6 @@ export default function RulesetSchedule({
         }
 
         // Set primary chain data for backwards compatibility
-        setProjectName(project.name)
         setOwner(project.owner)
         setProjectIsRevnet(isRevnetProject(project))
         setRuleset(project.currentRuleset)
@@ -750,9 +745,7 @@ export default function RulesetSchedule({
 
         // 2. Determine if this is an omnichain project
         // Use connected chains if available, otherwise just the primary chain
-        const chainsToFetch: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: primaryChainId, projectId: parseInt(projectId) }]
+        const chainsToFetch = chainResolution.chains
 
         const isOmnichain = chainsToFetch.length > 1
 
@@ -761,6 +754,7 @@ export default function RulesetSchedule({
           try {
             // First fetch project data to get ruleset ID
             const chainProject = await fetchProjectWithRuleset(String(chain.projectId), chain.chainId)
+            if (!chainProject) throw new Error('Project ruleset could not be verified')
 
             // Then fetch splits and pending tokens (need ruleset ID for splits)
             const [chainSplits, chainPending] = await Promise.all([
@@ -769,6 +763,9 @@ export default function RulesetSchedule({
                 : Promise.resolve({ payoutSplits: [], reservedSplits: [] } as ProjectSplitsData),
               fetchPendingReservedTokens(String(chain.projectId), chain.chainId),
             ])
+            if (chainProject.currentRuleset?.id && !chainSplits.configurationComplete) {
+              throw new Error('Split configuration could not be verified')
+            }
 
             return {
               chainId: chain.chainId,
@@ -789,6 +786,7 @@ export default function RulesetSchedule({
               pendingReserved: '0',
               owner: '',
               projectName: `Project #${chain.projectId}`,
+              configurationError: err instanceof Error ? err.message : 'Ruleset configuration unavailable',
             }
           }
         })
@@ -818,7 +816,10 @@ export default function RulesetSchedule({
         // Fetch Revnet-specific data if this is a Revnet
         if (isRevnetProject(project)) {
           // Fetch operator
-          const op = await fetchRevnetOperator(projectId, primaryChainId)
+          const op = await fetchRevnetOperator(projectId, primaryChainId).catch(error => {
+            console.error('Revnet operator unavailable:', error)
+            return null
+          })
           setOperator(op)
           if (op) {
             const opEns = await resolveEnsName(op)
@@ -921,6 +922,7 @@ export default function RulesetSchedule({
   }
 
   const activeSplits = getActiveSplits()
+  const configurationUnavailable = omnichainState.chainRulesets.some(chain => !!chain.configurationError)
 
   // Check if splits differ across chains
   const splitsDifferAcrossChains = () => {
@@ -952,6 +954,17 @@ export default function RulesetSchedule({
     return false
   }
 
+  if (configurationUnavailable) {
+    return (
+      <div className={`w-full max-w-md border p-4 ${
+        isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-800'
+      }`}>
+        <div className="font-semibold">Ruleset unavailable</div>
+        <p className="mt-1 text-sm">Every connected project chain could not be verified.</p>
+      </div>
+    )
+  }
+
   const Section = ({ id, title, children }: { id: string; title: string; children: React.ReactNode }) => (
     <div className={`border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
       <button
@@ -980,6 +993,7 @@ export default function RulesetSchedule({
       <div className={`max-w-md border overflow-hidden ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Header */}
         <div className={`px-4 py-3 border-b ${
           isDark ? 'border-white/10' : 'border-gray-100'
@@ -1146,47 +1160,9 @@ export default function RulesetSchedule({
 
             {/* Cycle Navigation Header */}
             {(() => {
-              // Build combined list: [future cycles..., upcoming, ...history (current first, then past)]
+              // Show only the contract's next expected cycle plus verified history.
               const allCycles: RulesetHistoryEntry[] = []
-
-              // Generate future cycles based on upcoming ruleset (or current if no upcoming)
-              const baseForFuture = upcomingRuleset || (rulesetHistory[0] ? {
-                ...rulesetHistory[0],
-                cycleNumber: rulesetHistory[0].cycleNumber + 1,
-                start: rulesetHistory[0].start + rulesetHistory[0].duration,
-              } : null)
-
-              if (baseForFuture && baseForFuture.duration > 0) {
-                // Generate up to 20 future cycles
-                const futureCycles: RulesetHistoryEntry[] = []
-                const prevCycle = baseForFuture
-                const decayMultiplier = 1 - (baseForFuture.weightCutPercent / 1e9)
-
-                for (let i = 0; i < 20; i++) {
-                  const cycleNum = prevCycle.cycleNumber + i
-                  const cycleStart = prevCycle.start + (i * prevCycle.duration)
-                  const cycleWeight = BigInt(Math.floor(
-                    parseFloat(prevCycle.weight) * Math.pow(decayMultiplier, i)
-                  ))
-
-                  futureCycles.push({
-                    cycleNumber: cycleNum,
-                    id: prevCycle.id,
-                    start: cycleStart,
-                    duration: prevCycle.duration,
-                    weight: String(cycleWeight),
-                    weightCutPercent: prevCycle.weightCutPercent,
-                    reservedPercent: prevCycle.reservedPercent,
-                    cashOutTaxRate: prevCycle.cashOutTaxRate,
-                    pausePay: prevCycle.pausePay,
-                    allowOwnerMinting: prevCycle.allowOwnerMinting,
-                    status: 'upcoming',
-                  })
-                }
-
-                // Add future cycles (furthest first so index 0 is furthest future)
-                allCycles.push(...futureCycles.reverse())
-              }
+              if (upcomingRuleset) allCycles.push(upcomingRuleset)
 
               // Add history (current first, then past)
               allCycles.push(...rulesetHistory)
@@ -1215,6 +1191,10 @@ export default function RulesetSchedule({
                 cashOutTaxRate: viewingRuleset.cashOutTaxRate ?? ruleset?.cashOutTaxRate ?? 0,
                 pausePay: viewingRuleset.pausePay ?? ruleset?.pausePay ?? false,
                 allowOwnerMinting: viewingRuleset.allowOwnerMinting ?? ruleset?.allowOwnerMinting ?? false,
+                baseCurrency: viewingRuleset.baseCurrency ?? ruleset?.baseCurrency,
+                useDataHookForPay: viewingRuleset.useDataHookForPay ?? false,
+                useDataHookForCashOut: viewingRuleset.useDataHookForCashOut ?? false,
+                dataHook: viewingRuleset.dataHook,
               } : ruleset
 
               return (
@@ -1250,7 +1230,7 @@ export default function RulesetSchedule({
                                 ? 'bg-purple-500/20 text-purple-400'
                                 : isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'
                           }`}>
-                            {isViewingCurrent ? 'Current' : isViewingUpcoming ? 'Upcoming' : 'Past'}
+                            {isViewingCurrent ? 'Current' : isViewingUpcoming ? 'Next if unchanged' : 'Past'}
                           </span>
                         </div>
                         {displayRuleset?.start && (
@@ -1273,7 +1253,7 @@ export default function RulesetSchedule({
                         }`}
                         title="Newer cycle"
                       >
-                        <span className={`text-xs ${canGoNewer ? '' : 'opacity-50'}`}>Future</span>
+                        <span className={`text-xs ${canGoNewer ? '' : 'opacity-50'}`}>Next</span>
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
@@ -1334,7 +1314,7 @@ export default function RulesetSchedule({
                                       ? isDark ? 'bg-white/40' : 'bg-gray-400'
                                       : isDark ? 'bg-white/20 hover:bg-white/30' : 'bg-gray-200 hover:bg-gray-300'
                                 }`}
-                                title={`Cycle ${cycle.cycleNumber}${cycle.status === 'upcoming' ? ' (scheduled)' : ''}`}
+                                title={`Cycle ${cycle.cycleNumber}${cycle.status === 'upcoming' ? ' (next if unchanged)' : ''}`}
                               />
                             )
                           })}
@@ -1386,7 +1366,7 @@ export default function RulesetSchedule({
                             ? 'text-purple-400'
                             : (!displayRuleset || displayRuleset.duration === 0) ? 'text-amber-400' : 'text-emerald-400'
                       }`}>
-                        {isViewingPast ? 'Ended' : isViewingUpcoming ? 'Scheduled' : (!displayRuleset || displayRuleset.duration === 0) ? 'Unlocked' : 'Locked'}
+                        {isViewingPast ? 'Ended' : isViewingUpcoming ? 'Next if unchanged' : (!displayRuleset || displayRuleset.duration === 0) ? 'Unlocked' : 'Locked'}
                       </div>
                     </div>
                     <div className={`p-2 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
@@ -1447,7 +1427,7 @@ export default function RulesetSchedule({
                           <span className="font-mono">{formatIssuance(displayRuleset?.weight || '0', tokenSymbol, ruleset?.baseCurrency)}</span>
                         </div>
                         <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                          {tokenSymbol} minted per {resolveAccountingToken(ruleset?.baseCurrency).symbol} contributed
+                          {tokenSymbol} minted per {resolveBaseCurrency(ruleset?.baseCurrency)} contributed
                         </div>
                         {!omnichainState.selectedChainId && omnichainState.differences.includes('issuance') && (
                           <DifferenceIndicator
@@ -1504,7 +1484,7 @@ export default function RulesetSchedule({
                       </div>
                       <div>
                         <div className="flex justify-between">
-                          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Cash Out Tax Rate</span>
+                          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Cash-out Curve Rate</span>
                           <span className="font-mono">{((displayRuleset?.cashOutTaxRate || 0) / 10000).toFixed(2)}</span>
                         </div>
                         <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -1512,7 +1492,7 @@ export default function RulesetSchedule({
                             ? 'Cash outs disabled - tokens cannot be redeemed'
                             : (displayRuleset?.cashOutTaxRate || 0) > 0
                               ? 'Higher tax = more funds retained for remaining holders'
-                              : 'No tax - redeem tokens for proportional share of treasury'}
+                              : 'Linear cash-out curve before active hooks and protocol fees'}
                         </div>
                         {!omnichainState.selectedChainId && omnichainState.differences.includes('cashOutTaxRate') && (
                           <DifferenceIndicator
@@ -1587,7 +1567,7 @@ export default function RulesetSchedule({
                             )}
                             {displayRuleset?.cashOutTaxRate !== ruleset.cashOutTaxRate && (
                               <div className="flex justify-between">
-                                <span>Cash Out Tax</span>
+                                <span>Cash-out Curve Rate</span>
                                 <span className="text-amber-400">
                                   {((displayRuleset?.cashOutTaxRate || 0) / 10000).toFixed(2)} → {(ruleset.cashOutTaxRate / 10000).toFixed(2)}
                                 </span>
@@ -1679,7 +1659,7 @@ export default function RulesetSchedule({
                             </div>
                           )}
                           <div className="flex justify-between">
-                            <span>Cash Out Tax</span>
+                            <span>Cash-out Curve Rate</span>
                             <span className={`font-mono ${
                               isFuture && stage.cashOutTaxRate !== ruleset.cashOutTaxRate
                                 ? 'text-amber-400'
@@ -2269,9 +2249,33 @@ export default function RulesetSchedule({
 
                   const cashOutsEnabled = ruleset && ruleset.cashOutTaxRate < 10000
 
+                  const fundAccessCurrencyLabel = (currency: number) => {
+                    if (currency === 1) return 'ETH'
+                    if (currency === 2) return 'USD'
+                    const token = activeFundAccessLimits?.token
+                    if (!token) return `currency ${currency}`
+                    const tokenCurrency = Number(BigInt(token) & 0xffff_ffffn)
+                    if (currency !== tokenCurrency) return `currency ${currency}`
+                    if (token.toLowerCase() === NATIVE_TOKEN.toLowerCase()) return 'ETH'
+                    const activeChainId = effectiveSplitsChainId ?? chainIdNum
+                    if (token.toLowerCase() === USDC_ADDRESSES[activeChainId]?.toLowerCase()) return 'USDC'
+                    return 'tokens'
+                  }
+
+                  const fundAccessAmount = (amount: string) => {
+                    const decimals = activeFundAccessLimits?.tokenDecimals
+                    if (!Number.isInteger(decimals) || decimals! < 0 || decimals! > 36) return null
+                    try {
+                      return Number(formatUnits(BigInt(amount), decimals!))
+                    } catch {
+                      return null
+                    }
+                  }
+
                   const formatAmount = (amount: string, currency: number) => {
-                    const currencyLabel = currency === 1 ? 'ETH' : currency === 2 ? 'USD' : `Currency ${currency}`
-                    return `${(parseFloat(amount) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${currencyLabel}`
+                    const value = fundAccessAmount(amount)
+                    if (value === null) return 'an unavailable amount'
+                    return `${value.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${fundAccessCurrencyLabel(currency)}`
                   }
 
                   return (
@@ -2362,7 +2366,7 @@ export default function RulesetSchedule({
                           {cashOutsEnabled && ruleset && (
                             <div className="mt-3 space-y-2">
                               <div className="flex justify-between text-xs">
-                                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Cash Out Tax Rate</span>
+                                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Cash-out Curve Rate</span>
                                 <span className="font-mono">{((ruleset.cashOutTaxRate || 0) / 10000).toFixed(2).replace(/\.?0+$/, '') || '0'}</span>
                               </div>
                               <CashOutCurve taxRate={ruleset.cashOutTaxRate || 0} isDark={isDark} />
@@ -2426,8 +2430,8 @@ export default function RulesetSchedule({
                           <div className="space-y-2">
                             {(() => {
                               const limitHasValue = hasPayoutLimit
-                              const limitAmount = limitHasValue ? parseFloat(payoutLimit!.amount) / 1e18 : 0
-                              const currencyLabel = payoutLimit?.currency === 2 ? 'USD' : 'ETH'
+                              const limitAmount = limitHasValue ? (fundAccessAmount(payoutLimit!.amount) ?? 0) : 0
+                              const currencyLabel = payoutLimit ? fundAccessCurrencyLabel(payoutLimit.currency) : 'tokens'
 
                               return activeSplits.payoutSplits.map((split, idx) => {
                                 const percent = (split.percent / 1e9) * 100
@@ -2438,12 +2442,18 @@ export default function RulesetSchedule({
 
                                 return (
                                   <div key={idx} className={`p-2 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-start justify-between gap-2">
                                       <div className="flex items-center gap-2">
                                         {isProject ? (
-                                          <span className="text-xs px-1.5 py-0.5 bg-purple-500/20 text-purple-400">
-                                            Project #{split.projectId}
-                                          </span>
+                                          <ProjectSplitRoute
+                                            projectId={split.projectId}
+                                            chainId={effectiveSplitsChainId ?? chainIdNum}
+                                            beneficiary={split.beneficiary}
+                                            kind="payout"
+                                            preferAddToBalance={split.preferAddToBalance}
+                                            hook={split.hook}
+                                            isDark={isDark}
+                                          />
                                         ) : (
                                           <a
                                             href={explorerAddressUrl(split.beneficiary, effectiveSplitsChainId ?? chainIdNum)}
@@ -2479,8 +2489,8 @@ export default function RulesetSchedule({
                               const remainder = 100 - totalPercent
                               if (remainder > 0.01) {
                                 const limitHasValue = hasPayoutLimit
-                                const limitAmount = limitHasValue ? parseFloat(payoutLimit!.amount) / 1e18 : 0
-                                const currencyLabel = payoutLimit?.currency === 2 ? 'USD' : 'ETH'
+                                const limitAmount = limitHasValue ? (fundAccessAmount(payoutLimit!.amount) ?? 0) : 0
+                                const currencyLabel = payoutLimit ? fundAccessCurrencyLabel(payoutLimit.currency) : 'tokens'
                                 const remainderAmount = limitHasValue ? (limitAmount * remainder / 100) : 0
 
                                 return (
@@ -2548,12 +2558,17 @@ export default function RulesetSchedule({
 
                           return (
                             <div key={idx} className={`p-2 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-start justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   {isProject ? (
-                                    <span className="text-xs px-1.5 py-0.5 bg-purple-500/20 text-purple-400">
-                                      Project #{split.projectId}
-                                    </span>
+                                    <ProjectSplitRoute
+                                      projectId={split.projectId}
+                                      chainId={effectiveSplitsChainId ?? chainIdNum}
+                                      beneficiary={split.beneficiary}
+                                      kind="reserved"
+                                      hook={split.hook}
+                                      isDark={isDark}
+                                    />
                                   ) : (
                                     <a
                                       href={explorerAddressUrl(split.beneficiary, effectiveSplitsChainId ?? chainIdNum)}
@@ -2651,13 +2666,29 @@ export default function RulesetSchedule({
                                         const beneficiaryKey = split.beneficiary.toLowerCase()
                                         const displayName = splitEnsNames[beneficiaryKey] || truncateAddress(split.beneficiary)
                                         return (
-                                          <div key={idx} className="flex items-center justify-between text-xs">
-                                            <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                              {split.projectId > 0 ? `Project #${split.projectId}` : displayName}
-                                            </span>
-                                            <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                                              {actualPercent.toFixed(0)}%
-                                            </span>
+                                          <div key={idx} className="flex items-start justify-between gap-2 text-xs">
+                                            {split.projectId > 0 ? (
+                                              <ProjectSplitRoute
+                                                projectId={split.projectId}
+                                                chainId={cr.chainId}
+                                                beneficiary={split.beneficiary}
+                                                kind="reserved"
+                                                hook={split.hook}
+                                                isDark={isDark}
+                                              />
+                                            ) : (
+                                              <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                {displayName}
+                                              </span>
+                                            )}
+                                            <div className="flex shrink-0 items-center gap-1">
+                                              <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                {actualPercent.toFixed(0)}%
+                                              </span>
+                                              {split.lockedUntil > Math.floor(Date.now() / 1000) && (
+                                                <span className="text-[10px] text-amber-500">Locked</span>
+                                              )}
+                                            </div>
                                           </div>
                                         )
                                       })

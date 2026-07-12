@@ -6,17 +6,13 @@
 import { encodeFunctionData, pad, type Address, type Hex } from 'viem'
 import {
   JB_CONTROLLER_ABI,
-  JB_CONTROLLER_ADDRESS,
-  JB_MULTI_TERMINAL_ABI,
-  JB_MULTI_TERMINAL_ADDRESS,
   JB_OMNICHAIN_DEPLOYER_ABI,
   JB_OMNICHAIN_DEPLOYER_ADDRESS,
-  JB_SUCKER_REGISTRY_ABI,
-  JB_SUCKER_REGISTRY_ADDRESS,
   REV_DEPLOYER_ABI,
   REV_DEPLOYER_ADDRESS,
-  NATIVE_TOKEN,
 } from '../../constants/abis'
+import { requireRecognizedController } from '../../utils/paymentTerminal'
+import { assertSafeErc20TokenMetadata, requireNonzeroBytes32 } from '../../utils/erc20Safety'
 // Type-only import (erased at compile time) — avoids a runtime cycle with the
 // relayr barrel that omnichainDeployer imports.
 import type { JBDeployTiersHookConfig, JB721TierConfig } from '../omnichainDeployer'
@@ -24,33 +20,6 @@ import type { JBDeployTiersHookConfig, JB721TierConfig } from '../omnichainDeplo
 // ============================================================================
 // Types (matching client.ts interfaces)
 // ============================================================================
-
-export interface JBPayRequest {
-  chainId: number
-  projectId: number
-  amount: string // in wei
-  beneficiary: string
-  minReturnedTokens: string
-  memo: string
-  metadata?: string
-}
-
-export interface JBCashOutRequest {
-  chainId: number
-  projectId: number
-  tokenAmount: string
-  beneficiary: string
-  minReclaimedTokens: string
-  metadata?: string
-}
-
-export interface JBSendPayoutsRequest {
-  chainId: number
-  projectId: number
-  amount: string
-  currency: number // 1 = ETH
-  minTokensPaidOut: string
-}
 
 export interface JBRulesetMetadataConfig {
   reservedPercent: number
@@ -118,6 +87,7 @@ export interface JBRulesetConfig {
 export interface JBQueueRulesetRequest {
   chainId: number
   projectId: number
+  queueTarget: string
   rulesetConfigurations: JBRulesetConfig[]
   memo: string
 }
@@ -211,95 +181,7 @@ function toRulesetConfigTuple(config: JBRulesetConfig): any {
 // ============================================================================
 
 /**
- * Encode JBMultiTerminal.pay() calldata
- */
-export function encodePayTransaction(request: JBPayRequest): JBTransactionResponse {
-  const data = encodeFunctionData({
-    abi: JB_MULTI_TERMINAL_ABI,
-    functionName: 'pay',
-    args: [
-      BigInt(request.projectId),
-      NATIVE_TOKEN as Address, // token (native ETH)
-      BigInt(request.amount),
-      request.beneficiary as Address,
-      BigInt(request.minReturnedTokens),
-      request.memo,
-      (request.metadata || '0x') as Hex,
-    ],
-  })
-
-  return {
-    txData: {
-      to: JB_MULTI_TERMINAL_ADDRESS,
-      data,
-      value: request.amount,
-      chainId: request.chainId,
-    },
-    estimatedGas: '250000', // Conservative estimate
-    description: `Pay ${request.amount} wei to project ${request.projectId}`,
-  }
-}
-
-/**
- * Encode JBMultiTerminal.cashOutTokensOf() calldata
- */
-export function encodeCashOutTransaction(request: JBCashOutRequest): JBTransactionResponse {
-  const data = encodeFunctionData({
-    abi: JB_MULTI_TERMINAL_ABI,
-    functionName: 'cashOutTokensOf',
-    args: [
-      request.beneficiary as Address, // holder
-      BigInt(request.projectId),
-      BigInt(request.tokenAmount),
-      NATIVE_TOKEN as Address, // tokenToReclaim (native ETH)
-      BigInt(request.minReclaimedTokens),
-      request.beneficiary as Address,
-      (request.metadata || '0x') as Hex,
-    ],
-  })
-
-  return {
-    txData: {
-      to: JB_MULTI_TERMINAL_ADDRESS,
-      data,
-      value: '0x0',
-      chainId: request.chainId,
-    },
-    estimatedGas: '300000',
-    description: `Cash out ${request.tokenAmount} tokens from project ${request.projectId}`,
-  }
-}
-
-/**
- * Encode JBMultiTerminal.sendPayoutsOf() calldata
- */
-export function encodeSendPayoutsTransaction(request: JBSendPayoutsRequest): JBTransactionResponse {
-  const data = encodeFunctionData({
-    abi: JB_MULTI_TERMINAL_ABI,
-    functionName: 'sendPayoutsOf',
-    args: [
-      BigInt(request.projectId),
-      NATIVE_TOKEN as Address, // token (native ETH)
-      BigInt(request.amount),
-      BigInt(request.currency),
-      BigInt(request.minTokensPaidOut),
-    ],
-  })
-
-  return {
-    txData: {
-      to: JB_MULTI_TERMINAL_ADDRESS,
-      data,
-      value: '0x0',
-      chainId: request.chainId,
-    },
-    estimatedGas: '400000',
-    description: `Send payouts of ${request.amount} from project ${request.projectId}`,
-  }
-}
-
-/**
- * Encode JBController.queueRulesetsOf() calldata
+ * Encode queueRulesetsOf() calldata for a recognized, live-derived queue target.
  */
 export function encodeQueueRulesetTransaction(request: JBQueueRulesetRequest): JBTransactionResponse {
   const rulesetConfigs = request.rulesetConfigurations.map(toRulesetConfigTuple)
@@ -314,9 +196,14 @@ export function encodeQueueRulesetTransaction(request: JBQueueRulesetRequest): J
     ],
   })
 
+  const requestedTarget = request.queueTarget.toLowerCase()
+  const queueTarget = requestedTarget === JB_OMNICHAIN_DEPLOYER_ADDRESS.toLowerCase()
+    ? JB_OMNICHAIN_DEPLOYER_ADDRESS
+    : requireRecognizedController(request.queueTarget as Address)
+
   return {
     txData: {
-      to: JB_CONTROLLER_ADDRESS,
+      to: queueTarget,
       data,
       value: '0x0',
       chainId: request.chainId,
@@ -334,8 +221,11 @@ export function encodeDeployERC20Transaction(
   projectId: number,
   name: string,
   symbol: string,
-  salt: string
+  salt: string,
+  controllerAddress: string,
 ): JBTransactionResponse {
+  assertSafeErc20TokenMetadata(name, symbol)
+  const verifiedSalt = requireNonzeroBytes32(salt, 'Token deployment salt')
   const data = encodeFunctionData({
     abi: JB_CONTROLLER_ABI,
     functionName: 'deployERC20For',
@@ -343,13 +233,13 @@ export function encodeDeployERC20Transaction(
       BigInt(projectId),
       name,
       symbol,
-      salt as Hex,
+      verifiedSalt,
     ],
   })
 
   return {
     txData: {
-      to: JB_CONTROLLER_ADDRESS,
+      to: requireRecognizedController(controllerAddress as Address),
       data,
       value: '0x0',
       chainId,
@@ -364,7 +254,8 @@ export function encodeDeployERC20Transaction(
  */
 export function encodeSendReservesTransaction(
   chainId: number,
-  projectId: number
+  projectId: number,
+  controllerAddress: string,
 ): JBTransactionResponse {
   const data = encodeFunctionData({
     abi: JB_CONTROLLER_ABI,
@@ -374,7 +265,7 @@ export function encodeSendReservesTransaction(
 
   return {
     txData: {
-      to: JB_CONTROLLER_ADDRESS,
+      to: requireRecognizedController(controllerAddress as Address),
       data,
       value: '0x0',
       chainId,
@@ -399,14 +290,10 @@ export interface JBTerminalConfig {
 
 // V6 JBTokenMapping: remoteToken is bytes32 on-chain (a left-padded address);
 // callers may pass a plain address and it will be padded at encode time.
-// minBridgeAmount no longer exists in V6 and is accepted-but-ignored for
-// backward compatibility with older stored payloads.
 export interface JBSuckerTokenMapping {
   localToken: string
   minGas: number
   remoteToken: string
-  /** @deprecated Removed in Juicebox V6 - ignored. */
-  minBridgeAmount?: string
 }
 
 export interface JBSuckerDeployerConfig {
@@ -429,12 +316,8 @@ export interface JBLaunchProjectRequest {
   terminalConfigurations: JBTerminalConfig[]
   memo: string
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig
-  /**
-   * V6: launchProjectFor is payable and requires msg.value to equal
-   * JBProjects.creationFee() exactly. Read from chain and pass here (wei).
-   * Defaults to '0' (correct while the creation fee is unset).
-   */
-  creationFeeWei?: string
+  /** Exact JBProjects.creationFee(), verified on this destination chain. */
+  creationFeeWei: string
 }
 
 export interface REVStageConfig {
@@ -453,31 +336,20 @@ export interface JBDeployRevnetRequest {
   splitOperator: string
   description: {
     name: string
-    ticker?: string
+    ticker: string
     tagline: string
+    uri: string
     salt: string
   }
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig
-  initialTokenReceivers?: Array<{
-    beneficiary: string
-    count: number
-  }>
-  /** V6: deployFor is payable (project creation fee). Wei value, defaults to '0'. */
-  creationFeeWei?: string
+  /** Exact JBProjects.creationFee(), verified on this destination chain. */
+  creationFeeWei: string
   /**
    * V6: when set, encodes the 6-arg REVDeployer.deployFor overload so the revnet
    * deploys with a 721 tiers hook (NFT shop) atomically. Croptop allowedPosts is
    * left empty.
    */
   deployTiersHookConfig?: JBDeployTiersHookConfig
-}
-
-export interface JBDeploySuckersRequest {
-  chainIds: number[]
-  projectIds: Record<number, number>
-  salt: string
-  tokenMappings: JBSuckerTokenMapping[]
-  deployerOverrides?: Record<number, string>
 }
 
 // ============================================================================
@@ -503,6 +375,18 @@ function toSuckerConfigTuple(config?: JBSuckerDeploymentConfig) {
     })),
     salt: config.salt as Hex,
   }
+}
+
+function requireCreationFee(value: string | undefined, chainId: number): string {
+  if (value === undefined) {
+    throw new Error(`Project creation fee was not verified on chain ${chainId}`)
+  }
+  try {
+    if (BigInt(value) < 0n) throw new Error('negative')
+  } catch {
+    throw new Error(`Invalid project creation fee on chain ${chainId}`)
+  }
+  return value
 }
 
 /**
@@ -540,7 +424,7 @@ export function encodeLaunchProjectTransaction(
     ],
   })
 
-  const value = request.creationFeeWei || '0'
+  const value = requireCreationFee(request.creationFeeWei, chainId)
 
   return {
     txData: {
@@ -637,29 +521,34 @@ export function encodeDeployRevnetTransaction(
   chainId: number,
   revnetId: number,
   request: JBDeployRevnetRequest,
-  accountingContexts: Array<{ token: string; decimals: number; currency: number }>
+  accountingContexts: Array<{ token: string; decimals: number; currency: number }>,
+  baseCurrency: 1 | 2,
 ): JBTransactionResponse {
+  const descriptionSalt = requireNonzeroBytes32(request.description.salt, 'Revnet salt')
   const configuration = {
     description: {
       name: request.description.name,
-      // ERC-20 symbol: use the explicit ticker; fall back to tagline for legacy
-      // callers (CreateRevnetForm) that don't collect one.
-      ticker: request.description.ticker || request.description.tagline,
-      uri: '', // Project URI - typically IPFS
-      salt: request.description.salt as Hex,
+      ticker: request.description.ticker,
+      uri: request.description.uri,
+      salt: descriptionSalt,
     },
-    baseCurrency: 1, // ETH
+    baseCurrency,
     operator: request.splitOperator as Address,
     scopeCashOutsToLocalBalances: false,
     stageConfigurations: request.stageConfigurations.map(sc => ({
       startsAtOrAfter: sc.startsAtOrAfter,
-      autoIssuances: (request.initialTokenReceivers || []).map(r => ({
-        chainId,
-        count: BigInt(r.count),
-        beneficiary: r.beneficiary as Address,
-      })),
+      autoIssuances: [],
       splitPercent: sc.splitPercent,
-      splits: [] as never[],
+      splits: sc.splitPercent > 0
+        ? [{
+            percent: 1_000_000_000,
+            projectId: 0n,
+            beneficiary: request.splitOperator as Address,
+            preferAddToBalance: false,
+            lockedUntil: 0,
+            hook: ZERO_ADDRESS,
+          }]
+        : [],
       initialIssuance: BigInt(sc.initialIssuance),
       issuanceCutFrequency: sc.issuanceCutFrequency,
       issuanceCutPercent: sc.issuanceCutPercent,
@@ -701,52 +590,11 @@ export function encodeDeployRevnetTransaction(
     txData: {
       to: REV_DEPLOYER_ADDRESS,
       data,
-      value: request.creationFeeWei || '0',
+      value: requireCreationFee(request.creationFeeWei, chainId),
       chainId,
     },
     // 721 hook deployment adds a second contract creation to the revnet deploy.
     estimatedGas: request.deployTiersHookConfig ? '4500000' : '3000000',
     description: `Deploy revnet ${request.description.name}`,
-  }
-}
-
-/**
- * Encode JBSuckerRegistry.deploySuckersFor() calldata (Juicebox V6)
- */
-export function encodeDeploySuckersTransaction(
-  chainId: number,
-  projectId: number,
-  salt: string,
-  configurations: JBSuckerDeployerConfig[]
-): JBTransactionResponse {
-  const configs = configurations.map(c => ({
-    deployer: c.deployer as Address,
-    peer: (c.peer && c.peer !== ZERO_ADDRESS ? toRemoteTokenBytes32(c.peer) : ZERO_BYTES32),
-    mappings: c.mappings.map(m => ({
-      localToken: m.localToken as Address,
-      minGas: m.minGas,
-      remoteToken: toRemoteTokenBytes32(m.remoteToken),
-    })),
-  }))
-
-  const data = encodeFunctionData({
-    abi: JB_SUCKER_REGISTRY_ABI,
-    functionName: 'deploySuckersFor',
-    args: [
-      BigInt(projectId),
-      salt as Hex,
-      configs,
-    ],
-  })
-
-  return {
-    txData: {
-      to: JB_SUCKER_REGISTRY_ADDRESS,
-      data,
-      value: '0x0',
-      chainId,
-    },
-    estimatedGas: '1500000',
-    description: `Deploy suckers for project ${projectId}`,
   }
 }

@@ -2,12 +2,14 @@ import { useCallback, useMemo } from 'react'
 import { keccak256, toBytes } from 'viem'
 import { useOmnichainTransaction } from './useOmnichainTransaction'
 import type { UseOmnichainTransactionOptions, UseOmnichainTransactionReturn } from './types'
+import { assertSafeErc20TokenMetadata } from '../../utils/erc20Safety'
 
 export interface OmnichainDeployERC20Params {
   chainIds: number[]
   projectIds: Record<number, number>  // chainId -> projectId
   tokenName: string
   tokenSymbol: string
+  controllerAddresses: Record<number, string>
   // Salt is auto-generated to be deterministic based on project + symbol
   // This ensures same address on all chains via CREATE2
 }
@@ -29,7 +31,7 @@ function generateDeterministicSalt(projectId: number, tokenSymbol: string): stri
 
 /**
  * Hook for deploying ERC20 tokens across multiple chains with Relayr.
- * User pays gas on ONE chain, Relayr executes on ALL chains.
+ * Relayr executes the reviewed calls on every selected chain for a managed account.
  * Uses deterministic salt to ensure SAME token address on all chains.
  *
  * @example
@@ -51,7 +53,8 @@ export function useOmnichainDeployERC20(
   const transaction = useOmnichainTransaction(options)
 
   const deploy = useCallback(async (params: OmnichainDeployERC20Params) => {
-    const { chainIds, projectIds, tokenName, tokenSymbol } = params
+    const { chainIds, projectIds, tokenName, tokenSymbol, controllerAddresses } = params
+    assertSafeErc20TokenMetadata(tokenName, tokenSymbol)
 
     // Use the first project ID for salt generation (they should all be the same cross-chain project)
     const primaryProjectId = Object.values(projectIds)[0]
@@ -69,6 +72,7 @@ export function useOmnichainDeployERC20(
         tokenName,
         tokenSymbol,
         salt,
+        controllerAddresses,
       },
     })
   }, [transaction])
@@ -81,7 +85,5 @@ export function useOmnichainDeployERC20(
     isExpired: transaction.isExpired,
     hasError: transaction.hasError,
     reset: transaction.reset,
-    setPaymentChain: transaction.setPaymentChain,
-    submitPayment: transaction.submitPayment,
   }), [transaction, deploy])
 }

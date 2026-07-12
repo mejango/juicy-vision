@@ -1,35 +1,31 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { requireAuth, requireAdmin } from '../middleware/auth.ts';
+import { requireAdmin, requireAuth } from '../middleware/auth.ts';
 import { rateLimitByUser } from '../services/rateLimit.ts';
+import { getReservesAddress, getReservesBalance } from '../services/wallet.ts';
 import {
-  getReservesBalance,
-  getReservesAddress,
-} from '../services/wallet.ts';
-import {
-  getOrCreateSmartAccount,
-  getUserSmartAccounts,
-  getAccountBalances,
-  syncAccountBalances,
+  cancelExport,
+  cancelTransfer,
+  checkExportBlockers,
+  confirmExport,
   executeTransaction,
-  requestWithdrawal,
+  getAccountBalances,
+  getExportStatus,
+  getOrCreateSmartAccount,
+  getUserExports,
+  getUserPendingTransfers,
+  getUserSmartAccounts,
   getUserWithdrawals,
   requestExport,
-  confirmExport,
-  retryExport,
-  cancelExport,
-  getExportStatus,
-  getUserExports,
-  checkExportBlockers,
   requestTransfer,
-  cancelTransfer,
-  getUserPendingTransfers,
+  retryExport,
 } from '../services/smartAccounts.ts';
 import { createRelayrBundle, getRelayrBundleStatus } from '../services/relayrBundle.ts';
-import type { Address } from 'viem';
+import { assertManagedTransactionAllowed } from '../services/transactionPolicy.ts';
+import type { Address, Hex } from 'viem';
 import { getConfig } from '../utils/config.ts';
-import { getPrimaryChainId, getAllChainIds } from '@shared/chains.ts';
+import { getAllChainIds, getPrimaryChainId } from '@shared/chains.ts';
 
 const walletRouter = new Hono();
 
@@ -110,7 +106,7 @@ walletRouter.get('/balances', requireAuth, async (c) => {
         custodyStatus: account.custodyStatus,
         balances,
       };
-    })
+    }),
   );
 
   // Extract successful results and track errors
@@ -119,7 +115,9 @@ walletRouter.get('/balances', requireAuth, async (c) => {
     address: string;
     deployed: boolean;
     custodyStatus: string;
-    balances: Array<{ tokenAddress: string; tokenSymbol: string; balance: string; decimals: number }>;
+    balances: Array<
+      { tokenAddress: string; tokenSymbol: string; balance: string; decimals: number }
+    >;
   }> = [];
   const errors: Array<{ chainId: number; error: string }> = [];
 
@@ -127,7 +125,9 @@ walletRouter.get('/balances', requireAuth, async (c) => {
     if (result.status === 'fulfilled') {
       results.push(result.value);
     } else {
-      const errorMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      const errorMsg = result.reason instanceof Error
+        ? result.reason.message
+        : String(result.reason);
       console.error(`Failed to get account for chain ${chainIds[index]}:`, result.reason);
       errors.push({ chainId: chainIds[index], error: errorMsg });
     }
@@ -171,6 +171,14 @@ walletRouter.post(
     const body = c.req.valid('json');
 
     try {
+      const managedAccount = await getOrCreateSmartAccount(user.id, body.chainId);
+      await assertManagedTransactionAllowed({
+        chainId: body.chainId,
+        to: body.to as Address,
+        data: body.data as Hex,
+        value: BigInt(body.value),
+        expectedAccount: managedAccount.address as Address,
+      });
       const result = await executeTransaction({
         userId: user.id,
         chainId: body.chainId,
@@ -191,14 +199,14 @@ walletRouter.post(
       const message = error instanceof Error ? error.message : 'Transaction failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
 // Signing Key Storage (for passkey wallets - gasless signing)
 // ============================================================================
 
-import { storeSigningKey, getSigningKey } from '../services/encryption.ts';
+import { storeSigningKey } from '../services/encryption.ts';
 
 // POST /wallet/signing-key - Store the user's signing key for server-side signing
 const SigningKeySchema = z.object({
@@ -225,7 +233,7 @@ walletRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to store signing key';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -239,12 +247,13 @@ const RelayrBundleSchema = z.object({
     target: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
     data: z.string().regex(/^0x[a-fA-F0-9]*$/),
     value: z.string(),
-  })),
+  })).min(1).max(16),
   owner: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   // Smart account address for ERC-4337 routing
   // When provided, transactions are wrapped through SmartAccount.execute()
   // so that _msgSender() inside the target contract = smart account = project owner
   smartAccountAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  operationKey: z.string().min(1).max(200).regex(/^[a-zA-Z0-9:_-]+$/),
 });
 
 walletRouter.post(
@@ -261,6 +270,7 @@ walletRouter.post(
         transactions: body.transactions,
         owner: body.owner,
         smartAccountAddress: body.smartAccountAddress,
+        operationKey: body.operationKey,
       });
 
       return c.json({
@@ -274,7 +284,7 @@ walletRouter.post(
       const message = error instanceof Error ? error.message : 'Bundle creation failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /wallet/relayr-bundle/:id - Get status of a Relayr bundle (proxied)
@@ -282,10 +292,11 @@ walletRouter.get(
   '/relayr-bundle/:id',
   requireAuth,
   async (c) => {
+    const user = c.get('user');
     const bundleId = c.req.param('id');
 
     try {
-      const status = await getRelayrBundleStatus(bundleId);
+      const status = await getRelayrBundleStatus(user.id, bundleId);
 
       return c.json({
         success: true,
@@ -296,49 +307,12 @@ walletRouter.get(
       const message = error instanceof Error ? error.message : 'Status fetch failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
 // Withdrawals (Gas-sponsored for managed accounts)
 // ============================================================================
-
-// POST /wallet/withdraw - Request a gas-sponsored withdrawal from smart account
-const WithdrawSchema = z.object({
-  chainId: z.number(),
-  tokenAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  amount: z.string(), // BigInt as string
-  toAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-});
-
-walletRouter.post(
-  '/withdraw',
-  requireAuth,
-  zValidator('json', WithdrawSchema),
-  async (c) => {
-    const user = c.get('user');
-    const body = c.req.valid('json');
-
-    try {
-      const result = await requestWithdrawal({
-        userId: user.id,
-        chainId: body.chainId,
-        tokenAddress: body.tokenAddress as Address,
-        amount: BigInt(body.amount),
-        toAddress: body.toAddress as Address,
-      });
-
-      return c.json({
-        success: true,
-        data: result,
-      });
-    } catch (error) {
-      console.error('Withdrawal failed:', error);
-      const message = error instanceof Error ? error.message : 'Withdrawal failed';
-      return c.json({ success: false, error: message }, 400);
-    }
-  }
-);
 
 // GET /wallet/withdrawals - Get user's withdrawal history
 walletRouter.get('/withdrawals', requireAuth, async (c) => {
@@ -365,7 +339,6 @@ walletRouter.get('/withdrawals', requireAuth, async (c) => {
 const TransferRequestSchema = z.object({
   chainId: z.number(),
   tokenAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  tokenSymbol: z.string(),
   amount: z.string(), // BigInt as string
   toAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
 });
@@ -384,7 +357,6 @@ walletRouter.post(
         userId: user.id,
         chainId: body.chainId,
         tokenAddress: body.tokenAddress as Address,
-        tokenSymbol: body.tokenSymbol,
         amount: BigInt(body.amount),
         toAddress: body.toAddress as Address,
       });
@@ -398,7 +370,7 @@ walletRouter.post(
       const message = error instanceof Error ? error.message : 'Transfer request failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /wallet/transfers - Get user's pending transfers
@@ -480,62 +452,72 @@ walletRouter.post(
       const message = error instanceof Error ? error.message : 'Export request failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // POST /wallet/export/:id/confirm - Confirm and execute export
-walletRouter.post('/export/:id/confirm', requireAuth, rateLimitByUser('walletExportConfirm'), async (c) => {
-  const user = c.get('user');
-  const exportId = c.req.param('id');
+walletRouter.post(
+  '/export/:id/confirm',
+  requireAuth,
+  rateLimitByUser('walletExportConfirm'),
+  async (c) => {
+    const user = c.get('user');
+    const exportId = c.req.param('id');
 
-  try {
-    // Verify ownership
-    const exportReq = await getExportStatus(exportId);
-    if (!exportReq) {
-      return c.json({ success: false, error: 'Export not found' }, 404);
-    }
-    if (exportReq.userId !== user.id) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
+    try {
+      // Verify ownership
+      const exportReq = await getExportStatus(exportId);
+      if (!exportReq) {
+        return c.json({ success: false, error: 'Export not found' }, 404);
+      }
+      if (exportReq.userId !== user.id) {
+        return c.json({ success: false, error: 'Access denied' }, 403);
+      }
 
-    const result = await confirmExport(exportId);
-    return c.json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    console.error('Export confirmation failed:', error);
-    const message = error instanceof Error ? error.message : 'Export confirmation failed';
-    return c.json({ success: false, error: message }, 400);
-  }
-});
+      const result = await confirmExport(exportId);
+      return c.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      console.error('Export confirmation failed:', error);
+      const message = error instanceof Error ? error.message : 'Export confirmation failed';
+      return c.json({ success: false, error: message }, 400);
+    }
+  },
+);
 
 // POST /wallet/export/:id/retry - Retry failed chains in partial export
-walletRouter.post('/export/:id/retry', requireAuth, rateLimitByUser('walletExportConfirm'), async (c) => {
-  const user = c.get('user');
-  const exportId = c.req.param('id');
+walletRouter.post(
+  '/export/:id/retry',
+  requireAuth,
+  rateLimitByUser('walletExportConfirm'),
+  async (c) => {
+    const user = c.get('user');
+    const exportId = c.req.param('id');
 
-  try {
-    // Verify ownership
-    const exportReq = await getExportStatus(exportId);
-    if (!exportReq) {
-      return c.json({ success: false, error: 'Export not found' }, 404);
-    }
-    if (exportReq.userId !== user.id) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
+    try {
+      // Verify ownership
+      const exportReq = await getExportStatus(exportId);
+      if (!exportReq) {
+        return c.json({ success: false, error: 'Export not found' }, 404);
+      }
+      if (exportReq.userId !== user.id) {
+        return c.json({ success: false, error: 'Access denied' }, 403);
+      }
 
-    const result = await retryExport(exportId);
-    return c.json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    console.error('Export retry failed:', error);
-    const message = error instanceof Error ? error.message : 'Export retry failed';
-    return c.json({ success: false, error: message }, 400);
-  }
-});
+      const result = await retryExport(exportId);
+      return c.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      console.error('Export retry failed:', error);
+      const message = error instanceof Error ? error.message : 'Export retry failed';
+      return c.json({ success: false, error: message }, 400);
+    }
+  },
+);
 
 // DELETE /wallet/export/:id - Cancel a pending export
 walletRouter.delete('/export/:id', requireAuth, async (c) => {
@@ -629,7 +611,7 @@ walletRouter.get('/admin/reserves', requireAuth, requireAdmin, async (c) => {
           error: 'Failed to fetch',
         };
       }
-    })
+    }),
   );
 
   return c.json({

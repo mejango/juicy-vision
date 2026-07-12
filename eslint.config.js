@@ -53,14 +53,6 @@ export default tseslint.config(
       '@typescript-eslint/no-require-imports': 'warn',
     },
   },
-  // Quarantine: TransactionPreview.tsx calls 4 hooks after early returns whose
-  // interleaved derived state makes hoisting risky. rules-of-hooks stays an error
-  // everywhere else (gating all new code); this one legacy file is downgraded to
-  // a warning pending a dedicated hook-ordering refactor.
-  {
-    files: ['src/components/dynamic/TransactionPreview.tsx'],
-    rules: { 'react-hooks/rules-of-hooks': 'warn' },
-  },
   // Test + setup files: vitest globals.
   {
     files: ['src/**/*.{test,spec}.{ts,tsx}', 'src/**/setupTests.ts', 'src/test/**'],

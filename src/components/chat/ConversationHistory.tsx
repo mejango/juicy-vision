@@ -22,10 +22,9 @@ import {
 } from '../../services/chat'
 import { fetchProjectsByOwner, type Project } from '../../services/bendystraw'
 import { useManagedWallet } from '../../hooks'
-import { resolveIpfsUri } from '../../utils/ipfs'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
+import { IpfsImage } from '../ui/IpfsMedia'
 import {
-  getOwnerConversations,
   getSupporterConversations,
   type ProjectConversation,
 } from '../../api/projectConversations'
@@ -465,7 +464,6 @@ export default function ConversationHistory() {
   const [activeTab, setActiveTab] = useState<DashboardTab>('chats')
 
   // Pagination state
-  const [totalChats, setTotalChats] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const loadMoreRef = useRef<HTMLDivElement>(null)
@@ -490,7 +488,6 @@ export default function ConversationHistory() {
     setIsLoading(true)
     try {
       const { chats: newChats, total } = await fetchMyChats({ limit: PAGE_SIZE, offset })
-      setTotalChats(total)
       setHasMore(offset + newChats.length < total)
 
       // Merge API data with locally cached messages/members
@@ -881,65 +878,6 @@ export default function ConversationHistory() {
     )
   }
 
-  // Render a chat item for list layout (used inside folders)
-  const renderChat = (chat: Chat, indent = 0) => (
-    <div
-      key={chat.id}
-      onClick={() => handleSelectChat(chat.id)}
-      onContextMenu={(e) => handleContextMenu(e, 'chat', chat.id)}
-      style={{ paddingLeft: indent > 0 ? `${indent * 16}px` : undefined }}
-      className={`group flex items-center justify-between py-1.5 pr-2 rounded cursor-pointer transition-colors ${
-        chat.id === activeChatId
-          ? theme === 'dark'
-            ? 'bg-white/5 text-white'
-            : 'bg-gray-100 text-gray-900'
-          : theme === 'dark'
-            ? 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-      }`}
-    >
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        {chat.isPinned && (
-          <PinIcon filled className={`w-3 h-3 shrink-0 ${
-            theme === 'dark' ? 'text-purple-400' : 'text-purple-600'
-          }`} />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className={`text-sm truncate ${
-            chat.id === activeChatId ? '' : theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-          }`}>
-            {getChatDisplayTitle(chat)}
-          </div>
-          <div className={`text-xs ${theme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`}>
-            {formatTimeAgo(chat.updatedAt)}
-          </div>
-        </div>
-      </div>
-      {/* Trash button - visible on hover */}
-      <button
-        onClick={async (e) => {
-          e.stopPropagation()
-          try {
-            await deleteChatApi(chat.id)
-            removeChat(chat.id)
-          } catch (error) {
-            console.error('Failed to delete chat:', error)
-          }
-        }}
-        className={`shrink-0 p-1 opacity-0 group-hover:opacity-100 transition-opacity ${
-          theme === 'dark'
-            ? 'text-gray-600 hover:text-red-400'
-            : 'text-gray-300 hover:text-red-500'
-        }`}
-        title="Delete"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      </button>
-    </div>
-  )
-
   // Render a folder card for grid layout (dashed border style)
   const renderFolderCard = (folder: ChatFolder) => {
     const folderChats = getChatsInFolder(folder.id)
@@ -1282,10 +1220,11 @@ export default function ConversationHistory() {
                 >
                   <div className="flex items-start gap-3">
                     {project.logoUri ? (
-                      <img
-                        src={resolveIpfsUri(project.logoUri) || undefined}
+                      <IpfsImage
+                        uri={project.logoUri}
                         alt=""
                         className="w-10 h-10 rounded-full object-cover"
+                        fallback={<div className={`w-10 h-10 rounded-full ${theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'}`} />}
                       />
                     ) : (
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
@@ -1358,10 +1297,11 @@ export default function ConversationHistory() {
                 >
                   <div className="flex items-start gap-3">
                     {conv.projectLogoUri ? (
-                      <img
-                        src={resolveIpfsUri(conv.projectLogoUri) || undefined}
+                      <IpfsImage
+                        uri={conv.projectLogoUri}
                         alt=""
                         className="w-10 h-10 rounded-full object-cover"
+                        fallback={<div className={`w-10 h-10 rounded-full ${theme === 'dark' ? 'bg-white/10' : 'bg-gray-200'}`} />}
                       />
                     ) : (
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${

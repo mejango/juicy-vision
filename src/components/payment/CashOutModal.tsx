@@ -4,13 +4,20 @@ import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http, type Hex, type Address, type Chain } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import { GasBalanceStatus } from './GasBalanceStatus'
 import { CHAINS as CHAIN_INFO, MAINNET_CHAINS, RPC_ENDPOINTS } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyCashOutParams } from '../../utils/transactionVerification'
-import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
+import { getPaymentTerminal } from '../../utils/paymentTerminal'
+import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import {
+  assertCurrentProjectCashOutConfigurationTrusted,
+  requireRecognizedRuntimeHook,
+} from '../../utils/projectTrust'
 
 const TERMINAL_CASH_OUT_ABI = [
   {
@@ -92,10 +99,11 @@ interface CashOutModalProps {
   chainId: number
   tokenAmount: string
   tokenSymbol?: string
-  estimatedReturn?: number
   cashOutTaxRate?: number
-  /** Currency symbol for the return amount - 'ETH' or 'USDC'. Defaults to 'ETH' */
-  currencySymbol?: 'ETH' | 'USDC'
+  reclaimToken: Address
+  reclaimTokenDecimals: number
+  currencySymbol: 'ETH' | 'USDC'
+  expectedTerminal: Address
   // Transaction status callbacks for persistence
   onSubmitted?: (txHash: string) => void
   onConfirmed?: (txHash: string) => void
@@ -112,9 +120,11 @@ export default function CashOutModal({
   chainId,
   tokenAmount,
   tokenSymbol = 'tokens',
-  estimatedReturn = 0,
   cashOutTaxRate = 0,
-  currencySymbol = 'ETH',
+  reclaimToken,
+  reclaimTokenDecimals,
+  currencySymbol,
+  expectedTerminal,
   onSubmitted,
   onConfirmed,
   onError,
@@ -125,7 +135,7 @@ export default function CashOutModal({
   const { data: walletClient } = useWalletClient()
   const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
-  const { totalEth } = useWalletBalances()
+  const { perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Managed mode support
   const { mode, isAuthenticated } = useAuthStore()
@@ -139,52 +149,58 @@ export default function CashOutModal({
   const [terminalAddress, setTerminalAddress] = useState<Address | null>(null)
   const [terminalLoading, setTerminalLoading] = useState(false)
   // Slippage floor + fee info sourced from the contract's previewCashOutFrom.
-  // minReclaimed is expressed in the RECLAIM TOKEN's own decimals (6 for USDC,
-  // 18 for ETH) — it is 95% of the previewed reclaim. 0n falls back to "no floor"
-  // (e.g. a cash-out delay makes the preview revert) so the tx stays submittable.
+  // A cash out is never submitted without a positive, current preview.
   const [minReclaimed, setMinReclaimed] = useState<bigint>(0n)
   const [previewReclaim, setPreviewReclaim] = useState<bigint | null>(null)
   const [previewTaxRate, setPreviewTaxRate] = useState<number | null>(null)
-
-  // The token cash outs reclaim: native ETH or the chain's USDC. NOT always ETH.
-  const reclaimToken = useMemo(() => getPaymentTokenAddress(currencySymbol, chainId), [currencySymbol, chainId])
-  const terminalDecimals = currencySymbol === 'USDC' ? 6 : 18
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   const chainInfo = CHAIN_INFO[chainId] || MAINNET_CHAINS[chainId] || MAINNET_CHAINS[1]
   const chainName = chainInfo.name
-  const tokenNum = parseFloat(tokenAmount) || 0
-  const taxPercent = cashOutTaxRate / 100
-  const hasGasBalance = totalEth >= 0.001
+  const cashOutCount = useMemo(() => {
+    try {
+      const parsed = parseUnits(tokenAmount, 18)
+      return parsed > 0n ? parsed : null
+    } catch {
+      return null
+    }
+  }, [tokenAmount])
+  const tokenNum = cashOutCount !== null ? Number(formatUnits(cashOutCount, 18)) : 0
+  const chainGasBalance = perChain.find(balance => balance.chainId === chainId)?.eth ?? 0n
+  const hasGasBalance = isManagedMode || (balancesAvailable && chainGasBalance > 0n)
 
-  // A 2.5% protocol fee is taken from cash outs whenever the ruleset cash out tax
-  // rate is non-zero (unless the beneficiary is feeless). The previewed/displayed
-  // amount is BEFORE that fee, so surface the fee and an after-fee estimate.
-  // Prefer the on-chain tax rate from previewCashOutFrom; fall back to the prop.
-  const PROTOCOL_FEE = 0.025
-  const feeApplies = (previewTaxRate ?? cashOutTaxRate) > 0
-  const previewReclaimFloat = previewReclaim != null ? Number(formatUnits(previewReclaim, terminalDecimals)) : null
-  // Gross reclaim (before protocol fee): contract preview when available, else the client estimate.
-  const grossReturn = previewReclaimFloat ?? (estimatedReturn > 0 ? estimatedReturn : null)
-  const netReturn = grossReturn != null && feeApplies ? grossReturn * (1 - PROTOCOL_FEE) : grossReturn
+  // previewCashOutFrom reports the gross reclaim. Depending on the current fee-
+  // free state and beneficiary, execution can deduct up to the standard 2.5% fee.
+  const previewReclaimFloat = previewReclaim != null ? Number(formatUnits(previewReclaim, reclaimTokenDecimals)) : null
+  const minimumReturnFloat = minReclaimed > 0n ? Number(formatUnits(minReclaimed, reclaimTokenDecimals)) : null
+  const grossReturn = previewReclaimFloat
   const returnDecimals = currencySymbol === 'USDC' ? 2 : 4
 
   // Verify transaction parameters
   const activeAddress = isManagedMode ? managedAddress : address
+  const { assertCurrentAccount } = useReviewedTransactionAccount(
+    isOpen,
+    activeAddress,
+    isManagedMode ? 'managed' : 'self_custody',
+  )
   const verificationResult = useMemo(() => {
     const holderAddress = activeAddress || '0x0000000000000000000000000000000000000000'
     return verifyCashOutParams({
       holder: holderAddress,
-      projectId: BigInt(projectId),
-      cashOutCount: parseUnits(tokenAmount || '0', 18),
+      projectId,
+      cashOutCount: cashOutCount ?? 0n,
       tokenToReclaim: reclaimToken,
       minTokensReclaimed: minReclaimed,
       beneficiary: holderAddress,
       metadata: '0x' as Hex,
     })
-  }, [activeAddress, projectId, tokenAmount, reclaimToken, minReclaimed])
+  }, [activeAddress, projectId, cashOutCount, reclaimToken, minReclaimed])
 
   const hasWarnings = verificationResult.doubts.length > 0
-  const canProceed = hasGasBalance && (!hasWarnings || warningsAcknowledged) && !!terminalAddress && !terminalLoading
+  const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
+  const hasSafePreview = cashOutCount !== null && previewReclaim !== null && previewReclaim > 0n && minReclaimed > 0n && !previewError
+  const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && hasSafePreview && !previewLoading && !!terminalAddress && !terminalLoading
 
   // Reset state when modal opens
   useEffect(() => {
@@ -193,8 +209,13 @@ export default function CashOutModal({
       setTxHash(null)
       setError(null)
       setWarningsAcknowledged(false)
+      setTerminalAddress(null)
+      setMinReclaimed(0n)
+      setPreviewReclaim(null)
+      setPreviewTaxRate(null)
+      setPreviewError(null)
     }
-  }, [isOpen])
+  }, [isOpen, projectId, chainId, reclaimToken, expectedTerminal])
 
   // Call parent callbacks when status changes (for persistence)
   useEffect(() => {
@@ -228,39 +249,50 @@ export default function CashOutModal({
         })
 
         // Cash out returns the native token (or USDC based on currencySymbol)
-        const terminal = await getPaymentTerminal(publicClient, chainId, BigInt(projectId), reclaimToken)
+        const terminal = await getPaymentTerminal(publicClient, chainId, BigInt(projectId), reclaimToken, 'accounting')
+        if (terminal.address.toLowerCase() !== expectedTerminal.toLowerCase()) {
+          throw new Error('The project accounting terminal changed. Close this review and try again.')
+        }
+        await assertCurrentProjectCashOutConfigurationTrusted({
+          client: publicClient,
+          projectId: BigInt(projectId),
+        })
         setTerminalAddress(terminal.address)
       } catch (err) {
         console.error('Failed to fetch payment terminal:', err)
-        setError('Failed to fetch payment terminal')
+        setTerminalAddress(null)
+        setError(err instanceof Error ? err.message : 'Failed to fetch payment terminal')
       } finally {
         setTerminalLoading(false)
       }
     }
 
     fetchTerminal()
-  }, [isOpen, projectId, chainId, currencySymbol, reclaimToken])
+  }, [isOpen, projectId, chainId, reclaimToken, expectedTerminal])
 
   // Read the contract's exact reclaim preview to set the slippage floor and to
   // surface the on-chain cash out tax rate. The preview is hook-aware and in the
-  // reclaim token's decimals, so 95% of it is a correct min in those same decimals.
+  // reclaim token's decimals, so 97.5% covers the maximum stated protocol fee.
   useEffect(() => {
-    if (!isOpen || !terminalAddress || !activeAddress || tokenNum <= 0 || !tokenAmount) {
+    if (!isOpen || !terminalAddress || !activeAddress || cashOutCount === null) {
       setMinReclaimed(0n)
       setPreviewReclaim(null)
       setPreviewTaxRate(null)
+      setPreviewError(null)
+      setPreviewLoading(false)
       return
     }
 
     let cancelled = false
     const fetchPreview = async () => {
+      setPreviewLoading(true)
+      setPreviewError(null)
       try {
         const chain = CHAINS[chainId]
         if (!chain) return
         const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
         const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
 
-        const cashOutCount = parseUnits(tokenAmount, 18)
         const result = await publicClient.readContract({
           address: terminalAddress,
           abi: TERMINAL_CASH_OUT_ABI,
@@ -278,17 +310,32 @@ export default function CashOutModal({
 
         const reclaim = result[1] as bigint
         const taxRate = Number(result[2])
+        for (const specification of result[3]) {
+          if (!specification.noop) {
+            await requireRecognizedRuntimeHook({
+              client: publicClient,
+              projectId: BigInt(projectId),
+              rulesetId: result[0].id,
+              hook: specification.hook,
+            })
+          }
+        }
         setPreviewReclaim(reclaim)
         setPreviewTaxRate(taxRate)
-        // 95% floor covers the 2.5% protocol fee plus ~2.5% tolerance. A near-zero
-        // reclaim (surplus drained / MEV) then reverts instead of silently draining.
-        setMinReclaimed(reclaim > 0n ? (reclaim * 95n) / 100n : 0n)
-      } catch {
-        // Cash-out delay active or read failed → no floor so the tx stays submittable.
+        // Do not allow extra client-side slippage beyond the stated 2.5% fee ceiling.
+        const quotedMinimum = (reclaim * 39n) / 40n
+        setMinReclaimed(reclaim > 0n ? (quotedMinimum > 0n ? quotedMinimum : 1n) : 0n)
+        if (reclaim <= 0n) setPreviewError('No funds are currently reclaimable for this cash out')
+      } catch (err) {
         if (cancelled) return
         setMinReclaimed(0n)
         setPreviewReclaim(null)
         setPreviewTaxRate(null)
+        setPreviewError(err instanceof Error
+          ? err.message
+          : 'Cash out preview is unavailable. No transaction will be sent.')
+      } finally {
+        if (!cancelled) setPreviewLoading(false)
       }
     }
 
@@ -296,7 +343,7 @@ export default function CashOutModal({
     return () => {
       cancelled = true
     }
-  }, [isOpen, terminalAddress, activeAddress, tokenAmount, tokenNum, chainId, projectId, reclaimToken])
+  }, [isOpen, terminalAddress, activeAddress, cashOutCount, chainId, projectId, reclaimToken])
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
@@ -313,7 +360,6 @@ export default function CashOutModal({
       }
     }
 
-    setStatus('signing')
     setError(null)
 
     const holder = activeAddress as Address
@@ -332,7 +378,69 @@ export default function CashOutModal({
     }
 
     try {
-      // Create transaction record
+      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      if (cashOutCount === null) throw new Error('Enter a valid token amount')
+      const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+      if (!rpcUrl) throw new Error(`No RPC endpoint for chain ${chainId}`)
+      const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+      const prepareCashOut = async () => {
+        const freshTerminal = await getPaymentTerminal(
+          publicClient,
+          chainId,
+          BigInt(projectId),
+          reclaimToken,
+          'accounting',
+        )
+        if (freshTerminal.address.toLowerCase() !== terminalAddress.toLowerCase()) {
+          throw new Error('The project accounting terminal changed. Close this review and try again.')
+        }
+        await assertCurrentProjectCashOutConfigurationTrusted({
+          client: publicClient,
+          projectId: BigInt(projectId),
+        })
+
+        const preview = await publicClient.readContract({
+          address: freshTerminal.address,
+          abi: TERMINAL_CASH_OUT_ABI,
+          functionName: 'previewCashOutFrom',
+          args: [holder, BigInt(projectId), cashOutCount, reclaimToken, holder, '0x' as Hex],
+        })
+        if (preview[1] <= 0n) throw new Error('No funds are currently reclaimable')
+        for (const specification of preview[3]) {
+          if (!specification.noop) {
+            await requireRecognizedRuntimeHook({
+              client: publicClient,
+              projectId: BigInt(projectId),
+              rulesetId: preview[0].id,
+              hook: specification.hook,
+            })
+          }
+        }
+        const quotedMinimum = (preview[1] * 39n) / 40n
+        const minimum = quotedMinimum > 0n ? quotedMinimum : 1n
+        const data = encodeFunctionData({
+          abi: TERMINAL_CASH_OUT_ABI,
+          functionName: 'cashOutTokensOf',
+          args: [
+            holder,
+            BigInt(projectId),
+            cashOutCount,
+            reclaimToken,
+            minimum,
+            holder,
+            '0x' as Hex,
+          ],
+        })
+        await simulateTransaction({
+          chainId,
+          account: holder,
+          to: freshTerminal.address,
+          data,
+        })
+        return { target: freshTerminal.address, data, quotedAmount: preview[1] }
+      }
+      const prepared = await prepareCashOut()
+
       const txId = addTransaction({
         type: 'cashout',
         projectId,
@@ -341,49 +449,48 @@ export default function CashOutModal({
         status: 'pending',
       })
 
-      // Tokens typically have 18 decimals
-      const cashOutCount = parseUnits(tokenAmount, 18)
-
-      const callData = encodeFunctionData({
-        abi: TERMINAL_CASH_OUT_ABI,
-        functionName: 'cashOutTokensOf',
-        args: [
-          holder,
-          BigInt(projectId),
-          cashOutCount,
-          reclaimToken, // native ETH or USDC — matches the terminal's accounting token
-          minReclaimed, // slippage floor from previewCashOutFrom (0 if preview unavailable)
-          holder, // beneficiary
-          '0x' as Hex,
-        ],
-      })
-
-      setStatus('pending')
-
       let hash: string
 
       if (isManagedMode) {
         // Execute via backend for managed mode
-        hash = await executeManagedTransaction(chainId, terminalAddress, callData, '0')
+        assertCurrentAccount()
+        setStatus('pending')
+        hash = await executeManagedTransaction(chainId, prepared.target, prepared.data, '0')
       } else {
         // Execute via wallet for self-custody mode
+        setStatus('signing')
         await switchChainAsync({ chainId })
+        if (await walletClient!.getChainId() !== chainId) {
+          throw new Error(`Wallet did not switch to chain ${chainId}`)
+        }
+        const finalPrepared = await prepareCashOut()
+        if (
+          finalPrepared.target.toLowerCase() !== prepared.target.toLowerCase() ||
+          finalPrepared.quotedAmount !== prepared.quotedAmount
+        ) {
+          throw new Error('The cash out quote changed. Close this review and try again.')
+        }
+        assertCurrentAccount(walletClient!.account?.address)
         hash = await walletClient!.sendTransaction({
-          to: terminalAddress,
-          data: callData,
+          to: finalPrepared.target,
+          data: finalPrepared.data,
           value: 0n,
         })
+        setStatus('pending')
       }
 
       setTxHash(hash)
       updateTransaction(txId, { hash, status: 'submitted' })
+      onSubmitted?.(hash)
+      if (!isManagedMode) await waitForSuccessfulTransaction(chainId, hash as `0x${string}`)
+      updateTransaction(txId, { hash, status: 'confirmed' })
       setStatus('confirmed')
     } catch (err) {
       console.error('Cash out failed:', err)
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, tokenAmount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, terminalAddress, reclaimToken, minReclaimed])
+  }, [walletClient, address, chainId, projectId, tokenAmount, cashOutCount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, terminalAddress, reclaimToken, onSubmitted, assertCurrentAccount])
 
   if (!isOpen) return null
 
@@ -521,13 +628,13 @@ export default function CashOutModal({
                   </span>
                 </div>
 
-                {cashOutTaxRate > 0 && (
+                {(previewTaxRate ?? cashOutTaxRate) > 0 && (
                   <div className="flex justify-between items-center">
                     <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                      Cash out tax
+                      Cash-out curve rate
                     </span>
                     <span className={`font-mono ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                      {taxPercent.toFixed(1)}%
+                      {((previewTaxRate ?? cashOutTaxRate) / 100).toFixed(2).replace(/\.?0+$/, '') || '0'}%
                     </span>
                   </div>
                 )}
@@ -537,43 +644,41 @@ export default function CashOutModal({
                     isDark ? 'border-white/10' : 'border-gray-200'
                   }`}>
                     <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      You receive{feeApplies ? ' (after fee)' : ''}
+                      Current preview
                     </span>
                     <span className={`font-mono font-bold text-lg ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                      ~{(netReturn ?? grossReturn).toFixed(returnDecimals)} {currencySymbol}
+                      {grossReturn.toFixed(returnDecimals)} {currencySymbol}
+                    </span>
+                  </div>
+                )}
+                {minimumReturnFloat != null && minimumReturnFloat > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Transaction minimum</span>
+                    <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      {minimumReturnFloat.toFixed(returnDecimals)} {currencySymbol}
                     </span>
                   </div>
                 )}
               </div>
 
-              {/* Protocol fee note — the preview/estimate above is before the fee */}
-              {feeApplies && (
+              {grossReturn != null && grossReturn > 0 && (
                 <div className={`p-3 text-xs ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                  Heads up: a 2.5% protocol fee is taken from cash outs, so you'll receive a little less than the raw surplus share.
-                  {grossReturn != null && grossReturn > 0 && (
-                    <> Before the fee this cash out is worth ~{grossReturn.toFixed(returnDecimals)} {currencySymbol}.</>
-                  )}
+                  The preview is before any protocol fee. A fee of up to 2.5% may apply; the transaction reverts if the final return is below the minimum shown.
                 </div>
               )}
 
               {/* Gas balance check */}
-              <div className={`flex justify-between items-center text-sm ${
-                isDark ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                <span>Your ETH balance (for gas)</span>
-                <span className={`font-mono ${!hasGasBalance ? 'text-red-400' : ''}`}>
-                  {formatEthBalance(totalEth)} ETH
-                </span>
-              </div>
-
-              {!hasGasBalance && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                  Insufficient ETH for gas fees
-                </div>
-              )}
+              <GasBalanceStatus
+                balance={chainGasBalance}
+                hasGasBalance={hasGasBalance}
+                loading={balancesLoading}
+                available={balancesAvailable}
+                managed={isManagedMode}
+                isDark={isDark}
+              />
 
               <div className={`p-3 text-sm ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                Your tokens will be burned and you'll receive funds based on the project balance and cash out tax rate.
+                Your tokens will be burned. The return comes from the live terminal quote for the active cash-out curve and hooks.
               </div>
 
               {/* Transaction Summary */}
@@ -584,9 +689,13 @@ export default function CashOutModal({
                   projectName,
                   tokens: tokenNum.toString(),
                   tokensFormatted: `${tokenNum.toLocaleString()} ${tokenSymbol}`,
-                  estimatedReturn: estimatedReturn.toString(),
-                  estimatedReturnFormatted: `${estimatedReturn.toFixed(currencySymbol === 'USDC' ? 2 : 4)} ${currencySymbol}`,
-                  taxRate: cashOutTaxRate,
+                  previewReturnFormatted: grossReturn != null
+                    ? `${grossReturn.toFixed(returnDecimals)} ${currencySymbol}`
+                    : undefined,
+                  minimumReturnFormatted: minimumReturnFloat != null
+                    ? `${minimumReturnFloat.toFixed(returnDecimals)} ${currencySymbol}`
+                    : undefined,
+                  taxRate: previewTaxRate ?? cashOutTaxRate,
                   currency: currencySymbol,
                 }}
                 isDark={isDark}
@@ -607,6 +716,19 @@ export default function CashOutModal({
                 <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-juice-cyan/10 text-juice-cyan' : 'bg-cyan-50 text-cyan-700'}`}>
                   <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
                   Fetching payment terminal...
+                </div>
+              )}
+
+              {previewLoading && (
+                <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-juice-cyan/10 text-juice-cyan' : 'bg-cyan-50 text-cyan-700'}`}>
+                  <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                  Checking the current cash out value...
+                </div>
+              )}
+
+              {previewError && !previewLoading && (
+                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-700'}`}>
+                  {previewError}
                 </div>
               )}
 
@@ -634,14 +756,6 @@ export default function CashOutModal({
                     -{tokenNum.toLocaleString()} {tokenSymbol}
                   </span>
                 </div>
-                {estimatedReturn > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Received</span>
-                    <span className={`font-mono text-green-500`}>
-                      ~{estimatedReturn.toFixed(currencySymbol === 'USDC' ? 2 : 4)} {currencySymbol}
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
           )}

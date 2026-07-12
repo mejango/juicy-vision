@@ -8,20 +8,20 @@ import {
 
 describe('isUsdcCurrency', () => {
   describe('testnet USDC currency codes', () => {
-    it('returns true for Sepolia USDC currency (909516616)', () => {
-      expect(isUsdcCurrency(909516616)).toBe(true)
+    it('returns true for Sepolia USDC currency', () => {
+      expect(isUsdcCurrency(USDC_CURRENCIES['11155111'])).toBe(true)
     })
 
-    it('returns true for OP Sepolia USDC currency (3530704773)', () => {
-      expect(isUsdcCurrency(3530704773)).toBe(true)
+    it('returns true for OP Sepolia USDC currency', () => {
+      expect(isUsdcCurrency(USDC_CURRENCIES['11155420'])).toBe(true)
     })
 
-    it('returns true for Base Sepolia USDC currency (3169378579)', () => {
-      expect(isUsdcCurrency(3169378579)).toBe(true)
+    it('returns true for Base Sepolia USDC currency', () => {
+      expect(isUsdcCurrency(USDC_CURRENCIES['84532'])).toBe(true)
     })
 
-    it('returns true for Arb Sepolia USDC currency (1156540465)', () => {
-      expect(isUsdcCurrency(1156540465)).toBe(true)
+    it('returns true for Arb Sepolia USDC currency', () => {
+      expect(isUsdcCurrency(USDC_CURRENCIES['421614'])).toBe(true)
     })
   })
 
@@ -72,15 +72,18 @@ describe('getCurrencyLabel', () => {
   })
 
   it('returns "USDC" for USDC currency codes', () => {
-    expect(getCurrencyLabel(909516616)).toBe('USDC')
-    expect(getCurrencyLabel(3530704773)).toBe('USDC')
-    expect(getCurrencyLabel(3169378579)).toBe('USDC')
-    expect(getCurrencyLabel(1156540465)).toBe('USDC')
+    expect(getCurrencyLabel(USDC_CURRENCIES['11155111'])).toBe('USDC')
+    expect(getCurrencyLabel(USDC_CURRENCIES['11155420'])).toBe('USDC')
+    expect(getCurrencyLabel(USDC_CURRENCIES['84532'])).toBe('USDC')
+    expect(getCurrencyLabel(USDC_CURRENCIES['421614'])).toBe('USDC')
+  })
+
+  it('labels ETH and USD base currencies', () => {
+    expect(getCurrencyLabel(1)).toBe('ETH')
+    expect(getCurrencyLabel(2)).toBe('USD')
   })
 
   it('returns null for unknown currency codes', () => {
-    expect(getCurrencyLabel(1)).toBeNull()
-    expect(getCurrencyLabel(2)).toBeNull()
     expect(getCurrencyLabel(999)).toBeNull()
   })
 })
@@ -115,7 +118,7 @@ describe('tier price display helpers', () => {
     })
 
     it('returns true for Sepolia USDC currency', () => {
-      expect(isUsdBasedTier(909516616)).toBe(true)
+      expect(isUsdBasedTier(USDC_CURRENCIES['11155111'])).toBe(true)
     })
 
     it('returns true for all chain-specific USDC currencies', () => {

@@ -3,12 +3,30 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { useOmnichainDeployRevnet, type OmnichainDeployRevnetParams } from './useOmnichainDeployRevnet'
 import type { BundleStatus } from './types'
 
+const MANAGED_ACCOUNT = '0xabcdef1234567890abcdef1234567890abcdef12'
+const REV_DEPLOYER_ADDRESS = '0xb552eb94284f94b833837d4b2cbb237128415d4e'
+
+function validTransactions(chainIds: number[]) {
+  return chainIds.map(chainId => ({
+    txData: {
+      chainId,
+      to: REV_DEPLOYER_ADDRESS,
+      data: '0x123',
+      value: '0',
+    },
+  }))
+}
+
 // Mock stores
 vi.mock('../../stores', () => ({
   useAuthStore: vi.fn(() => ({
-    mode: 'self_custody',
+    mode: 'managed',
     isAuthenticated: () => true,
   })),
+}))
+
+vi.mock('../../services/omnichainDeployer', () => ({
+  fetchProjectCreationFee: vi.fn().mockResolvedValue(0n),
 }))
 
 // Mock managed wallet hook
@@ -16,10 +34,20 @@ const mockCreateManagedRelayrBundle = vi.fn()
 
 vi.mock('../useManagedWallet', () => ({
   useManagedWallet: vi.fn(() => ({
-    address: '0xmanagedaddress123456789012345678901234',
+    address: MANAGED_ACCOUNT,
     isLoading: false,
   })),
   createManagedRelayrBundle: (...args: unknown[]) => mockCreateManagedRelayrBundle(...args),
+}))
+
+vi.mock('../../utils/transactionSafety', () => ({
+  getSafetyPublicClient: vi.fn(() => ({
+    call: vi.fn().mockResolvedValue({ data: '0x' }),
+  })),
+}))
+
+vi.mock('../../services/bendystraw', () => ({
+  getProjectIdsFromReceipts: vi.fn().mockResolvedValue({}),
 }))
 
 // Mock relayr services
@@ -79,6 +107,7 @@ vi.mock('./useRelayrStatus', () => ({
 describe('useOmnichainDeployRevnet', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     // Reset mock state
     mockBundleState.bundleId = null
     mockBundleState.status = 'idle'
@@ -95,16 +124,18 @@ describe('useOmnichainDeployRevnet', () => {
     chainIds: [1, 10, 8453, 42161],
     stageConfigurations: [{
       startsAtOrAfter: Math.floor(Date.now() / 1000) + 300,
-      splitPercent: 200000000, // 20%
+      splitPercent: 2000, // 20%
       initialIssuance: '1000000000000000000000000',
       issuanceCutFrequency: 604800, // 7 days
       issuanceCutPercent: 50000000, // 5%
       cashOutTaxRate: 1000, // 10%
       extraMetadata: 0,
     }],
-    splitOperator: '0x1234567890123456789012345678901234567890',
+    splitOperator: MANAGED_ACCOUNT,
     name: 'Test Revnet',
+    ticker: 'TEST',
     tagline: 'A test revenue network',
+    projectUri: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3gq2t5lz2wqzzx4m6w6v7s7qm',
   }
 
   describe('initial state', () => {
@@ -123,9 +154,7 @@ describe('useOmnichainDeployRevnet', () => {
   describe('deploy function', () => {
     it('calls setCreating when deploy is called', async () => {
       mockBuildOmnichainDeployRevnetTransactions.mockResolvedValue({
-        transactions: [
-          { txData: { chainId: 1, to: '0xrevdeployer', data: '0x123', value: '0' } },
-        ],
+        transactions: validTransactions(defaultParams.chainIds),
         predictedProjectIds: { 1: 100 },
         predictedTokenAddress: '0xtoken123',
       })
@@ -145,9 +174,7 @@ describe('useOmnichainDeployRevnet', () => {
 
     it('builds transactions with correct parameters including salt', async () => {
       mockBuildOmnichainDeployRevnetTransactions.mockResolvedValue({
-        transactions: [
-          { txData: { chainId: 1, to: '0xrevdeployer', data: '0x123', value: '0' } },
-        ],
+        transactions: validTransactions(defaultParams.chainIds),
         predictedProjectIds: { 1: 100, 10: 101, 8453: 102, 42161: 103 },
         predictedTokenAddress: '0xtoken123',
       })
@@ -169,7 +196,9 @@ describe('useOmnichainDeployRevnet', () => {
           splitOperator: defaultParams.splitOperator,
           description: expect.objectContaining({
             name: defaultParams.name,
+            ticker: defaultParams.ticker,
             tagline: defaultParams.tagline,
+            uri: defaultParams.projectUri,
             salt: expect.any(String), // Deterministic salt
           }),
         })
@@ -177,10 +206,7 @@ describe('useOmnichainDeployRevnet', () => {
     })
 
     it('creates managed bundle with smart account routing', async () => {
-      const mockTxs = [
-        { txData: { chainId: 1, to: '0xrevdeployer1', data: '0x111', value: '0' } },
-        { txData: { chainId: 10, to: '0xrevdeployer10', data: '0x222', value: '0' } },
-      ]
+      const mockTxs = validTransactions(defaultParams.chainIds)
 
       mockBuildOmnichainDeployRevnetTransactions.mockResolvedValue({
         transactions: mockTxs,
@@ -200,20 +226,21 @@ describe('useOmnichainDeployRevnet', () => {
 
       // Should call createManagedRelayrBundle with transactions, owner, and smart account address
       expect(mockCreateManagedRelayrBundle).toHaveBeenCalledWith(
-        [
-          { chainId: 1, target: '0xrevdeployer1', data: '0x111', value: '0' },
-          { chainId: 10, target: '0xrevdeployer10', data: '0x222', value: '0' },
-        ],
+        defaultParams.chainIds.map(chainId => ({
+          chainId,
+          target: REV_DEPLOYER_ADDRESS,
+          data: '0x123',
+          value: '0',
+        })),
         defaultParams.splitOperator,
-        '0xmanagedaddress123456789012345678901234' // Smart account address for routing
+        MANAGED_ACCOUNT,
+        undefined,
       )
     })
 
     it('initializes bundle and sets processing', async () => {
       mockBuildOmnichainDeployRevnetTransactions.mockResolvedValue({
-        transactions: [
-          { txData: { chainId: 1, to: '0xrevdeployer', data: '0x123', value: '0' } },
-        ],
+        transactions: validTransactions(defaultParams.chainIds),
         predictedProjectIds: { 1: 100, 10: 101, 8453: 102, 42161: 103 },
         predictedTokenAddress: '0xtoken123',
       })
@@ -248,7 +275,7 @@ describe('useOmnichainDeployRevnet', () => {
         })
       })
 
-      expect(mockSetError).toHaveBeenCalledWith('No split operator address specified')
+      expect(mockSetError).toHaveBeenCalledWith('Revnet operator must be the active managed account')
     })
 
     it('sets error on build failure', async () => {
@@ -265,9 +292,7 @@ describe('useOmnichainDeployRevnet', () => {
 
     it('sets error on bundle creation failure', async () => {
       mockBuildOmnichainDeployRevnetTransactions.mockResolvedValue({
-        transactions: [
-          { txData: { chainId: 1, to: '0xrevdeployer', data: '0x123', value: '0' } },
-        ],
+        transactions: validTransactions(defaultParams.chainIds),
         predictedProjectIds: { 1: 100 },
         predictedTokenAddress: '0xtoken123',
       })
@@ -291,7 +316,7 @@ describe('useOmnichainDeployRevnet', () => {
         stageConfigurations: [
           {
             startsAtOrAfter: Math.floor(Date.now() / 1000) + 300,
-            splitPercent: 200000000,
+            splitPercent: 2000,
             initialIssuance: '1000000000000000000000000',
             issuanceCutFrequency: 604800,
             issuanceCutPercent: 50000000,
@@ -300,7 +325,7 @@ describe('useOmnichainDeployRevnet', () => {
           },
           {
             startsAtOrAfter: Math.floor(Date.now() / 1000) + 2592000, // 30 days later
-            splitPercent: 100000000, // 10%
+            splitPercent: 1000, // 10%
             initialIssuance: '500000000000000000000000',
             issuanceCutFrequency: 604800,
             issuanceCutPercent: 30000000, // 3%
@@ -311,9 +336,7 @@ describe('useOmnichainDeployRevnet', () => {
       }
 
       mockBuildOmnichainDeployRevnetTransactions.mockResolvedValue({
-        transactions: [
-          { txData: { chainId: 1, to: '0xrevdeployer', data: '0x123', value: '0' } },
-        ],
+        transactions: validTransactions(defaultParams.chainIds),
         predictedProjectIds: { 1: 100 },
         predictedTokenAddress: '0xtoken123',
       })
@@ -331,8 +354,8 @@ describe('useOmnichainDeployRevnet', () => {
       expect(mockBuildOmnichainDeployRevnetTransactions).toHaveBeenCalledWith(
         expect.objectContaining({
           stageConfigurations: expect.arrayContaining([
-            expect.objectContaining({ splitPercent: 200000000 }),
-            expect.objectContaining({ splitPercent: 100000000 }),
+            expect.objectContaining({ splitPercent: 2000 }),
+            expect.objectContaining({ splitPercent: 1000 }),
           ]),
         })
       )
@@ -360,9 +383,7 @@ describe('useOmnichainDeployRevnet', () => {
       }
 
       mockBuildOmnichainDeployRevnetTransactions.mockResolvedValue({
-        transactions: [
-          { txData: { chainId: 1, to: '0xrevdeployer', data: '0x123', value: '0' } },
-        ],
+        transactions: validTransactions(defaultParams.chainIds),
         predictedProjectIds: { 1: 100 },
         predictedTokenAddress: '0xtoken123',
       })

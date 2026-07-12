@@ -57,7 +57,6 @@ export default function BalanceChart({
   const [perChainData, setPerChainData] = useState<Map<number, DataPoint[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [projectName, setProjectName] = useState<string>('')
   const [connectedChains, setConnectedChains] = useState<number[]>([])
   const [selectedChains, setSelectedChains] = useState<Set<number> | 'all'>('all')
   const [showBreakdown, setShowBreakdown] = useState(false)
@@ -75,17 +74,13 @@ export default function BalanceChart({
           fetchConnectedChains(projectId, parseInt(chainId)),
           fetchSuckerGroupBalance(projectId, parseInt(chainId)),
         ])
+        if (groupBalance.balanceAvailable === false) {
+          throw new Error('Balance history unavailable for this accounting configuration')
+        }
 
         // Resolve the accounting token so balances render in the right unit/decimals
         const decimals = groupBalance.decimals
         setToken(resolveAccountingToken(groupBalance.currency, groupBalance.decimals))
-
-        if (project?.metadata) {
-          const metadata = typeof project.metadata === 'string'
-            ? JSON.parse(project.metadata)
-            : project.metadata
-          setProjectName(metadata?.name || '')
-        }
 
         // Extract unique chain IDs from connected chains
         const chainIds = chains.length > 0
@@ -107,8 +102,13 @@ export default function BalanceChart({
         }
 
         if (aggregatedMoments.length === 0) {
-          // Fallback: create a single point with current balance
-          const currentBalance = project?.balance ? toTokenFloat(project.balance, decimals) : 0
+          // A single verified current point is useful, but an omnichain chart must
+          // use the group total rather than the primary project's local balance.
+          const currentRawBalance = suckerGroupId ? groupBalance.totalBalance : project?.balance
+          if (!currentRawBalance || !/^\d+$/.test(currentRawBalance)) {
+            throw new Error('Current balance unavailable')
+          }
+          const currentBalance = toTokenFloat(currentRawBalance, decimals)
           aggregatedMoments = [{
             timestamp: Math.floor(Date.now() / 1000),
             balance: currentBalance,
@@ -122,21 +122,16 @@ export default function BalanceChart({
           const perChainMap = new Map<number, DataPoint[]>()
 
           await Promise.all(chainIds.map(async (cid) => {
-            try {
-              // Get the projectId for this chain from connected chains
-              const chainInfo = chains.find(c => c.chainId === cid)
-              const chainProjectId = chainInfo?.projectId?.toString() || projectId
+            // Get the projectId for this chain from connected chains
+            const chainInfo = chains.find(c => c.chainId === cid)
+            if (!chainInfo?.projectId) throw new Error(`Project mapping unavailable for chain ${cid}`)
 
-              const moments = await fetchProjectMoments(chainProjectId, cid)
-              const points: DataPoint[] = moments.map((m: ProjectMoment) => ({
-                timestamp: m.timestamp,
-                balance: toTokenFloat(m.balance, decimals),
-              }))
-              perChainMap.set(cid, points)
-            } catch (err) {
-              console.warn(`Failed to fetch moments for chain ${cid}:`, err)
-              perChainMap.set(cid, [])
-            }
+            const moments = await fetchProjectMoments(String(chainInfo.projectId), cid)
+            const points: DataPoint[] = moments.map((m: ProjectMoment) => ({
+              timestamp: m.timestamp,
+              balance: toTokenFloat(m.balance, decimals),
+            }))
+            perChainMap.set(cid, points)
           }))
 
           setPerChainData(perChainMap)

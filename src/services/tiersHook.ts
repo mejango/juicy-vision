@@ -6,6 +6,7 @@
 
 import { encodeFunctionData } from 'viem'
 import { JB_721_TIERS_HOOK_ABI } from '../constants/abis'
+import { assertSafeTierAdjustments } from '../utils/tierSafety'
 
 // Tier configuration for adding new tiers
 export interface JB721TierConfigInput {
@@ -97,6 +98,7 @@ export function encodeAdjustTiers(params: {
   tierIdsToRemove: (number | bigint)[]
 }): `0x${string}` {
   const { tiersToAdd, tierIdsToRemove } = params
+  assertSafeTierAdjustments(tiersToAdd, tierIdsToRemove)
 
   return encodeFunctionData({
     abi: JB_721_TIERS_HOOK_ABI,
@@ -105,84 +107,6 @@ export function encodeAdjustTiers(params: {
       formatTierConfigs(tiersToAdd),
       tierIdsToRemove.map(id => BigInt(id)),
     ],
-  })
-}
-
-/**
- * Build transaction for adjusting tiers on a specific hook.
- */
-export function buildAdjustTiersTransaction(params: {
-  chainId: number
-  hookAddress: `0x${string}`
-  tiersToAdd: JB721TierConfigInput[]
-  tierIdsToRemove: (number | bigint)[]
-}): {
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-} {
-  const data = encodeAdjustTiers(params)
-
-  return {
-    chainId: params.chainId,
-    to: params.hookAddress,
-    data,
-    value: '0x0',
-  }
-}
-
-/**
- * Per-chain configuration overrides for tier adjustments.
- * Use this to add limited supply tiers only on the primary chain.
- */
-export interface TiersChainConfigOverride {
-  chainId: number
-  /**
-   * Override tiers to add for this chain. Use this to add limited supply tiers
-   * only on the primary chain while adding unlimited tiers on all chains.
-   * If not provided, uses the default tiersToAdd.
-   */
-  tiersToAdd?: JB721TierConfigInput[]
-}
-
-/**
- * Build transactions for adjusting tiers on multiple chains.
- * Assumes same hook address on all chains (CREATE2 deployed).
- *
- * For LIMITED SUPPLY TIERS: Use chainConfigs with per-chain `tiersToAdd` to add
- * limited tiers only on the primary chain while adding unlimited tiers on all chains.
- */
-export function buildOmnichainAdjustTiersTransactions(params: {
-  chainIds: number[]
-  hookAddress: `0x${string}`
-  tiersToAdd: JB721TierConfigInput[]  // Default tiers (used if no chain override)
-  tierIdsToRemove: (number | bigint)[]
-  chainConfigs?: TiersChainConfigOverride[]  // Per-chain tier overrides
-}): Array<{
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-}> {
-  const { chainConfigs = [] } = params
-
-  // Build a map of chainId -> tier configurations from chainConfigs
-  const chainConfigMap = new Map<number, TiersChainConfigOverride>()
-  for (const cfg of chainConfigs) {
-    chainConfigMap.set(cfg.chainId, cfg)
-  }
-
-  return params.chainIds.map(chainId => {
-    // Get per-chain tiers to add (use override if available)
-    const chainConfig = chainConfigMap.get(chainId)
-    const tiersToAdd = chainConfig?.tiersToAdd ?? params.tiersToAdd
-
-    return buildAdjustTiersTransaction({
-      ...params,
-      chainId,
-      tiersToAdd,
-    })
   })
 }
 
@@ -226,62 +150,6 @@ export function encodeSetMetadata(params: {
 }
 
 /**
- * Build transaction for setting metadata on a specific hook.
- */
-export function buildSetMetadataTransaction(params: {
-  chainId: number
-  hookAddress: `0x${string}`
-  name?: string
-  symbol?: string
-  baseUri: string
-  contractUri: string
-  tokenUriResolver: `0x${string}`
-  encodedIPFSTUriTierId: number | bigint
-  encodedIPFSUri: `0x${string}`
-}): {
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-} {
-  const data = encodeSetMetadata(params)
-
-  return {
-    chainId: params.chainId,
-    to: params.hookAddress,
-    data,
-    value: '0x0',
-  }
-}
-
-/**
- * Build transactions for setting metadata on multiple chains.
- */
-export function buildOmnichainSetMetadataTransactions(params: {
-  chainIds: number[]
-  hookAddress: `0x${string}`
-  name?: string
-  symbol?: string
-  baseUri: string
-  contractUri: string
-  tokenUriResolver: `0x${string}`
-  encodedIPFSTUriTierId: number | bigint
-  encodedIPFSUri: `0x${string}`
-}): Array<{
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-}> {
-  return params.chainIds.map(chainId =>
-    buildSetMetadataTransaction({
-      ...params,
-      chainId,
-    })
-  )
-}
-
-/**
  * Encode a single-tier discount update for JB721TiersHook.
  * V6 removed setDiscountPercentOf - this encodes setDiscountPercentsOf with one entry.
  */
@@ -299,30 +167,6 @@ export function encodeSetDiscountPercentOf(params: {
       }],
     ],
   })
-}
-
-/**
- * Build transaction for setting discount percent on a single tier.
- */
-export function buildSetDiscountPercentOfTransaction(params: {
-  chainId: number
-  hookAddress: `0x${string}`
-  tierId: number | bigint
-  discountPercent: number | bigint
-}): {
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-} {
-  const data = encodeSetDiscountPercentOf(params)
-
-  return {
-    chainId: params.chainId,
-    to: params.hookAddress,
-    data,
-    value: '0x0',
-  }
 }
 
 /**
@@ -345,50 +189,6 @@ export function encodeSetDiscountPercentsOf(params: {
 }
 
 /**
- * Build transaction for batch setting discount percentages.
- */
-export function buildSetDiscountPercentsOfTransaction(params: {
-  chainId: number
-  hookAddress: `0x${string}`
-  configs: JB721DiscountPercentConfig[]
-}): {
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-} {
-  const data = encodeSetDiscountPercentsOf(params)
-
-  return {
-    chainId: params.chainId,
-    to: params.hookAddress,
-    data,
-    value: '0x0',
-  }
-}
-
-/**
- * Build transactions for batch setting discounts on multiple chains.
- */
-export function buildOmnichainSetDiscountPercentsOfTransactions(params: {
-  chainIds: number[]
-  hookAddress: `0x${string}`
-  configs: JB721DiscountPercentConfig[]
-}): Array<{
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-}> {
-  return params.chainIds.map(chainId =>
-    buildSetDiscountPercentsOfTransaction({
-      ...params,
-      chainId,
-    })
-  )
-}
-
-/**
  * Encode mintPendingReservesFor calldata for JB721TiersHook.
  * Mints pending reserved NFTs from a specific tier.
  */
@@ -404,52 +204,6 @@ export function encodeMintPendingReservesFor(params: {
       BigInt(params.count),
     ],
   })
-}
-
-/**
- * Build transaction for minting pending reserves.
- */
-export function buildMintPendingReservesForTransaction(params: {
-  chainId: number
-  hookAddress: `0x${string}`
-  tierId: number | bigint
-  count: number | bigint
-}): {
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-} {
-  const data = encodeMintPendingReservesFor(params)
-
-  return {
-    chainId: params.chainId,
-    to: params.hookAddress,
-    data,
-    value: '0x0',
-  }
-}
-
-/**
- * Build transactions for minting reserves on multiple chains.
- */
-export function buildOmnichainMintPendingReservesForTransactions(params: {
-  chainIds: number[]
-  hookAddress: `0x${string}`
-  tierId: number | bigint
-  count: number | bigint
-}): Array<{
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-}> {
-  return params.chainIds.map(chainId =>
-    buildMintPendingReservesForTransaction({
-      ...params,
-      chainId,
-    })
-  )
 }
 
 /**
@@ -492,48 +246,4 @@ export function encodeMintFor(params: {
       beneficiary as `0x${string}`,
     ],
   })
-}
-
-/**
- * Build transaction for minting to beneficiaries.
- */
-export function buildMintForTransaction(params: {
-  chainId: number
-  hookAddress: `0x${string}`
-  mintConfigs: JB721MintConfig[]
-}): {
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-} {
-  const data = encodeMintFor(params)
-
-  return {
-    chainId: params.chainId,
-    to: params.hookAddress,
-    data,
-    value: '0x0',
-  }
-}
-
-/**
- * Build transactions for minting on multiple chains.
- */
-export function buildOmnichainMintForTransactions(params: {
-  chainIds: number[]
-  hookAddress: `0x${string}`
-  mintConfigs: JB721MintConfig[]
-}): Array<{
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-}> {
-  return params.chainIds.map(chainId =>
-    buildMintForTransaction({
-      ...params,
-      chainId,
-    })
-  )
 }

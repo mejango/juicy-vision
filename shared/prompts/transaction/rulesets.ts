@@ -1,149 +1,47 @@
 /**
- * Ruleset Configuration sub-module (~1000 tokens)
- * Hints: ruleset, weight, duration, reserved, metadata
+ * Safe ruleset guidance. Exact protocol structures are handled by the form.
  */
 
 export const RULESETS_CONTEXT = `
-### Ruleset Configuration
+### Project Rules
 
-**JBRulesetConfig:**
-\`\`\`
-{ mustStartAtOrAfter: uint48, duration: uint32, weight: uint112, weightCutPercent: uint32,
-  approvalHook: address, metadata: JBRulesetMetadata, splitGroups: JBSplitGroup[], fundAccessLimitGroups: JBFundAccessLimitGroup[] }
-\`\`\`
+Use ruleset-schedule for verified read-only history and
+queue-ruleset-form for a requested change. Never emit raw ruleset structs,
+hook addresses, controller targets, calldata, or a generic transaction preview.
 
-**JBRulesetMetadata:**
-\`\`\`
-{ reservedPercent: uint16, cashOutTaxRate: uint16, baseCurrency: uint32, pausePay: bool,
-  pauseCreditTransfers: bool, allowOwnerMinting: bool, allowSetCustomToken: bool,
-  allowTerminalMigration: bool, allowSetTerminals: bool, allowSetController: bool,
-  allowAddAccountingContext: bool, allowAddPriceFeed: bool, ownerMustSendPayouts: bool,
-  holdFees: bool, scopeCashOutsToLocalBalances: bool, useDataHookForPay: bool,
-  useDataHookForCashOut: bool, dataHook: address, metadata: uint16 }
-\`\`\`
+Explain the user-facing effects precisely:
+- issuance controls how many project shares a payment receives
+- the reserved rate is the portion of newly issued shares routed to reserved
+  recipients, not a payout or ownership percentage
+- payout limits reserve a gross amount for payouts
+- surplus allowances draw from funds that may otherwise support cash outs
+- cash-out tax changes the curve and its maximum disables cash outs
+- duration controls cycling; an approval hook may delay or reject the next rules
 
-**scopeCashOutsToLocalBalances:** If true, omnichain cash-out calculations use only the local chain's balances (not cross-chain aggregates). Standard is \`false\` (aggregate cross-chain surplus and supply).
+The guarded form reloads the current and upcoming rules, recognized approval/data
+hooks, live accounting contexts, every split and fund-access group, connected
+project IDs, permissions, and the queue route. It preserves configuration Juicy
+Vision does not safely edit. Unknown hooks/routes, Revnets, incomplete history,
+changed state, unsupported currency conversion, or unavailable reads block.
 
-**Standard metadata template:**
-\`\`\`json
-{"reservedPercent": 0, "cashOutTaxRate": 0, "baseCurrency": 2, "pausePay": false, "pauseCreditTransfers": false, "allowOwnerMinting": false, "allowSetCustomToken": true, "allowTerminalMigration": true, "allowSetTerminals": true, "allowSetController": true, "allowAddAccountingContext": true, "allowAddPriceFeed": true, "ownerMustSendPayouts": false, "holdFees": false, "scopeCashOutsToLocalBalances": false, "useDataHookForPay": false, "useDataHookForCashOut": false, "dataHook": "0x0000000000000000000000000000000000000000", "metadata": 0}
-\`\`\`
-
-**IMPORTANT: reservedPercent = what project KEEPS, NOT what supporters get!**
-Scale is 10000 = 100%. If user says "X% to supporters", calculate: reservedPercent = (100 - X) * 100
-
-| User Says | Supporters Get | Project Keeps | reservedPercent |
-|-----------|----------------|---------------|-----------------|
-| "10% to supporters" | 10% | 90% | 9000 |
-| "20% to supporters" | 20% | 80% | 8000 |
-| "30% to supporters" | 30% | 70% | 7000 |
-| "50% to supporters" | 50% | 50% | 5000 |
-| "90% to supporters" | 90% | 10% | 1000 |
-
-**WRONG:** User says "10% to supporters" → reservedPercent: 1000 (this gives 90% to supporters!)
-**RIGHT:** User says "10% to supporters" → reservedPercent: 9000 (this gives 10% to supporters)
-
-**mustStartAtOrAfter** = Use any integer (e.g., 0 or 1). The frontend automatically sets this to 5 minutes from when the user clicks "Launch Project".
-
-**weight** = Tokens per currency unit (18 decimals). Standard: 1M tokens per dollar = "1000000000000000000000000"
-
-**duration** = Ruleset length in seconds. 0 = no duration (runs until changed).
-
-### Multi-Ruleset Strategies
-
-**rulesetConfigurations is an ARRAY** - you can launch with multiple rulesets or queue multiple at once.
-Rulesets execute in sequence: when one ruleset's duration ends, the next one begins automatically.
-
-**Launch with staged rulesets:**
-\`\`\`json
-"rulesetConfigurations": [
-  { "duration": 2592000, "pausePay": false, ... },  // Ruleset 1: 30 days, payments open
-  { "duration": 0, "pausePay": true, ... }          // Ruleset 2: permanent, payments closed
-]
-\`\`\`
-
-**Common multi-ruleset patterns:**
-
-| Pattern | Rulesets | Use Case |
-|---------|----------|----------|
-| **Timed raise** | Open → Closed | Fundraiser with hard end date |
-| **Early bird** | High issuance → Lower issuance | Reward early supporters |
-| **Graduated access** | No payouts → Payouts enabled | Release funds after milestone |
-| **Seasonal** | Active → Paused → Active | Recurring campaign cycles |
-
-**Example: 30-day fundraiser that automatically closes:**
-\`\`\`json
-"rulesetConfigurations": [
-  {
-    "mustStartAtOrAfter": 0,
-    "duration": 2592000,
-    "weight": "1000000000000000000000000",
-    "metadata": { "pausePay": false, ... },
-    "fundAccessLimitGroups": [{ ... }],
-    "splitGroups": [{ ... }]
-  },
-  {
-    "mustStartAtOrAfter": 0,
-    "duration": 0,
-    "weight": "1000000000000000000000000",
-    "metadata": { "pausePay": true, ... },
-    "fundAccessLimitGroups": [],
-    "splitGroups": []
-  }
-]
-\`\`\`
-After 30 days, payments automatically stop. No manual intervention needed.
-
-**Key insight:** Design project lifecycles upfront. Users can schedule rule changes at launch instead of remembering to queue them later.
-
-### queueRulesets (Update Project Rules)
-
-**Use when:** User wants to change ruleset-based properties (fund access, issuance, splits, hooks, etc.)
-
-**You can queue multiple rulesets at once** - same array pattern as launch:
-\`\`\`json
-"rulesetConfigurations": [
-  { "duration": 604800, ... },   // Week 1 rules
-  { "duration": 604800, ... },   // Week 2 rules
-  { "duration": 0, ... }         // Permanent rules after
-]
-\`\`\`
-
-**Ruleset changes are constrained by the CURRENT ruleset:**
-- **duration**: If current ruleset has a duration, new ruleset can only start after current one ends
-- **approvalHook**: If current ruleset has an approval hook (e.g., JBDeadline), new ruleset must be approved by it first
-
-**Single-chain project:**
-\`\`\`
-action="queueRulesets"
-contract="JBController"
-parameters: {
-  "projectId": 123,
-  "rulesetConfigurations": [/* new ruleset config */],
-  "memo": "Updating project rules"
-}
-\`\`\`
-
-**Omnichain project (MUST include per-chain projectIds):**
-\`\`\`
-action="queueRulesets"
-contract="JBController"
-parameters: {
-  "chainProjectMappings": [
-    {"chainId": "1", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"},
-    {"chainId": "10", "projectId": "<FROM_HISTORY_OR_BENDYSTRAW>"}
-  ],
-  "rulesetConfigurations": [/* new ruleset config */],
-  "memo": "Updating project rules"
-}
-\`\`\`
+Do not describe a queued rule as current. An upcoming auto-cycle is a forecast
+only while the current configuration remains unchanged.
 `;
 
 export const RULESETS_HINTS = [
-  'ruleset', 'weight', 'duration', 'reserved', 'metadata', 'issuance',
-  'queue ruleset', 'update rules', 'change settings', 'weightCutPercent',
-  'baseCurrency', 'pausePay', 'allowOwnerMinting', 'multiple rulesets',
-  'staged', 'schedule', 'end date', 'timed raise', 'stop payments', 'lifecycle'
+  'ruleset',
+  'weight',
+  'duration',
+  'reserved',
+  'metadata',
+  'issuance',
+  'queue ruleset',
+  'update rules',
+  'change settings',
+  'cash out tax',
+  'pause payments',
+  'end date',
+  'schedule',
 ];
 
-export const RULESETS_TOKEN_ESTIMATE = 1400;
+export const RULESETS_TOKEN_ESTIMATE = 210;

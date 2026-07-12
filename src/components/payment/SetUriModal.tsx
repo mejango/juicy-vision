@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useAuthStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, useManagedWallet } from '../../hooks'
+import { useManagedWallet } from '../../hooks'
 import { useOmnichainSetUri, type ChainState } from '../../hooks/relayr'
 import TechnicalDetails from '../shared/TechnicalDetails'
+import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 
 const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
   1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
@@ -32,6 +33,8 @@ interface SetUriModalProps {
   chainProjectData: ChainProjectData[]
   newUri: string
   currentUri?: string
+  deploymentKey?: string
+  onStarted?: () => void
   onConfirmed?: (txHashes: Record<number, string>, bundleId?: string) => void
   onError?: (error: string) => void
 }
@@ -53,22 +56,38 @@ export default function SetUriModal({
   chainProjectData,
   newUri,
   currentUri,
+  deploymentKey,
+  onStarted,
   onConfirmed,
   onError,
 }: SetUriModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { address } = useAccount()
-  const { totalEth } = useWalletBalances()
 
   // Managed mode support
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
+  const activeAddress = isManagedMode ? managedAddress : address
+  const { assertCurrentAccount } = useReviewedTransactionAccount(
+    isOpen,
+    activeAddress,
+    isManagedMode ? 'managed' : 'self_custody',
+  )
 
   // Local chain states for display
   const [chainStates, setChainStates] = useState<ChainTxState[]>([])
   const [isStarted, setIsStarted] = useState(false)
+
+  const operationKey = useMemo(() => {
+    if (deploymentKey) return deploymentKey
+    const projects = [...chainProjectData]
+      .sort((a, b) => a.chainId - b.chainId)
+      .map(({ chainId, projectId }) => `${chainId}:${projectId}`)
+      .join(',')
+    return `metadata:${projects}:${newUri}`
+  }, [deploymentKey, chainProjectData, newUri])
 
   // Use the omnichain setUri hook
   const {
@@ -79,8 +98,11 @@ export default function SetUriModal({
     signingChainId,
     isComplete: omnichainComplete,
     hasError: omnichainError,
+    persistedTxHashes,
+    persistedBundleId,
     reset: resetOmnichain,
   } = useOmnichainSetUri({
+    deploymentKey: operationKey,
     onSuccess: (bundleId, txHashes) => {
       console.log('SetUri completed:', bundleId, txHashes)
     },
@@ -89,7 +111,6 @@ export default function SetUriModal({
     },
   })
 
-  const hasGasBalance = totalEth >= 0.001 || isManagedMode // Managed mode is sponsored
   const isOmnichain = chainProjectData.length > 1
 
   // Derive chain states from bundle state
@@ -101,7 +122,13 @@ export default function SetUriModal({
         txHash: cs.txHash,
         error: cs.error,
       }))
-    : chainStates
+    : persistedTxHashes
+      ? chainProjectData.map(cd => ({
+          ...cd,
+          status: 'confirmed' as const,
+          txHash: persistedTxHashes[cd.chainId],
+        }))
+      : chainStates
 
   // Track signing state per chain
   useEffect(() => {
@@ -122,16 +149,26 @@ export default function SetUriModal({
   // Call parent callbacks when transactions complete
   useEffect(() => {
     if (allSucceeded) {
-      const txHashes: Record<number, string> = {}
+      const txHashes: Record<number, string> = { ...(persistedTxHashes ?? {}) }
       bundleState.chainStates.forEach((cs: ChainState) => {
         if (cs.txHash) txHashes[cs.chainId] = cs.txHash
       })
-      onConfirmed?.(txHashes, bundleState.bundleId || undefined)
+      onConfirmed?.(txHashes, bundleState.bundleId || persistedBundleId || undefined)
     } else if (anyFailed) {
       const failedChain = bundleState.chainStates.find((cs: ChainState) => cs.status === 'failed')
       onError?.(failedChain?.error || bundleState.error || 'Transaction failed')
     }
-  }, [allSucceeded, anyFailed, bundleState.chainStates, bundleState.bundleId, bundleState.error, onConfirmed, onError])
+  }, [
+    allSucceeded,
+    anyFailed,
+    bundleState.chainStates,
+    bundleState.bundleId,
+    bundleState.error,
+    persistedTxHashes,
+    persistedBundleId,
+    onConfirmed,
+    onError,
+  ])
 
   // Initialize chain states
   useEffect(() => {
@@ -150,19 +187,25 @@ export default function SetUriModal({
 
   // Start the setUri process
   const handleStart = useCallback(async () => {
-    const activeAddress = isManagedMode ? managedAddress : address
     if (!activeAddress || chainProjectData.length === 0) return
 
-    setIsStarted(true)
+    try {
+      assertCurrentAccount(isManagedMode ? undefined : activeAddress)
+      onStarted?.()
+      setIsStarted(true)
 
-    await setUri({
-      chainProjectMappings: chainProjectData.map(cd => ({
-        chainId: cd.chainId,
-        projectId: cd.projectId,
-      })),
-      uri: newUri,
-    })
-  }, [address, managedAddress, isManagedMode, chainProjectData, newUri, setUri])
+      assertCurrentAccount(isManagedMode ? undefined : activeAddress)
+      await setUri({
+        chainProjectMappings: chainProjectData.map(cd => ({
+          chainId: cd.chainId,
+          projectId: cd.projectId,
+        })),
+        uri: newUri,
+      })
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : 'The reviewed account could not be verified')
+    }
+  }, [activeAddress, isManagedMode, chainProjectData, newUri, setUri, onStarted, onError, assertCurrentAccount])
 
   const handleClose = useCallback(() => {
     resetOmnichain()
@@ -245,7 +288,7 @@ export default function SetUriModal({
 
           {/* Chain Status */}
           <div className="space-y-2">
-            {effectiveChainStates.map((cs: ChainTxState, idx: number) => {
+            {effectiveChainStates.map((cs: ChainTxState) => {
               const chainInfo = CHAIN_INFO[cs.chainId]
               const isCurrentlySigning = isSigning && signingChainId === cs.chainId
 
@@ -337,33 +380,13 @@ export default function SetUriModal({
           {/* Pre-execution info */}
           {!isStarted && (
             <>
-              {/* Gas info */}
-              {!isManagedMode && (
-                <div className={`flex justify-between items-center text-sm ${
-                  isDark ? 'text-gray-400' : 'text-gray-500'
-                }`}>
-                  <span>Your ETH balance (for gas)</span>
-                  <span className={`font-mono ${!hasGasBalance ? 'text-red-400' : ''}`}>
-                    {formatEthBalance(totalEth)} ETH
-                  </span>
-                </div>
-              )}
-
-              {!hasGasBalance && !isManagedMode && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                  Insufficient ETH for gas fees
-                </div>
-              )}
-
-              {isManagedMode && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-green-500/10 text-green-300' : 'bg-green-50 text-green-700'}`}>
-                  Gas fees are sponsored - no cost to you
-                </div>
-              )}
+              <div className={`p-3 text-sm ${isDark ? 'bg-green-500/10 text-green-300' : 'bg-green-50 text-green-700'}`}>
+                Gas fees are sponsored
+              </div>
 
               {isOmnichain && !isManagedMode && (
                 <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
-                  You will need to sign {chainProjectData.length} transactions, one for each chain.
+                  Your wallet will ask you to authorize one update for each chain.
                 </div>
               )}
 
@@ -419,7 +442,6 @@ export default function SetUriModal({
               </button>
               <button
                 onClick={handleStart}
-                disabled={!hasGasBalance && !isManagedMode}
                 className="flex-1 py-3 font-bold bg-purple-500 text-white hover:bg-purple-500/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Update{isOmnichain ? ` on ${chainProjectData.length} Chains` : ''}

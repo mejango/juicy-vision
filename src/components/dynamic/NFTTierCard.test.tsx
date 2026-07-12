@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import NFTTierCard from './NFTTierCard'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import type { ResolvedNFTTier } from '../../services/nft'
+import { USDC_CURRENCIES } from '../../utils/technicalDetails'
 
 // Mock wagmi
 vi.mock('wagmi', () => ({
@@ -15,6 +16,7 @@ vi.mock('wagmi', () => ({
 // Mock viem
 vi.mock('viem', () => ({
   formatEther: vi.fn((val) => (Number(val) / 1e18).toString()),
+  formatUnits: vi.fn((val, decimals) => (Number(val) / (10 ** decimals)).toString()),
   createPublicClient: vi.fn(() => ({
     readContract: vi.fn().mockResolvedValue(null),
   })),
@@ -24,12 +26,14 @@ vi.mock('viem', () => ({
 // Mock IPFS utils
 vi.mock('../../utils/ipfs', () => ({
   resolveIpfsUri: vi.fn((uri) => (uri ? `https://ipfs.io/${uri}` : null)),
+  ipfsGatewayUrls: vi.fn((uri) => (uri ? [`https://ipfs.io/${uri}`] : [])),
   inlineSvgImages: vi.fn((img) => Promise.resolve(img)),
 }))
 
 // Mock NFT services
 vi.mock('../../services/nft', () => ({
   resolveTierUri: vi.fn(() => Promise.resolve(null)),
+  getEffectiveTierPrice: vi.fn((tier) => tier.price),
 }))
 
 // Mock technicalDetails - need to keep the real implementation for isUsdcCurrency
@@ -46,6 +50,7 @@ describe('NFTTierCard', () => {
     imageUri: 'ipfs://QmTest',
     price: 1000000000000000000n, // 1 ETH
     currency: 1, // ETH
+    pricingDecimals: 18,
     initialSupply: 100,
     remainingSupply: 50,
     reservedRate: 0,
@@ -93,6 +98,7 @@ describe('NFTTierCard', () => {
         ...baseTier,
         currency: 2, // Base USD
         price: 5000000n, // $5.00 (6 decimals)
+        pricingDecimals: 6,
       }
       render(<NFTTierCard {...defaultProps} tier={usdTier} />)
 
@@ -105,6 +111,7 @@ describe('NFTTierCard', () => {
         ...baseTier,
         currency: 2,
         price: 100000000n, // $100.00
+        pricingDecimals: 6,
       }
       render(<NFTTierCard {...defaultProps} tier={usdTier} />)
 
@@ -116,6 +123,7 @@ describe('NFTTierCard', () => {
         ...baseTier,
         currency: 2,
         price: 25000000n, // $25.00
+        pricingDecimals: 6,
       }
       render(<NFTTierCard {...defaultProps} tier={usdTier} />)
 
@@ -129,11 +137,12 @@ describe('NFTTierCard', () => {
 
   describe('USDC-based tier pricing (chain-specific currency codes)', () => {
     // Sepolia USDC currency code
-    it('shows USD as primary price for Sepolia USDC (909516616)', () => {
+    it('shows USD as primary price for Sepolia USDC', () => {
       const usdcTier = {
         ...baseTier,
-        currency: 909516616, // Sepolia USDC
+        currency: USDC_CURRENCIES['11155111'],
         price: 10000000n, // $10.00
+        pricingDecimals: 6,
       }
       render(<NFTTierCard {...defaultProps} tier={usdcTier} />)
 
@@ -141,11 +150,12 @@ describe('NFTTierCard', () => {
     })
 
     // OP Sepolia USDC currency code
-    it('shows USD as primary price for OP Sepolia USDC (3530704773)', () => {
+    it('shows USD as primary price for OP Sepolia USDC', () => {
       const usdcTier = {
         ...baseTier,
-        currency: 3530704773, // OP Sepolia USDC
+        currency: USDC_CURRENCIES['11155420'],
         price: 15000000n, // $15.00
+        pricingDecimals: 6,
       }
       render(<NFTTierCard {...defaultProps} tier={usdcTier} />)
 
@@ -153,11 +163,12 @@ describe('NFTTierCard', () => {
     })
 
     // Base Sepolia USDC currency code
-    it('shows USD as primary price for Base Sepolia USDC (3169378579)', () => {
+    it('shows USD as primary price for Base Sepolia USDC', () => {
       const usdcTier = {
         ...baseTier,
-        currency: 3169378579, // Base Sepolia USDC
+        currency: USDC_CURRENCIES['84532'],
         price: 20000000n, // $20.00
+        pricingDecimals: 6,
       }
       render(<NFTTierCard {...defaultProps} tier={usdcTier} />)
 
@@ -165,11 +176,12 @@ describe('NFTTierCard', () => {
     })
 
     // Arb Sepolia USDC currency code
-    it('shows USD as primary price for Arb Sepolia USDC (1156540465)', () => {
+    it('shows USD as primary price for Arb Sepolia USDC', () => {
       const usdcTier = {
         ...baseTier,
-        currency: 1156540465, // Arb Sepolia USDC
+        currency: USDC_CURRENCIES['421614'],
         price: 50000000n, // $50.00
+        pricingDecimals: 6,
       }
       render(<NFTTierCard {...defaultProps} tier={usdcTier} />)
 
@@ -183,6 +195,7 @@ describe('NFTTierCard', () => {
         ...baseTier,
         currency: 2,
         price: 5000000n, // $5.00
+        pricingDecimals: 6,
       }
       render(<NFTTierCard {...defaultProps} tier={usdTier} compact />)
 
@@ -207,6 +220,7 @@ describe('NFTTierCard', () => {
         ...baseTier,
         currency: 2,
         price: 0n,
+        pricingDecimals: 6,
       }
       render(<NFTTierCard {...defaultProps} tier={freeTier} />)
 
@@ -218,13 +232,14 @@ describe('NFTTierCard', () => {
         ...baseTier,
         currency: 2,
         price: 10000n, // $0.01
+        pricingDecimals: 6,
       }
       render(<NFTTierCard {...defaultProps} tier={cheapTier} />)
 
       expect(screen.getByText(/\$0\.01/)).toBeInTheDocument()
     })
 
-    it('handles unknown currency codes as ETH', () => {
+    it('blocks display for unknown currency codes instead of assuming ETH', () => {
       const unknownCurrencyTier = {
         ...baseTier,
         currency: 99999, // Unknown
@@ -232,8 +247,8 @@ describe('NFTTierCard', () => {
       }
       render(<NFTTierCard {...defaultProps} tier={unknownCurrencyTier} />)
 
-      // Should fall back to ETH display
-      expect(screen.getByText(/1\.0.*ETH/i)).toBeInTheDocument()
+      expect(screen.getByText('Pricing unavailable')).toBeInTheDocument()
+      expect(screen.queryByText(/ETH/i)).not.toBeInTheDocument()
     })
   })
 

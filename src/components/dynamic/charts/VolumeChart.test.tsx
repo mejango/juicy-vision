@@ -6,7 +6,6 @@ import * as bendystraw from '../../../services/bendystraw'
 
 // Mock bendystraw service
 vi.mock('../../../services/bendystraw', () => ({
-  fetchProject: vi.fn(),
   fetchPayEventsHistory: vi.fn(),
   fetchConnectedChains: vi.fn(),
   fetchSuckerGroupBalance: vi.fn(),
@@ -27,14 +26,6 @@ vi.mock('recharts', () => ({
   Tooltip: () => <div data-testid="tooltip" />,
 }))
 
-const mockProject = {
-  id: '1-1-5',
-  projectId: 1,
-  chainId: 1,
-  name: 'Test Project',
-  metadata: JSON.stringify({ name: 'Test Project' }),
-}
-
 const now = Math.floor(Date.now() / 1000)
 const mockPayEvents = [
   {
@@ -42,6 +33,7 @@ const mockPayEvents = [
     timestamp: now - 86400, // 1 day ago
     from: '0x1234',
     amount: '1000000000000000000', // 1 ETH
+    amountUsd: '100000000000000000000', // $100, 18-decimal scaled
     newlyIssuedTokenCount: '100000000000000000000',
   },
   {
@@ -49,6 +41,7 @@ const mockPayEvents = [
     timestamp: now - 86400 * 2, // 2 days ago
     from: '0xabcd',
     amount: '2000000000000000000', // 2 ETH
+    amountUsd: '200000000000000000000', // $200
     newlyIssuedTokenCount: '200000000000000000000',
   },
   {
@@ -56,6 +49,7 @@ const mockPayEvents = [
     timestamp: now - 86400 * 2, // Also 2 days ago (same day)
     from: '0x5678',
     amount: '500000000000000000', // 0.5 ETH
+    amountUsd: '50000000000000000000', // $50
     newlyIssuedTokenCount: '50000000000000000000',
   },
 ]
@@ -72,9 +66,6 @@ describe('VolumeChart', () => {
 
   describe('loading state', () => {
     it('shows loading indicator while fetching', () => {
-      vi.mocked(bendystraw.fetchProject).mockImplementation(
-        () => new Promise(() => {}) // Never resolves
-      )
       vi.mocked(bendystraw.fetchConnectedChains).mockImplementation(
         () => new Promise(() => {})
       )
@@ -86,7 +77,7 @@ describe('VolumeChart', () => {
 
   describe('error state', () => {
     it('shows error message when fetch fails', async () => {
-      vi.mocked(bendystraw.fetchProject).mockRejectedValue(new Error('API error'))
+      vi.mocked(bendystraw.fetchConnectedChains).mockRejectedValue(new Error('API error'))
 
       render(<VolumeChart projectId="1" />)
 
@@ -98,7 +89,6 @@ describe('VolumeChart', () => {
 
   describe('successful render', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([])
       vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue(mockPayEvents as any)
     })
@@ -131,14 +121,13 @@ describe('VolumeChart', () => {
       render(<VolumeChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText(/ETH total/)).toBeInTheDocument()
+        expect(screen.getByText(/\$350 total/)).toBeInTheDocument()
       })
     })
   })
 
   describe('range selector', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([])
       vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue(mockPayEvents as any)
     })
@@ -200,7 +189,6 @@ describe('VolumeChart', () => {
 
   describe('multi-chain support', () => {
     it('fetches events from connected chains', async () => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([
         { projectId: 1, chainId: 1 },
         { projectId: 1, chainId: 10 },
@@ -217,7 +205,6 @@ describe('VolumeChart', () => {
     })
 
     it('falls back to single chain when no connected chains', async () => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([])
       vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue(mockPayEvents as any)
 
@@ -231,7 +218,6 @@ describe('VolumeChart', () => {
 
   describe('empty data', () => {
     it('shows zero payments when no events', async () => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([])
       vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue([])
 
@@ -247,7 +233,6 @@ describe('VolumeChart', () => {
 
   describe('theme', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([])
       vi.mocked(bendystraw.fetchPayEventsHistory).mockResolvedValue(mockPayEvents as any)
     })
@@ -275,7 +260,6 @@ describe('VolumeChart', () => {
 
   describe('data aggregation', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([])
     })
 

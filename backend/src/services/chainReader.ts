@@ -5,10 +5,32 @@
  * All projects (including Revnets) use the same V6 contract set.
  */
 
-import { createPublicClient, http, type Address } from 'viem'
-import { mainnet, optimism, base, arbitrum, sepolia, optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains'
-import { getConfig } from '../utils/config.ts'
-import type { RulesetData, RulesetMetadata, SplitData, FundAccessLimits } from './rulesetCache.ts'
+import {
+  type Address,
+  createPublicClient,
+  http,
+  isAddress,
+  type PublicClient,
+  zeroAddress,
+} from 'viem';
+import {
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
+  mainnet,
+  optimism,
+  optimismSepolia,
+  sepolia,
+} from 'viem/chains';
+import {
+  CANONICAL_USDC_BY_CHAIN,
+  CONTRACTS,
+  NATIVE_TOKEN as SHARED_NATIVE_TOKEN,
+} from '@shared/chains.ts';
+import { getConfig } from '../utils/config.ts';
+import type { FundAccessLimits, RulesetData, RulesetMetadata, SplitData } from './rulesetCache.ts';
+import { requireRecognizedRuntimeSplitHook } from './projectTrust.ts';
 
 // ============================================================================
 // Chain Configuration
@@ -19,53 +41,59 @@ const MAINNET_CHAINS = {
   10: optimism,
   8453: base,
   42161: arbitrum,
-} as const
+} as const;
 
 const TESTNET_CHAINS = {
   11155111: sepolia,
   11155420: optimismSepolia,
   84532: baseSepolia,
   421614: arbitrumSepolia,
-} as const
+} as const;
 
 const MAINNET_RPC_URLS: Record<number, string> = {
   1: 'https://ethereum.publicnode.com',
   10: 'https://mainnet.optimism.io',
   8453: 'https://mainnet.base.org',
   42161: 'https://arb1.arbitrum.io/rpc',
-}
+};
 
 const TESTNET_RPC_URLS: Record<number, string> = {
   11155111: 'https://sepolia.drpc.org',
   11155420: 'https://optimism-sepolia.drpc.org',
   84532: 'https://base-sepolia.drpc.org',
   421614: 'https://arbitrum-sepolia.drpc.org',
-}
+};
 
 // ============================================================================
-// JB Contract Addresses (same via CREATE2 on all chains)
+// Discovery roots and recognized implementations (same via CREATE2 on all chains)
 // ============================================================================
 
-// V6 contracts (same address on every supported chain, mainnets and testnets)
-const JB_V6 = {
-  JBController: '0x3fcec3572e84b624477bcff4e2cf1f7deab648f1' as const,
-  JBRulesets: '0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba' as const,
-  JBMultiTerminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53' as const,
-  JBDirectory: '0x5aff29060e023e6fb87be5596652b33c65af535b' as const,
-  JBSplits: '0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3' as const,
-  JBFundAccessLimits: '0xc93360158f187fc8fc8f1062a1b31d06f185dbab' as const,
-}
+// Existing projects are discovered only through these two roots. Other addresses
+// below are allowlist entries, never discovery fallbacks.
+const JB_ROOTS = {
+  JBDirectory: CONTRACTS.JBDirectory,
+  JBProjects: CONTRACTS.JBProjects,
+};
 
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
-const SPLIT_GROUP_RESERVED = 1n
+const RECOGNIZED = {
+  JBController: CONTRACTS.JBController,
+  JBMultiTerminal: CONTRACTS.JBMultiTerminal,
+  JBRouterTerminal: CONTRACTS.JBRouterTerminal,
+  JBRouterTerminalRegistry: CONTRACTS.JBRouterTerminalRegistry,
+  JBRulesets: CONTRACTS.JBRulesets,
+  JBSplits: CONTRACTS.JBSplits,
+  JBFundAccessLimits: CONTRACTS.JBFundAccessLimits,
+  JBTokens: CONTRACTS.JBTokens,
+};
 
-// USDC addresses per chain
-const USDC_ADDRESSES: Record<number, `0x${string}`> = {
-  1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-  10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-  8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-  42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-}
+const SPLIT_GROUP_RESERVED = 1n;
+const NATIVE_TOKEN = SHARED_NATIVE_TOKEN.toLowerCase();
+const CANONICAL_USDC = Object.fromEntries(
+  Object.entries(CANONICAL_USDC_BY_CHAIN).map(([chainId, address]) => [
+    Number(chainId),
+    address.toLowerCase(),
+  ]),
+) as Record<number, string>;
 
 // ============================================================================
 // ABIs
@@ -120,7 +148,7 @@ const JB_CONTROLLER_ABI = [
     ],
     stateMutability: 'view',
   },
-] as const
+] as const;
 
 const RULESET_COMPONENTS = [
   { name: 'cycleNumber', type: 'uint48' },
@@ -132,7 +160,7 @@ const RULESET_COMPONENTS = [
   { name: 'weightCutPercent', type: 'uint32' },
   { name: 'approvalHook', type: 'address' },
   { name: 'metadata', type: 'uint256' },
-] as const
+] as const;
 
 const JB_RULESETS_ABI = [
   {
@@ -180,7 +208,7 @@ const JB_RULESETS_ABI = [
     outputs: [{ name: 'rulesets', type: 'tuple[]', components: RULESET_COMPONENTS }],
     stateMutability: 'view',
   },
-] as const
+] as const;
 
 const JB_SPLITS_ABI = [
   {
@@ -205,7 +233,7 @@ const JB_SPLITS_ABI = [
     }],
     stateMutability: 'view',
   },
-] as const
+] as const;
 
 const JB_FUND_ACCESS_LIMITS_ABI = [
   {
@@ -246,48 +274,373 @@ const JB_FUND_ACCESS_LIMITS_ABI = [
     }],
     stateMutability: 'view',
   },
-] as const
+] as const;
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-function getPublicClient(chainId: number) {
-  const config = getConfig()
-  const isTestnet = config.isTestnet
+const publicClients = new Map<number, PublicClient>();
+
+export function getPublicClient(chainId: number): PublicClient {
+  const cached = publicClients.get(chainId);
+  if (cached) return cached;
+
+  const config = getConfig();
+  const isTestnet = config.isTestnet;
 
   if (isTestnet) {
-    const chain = TESTNET_CHAINS[chainId as keyof typeof TESTNET_CHAINS]
-    if (!chain) throw new Error(`Unsupported testnet chain: ${chainId}`)
-    return createPublicClient({
+    const chain = TESTNET_CHAINS[chainId as keyof typeof TESTNET_CHAINS];
+    if (!chain) throw new Error(`Unsupported testnet chain: ${chainId}`);
+    const client = createPublicClient({
       chain,
       transport: http(TESTNET_RPC_URLS[chainId]),
-    })
+    }) as PublicClient;
+    publicClients.set(chainId, client);
+    return client;
   }
 
-  const chain = MAINNET_CHAINS[chainId as keyof typeof MAINNET_CHAINS]
-  if (!chain) throw new Error(`Unsupported mainnet chain: ${chainId}`)
-  return createPublicClient({
+  const chain = MAINNET_CHAINS[chainId as keyof typeof MAINNET_CHAINS];
+  if (!chain) throw new Error(`Unsupported mainnet chain: ${chainId}`);
+  const client = createPublicClient({
     chain,
     transport: http(MAINNET_RPC_URLS[chainId]),
-  })
+  }) as PublicClient;
+  publicClients.set(chainId, client);
+  return client;
 }
 
-/**
- * The V6 contracts used for every project. Kept as a function so call sites
- * read the same as before; V6 has a single contract set with no per-project
- * version detection.
- */
-function getContractsForProject(_chainId: number, _projectId: number): {
-  JBController: `0x${string}`
-  JBRulesets: `0x${string}`
-  JBMultiTerminal: `0x${string}`
-} {
-  return {
-    JBController: JB_V6.JBController,
-    JBRulesets: JB_V6.JBRulesets,
-    JBMultiTerminal: JB_V6.JBMultiTerminal,
+const JB_DIRECTORY_ABI = [
+  {
+    name: 'controllerOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'terminalsOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address[]' }],
+  },
+  {
+    name: 'primaryTerminalOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'token', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'address' }],
+  },
+] as const;
+
+const JB_PROJECTS_ABI = [{
+  name: 'ownerOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [{ name: 'projectId', type: 'uint256' }],
+  outputs: [{ name: '', type: 'address' }],
+}] as const;
+
+export function getProjectOwner(chainId: number, projectId: number): Promise<Address> {
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+    throw new Error('Project ID is invalid');
   }
+  return getPublicClient(chainId).readContract({
+    address: JB_ROOTS.JBProjects,
+    abi: JB_PROJECTS_ABI,
+    functionName: 'ownerOf',
+    args: [BigInt(projectId)],
+  });
+}
+
+const FORWARDING_TERMINAL_ABI = [{
+  name: 'terminalOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [{ name: 'projectId', type: 'uint256' }],
+  outputs: [{ name: '', type: 'address' }],
+}] as const;
+
+const JB_CONTROLLER_DEPENDENCIES_ABI = [
+  {
+    name: 'DIRECTORY',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'PROJECTS',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'RULESETS',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'SPLITS',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'FUND_ACCESS_LIMITS',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'TOKENS',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+] as const;
+
+const JB_TERMINAL_ABI = [
+  {
+    name: 'accountingContextsOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'projectId', type: 'uint256' }],
+    outputs: [{
+      name: '',
+      type: 'tuple[]',
+      components: [
+        { name: 'token', type: 'address' },
+        { name: 'decimals', type: 'uint8' },
+        { name: 'currency', type: 'uint32' },
+      ],
+    }],
+  },
+  {
+    name: 'STORE',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+] as const;
+
+const JB_TERMINAL_STORE_ABI = [{
+  name: 'usedSurplusAllowanceOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [
+    { name: 'terminal', type: 'address' },
+    { name: 'projectId', type: 'uint256' },
+    { name: 'token', type: 'address' },
+    { name: 'rulesetId', type: 'uint256' },
+    { name: 'currency', type: 'uint256' },
+  ],
+  outputs: [{ name: '', type: 'uint256' }],
+}, {
+  name: 'balanceOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [
+    { name: 'terminal', type: 'address' },
+    { name: 'projectId', type: 'uint256' },
+    { name: 'token', type: 'address' },
+  ],
+  outputs: [{ name: '', type: 'uint256' }],
+}] as const;
+
+const JB_TOKENS_SUPPLY_ABI = [{
+  name: 'totalSupplyOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [{ name: 'projectId', type: 'uint256' }],
+  outputs: [{ name: '', type: 'uint256' }],
+}, {
+  name: 'totalBalanceOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [
+    { name: 'holder', type: 'address' },
+    { name: 'projectId', type: 'uint256' },
+  ],
+  outputs: [{ name: '', type: 'uint256' }],
+}] as const;
+
+function recognizedPaymentTerminal(address: Address): 'multi' | 'router' | 'registry' | null {
+  const normalized = address.toLowerCase();
+  if (normalized === RECOGNIZED.JBMultiTerminal.toLowerCase()) return 'multi';
+  if (normalized === RECOGNIZED.JBRouterTerminal.toLowerCase()) return 'router';
+  if (normalized === RECOGNIZED.JBRouterTerminalRegistry.toLowerCase()) return 'registry';
+  return null;
+}
+
+async function requireRecognizedRegistryDestination(
+  client: Pick<PublicClient, 'readContract'>,
+  projectId: bigint,
+  registry: Address,
+): Promise<{ destination: Address; type: 'multi' | 'router' }> {
+  const destination = await client.readContract({
+    address: registry,
+    abi: FORWARDING_TERMINAL_ABI,
+    functionName: 'terminalOf',
+    args: [projectId],
+  });
+  if (destination === zeroAddress) {
+    throw new Error('The payment router has no destination for this project');
+  }
+  const type = recognizedPaymentTerminal(destination);
+  if (type !== 'multi' && type !== 'router') {
+    throw new Error(`Terminal not recognized in payment route: ${destination}`);
+  }
+  return { destination, type };
+}
+
+export async function assertRecognizedPaymentRouteWithClient(
+  client: Pick<PublicClient, 'readContract'>,
+  projectId: bigint,
+  terminal: Address,
+): Promise<void> {
+  if (!recognizedPaymentTerminal(terminal)) throw new Error(`Terminal not recognized: ${terminal}`);
+
+  const terminals = await client.readContract({
+    address: JB_ROOTS.JBDirectory,
+    abi: JB_DIRECTORY_ABI,
+    functionName: 'terminalsOf',
+    args: [projectId],
+  });
+  if (terminals.length === 0) throw new Error('This project has no payment routes');
+
+  let requestedRouteFound = false;
+  for (const routeTerminal of terminals) {
+    const routeType = recognizedPaymentTerminal(routeTerminal);
+    if (!routeType) {
+      throw new Error(`Terminal not recognized in payment route: ${routeTerminal}`);
+    }
+    if (routeType === 'registry') {
+      const route = await requireRecognizedRegistryDestination(client, projectId, routeTerminal);
+      if (
+        routeTerminal.toLowerCase() === terminal.toLowerCase() ||
+        route.destination.toLowerCase() === terminal.toLowerCase()
+      ) requestedRouteFound = true;
+    } else if (routeTerminal.toLowerCase() === terminal.toLowerCase()) {
+      requestedRouteFound = true;
+    }
+  }
+  if (!requestedRouteFound) {
+    throw new Error('The requested terminal is not in the live project route');
+  }
+}
+
+export async function fetchPrimaryTerminal(
+  chainId: number,
+  projectId: number,
+  token: Address,
+): Promise<Address> {
+  const client = getPublicClient(chainId);
+  const terminal = await client.readContract({
+    address: JB_ROOTS.JBDirectory,
+    abi: JB_DIRECTORY_ABI,
+    functionName: 'primaryTerminalOf',
+    args: [BigInt(projectId), token],
+  });
+  if (terminal === '0x0000000000000000000000000000000000000000') {
+    throw new Error('Project has no terminal for the requested payment token');
+  }
+  await assertRecognizedPaymentRouteWithClient(client, BigInt(projectId), terminal);
+  return terminal;
+}
+
+async function getContractsForProject(chainId: number, projectId: number): Promise<{
+  JBController: `0x${string}`;
+  JBRulesets: `0x${string}`;
+  JBSplits: `0x${string}`;
+  JBFundAccessLimits: `0x${string}`;
+  JBTokens: `0x${string}`;
+}> {
+  const client = getPublicClient(chainId);
+  const controller = await client.readContract({
+    address: JB_ROOTS.JBDirectory,
+    abi: JB_DIRECTORY_ABI,
+    functionName: 'controllerOf',
+    args: [BigInt(projectId)],
+  });
+
+  if (controller === '0x0000000000000000000000000000000000000000') {
+    throw new Error('Project has no controller');
+  }
+  if (controller.toLowerCase() !== RECOGNIZED.JBController.toLowerCase()) {
+    throw new Error(`Controller not recognized: ${controller}`);
+  }
+
+  const readDependency = (
+    functionName:
+      | 'DIRECTORY'
+      | 'PROJECTS'
+      | 'RULESETS'
+      | 'SPLITS'
+      | 'FUND_ACCESS_LIMITS'
+      | 'TOKENS',
+  ) =>
+    client.readContract({
+      address: controller,
+      abi: JB_CONTROLLER_DEPENDENCIES_ABI,
+      functionName,
+    });
+  const [directory, projects, rulesets, splits, fundAccessLimits, tokens] = await Promise.all([
+    readDependency('DIRECTORY'),
+    readDependency('PROJECTS'),
+    readDependency('RULESETS'),
+    readDependency('SPLITS'),
+    readDependency('FUND_ACCESS_LIMITS'),
+    readDependency('TOKENS'),
+  ]);
+
+  if (
+    directory.toLowerCase() !== JB_ROOTS.JBDirectory.toLowerCase() ||
+    projects.toLowerCase() !== JB_ROOTS.JBProjects.toLowerCase()
+  ) {
+    throw new Error(`Controller not recognized: ${controller}`);
+  }
+  const dependencies = [
+    ['Rulesets', rulesets, RECOGNIZED.JBRulesets],
+    ['Splits', splits, RECOGNIZED.JBSplits],
+    ['Fund access limits', fundAccessLimits, RECOGNIZED.JBFundAccessLimits],
+    ['Tokens', tokens, RECOGNIZED.JBTokens],
+  ] as const;
+  for (const [name, discovered, recognized] of dependencies) {
+    if (discovered.toLowerCase() !== recognized.toLowerCase()) {
+      throw new Error(`${name} contract not recognized: ${discovered}`);
+    }
+  }
+
+  return {
+    JBController: controller,
+    JBRulesets: rulesets,
+    JBSplits: splits,
+    JBFundAccessLimits: fundAccessLimits,
+    JBTokens: tokens,
+  };
+}
+
+/** Validate the live project controller and its derived dependency roots. */
+export async function assertRecognizedProjectContracts(
+  chainId: number,
+  projectId: number | bigint,
+): Promise<void> {
+  if (typeof projectId === 'bigint' && projectId > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error('Project ID exceeds the supported range');
+  }
+  await getContractsForProject(chainId, Number(projectId));
 }
 
 /**
@@ -315,11 +668,11 @@ function decodeRulesetMetadata(packed: bigint): RulesetMetadata {
     useDataHookForCashOut: Boolean((packed >> 81n) & 1n),
     dataHook: `0x${((packed >> 82n) & ((1n << 160n) - 1n)).toString(16).padStart(40, '0')}`,
     metadata: Number((packed >> 242n) & 0xFFFFn),
-  }
+  };
 }
 
 function getPayoutSplitGroup(token: `0x${string}`): bigint {
-  return BigInt(token)
+  return BigInt(token);
 }
 
 // ============================================================================
@@ -331,10 +684,10 @@ function getPayoutSplitGroup(token: `0x${string}`): bigint {
  */
 export async function fetchCurrentRuleset(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<{ ruleset: RulesetData; metadata: RulesetMetadata } | null> {
-  const client = getPublicClient(chainId)
-  const contracts = getContractsForProject(chainId, projectId)
+  const client = getPublicClient(chainId);
+  const contracts = await getContractsForProject(chainId, projectId);
 
   try {
     const [ruleset, metadata] = await client.readContract({
@@ -342,7 +695,7 @@ export async function fetchCurrentRuleset(
       abi: JB_CONTROLLER_ABI,
       functionName: 'currentRulesetOf',
       args: [BigInt(projectId)],
-    })
+    });
 
     if (ruleset.cycleNumber === 0) {
       // Try currentOf from JBRulesets directly
@@ -351,9 +704,9 @@ export async function fetchCurrentRuleset(
         abi: JB_RULESETS_ABI,
         functionName: 'currentOf',
         args: [BigInt(projectId)],
-      })
+      });
 
-      if (currentRuleset.cycleNumber === 0) return null
+      if (currentRuleset.cycleNumber === 0) return null;
 
       return {
         ruleset: {
@@ -363,10 +716,11 @@ export async function fetchCurrentRuleset(
           duration: Number(currentRuleset.duration),
           weight: String(currentRuleset.weight),
           weightCutPercent: Number(currentRuleset.weightCutPercent),
+          approvalHook: currentRuleset.approvalHook,
           basedOnId: String(currentRuleset.basedOnId),
         },
         metadata: decodeRulesetMetadata(currentRuleset.metadata),
-      }
+      };
     }
 
     return {
@@ -377,6 +731,7 @@ export async function fetchCurrentRuleset(
         duration: Number(ruleset.duration),
         weight: String(ruleset.weight),
         weightCutPercent: Number(ruleset.weightCutPercent),
+        approvalHook: ruleset.approvalHook,
         basedOnId: String(ruleset.basedOnId),
         metadata: {
           reservedPercent: metadata.reservedPercent,
@@ -421,11 +776,135 @@ export async function fetchCurrentRuleset(
         dataHook: metadata.dataHook,
         metadata: metadata.metadata,
       },
-    }
+    };
   } catch (err) {
-    console.error('Failed to fetch current ruleset:', err)
-    return null
+    console.error('Failed to fetch current ruleset:', err);
+    throw new Error(
+      `Current ruleset unavailable: ${
+        err instanceof Error ? err.message : 'Unknown chain read failure'
+      }`,
+    );
   }
+}
+
+export interface LiveProjectAccountingBalance {
+  terminal: Address;
+  token: Address;
+  decimals: number;
+  currency: number;
+  balance: bigint;
+  symbol: 'ETH' | 'USDC';
+}
+
+/**
+ * Read current project balances and circulating supply from the project's live,
+ * recognized controller and terminal dependencies.
+ */
+export async function fetchProjectAccountingState(
+  chainId: number,
+  projectId: number,
+): Promise<{ balances: LiveProjectAccountingBalance[]; totalSupply: bigint }> {
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+    throw new Error('Project ID is invalid');
+  }
+  const client = getPublicClient(chainId);
+  const contracts = await getContractsForProject(chainId, projectId);
+  const id = BigInt(projectId);
+  const terminals = await client.readContract({
+    address: JB_ROOTS.JBDirectory,
+    abi: JB_DIRECTORY_ABI,
+    functionName: 'terminalsOf',
+    args: [id],
+  });
+  if (terminals.length === 0) throw new Error('Project has no payment routes');
+  const uniqueTerminals = new Set(terminals.map((terminal) => terminal.toLowerCase()));
+  if (uniqueTerminals.size !== terminals.length) {
+    throw new Error('Project terminal configuration is ambiguous');
+  }
+  for (const terminal of terminals) {
+    await assertRecognizedPaymentRouteWithClient(client, id, terminal);
+  }
+
+  const accountingTerminals = terminals.filter(
+    (terminal) => terminal.toLowerCase() === RECOGNIZED.JBMultiTerminal.toLowerCase(),
+  );
+  if (accountingTerminals.length !== 1) {
+    throw new Error('Recognized accounting terminal is unavailable or ambiguous');
+  }
+  const terminal = accountingTerminals[0];
+  const [contexts, store, totalSupply] = await Promise.all([
+    client.readContract({
+      address: terminal,
+      abi: JB_TERMINAL_ABI,
+      functionName: 'accountingContextsOf',
+      args: [id],
+    }),
+    client.readContract({
+      address: terminal,
+      abi: JB_TERMINAL_ABI,
+      functionName: 'STORE',
+    }),
+    client.readContract({
+      address: contracts.JBTokens,
+      abi: JB_TOKENS_SUPPLY_ABI,
+      functionName: 'totalSupplyOf',
+      args: [id],
+    }),
+  ]);
+  if (contexts.length === 0) throw new Error('Project has no accounting context configured');
+
+  const seenTokens = new Set<string>();
+  const balances = await Promise.all(contexts.map(async (context) => {
+    const token = context.token.toLowerCase();
+    const isNative = token === NATIVE_TOKEN;
+    const isUsdc = token === CANONICAL_USDC[chainId];
+    if (!isNative && !isUsdc) throw new Error(`Accounting token not recognized: ${context.token}`);
+    if (seenTokens.has(token)) throw new Error(`Duplicate accounting context: ${context.token}`);
+    seenTokens.add(token);
+    const expectedDecimals = isNative ? 18 : 6;
+    const expectedCurrency = Number(BigInt(context.token) & 0xffff_ffffn);
+    if (
+      Number(context.decimals) !== expectedDecimals ||
+      Number(context.currency) !== expectedCurrency
+    ) {
+      throw new Error(`Accounting context is not recognized for token: ${context.token}`);
+    }
+    const balance = await client.readContract({
+      address: store,
+      abi: JB_TERMINAL_STORE_ABI,
+      functionName: 'balanceOf',
+      args: [terminal, id, context.token],
+    });
+    return {
+      terminal,
+      token: context.token,
+      decimals: expectedDecimals,
+      currency: expectedCurrency,
+      balance,
+      symbol: isNative ? 'ETH' as const : 'USDC' as const,
+    };
+  }));
+
+  return { balances, totalSupply };
+}
+
+/** Read a holder's current claimed-token plus credit balance for a project. */
+export async function fetchProjectTokenBalance(
+  chainId: number,
+  projectId: number,
+  holder: Address,
+): Promise<bigint> {
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+    throw new Error('Project ID is invalid');
+  }
+  if (!isAddress(holder)) throw new Error('Project token holder is invalid');
+  const contracts = await getContractsForProject(chainId, projectId);
+  return getPublicClient(chainId).readContract({
+    address: contracts.JBTokens,
+    abi: JB_TOKENS_SUPPLY_ABI,
+    functionName: 'totalBalanceOf',
+    args: [holder, BigInt(projectId)],
+  });
 }
 
 /**
@@ -433,10 +912,10 @@ export async function fetchCurrentRuleset(
  */
 export async function fetchQueuedRuleset(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<{ ruleset: RulesetData; approvalStatus: number } | null> {
-  const client = getPublicClient(chainId)
-  const contracts = getContractsForProject(chainId, projectId)
+  const client = getPublicClient(chainId);
+  const contracts = await getContractsForProject(chainId, projectId);
 
   try {
     const [ruleset, approvalStatus] = await client.readContract({
@@ -444,9 +923,9 @@ export async function fetchQueuedRuleset(
       abi: JB_RULESETS_ABI,
       functionName: 'latestQueuedOf',
       args: [BigInt(projectId)],
-    })
+    });
 
-    if (ruleset.cycleNumber === 0) return null
+    if (ruleset.cycleNumber === 0) return null;
 
     return {
       ruleset: {
@@ -460,10 +939,14 @@ export async function fetchQueuedRuleset(
         metadata: decodeRulesetMetadata(ruleset.metadata),
       },
       approvalStatus,
-    }
+    };
   } catch (err) {
-    console.error('Failed to fetch queued ruleset:', err)
-    return null
+    console.error('Failed to fetch queued ruleset:', err);
+    throw new Error(
+      `Queued ruleset unavailable: ${
+        err instanceof Error ? err.message : 'Unknown chain read failure'
+      }`,
+    );
   }
 }
 
@@ -473,18 +956,26 @@ export async function fetchQueuedRuleset(
 export async function fetchRulesetHistory(
   chainId: number,
   projectId: number,
-  maxRulesets: number = 100
+  maxRulesets: number = 1000,
 ): Promise<RulesetData[]> {
-  const client = getPublicClient(chainId)
-  const contracts = getContractsForProject(chainId, projectId)
+  const client = getPublicClient(chainId);
+  const contracts = await getContractsForProject(chainId, projectId);
+
+  if (!Number.isSafeInteger(maxRulesets) || maxRulesets < 1 || maxRulesets > 1000) {
+    throw new Error('Ruleset history limit must be between 1 and 1000');
+  }
 
   try {
     const rulesets = await client.readContract({
       address: contracts.JBRulesets,
       abi: JB_RULESETS_ABI,
       functionName: 'allOf',
-      args: [BigInt(projectId), 0n, BigInt(maxRulesets)],
-    })
+      args: [BigInt(projectId), 0n, BigInt(maxRulesets + 1)],
+    });
+
+    if (rulesets.length > maxRulesets) {
+      throw new Error(`Ruleset history exceeds the ${maxRulesets}-item safety limit`);
+    }
 
     return rulesets
       .filter((r) => r.cycleNumber > 0)
@@ -498,10 +989,14 @@ export async function fetchRulesetHistory(
         basedOnId: String(r.basedOnId),
         metadata: decodeRulesetMetadata(r.metadata),
       }))
-      .sort((a, b) => a.start - b.start)
+      .sort((a, b) => a.start - b.start);
   } catch (err) {
-    console.error('Failed to fetch ruleset history:', err)
-    return []
+    console.error('Failed to fetch ruleset history:', err);
+    throw new Error(
+      `Ruleset history unavailable: ${
+        err instanceof Error ? err.message : 'Unknown chain read failure'
+      }`,
+    );
   }
 }
 
@@ -510,10 +1005,10 @@ export async function fetchRulesetHistory(
  */
 export async function getCurrentCycleNumber(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<number | null> {
-  const client = getPublicClient(chainId)
-  const contracts = getContractsForProject(chainId, projectId)
+  const client = getPublicClient(chainId);
+  const contracts = await getContractsForProject(chainId, projectId);
 
   try {
     const ruleset = await client.readContract({
@@ -521,11 +1016,16 @@ export async function getCurrentCycleNumber(
       abi: JB_RULESETS_ABI,
       functionName: 'currentOf',
       args: [BigInt(projectId)],
-    })
+    });
 
-    return Number(ruleset.cycleNumber)
-  } catch {
-    return null
+    const cycleNumber = Number(ruleset.cycleNumber);
+    return cycleNumber === 0 ? null : cycleNumber;
+  } catch (err) {
+    throw new Error(
+      `Current cycle unavailable: ${
+        err instanceof Error ? err.message : 'Unknown chain read failure'
+      }`,
+    );
   }
 }
 
@@ -535,106 +1035,228 @@ export async function getCurrentCycleNumber(
 export async function fetchSplits(
   chainId: number,
   projectId: number,
-  rulesetId: string
-): Promise<{ payoutSplits: SplitData[]; reservedSplits: SplitData[]; fundAccessLimits: FundAccessLimits | null }> {
-  const client = getPublicClient(chainId)
-  const contracts = getContractsForProject(chainId, projectId)
-  const rsId = BigInt(rulesetId)
+  rulesetId: string,
+): Promise<{
+  payoutSplits: SplitData[];
+  reservedSplits: SplitData[];
+  fundAccessLimits: FundAccessLimits | null;
+  splitGroups: Array<{ groupId: string; splits: SplitData[] }>;
+  fundAccessLimitGroups: FundAccessLimits[];
+  accountingContexts: Array<{
+    terminal: Address;
+    token: Address;
+    tokenDecimals: number;
+    currency: number;
+  }>;
+  configurationComplete: true;
+}> {
+  if (!Number.isSafeInteger(projectId) || projectId < 1 || !/^\d+$/.test(rulesetId)) {
+    throw new Error('Treasury configuration identifiers are invalid');
+  }
+  const client = getPublicClient(chainId);
+  const contracts = await getContractsForProject(chainId, projectId);
+  const rsId = BigInt(rulesetId);
+  if (rsId < 1n) throw new Error('Ruleset ID is invalid');
 
-  const result: { payoutSplits: SplitData[]; reservedSplits: SplitData[]; fundAccessLimits: FundAccessLimits | null } = {
-    payoutSplits: [],
-    reservedSplits: [],
-    fundAccessLimits: null,
+  const terminals = await client.readContract({
+    address: JB_ROOTS.JBDirectory,
+    abi: JB_DIRECTORY_ABI,
+    functionName: 'terminalsOf',
+    args: [BigInt(projectId)],
+  });
+  if (terminals.length === 0) throw new Error('Project has no terminal configured');
+  const uniqueTerminals = new Set(terminals.map((terminal) => terminal.toLowerCase()));
+  if (uniqueTerminals.size !== terminals.length) {
+    throw new Error('Project terminal configuration is ambiguous');
+  }
+  await assertRecognizedPaymentRouteWithClient(client, BigInt(projectId), terminals[0]);
+  const terminalContexts = (await Promise.all(terminals.map(async (terminal) => {
+    const normalized = terminal.toLowerCase();
+    const isMultiTerminal = normalized === RECOGNIZED.JBMultiTerminal.toLowerCase();
+    const isRecognizedRouter = normalized === RECOGNIZED.JBRouterTerminal.toLowerCase() ||
+      normalized === RECOGNIZED.JBRouterTerminalRegistry.toLowerCase();
+    if (!isMultiTerminal && !isRecognizedRouter) {
+      throw new Error(`Terminal not recognized: ${terminal}`);
+    }
+    const contexts = await client.readContract({
+      address: terminal,
+      abi: JB_TERMINAL_ABI,
+      functionName: 'accountingContextsOf',
+      args: [BigInt(projectId)],
+    });
+    if (contexts.length === 0) return [];
+    if (!isMultiTerminal) {
+      throw new Error(`Terminal not recognized for accounting contexts: ${terminal}`);
+    }
+    const store = await client.readContract({
+      address: terminal,
+      abi: JB_TERMINAL_ABI,
+      functionName: 'STORE',
+    });
+    return contexts.map((context) => ({
+      terminal,
+      store,
+      token: context.token,
+      tokenDecimals: Number(context.decimals),
+      currency: Number(context.currency),
+    }));
+  }))).flat();
+  if (terminalContexts.length === 0) {
+    throw new Error('Project has no accounting context configured');
+  }
+  const seenTokens = new Set<string>();
+  for (const context of terminalContexts) {
+    const token = context.token.toLowerCase();
+    const isNative = token === NATIVE_TOKEN;
+    const isUsdc = token === CANONICAL_USDC[chainId];
+    if (!isNative && !isUsdc) throw new Error(`Accounting token not recognized: ${context.token}`);
+    const expectedDecimals = isNative ? 18 : 6;
+    const expectedCurrency = Number(BigInt(context.token) & 0xffff_ffffn);
+    if (context.tokenDecimals !== expectedDecimals || context.currency !== expectedCurrency) {
+      throw new Error(`Accounting context is not recognized for token: ${context.token}`);
+    }
+    if (seenTokens.has(token)) {
+      throw new Error(`Duplicate accounting context for token: ${context.token}`);
+    }
+    seenTokens.add(token);
   }
 
-  // Fetch reserved splits
-  try {
-    const reservedRaw = await client.readContract({
-      address: JB_V6.JBSplits,
-      abi: JB_SPLITS_ABI,
-      functionName: 'splitsOf',
-      args: [BigInt(projectId), rsId, SPLIT_GROUP_RESERVED],
-    })
-
-    result.reservedSplits = reservedRaw.map((s) => ({
+  const mapSplit = (s: {
+    percent: number;
+    projectId: bigint;
+    beneficiary: Address;
+    preferAddToBalance: boolean;
+    lockedUntil: number;
+    hook: Address;
+  }): SplitData => {
+    if (!Number.isSafeInteger(s.percent) || s.percent <= 0 || s.percent > 1_000_000_000) {
+      throw new Error('Split percentage is invalid');
+    }
+    if (s.projectId < 0n || s.projectId > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error('Split project ID cannot be represented safely');
+    }
+    if (!isAddress(s.beneficiary) || !isAddress(s.hook)) {
+      throw new Error('Split contains an invalid address');
+    }
+    if (!Number.isSafeInteger(s.lockedUntil) || s.lockedUntil < 0 || s.lockedUntil > 2 ** 48 - 1) {
+      throw new Error('Split lock time is invalid');
+    }
+    return {
       percent: s.percent,
       projectId: Number(s.projectId),
       beneficiary: s.beneficiary,
       preferAddToBalance: s.preferAddToBalance,
       lockedUntil: s.lockedUntil,
       hook: s.hook,
-    }))
-  } catch {
-    // No reserved splits
-  }
+    };
+  };
+  const validateSplitGroup = (splits: SplitData[], label: string): void => {
+    const total = splits.reduce((sum, split) => sum + BigInt(split.percent), 0n);
+    if (total > 1_000_000_000n) throw new Error(`${label} splits exceed 100%`);
+  };
 
-  // Fetch payout splits (try ETH first, then USDC)
-  const ethToken = NATIVE_TOKEN
-  const usdcToken = USDC_ADDRESSES[chainId]
+  const reservedRaw = await client.readContract({
+    address: contracts.JBSplits,
+    abi: JB_SPLITS_ABI,
+    functionName: 'splitsOf',
+    args: [BigInt(projectId), rsId, SPLIT_GROUP_RESERVED],
+  });
+  const reservedSplits = reservedRaw.map(mapSplit);
+  validateSplitGroup(reservedSplits, 'Reserved token');
 
-  for (const token of [ethToken, usdcToken]) {
-    if (!token) continue
-    try {
-      const payoutGroup = getPayoutSplitGroup(token)
-      const payoutRaw = await client.readContract({
-        address: JB_V6.JBSplits,
-        abi: JB_SPLITS_ABI,
-        functionName: 'splitsOf',
-        args: [BigInt(projectId), rsId, payoutGroup],
-      })
+  const uniqueTokens = [...new Map(
+    terminalContexts.map((context) => [context.token.toLowerCase(), context.token] as const),
+  ).values()];
+  const payoutGroups = await Promise.all(uniqueTokens.map(async (token) => {
+    const groupId = getPayoutSplitGroup(token);
+    const payoutRaw = await client.readContract({
+      address: contracts.JBSplits,
+      abi: JB_SPLITS_ABI,
+      functionName: 'splitsOf',
+      args: [BigInt(projectId), rsId, groupId],
+    });
+    const splits = payoutRaw.map(mapSplit);
+    validateSplitGroup(splits, 'Payout');
+    return { groupId: groupId.toString(), splits };
+  }));
+  await Promise.all(
+    [reservedSplits, ...payoutGroups.map((group) => group.splits)]
+      .flat()
+      .map((split) => requireRecognizedRuntimeSplitHook({ client, hook: split.hook as Address })),
+  );
 
-      if (payoutRaw.length > 0) {
-        result.payoutSplits = payoutRaw.map((s) => ({
-          percent: s.percent,
-          projectId: Number(s.projectId),
-          beneficiary: s.beneficiary,
-          preferAddToBalance: s.preferAddToBalance,
-          lockedUntil: s.lockedUntil,
-          hook: s.hook,
-        }))
-        break // Found payout splits, stop trying
-      }
-    } catch {
-      // Continue to next token
+  const fundAccessLimitGroups = await Promise.all(terminalContexts.map(async (context) => {
+    const [payoutLimits, surplusAllowances] = await Promise.all([
+      client.readContract({
+        address: contracts.JBFundAccessLimits,
+        abi: JB_FUND_ACCESS_LIMITS_ABI,
+        functionName: 'payoutLimitsOf',
+        args: [BigInt(projectId), rsId, context.terminal, context.token],
+      }),
+      client.readContract({
+        address: contracts.JBFundAccessLimits,
+        abi: JB_FUND_ACCESS_LIMITS_ABI,
+        functionName: 'surplusAllowancesOf',
+        args: [BigInt(projectId), rsId, context.terminal, context.token],
+      }),
+    ]);
+    if (payoutLimits.length > 1 || surplusAllowances.length > 1) {
+      throw new Error(`Fund access configuration is ambiguous for token: ${context.token}`);
     }
-  }
-
-  // Fetch fund access limits
-  for (const token of [ethToken, usdcToken]) {
-    if (!token) continue
-    try {
-      const [payoutLimits, surplusAllowances] = await Promise.all([
-        client.readContract({
-          address: JB_V6.JBFundAccessLimits,
-          abi: JB_FUND_ACCESS_LIMITS_ABI,
-          functionName: 'payoutLimitsOf',
-          args: [BigInt(projectId), rsId, contracts.JBMultiTerminal, token],
-        }),
-        client.readContract({
-          address: JB_V6.JBFundAccessLimits,
-          abi: JB_FUND_ACCESS_LIMITS_ABI,
-          functionName: 'surplusAllowancesOf',
-          args: [BigInt(projectId), rsId, contracts.JBMultiTerminal, token],
-        }),
-      ])
-
-      if (payoutLimits.length > 0 || surplusAllowances.length > 0) {
-        result.fundAccessLimits = {
-          payoutLimits: payoutLimits.map((p) => ({
-            amount: String(p.amount),
-            currency: p.currency,
-          })),
-          surplusAllowances: surplusAllowances.map((s) => ({
-            amount: String(s.amount),
-            currency: s.currency,
-          })),
-        }
-        break // Found limits, stop trying
+    for (const limit of [...payoutLimits, ...surplusAllowances]) {
+      if (Number(limit.currency) !== context.currency) {
+        throw new Error(`Fund access currency not recognized for token: ${context.token}`);
       }
-    } catch {
-      // Continue to next token
     }
-  }
+    const allowancesWithUsage = await Promise.all(surplusAllowances.map(async (allowance) => ({
+      amount: String(allowance.amount),
+      currency: Number(allowance.currency),
+      usedAmount: String(
+        await client.readContract({
+          address: context.store,
+          abi: JB_TERMINAL_STORE_ABI,
+          functionName: 'usedSurplusAllowanceOf',
+          args: [
+            context.terminal,
+            BigInt(projectId),
+            context.token,
+            rsId,
+            BigInt(allowance.currency),
+          ],
+        }),
+      ),
+    })));
+    return {
+      terminal: context.terminal,
+      token: context.token,
+      tokenDecimals: context.tokenDecimals,
+      payoutLimits: payoutLimits.map((limit) => ({
+        amount: String(limit.amount),
+        currency: Number(limit.currency),
+      })),
+      surplusAllowances: allowancesWithUsage,
+    };
+  }));
 
-  return result
+  const nonEmptyPayoutGroups = payoutGroups.filter((group) => group.splits.length > 0);
+  return {
+    payoutSplits: nonEmptyPayoutGroups[0]?.splits ?? [],
+    reservedSplits,
+    fundAccessLimits:
+      fundAccessLimitGroups.find((group) =>
+        group.payoutLimits.length > 0 || group.surplusAllowances.length > 0
+      ) ?? null,
+    splitGroups: [
+      { groupId: SPLIT_GROUP_RESERVED.toString(), splits: reservedSplits },
+      ...payoutGroups,
+    ],
+    fundAccessLimitGroups,
+    accountingContexts: terminalContexts.map(({ terminal, token, tokenDecimals, currency }) => ({
+      terminal,
+      token,
+      tokenDecimals,
+      currency,
+    })),
+    configurationComplete: true,
+  };
 }

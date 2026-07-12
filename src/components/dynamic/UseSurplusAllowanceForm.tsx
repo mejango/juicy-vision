@@ -1,20 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
-import { formatEther } from 'viem'
+import { formatUnits } from 'viem'
 import { useThemeStore } from '../../stores'
 import { useUseSurplusAllowanceFormState } from '../../hooks/useComponentState'
 import {
   fetchProject,
-  fetchConnectedChains,
+  fetchProjectAccountingContexts,
   fetchProjectSplits,
   fetchProjectWithRuleset,
   type Project,
-  type ConnectedChain,
   type FundAccessLimits,
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { UseSurplusAllowanceModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
+import { useManagedWallet } from '../../hooks'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface UseSurplusAllowanceFormProps {
   projectId: string
@@ -32,26 +35,30 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string
 
 // Per-chain surplus allowance data
 interface ChainSurplusData {
+  optionKey: string
   chainId: number
   projectId: number
+  accountingToken: `0x${string}` | null
+  accountingCurrency: number | null
+  tokenDecimals: number
+  tokenSymbol: 'ETH' | 'USDC' | null
   fundAccessLimits: FundAccessLimits | null
-  balance: string
   surplusAllowance: bigint
   usedSurplusAllowance: bigint
   isUnlimited: boolean
-  baseCurrency: number // 1 = ETH, 2 = USD
+  configurationError?: string
 }
 
 // Inline chain selector component
 function InlineChainSelector({
   chainData,
-  selectedChainId,
+  selectedOptionKey,
   onSelect,
   isDark,
 }: {
   chainData: ChainSurplusData[]
-  selectedChainId: number | null
-  onSelect: (chainId: number) => void
+  selectedOptionKey: string | null
+  onSelect: (optionKey: string) => void
   isDark: boolean
 }) {
   if (chainData.length <= 1) return null
@@ -60,12 +67,12 @@ function InlineChainSelector({
     <div className="flex items-center gap-1 flex-wrap">
       {chainData.map(cd => {
         const chain = CHAIN_INFO[cd.chainId] || { name: `Chain ${cd.chainId}`, shortName: String(cd.chainId), color: '#888888' }
-        const isSelected = selectedChainId === cd.chainId
+        const isSelected = selectedOptionKey === cd.optionKey
         const hasAllowance = cd.surplusAllowance > 0n || cd.isUnlimited
         return (
           <button
-            key={cd.chainId}
-            onClick={() => onSelect(cd.chainId)}
+            key={cd.optionKey}
+            onClick={() => onSelect(cd.optionKey)}
             className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors ${
               isSelected
                 ? isDark
@@ -80,7 +87,7 @@ function InlineChainSelector({
               className="w-1.5 h-1.5 rounded-full"
               style={{ backgroundColor: chain.color }}
             />
-            {chain.shortName}
+            {chain.shortName} {cd.tokenSymbol || 'Unavailable'}
             {hasAllowance && (
               <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" title="Has surplus allowance" />
             )}
@@ -94,7 +101,7 @@ function InlineChainSelector({
 // Helper to check if unlimited
 const isUnlimitedValue = (amount: bigint | undefined): boolean => {
   if (!amount) return false
-  return amount > BigInt('1000000000000000000000000000000')
+  return amount === (1n << 224n) - 1n
 }
 
 export default function UseSurplusAllowanceForm({ projectId, chainId = '1', messageId }: UseSurplusAllowanceFormProps) {
@@ -109,17 +116,21 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
   const isDark = theme === 'dark'
 
   const { isConnected } = useAccount()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected
 
   // Check if form should be locked due to active/completed transaction
-  const isLocked = persistedState?.status && persistedState.status !== 'pending'
+  const isLocked = persistedState?.status === 'in_progress' || persistedState?.status === 'completed'
 
   // Restore state from persisted data on load
   useEffect(() => {
     if (persistedState && persistedState.status !== 'pending') {
       if (persistedState.amount) setAmount(persistedState.amount)
-      if (persistedState.selectedChainId) setSelectedChainId(persistedState.selectedChainId)
+      if (persistedState.selectedChainId && persistedState.accountingToken) {
+        setSelectedOptionKey(`${persistedState.selectedChainId}:${persistedState.accountingToken.toLowerCase()}`)
+      }
     }
-  }, [persistedState?.status])
+  }, [persistedState])
 
   // Transaction callbacks for persistence
   const handleConfirmed = useCallback((txHash: string) => {
@@ -127,6 +138,14 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
       status: 'completed',
       txHash,
       confirmedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState])
+
+  const handleSubmitted = useCallback((txHash: string) => {
+    updatePersistedState({
+      status: 'in_progress',
+      txHash,
+      submittedAt: new Date().toISOString(),
     })
   }, [updatePersistedState])
 
@@ -144,32 +163,40 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
 
   // Omnichain state
   const [chainSurplusData, setChainSurplusData] = useState<ChainSurplusData[]>([])
-  const [selectedChainId, setSelectedChainId] = useState<number>(parseInt(chainId))
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
+  const [selectedOptionKey, setSelectedOptionKey] = useState<string>('')
 
   const isOmnichain = chainSurplusData.length > 1
 
   // Get active chain data
-  const activeChainData = chainSurplusData.find(cd => cd.chainId === selectedChainId) || chainSurplusData[0]
+  const activeChainData = chainSurplusData.find(cd => cd.optionKey === selectedOptionKey) || chainSurplusData[0]
+  const selectedChainId = activeChainData?.chainId ?? parseInt(chainId)
   const chainInfo = CHAIN_INFO[selectedChainId] || CHAIN_INFO[1]
-  const baseCurrency = activeChainData?.baseCurrency || 1
-  const currencyLabel = baseCurrency === 2 ? 'USDC' : 'ETH'
+  const allowanceData = activeChainData?.fundAccessLimits?.surplusAllowances[0]
+  const allowanceToken = activeChainData?.accountingToken
+  const allowanceTokenDecimals = activeChainData?.tokenDecimals ?? 18
+  const allowanceCurrency = allowanceData?.currency ?? activeChainData?.accountingCurrency ?? 0
+  const currencyLabel = activeChainData?.tokenSymbol || 'units'
+  const allowanceDecimals = allowanceTokenDecimals
 
   // Calculate available surplus
   const surplusAllowance = activeChainData?.surplusAllowance || 0n
   const usedSurplusAllowance = activeChainData?.usedSurplusAllowance || 0n
   const isUnlimited = activeChainData?.isUnlimited || false
-  const treasuryBalance = activeChainData ? parseFloat(activeChainData.balance) / 1e18 : 0
+  const currentSurplus = allowanceData
+    ? parseFloat(formatUnits(BigInt(allowanceData.currentSurplus || '0'), allowanceDecimals))
+    : 0
 
-  // Available = min(allowance - used, treasury balance) for non-unlimited
-  // For unlimited, available = treasury balance
+  // Compare values in the allowance's exact currency/decimals. The terminal
+  // converts its live surplus into these same units onchain.
   const availableAllowance = isUnlimited
-    ? treasuryBalance
+    ? currentSurplus
     : Math.min(
-        parseFloat(formatEther(surplusAllowance > usedSurplusAllowance ? surplusAllowance - usedSurplusAllowance : 0n)),
-        treasuryBalance
+        parseFloat(formatUnits(surplusAllowance > usedSurplusAllowance ? surplusAllowance - usedSurplusAllowance : 0n, allowanceDecimals)),
+        currentSurplus
       )
 
-  const allowanceDisabled = !isUnlimited && surplusAllowance === 0n
+  const allowanceDisabled = !!activeChainData?.configurationError || (!isUnlimited && surplusAllowance === 0n)
 
   // Fetch data for all chains
   useEffect(() => {
@@ -179,70 +206,103 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
         const primaryChainId = parseInt(chainId)
 
         // Fetch project and connected chains
-        const [projectData, connectedChains] = await Promise.all([
+        const [projectData, chainResolution] = await Promise.all([
           fetchProject(projectId, primaryChainId),
-          fetchConnectedChains(projectId, primaryChainId),
+          resolveProjectChains(projectId, primaryChainId),
         ])
         setProject(projectData)
-
-        // Determine chains to fetch
-        const chainsToFetch: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: primaryChainId, projectId: parseInt(projectId) }]
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
         // Fetch surplus data from all chains in parallel
-        const chainDataPromises = chainsToFetch.map(async (chain): Promise<ChainSurplusData> => {
+        const chainDataPromises = chainResolution.chains.map(async (chain): Promise<ChainSurplusData[]> => {
           try {
-            const chainProject = await fetchProjectWithRuleset(String(chain.projectId), chain.chainId)
+            const [chainProject, accountingContexts] = await Promise.all([
+              fetchProjectWithRuleset(String(chain.projectId), chain.chainId),
+              fetchProjectAccountingContexts(String(chain.projectId), chain.chainId),
+            ])
+            if (accountingContexts.length === 0) throw new Error('No recognized accounting context')
 
-            // Fetch fund access limits if we have a ruleset
-            let fundAccessLimits: FundAccessLimits | null = null
+            let allowanceGroups: FundAccessLimits[] = []
             if (chainProject?.currentRuleset?.id) {
               const splitsData = await fetchProjectSplits(
                 String(chain.projectId),
                 chain.chainId,
                 chainProject.currentRuleset.id
               )
-              fundAccessLimits = splitsData.fundAccessLimits || null
+              if (!splitsData.configurationComplete) {
+                throw new Error('Surplus allowance configuration could not be verified')
+              }
+              allowanceGroups = (splitsData.fundAccessLimitGroups || [])
+                .filter(group => group.surplusAllowances.length > 0)
+              if (allowanceGroups.some(group => group.surplusAllowances.length > 1)) {
+                throw new Error('Multiple surplus allowance denominations for one token are not supported')
+              }
+              const hasUnmatchedGroup = allowanceGroups.some(group => !accountingContexts.some(context =>
+                group.terminal.toLowerCase() === context.terminal.toLowerCase() &&
+                group.token.toLowerCase() === context.token.toLowerCase()
+              ))
+              if (hasUnmatchedGroup) {
+                throw new Error('Surplus allowance accounting context is not recognized')
+              }
             }
 
-            // Extract surplus allowance info
-            const surplusAllowanceData = fundAccessLimits?.surplusAllowances?.[0]
-            const surplusAllowanceAmount = surplusAllowanceData?.amount
-              ? BigInt(surplusAllowanceData.amount)
-              : 0n
+            return accountingContexts.map(context => {
+              const fundAccessLimits = allowanceGroups.find(group =>
+                group.terminal.toLowerCase() === context.terminal.toLowerCase() &&
+                group.token.toLowerCase() === context.token.toLowerCase()
+              ) || null
+              const surplusAllowanceData = fundAccessLimits?.surplusAllowances[0]
+              if (surplusAllowanceData && surplusAllowanceData.currency !== context.currency) {
+                throw new Error('Surplus allowance currency conversion is not supported in this view')
+              }
+              const surplusAllowanceAmount = surplusAllowanceData
+                ? BigInt(surplusAllowanceData.amount)
+                : 0n
 
-            return {
-              chainId: chain.chainId,
-              projectId: chain.projectId,
-              fundAccessLimits,
-              balance: chainProject?.balance || '0',
-              surplusAllowance: surplusAllowanceAmount,
-              usedSurplusAllowance: 0n, // Would need on-chain read for actual used value
-              isUnlimited: isUnlimitedValue(surplusAllowanceAmount),
-              baseCurrency: chainProject?.currentRuleset?.baseCurrency || 1,
-            }
+              return {
+                optionKey: `${chain.chainId}:${context.token.toLowerCase()}`,
+                chainId: chain.chainId,
+                projectId: chain.projectId,
+                accountingToken: context.token,
+                accountingCurrency: context.currency,
+                tokenDecimals: context.decimals,
+                tokenSymbol: context.symbol,
+                fundAccessLimits,
+                surplusAllowance: surplusAllowanceAmount,
+                usedSurplusAllowance: BigInt(surplusAllowanceData?.usedAmount || '0'),
+                isUnlimited: isUnlimitedValue(surplusAllowanceAmount),
+              } satisfies ChainSurplusData
+            })
           } catch (err) {
             console.error(`Failed to fetch surplus data for chain ${chain.chainId}:`, err)
-            return {
+            return [{
+              optionKey: `${chain.chainId}:error`,
               chainId: chain.chainId,
               projectId: chain.projectId,
+              accountingToken: null,
+              accountingCurrency: null,
+              tokenDecimals: 18,
+              tokenSymbol: null,
               fundAccessLimits: null,
-              balance: '0',
               surplusAllowance: 0n,
               usedSurplusAllowance: 0n,
               isUnlimited: false,
-              baseCurrency: 1,
-            }
+              configurationError: err instanceof Error ? err.message : 'Surplus allowance configuration unavailable',
+            }]
           }
         })
 
-        const allChainData = await Promise.all(chainDataPromises)
+        const allChainData = (await Promise.all(chainDataPromises)).flat()
         setChainSurplusData(allChainData)
 
-        // Set initial selected chain to one with allowance, or primary
-        const chainWithAllowance = allChainData.find(cd => cd.surplusAllowance > 0n || cd.isUnlimited)
-        setSelectedChainId(chainWithAllowance?.chainId || primaryChainId)
+        setSelectedOptionKey(previous => {
+          if (allChainData.some(data => data.optionKey === previous)) return previous
+          return allChainData.find(data => data.chainId === primaryChainId && (data.surplusAllowance > 0n || data.isUnlimited))?.optionKey
+            || allChainData.find(data => data.surplusAllowance > 0n || data.isUnlimited)?.optionKey
+            || allChainData.find(data => data.chainId === primaryChainId)?.optionKey
+            || allChainData[0]?.optionKey
+            || ''
+        })
 
       } catch (err) {
         console.error('Failed to load project:', err)
@@ -256,18 +316,22 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
   const amountNum = parseFloat(amount) || 0
 
   const handleUseSurplus = () => {
-    if (!amount || amountNum <= 0 || isLocked) return
+    if (
+      !amount || amountNum <= 0 || amountNum > availableAllowance || isLocked ||
+      !allowanceData || !allowanceToken
+    ) return
 
-    if (!isConnected) {
+    if (!hasActiveWallet) {
       openWalletPanel()
       return
     }
 
-    // Persist in_progress state
+    // Save reviewed inputs without claiming a transaction exists yet.
     updatePersistedState({
-      status: 'in_progress',
+      status: 'pending',
       amount,
       selectedChainId,
+      accountingToken: allowanceToken,
       submittedAt: new Date().toISOString(),
     })
 
@@ -294,10 +358,11 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
       <div className={`max-w-md border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Header */}
         <div className="flex items-center gap-3 mb-3">
           {logoUrl ? (
-            <img src={logoUrl} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" />
+            <IpfsImage uri={project?.logoUri} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" fallback={<div className="w-14 h-14 bg-purple-500/20" />} />
           ) : (
             <div className="w-14 h-14 bg-purple-500/20 flex items-center justify-center">
               <span className="text-2xl">💰</span>
@@ -307,7 +372,7 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
             <h3 className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
               Use Surplus Allowance
             </h3>
-            <ProjectLink chainSlug={chainInfo.slug} projectId={projectId} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
+            <ProjectLink chainSlug={chainInfo.slug} projectId={String(activeChainData?.projectId ?? projectId)} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
               {project?.name || `Project #${projectId}`}
             </ProjectLink>
           </div>
@@ -321,8 +386,8 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
             </div>
             <InlineChainSelector
               chainData={chainSurplusData}
-              selectedChainId={selectedChainId}
-              onSelect={setSelectedChainId}
+              selectedOptionKey={selectedOptionKey}
+              onSelect={setSelectedOptionKey}
               isDark={isDark}
             />
           </div>
@@ -341,7 +406,7 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
                 ? 'None'
                 : isUnlimited
                   ? 'Unlimited'
-                  : `${parseFloat(formatEther(surplusAllowance)).toFixed(4)} ${currencyLabel}`
+                  : `${parseFloat(formatUnits(surplusAllowance, allowanceDecimals)).toFixed(4)} ${currencyLabel}`
               }
             </span>
           </div>
@@ -353,7 +418,7 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
                   Used this cycle
                 </span>
                 <span className="text-xs font-mono">
-                  {parseFloat(formatEther(usedSurplusAllowance)).toFixed(4)} {currencyLabel}
+                  {parseFloat(formatUnits(usedSurplusAllowance, allowanceDecimals)).toFixed(4)} {currencyLabel}
                 </span>
               </div>
             </>
@@ -361,10 +426,10 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
 
           <div className="flex justify-between items-center">
             <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Treasury balance
+              Current surplus
             </span>
             <span className="text-xs font-mono">
-              {treasuryBalance.toFixed(4)} {currencyLabel}
+              {currentSurplus.toFixed(4)} {currencyLabel}
             </span>
           </div>
 
@@ -414,9 +479,9 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
             </div>
             <button
               onClick={handleUseSurplus}
-              disabled={!amount || amountNum <= 0 || allowanceDisabled || availableAllowance <= 0 || isLocked}
+              disabled={!amount || amountNum <= 0 || amountNum > availableAllowance || allowanceDisabled || availableAllowance <= 0 || isLocked}
               className={`px-5 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
-                !amount || amountNum <= 0 || allowanceDisabled || availableAllowance <= 0 || isLocked
+                !amount || amountNum <= 0 || amountNum > availableAllowance || allowanceDisabled || availableAllowance <= 0 || isLocked
                   ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                   : 'bg-purple-500 hover:bg-purple-500/90 text-white'
               }`}
@@ -518,7 +583,9 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
 
         {/* Info */}
         <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          {allowanceDisabled
+          {activeChainData?.configurationError
+            ? activeChainData.configurationError
+            : allowanceDisabled
             ? 'No surplus allowance is configured for this ruleset. The project owner cannot withdraw surplus funds.'
             : isUnlimited
               ? 'The project has unlimited surplus allowance. This is typically used by Revnets to facilitate loans against treasury funds.'
@@ -528,17 +595,22 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
       </div>
 
       {/* Modal */}
-      <UseSurplusAllowanceModal
+      {allowanceData && allowanceToken && (
+        <UseSurplusAllowanceModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        projectId={projectId}
+        projectId={String(activeChainData.projectId)}
         projectName={project?.name}
         chainId={selectedChainId}
         amount={amount}
-        baseCurrency={baseCurrency}
+        allowanceCurrency={allowanceCurrency}
+        allowanceTokenAddress={allowanceToken}
+        allowanceTokenDecimals={allowanceTokenDecimals}
+        onSubmitted={handleSubmitted}
         onConfirmed={handleConfirmed}
         onError={handleError}
-      />
+        />
+      )}
     </div>
   )
 }

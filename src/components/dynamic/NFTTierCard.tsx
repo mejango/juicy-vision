@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
-import { formatEther } from 'viem'
-import { useAccount } from 'wagmi'
-import { useThemeStore, useTransactionStore } from '../../stores'
-import { resolveIpfsUri, inlineSvgImages } from '../../utils/ipfs'
-import { resolveTierUri, type ResolvedNFTTier } from '../../services/nft'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { formatUnits } from 'viem'
+import { useThemeStore } from '../../stores'
+import { inlineSvgImages, ipfsGatewayUrls } from '../../utils/ipfs'
+import { getEffectiveTierPrice, resolveTierUri, type ResolvedNFTTier } from '../../services/nft'
 import { isUsdcCurrency } from '../../utils/technicalDetails'
 import GenerateImageButton from '../ui/GenerateImageButton'
 import SupplyBadge from '../ui/SupplyBadge'
@@ -47,14 +46,8 @@ interface NFTTierCardProps {
   onRemoveTier?: (tierId: number) => void
 }
 
-// Dispatch event to open wallet panel
-function openWalletPanel() {
-  window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
-}
-
 export default function NFTTierCard({
   tier,
-  projectId,
   chainId,
   compact = false,
   showMintAction = true,
@@ -75,17 +68,13 @@ export default function NFTTierCard({
   onRemoveTier,
 }: NFTTierCardProps) {
   const { theme } = useThemeStore()
-  const { addTransaction } = useTransactionStore()
-  const { isConnected } = useAccount()
   const isDark = theme === 'dark'
 
-  const [minting, setMinting] = useState(false)
-  const [quantity, setQuantity] = useState(1)
   const [onChainImage, setOnChainImage] = useState<string | null>(null)
   const [onChainProductName, setOnChainProductName] = useState<string | null>(null)
-  const [onChainCategoryName, setOnChainCategoryName] = useState<string | null>(null)
   const [loadingOnChainImage, setLoadingOnChainImage] = useState(false)
   const [imageError, setImageError] = useState(false)
+  const [imageGatewayIndex, setImageGatewayIndex] = useState(0)
   const [showDetailModal, setShowDetailModal] = useState(false)
 
   // Owner menu state
@@ -110,11 +99,15 @@ export default function NFTTierCard({
 
   // Tier permissions
   const canBeRemoved = !tier.cannotBeRemoved
-  const canSetDiscount = !tier.cannotIncreaseDiscountPercent || (tier.discountPercent ?? 0) > 0
   const canEditMetadata = !hasTokenUriResolver
 
-  // Resolve IPFS URI first
-  const ipfsImageUrl = resolveIpfsUri(tier.imageUri)
+  const imageGatewayCandidates = useMemo(() => ipfsGatewayUrls(tier.imageUri), [tier.imageUri])
+  const ipfsImageUrl = imageGatewayCandidates[imageGatewayIndex] ?? null
+
+  useEffect(() => {
+    setImageGatewayIndex(0)
+    setImageError(false)
+  }, [tier.imageUri])
 
   // Lazy load on-chain SVG if no IPFS image
   useEffect(() => {
@@ -138,9 +131,6 @@ export default function NFTTierCard({
               // categoryName is the category label like "Background"
               if (metadata.productName) {
                 setOnChainProductName(metadata.productName)
-              }
-              if (metadata.categoryName) {
-                setOnChainCategoryName(metadata.categoryName)
               }
               // Report metadata to parent
               if (onMetadataLoaded && (metadata.productName || metadata.categoryName)) {
@@ -174,11 +164,6 @@ export default function NFTTierCard({
     }
   }, [tier.tierId, chainId, hookAddress, ipfsImageUrl, onChainImage, loadingOnChainImage, onMetadataLoaded])
 
-  // Reset error when image URL changes
-  useEffect(() => {
-    setImageError(false)
-  }, [ipfsImageUrl, onChainImage])
-
   // Use IPFS image, or on-chain image, or nothing (unless error)
   const imageUrl = imageError ? null : (ipfsImageUrl || onChainImage)
   // Check if image is an SVG (data URI or .svg extension)
@@ -186,24 +171,16 @@ export default function NFTTierCard({
 
   // Price display: USD-based tiers show USD primary, ETH-based show ETH primary
   const isUsdBased = tier.currency === 2 || isUsdcCurrency(tier.currency)
-  const priceEth = parseFloat(formatEther(tier.price))
-  // For USD-based tiers, price is already in USD (with 6 decimals for USDC)
+  const pricingRecognized = tier.currency === 1 || isUsdBased
+  const priceInPricingCurrency = parseFloat(formatUnits(
+    getEffectiveTierPrice(tier),
+    tier.pricingDecimals,
+  ))
+  const priceEth = isUsdBased ? 0 : priceInPricingCurrency
   const priceUsd = isUsdBased
-    ? Number(tier.price) / Math.pow(10, 6) // USDC has 6 decimals
+    ? priceInPricingCurrency
     : (ethPrice ? priceEth * ethPrice : null)
   const soldOut = tier.remainingSupply === 0
-
-  const handleAddToCheckout = () => {
-    // Use the resolved name: prefer onChainProductName if tier.name is a placeholder
-    const displayName = /^Tier \d+$/.test(tier.name) ? (onChainProductName || tier.name) : tier.name
-    window.dispatchEvent(new CustomEvent('juice:add-to-checkout', {
-      detail: {
-        tierId: tier.tierId,
-        price: tier.price.toString(),
-        name: displayName,
-      }
-    }))
-  }
 
   const handleAdjustCheckoutQuantity = (delta: number) => {
     const displayName = /^Tier \d+$/.test(tier.name) ? (onChainProductName || tier.name) : tier.name
@@ -227,42 +204,16 @@ export default function NFTTierCard({
     setShowEditPopout(false)
   }
 
-  const handleMint = async () => {
-    // In add-to-checkout mode, dispatch event instead of minting directly
-    if (addToCheckoutMode) {
-      handleAddToCheckout()
+  const handleImageError = () => {
+    if (ipfsImageUrl && imageGatewayIndex + 1 < imageGatewayCandidates.length) {
+      setImageGatewayIndex(index => index + 1)
       return
     }
-
-    if (!isConnected) {
-      openWalletPanel()
+    if (ipfsImageUrl) {
+      setImageGatewayIndex(imageGatewayCandidates.length)
       return
     }
-
-    setMinting(true)
-    try {
-      const txId = addTransaction({
-        type: 'mint-nft',
-        projectId,
-        chainId,
-        tierId: tier.tierId,
-        quantity,
-        status: 'pending',
-      })
-
-      window.dispatchEvent(new CustomEvent('juice:mint-nft', {
-        detail: {
-          txId,
-          projectId,
-          chainId,
-          tierId: tier.tierId,
-          quantity,
-          price: tier.price.toString(),
-        }
-      }))
-    } finally {
-      setMinting(false)
-    }
+    setImageError(true)
   }
 
   if (compact) {
@@ -276,6 +227,7 @@ export default function NFTTierCard({
             src={imageUrl}
             alt={tier.name}
             className={`w-12 h-12 ${isSvgImage ? 'object-contain bg-white' : 'object-cover'}`}
+            onError={handleImageError}
           />
         ) : (
           <div className={`w-12 h-12 flex items-center justify-center ${
@@ -299,7 +251,11 @@ export default function NFTTierCard({
 
         {/* Price & Action */}
         <div className="text-right">
-          {isUsdBased ? (
+          {!pricingRecognized ? (
+            <div className={`text-xs ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
+              Pricing unavailable
+            </div>
+          ) : isUsdBased ? (
             <>
               <div className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 ${priceUsd?.toFixed(2)}
@@ -336,9 +292,9 @@ export default function NFTTierCard({
             src={imageUrl}
             alt={tier.name}
             className={`w-full h-full ${isSvgImage ? 'object-contain' : 'object-cover'}`}
-            onError={(e) => {
+            onError={() => {
               console.error(`[NFT] Tier ${tier.tierId} image load error`)
-              setImageError(true)
+              handleImageError()
             }}
           />
         ) : (
@@ -453,7 +409,7 @@ export default function NFTTierCard({
                   <button
                     onClick={() => {
                       setShowOwnerMenu(false)
-                      onSetDiscount(tier.tierId, tier.discountPercent ?? 0)
+                      onSetDiscount(tier.tierId, (tier.discountPercent ?? 0) / 2)
                     }}
                     className={`w-full px-3 py-1.5 text-left text-xs transition-colors flex items-center gap-2 ${
                       isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
@@ -465,7 +421,7 @@ export default function NFTTierCard({
                     Set discount
                     {(tier.discountPercent ?? 0) > 0 && (
                       <span className="ml-auto text-green-500 text-[10px]">
-                        {tier.discountPercent}%
+                        {((tier.discountPercent ?? 0) / 2).toLocaleString()}%
                       </span>
                     )}
                   </button>
@@ -513,7 +469,11 @@ export default function NFTTierCard({
 
         {/* Price */}
         <div className="flex items-baseline gap-2 mb-3">
-          {isUsdBased ? (
+          {!pricingRecognized ? (
+            <span className={`text-sm font-medium ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
+              Pricing unavailable
+            </span>
+          ) : isUsdBased ? (
             <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
               ${priceUsd?.toFixed(2)}
             </span>
@@ -572,19 +532,18 @@ export default function NFTTierCard({
         )}
 
         {/* Mint action */}
-        {showMintAction && (
+        {showMintAction && addToCheckoutMode && pricingRecognized && (
           <div className="flex justify-end items-center">
             {!soldOut ? (
               <div className="flex items-center">
-                {/* In checkout mode, use checkoutQuantity; otherwise use local quantity */}
                 {(() => {
-                  const displayQty = addToCheckoutMode ? checkoutQuantity : quantity
-                  const canDecrement = addToCheckoutMode ? displayQty > 0 : displayQty > 1
+                  const displayQty = checkoutQuantity
+                  const canDecrement = displayQty > 0
                   const canIncrement = displayQty < tier.remainingSupply
                   return (
                     <>
                       <button
-                        onClick={() => addToCheckoutMode ? handleAdjustCheckoutQuantity(-1) : setQuantity(q => Math.max(1, q - 1))}
+                        onClick={() => handleAdjustCheckoutQuantity(-1)}
                         disabled={!canDecrement}
                         className={`w-7 h-7 flex items-center justify-center text-sm font-medium transition-colors border-y border-l ${
                           !canDecrement
@@ -600,10 +559,10 @@ export default function NFTTierCard({
                         {displayQty}
                       </div>
                       <button
-                        onClick={() => addToCheckoutMode ? handleAdjustCheckoutQuantity(1) : handleMint()}
-                        disabled={minting || !canIncrement}
+                        onClick={() => handleAdjustCheckoutQuantity(1)}
+                        disabled={!canIncrement}
                         className={`w-7 h-7 flex items-center justify-center text-sm font-medium transition-colors border border-green-500 ${
-                          minting || !canIncrement
+                          !canIncrement
                             ? 'text-gray-500 cursor-not-allowed opacity-50'
                             : 'text-green-500 hover:bg-green-500/10'
                         }`}

@@ -84,6 +84,7 @@ vi.mock('../../hooks/relayr', () => ({
     hasError: mockRevnetHookState.hasError,
     createdProjectIds: mockRevnetHookState.createdProjectIds,
     predictedTokenAddress: mockRevnetHookState.predictedTokenAddress,
+    persistedTxHashes: null,
     reset: mockResetRevnet,
   })),
   useOmnichainDeploySuckers: vi.fn(() => ({
@@ -95,6 +96,10 @@ vi.mock('../../hooks/relayr', () => ({
     suckerAddresses: mockSuckerHookState.suckerAddresses,
     reset: mockResetSuckers,
   })),
+}))
+
+vi.mock('../../services/omnichainDeployer', () => ({
+  fetchProjectCreationFee: vi.fn().mockResolvedValue(1_000_000_000_000_000n),
 }))
 
 // Mock createPortal to render directly
@@ -113,8 +118,10 @@ describe('DeployRevnetModal', () => {
     isOpen: true,
     onClose: vi.fn(),
     name: 'Test Revnet',
+    ticker: 'TEST',
     tagline: 'A test revenue network',
-    splitOperator: '0x1234567890123456789012345678901234567890',
+    projectUri: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3gq2t5lz2wqzzx4m6w6v7s7qm',
+    splitOperator: '0xabcdef1234567890abcdef1234567890abcdef12',
     chainIds: CHAIN_IDS,
     stageConfigurations: [{
       startsAtOrAfter: Math.floor(Date.now() / 1000) + 300,
@@ -161,7 +168,16 @@ describe('DeployRevnetModal', () => {
 
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
-    useAuthStore.setState({ mode: 'self_custody' })
+    useAuthStore.setState({
+      mode: 'managed',
+      token: 'test-token',
+      user: {
+        id: 'test-user',
+        email: 'test@juicy.vision',
+        privacyMode: 'open_book',
+        hasCustodialWallet: true,
+      },
+    })
     vi.clearAllMocks()
     resetMockState()
     defaultProps.onClose = vi.fn()
@@ -206,14 +222,14 @@ describe('DeployRevnetModal', () => {
       render(<DeployRevnetModal {...defaultProps} />)
 
       expect(screen.getByText('Split Operator')).toBeInTheDocument()
-      expect(screen.getByText('0x123456...567890')).toBeInTheDocument()
+      expect(screen.getByText('0xabcdef...cdef12')).toBeInTheDocument()
     })
 
     it('shows auto-deploy suckers notice when enabled', () => {
       render(<DeployRevnetModal {...defaultProps} />)
 
       expect(screen.getByText('Auto-Deploy Suckers')).toBeInTheDocument()
-      expect(screen.getByText(/Cross-chain token bridging will be enabled/)).toBeInTheDocument()
+      expect(screen.getByText(/Cross-chain bridges will be deployed atomically/)).toBeInTheDocument()
     })
 
     it('hides auto-deploy notice when disabled', () => {
@@ -222,11 +238,13 @@ describe('DeployRevnetModal', () => {
       expect(screen.queryByText('Auto-Deploy Suckers')).not.toBeInTheDocument()
     })
 
-    it('shows gas sponsored notice', () => {
+    it('shows gas sponsorship separately from the protocol creation fee', async () => {
       render(<DeployRevnetModal {...defaultProps} />)
 
       expect(screen.getByText('Gas Sponsored')).toBeInTheDocument()
-      expect(screen.getByText(/Revnet deployment on all 4 chains is free/)).toBeInTheDocument()
+      expect(await screen.findByText(/Protocol creation fee included:/)).toHaveTextContent(
+        /0.004 ETH total across 4 chains/,
+      )
     })
   })
 
@@ -268,7 +286,10 @@ describe('DeployRevnetModal', () => {
         stageConfigurations: defaultProps.stageConfigurations,
         splitOperator: defaultProps.splitOperator,
         name: defaultProps.name,
+        ticker: defaultProps.ticker,
         tagline: defaultProps.tagline,
+        projectUri: defaultProps.projectUri,
+        configureSuckers: true,
       })
     })
 
@@ -280,7 +301,6 @@ describe('DeployRevnetModal', () => {
 
       expect(defaultProps.onClose).toHaveBeenCalled()
       expect(mockResetRevnet).toHaveBeenCalled()
-      expect(mockResetSuckers).toHaveBeenCalled()
     })
   })
 
@@ -300,7 +320,7 @@ describe('DeployRevnetModal', () => {
       const deployButton = screen.getByRole('button', { name: 'Deploy Revnet' })
       await user.click(deployButton)
 
-      expect(screen.getByText('Revnet')).toBeInTheDocument()
+      expect(screen.getByText('Revnet and cross-chain bridges')).toBeInTheDocument()
     })
 
     it('shows processing indicator when deploying', async () => {
@@ -308,9 +328,6 @@ describe('DeployRevnetModal', () => {
       mockRevnetHookState.bundleState.status = 'processing'
 
       render(<DeployRevnetModal {...defaultProps} />)
-
-      const deployButton = screen.getByRole('button', { name: 'Deploy Revnet' })
-      await user.click(deployButton)
 
       expect(screen.getByText('Deploying revnet...')).toBeInTheDocument()
       expect(screen.getByText('Do not close this window')).toBeInTheDocument()
@@ -326,7 +343,7 @@ describe('DeployRevnetModal', () => {
     })
   })
 
-  describe('deploying suckers phase', () => {
+  describe('atomic bridge deployment', () => {
     beforeEach(() => {
       mockRevnetHookState.isComplete = true
       mockRevnetHookState.createdProjectIds = { [C0]: 100, [C1]: 101, [C2]: 102, [C3]: 103 }
@@ -334,25 +351,18 @@ describe('DeployRevnetModal', () => {
       mockSuckerHookState.bundleState.status = 'processing'
     })
 
-    it('shows Deploying Suckers title in sucker phase', async () => {
+    it('does not expose a separate post-deploy sucker transaction', async () => {
       render(<DeployRevnetModal {...defaultProps} />)
 
-      // Click deploy to trigger hasStarted
-      const deployButton = screen.getByRole('button', { name: 'Deploy Revnet' })
-      await user.click(deployButton)
-
-      // The component would transition to suckers phase when revnet completes
-      // For this test, we just verify the suckers step text is present
-      expect(screen.getByText('Suckers')).toBeInTheDocument()
+      expect(screen.queryByText('Deploying Suckers')).not.toBeInTheDocument()
+      expect(screen.getByText('Revnet and cross-chain bridges')).toBeInTheDocument()
     })
 
-    it('shows phase indicator with Suckers step', async () => {
+    it('keeps bridge execution within the reviewed Revnet bundle', async () => {
       render(<DeployRevnetModal {...defaultProps} />)
 
-      const deployButton = screen.getByRole('button', { name: 'Deploy Revnet' })
-      await user.click(deployButton)
-
-      expect(screen.getByText('Suckers')).toBeInTheDocument()
+      expect(screen.queryByText('Suckers')).not.toBeInTheDocument()
+      expect(mockDeploySuckers).not.toHaveBeenCalled()
     })
   })
 
@@ -472,8 +482,7 @@ describe('DeployRevnetModal', () => {
     })
 
     it('shows Suckers Deployed notice when suckers are complete', () => {
-      // With suckers deployed, need autoDeploySuckers false for allComplete
-      render(<DeployRevnetModal {...defaultProps} autoDeploySuckers={false} />)
+      render(<DeployRevnetModal {...defaultProps} />)
 
       // Sucker deployed info shows when suckerAddresses is populated
       expect(screen.getByText('Suckers Deployed')).toBeInTheDocument()
@@ -510,17 +519,17 @@ describe('DeployRevnetModal', () => {
     })
   })
 
-  describe('sucker error state', () => {
+  describe('detached sucker state', () => {
     beforeEach(() => {
       mockRevnetHookState.isComplete = true
       mockSuckerHookState.hasError = true
       mockSuckerHookState.bundleState.error = 'Sucker deployment failed'
     })
 
-    it('shows error message from suckers', () => {
+    it('does not surface an unrelated detached sucker error', () => {
       render(<DeployRevnetModal {...defaultProps} />)
 
-      expect(screen.getByText('Sucker deployment failed')).toBeInTheDocument()
+      expect(screen.queryByText('Sucker deployment failed')).not.toBeInTheDocument()
     })
   })
 
@@ -596,15 +605,16 @@ describe('DeployRevnetModal', () => {
       rerender(<DeployRevnetModal {...defaultProps} isOpen={true} />)
 
       expect(mockResetRevnet).toHaveBeenCalled()
-      expect(mockResetSuckers).toHaveBeenCalled()
     })
   })
 
   describe('single chain', () => {
-    it('shows singular text for single chain', () => {
+    it('shows the exact single-chain protocol fee', async () => {
       render(<DeployRevnetModal {...defaultProps} chainIds={[C0]} />)
 
-      expect(screen.getByText(/Revnet deployment on all 1 chain is free/)).toBeInTheDocument()
+      expect(await screen.findByText(/Protocol creation fee included:/)).toHaveTextContent(
+        /0.001 ETH total across 1 chain/,
+      )
     })
 
     it('does not show sucker notice for single chain', () => {

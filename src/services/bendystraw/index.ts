@@ -31,6 +31,7 @@ export {
   fetchProjectMoments,
   fetchAggregatedParticipants,
   fetchMultiChainParticipants,
+  calculateCashOutValue,
   calculateFloorPrice,
   isRevnet,
   isRevnetProject,
@@ -43,6 +44,7 @@ export {
   fetchQueuedRulesets,
   fetchUpcomingRulesetWithMetadata,
   fetchDistributablePayout,
+  fetchProjectAccountingContexts,
   fetchProjectSplits,
   fetchPendingReservedTokens,
   type Project,
@@ -70,8 +72,10 @@ export {
   type SimpleRuleset,
   type QueuedRulesetInfo,
   type JBSplitData,
+  type JBSplitGroupData,
   type FundAccessLimits,
   type ProjectSplitsData,
+  type ProjectAccountingContext,
   type SemanticSearchProject,
 } from './client'
 

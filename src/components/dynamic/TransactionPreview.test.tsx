@@ -96,15 +96,15 @@ describe('TransactionPreview', () => {
       expect(screen.getByText('Review for deployment')).toBeInTheDocument()
     })
 
-    it('renders the execute button', () => {
+    it('does not render an execute button for an unprepared payment', () => {
       render(<TransactionPreview {...defaultProps} />)
-      // Pay action should show Pay button
-      expect(screen.getByRole('button', { name: 'Pay' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Pay' })).not.toBeInTheDocument()
+      expect(screen.getByText(/not prepared by a supported transaction form/i)).toBeInTheDocument()
     })
 
-    it('renders execute button with correct label', () => {
+    it('does not treat a matching action label as transaction authorization', () => {
       render(<TransactionPreview {...defaultProps} />)
-      expect(screen.getByRole('button', { name: 'Pay' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Pay' })).not.toBeInTheDocument()
     })
 
     it('renders project ID when provided', () => {
@@ -129,9 +129,10 @@ describe('TransactionPreview', () => {
     ]
 
     actionButtonPairs.forEach(({ action, label }) => {
-      it(`displays "${label}" button for ${action} action`, () => {
+      it(`blocks an unprepared ${action} action instead of displaying "${label}"`, () => {
         render(<TransactionPreview {...defaultProps} action={action} />)
-        expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument()
+        expect(screen.getByText(/not prepared by a supported transaction form/i)).toBeInTheDocument()
       })
     })
   })
@@ -147,9 +148,9 @@ describe('TransactionPreview', () => {
     ]
 
     actionLabelPairs.forEach(({ action, label }) => {
-      it(`displays "${label}" button for ${action} action`, () => {
+      it(`does not expose "${label}" for an unprepared ${action} action`, () => {
         render(<TransactionPreview {...defaultProps} action={action} />)
-        expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument()
       })
     })
 
@@ -282,35 +283,26 @@ describe('TransactionPreview', () => {
   })
 
   describe('execute action event', () => {
-    it('dispatches juice:execute-action event when execute button is clicked', () => {
+    it('does not dispatch an execution event for an unprepared action', () => {
       const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
       render(<TransactionPreview {...defaultProps} />)
-
-      const executeButton = screen.getByRole('button', { name: 'Pay' })
-      fireEvent.click(executeButton)
 
       const executeCall = dispatchSpy.mock.calls.find(
         call => (call[0] as CustomEvent).type === 'juice:execute-action'
       )
-      expect(executeCall).toBeDefined()
+      expect(executeCall).toBeUndefined()
 
       dispatchSpy.mockRestore()
     })
 
-    it('includes action and parameters in execute event', () => {
+    it('does not forward arbitrary action parameters to a transaction event', () => {
       const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
       render(<TransactionPreview {...defaultProps} />)
-
-      const executeButton = screen.getByRole('button', { name: 'Pay' })
-      fireEvent.click(executeButton)
 
       const executeCall = dispatchSpy.mock.calls.find(
         call => (call[0] as CustomEvent).type === 'juice:execute-action'
       )
-      expect(executeCall).toBeDefined()
-
-      const event = executeCall![0] as CustomEvent
-      expect(event.detail.action).toBe('pay')
+      expect(executeCall).toBeUndefined()
 
       dispatchSpy.mockRestore()
     })
@@ -351,45 +343,24 @@ describe('TransactionPreview', () => {
       }),
     }
 
-    it('displays tier names instead of generic "Tier 1" labels', () => {
+    it('does not present incomplete NFT launch data as deployable tier configuration', () => {
       render(<TransactionPreview {...launch721Props} />)
 
-      // Expand technical details
-      const expandButton = screen.getByText(/Technical Details/i)
-      fireEvent.click(expandButton)
-
-      // Then expand the NFT Tier Hook Configuration section
-      const nftSection = screen.getByText(/NFT Tier Hook Configuration/i)
-      fireEvent.click(nftSection)
-
-      // Should show actual tier names (they appear in the tier list)
-      expect(screen.getByText('Early Supporter')).toBeInTheDocument()
-      expect(screen.getByText('Super Fan')).toBeInTheDocument()
+      expect(screen.queryByText(/NFT Tier Hook Configuration/i)).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Launch Project' })).not.toBeInTheDocument()
     })
 
-    it('displays limited supply correctly', () => {
+    it('does not infer a limited supply deployment from an incomplete launch object', () => {
       render(<TransactionPreview {...launch721Props} />)
-
-      // Expand technical details
-      const expandButton = screen.getByText(/Technical Details/i)
-      fireEvent.click(expandButton)
-
-      // Should show "10" for limited tier
-      expect(screen.getByText(/10 ×/)).toBeInTheDocument()
+      expect(screen.queryByText(/10 ×/)).not.toBeInTheDocument()
     })
 
-    it('displays "Unlimited" for tiers with supply >= 999999999', () => {
+    it('does not infer an unlimited supply deployment from a sentinel value', () => {
       render(<TransactionPreview {...launch721Props} />)
-
-      // Expand technical details
-      const expandButton = screen.getByText(/Technical Details/i)
-      fireEvent.click(expandButton)
-
-      // Should show "Unlimited" for unlimited tier
-      expect(screen.getByText(/Unlimited ×/)).toBeInTheDocument()
+      expect(screen.queryByText(/Unlimited ×/)).not.toBeInTheDocument()
     })
 
-    it('shows correct supply note for limited tiers', () => {
+    it('does not invent a primary-chain supply policy', () => {
       const allLimitedProps = {
         ...launch721Props,
         parameters: JSON.stringify({
@@ -411,15 +382,10 @@ describe('TransactionPreview', () => {
 
       render(<TransactionPreview {...allLimitedProps} />)
 
-      // Expand technical details
-      const expandButton = screen.getByText(/Technical Details/i)
-      fireEvent.click(expandButton)
-
-      // Should show note about limited tiers on primary chain only
-      expect(screen.getByText(/primary chain only/i)).toBeInTheDocument()
+      expect(screen.queryByText(/primary chain only/i)).not.toBeInTheDocument()
     })
 
-    it('shows correct supply note for unlimited tiers', () => {
+    it('does not invent an all-network supply policy', () => {
       const allUnlimitedProps = {
         ...launch721Props,
         parameters: JSON.stringify({
@@ -441,12 +407,7 @@ describe('TransactionPreview', () => {
 
       render(<TransactionPreview {...allUnlimitedProps} />)
 
-      // Expand technical details
-      const expandButton = screen.getByText(/Technical Details/i)
-      fireEvent.click(expandButton)
-
-      // Should show note about unlimited tiers on all networks
-      expect(screen.getByText(/all.*networks/i)).toBeInTheDocument()
+      expect(screen.queryByText(/all.*networks/i)).not.toBeInTheDocument()
     })
   })
 })

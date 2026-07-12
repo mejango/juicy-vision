@@ -1,24 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { encodeFunctionData, type Chain, createPublicClient, http, fallback, type PublicClient } from 'viem'
-import { mainnet, optimism, base, arbitrum } from 'viem/chains'
+import { encodeFunctionData, createPublicClient, http, fallback, isAddress, type Address, type PublicClient } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainSetSplits, type ChainState } from '../../hooks/relayr'
 import { JB_CONTROLLER_ABI } from '../../constants/abis/jbController'
-import { SPLIT_GROUP_RESERVED, getPayoutSplitGroup, NATIVE_TOKEN } from '../../constants/abis/jbSplits'
-import { USDC_ADDRESSES, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
+import { SPLIT_GROUP_RESERVED } from '../../constants/abis/jbSplits'
+import { RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import { getProjectController } from '../../utils/paymentTerminal'
-import ChainPaymentSelector from './ChainPaymentSelector'
+import { assertCurrentRulesetId } from '../../utils/projectTrust'
+import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import { buildSplitGroup } from '../../utils/splitSafety'
+import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
 import TechnicalDetails from '../shared/TechnicalDetails'
-
-const CHAINS: Record<number, Chain> = {
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
-}
+import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 
 const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
   1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
@@ -40,6 +37,9 @@ interface ChainSplitsData {
   projectId: number
   rulesetId: string
   baseCurrency: number
+  payoutGroupId: string | null
+  payoutSplits: JBSplitData[]
+  reservedSplits: JBSplitData[]
   selected: boolean
 }
 
@@ -52,6 +52,7 @@ interface EditableSplit {
   preferAddToBalance: boolean
   lockedUntil: number
   hook: string
+  routeMode: 'wallet' | 'project'
   isLocked: boolean
   isNew: boolean
 }
@@ -78,12 +79,6 @@ interface ChainTxState {
   error?: string
 }
 
-// Convert display percent (0-100) to basis points (0-1_000_000_000)
-function toBasisPoints(displayPercent: string): number {
-  const pct = parseFloat(displayPercent) || 0
-  return Math.floor((pct / 100) * 1_000_000_000)
-}
-
 export default function SetSplitsModal({
   isOpen,
   onClose,
@@ -91,7 +86,6 @@ export default function SetSplitsModal({
   chainSplitsData,
   payoutSplits,
   reservedSplits,
-  baseCurrency,
   onConfirmed,
   onError,
 }: SetSplitsModalProps) {
@@ -101,12 +95,18 @@ export default function SetSplitsModal({
   const { data: walletClient } = useWalletClient()
   const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
-  const { totalEth } = useWalletBalances()
+  const { totalEth, perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Managed mode support
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
+  const reviewedActiveAddress = isManagedMode ? managedAddress : address
+  const { assertCurrentAccount } = useReviewedTransactionAccount(
+    isOpen,
+    reviewedActiveAddress,
+    isManagedMode ? 'managed' : 'self_custody',
+  )
 
   // State for legacy mode (single chain at a time)
   const [chainStates, setChainStates] = useState<ChainTxState[]>([])
@@ -114,7 +114,7 @@ export default function SetSplitsModal({
   const [isStarted, setIsStarted] = useState(false)
 
   // Relayr omnichain mode
-  const [useOmnichain, setUseOmnichain] = useState(true)
+  const [useOmnichain, setUseOmnichain] = useState(false)
   const {
     setSplits,
     bundleState,
@@ -122,7 +122,6 @@ export default function SetSplitsModal({
     isComplete: omnichainComplete,
     hasError: omnichainError,
     reset: resetOmnichain,
-    setPaymentChain,
   } = useOmnichainSetSplits({
     onSuccess: (bundleId, txHashes) => {
       console.log('Omnichain set splits completed:', bundleId, txHashes)
@@ -132,7 +131,9 @@ export default function SetSplitsModal({
     },
   })
 
-  const hasGasBalance = totalEth >= 0.001
+  const hasGasBalance = isManagedMode || (balancesAvailable && chainSplitsData.every(chainData =>
+    (perChain.find(balance => balance.chainId === chainData.chainId)?.eth || 0n) > 0n
+  ))
   const isOmnichain = chainSplitsData.length > 1
   const canProceed = hasGasBalance
 
@@ -194,9 +195,9 @@ export default function SetSplitsModal({
       setCurrentChainIndex(-1)
       setIsStarted(false)
       resetOmnichain()
-      setUseOmnichain(isOmnichain)
+      setUseOmnichain(isManagedMode && isOmnichain)
     }
-  }, [isOpen, chainSplitsData, isOmnichain, resetOmnichain])
+  }, [isOpen, chainSplitsData, isManagedMode, isOmnichain, resetOmnichain])
 
   const updateChainState = useCallback((chainId: number, update: Partial<ChainTxState>) => {
     setChainStates(prev =>
@@ -208,47 +209,62 @@ export default function SetSplitsModal({
     )
   }, [])
 
-  // Build split struct for contract call
-  const buildSplitStruct = (split: EditableSplit) => ({
-    preferAddToBalance: split.preferAddToBalance,
-    percent: toBasisPoints(split.percent),
-    projectId: BigInt(split.projectId || 0),
-    beneficiary: (split.beneficiary || '0x0000000000000000000000000000000000000000') as `0x${string}`,
-    lockedUntil: split.lockedUntil,
-    hook: (split.hook || '0x0000000000000000000000000000000000000000') as `0x${string}`,
-  })
-
   // Build split groups for a chain
-  const buildSplitGroups = (chainData: ChainSplitsData) => {
-    const payoutToken = chainData.baseCurrency === 2
-      ? USDC_ADDRESSES[chainData.chainId as SupportedChainId]
-      : NATIVE_TOKEN
+  const buildSplitGroups = useCallback((chainData: ChainSplitsData) => {
+    if (!chainData.payoutGroupId) throw new Error(`Payout split group unavailable on chain ${chainData.chainId}`)
 
     const groups: Array<{
       groupId: bigint
-      splits: ReturnType<typeof buildSplitStruct>[]
+      splits: ReturnType<typeof buildSplitGroup>
     }> = []
 
     // Payout splits (keyed by token address)
-    const validPayoutSplits = payoutSplits.filter(s => s.percent && parseFloat(s.percent) > 0)
-    if (validPayoutSplits.length > 0) {
-      groups.push({
-        groupId: getPayoutSplitGroup(payoutToken),
-        splits: validPayoutSplits.map(buildSplitStruct),
-      })
-    }
+    groups.push({
+      groupId: BigInt(chainData.payoutGroupId),
+      splits: buildSplitGroup(payoutSplits, 'Payout splits', {
+        kind: 'payout',
+        sourceProjectId: chainData.projectId,
+      }),
+    })
 
     // Reserved splits (always group ID 1)
-    const validReservedSplits = reservedSplits.filter(s => s.percent && parseFloat(s.percent) > 0)
-    if (validReservedSplits.length > 0) {
-      groups.push({
-        groupId: SPLIT_GROUP_RESERVED,
-        splits: validReservedSplits.map(buildSplitStruct),
-      })
-    }
+    groups.push({
+      groupId: SPLIT_GROUP_RESERVED,
+      splits: buildSplitGroup(reservedSplits, 'Reserved-token splits', {
+        kind: 'reserved',
+        sourceProjectId: chainData.projectId,
+      }),
+    })
 
     return groups
-  }
+  }, [payoutSplits, reservedSplits])
+
+  const splitFingerprint = (split: JBSplitData) => [
+    split.percent,
+    split.projectId,
+    split.beneficiary.toLowerCase(),
+    split.preferAddToBalance,
+    split.lockedUntil,
+    split.hook.toLowerCase(),
+  ].join(':')
+
+  const assertReviewedSplitsUnchanged = useCallback(async (chainData: ChainSplitsData) => {
+    const fresh = await fetchProjectSplits(
+      String(chainData.projectId),
+      chainData.chainId,
+      chainData.rulesetId,
+    )
+    const matches = (left: JBSplitData[], right: JBSplitData[]) =>
+      left.length === right.length && left.every((split, index) =>
+        splitFingerprint(split) === splitFingerprint(right[index])
+      )
+    if (
+      !matches(fresh.payoutSplits, chainData.payoutSplits) ||
+      !matches(fresh.reservedSplits, chainData.reservedSplits)
+    ) {
+      throw new Error(`Splits changed on chain ${chainData.chainId}. Close this review and reload.`)
+    }
+  }, [])
 
   // Set splits on a single chain (legacy mode)
   const setSplitsOnChain = useCallback(async (chainData: ChainSplitsData) => {
@@ -261,15 +277,12 @@ export default function SetSplitsModal({
         throw new Error('Wallet not connected')
       }
     }
-
-    const chain = CHAINS[chainData.chainId]
-    if (!chain) {
-      throw new Error(`Unsupported chain: ${chainData.chainId}`)
-    }
-
-    updateChainState(chainData.chainId, { status: 'signing' })
+    const activeAddress = (isManagedMode ? managedAddress : address) as Address | undefined
+    if (!activeAddress || !isAddress(activeAddress)) throw new Error('Active wallet address is invalid')
 
     try {
+      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      await assertReviewedSplitsUnchanged(chainData)
       // Fetch controller address from JBDirectory
       const viemChain = VIEM_CHAINS[chainData.chainId as SupportedChainId]
       const rpcUrls = RPC_ENDPOINTS[chainData.chainId]
@@ -283,18 +296,19 @@ export default function SetSplitsModal({
         transport: fallback(rpcUrls.map(url => http(url))),
       }) as PublicClient
 
-      const controllerAddress = await getProjectController(
-        publicClient,
-        BigInt(chainData.projectId)
-      )
-
-      const txId = addTransaction({
-        type: 'deploy',
-        projectId: String(chainData.projectId),
-        chainId: chainData.chainId,
-        amount: '0',
-        status: 'pending',
-      })
+      const resolveFreshController = async () => {
+        const controller = await getProjectController(
+          publicClient,
+          BigInt(chainData.projectId),
+        )
+        await assertCurrentRulesetId({
+          client: publicClient,
+          projectId: BigInt(chainData.projectId),
+          expectedRulesetId: BigInt(chainData.rulesetId),
+        })
+        return controller
+      }
+      const controllerAddress = await resolveFreshController()
 
       const splitGroups = buildSplitGroups(chainData)
 
@@ -308,23 +322,59 @@ export default function SetSplitsModal({
         ],
       })
 
-      updateChainState(chainData.chainId, { status: 'submitted' })
+      await simulateTransaction({
+        chainId: chainData.chainId,
+        account: activeAddress,
+        to: controllerAddress,
+        data: callData,
+      })
+
+      const txId = addTransaction({
+        type: 'deploy',
+        projectId: String(chainData.projectId),
+        chainId: chainData.chainId,
+        amount: '0',
+        status: 'pending',
+      })
 
       let hash: string
 
       if (isManagedMode) {
+        await assertReviewedSplitsUnchanged(chainData)
+        assertCurrentAccount()
+        updateChainState(chainData.chainId, { status: 'submitted' })
         hash = await executeManagedTransaction(chainData.chainId, controllerAddress, callData, '0')
       } else {
+        updateChainState(chainData.chainId, { status: 'signing' })
         await switchChainAsync({ chainId: chainData.chainId })
+        if (await walletClient!.getChainId() !== chainData.chainId) {
+          throw new Error(`Wallet did not switch to chain ${chainData.chainId}`)
+        }
+        assertCurrentAccount(walletClient!.account?.address)
+        const finalController = await resolveFreshController()
+        if (finalController.toLowerCase() !== controllerAddress.toLowerCase()) {
+          throw new Error(`The project controller changed on chain ${chainData.chainId}`)
+        }
+        await assertReviewedSplitsUnchanged(chainData)
+        await simulateTransaction({
+          chainId: chainData.chainId,
+          account: activeAddress,
+          to: finalController,
+          data: callData,
+        })
+        assertCurrentAccount(walletClient!.account?.address)
         hash = await walletClient!.sendTransaction({
-          to: controllerAddress,
+          to: finalController,
           data: callData,
           value: 0n,
         })
+        updateChainState(chainData.chainId, { status: 'submitted', txHash: hash })
       }
 
+      updateTransaction(txId, { hash, status: isManagedMode ? 'confirmed' : 'submitted' })
+      if (!isManagedMode) await waitForSuccessfulTransaction(chainData.chainId, hash as `0x${string}`)
+      if (!isManagedMode) updateTransaction(txId, { hash, status: 'confirmed' })
       updateChainState(chainData.chainId, { status: 'confirmed', txHash: hash })
-      updateTransaction(txId, { hash, status: 'submitted' })
 
       return hash
     } catch (err) {
@@ -332,12 +382,22 @@ export default function SetSplitsModal({
       updateChainState(chainData.chainId, { status: 'failed', error: errorMessage })
       throw err
     }
-  }, [walletClient, address, payoutSplits, reservedSplits, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress])
+  }, [walletClient, address, buildSplitGroups, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress, assertReviewedSplitsUnchanged, assertCurrentAccount])
 
   // Start the set splits process
   const handleStart = useCallback(async () => {
     const activeAddress = isManagedMode ? managedAddress : address
     if (!activeAddress || chainSplitsData.length === 0) return
+
+    try {
+      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      await Promise.all(chainSplitsData.map(assertReviewedSplitsUnchanged))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not verify the reviewed split configuration'
+      chainSplitsData.forEach(cd => updateChainState(cd.chainId, { status: 'failed', error: message }))
+      onError?.(message)
+      return
+    }
 
     setIsStarted(true)
 
@@ -349,6 +409,9 @@ export default function SetSplitsModal({
           projectId: cd.projectId,
           rulesetId: cd.rulesetId,
           baseCurrency: cd.baseCurrency,
+          payoutGroupId: cd.payoutGroupId,
+          payoutSplits: cd.payoutSplits,
+          reservedSplits: cd.reservedSplits,
         })),
         payoutSplits: payoutSplits.map(s => ({
           percent: s.percent,
@@ -357,6 +420,7 @@ export default function SetSplitsModal({
           preferAddToBalance: s.preferAddToBalance,
           lockedUntil: s.lockedUntil,
           hook: s.hook,
+          isNew: s.isNew,
         })),
         reservedSplits: reservedSplits.map(s => ({
           percent: s.percent,
@@ -365,6 +429,7 @@ export default function SetSplitsModal({
           preferAddToBalance: s.preferAddToBalance,
           lockedUntil: s.lockedUntil,
           hook: s.hook,
+          isNew: s.isNew,
         })),
       })
     } else {
@@ -379,7 +444,7 @@ export default function SetSplitsModal({
       }
       setCurrentChainIndex(-1)
     }
-  }, [walletClient, address, chainSplitsData, setSplitsOnChain, isManagedMode, managedAddress, useOmnichain, isOmnichain, setSplits, payoutSplits, reservedSplits])
+  }, [walletClient, address, chainSplitsData, setSplitsOnChain, isManagedMode, managedAddress, useOmnichain, isOmnichain, setSplits, payoutSplits, reservedSplits, assertReviewedSplitsUnchanged, updateChainState, onError, assertCurrentAccount])
 
   const handleClose = useCallback(() => {
     resetOmnichain()
@@ -387,8 +452,6 @@ export default function SetSplitsModal({
   }, [resetOmnichain, onClose])
 
   if (!isOpen) return null
-
-  const showOmnichainSelector = isOmnichain && !isStarted && !isManagedMode
 
   // Count non-empty splits for display
   const payoutCount = payoutSplits.filter(s => parseFloat(s.percent) > 0).length
@@ -462,37 +525,6 @@ export default function SetSplitsModal({
               {payoutCount === 0 && reservedCount === 0 && <div>Clear all splits</div>}
             </div>
           </div>
-
-          {/* Omnichain mode toggle (for multi-chain) */}
-          {showOmnichainSelector && (
-            <div className={`p-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useOmnichain}
-                  onChange={(e) => setUseOmnichain(e.target.checked)}
-                  className="w-4 h-4 rounded"
-                />
-                <div>
-                  <div className={`text-sm font-medium ${isDark ? 'text-juice-cyan' : 'text-cyan-700'}`}>
-                    Use Relayr for single-signature execution
-                  </div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Pay gas on one chain, execute on all {chainSplitsData.length} chains
-                  </div>
-                </div>
-              </label>
-            </div>
-          )}
-
-          {/* Payment chain selector (for omnichain mode with payment options) */}
-          {useOmnichain && bundleState.paymentOptions.length > 0 && !isStarted && (
-            <ChainPaymentSelector
-              paymentOptions={bundleState.paymentOptions}
-              selectedChainId={bundleState.selectedPaymentChain}
-              onSelect={setPaymentChain}
-            />
-          )}
 
           {/* Chain Status */}
           <div className="space-y-2">
@@ -589,20 +621,14 @@ export default function SetSplitsModal({
           {!isStarted && (
             <>
               {/* Gas balance check */}
-              <div className={`flex justify-between items-center text-sm ${
-                isDark ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                <span>Your ETH balance (for gas)</span>
-                <span className={`font-mono ${!hasGasBalance ? 'text-red-400' : ''}`}>
-                  {formatEthBalance(totalEth)} ETH
-                </span>
-              </div>
-
-              {!hasGasBalance && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                  Insufficient ETH for gas fees
-                </div>
-              )}
+              <GasBalanceStatus
+                balance={totalEth}
+                hasGasBalance={hasGasBalance}
+                loading={balancesLoading}
+                available={balancesAvailable}
+                managed={isManagedMode}
+                isDark={isDark}
+              />
 
               {isOmnichain && !useOmnichain && (
                 <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>

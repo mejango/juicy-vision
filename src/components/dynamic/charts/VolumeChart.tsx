@@ -11,9 +11,7 @@ import {
 import { useThemeStore } from '../../../stores'
 import {
   fetchPayEventsHistory,
-  fetchProject,
   fetchConnectedChains,
-  fetchSuckerGroupBalance,
 } from '../../../services/bendystraw'
 import {
   TimeRange,
@@ -25,7 +23,7 @@ import {
   getChainColor,
   getChainName,
 } from './utils'
-import { resolveAccountingToken, toTokenFloat, formatAxisValue } from '../../../utils/currency'
+import { toTokenFloat, formatAxisValue, type AccountingToken } from '../../../utils/currency'
 import ChainToggleBar from './ChainToggleBar'
 
 interface VolumeChartProps {
@@ -47,6 +45,8 @@ interface DataPoint {
   count: number
   [key: string]: number | string // count_<chainId>, volume_<chainId> for per-chain values
 }
+
+const USD_TOKEN: AccountingToken = { symbol: 'USD', decimals: 18, isUsd: true }
 
 // Aggregate pay events into daily buckets, filling all days in range
 function aggregateByDay(
@@ -129,11 +129,10 @@ export default function VolumeChart({
   const [rawEvents, setRawEvents] = useState<RawEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [projectName, setProjectName] = useState<string>('')
   const [connectedChains, setConnectedChains] = useState<number[]>([])
   const [selectedChains, setSelectedChains] = useState<Set<number> | 'all'>('all')
   const [showBreakdown, setShowBreakdown] = useState(false)
-  const [token, setToken] = useState(resolveAccountingToken())
+  const [volumeAvailable, setVolumeAvailable] = useState(true)
 
   useEffect(() => {
     async function loadData() {
@@ -141,19 +140,6 @@ export default function VolumeChart({
       setError(null)
 
       try {
-        // Fetch project info
-        const project = await fetchProject(projectId, parseInt(chainId))
-
-        // Resolve the accounting token so volume renders in the right unit/decimals
-        const groupBalance = await fetchSuckerGroupBalance(projectId, parseInt(chainId))
-        setToken(resolveAccountingToken(groupBalance.currency, groupBalance.decimals))
-        if (project?.metadata) {
-          const metadata = typeof project.metadata === 'string'
-            ? JSON.parse(project.metadata)
-            : project.metadata
-          setProjectName(metadata?.name || '')
-        }
-
         // Fetch connected chains (sucker group)
         const chains = await fetchConnectedChains(projectId, parseInt(chainId))
 
@@ -170,23 +156,26 @@ export default function VolumeChart({
 
         // Fetch pay events from all chains in parallel
         const allEventsPromises = chainsToFetch.map(async (chain) => {
-          try {
-            const events = await fetchPayEventsHistory(
-              String(chain.projectId),
-              chain.chainId
-            )
-            return events.map(e => ({
-              amount: e.amount,
-              timestamp: e.timestamp,
-              chainId: chain.chainId,
-            }))
-          } catch {
-            return []
-          }
+          const events = await fetchPayEventsHistory(
+            String(chain.projectId),
+            chain.chainId
+          )
+          return events.map(e => ({
+            amount: e.amountUsd && /^\d+$/.test(e.amountUsd) ? e.amountUsd : '0',
+            amountAvailable: !!e.amountUsd && /^\d+$/.test(e.amountUsd),
+            timestamp: e.timestamp,
+            chainId: chain.chainId,
+          }))
         })
 
         const allEventsArrays = await Promise.all(allEventsPromises)
-        const allEvents = allEventsArrays.flat()
+        const indexedEvents = allEventsArrays.flat()
+        setVolumeAvailable(indexedEvents.every(event => event.amountAvailable))
+        const allEvents: RawEvent[] = indexedEvents.map(({ amount, timestamp, chainId }) => ({
+          amount,
+          timestamp,
+          chainId,
+        }))
 
         setRawEvents(allEvents)
       } catch (err) {
@@ -210,8 +199,8 @@ export default function VolumeChart({
       eventsToAggregate = rawEvents.filter(e => (selectedChains as Set<number>).has(e.chainId))
     }
 
-    return aggregateByDay(eventsToAggregate, rangeStart, now, selectedChains !== 'all', token.decimals)
-  }, [rawEvents, range, selectedChains, token.decimals])
+    return aggregateByDay(eventsToAggregate, rangeStart, now, selectedChains !== 'all', USD_TOKEN.decimals)
+  }, [rawEvents, range, selectedChains])
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -308,9 +297,9 @@ export default function VolumeChart({
             <div className="font-mono font-medium">
               {point.count} payment{point.count !== 1 ? 's' : ''}
             </div>
-            {point.volume > 0 && (
+            {volumeAvailable && point.volume > 0 && (
               <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>
-                {formatAxisValue(point.volume, token)}
+                {formatAxisValue(point.volume, USD_TOKEN)}
               </div>
             )}
           </>
@@ -324,7 +313,9 @@ export default function VolumeChart({
                 <div key={cid} className="flex items-center gap-2 mb-1">
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getChainColor(cid) }} />
                   <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>{getChainName(cid)}:</span>
-                  <span className="font-mono">{count} ({formatAxisValue(volume, token)})</span>
+                  <span className="font-mono">
+                    {count}{volumeAvailable ? ` (${formatAxisValue(volume, USD_TOKEN)})` : ''}
+                  </span>
                 </div>
               )
             })}
@@ -475,7 +466,7 @@ export default function VolumeChart({
                   {totals.count} payment{totals.count !== 1 ? 's' : ''}
                 </span>
                 <span>
-                  {formatAxisValue(totals.volume, token)} total
+                  {volumeAvailable ? `${formatAxisValue(totals.volume, USD_TOKEN)} total` : 'USD volume unavailable'}
                 </span>
               </>
             ) : (
@@ -486,7 +477,8 @@ export default function VolumeChart({
                   return (
                     <span key={cid} className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getChainColor(cid) }} />
-                      {getChainName(cid)}: {chainTotals.count} ({formatAxisValue(chainTotals.volume, token)})
+                      {getChainName(cid)}: {chainTotals.count}
+                      {volumeAvailable ? ` (${formatAxisValue(chainTotals.volume, USD_TOKEN)})` : ''}
                     </span>
                   )
                 })}

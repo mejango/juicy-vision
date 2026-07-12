@@ -12,9 +12,26 @@ export const PROJECT_QUERY = `
       suckerGroupId
       metadataUri
       metadata
+      name
+      description
+      projectTagline
+      logoUri
+      coverImageUri
+      infoUri
+      payDisclosure
+      twitter
+      farcaster
+      discord
+      telegram
+      domain
+      tags
+      tokens
       volume
       volumeUsd
       balance
+      token
+      decimals
+      currency
       tokenSupply
       nftsMintedCount
       paymentsCount
@@ -223,7 +240,23 @@ export const PROJECT_RULESET_QUERY = `
       deployer
       isRevnet
       suckerGroupId
+      metadataUri
       metadata
+      handle
+      name
+      description
+      projectTagline
+      logoUri
+      coverImageUri
+      infoUri
+      payDisclosure
+      twitter
+      farcaster
+      discord
+      telegram
+      domain
+      tags
+      tokens
       balance
     }
   }
@@ -338,6 +371,9 @@ export const PROJECT_SUCKER_GROUP_QUERY = `
       balance
       volume
       volumeUsd
+      token
+      decimals
+      currency
       paymentsCount
       suckerGroupId
     }
@@ -363,6 +399,7 @@ export const SUCKER_GROUP_BY_ID_QUERY = `
           volume
           tokenSupply
           paymentsCount
+          token
           decimals
           currency
         }
@@ -459,6 +496,7 @@ export const CASH_OUT_EVENTS_HISTORY_QUERY = `
     ) {
       items {
         reclaimAmount
+        reclaimAmountUsd
         cashOutCount
         timestamp
         from
@@ -474,12 +512,13 @@ export const CASH_OUT_EVENTS_HISTORY_QUERY = `
 
 // Query to get historical per-chain balance snapshots
 export const PROJECT_MOMENTS_QUERY = `
-  query ProjectMoments($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int) {
+  query ProjectMoments($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int, $after: String) {
     projectMoments(
       where: { projectId: $projectId, chainId: $chainId, version: $version }
       limit: $limit
       orderBy: "timestamp"
       orderDirection: "asc"
+      after: $after
     ) {
       items {
         timestamp
@@ -488,12 +527,16 @@ export const PROJECT_MOMENTS_QUERY = `
         volume
         volumeUsd
       }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
     }
   }
 `
 
-// Query to get Revnet operator via permission holders
-// The operator is the address with isRevnetOperator=true and account=REV_DEPLOYER
+// Candidate Revnet operators come from indexed permission-holder events. The
+// current operator is verified against the live REVOwner contract before use.
 export const REVNET_OPERATOR_QUERY = `
   query RevnetOperator($projectId: Int!, $chainId: Int!) {
     permissionHolders(
@@ -504,6 +547,7 @@ export const REVNET_OPERATOR_QUERY = `
       }
       limit: 10
     ) {
+      totalCount
       items {
         operator
         account

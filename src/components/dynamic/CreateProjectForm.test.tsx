@@ -32,6 +32,10 @@ vi.mock('../../services/relayr', () => ({
   calculateSynchronizedStartTime: vi.fn(() => Math.floor(Date.now() / 1000) + 300),
 }))
 
+vi.mock('../../services/ipfsPinning', () => ({
+  pinMetadata: vi.fn().mockResolvedValue('ipfs://QmProjectMetadata'),
+}))
+
 // Mock LaunchProjectModal
 vi.mock('../payment', () => ({
   LaunchProjectModal: vi.fn(({ isOpen, onClose, projectName, chainIds }) =>
@@ -66,22 +70,23 @@ describe('CreateProjectForm', () => {
 
   describe('initial render', () => {
     it('renders the form with header', () => {
-      render(<CreateProjectForm />)
+      render(<CreateProjectForm defaultChainIds={[ALL_CHAIN_IDS[0]]} />)
 
       expect(screen.getByText('Create New Project')).toBeInTheDocument()
     })
 
-    it('renders chain selection with all chains selected by default', () => {
+    it('renders every chain option with a single-chain default', () => {
       render(<CreateProjectForm />)
 
       expect(screen.getByText(ETH_LABEL)).toBeInTheDocument()
       expect(screen.getByText(OP_LABEL)).toBeInTheDocument()
       expect(screen.getByText(BASE_LABEL)).toBeInTheDocument()
       expect(screen.getByText(ARB_LABEL)).toBeInTheDocument()
+      expect(screen.getByText(/Launch on 1 chain/)).toBeInTheDocument()
     })
 
     it('renders project info fields', () => {
-      render(<CreateProjectForm />)
+      render(<CreateProjectForm defaultChainIds={ALL_CHAIN_IDS} />)
 
       expect(screen.getByPlaceholderText('My Project')).toBeInTheDocument()
       expect(screen.getByPlaceholderText('What is this project about?')).toBeInTheDocument()
@@ -97,11 +102,11 @@ describe('CreateProjectForm', () => {
       render(<CreateProjectForm />)
 
       expect(screen.getByText('Gas Sponsored')).toBeInTheDocument()
-      expect(screen.getByText(/Project creation is free/)).toBeInTheDocument()
+      expect(screen.getByText(/exact protocol creation fee is shown before deployment/i)).toBeInTheDocument()
     })
 
     it('renders create button disabled initially', () => {
-      render(<CreateProjectForm />)
+      render(<CreateProjectForm defaultChainIds={ALL_CHAIN_IDS} />)
 
       const button = screen.getByRole('button', { name: /Create Project/i })
       expect(button).toBeDisabled()
@@ -110,7 +115,7 @@ describe('CreateProjectForm', () => {
 
   describe('form validation', () => {
     it('enables create button when project name is filled', async () => {
-      render(<CreateProjectForm />)
+      render(<CreateProjectForm defaultChainIds={[ALL_CHAIN_IDS[0]]} />)
 
       const nameInput = screen.getByPlaceholderText('My Project')
       await user.type(nameInput, 'Test Project')
@@ -120,7 +125,7 @@ describe('CreateProjectForm', () => {
     })
 
     it('disables create button when no chains selected', async () => {
-      render(<CreateProjectForm />)
+      render(<CreateProjectForm defaultChainIds={ALL_CHAIN_IDS} />)
 
       // Fill name
       const nameInput = screen.getByPlaceholderText('My Project')
@@ -144,7 +149,7 @@ describe('CreateProjectForm', () => {
 
   describe('chain selection', () => {
     it('toggles chain selection on click', async () => {
-      render(<CreateProjectForm />)
+      render(<CreateProjectForm defaultChainIds={[ALL_CHAIN_IDS[0]]} />)
 
       const ethButton = screen.getByText(ETH_LABEL)
 
@@ -163,19 +168,14 @@ describe('CreateProjectForm', () => {
     })
 
     it('shows synchronized start time when multiple chains selected', () => {
-      render(<CreateProjectForm />)
+      render(<CreateProjectForm defaultChainIds={ALL_CHAIN_IDS} />)
 
       expect(screen.getByText('Synchronized Start Time')).toBeInTheDocument()
       expect(screen.getByText('All chains activate at the same time')).toBeInTheDocument()
     })
 
     it('hides synchronized start time for single chain', async () => {
-      render(<CreateProjectForm />)
-
-      // Deselect all but one chain
-      await user.click(screen.getByText(OP_LABEL))
-      await user.click(screen.getByText(BASE_LABEL))
-      await user.click(screen.getByText(ARB_LABEL))
+      render(<CreateProjectForm defaultChainIds={[ALL_CHAIN_IDS[0]]} />)
 
       expect(screen.queryByText('Synchronized Start Time')).not.toBeInTheDocument()
     })
@@ -183,7 +183,7 @@ describe('CreateProjectForm', () => {
 
   describe('advanced settings', () => {
     it('toggles advanced settings visibility', async () => {
-      render(<CreateProjectForm />)
+      render(<CreateProjectForm defaultChainIds={ALL_CHAIN_IDS} />)
 
       // Initially hidden
       expect(screen.queryByText('Payout Limit')).not.toBeInTheDocument()
@@ -243,7 +243,7 @@ describe('CreateProjectForm', () => {
     })
 
     it('shows chain count on button for multi-chain', () => {
-      render(<CreateProjectForm />)
+      render(<CreateProjectForm defaultChainIds={ALL_CHAIN_IDS} />)
 
       const button = screen.getByRole('button', { name: /Create Project on 4 Chains/i })
       expect(button).toBeInTheDocument()
@@ -269,23 +269,14 @@ describe('CreateProjectForm', () => {
   })
 
   describe('default props', () => {
-    it('uses default owner from defaultOwner prop', async () => {
-      const { LaunchProjectModal } = await import('../payment')
-      const mockedModal = LaunchProjectModal as Mock
+    it('does not accept an owner override', () => {
+      render(<CreateProjectForm />)
 
-      render(<CreateProjectForm defaultOwner="0xcustom1234567890123456789012345678901234" />)
-
-      const nameInput = screen.getByPlaceholderText('My Project')
-      await user.type(nameInput, 'Test')
-
-      await user.click(screen.getByRole('button', { name: /Create Project/i }))
-
-      // Modal should be called with the default owner
-      expect(mockedModal).toHaveBeenCalled()
+      expect(screen.queryByPlaceholderText(/owner/i)).not.toBeInTheDocument()
     })
 
     it('uses default chain IDs from prop', () => {
-      render(<CreateProjectForm defaultChainIds={[1, 10]} />)
+      render(<CreateProjectForm defaultChainIds={ALL_CHAIN_IDS.slice(0, 2)} />)
 
       // Should only show 2 chains as selected
       expect(screen.getByText(/Launch on 2 chain/)).toBeInTheDocument()
@@ -356,13 +347,12 @@ describe('CreateProjectForm', () => {
 
       const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
 
-      // Provide defaultOwner to make form valid even without wallet connection
-      render(<CreateProjectForm defaultOwner="0x1234567890123456789012345678901234567890" />)
+      render(<CreateProjectForm />)
 
       const nameInput = screen.getByPlaceholderText('My Project')
       await user.type(nameInput, 'Test')
 
-      const button = screen.getByRole('button', { name: /Create Project/i })
+      const button = screen.getByRole('button', { name: /Connect wallet to create/i })
       await user.click(button)
 
       expect(dispatchSpy).toHaveBeenCalledWith(

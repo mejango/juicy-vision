@@ -2166,6 +2166,86 @@ const allSuggestions = [
   'Create chip design',
 ]
 
+const SAFE_WELCOME_SUGGESTIONS = new Set([
+  'What is Juicy?',
+  'How do I start a fundraiser?',
+  'Help me plan my fundraise',
+  'Is it free to create a project?',
+  'Show me how it works',
+  'Walk me through the basics',
+  'How does the money flow?',
+  'Show me successful projects',
+  'Show me trending projects',
+  'Show me creative projects',
+  'What are people building?',
+  'Find something inspiring',
+  'Find a project to support',
+  'What projects need funding?',
+  'Find projects by category',
+  'Discover new projects',
+  'Fund my open source library',
+  'Sustain my GitHub project',
+  'Bootstrap my startup',
+  'Launch my small business',
+  'Fund my side project',
+  'Run a community fundraiser',
+  'Organize a charity drive',
+  'Fund disaster relief',
+  'Fund mutual aid',
+  'Fund my album',
+  'Fund my podcast',
+  'Fund my indie game',
+  'Crowdfund my film',
+  'Fund my art collective',
+  'Fund my documentary',
+  'Fund my newsletter',
+  'Support my journalism',
+  'Fund my book',
+  'Fund my research',
+  'Support my course',
+  'Fund my esports team',
+  'Launch my gaming community',
+  'Can I run a membership program?',
+  'Start a fan club',
+  'Build a paid community',
+  'Fund my community garden',
+  'Fund my community center',
+  'Start a neighborhood project',
+  'Launch my food truck',
+  'Fund my coworking space',
+  'Start my hackerspace',
+  'How do supporters get rewarded?',
+  'How can I reward supporters?',
+  'Can supporters cash out?',
+  'Launch a revnet',
+  'Fund public goods',
+  'Fund protocol development',
+  'Show me a live fundraise',
+  'Pay into a project',
+  'Create a simple project',
+  'Walk me through a payment',
+  'Show me cash out in action',
+])
+
+const SAFE_TRAIT_IDS = new Set<TraitId>([
+  'maker',
+  'artist',
+  'community',
+  'supporter',
+  'entrepreneur',
+  'researcher',
+  'local',
+  'curious',
+  'climate',
+  'health',
+  'creative',
+  'food',
+  'science',
+])
+
+const welcomeTraits = traits.filter(trait => SAFE_TRAIT_IDS.has(trait.id))
+const welcomeSuggestions = allSuggestions.filter(suggestion => SAFE_WELCOME_SUGGESTIONS.has(suggestion))
+
 // POPULAR (cyan) - Entry points, universal appeal, high-value starting questions
 const popularSuggestions = new Set([
   // Core questions everyone asks
@@ -2838,24 +2918,11 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   }, [])
 
   // Get trait labels for mixing into suggestions
-  const traitLabels = traits.map(t => t.label)
+  const traitLabels = welcomeTraits.map(t => t.label)
 
   // Shuffled base list - random on each page load
   const shuffledBase = useMemo(() => {
-    const allWithCategories = [...allSuggestions, ...traitLabels]
-    const shuffled = shuffle(allWithCategories)
-
-    // Keep "Fund mutual aid" and "Start mutual fund" adjacent (fun wordplay)
-    const mutualAidIdx = shuffled.indexOf('Fund mutual aid')
-    const mutualFundIdx = shuffled.indexOf('Start mutual fund')
-    if (mutualAidIdx !== -1 && mutualFundIdx !== -1 && Math.abs(mutualAidIdx - mutualFundIdx) > 1) {
-      // Move mutual fund right after mutual aid
-      shuffled.splice(mutualFundIdx, 1)
-      const newAidIdx = shuffled.indexOf('Fund mutual aid')
-      shuffled.splice(newAidIdx + 1, 0, 'Start mutual fund')
-    }
-
-    return shuffled
+    return shuffle([...welcomeSuggestions, ...traitLabels])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Empty deps = shuffle once on mount
 
@@ -2865,14 +2932,14 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
 
     // When filtering, get keyword-matched suggestions but HIDE ID chips
     const filtered = shuffledBase.filter(suggestion => {
-      const matchingTrait = traits.find(t => t.label === suggestion)
+      const matchingTrait = welcomeTraits.find(t => t.label === suggestion)
       if (matchingTrait) {
         return false // Hide all ID chips when filtering
       }
 
       // Regular suggestion must match ALL selected traits (intersection)
       return Array.from(selectedTraits).every(traitId => {
-        const trait = traits.find(t => t.id === traitId)
+        const trait = welcomeTraits.find(t => t.id === traitId)
         return trait && suggestionMatchesTrait(suggestion, trait)
       })
     })
@@ -2898,7 +2965,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   // Pre-compute chip data for all suggestions (avoids recalculation during scroll)
   const chipDataMap = useMemo(() => {
     const map = new Map<string, ChipData>()
-    const traitLabels = traits.map(tr => tr.label)
+    const traitLabels = welcomeTraits.map(tr => tr.label)
 
     filteredSuggestions.forEach(suggestion => {
       const isCategory = traitLabels.includes(suggestion)
@@ -3174,7 +3241,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       {selectedTraits.size > 0 && (
         <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
             {Array.from(selectedTraits).map(traitId => {
-              const trait = traits.find(t => t.id === traitId)
+              const trait = welcomeTraits.find(t => t.id === traitId)
               if (!trait) return null
               const traitKey = suggestionKeyMap[trait.label]
               const translatedLabel = traitKey ? t(`suggestions.${traitKey}`, trait.label) : trait.label

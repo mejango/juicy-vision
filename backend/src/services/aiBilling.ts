@@ -14,19 +14,30 @@
  * 7. Continue with AI invocation
  */
 
-import { query, queryOne, execute, transaction } from '../db/index.ts';
-import { createPublicClient, http, parseUnits, formatUnits, type Address } from 'viem';
-import { mainnet, optimism, base, arbitrum } from 'viem/chains';
+import { query, queryOne, transaction } from '../db/index.ts';
+import {
+  type Address,
+  decodeEventLog,
+  decodeFunctionData,
+  encodeFunctionData,
+  formatUnits,
+  isAddressEqual,
+  parseUnits,
+} from 'viem';
+import { arbitrum, base, mainnet, optimism } from 'viem/chains';
+import { CONTRACTS, NATIVE_TOKEN as SHARED_NATIVE_TOKEN } from '@shared/chains.ts';
 import { getConfig } from '../utils/config.ts';
-import { MODEL_COSTS, type ClaudeModel } from './claude.ts';
+import { type ClaudeModel, MODEL_COSTS } from './claude.ts';
+import { fetchPrimaryTerminal, getPublicClient } from './chainReader.ts';
+import { getEthUsdRate } from './juice.ts';
+import {
+  requireRecognizedProjectPayConfiguration,
+  requireRecognizedRuntimeHook,
+} from './projectTrust.ts';
 
 // ============================================================================
 // Constants
 // ============================================================================
-
-// NANA Revnet - the project that receives AI payments
-// TODO(v6): update project ID once $JUICY is redeployed on V6
-export const NANA_PROJECT_ID = 1;
 
 // Supported chains for payment
 export const SUPPORTED_CHAINS = {
@@ -36,22 +47,91 @@ export const SUPPORTED_CHAINS = {
   42161: { name: 'Arbitrum', chain: arbitrum, rpc: 'https://arbitrum.llamarpc.com' },
 };
 
-// V6 JBMultiTerminal address (same on every chain via CREATE2)
-export const MULTI_TERMINAL: Record<number, Address> = {
-  1: '0x130f5dd2bd8805443cf41755253d778a75a67f53', // Mainnet
-  10: '0x130f5dd2bd8805443cf41755253d778a75a67f53', // Optimism
-  8453: '0x130f5dd2bd8805443cf41755253d778a75a67f53', // Base
-  42161: '0x130f5dd2bd8805443cf41755253d778a75a67f53', // Arbitrum
-};
-
 // Native token address (constant across all chains)
-export const NATIVE_TOKEN = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as const;
+export const NATIVE_TOKEN = SHARED_NATIVE_TOKEN;
+const RECOGNIZED_MULTI_TERMINAL = CONTRACTS.JBMultiTerminal as Address;
+
+const PAY_ABI = [{
+  name: 'pay',
+  type: 'function',
+  stateMutability: 'payable',
+  inputs: [
+    { name: 'projectId', type: 'uint256' },
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'beneficiary', type: 'address' },
+    { name: 'minReturnedTokens', type: 'uint256' },
+    { name: 'memo', type: 'string' },
+    { name: 'metadata', type: 'bytes' },
+  ],
+  outputs: [{ name: '', type: 'uint256' }],
+}] as const;
+
+const PREVIEW_PAY_ABI = [{
+  name: 'previewPayFor',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [
+    { name: 'projectId', type: 'uint256' },
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'beneficiary', type: 'address' },
+    { name: 'metadata', type: 'bytes' },
+  ],
+  outputs: [
+    {
+      name: 'ruleset',
+      type: 'tuple',
+      components: [
+        { name: 'cycleNumber', type: 'uint256' },
+        { name: 'id', type: 'uint256' },
+        { name: 'basedOnId', type: 'uint256' },
+        { name: 'start', type: 'uint256' },
+        { name: 'duration', type: 'uint256' },
+        { name: 'weight', type: 'uint256' },
+        { name: 'weightCutPercent', type: 'uint256' },
+        { name: 'approvalHook', type: 'address' },
+        { name: 'metadata', type: 'uint256' },
+      ],
+    },
+    { name: 'beneficiaryTokenCount', type: 'uint256' },
+    { name: 'reservedTokenCount', type: 'uint256' },
+    {
+      name: 'hookSpecifications',
+      type: 'tuple[]',
+      components: [
+        { name: 'hook', type: 'address' },
+        { name: 'noop', type: 'bool' },
+        { name: 'amount', type: 'uint256' },
+        { name: 'metadata', type: 'bytes' },
+      ],
+    },
+  ],
+}] as const;
+
+const PAY_EVENT_ABI = [{
+  name: 'Pay',
+  type: 'event',
+  inputs: [
+    { name: 'rulesetId', type: 'uint256', indexed: true },
+    { name: 'rulesetCycleNumber', type: 'uint256', indexed: true },
+    { name: 'projectId', type: 'uint256', indexed: true },
+    { name: 'payer', type: 'address', indexed: false },
+    { name: 'beneficiary', type: 'address', indexed: false },
+    { name: 'amount', type: 'uint256', indexed: false },
+    { name: 'newlyIssuedTokenCount', type: 'uint256', indexed: false },
+    { name: 'memo', type: 'string', indexed: false },
+    { name: 'metadata', type: 'bytes', indexed: false },
+    { name: 'caller', type: 'address', indexed: false },
+  ],
+}] as const;
 
 // Pricing tiers (in ETH)
 export const AI_PRICING = {
   costPerRequest: parseUnits('0.0001', 18), // 0.0001 ETH per AI request (~$0.25)
   minDeposit: parseUnits('0.001', 18), // Minimum 0.001 ETH (~$2.50)
   recommendedDeposit: parseUnits('0.01', 18), // Recommended 0.01 ETH (~$25)
+  maxDeposit: parseUnits('0.1', 18), // Billing top-up guardrail, not a contribution flow
   lowBalanceThreshold: parseUnits('0.0005', 18), // Warn when below 0.0005 ETH
 };
 
@@ -112,9 +192,7 @@ export async function getAiBalanceStatus(chatId: string): Promise<AiBalanceStatu
     chatId,
     balanceWei,
     totalSpentWei,
-    estimatedRequestsRemaining: costPerRequest > 0n
-      ? Number(balanceWei / costPerRequest)
-      : 0,
+    estimatedRequestsRemaining: costPerRequest > 0n ? Number(balanceWei / costPerRequest) : 0,
     isLow: balanceWei <= AI_PRICING.lowBalanceThreshold,
     isEmpty: balanceWei < costPerRequest,
   };
@@ -160,22 +238,27 @@ export async function canInvokeAi(chatId: string): Promise<{
 /**
  * Generate payment data for "squeezing" the bot
  */
-export function generateSqueezePayment(
+export async function generateSqueezePayment(
   chatId: string,
   chainId: number,
   amountWei: bigint,
-  beneficiaryAddress: Address
-): SqueezePaymentData {
-  const terminal = MULTI_TERMINAL[chainId];
-  if (!terminal) {
+  beneficiaryAddress: Address,
+): Promise<SqueezePaymentData> {
+  if (!SUPPORTED_CHAINS[chainId as keyof typeof SUPPORTED_CHAINS]) {
     throw new Error(`Unsupported chain: ${chainId}`);
   }
+  const projectId = getConfig().aiBillingProjectId;
+  if (projectId <= 0) throw new Error('Paid AI billing is not configured');
+  if (amountWei < AI_PRICING.minDeposit || amountWei > AI_PRICING.maxDeposit) {
+    throw new Error('AI top-up amount is outside the supported billing range');
+  }
+  const terminal = await fetchPrimaryTerminal(chainId, projectId, NATIVE_TOKEN);
 
   return {
     chatId,
     chainId,
     terminalAddress: terminal,
-    projectId: NANA_PROJECT_ID,
+    projectId,
     token: NATIVE_TOKEN,
     amountWei,
     memo: `Juicy Vision AI - Chat ${chatId}`,
@@ -186,49 +269,69 @@ export function generateSqueezePayment(
 /**
  * Generate calldata for JBMultiTerminal.pay()
  */
-export function encodePayCalldata(payment: SqueezePaymentData): {
+export async function encodePayCalldata(payment: SqueezePaymentData): Promise<{
   to: Address;
   value: bigint;
   data: `0x${string}`;
-} {
-  // JBMultiTerminal.pay(projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata)
-  const MULTI_TERMINAL_ABI = [{
-    name: 'pay',
-    type: 'function',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'beneficiary', type: 'address' },
-      { name: 'minReturnedTokens', type: 'uint256' },
-      { name: 'memo', type: 'string' },
-      { name: 'metadata', type: 'bytes' },
+}> {
+  const client = getPublicClient(payment.chainId);
+  const discoveredTerminal = await fetchPrimaryTerminal(
+    payment.chainId,
+    payment.projectId,
+    payment.token,
+  );
+  if (!isAddressEqual(discoveredTerminal, payment.terminalAddress)) {
+    throw new Error('Project payment terminal changed');
+  }
+  await requireRecognizedProjectPayConfiguration({
+    client,
+    projectId: BigInt(payment.projectId),
+  });
+  const preview = await client.readContract({
+    account: payment.beneficiary,
+    address: discoveredTerminal,
+    abi: PREVIEW_PAY_ABI,
+    functionName: 'previewPayFor',
+    args: [
+      BigInt(payment.projectId),
+      payment.token,
+      payment.amountWei,
+      payment.beneficiary,
+      '0x',
     ],
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'payable',
-  }] as const;
-
-  // Simple ABI encoding for pay function
-  const selector = '0xfef43257'; // pay(uint256,address,uint256,address,uint256,string,bytes) selector
-
-  // Encode parameters (simplified - in production use viem's encodeFunctionData)
-  const projectIdHex = payment.projectId.toString(16).padStart(64, '0');
-  const tokenHex = payment.token.slice(2).padStart(64, '0');
-  const amountHex = payment.amountWei.toString(16).padStart(64, '0');
-  const beneficiaryHex = payment.beneficiary.slice(2).padStart(64, '0');
-  const minTokensHex = '0'.padStart(64, '0'); // 0 min tokens
-  const memoOffset = (7 * 32).toString(16).padStart(64, '0'); // Offset to memo
-  const metadataOffset = (9 * 32).toString(16).padStart(64, '0'); // Offset to metadata
-
-  // Encode memo string
-  const memoBytes = new TextEncoder().encode(payment.memo);
-  const memoLength = memoBytes.length.toString(16).padStart(64, '0');
-  const memoPadded = Array.from(memoBytes).map(b => b.toString(16).padStart(2, '0')).join('').padEnd(Math.ceil(memoBytes.length / 32) * 64, '0');
-
-  // Empty metadata
-  const metadataLength = '0'.padStart(64, '0');
-
-  const data = `${selector}${projectIdHex}${tokenHex}${amountHex}${beneficiaryHex}${minTokensHex}${memoOffset}${metadataOffset}${memoLength}${memoPadded}${metadataLength}` as `0x${string}`;
+  });
+  for (const specification of preview[3]) {
+    if (!specification.noop) {
+      await requireRecognizedRuntimeHook({
+        client,
+        projectId: BigInt(payment.projectId),
+        rulesetId: preview[0].id,
+        hook: specification.hook,
+      });
+    }
+  }
+  if (preview[1] <= 0n) throw new Error('The payment quote returns no project tokens');
+  const quotedMinimum = (preview[1] * 99n) / 100n;
+  const minReturnedTokens = quotedMinimum > 0n ? quotedMinimum : 1n;
+  const data = encodeFunctionData({
+    abi: PAY_ABI,
+    functionName: 'pay',
+    args: [
+      BigInt(payment.projectId),
+      payment.token,
+      payment.amountWei,
+      payment.beneficiary,
+      minReturnedTokens,
+      payment.memo,
+      '0x',
+    ],
+  });
+  await client.call({
+    account: payment.beneficiary,
+    to: discoveredTerminal,
+    data,
+    value: payment.amountWei,
+  });
 
   return {
     to: payment.terminalAddress,
@@ -245,6 +348,79 @@ export function encodePayCalldata(payment: SqueezePaymentData): {
  * Confirm a payment and credit the chat's AI balance
  */
 export async function confirmPayment(confirmation: PaymentConfirmation): Promise<void> {
+  const configuredProjectId = getConfig().aiBillingProjectId;
+  if (configuredProjectId <= 0) throw new Error('Paid AI billing is not configured');
+  if (confirmation.projectId !== configuredProjectId) {
+    throw new Error('Payment project does not match AI billing');
+  }
+  if (!SUPPORTED_CHAINS[confirmation.chainId as keyof typeof SUPPORTED_CHAINS]) {
+    throw new Error('Unsupported payment chain');
+  }
+
+  const chainClient = getPublicClient(confirmation.chainId);
+  const terminal = await fetchPrimaryTerminal(
+    confirmation.chainId,
+    configuredProjectId,
+    NATIVE_TOKEN,
+  );
+  const [chainTransaction, receipt] = await Promise.all([
+    chainClient.getTransaction({ hash: confirmation.txHash as `0x${string}` }),
+    chainClient.getTransactionReceipt({ hash: confirmation.txHash as `0x${string}` }),
+  ]);
+  if (receipt.status !== 'success') throw new Error('Payment transaction reverted');
+  if (!chainTransaction.to || !isAddressEqual(chainTransaction.to, terminal)) {
+    throw new Error('Payment was not sent to this project terminal');
+  }
+  if (!isAddressEqual(chainTransaction.from, confirmation.payerAddress as Address)) {
+    throw new Error('Payment sender does not match this wallet');
+  }
+  const decoded = decodeFunctionData({ abi: PAY_ABI, data: chainTransaction.input });
+  if (decoded.functionName !== 'pay') throw new Error('Transaction is not a project payment');
+  const [projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata] = decoded.args;
+  if (projectId !== BigInt(configuredProjectId) || !isAddressEqual(token, NATIVE_TOKEN)) {
+    throw new Error('Payment project or token does not match AI billing');
+  }
+  if (
+    amount !== confirmation.amountWei ||
+    chainTransaction.value !== amount ||
+    !isAddressEqual(beneficiary, confirmation.payerAddress as Address)
+  ) {
+    throw new Error('Payment amount or beneficiary does not match the quote');
+  }
+  if (minReturnedTokens <= 0n) throw new Error('Payment has no minimum project-token return');
+  if (memo !== `Juicy Vision AI - Chat ${confirmation.chatId}` || metadata !== '0x') {
+    throw new Error('Payment does not match this AI billing request');
+  }
+
+  let verifiedAmount: bigint | null = null;
+  let verifiedTokens: bigint | null = null;
+  for (const log of receipt.logs) {
+    if (!isAddressEqual(log.address, RECOGNIZED_MULTI_TERMINAL)) continue;
+    try {
+      const event = decodeEventLog({ abi: PAY_EVENT_ABI, data: log.data, topics: log.topics });
+      if (
+        event.eventName === 'Pay' &&
+        event.args.projectId === BigInt(configuredProjectId) &&
+        isAddressEqual(event.args.payer, confirmation.payerAddress as Address) &&
+        isAddressEqual(event.args.beneficiary, confirmation.payerAddress as Address) &&
+        event.args.memo === memo &&
+        event.args.metadata === metadata
+      ) {
+        verifiedAmount = event.args.amount;
+        verifiedTokens = event.args.newlyIssuedTokenCount;
+        break;
+      }
+    } catch {
+      // Ignore unrelated terminal logs.
+    }
+  }
+  if (verifiedAmount === null || verifiedAmount !== confirmation.amountWei) {
+    throw new Error('Confirmed transaction did not emit the expected payment');
+  }
+  if (verifiedTokens === null || verifiedTokens < minReturnedTokens || verifiedTokens <= 0n) {
+    throw new Error('Confirmed payment did not issue the protected project-token minimum');
+  }
+
   await transaction(async (client) => {
     // Check if payment already processed
     const existing = await client.queryObject<{ id: string }>`
@@ -273,7 +449,11 @@ export async function confirmPayment(confirmation: PaymentConfirmation): Promise
       )
     `;
 
-    console.log(`[AI Billing] Credited ${formatUnits(confirmation.amountWei, 18)} ETH to chat ${confirmation.chatId}`);
+    console.log(
+      `[AI Billing] Credited ${
+        formatUnits(confirmation.amountWei, 18)
+      } ETH to chat ${confirmation.chatId}`,
+    );
   });
 }
 
@@ -283,12 +463,12 @@ export async function confirmPayment(confirmation: PaymentConfirmation): Promise
 export function calculateTokenCost(
   model: ClaudeModel,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
+  ethUsdRate: number,
 ): bigint {
   const costs = MODEL_COSTS[model];
   if (!costs) {
-    // Fallback to fixed pricing if model unknown
-    return AI_PRICING.costPerRequest;
+    throw new Error(`AI model pricing is not configured: ${model}`);
   }
 
   // Calculate cost in USD (costs are per 1M tokens)
@@ -296,8 +476,10 @@ export function calculateTokenCost(
   const outputCostUsd = (outputTokens / 1_000_000) * costs.outputPer1M;
   const totalCostUsd = inputCostUsd + outputCostUsd;
 
-  // Convert to ETH (assume 1 ETH = $2500 for simplicity, adjust with oracle in production)
-  const ethPerUsd = 0.0004; // 1 / 2500
+  if (!Number.isFinite(ethUsdRate) || ethUsdRate <= 0) {
+    throw new Error('ETH/USD rate unavailable');
+  }
+  const ethPerUsd = 1 / ethUsdRate;
   const costEth = totalCostUsd * ethPerUsd;
 
   // Convert to wei
@@ -314,7 +496,7 @@ export async function deductAiCost(
   messageId: string,
   model: string,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
 ): Promise<{ success: boolean; newBalance: bigint; costWei: bigint }> {
   const config = getConfig();
 
@@ -324,10 +506,12 @@ export async function deductAiCost(
   }
 
   // Calculate actual cost based on model and tokens
+  const ethUsdRate = await getEthUsdRate();
   const cost = calculateTokenCost(
     model as ClaudeModel,
     inputTokens,
-    outputTokens
+    outputTokens,
+    ethUsdRate,
   );
 
   // Check balance first
@@ -348,7 +532,9 @@ export async function deductAiCost(
     // Record usage with token details
     await client.queryObject`
       INSERT INTO ai_billing (chat_id, type, amount_wei, message_id, model, tokens_used)
-      VALUES (${chatId}, 'usage', ${cost.toString()}, ${messageId}, ${model}, ${inputTokens + outputTokens})
+      VALUES (${chatId}, 'usage', ${cost.toString()}, ${messageId}, ${model}, ${
+      inputTokens + outputTokens
+    })
     `;
   });
 
@@ -377,7 +563,7 @@ export interface BillingRecord {
  */
 export async function getBillingHistory(
   chatId: string,
-  limit = 50
+  limit = 50,
 ): Promise<BillingRecord[]> {
   const records = await query<{
     id: string;
@@ -391,7 +577,7 @@ export async function getBillingHistory(
     created_at: Date;
   }>(
     `SELECT * FROM ai_billing WHERE chat_id = $1 ORDER BY created_at DESC LIMIT $2`,
-    [chatId, limit]
+    [chatId, limit],
   );
 
   return records.map((r) => ({
@@ -423,7 +609,9 @@ The AI assistant needs more juice to continue helping you. Give it a squeeze by 
 **Recommended amount:** ${formatUnits(AI_PRICING.recommendedDeposit, 18)} ETH (~$25)
 **Minimum:** ${formatUnits(AI_PRICING.minDeposit, 18)} ETH
 
-This will enable approximately ${Number(AI_PRICING.recommendedDeposit / AI_PRICING.costPerRequest)} AI requests.`;
+This will enable approximately ${
+      Number(AI_PRICING.recommendedDeposit / AI_PRICING.costPerRequest)
+    } AI requests.`;
   }
 
   if (balance.isLow) {
@@ -442,7 +630,7 @@ Only ${balance.estimatedRequestsRemaining} AI requests remaining. Consider toppi
  */
 export function shouldShowLowBalanceWarning(
   balance: AiBalanceStatus,
-  lastWarningTime?: Date
+  lastWarningTime?: Date,
 ): boolean {
   if (!balance.isLow) return false;
 

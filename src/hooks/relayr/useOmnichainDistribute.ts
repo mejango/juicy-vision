@@ -2,12 +2,13 @@ import { useCallback, useMemo } from 'react'
 import { useOmnichainTransaction } from './useOmnichainTransaction'
 import type { UseOmnichainTransactionOptions, UseOmnichainTransactionReturn } from './types'
 
-export type DistributeType = 'payouts' | 'reserves'
+export type DistributeType = 'reserves'
 
 export interface OmnichainDistributeParams {
   chainIds: number[]
   projectIds: Record<number, number>  // chainId -> projectId
   type: DistributeType
+  controllerAddresses?: Record<number, string>
 }
 
 export interface UseOmnichainDistributeReturn extends Omit<UseOmnichainTransactionReturn, 'execute'> {
@@ -15,21 +16,8 @@ export interface UseOmnichainDistributeReturn extends Omit<UseOmnichainTransacti
 }
 
 /**
- * Hook for distributing payouts or reserved tokens across multiple chains with Relayr.
- * User pays gas on ONE chain, Relayr executes on ALL chains.
- *
- * @example
- * // Distribute payouts on all chains
- * const { distribute, bundleState, isExecuting } = useOmnichainDistribute({
- *   onSuccess: (bundleId, txHashes) => console.log('Distributed on all chains'),
- * })
- *
- * // IMPORTANT: Omnichain projects have DIFFERENT projectIds per chain!
- * await distribute({
- *   chainIds: [1, 10, 8453],
- *   projectIds: { 1: 123, 10: 456, 8453: 789 },  // Different IDs per chain!
- *   type: 'payouts',
- * })
+ * Hook for distributing reserved tokens across multiple chains with Relayr.
+ * Relayr executes the reviewed calls on every selected chain for a managed account.
  *
  * @example
  * // Distribute reserved tokens on all chains
@@ -46,13 +34,14 @@ export function useOmnichainDistribute(
   const transaction = useOmnichainTransaction(options)
 
   const distribute = useCallback(async (params: OmnichainDistributeParams) => {
-    const { chainIds, projectIds, type } = params
+    const { chainIds, projectIds, type, controllerAddresses } = params
 
     await transaction.execute({
       chainIds,
       projectIds,
       distributeConfig: {
         type,
+        controllerAddresses,
       },
     })
   }, [transaction])
@@ -65,7 +54,5 @@ export function useOmnichainDistribute(
     isExpired: transaction.isExpired,
     hasError: transaction.hasError,
     reset: transaction.reset,
-    setPaymentChain: transaction.setPaymentChain,
-    submitPayment: transaction.submitPayment,
   }), [transaction, distribute])
 }

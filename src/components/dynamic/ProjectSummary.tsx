@@ -7,12 +7,15 @@ interface ProjectSummaryProps {
   balance: string // in project's native currency units
   volume: string // in project's native currency units
   paymentsCount: number
+  balanceAvailable?: boolean
+  volumeAvailable?: boolean
+  paymentsAvailable?: boolean
   createdAt?: number // Unix timestamp
   isRevnet?: boolean
   hasNftHook?: boolean
   connectedChainsCount?: number
   ethPrice?: number | null
-  currency?: number // 1 = ETH, 2 = USD
+  currency?: number // 1 = native ETH, 2 = canonical USDC, otherwise token-derived
   decimals?: number // 18 for ETH, 6 for USDC
 }
 
@@ -35,6 +38,9 @@ export default function ProjectSummary({
   balance,
   volume,
   paymentsCount,
+  balanceAvailable = true,
+  volumeAvailable = true,
+  paymentsAvailable = true,
   createdAt,
   isRevnet,
   hasNftHook,
@@ -90,15 +96,15 @@ export default function ProjectSummary({
     }
 
     // Financial snapshot
-    if (volumeNum > 0 || paymentsCount > 0) {
+    if ((volumeAvailable && volumeNum > 0) || (paymentsAvailable && paymentsCount > 0)) {
       let financialPart = ''
 
-      if (volumeStr && volumeNum > 0) {
+      if (volumeAvailable && volumeStr && volumeNum > 0) {
         financialPart = `It has processed ${volumeStr} in total volume`
-        if (paymentsCount > 0) {
+        if (paymentsAvailable && paymentsCount > 0) {
           financialPart += ` across ${paymentsCount.toLocaleString()} payment${paymentsCount === 1 ? '' : 's'}`
         }
-      } else if (paymentsCount > 0) {
+      } else if (paymentsAvailable && paymentsCount > 0) {
         financialPart = `It has received ${paymentsCount.toLocaleString()} payment${paymentsCount === 1 ? '' : 's'}`
       }
 
@@ -108,9 +114,9 @@ export default function ProjectSummary({
     }
 
     // Current state
-    if (balanceNum > 0 && balanceStr) {
+    if (balanceAvailable && balanceNum > 0 && balanceStr) {
       parts.push(`currently holding ${balanceStr} in its treasury`)
-    } else if (balanceNum === 0 && volumeNum > 0) {
+    } else if (balanceAvailable && volumeAvailable && balanceNum === 0 && volumeNum > 0) {
       parts.push(`with funds actively deployed`)
     }
 
@@ -132,14 +138,14 @@ export default function ProjectSummary({
     result += '.'
 
     // Add engagement call if early stage
-    if (paymentsCount < 10 && age && age.days < 30) {
+    if (paymentsAvailable && paymentsCount < 10 && age && age.days < 30) {
       result += ' Be an early supporter!'
-    } else if (paymentsCount >= 100) {
+    } else if (paymentsAvailable && paymentsCount >= 100) {
       result += ' Join a growing community of supporters.'
     }
 
     return result
-  }, [projectName, balance, volume, paymentsCount, createdAt, isRevnet, hasNftHook, connectedChainsCount, ethPrice, currency, decimals])
+  }, [projectName, balance, volume, paymentsCount, balanceAvailable, volumeAvailable, paymentsAvailable, createdAt, isRevnet, hasNftHook, connectedChainsCount, ethPrice, currency, decimals])
 
   return (
     <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>

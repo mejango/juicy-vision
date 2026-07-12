@@ -5,7 +5,8 @@ import { useThemeStore } from '../../stores'
 import * as bendystraw from '../../services/bendystraw'
 
 // Mock wagmi
-vi.mock('wagmi', () => ({
+vi.mock('wagmi', async (importOriginal) => ({
+  ...await importOriginal<typeof import('wagmi')>(),
   useAccount: vi.fn(() => ({
     address: undefined,
     isConnected: false,
@@ -17,11 +18,13 @@ vi.mock('../../services/bendystraw', () => ({
   fetchProject: vi.fn(),
   fetchConnectedChains: vi.fn(),
   fetchIssuanceRate: vi.fn(),
+  fetchProjectAccountingContexts: vi.fn(),
 }))
 
 // Mock IPFS utils
 vi.mock('../../utils/ipfs', () => ({
   resolveIpfsUri: vi.fn((uri) => (uri ? `https://ipfs.io/${uri}` : null)),
+  ipfsGatewayUrls: vi.fn((uri) => (uri ? [`https://ipfs.io/${uri}`] : [])),
 }))
 
 // Mock CashOutModal
@@ -64,6 +67,12 @@ describe('CashOutForm', () => {
     ;(bendystraw.fetchProject as Mock).mockResolvedValue(mockProject)
     ;(bendystraw.fetchConnectedChains as Mock).mockResolvedValue([])
     ;(bendystraw.fetchIssuanceRate as Mock).mockResolvedValue(mockIssuanceRate)
+    ;(bendystraw.fetchProjectAccountingContexts as Mock).mockResolvedValue([{
+      terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
+      token: '0x000000000000000000000000000000000000eeee',
+      decimals: 18,
+      currency: 61166,
+    }])
 
     mockedUseAccount.mockReturnValue({
       address: undefined,

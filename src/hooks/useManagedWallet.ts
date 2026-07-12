@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore } from '../stores'
 import { getPasskeyWallet, getStoredCredentialId } from '../services/passkeyWallet'
+import { keccak256, toBytes } from 'viem'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 const SMART_ACCOUNT_CACHE_KEY = 'juice-smart-account-address'
@@ -273,13 +274,20 @@ export interface RelayrTransaction {
 export async function createManagedRelayrBundle(
   transactions: RelayrTransaction[],
   projectOwner: string,
-  smartAccountAddress?: string
+  smartAccountAddress?: string,
+  reviewedOperationKey?: string,
 ): Promise<{ bundleId: string }> {
   const { token, isAuthenticated, mode } = useAuthStore.getState()
 
   if (!isAuthenticated() || mode !== 'managed' || !token) {
     throw new Error('Not authenticated in managed mode')
   }
+
+  const operationKey = keccak256(toBytes(reviewedOperationKey || JSON.stringify({
+    transactions,
+    projectOwner: projectOwner.toLowerCase(),
+    smartAccountAddress: smartAccountAddress?.toLowerCase() || null,
+  })))
 
   const result = await apiRequest<{ bundleId: string }>(
     '/wallet/relayr-bundle',
@@ -290,6 +298,7 @@ export async function createManagedRelayrBundle(
         transactions,
         owner: projectOwner,
         smartAccountAddress,
+        operationKey,
       }),
     }
   )

@@ -1,5 +1,7 @@
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, queryOne } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
+import { bendystrawEndpointForChain, resolveProjectMetadataForDisplay } from './bendystraw.ts';
+import { formatUnits } from 'viem';
 
 // ============================================================================
 // Trending Context Service
@@ -15,10 +17,23 @@ interface TrendingProject {
   chainId: number;
   name: string | null;
   handle: string | null;
-  volume: string;
-  volumeUsd: string;
-  balance: string;
-  contributorsCount: number;
+  metadataUri?: string;
+  metadata?: unknown;
+  description?: string;
+  projectTagline?: string;
+  logoUri?: string;
+  coverImageUri?: string;
+  infoUri?: string;
+  payDisclosure?: string;
+  twitter?: string;
+  farcaster?: string;
+  discord?: string;
+  telegram?: string;
+  domain?: string;
+  tags?: string[];
+  tokens?: unknown[];
+  volumeUsd: string | null;
+  contributorsCount: number | null;
   trendingScore: string;
 }
 
@@ -39,11 +54,24 @@ const TRENDING_PROJECTS_QUERY = `
       items {
         projectId
         chainId
+        metadataUri
+        metadata
         name
+        description
+        projectTagline
+        logoUri
+        coverImageUri
+        infoUri
+        payDisclosure
+        twitter
+        farcaster
+        discord
+        telegram
+        domain
+        tags
+        tokens
         handle
-        volume
         volumeUsd
-        balance
         contributorsCount
         trendingScore
       }
@@ -62,7 +90,10 @@ async function fetchTrendingProjects(limit = 10): Promise<TrendingProject[]> {
     return [];
   }
 
-  const endpoint = `https://bendystraw.xyz/${config.bendystrawApiKey}/graphql`;
+  const endpoint = bendystrawEndpointForChain(
+    config.bendystrawApiKey,
+    config.isTestnet ? 11155111 : 1,
+  );
 
   try {
     const response = await fetch(endpoint, {
@@ -86,7 +117,18 @@ async function fetchTrendingProjects(limit = 10): Promise<TrendingProject[]> {
       return [];
     }
 
-    return result.data?.projects?.items ?? [];
+    const projects: TrendingProject[] = result.data?.projects?.items ?? [];
+    return await Promise.all(projects.map(async (project) => {
+      const resolved = await resolveProjectMetadataForDisplay({
+        indexedMetadata: project.metadata,
+        indexedFields: project,
+        indexedMetadataUri: project.metadataUri,
+      });
+      return {
+        ...project,
+        name: resolved.metadata?.name ?? null,
+      };
+    }));
   } catch (error) {
     console.error('[TrendingContext] Error fetching trending projects:', error);
     return [];
@@ -103,14 +145,22 @@ function formatAsContext(projects: TrendingProject[]): string {
 
   const lines = projects.map((p, i) => {
     const name = p.name || p.handle || `Project ${p.projectId}`;
-    const volumeUsd = parseFloat(p.volumeUsd || '0');
-    const balance = parseFloat(p.balance || '0');
-    const ethBalance = (balance / 1e18).toFixed(2);
-    const formattedVolume = volumeUsd >= 1000
-      ? `$${(volumeUsd / 1000).toFixed(1)}k`
-      : `$${volumeUsd.toFixed(0)}`;
+    let formattedVolume = 'volume unavailable';
+    if (typeof p.volumeUsd === 'string' && /^\d+$/.test(p.volumeUsd)) {
+      const volumeUsd = Number(formatUnits(BigInt(p.volumeUsd), 18));
+      if (Number.isFinite(volumeUsd)) {
+        formattedVolume = volumeUsd >= 1000
+          ? `$${(volumeUsd / 1000).toFixed(1)}k volume`
+          : `$${volumeUsd.toFixed(2)} volume`;
+      }
+    }
+    const contributors = Number.isSafeInteger(p.contributorsCount) && p.contributorsCount! >= 0
+      ? `${p.contributorsCount} contributors`
+      : 'contributors unavailable';
 
-    return `${i + 1}. **${name}** (ID: ${p.projectId}, Chain: ${p.chainId}) - ${formattedVolume} volume, ${ethBalance} ETH balance, ${p.contributorsCount} contributors`;
+    return `${
+      i + 1
+    }. **${name}** (ID: ${p.projectId}, Chain: ${p.chainId}) - ${formattedVolume}, ${contributors}`;
   });
 
   return lines.join('\n');
@@ -140,7 +190,7 @@ export async function refreshTrendingContext(): Promise<{
      VALUES ($1, $2, $3)
      ON CONFLICT (cache_key) DO UPDATE
      SET content = $2, expires_at = $3, created_at = NOW()`,
-    [CACHE_KEY, markdown, expiresAt]
+    [CACHE_KEY, markdown, expiresAt],
   );
 
   console.log(`[TrendingContext] Cached ${projects.length} trending projects`);
@@ -156,7 +206,7 @@ export async function getTrendingContext(): Promise<string | null> {
     `SELECT content, expires_at
      FROM context_cache
      WHERE cache_key = $1 AND expires_at > NOW()`,
-    [CACHE_KEY]
+    [CACHE_KEY],
   );
 
   return row?.content ?? null;

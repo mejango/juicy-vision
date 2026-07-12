@@ -22,19 +22,36 @@ export * from './metadata.ts';
 export * from '../reference/index.ts';
 
 import { CHAINS_CONTEXT, CHAINS_HINTS, CHAINS_TOKEN_ESTIMATE } from './chains.ts';
-import { V6_ADDRESSES_CONTEXT, V6_ADDRESSES_HINTS, V6_ADDRESSES_TOKEN_ESTIMATE } from './v6Addresses.ts';
+import {
+  V6_ADDRESSES_CONTEXT,
+  V6_ADDRESSES_HINTS,
+  V6_ADDRESSES_TOKEN_ESTIMATE,
+} from './v6Addresses.ts';
 import { TERMINALS_CONTEXT, TERMINALS_HINTS, TERMINALS_TOKEN_ESTIMATE } from './terminals.ts';
-import { SPLITS_LIMITS_CONTEXT, SPLITS_LIMITS_HINTS, SPLITS_LIMITS_TOKEN_ESTIMATE } from './splitsLimits.ts';
+import {
+  SPLITS_LIMITS_CONTEXT,
+  SPLITS_LIMITS_HINTS,
+  SPLITS_LIMITS_TOKEN_ESTIMATE,
+} from './splitsLimits.ts';
 import { NFT_TIERS_CONTEXT, NFT_TIERS_HINTS, NFT_TIERS_TOKEN_ESTIMATE } from './nftTiers.ts';
-import { REVNET_PARAMS_CONTEXT, REVNET_PARAMS_HINTS, REVNET_PARAMS_TOKEN_ESTIMATE } from './revnetParams.ts';
+import {
+  REVNET_PARAMS_CONTEXT,
+  REVNET_PARAMS_HINTS,
+  REVNET_PARAMS_TOKEN_ESTIMATE,
+} from './revnetParams.ts';
 import { RULESETS_CONTEXT, RULESETS_HINTS, RULESETS_TOKEN_ESTIMATE } from './rulesets.ts';
 import { DEPLOYMENT_CONTEXT, DEPLOYMENT_HINTS, DEPLOYMENT_TOKEN_ESTIMATE } from './deployment.ts';
 import { METADATA_CONTEXT, METADATA_HINTS, METADATA_TOKEN_ESTIMATE } from './metadata.ts';
 import {
-  REFERENCE_MODULES,
-  ADDRESSES_CONTEXT, ADDRESSES_HINTS, ADDRESSES_TOKEN_ESTIMATE,
-  CURRENCIES_CONTEXT, CURRENCIES_HINTS, CURRENCIES_TOKEN_ESTIMATE,
-  STRUCTURES_CONTEXT, STRUCTURES_HINTS, STRUCTURES_TOKEN_ESTIMATE,
+  ADDRESSES_CONTEXT,
+  ADDRESSES_HINTS,
+  ADDRESSES_TOKEN_ESTIMATE,
+  CURRENCIES_CONTEXT,
+  CURRENCIES_HINTS,
+  CURRENCIES_TOKEN_ESTIMATE,
+  STRUCTURES_CONTEXT,
+  STRUCTURES_HINTS,
+  STRUCTURES_TOKEN_ESTIMATE,
 } from '../reference/index.ts';
 
 /**
@@ -61,7 +78,7 @@ export const TRANSACTION_SUB_MODULES: SubModule[] = [
     content: V6_ADDRESSES_CONTEXT,
     hints: V6_ADDRESSES_HINTS,
     tokenEstimate: V6_ADDRESSES_TOKEN_ESTIMATE,
-    description: 'V6 contract addresses (same on every chain), including sucker deployers',
+    description: 'V6 discovery roots and runtime-owned routing policy',
   },
   {
     id: 'terminals',
@@ -118,14 +135,14 @@ export const TRANSACTION_SUB_MODULES: SubModule[] = [
     content: ADDRESSES_CONTEXT,
     hints: ADDRESSES_HINTS,
     tokenEstimate: ADDRESSES_TOKEN_ESTIMATE,
-    description: 'All contract addresses (single source of truth)',
+    description: 'JBDirectory/JBProjects discovery roots',
   },
   {
     id: 'ref_currencies',
     content: CURRENCIES_CONTEXT,
     hints: CURRENCIES_HINTS,
     tokenEstimate: CURRENCIES_TOKEN_ESTIMATE,
-    description: 'Currency codes and groupId rules (single source of truth)',
+    description: 'Currency and group semantics; values are runtime-derived',
   },
   {
     id: 'ref_structures',
@@ -140,14 +157,14 @@ export const TRANSACTION_SUB_MODULES: SubModule[] = [
  * Get sub-module by ID
  */
 export function getSubModule(id: string): SubModule | undefined {
-  return TRANSACTION_SUB_MODULES.find(m => m.id === id);
+  return TRANSACTION_SUB_MODULES.find((m) => m.id === id);
 }
 
 /**
  * Get all sub-module IDs
  */
 export function getSubModuleIds(): string[] {
-  return TRANSACTION_SUB_MODULES.map(m => m.id);
+  return TRANSACTION_SUB_MODULES.map((m) => m.id);
 }
 
 /**
@@ -201,9 +218,9 @@ export function matchSubModulesByKeywords(text: string): string[] {
 export const TRANSACTION_CORE = `
 ## Transaction Requirements
 
-**SPEED:** When generating transaction-preview, do NOT call any tools. All information should already be in the conversation. Tool calls add latency - just use what you know.
+**FRESHNESS AND TRUST:** For an existing project, use only JBDirectory and JBProjects as hardcoded discovery roots. Immediately before the action, derive the current controller, terminals, accounting contexts, dependencies, ruleset hooks, 721 hook, and split hooks from live project state. Every actionable singleton must both match that live state and be explicitly recognized by Juicy. For clone-type 721, Defifa, and LP split hooks, derive the address registry from a recognized deployer and require that registry to identify the same recognized deployer for the clone. Any unknown contract blocks unconditionally. ABI compatibility, ERC-165/interface support, bytecode shape, successful reads, and successful simulation do not establish trust. Never call \`pay\` or any other function on an unknown contract, guess a fallback, or auto-correct an address. Also verify permissions, active ruleset, token/currency, and amounts from Bendystraw or chain unless that exact state was just fetched.
 
-(See "Transaction Safety" section in BASE_PROMPT for the 4 most critical rules and self-validation checklist)
+(See "Transaction Safety" section in BASE_PROMPT for the 5 most critical rules and self-validation checklist)
 
 ### All Transactions Checklist
 
@@ -215,10 +232,14 @@ export const TRANSACTION_CORE = `
 - [ ] Irreversible warned
 - [ ] Chain confirmed
 - [ ] Amounts with units
+- [ ] Existing-project targets freshly discovered and explicitly recognized
 
-Fails? Don't show button - explain and offer guidance.
+Fails? Do not show an execution button. State the unavailable or unsupported
+configuration plainly without suggesting a fallback contract.
 
-**transaction-preview explanation:** Keep it SHORT (1 sentence max). The UI shows rich preview sections for project info, tiers, and funding - the explanation is just a brief summary.
+Use only the dedicated guarded form for the requested operation. Never emit raw
+calldata, target addresses, or a generic transaction-preview for an
+existing-project write.
 
 **NEVER mention in explanation:**
 - Blockchain names (Ethereum, Optimism, Base, Arbitrum)
@@ -226,8 +247,8 @@ Fails? Don't show button - explain and offer guidance.
 - Contract names or addresses
 - IPFS, metadata, parameters
 
-**Good explanation:** "Launch your bike repair collective. Supporters who contribute $5+ get a free tune-up."
-**Bad explanation:** "Launch your bike repair collective funding project on Ethereum, Optimism, Base, and Arbitrum..."
+**Good explanation:** "Launch your bike repair fundraiser with a $5 tune-up reward."
+**Bad explanation:** "Deploy these parameters to this contract on four chains."
 
 ### action-button
 

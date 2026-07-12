@@ -22,6 +22,7 @@ import {
   type RevnetStage,
 } from '../../services/bendystraw'
 import { resolveAccountingToken } from '../../utils/currency'
+import { deriveCycledWeight, issuancePriceFromWeight } from '../../utils/rulesetMath'
 
 type RangeValue = '3m' | '6m' | '1y' | '2y' | '5y' | '10y' | 'all'
 
@@ -86,12 +87,13 @@ function calculatePriceAtTimestamp(timestamp: number, rulesets: Ruleset[]): numb
 
   const elapsed = timestamp - active.start
   const cycles = active.duration > 0 ? Math.floor(elapsed / active.duration) : 0
-  const weight = parseFloat(active.weight) / 1e18
-
-  if (weight <= 0) return undefined
-
-  const currentWeight = weight * Math.pow(1 - active.weightCutPercent, cycles)
-  return currentWeight > 0 ? 1 / currentWeight : undefined
+  try {
+    return issuancePriceFromWeight(
+      deriveCycledWeight(active.weight, active.weightCutPercent, cycles),
+    )
+  } catch {
+    return undefined
+  }
 }
 
 export default function PriceChart({
@@ -132,6 +134,15 @@ export default function PriceChart({
 
         // Resolve the accounting currency (ETH vs USDC) the price is denominated in
         const groupBalance = await fetchSuckerGroupBalance(projectId, parseInt(chainId))
+        if (groupBalance.balanceAvailable === false) {
+          throw new Error('Issuance denomination unavailable')
+        }
+        if (project.currentRuleset.useDataHookForPay) {
+          throw new Error('Issuance price unavailable because this project uses a payment hook')
+        }
+        if (project.currentRuleset.baseCurrency !== groupBalance.currency) {
+          throw new Error('Issuance price unavailable because this project converts payment currencies')
+        }
         setAccountingToken(resolveAccountingToken(groupBalance.currency, groupBalance.decimals))
 
         // Check if this is a Revnet - if so, fetch stages
@@ -147,7 +158,7 @@ export default function PriceChart({
               start: stage.startsAtOrAfter,
               duration: stage.issuanceDecayFrequency,
               weight: stage.initialIssuance,
-              weightCutPercent: stage.issuanceDecayPercent / 1e9, // Convert from basis points
+              weightCutPercent: stage.issuanceDecayPercent,
             }))
             setRulesets(stageRulesets)
 
@@ -171,11 +182,14 @@ export default function PriceChart({
         )
 
         if (history.length > 0) {
+          if (history.some(entry => entry.useDataHookForPay || entry.baseCurrency !== groupBalance.currency)) {
+            throw new Error('Issuance history includes pricing rules this chart cannot represent')
+          }
           const historyRulesets: Ruleset[] = history.map((r: RulesetHistoryEntry) => ({
             start: r.start,
             duration: r.duration,
             weight: r.weight,
-            weightCutPercent: r.weightCutPercent / 1e9, // Convert from stored format
+            weightCutPercent: r.weightCutPercent,
           }))
           setRulesets(historyRulesets)
 
@@ -189,12 +203,13 @@ export default function PriceChart({
           // Fallback to current ruleset only
           const current = project.currentRuleset
           setRulesets([{
-            start: current.start || Math.floor(Date.now() / 1000) - 86400 * 30,
+            start: current.start || 0,
             duration: current.duration,
             weight: current.weight,
-            weightCutPercent: parseFloat(current.decayPercent) / 1e9,
+            weightCutPercent: current.weightCutPercent ?? parseFloat(current.decayPercent),
           }])
-          setStages([{ name: 'Cycle 1', start: current.start || Math.floor(Date.now() / 1000) }])
+          if (!current.start) throw new Error('Current ruleset start is unavailable')
+          setStages([{ name: `Cycle ${current.cycleNumber || 1}`, start: current.start }])
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load price data')
@@ -221,7 +236,7 @@ export default function PriceChart({
 
     // Center "now" in the middle: always use symmetric range around now
     const desiredStart = now - rangeSeconds / 2
-    const desiredEnd = now + rangeSeconds / 2
+    const desiredEnd = showHistory ? now : now + rangeSeconds / 2
 
     // Data generation starts from project start (can't have data before project exists)
     const dataStart = Math.max(projectStart, desiredStart)
@@ -238,15 +253,6 @@ export default function PriceChart({
 
     if (dataPoints.length === 0) {
       return { chartData: [], stageAreas: [], sortedStages: [], todayTimestamp: null, chartDomain: [0, 1] as [number, number] }
-    }
-
-    // Extend first data point back to chart start to fill dead space
-    // Shows the initial issuance price for the period before project started
-    if (dataPoints.length > 0 && dataPoints[0].timestamp > desiredStart) {
-      dataPoints.unshift({
-        timestamp: desiredStart,
-        price: dataPoints[0].price,
-      })
     }
 
     // Use timestamp directly as X (no visual scaling) - this keeps "now" centered
@@ -275,7 +281,7 @@ export default function PriceChart({
       .filter((a): a is StageArea => a !== null)
 
     return { chartData, stageAreas, sortedStages, todayTimestamp: now, chartDomain }
-  }, [rulesets, stages, range])
+  }, [rulesets, stages, range, showHistory])
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: DataPoint; value: number }> }) => {
@@ -335,7 +341,7 @@ export default function PriceChart({
         }`}>
           <div>
             <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {showHistory ? 'Issuance History' : 'Issuance Price Forecast'}
+              {showHistory ? 'Issuance History' : 'Current Rules Forecast'}
             </span>
           </div>
           <div className="flex items-center gap-2">

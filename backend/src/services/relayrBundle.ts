@@ -10,29 +10,37 @@
  */
 
 import {
-  createPublicClient,
-  encodeFunctionData,
-  http,
-  getContract,
   type Address,
   type Chain,
+  createPublicClient,
+  encodeFunctionData,
+  getContract,
   type Hex,
+  http,
 } from 'viem';
-import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
+import { type PrivateKeyAccount, privateKeyToAccount } from 'viem/accounts';
+import process from 'node:process';
 import {
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
   mainnet,
   optimism,
-  arbitrum,
-  base,
-  sepolia,
   optimismSepolia,
-  baseSepolia,
-  arbitrumSepolia,
+  sepolia,
 } from 'viem/chains';
 import { getConfig } from '../utils/config.ts';
 import { logger } from '../utils/logger.ts';
+import { createHash } from 'node:crypto';
+import { execute, queryOne } from '../db/index.ts';
 import { getSigningKey } from './encryption.ts';
-import { getFactoryDeployData } from './smartAccounts.ts';
+import {
+  deriveSmartAccountAddress,
+  getFactoryDeployData,
+  getOrCreateSmartAccount,
+} from './smartAccounts.ts';
+import { assertManagedTransactionAllowed } from './transactionPolicy.ts';
 
 // ============================================================================
 // Chain Configuration
@@ -69,7 +77,8 @@ const RPC_URLS: Record<number, string> = {
 // ============================================================================
 
 // TrustedForwarder address (same on all chains)
-const ERC2771_FORWARDER_ADDRESS = '0xc29d6995ab3b0df4650ad643adeac55e7acbb566' as const;
+// Canonical Juicebox V6 forwarder from deploy-all-v6 deployment artifacts.
+const ERC2771_FORWARDER_ADDRESS = '0x3ba60b60933916a7c87d0860dcee62a0ce34e3e2' as const;
 
 // Minimal ABI for ERC2771Forwarder
 const ERC2771_FORWARDER_ABI = [
@@ -156,6 +165,7 @@ export interface CreateBundleParams {
   transactions: RelayrTransaction[];
   owner: string;
   smartAccountAddress?: string; // Route through smart account's execute() for managed wallets
+  operationKey: string;
 }
 
 // ============================================================================
@@ -190,9 +200,47 @@ function getPublicClient(chainId: number) {
  * - Signs ERC-2771 forward request targeting the contract directly
  * - _msgSender() inside target = reserves EOA
  */
-export async function createRelayrBundle(params: CreateBundleParams): Promise<{ bundleId: string }> {
-  const { userId, transactions, owner, smartAccountAddress } = params;
+export async function createRelayrBundle(
+  params: CreateBundleParams,
+): Promise<{ bundleId: string }> {
+  const { userId, transactions, owner, smartAccountAddress, operationKey } = params;
   const config = getConfig();
+  const requestHash = createHash('sha256').update(JSON.stringify({
+    transactions: transactions.map((transaction) => ({
+      chainId: transaction.chainId,
+      target: transaction.target.toLowerCase(),
+      data: transaction.data.toLowerCase(),
+      value: BigInt(transaction.value).toString(),
+    })),
+    owner: owner.toLowerCase(),
+    smartAccountAddress: smartAccountAddress?.toLowerCase() || null,
+  })).digest('hex');
+
+  if (operationKey) {
+    const existing = await queryOne<{
+      request_hash: string;
+      status: string;
+      bundle_id: string | null;
+    }>(
+      `SELECT request_hash, status, bundle_id
+       FROM relayr_bundle_operations
+       WHERE user_id = $1 AND operation_key = $2`,
+      [userId, operationKey],
+    );
+    if (existing) {
+      if (existing.request_hash !== requestHash) {
+        throw new Error('Operation key is already bound to a different transaction set');
+      }
+      if (existing.status === 'created' && existing.bundle_id) {
+        return { bundleId: existing.bundle_id };
+      }
+      if (existing.status === 'creating' || existing.status === 'uncertain') {
+        throw new Error(
+          'This operation was already submitted and cannot be safely submitted again',
+        );
+      }
+    }
+  }
 
   // Validate required env vars
   if (!RELAYR_API_URL) {
@@ -205,10 +253,67 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     throw new Error('RELAYR_API_KEY not configured');
   }
 
-  // Get signing account: prefer user's stored signing key, fall back to reserves
+  const requestedOwner = owner.toLowerCase();
+  const uniqueChainIds = [...new Set(transactions.map((tx) => tx.chainId))];
+  if (uniqueChainIds.length !== transactions.length) {
+    throw new Error('A managed bundle may contain only one reviewed transaction per chain');
+  }
+  if (!smartAccountAddress) {
+    for (const chainId of uniqueChainIds) {
+      const account = await getOrCreateSmartAccount(userId, chainId);
+      if (account.custodyStatus !== 'managed') {
+        throw new Error(`Account on chain ${chainId} is not managed`);
+      }
+      if (account.address.toLowerCase() !== requestedOwner) {
+        throw new Error(
+          `Project owner is not the authenticated user's managed account on chain ${chainId}`,
+        );
+      }
+    }
+  }
+
+  for (const tx of transactions) {
+    await assertManagedTransactionAllowed({
+      chainId: tx.chainId,
+      to: tx.target as Address,
+      data: tx.data as Hex,
+      value: BigInt(tx.value),
+      expectedAccount: (smartAccountAddress || owner) as Address,
+    });
+  }
+
+  // Existing-project calls routed through a smart account must be signed by
+  // that account's configured owner. Direct launch calls may use the user's
+  // stored signing key because project ownership is explicit in their calldata.
   let signingAccount: PrivateKeyAccount;
 
-  {
+  if (smartAccountAddress) {
+    const reservesKey = config.reservesPrivateKey as `0x${string}`;
+    if (!reservesKey) {
+      throw new Error('RESERVES_PRIVATE_KEY not configured for managed smart-account routing');
+    }
+    signingAccount = privateKeyToAccount(reservesKey);
+
+    const requestedAddress = smartAccountAddress.toLowerCase();
+    for (const chainId of uniqueChainIds) {
+      const [account, derivedAddress] = await Promise.all([
+        getOrCreateSmartAccount(userId, chainId),
+        deriveSmartAccountAddress(userId, chainId, signingAccount.address),
+      ]);
+      if (account.custodyStatus !== 'managed') {
+        throw new Error(`Smart account on chain ${chainId} is not managed`);
+      }
+      if (
+        account.address.toLowerCase() !== requestedAddress ||
+        derivedAddress.toLowerCase() !== requestedAddress
+      ) {
+        throw new Error(
+          `Smart account address is not the authenticated user's account on chain ${chainId}`,
+        );
+      }
+    }
+    logger.info('Using managed account owner key', { userId, signer: signingAccount.address });
+  } else {
     const userSigningKey = await getSigningKey(userId);
     if (userSigningKey) {
       signingAccount = privateKeyToAccount(userSigningKey);
@@ -216,10 +321,15 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     } else {
       const reservesKey = config.reservesPrivateKey as `0x${string}`;
       if (!reservesKey) {
-        throw new Error('No signing key available: user has no stored key and RESERVES_PRIVATE_KEY not configured');
+        throw new Error(
+          'No signing key available: user has no stored key and RESERVES_PRIVATE_KEY not configured',
+        );
       }
       signingAccount = privateKeyToAccount(reservesKey);
-      logger.info('Using reserves signing key (no user key stored)', { userId, signer: signingAccount.address });
+      logger.info('Using reserves signing key (no user key stored)', {
+        userId,
+        signer: signingAccount.address,
+      });
     }
   }
 
@@ -228,7 +338,7 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     owner,
     smartAccount: smartAccountAddress || 'none',
     chainCount: transactions.length,
-    chains: transactions.map(tx => tx.chainId),
+    chains: transactions.map((tx) => tx.chainId),
   });
 
   // Build the raw transactions to wrap with ERC-2771.
@@ -243,7 +353,7 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
 
   if (smartAccountAddress) {
     // Include factory deployment on each chain (idempotent - no-op if already deployed)
-    const uniqueChainIds = [...new Set(transactions.map(tx => tx.chainId))];
+    const uniqueChainIds = [...new Set(transactions.map((tx) => tx.chainId))];
     for (const chainId of uniqueChainIds) {
       const deployData = getFactoryDeployData(signingAccount.address, userId);
       rawTransactions.push({
@@ -303,7 +413,7 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     // Each signed forward request increments the nonce, so we need to track
     // the expected nonce across multiple txs on the same chain
     const baseNonce = await forwarderContract.read.nonces([signerAddress]);
-    const chainTxCount = wrappedTransactions.filter(w => w.chain === tx.chainId).length;
+    const chainTxCount = wrappedTransactions.filter((w) => w.chain === tx.chainId).length;
     const nonce = baseNonce + BigInt(chainTxCount);
 
     const deadline = Math.floor(Date.now() / 1000) + ERC2771_DEADLINE_DURATION_SECONDS;
@@ -377,17 +487,71 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     smartAccount: smartAccountAddress || 'none',
   });
 
-  const response = await fetch(`${RELAYR_API_URL}/v1/bundle/balance`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(RELAYR_API_KEY ? { 'x-api-key': RELAYR_API_KEY } : {}),
-    },
-    body: JSON.stringify(bundleRequest),
-  });
+  if (operationKey) {
+    const claimed = await queryOne<{ id: string }>(
+      `INSERT INTO relayr_bundle_operations
+         (user_id, operation_key, request_hash, status)
+       VALUES ($1, $2, $3, 'creating')
+       ON CONFLICT (user_id, operation_key) DO UPDATE
+         SET status = 'creating', error_message = NULL, updated_at = NOW()
+         WHERE relayr_bundle_operations.request_hash = EXCLUDED.request_hash
+           AND relayr_bundle_operations.status = 'rejected'
+       RETURNING id`,
+      [userId, operationKey, requestHash],
+    );
+    if (!claimed) {
+      const existing = await queryOne<{
+        request_hash: string;
+        status: string;
+        bundle_id: string | null;
+      }>(
+        `SELECT request_hash, status, bundle_id
+         FROM relayr_bundle_operations
+         WHERE user_id = $1 AND operation_key = $2`,
+        [userId, operationKey],
+      );
+      if (existing?.request_hash !== requestHash) {
+        throw new Error('Operation key is already bound to a different transaction set');
+      }
+      if (existing.status === 'created' && existing.bundle_id) {
+        return { bundleId: existing.bundle_id };
+      }
+      throw new Error('This operation was already submitted and cannot be safely submitted again');
+    }
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${RELAYR_API_URL}/v1/bundle/balance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(RELAYR_API_KEY ? { 'x-api-key': RELAYR_API_KEY } : {}),
+      },
+      body: JSON.stringify(bundleRequest),
+    });
+  } catch (error) {
+    if (operationKey) {
+      await execute(
+        `UPDATE relayr_bundle_operations
+         SET status = 'uncertain', error_message = $1, updated_at = NOW()
+         WHERE user_id = $2 AND operation_key = $3 AND status = 'creating'`,
+        [error instanceof Error ? error.message : String(error), userId, operationKey],
+      );
+    }
+    throw error;
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
+    if (operationKey) {
+      await execute(
+        `UPDATE relayr_bundle_operations
+         SET status = 'rejected', error_message = $1, updated_at = NOW()
+         WHERE user_id = $2 AND operation_key = $3 AND status = 'creating'`,
+        [`Relayr API ${response.status}: ${errorText}`, userId, operationKey],
+      );
+    }
     logger.error('Relayr bundle creation failed', new Error(errorText), {
       status: response.status,
       userId,
@@ -395,13 +559,38 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
     throw new Error(`Relayr API error: ${response.status} - ${errorText}`);
   }
 
-  const bundleResponse = await response.json();
-  const bundleId = bundleResponse.bundle_uuid;
+  let bundleId: string;
+  try {
+    const bundleResponse = await response.json();
+    bundleId = bundleResponse.bundle_uuid;
+    if (!bundleId || typeof bundleId !== 'string') {
+      throw new Error('Relayr response omitted bundle ID');
+    }
+  } catch (error) {
+    if (operationKey) {
+      await execute(
+        `UPDATE relayr_bundle_operations
+         SET status = 'uncertain', error_message = $1, updated_at = NOW()
+         WHERE user_id = $2 AND operation_key = $3 AND status = 'creating'`,
+        [error instanceof Error ? error.message : String(error), userId, operationKey],
+      );
+    }
+    throw error;
+  }
+
+  if (operationKey) {
+    await execute(
+      `UPDATE relayr_bundle_operations
+       SET status = 'created', bundle_id = $1, error_message = NULL, updated_at = NOW()
+       WHERE user_id = $2 AND operation_key = $3 AND status = 'creating'`,
+      [bundleId, userId, operationKey],
+    );
+  }
 
   logger.info('Relayr bundle created', {
     userId,
     bundleId,
-    chains: transactions.map(tx => tx.chainId),
+    chains: transactions.map((tx) => tx.chainId),
   });
 
   return { bundleId };
@@ -415,7 +604,15 @@ export async function createRelayrBundle(params: CreateBundleParams): Promise<{ 
  * Get the status of a Relayr bundle.
  * Proxies the call through the backend to keep API keys server-side.
  */
-export async function getRelayrBundleStatus(bundleId: string): Promise<unknown> {
+export async function getRelayrBundleStatus(userId: string, bundleId: string): Promise<unknown> {
+  const ownedBundle = await queryOne<{ id: string }>(
+    `SELECT id
+     FROM relayr_bundle_operations
+     WHERE user_id = $1 AND bundle_id = $2 AND status = 'created'`,
+    [userId, bundleId],
+  );
+  if (!ownedBundle) throw new Error('Relayr bundle not found');
+
   // Validate required env vars
   if (!RELAYR_API_URL) {
     throw new Error('RELAYR_API_URL not configured');

@@ -28,8 +28,12 @@ interface CashOutDetails {
   projectName?: string
   tokens: string
   tokensFormatted: string
-  estimatedReturn: string
-  estimatedReturnFormatted: string
+  /** @deprecated Use the contract-preview fields below. */
+  estimatedReturn?: string
+  /** @deprecated Use the contract-preview fields below. */
+  estimatedReturnFormatted?: string
+  previewReturnFormatted?: string
+  minimumReturnFormatted?: string
   taxRate?: number
   currency?: string
 }
@@ -218,19 +222,27 @@ function CashOutSummary({ details, isDark }: { details: CashOutDetails; isDark: 
           <li className="flex items-start gap-2">
             <span className="shrink-0">-</span>
             <span>
-              Based on the current treasury and {details.taxRate}% cash out tax
+              Current cash-out curve rate: {(details.taxRate / 100).toFixed(2).replace(/\.?0+$/, '')}%
             </span>
           </li>
         )}
-        <li className="flex items-start gap-2">
-          <span className="shrink-0">-</span>
-          <span>
-            You will receive approximately{' '}
-            <span className={isDark ? 'text-white' : 'text-gray-900'}>
-              {details.estimatedReturnFormatted}
+        {details.previewReturnFormatted && (
+          <li className="flex items-start gap-2">
+            <span className="shrink-0">-</span>
+            <span>
+              Current preview before any protocol fee:{' '}
+              <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                {details.previewReturnFormatted}
+              </span>
             </span>
-          </span>
-        </li>
+          </li>
+        )}
+        {details.minimumReturnFormatted && (
+          <li className="flex items-start gap-2">
+            <span className="shrink-0">-</span>
+            <span>Transaction minimum: {details.minimumReturnFormatted}</span>
+          </li>
+        )}
         <li className="flex items-start gap-2">
           <span className="shrink-0">-</span>
           <span className={isDark ? 'text-red-400/70' : 'text-red-600'}>
@@ -269,7 +281,7 @@ function SendPayoutsSummary({ details, isDark }: { details: SendPayoutsDetails; 
         {details.fee && (
           <li className="flex items-start gap-2">
             <span className="shrink-0">-</span>
-            <span>Protocol fee: {details.feeFormatted} (2.5%)</span>
+            <span>Protocol fee: up to {details.feeFormatted} (2.5% of fee-eligible payouts)</span>
           </li>
         )}
         {displayedRecipients.length > 0 && (
@@ -317,14 +329,14 @@ function UseAllowanceSummary({ details, isDark }: { details: UseAllowanceDetails
         {details.fee && (
           <li className="flex items-start gap-2">
             <span className="shrink-0">-</span>
-            <span>Protocol fee: {details.feeFormatted} (2.5%)</span>
+            <span>Protocol fee: up to {details.feeFormatted} (2.5%)</span>
           </li>
         )}
         {details.netAmountFormatted && (
           <li className="flex items-start gap-2">
             <span className="shrink-0">-</span>
             <span>
-              You receive:{' '}
+              You receive at least:{' '}
               <span className={isDark ? 'text-white' : 'text-gray-900'}>
                 {details.netAmountFormatted}
               </span>

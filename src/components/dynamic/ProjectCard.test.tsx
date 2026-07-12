@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ProjectCard from './ProjectCard'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import * as bendystraw from '../../services/bendystraw'
@@ -35,12 +35,38 @@ vi.mock('../../services/bendystraw', () => ({
   fetchOwnersCount: vi.fn(),
   fetchProjectWithRuleset: vi.fn(),
   fetchProjectTokenSymbol: vi.fn(),
+  fetchProjectAccountingContexts: vi.fn(),
   fetchEthPrice: vi.fn(),
+}))
+
+vi.mock('../../utils/paymentTerminal', () => ({
+  getPaymentTokenAddress: vi.fn((token: string) => token === 'ETH'
+    ? '0x000000000000000000000000000000000000EEEe'
+    : '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+  getPaymentTerminal: vi.fn(async (_client, _chainId, _projectId, token: string) => {
+    if (token.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
+      throw new Error('This project does not accept the selected payment token')
+    }
+    return { address: '0x130f5Dd2bD8805443Cf41755253D778a75a67f53', type: 'multi' }
+  }),
+}))
+
+vi.mock('../../utils/projectTrust', () => ({
+  assertCurrentProjectPayConfigurationTrusted: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../services/nft', () => ({
+  getProjectDataHook: vi.fn().mockResolvedValue(null),
+  fetchResolvedNFTTiers: vi.fn().mockResolvedValue([]),
+  fetchHookFlags: vi.fn().mockResolvedValue(null),
+  getEffectiveTierPrice: vi.fn(),
+  resolveTierUri: vi.fn(),
 }))
 
 // Mock utils
 vi.mock('../../utils/ipfs', () => ({
   resolveIpfsUri: vi.fn((uri) => (uri ? `https://ipfs.io/${uri}` : null)),
+  ipfsGatewayUrls: vi.fn((uri) => (uri ? [`https://ipfs.io/${uri}`] : [])),
   fetchIpfsMetadata: vi.fn().mockResolvedValue(null),
 }))
 
@@ -51,6 +77,7 @@ vi.mock('../../hooks/useWalletBalances', () => ({
     totalUsdc: 0n,
     perChain: [],
     loading: false,
+    available: false,
   })),
   formatEthBalance: vi.fn((val) => '0'),
   formatUsdcBalance: vi.fn((val) => '0'),
@@ -75,16 +102,26 @@ describe('ProjectCard', () => {
     name: 'Test Project',
     handle: 'test-project',
     balance: '1000000000000000000',
+    volume: '5000000000000000000',
+    paymentsCount: 1,
+    createdAt: 1,
     logoUri: 'ipfs://QmLogo',
     baseCurrency: 1,
     totalPaid: '5000000000000000000',
   }
 
   const mockSuckerBalance = {
-    total: '1000000000000000000',
-    chains: [],
-    symbol: 'ETH',
+    totalBalance: '1000000000000000000',
+    totalVolume: '5000000000000000000',
+    totalVolumeUsd: '0',
+    totalPaymentsCount: 1,
+    currency: 1,
     decimals: 18,
+    projectBalances: [],
+    balanceAvailable: true,
+    volumeAvailable: true,
+    paymentsAvailable: true,
+    dataScope: 'project',
   }
 
   const mockIssuanceRate = {
@@ -106,6 +143,14 @@ describe('ProjectCard', () => {
     ;(bendystraw.fetchOwnersCount as Mock).mockResolvedValue(100)
     ;(bendystraw.fetchProjectWithRuleset as Mock).mockResolvedValue(null)
     ;(bendystraw.fetchProjectTokenSymbol as Mock).mockResolvedValue(null)
+    ;(bendystraw.fetchProjectAccountingContexts as Mock).mockResolvedValue([{
+      terminal: '0x130f5Dd2bD8805443Cf41755253D778a75a67f53',
+      token: '0x000000000000000000000000000000000000EEEe',
+      decimals: 18,
+      currency: 61166,
+      symbol: 'ETH',
+      balance: 1n,
+    }])
     ;(bendystraw.fetchEthPrice as Mock).mockResolvedValue(2500)
 
     mockedUseAccount.mockReturnValue({
@@ -168,6 +213,22 @@ describe('ProjectCard', () => {
         const payButton = buttons.find(btn => btn.textContent?.toLowerCase().includes('pay'))
         expect(payButton).toBeDefined()
       })
+    })
+
+    it('opens wallet connection before treating a disconnected wallet as empty', async () => {
+      const openWallet = vi.fn()
+      window.addEventListener('juice:open-wallet-panel', openWallet)
+      render(<ProjectCard projectId="1" chainId="11155111" />)
+
+      const payButton = await screen.findByRole('button', { name: 'Pay' })
+      await waitFor(() => expect(payButton).toBeEnabled())
+      fireEvent.click(screen.getByRole('button', { name: 'Credits' }))
+      expect(screen.queryByRole('button', { name: 'USDC' })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'ETH' }))
+      fireEvent.click(payButton)
+
+      expect(openWallet).toHaveBeenCalledOnce()
+      window.removeEventListener('juice:open-wallet-panel', openWallet)
     })
   })
 

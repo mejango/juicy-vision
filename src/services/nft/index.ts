@@ -1,13 +1,19 @@
 // NFT tier fetching service for Juicebox 721 hooks
 
-import { createPublicClient, http, zeroAddress } from 'viem'
-import { VIEM_CHAINS, MAINNET_VIEM_CHAINS, RPC_ENDPOINTS, MAINNET_RPC_ENDPOINTS, JB_CONTRACTS, type SupportedChainId, MAINNET_CHAIN_IDS } from '../../constants/chains'
+import { createPublicClient, http, zeroAddress, type PublicClient } from 'viem'
+import { VIEM_CHAINS, MAINNET_VIEM_CHAINS, RPC_ENDPOINTS, MAINNET_RPC_ENDPOINTS, JB_CONTRACTS, JB_OMNICHAIN_DEPLOYER, JB_BUYBACK_HOOK, JB_BUYBACK_HOOK_REGISTRY, type SupportedChainId } from '../../constants/chains'
 import { REV_OWNER_ADDRESS, REV_OWNER_TIERED_721_HOOK_ABI } from '../../constants/abis/revDeployer'
-import { resolveIpfsUri, decodeEncodedIPFSUri, inlineSvgImages } from '../../utils/ipfs'
-import { isRevnetProject, fetchProject } from '../bendystraw'
+import {
+  decodeEncodedIPFSUriCandidates,
+  fetchIpfsJson,
+  inlineSvgImages,
+} from '../../utils/ipfs'
+import {
+  requireRecognized721CloneIdentity,
+  type Recognized721HookIdentity,
+} from '../../utils/addressRegistry'
 import {
   JB721TierStoreAbi,
-  JB721TiersHookAbi,
   JBControllerRulesetAbi,
 } from './queries'
 import type {
@@ -21,29 +27,161 @@ import type {
 } from './types'
 import type { JB721TierConfigInput } from '../tiersHook'
 
+const CT_DEPLOYER = '0xf21b8717cb50e497e90f375ec532557dd9022655' as const
+const RECOGNIZED_NON_721_DATA_HOOKS = new Set([
+  JB_BUYBACK_HOOK.toLowerCase(),
+  JB_BUYBACK_HOOK_REGISTRY.toLowerCase(),
+])
+const DIRECTORY_ABI = [{
+  name: 'controllerOf', type: 'function', stateMutability: 'view',
+  inputs: [{ name: 'projectId', type: 'uint256' }], outputs: [{ name: '', type: 'address' }],
+}] as const
+const PROJECTS_ABI = [{
+  name: 'ownerOf', type: 'function', stateMutability: 'view',
+  inputs: [{ name: 'projectId', type: 'uint256' }], outputs: [{ name: '', type: 'address' }],
+}] as const
+const CT_DEPLOYER_ABI = [{
+  name: 'dataHookOf', type: 'function', stateMutability: 'view',
+  inputs: [{ name: 'projectId', type: 'uint256' }], outputs: [{ name: '', type: 'address' }],
+}] as const
+const OMNICHAIN_TIERED_HOOK_ABI = [{
+  name: 'tiered721HookOf', type: 'function', stateMutability: 'view',
+  inputs: [
+    { name: 'projectId', type: 'uint256' },
+    { name: 'rulesetId', type: 'uint256' },
+  ],
+  outputs: [
+    { name: 'hook', type: 'address' },
+    { name: 'useDataHookForCashOut', type: 'bool' },
+  ],
+}] as const
+const HOOK_PRICING_CONTEXT_ABI = [{
+  name: 'pricingContext', type: 'function', stateMutability: 'view',
+  inputs: [],
+  outputs: [
+    { name: 'currency', type: 'uint256' },
+    { name: 'decimals', type: 'uint256' },
+  ],
+}] as const
+
+const MAX_REVIEWABLE_TIER_ID = 1_000
+
+function nftChainConfig(chainId: number) {
+  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
+    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
+  if (!chain) throw new Error(`NFT configuration unavailable on unsupported chain ${chainId}`)
+  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
+    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
+  if (!rpcUrl) throw new Error(`NFT configuration unavailable: no RPC endpoint for chain ${chainId}`)
+  return { chain, rpcUrl }
+}
+
+function nftReadError(label: string, error: unknown): Error {
+  const detail = error instanceof Error ? error.message : 'Unknown chain read failure'
+  return new Error(`${label} unavailable: ${detail}`)
+}
+
+async function completeTierReadSize(
+  client: Pick<PublicClient, 'readContract'>,
+  storeAddress: `0x${string}`,
+  hookAddress: `0x${string}`,
+  maxTiers: number,
+): Promise<bigint> {
+  if (!Number.isSafeInteger(maxTiers) || maxTiers < 1 || maxTiers > MAX_REVIEWABLE_TIER_ID) {
+    throw new Error(`Tier review limit must be between 1 and ${MAX_REVIEWABLE_TIER_ID}`)
+  }
+  const maxTierId = await client.readContract({
+    address: storeAddress,
+    abi: JB721TierStoreAbi,
+    functionName: 'maxTierIdOf',
+    args: [hookAddress],
+  })
+  if (maxTierId > BigInt(maxTiers)) {
+    throw new Error(
+      `Collection has ${maxTierId} historical tier IDs; Juicy Vision safely reviews at most ${maxTiers}`,
+    )
+  }
+  return maxTierId
+}
+
+async function readPricingContext(
+  client: Pick<PublicClient, 'readContract'>,
+  hookAddress: `0x${string}`,
+): Promise<{ currency: number; decimals: number }> {
+  const pricing = await client.readContract({
+    address: hookAddress,
+    abi: HOOK_PRICING_CONTEXT_ABI,
+    functionName: 'pricingContext',
+  })
+  const currency = Number(pricing[0])
+  const decimals = Number(pricing[1])
+  if (!Number.isSafeInteger(currency) || currency < 0 || currency > 0xffffffff) {
+    throw new Error(`Invalid tier pricing currency: ${pricing[0]}`)
+  }
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+    throw new Error(`Invalid tier pricing decimals: ${pricing[1]}`)
+  }
+  return { currency, decimals }
+}
+
+export async function fetchNFTPricingContext(
+  hookAddress: `0x${string}`,
+  chainId: number,
+): Promise<{ currency: number; decimals: number }> {
+  const { chain, rpcUrl } = nftChainConfig(chainId)
+  const client = createPublicClient({ chain, transport: http(rpcUrl) })
+  await requireRecognized721Hook(client, hookAddress)
+  return readPricingContext(client, hookAddress)
+}
+
+export function getEffectiveTierPrice(
+  tier: Pick<NFTTier, 'price' | 'discountPercent'>,
+): bigint {
+  const discountPercent = tier.discountPercent ?? 0
+  if (!Number.isInteger(discountPercent) || discountPercent < 0 || discountPercent > 200) {
+    throw new Error(`Invalid tier discount: ${discountPercent}`)
+  }
+  const discount = BigInt(discountPercent)
+  return tier.price - (tier.price * discount) / 200n
+}
+
+export async function requireRecognized721Hook(
+  client: Pick<PublicClient, 'readContract'>,
+  hookAddress: `0x${string}`,
+  expectedProjectId?: bigint,
+): Promise<`0x${string}`> {
+  await requireRecognized721HookIdentity(client, hookAddress, expectedProjectId)
+  return hookAddress
+}
+
+export function requireRecognized721HookIdentity(
+  client: Pick<PublicClient, 'readContract'>,
+  hookAddress: `0x${string}`,
+  expectedProjectId?: bigint,
+): Promise<Recognized721HookIdentity> {
+  return requireRecognized721CloneIdentity({
+    client,
+    hook: hookAddress,
+    expectedProjectId,
+  })
+}
+
 export * from './types'
 export * from './queries'
 export * from './multichain'
 
 /**
  * Get the 721 data hook address for a project.
- * For revnets, this queries the REVDeployer's hookOf function since the
- * ruleset's data hook points to the REVDeployer, not the 721 hook directly.
+ * Wrapper data hooks expose their project-specific 721 clone. Direct tier and
+ * Defifa clones are recognized from their JBAddressRegistry provenance.
  */
 export async function getProjectDataHook(
   projectId: string,
   chainId: number
 ): Promise<`0x${string}` | null> {
-  // Support both testnet and mainnet chains
-  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
-    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
-  if (!chain) {
-    console.warn('[NFT] Unsupported chainId:', chainId)
-    return null
-  }
-
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
-    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
+  if (!/^[1-9]\d*$/.test(projectId)) throw new Error(`Invalid project ID: ${projectId}`)
+  const numericProjectId = BigInt(projectId)
+  const { chain, rpcUrl } = nftChainConfig(chainId)
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
@@ -52,62 +190,90 @@ export async function getProjectDataHook(
   try {
     console.log('[NFT] getProjectDataHook starting:', { projectId, chainId })
 
-    // First check if this is a revnet by fetching the project owner
-    let project
-    try {
-      project = await fetchProject(projectId, chainId)
-      console.log('[NFT] fetchProject result:', { owner: project?.owner })
-    } catch (fetchErr) {
-      console.error('[NFT] fetchProject failed:', fetchErr)
+    const [controller, projectOwner] = await Promise.all([
+      client.readContract({
+        address: JB_CONTRACTS.JBDirectory,
+        abi: DIRECTORY_ABI,
+        functionName: 'controllerOf',
+        args: [numericProjectId],
+      }),
+      client.readContract({
+        address: JB_CONTRACTS.JBProjects,
+        abi: PROJECTS_ABI,
+        functionName: 'ownerOf',
+        args: [numericProjectId],
+      }),
+    ])
+    if (controller.toLowerCase() !== JB_CONTRACTS.JBController.toLowerCase()) {
+      throw new Error(`Controller not recognized: ${controller}`)
     }
 
-    const projectIsRevnet = isRevnetProject(project)
-
-    console.log('[NFT] getProjectDataHook:', { projectId, chainId, owner: project?.owner, projectIsRevnet })
+    const projectIsRevnet = projectOwner.toLowerCase() === REV_OWNER_ADDRESS.toLowerCase()
 
     if (projectIsRevnet) {
       // For revnets, query the REVOwner singleton's tiered721HookOf function
       // (V6: revnet project NFTs are owned by REVOwner, which tracks the 721 hook)
-      try {
-        console.log('[NFT] Querying REVOwner.tiered721HookOf for revnet:', projectId)
-        const hookAddress = await client.readContract({
-          address: REV_OWNER_ADDRESS,
-          abi: REV_OWNER_TIERED_721_HOOK_ABI,
-          functionName: 'tiered721HookOf',
-          args: [BigInt(projectId)],
-        })
-        console.log('[NFT] tiered721HookOf result:', hookAddress)
-
-        if (hookAddress && hookAddress !== zeroAddress) {
-          return hookAddress
-        }
-      } catch (err) {
-        console.error('[NFT] Failed to get revnet tiered721 hook:', err)
+      const hookAddress = await client.readContract({
+        address: projectOwner,
+        abi: REV_OWNER_TIERED_721_HOOK_ABI,
+        functionName: 'tiered721HookOf',
+        args: [numericProjectId],
+      })
+      if (hookAddress && hookAddress !== zeroAddress) {
+        return await requireRecognized721Hook(client, hookAddress, numericProjectId)
       }
       return null
     }
 
     // For non-revnets, get data hook from ruleset
     const result = await client.readContract({
-      address: JB_CONTRACTS.JBController,
+      address: controller,
       abi: JBControllerRulesetAbi,
       functionName: 'currentRulesetOf',
-      args: [BigInt(projectId)],
+      args: [numericProjectId],
     })
+    if (BigInt(result[0].id) === 0n) throw new Error('Current project rules are unavailable')
 
     // result is [ruleset, metadata]
     const metadata = result[1]
     const dataHook = metadata.dataHook
 
+    if (dataHook.toLowerCase() === JB_OMNICHAIN_DEPLOYER.toLowerCase()) {
+      const [hookAddress] = await client.readContract({
+        address: dataHook,
+        abi: OMNICHAIN_TIERED_HOOK_ABI,
+        functionName: 'tiered721HookOf',
+        args: [numericProjectId, BigInt(result[0].id)],
+      })
+      if (hookAddress && hookAddress !== zeroAddress) {
+        return await requireRecognized721Hook(client, hookAddress, numericProjectId)
+      }
+      return null
+    }
+
+    if (dataHook.toLowerCase() === CT_DEPLOYER.toLowerCase()) {
+      const hookAddress = await client.readContract({
+        address: CT_DEPLOYER,
+        abi: CT_DEPLOYER_ABI,
+        functionName: 'dataHookOf',
+        args: [numericProjectId],
+      })
+      if (hookAddress && hookAddress !== zeroAddress) {
+        return await requireRecognized721Hook(client, hookAddress, numericProjectId)
+      }
+      throw new Error('Croptop 721 hook configuration is incomplete')
+    }
+
     // Check if data hook is set and it's using data hook for pay
     if (dataHook && dataHook !== zeroAddress && metadata.useDataHookForPay) {
-      return dataHook
+      if (RECOGNIZED_NON_721_DATA_HOOKS.has(dataHook.toLowerCase())) return null
+      return await requireRecognized721Hook(client, dataHook, numericProjectId)
     }
 
     return null
   } catch (err) {
     console.error('Failed to get project data hook:', err)
-    return null
+    throw nftReadError('Project NFT configuration', err)
   }
 }
 
@@ -118,37 +284,24 @@ export async function getProjectDataHook(
 export async function fetchNFTTiers(
   hookAddress: `0x${string}`,
   chainId: number,
-  maxTiers: number = 100
+  maxTiers: number = MAX_REVIEWABLE_TIER_ID
 ): Promise<NFTTier[]> {
-  // Support both testnet and mainnet chains
-  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
-    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
-  if (!chain) {
-    console.warn('[NFT] fetchNFTTiers: Unsupported chainId:', chainId)
-    return []
-  }
-
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
-    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
+  const { chain, rpcUrl } = nftChainConfig(chainId)
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
   })
 
   try {
-    // First, get the store address from the hook contract
-    console.log('[NFT] Fetching STORE() from hook:', hookAddress)
-    const storeAddress = await client.readContract({
-      address: hookAddress,
-      abi: JB721TiersHookAbi,
-      functionName: 'STORE',
-    })
+    const identity = await requireRecognized721HookIdentity(client, hookAddress)
+    const pricing = await readPricingContext(client, hookAddress)
+    const storeAddress = identity.store
     console.log('[NFT] Store address:', storeAddress)
 
-    if (!storeAddress || storeAddress === zeroAddress) {
-      console.warn('[NFT] No store address found for hook:', hookAddress)
-      return []
-    }
+    if (!storeAddress || storeAddress === zeroAddress) throw new Error('721 hook store is missing')
+
+    const readSize = await completeTierReadSize(client, storeAddress, hookAddress, maxTiers)
+    if (readSize === 0n) return []
 
     // Fetch all tiers without resolved URIs (fast, works on public RPCs)
     console.log('[NFT] Fetching tiers from store:', storeAddress)
@@ -161,7 +314,7 @@ export async function fetchNFTTiers(
         [], // All categories
         false, // Don't include resolved URI (gas intensive for on-chain SVGs)
         0n,
-        BigInt(maxTiers),
+        readSize,
       ],
     })
 
@@ -169,30 +322,40 @@ export async function fetchNFTTiers(
 
     // Map raw tier data to our NFTTier type (V6: per-tier booleans live in a
     // nested `flags` tuple; encodedIpfsUri casing changed)
-    return tiers.map((tier) => ({
-      tierId: Number(tier.id),
-      name: `Tier ${tier.id}`,
-      price: BigInt(tier.price),
-      currency: 1,
-      initialSupply: Number(tier.initialSupply),
-      remainingSupply: Number(tier.remainingSupply),
-      reservedRate: Number(tier.reserveFrequency),
-      votingUnits: BigInt(tier.votingUnits),
-      category: Number(tier.category),
-      allowOwnerMint: tier.flags.allowOwnerMint,
-      transfersPausable: tier.flags.transfersPausable,
-      // Decode IPFS URI if present (for IPFS-based projects)
-      encodedIPFSUri: tier.encodedIpfsUri && tier.encodedIpfsUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
-        ? decodeEncodedIPFSUri(tier.encodedIpfsUri) || undefined
-        : undefined,
-      // Additional tier config
-      discountPercent: Number(tier.discountPercent),
-      cannotBeRemoved: tier.flags.cantBeRemoved,
-      cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
-    }))
+    const seenTierIds = new Set<number>()
+    return tiers.map((tier) => {
+      const tierId = Number(tier.id)
+      if (!Number.isSafeInteger(tierId) || tierId < 1 || BigInt(tierId) > readSize) {
+        throw new Error(`Tier store returned an invalid tier ID: ${tier.id}`)
+      }
+      if (seenTierIds.has(tierId)) throw new Error(`Tier store returned duplicate tier ID ${tierId}`)
+      seenTierIds.add(tierId)
+      return {
+        tierId,
+        name: `Tier ${tier.id}`,
+        price: BigInt(tier.price),
+        currency: pricing.currency,
+        pricingDecimals: pricing.decimals,
+        initialSupply: Number(tier.initialSupply),
+        remainingSupply: Number(tier.remainingSupply),
+        reservedRate: Number(tier.reserveFrequency),
+        reserveBeneficiary: tier.reserveBeneficiary,
+        votingUnits: BigInt(tier.votingUnits),
+        category: Number(tier.category),
+        allowOwnerMint: tier.flags.allowOwnerMint,
+        transfersPausable: tier.flags.transfersPausable,
+        encodedIPFSUri: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri)?.[0],
+        metadataUris: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri) ?? undefined,
+        discountPercent: Number(tier.discountPercent),
+        cannotBeRemoved: tier.flags.cantBeRemoved,
+        cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
+        cannotBuyWithCredits: tier.flags.cantBuyWithCredits,
+        splitPercent: Number(tier.splitPercent),
+      }
+    })
   } catch (err) {
     console.error('[NFT] Failed to fetch NFT tiers:', err)
-    return []
+    throw nftReadError('NFT tiers', err)
   }
 }
 
@@ -218,12 +381,8 @@ export async function resolveTierUri(
   })
 
   try {
-    // Get the store address
-    const storeAddress = await client.readContract({
-      address: hookAddress,
-      abi: JB721TiersHookAbi,
-      functionName: 'STORE',
-    })
+    const identity = await requireRecognized721HookIdentity(client, hookAddress)
+    const storeAddress = identity.store
 
     if (!storeAddress || storeAddress === zeroAddress) return null
 
@@ -270,6 +429,7 @@ export async function resolveTierUri(
     return uri || null
   } catch (err) {
     console.warn('[NFT] Failed to resolve tier URI:', err)
+    if (err instanceof Error && /not recognized/i.test(err.message)) throw err
     return null
   }
 }
@@ -282,26 +442,17 @@ export async function hasTokenUriResolver(
   hookAddress: `0x${string}`,
   chainId: number
 ): Promise<boolean> {
-  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
-    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
-  if (!chain) return false
-
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
-    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
+  const { chain, rpcUrl } = nftChainConfig(chainId)
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
   })
 
   try {
-    // Get the store address
-    const storeAddress = await client.readContract({
-      address: hookAddress,
-      abi: JB721TiersHookAbi,
-      functionName: 'STORE',
-    })
+    const identity = await requireRecognized721HookIdentity(client, hookAddress)
+    const storeAddress = identity.store
 
-    if (!storeAddress || storeAddress === zeroAddress) return false
+    if (!storeAddress || storeAddress === zeroAddress) throw new Error('721 hook store is missing')
 
     // Check if there's a tokenUriResolver
     const resolverAddress = await client.readContract({
@@ -322,7 +473,7 @@ export async function hasTokenUriResolver(
     return Boolean(resolverAddress && resolverAddress !== zeroAddress)
   } catch (err) {
     console.warn('[NFT] Failed to check tokenUriResolver:', err)
-    return false
+    throw nftReadError('Token URI resolver configuration', err)
   }
 }
 
@@ -334,27 +485,21 @@ export async function fetchNFTTier(
   tierId: number,
   chainId: number
 ): Promise<NFTTier | null> {
-  // Support both testnet and mainnet chains
-  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
-    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
-  if (!chain) return null
-
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
-    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
+  if (!Number.isSafeInteger(tierId) || tierId < 1 || tierId > 0xffff) {
+    throw new Error(`Invalid tier ID: ${tierId}`)
+  }
+  const { chain, rpcUrl } = nftChainConfig(chainId)
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
   })
 
   try {
-    // Get the store address from the hook contract
-    const storeAddress = await client.readContract({
-      address: hookAddress,
-      abi: JB721TiersHookAbi,
-      functionName: 'STORE',
-    })
+    const identity = await requireRecognized721HookIdentity(client, hookAddress)
+    const pricing = await readPricingContext(client, hookAddress)
+    const storeAddress = identity.store
 
-    if (!storeAddress || storeAddress === zeroAddress) return null
+    if (!storeAddress || storeAddress === zeroAddress) throw new Error('721 hook store is missing')
 
     const tier = await client.readContract({
       address: storeAddress,
@@ -363,42 +508,80 @@ export async function fetchNFTTier(
       args: [hookAddress, BigInt(tierId), false], // Don't include resolved URI
     })
 
+    const returnedTierId = Number(tier.id)
+    if (returnedTierId === 0) return null
+    if (returnedTierId !== tierId) throw new Error('Tier store returned a different tier')
     return {
-      tierId: Number(tier.id),
+      tierId: returnedTierId,
       name: `Tier ${tier.id}`,
       price: BigInt(tier.price),
-      currency: 1,
+      currency: pricing.currency,
+      pricingDecimals: pricing.decimals,
       initialSupply: Number(tier.initialSupply),
       remainingSupply: Number(tier.remainingSupply),
       reservedRate: Number(tier.reserveFrequency),
+      reserveBeneficiary: tier.reserveBeneficiary,
       votingUnits: BigInt(tier.votingUnits),
       category: Number(tier.category),
       allowOwnerMint: tier.flags.allowOwnerMint,
       transfersPausable: tier.flags.transfersPausable,
-      encodedIPFSUri: tier.encodedIpfsUri && tier.encodedIpfsUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
-        ? decodeEncodedIPFSUri(tier.encodedIpfsUri) || undefined
-        : undefined,
+      encodedIPFSUri: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri)?.[0],
+      metadataUris: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri) ?? undefined,
+      discountPercent: Number(tier.discountPercent),
+      cannotBeRemoved: tier.flags.cantBeRemoved,
+      cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
+      cannotBuyWithCredits: tier.flags.cantBuyWithCredits,
+      splitPercent: Number(tier.splitPercent),
     }
   } catch (err) {
     console.error('Failed to fetch NFT tier:', err)
-    return null
+    throw nftReadError('NFT tier', err)
   }
 }
 
 /**
  * Fetch tier metadata from IPFS
  */
-export async function fetchTierMetadata(uri: string): Promise<NFTTierMetadata | null> {
-  const url = resolveIpfsUri(uri)
-  if (!url) return null
+export async function fetchTierMetadata(
+  uri: string | readonly string[],
+): Promise<NFTTierMetadata | null> {
+  const candidates = typeof uri === 'string' ? [uri] : uri
+  for (const candidate of candidates) {
+    const metadata = normalizeTierMetadata(await fetchIpfsJson<unknown>(candidate))
+    if (metadata) return metadata
+  }
+  return null
+}
 
-  try {
-    const response = await fetch(url)
-    if (!response.ok) return null
-    const data = await response.json()
-    return data as NFTTierMetadata
-  } catch {
-    return null
+function normalizeTierMetadata(value: unknown): NFTTierMetadata | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  const optionalString = (field: string, maxLength = 4_000) => {
+    const candidate = record[field]
+    return typeof candidate === 'string' && candidate.length <= maxLength ? candidate : undefined
+  }
+  const attributes = Array.isArray(record.attributes)
+    ? record.attributes.flatMap(attribute => {
+        if (!attribute || typeof attribute !== 'object' || Array.isArray(attribute)) return []
+        const item = attribute as Record<string, unknown>
+        if (typeof item.trait_type !== 'string' || item.trait_type.length > 200) return []
+        if (typeof item.value !== 'string' && typeof item.value !== 'number') return []
+        return [{ trait_type: item.trait_type, value: item.value }]
+      })
+    : undefined
+
+  return {
+    name: optionalString('name', 500) ?? '',
+    productName: optionalString('productName', 500),
+    categoryName: optionalString('categoryName', 500),
+    description: optionalString('description', 20_000),
+    image: optionalString('image', 2_000_000),
+    imageUri: optionalString('imageUri', 2_000_000),
+    animation_url: optionalString('animation_url', 2_000_000),
+    animationUrl: optionalString('animationUrl', 2_000_000),
+    mediaType: optionalString('mediaType', 200),
+    external_url: optionalString('external_url'),
+    attributes,
   }
 }
 
@@ -409,7 +592,7 @@ export async function fetchTierMetadata(uri: string): Promise<NFTTierMetadata | 
 export async function fetchResolvedNFTTiers(
   hookAddress: `0x${string}`,
   chainId: number,
-  maxTiers: number = 100
+  maxTiers: number = MAX_REVIEWABLE_TIER_ID
 ): Promise<ResolvedNFTTier[]> {
   const tiers = await fetchNFTTiers(hookAddress, chainId, maxTiers)
 
@@ -423,8 +606,8 @@ export async function fetchResolvedNFTTiers(
       batch.map(async (tier) => {
         let metadata: NFTTierMetadata | null = null
 
-        if (tier.encodedIPFSUri) {
-          metadata = await fetchTierMetadata(tier.encodedIPFSUri)
+        if (tier.metadataUris?.length || tier.encodedIPFSUri) {
+          metadata = await fetchTierMetadata(tier.metadataUris ?? [tier.encodedIPFSUri!])
         }
 
         // Get the image URI from metadata
@@ -445,6 +628,8 @@ export async function fetchResolvedNFTTiers(
           name: metadata?.name || tier.name,
           description: metadata?.description,
           imageUri,
+          animationUrl: metadata?.animation_url || metadata?.animationUrl,
+          mediaType: metadata?.mediaType,
           metadata: metadata || undefined,
         }
       })
@@ -483,48 +668,6 @@ export async function hasNFTHook(
 }
 
 /**
- * Get the number of tiers for a 721 hook
- */
-export async function getNumberOfTiers(
-  hookAddress: `0x${string}`,
-  chainId: number
-): Promise<number> {
-  // Support both testnet and mainnet chains
-  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
-    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
-  if (!chain) return 0
-
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
-    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
-  const client = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  })
-
-  try {
-    // Get the store address from the hook contract
-    const storeAddress = await client.readContract({
-      address: hookAddress,
-      abi: JB721TiersHookAbi,
-      functionName: 'STORE',
-    })
-
-    if (!storeAddress || storeAddress === zeroAddress) return 0
-
-    const count = await client.readContract({
-      address: storeAddress,
-      abi: JB721TierStoreAbi,
-      functionName: 'numberOfTiersOf',
-      args: [hookAddress],
-    })
-
-    return Number(count)
-  } catch {
-    return 0
-  }
-}
-
-/**
  * Fetch the hook flags for a JB721TiersHook contract
  * These flags determine what operations are allowed on the collection
  * Note: Flags are stored on the STORE contract, not the hook itself
@@ -532,28 +675,18 @@ export async function getNumberOfTiers(
 export async function fetchHookFlags(
   hookAddress: `0x${string}`,
   chainId: number
-): Promise<JB721HookFlags | null> {
-  // Support both testnet and mainnet chains
-  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
-    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
-  if (!chain) return null
-
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
-    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
+): Promise<JB721HookFlags> {
+  const { chain, rpcUrl } = nftChainConfig(chainId)
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
   })
 
   try {
-    // First get the store address from the hook
-    const storeAddress = await client.readContract({
-      address: hookAddress,
-      abi: JB721TiersHookAbi,
-      functionName: 'STORE',
-    })
+    const identity = await requireRecognized721HookIdentity(client, hookAddress)
+    const storeAddress = identity.store
 
-    if (!storeAddress || storeAddress === zeroAddress) return null
+    if (!storeAddress || storeAddress === zeroAddress) throw new Error('721 hook store is missing')
 
     // Then get flags from the store using flagsOf(hookAddress)
     const flags = await client.readContract({
@@ -568,10 +701,11 @@ export async function fetchHookFlags(
       noNewTiersWithVotes: flags.noNewTiersWithVotes,
       noNewTiersWithOwnerMinting: flags.noNewTiersWithOwnerMinting,
       preventOverspending: flags.preventOverspending,
+      issueTokensForSplits: flags.issueTokensForSplits,
     }
   } catch (err) {
     console.error('Failed to fetch hook flags:', err)
-    return null
+    throw nftReadError('721 hook flags', err)
   }
 }
 
@@ -581,29 +715,23 @@ export async function fetchHookFlags(
 export async function fetchNFTTiersWithPermissions(
   hookAddress: `0x${string}`,
   chainId: number,
-  maxTiers: number = 100
+  maxTiers: number = MAX_REVIEWABLE_TIER_ID
 ): Promise<NFTTierWithPermissions[]> {
-  // Support both testnet and mainnet chains
-  const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
-    MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
-  if (!chain) return []
-
-  const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
-    MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
+  const { chain, rpcUrl } = nftChainConfig(chainId)
   const client = createPublicClient({
     chain,
     transport: http(rpcUrl),
   })
 
   try {
-    // Get the store address from the hook contract
-    const storeAddress = await client.readContract({
-      address: hookAddress,
-      abi: JB721TiersHookAbi,
-      functionName: 'STORE',
-    })
+    const identity = await requireRecognized721HookIdentity(client, hookAddress)
+    const pricing = await readPricingContext(client, hookAddress)
+    const storeAddress = identity.store
 
-    if (!storeAddress || storeAddress === zeroAddress) return []
+    if (!storeAddress || storeAddress === zeroAddress) throw new Error('721 hook store is missing')
+
+    const readSize = await completeTierReadSize(client, storeAddress, hookAddress, maxTiers)
+    if (readSize === 0n) return []
 
     const tiers = await client.readContract({
       address: storeAddress,
@@ -614,33 +742,48 @@ export async function fetchNFTTiersWithPermissions(
         [], // All categories
         false, // Don't include resolved URI (can cause reverts)
         0n, // Starting from tier 0
-        BigInt(maxTiers),
+        readSize,
       ],
     })
 
-    return tiers.map((tier) => ({
-      tierId: Number(tier.id),
-      name: `Tier ${tier.id}`,
-      price: BigInt(tier.price),
-      currency: 1,
-      initialSupply: Number(tier.initialSupply),
-      remainingSupply: Number(tier.remainingSupply),
-      reservedRate: Number(tier.reserveFrequency),
-      votingUnits: BigInt(tier.votingUnits),
-      category: Number(tier.category),
-      allowOwnerMint: tier.flags.allowOwnerMint,
-      transfersPausable: tier.flags.transfersPausable,
-      encodedIPFSUri: tier.encodedIpfsUri && tier.encodedIpfsUri !== '0x0000000000000000000000000000000000000000000000000000000000000000'
-        ? decodeEncodedIPFSUri(tier.encodedIpfsUri) || undefined
-        : undefined,
-      permissions: {
+    const seenTierIds = new Set<number>()
+    return tiers.map((tier) => {
+      const tierId = Number(tier.id)
+      if (!Number.isSafeInteger(tierId) || tierId < 1 || BigInt(tierId) > readSize) {
+        throw new Error(`Tier store returned an invalid tier ID: ${tier.id}`)
+      }
+      if (seenTierIds.has(tierId)) throw new Error(`Tier store returned duplicate tier ID ${tierId}`)
+      seenTierIds.add(tierId)
+      return {
+        tierId,
+        name: `Tier ${tier.id}`,
+        price: BigInt(tier.price),
+        currency: pricing.currency,
+        pricingDecimals: pricing.decimals,
+        initialSupply: Number(tier.initialSupply),
+        remainingSupply: Number(tier.remainingSupply),
+        reservedRate: Number(tier.reserveFrequency),
+        reserveBeneficiary: tier.reserveBeneficiary,
+        votingUnits: BigInt(tier.votingUnits),
+        category: Number(tier.category),
+        allowOwnerMint: tier.flags.allowOwnerMint,
+        transfersPausable: tier.flags.transfersPausable,
+        encodedIPFSUri: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri)?.[0],
+        metadataUris: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri) ?? undefined,
+        discountPercent: Number(tier.discountPercent),
         cannotBeRemoved: tier.flags.cantBeRemoved,
         cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
-      },
-    }))
+        cannotBuyWithCredits: tier.flags.cantBuyWithCredits,
+        splitPercent: Number(tier.splitPercent),
+        permissions: {
+          cannotBeRemoved: tier.flags.cantBeRemoved,
+          cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
+        },
+      }
+    })
   } catch (err) {
     console.error('Failed to fetch NFT tiers with permissions:', err)
-    return []
+    throw nftReadError('NFT tiers and permissions', err)
   }
 }
 

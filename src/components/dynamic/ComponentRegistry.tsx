@@ -9,7 +9,6 @@ import TransactionPreviewShimmer from './TransactionPreviewShimmer'
 // Lazy-loaded Components
 // =============================================================================
 
-const ConnectWalletButton = lazy(() => import('./ConnectWalletButton'))
 const ProjectCard = lazy(() => import('./ProjectCard'))
 const NoteCard = lazy(() => import('./NoteCard'))
 const TransactionStatus = lazy(() => import('./TransactionStatus'))
@@ -37,23 +36,13 @@ const ManageTiersForm = lazy(() => import('./ManageTiersForm'))
 const SetSplitsForm = lazy(() => import('./SetSplitsForm'))
 const SetUriForm = lazy(() => import('./SetUriForm'))
 const LandingPagePreview = lazy(() => import('./LandingPagePreview'))
-const SuccessVisualization = lazy(() => import('./SuccessVisualization'))
 const InteractionsSheet = lazy(() => import('./InteractionsSheet'))
-
-// Hook development components
-const HookCodeViewer = lazy(() => import('./HookCodeViewer'))
-const HookProjectEditor = lazy(() => import('./HookProjectEditor'))
-const HookTestRunner = lazy(() => import('./HookTestRunner'))
-const HookSecurityReport = lazy(() => import('./HookSecurityReport'))
-const HookDeployment = lazy(() => import('./HookDeployment'))
 
 // Chart components
 const BalanceChart = lazy(() => import('./charts').then(m => ({ default: m.BalanceChart })))
 const HoldersChart = lazy(() => import('./charts').then(m => ({ default: m.HoldersChart })))
 const VolumeChart = lazy(() => import('./charts').then(m => ({ default: m.VolumeChart })))
 const TokenPriceChart = lazy(() => import('./charts').then(m => ({ default: m.TokenPriceChart })))
-const PoolPriceChart = lazy(() => import('./charts').then(m => ({ default: m.PoolPriceChart })))
-const MultiChainCashOutChart = lazy(() => import('./charts').then(m => ({ default: m.MultiChainCashOutChart })))
 
 // =============================================================================
 // Registry Configuration
@@ -114,15 +103,15 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
   },
   'create-project-form': {
     component: CreateProjectForm,
-    mapProps: (p) => ({ defaultOwner: p.owner, defaultChainIds: p.chainIds }),
+    mapProps: (p) => ({ defaultChainIds: p.chainIds }),
   },
   'create-revnet-form': {
     component: CreateRevnetForm,
-    mapProps: (p) => ({ defaultOperator: p.operator, defaultChainIds: p.chainIds }),
+    mapProps: (p) => ({ defaultChainIds: p.chainIds }),
   },
   'create-flow': {
     component: CreateFlowWizard,
-    mapProps: (p) => ({ defaultOwner: p.owner, defaultChainIds: p.chainIds }),
+    mapProps: (p) => ({ defaultChainIds: p.chainIds }),
   },
 
   // Transactions
@@ -169,30 +158,8 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
       projectId: p.projectId,
       chainId: p.chainId,
       range: p.range,
-      poolAddress: p.poolAddress,
-      projectTokenAddress: p.projectTokenAddress,
     }),
   },
-  'pool-price-chart': {
-    component: PoolPriceChart,
-    mapProps: (p) => ({
-      poolAddress: p.poolAddress,
-      projectTokenAddress: p.projectTokenAddress,
-      chainId: p.chainId,
-      tokenSymbol: p.tokenSymbol,
-      range: p.range,
-    }),
-  },
-  'multi-chain-cash-out-chart': {
-    component: MultiChainCashOutChart,
-    mapProps: (p) => ({
-      projectId: p.projectId,
-      chainId: p.chainId,
-      chains: p.chains,
-      range: p.range,
-    }),
-  },
-
   // Activity & Rulesets
   'activity-feed': {
     component: ActivityFeed,
@@ -279,59 +246,6 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
       showComponents: p.showComponents,
       title: p.title,
       subtitle: p.subtitle,
-    }),
-  },
-  'success-visualization': {
-    component: SuccessVisualization,
-    mapProps: (p) => ({
-      targetRaise: p.targetRaise,
-      supporterCount: p.supporterCount,
-      timeframe: p.timeframe,
-      growthRate: p.growthRate,
-      avgContribution: p.avgContribution,
-    }),
-  },
-
-  // Hook Development
-  'hook-code-viewer': {
-    component: HookCodeViewer,
-    mapProps: (p) => ({
-      filename: p.filename,
-      code: p.code,
-      explanation: p.explanation,
-      language: p.language,
-    }),
-  },
-  'hook-project-editor': {
-    component: HookProjectEditor,
-    mapProps: (p) => ({
-      projectId: p.projectId,
-      hookType: p.hookType,
-      files: p.files,
-      readOnly: p.readOnly === 'true' || p.readOnly === true,
-    }),
-  },
-  'hook-test-runner': {
-    component: HookTestRunner,
-    mapProps: (p) => ({
-      projectId: p.projectId,
-      forkConfig: p.forkConfig,
-      autoRun: p.autoRun === 'true' || p.autoRun === true,
-    }),
-  },
-  'hook-security-report': {
-    component: HookSecurityReport,
-    mapProps: (p) => ({
-      projectId: p.projectId,
-      autoRun: p.autoRun === 'true' || p.autoRun === true,
-    }),
-  },
-  'hook-deployment': {
-    component: HookDeployment,
-    mapProps: (p) => ({
-      projectId: p.projectId,
-      chainIds: p.chainIds,
-      constructorArgs: p.constructorArgs,
     }),
   },
 }

@@ -2,8 +2,6 @@ import { useAccount } from 'wagmi'
 import { formatEther } from 'viem'
 import { Button } from '../ui'
 import { useWalletBalances } from '../../hooks'
-import { hasValidWalletSession } from '../../services/siwe'
-import { useAuthStore } from '../../stores'
 
 interface ConnectWalletButtonProps {
   onConnect?: () => void
@@ -16,21 +14,15 @@ function openWalletPanel() {
 
 export default function ConnectWalletButton({ onConnect }: ConnectWalletButtonProps) {
   const { isConnected } = useAccount()
-  const { mode, isAuthenticated } = useAuthStore()
-  const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
+  const { totalEth, totalUsdc, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Convert bigint to numbers for comparison
   const ethNumber = parseFloat(formatEther(totalEth))
   const usdcNumber = Number(totalUsdc) / 1e6
 
-  // Check if user is signed in (SIWE for self-custody, or managed auth)
-  const isSelfCustodySignedIn = mode === 'self_custody' && hasValidWalletSession()
-  const isManagedSignedIn = mode === 'managed' && isAuthenticated()
-  const isSignedIn = isSelfCustodySignedIn || isManagedSignedIn
-
   // Connection states
-  const hasNoFunds = isConnected && !balancesLoading && ethNumber < 0.0001 && usdcNumber < 1
-  const hasFunds = isConnected && !balancesLoading && (ethNumber >= 0.0001 || usdcNumber >= 1)
+  const hasNoFunds = isConnected && !balancesLoading && balancesAvailable && ethNumber < 0.0001 && usdcNumber < 1
+  const hasFunds = isConnected && !balancesLoading && balancesAvailable && (ethNumber >= 0.0001 || usdcNumber >= 1)
 
   const handleClick = () => {
     openWalletPanel()
@@ -61,6 +53,10 @@ export default function ConnectWalletButton({ onConnect }: ConnectWalletButtonPr
 
     if (balancesLoading) {
       return { text: 'Loading...', icon: walletIcon }
+    }
+
+    if (!balancesAvailable) {
+      return { text: 'Balance unavailable', icon: walletIcon }
     }
 
     if (hasNoFunds) {

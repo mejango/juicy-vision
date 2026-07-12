@@ -7,8 +7,6 @@ import * as ens from '../../../utils/ens'
 
 // Mock bendystraw service
 vi.mock('../../../services/bendystraw', () => ({
-  fetchProject: vi.fn(),
-  fetchProjectSuckerGroupId: vi.fn(),
   fetchMultiChainParticipants: vi.fn(),
   fetchConnectedChains: vi.fn(),
 }))
@@ -37,14 +35,6 @@ vi.mock('recharts', () => ({
     return <Content payload={[]} />
   },
 }))
-
-const mockProject = {
-  id: '1-1-5',
-  projectId: 1,
-  chainId: 1,
-  name: 'Test Project',
-  metadata: JSON.stringify({ name: 'Test Project' }),
-}
 
 const mockParticipants = {
   participants: [
@@ -80,7 +70,7 @@ describe('HoldersChart', () => {
 
   describe('loading state', () => {
     it('shows loading indicator while fetching', () => {
-      vi.mocked(bendystraw.fetchProject).mockImplementation(
+      vi.mocked(bendystraw.fetchConnectedChains).mockImplementation(
         () => new Promise(() => {}) // Never resolves
       )
 
@@ -91,7 +81,7 @@ describe('HoldersChart', () => {
 
   describe('error state', () => {
     it('shows error message when fetch fails', async () => {
-      vi.mocked(bendystraw.fetchProject).mockRejectedValue(new Error('API error'))
+      vi.mocked(bendystraw.fetchConnectedChains).mockRejectedValue(new Error('API error'))
 
       render(<HoldersChart projectId="1" />)
 
@@ -101,8 +91,6 @@ describe('HoldersChart', () => {
     })
 
     it('shows error when no holders found', async () => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
-      vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue({
         participants: [],
         totalSupply: 0n,
@@ -111,15 +99,13 @@ describe('HoldersChart', () => {
       render(<HoldersChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText('No members found')).toBeInTheDocument()
+        expect(screen.getByText('No members yet')).toBeInTheDocument()
       })
     })
   })
 
   describe('successful render', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
-      vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
@@ -136,7 +122,7 @@ describe('HoldersChart', () => {
       render(<HoldersChart projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Top 3 by ownership/)).toBeInTheDocument()
+        expect(screen.getByText(/Showing 3 by ownership/)).toBeInTheDocument()
       })
     })
 
@@ -151,8 +137,6 @@ describe('HoldersChart', () => {
 
   describe('ENS resolution', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
-      vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
     })
 
@@ -169,8 +153,6 @@ describe('HoldersChart', () => {
 
   describe('others slice', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
-      vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
@@ -186,23 +168,19 @@ describe('HoldersChart', () => {
     })
   })
 
-  describe('sucker group fallback', () => {
+  describe('single-chain scope', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
       vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
-    it('falls back to single chain when no suckerGroupId', async () => {
-      vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue(null)
-
+    it('uses the requested chain when there is no connected group', async () => {
       render(<HoldersChart projectId="1" chainId="10" />)
 
       await waitFor(() => {
         expect(bendystraw.fetchMultiChainParticipants).toHaveBeenCalledWith(
           [{ chainId: 10, projectId: 1 }], // connectedChainsArray for single chain
           10, // limit
-          undefined // no suckerGroupId
         )
       })
     })
@@ -210,8 +188,6 @@ describe('HoldersChart', () => {
 
   describe('limit prop', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
-      vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
@@ -223,7 +199,6 @@ describe('HoldersChart', () => {
         expect(bendystraw.fetchMultiChainParticipants).toHaveBeenCalledWith(
           [{ chainId: 1, projectId: 1 }], // connectedChainsArray
           5, // limit
-          'sucker-1' // suckerGroupId
         )
       })
     })
@@ -235,7 +210,6 @@ describe('HoldersChart', () => {
         expect(bendystraw.fetchMultiChainParticipants).toHaveBeenCalledWith(
           [{ chainId: 1, projectId: 1 }], // connectedChainsArray
           10, // default limit
-          'sucker-1' // suckerGroupId
         )
       })
     })
@@ -243,8 +217,6 @@ describe('HoldersChart', () => {
 
   describe('theme', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
-      vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
@@ -272,17 +244,15 @@ describe('HoldersChart', () => {
 
   describe('chainId handling', () => {
     beforeEach(() => {
-      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
-      vi.mocked(bendystraw.fetchProjectSuckerGroupId).mockResolvedValue('sucker-1')
       vi.mocked(bendystraw.fetchMultiChainParticipants).mockResolvedValue(mockParticipants)
       vi.mocked(ens.resolveEnsNames).mockResolvedValue([null, null, null])
     })
 
-    it('passes chainId to fetchProject', async () => {
+    it('passes chainId to connected-chain discovery', async () => {
       render(<HoldersChart projectId="1" chainId="8453" />)
 
       await waitFor(() => {
-        expect(bendystraw.fetchProject).toHaveBeenCalledWith('1', 8453)
+        expect(bendystraw.fetchConnectedChains).toHaveBeenCalledWith('1', 8453)
       })
     })
 
@@ -290,7 +260,7 @@ describe('HoldersChart', () => {
       render(<HoldersChart projectId="1" />)
 
       await waitFor(() => {
-        expect(bendystraw.fetchProject).toHaveBeenCalledWith('1', 1)
+        expect(bendystraw.fetchConnectedChains).toHaveBeenCalledWith('1', 1)
       })
     })
   })

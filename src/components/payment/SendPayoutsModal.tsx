@@ -1,25 +1,32 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { parseEther, encodeFunctionData, createPublicClient, http, type Chain, type Address } from 'viem'
+import { parseUnits, encodeFunctionData, createPublicClient, http, type Chain, type Address } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
-import { useOmnichainDistribute } from '../../hooks/relayr'
-import { CHAINS as CHAIN_INFO, NATIVE_TOKEN, RPC_ENDPOINTS } from '../../constants'
-import ChainPaymentSelector from './ChainPaymentSelector'
+import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import { GasBalanceStatus } from './GasBalanceStatus'
+import {
+  CHAINS as CHAIN_INFO,
+  NATIVE_TOKEN,
+  RPC_ENDPOINTS,
+  USDC_ADDRESSES,
+  type SupportedChainId,
+} from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifySendPayoutsParams } from '../../utils/transactionVerification'
-import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
-
-const CHAIN_NAMES: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  8453: 'Base',
-  42161: 'Arbitrum',
-}
+import { getPaymentTerminal } from '../../utils/paymentTerminal'
+import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
+import {
+  fetchDistributablePayout,
+  fetchProjectSplits,
+  fetchProjectWithRuleset,
+} from '../../services/bendystraw'
+import { ProjectSplitRoute } from '../dynamic/ProjectSplitRoute'
 
 const TERMINAL_SEND_PAYOUTS_ABI = [
   {
@@ -45,11 +52,6 @@ const CHAINS: Record<number, Chain> = {
   42161: arbitrum,
 }
 
-interface ChainProjectData {
-  chainId: number
-  projectId: number | string
-}
-
 interface SendPayoutsModalProps {
   isOpen: boolean
   onClose: () => void
@@ -58,9 +60,17 @@ interface SendPayoutsModalProps {
   chainId: number
   amount: string
   baseCurrency?: number // 1 = ETH, 2 = USD
-  splits?: Array<{ beneficiary: string; percent: number }>
-  // New: for omnichain support
-  allChainProjects?: ChainProjectData[]
+  payoutCurrency: number
+  payoutTokenAddress: Address
+  payoutTokenDecimals: number
+  splits?: Array<{
+    beneficiary: string
+    percent: number
+    hook?: string
+    projectId?: number
+    preferAddToBalance?: boolean
+    lockedUntil?: number
+  }>
   // Transaction status callbacks for persistence
   onSubmitted?: (txHash: string) => void
   onConfirmed?: (txHash: string) => void
@@ -76,9 +86,10 @@ export default function SendPayoutsModal({
   projectName,
   chainId,
   amount,
-  baseCurrency = 1,
+  payoutCurrency,
+  payoutTokenAddress,
+  payoutTokenDecimals,
   splits = [],
-  allChainProjects,
   onSubmitted,
   onConfirmed,
   onError,
@@ -89,12 +100,18 @@ export default function SendPayoutsModal({
   const { data: walletClient } = useWalletClient()
   const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
-  const { totalEth } = useWalletBalances()
+  const { totalEth, perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Managed mode support
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
+  const activeAddress = isManagedMode ? managedAddress : address
+  const { assertCurrentAccount } = useReviewedTransactionAccount(
+    isOpen,
+    activeAddress,
+    isManagedMode ? 'managed' : 'self_custody',
+  )
 
   const [status, setStatus] = useState<PayoutStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
@@ -103,52 +120,45 @@ export default function SendPayoutsModal({
   const [terminalAddress, setTerminalAddress] = useState<Address | null>(null)
   const [terminalLoading, setTerminalLoading] = useState(false)
 
-  // Omnichain mode
-  const [useAllChains, setUseAllChains] = useState(false)
-  const {
-    distribute,
-    bundleState,
-    isExecuting,
-    isComplete: omnichainComplete,
-    hasError: omnichainError,
-    reset: resetOmnichain,
-    setPaymentChain,
-  } = useOmnichainDistribute({
-    onSuccess: (bundleId, txHashes) => {
-      console.log('Omnichain distribute completed:', bundleId, txHashes)
-      setStatus('confirmed')
-    },
-    onError: (err) => {
-      console.error('Omnichain distribute failed:', err)
-      setError(err.message)
-      setStatus('failed')
-    },
-  })
-
   const chainInfo = CHAIN_INFO[chainId] || CHAIN_INFO[1]
   const chainName = chainInfo.name
-  const currencyLabel = baseCurrency === 2 ? 'USDC' : 'ETH'
+  const payoutToken = payoutTokenAddress
+  const canonicalUsdc = USDC_ADDRESSES[chainId as SupportedChainId]
+  const currencyLabel = payoutToken.toLowerCase() === NATIVE_TOKEN.toLowerCase()
+    ? 'ETH'
+    : canonicalUsdc && payoutToken.toLowerCase() === canonicalUsdc.toLowerCase()
+      ? 'USDC'
+      : 'TOKEN'
+  const amountDecimals = payoutTokenDecimals
   const amountNum = parseFloat(amount) || 0
-  const protocolFee = amountNum * 0.025 // 2.5% protocol fee
-  const netPayout = amountNum - protocolFee
-  const hasGasBalance = totalEth >= 0.001
+  const maximumProtocolFee = amountNum * 0.025
+  const hasGasBalance = isManagedMode || (balancesAvailable &&
+    (perChain.find(balance => balance.chainId === chainId)?.eth ?? 0n) > 0n
+  )
 
-  // Check if omnichain is available
-  const hasMultipleChains = allChainProjects && allChainProjects.length > 1
+  const payoutAmount = useMemo(() => {
+    try {
+      const parsed = parseUnits(amount, amountDecimals)
+      return parsed > 0n ? parsed : null
+    } catch {
+      return null
+    }
+  }, [amount, amountDecimals])
 
   // Verify transaction parameters
   const verificationResult = useMemo(() => {
     return verifySendPayoutsParams({
       projectId: BigInt(projectId),
-      token: NATIVE_TOKEN,
-      amount: parseEther(amount || '0'),
-      currency: BigInt(baseCurrency),
-      minTokensPaidOut: 0n,
+      token: payoutToken,
+      amount: payoutAmount ?? 0n,
+      currency: BigInt(payoutCurrency),
+      minTokensPaidOut: payoutAmount ?? 0n,
     })
-  }, [projectId, amount, baseCurrency])
+  }, [projectId, payoutAmount, payoutCurrency, payoutToken])
 
   const hasWarnings = verificationResult.doubts.length > 0
-  const canProceed = hasGasBalance && (!hasWarnings || warningsAcknowledged) && !!terminalAddress && !terminalLoading
+  const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
+  const canProceed = payoutAmount !== null && hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && !!terminalAddress && !terminalLoading
 
   // Reset state when modal opens
   useEffect(() => {
@@ -156,11 +166,9 @@ export default function SendPayoutsModal({
       setStatus('preview')
       setTxHash(null)
       setError(null)
-      setUseAllChains(false)
       setWarningsAcknowledged(false)
-      resetOmnichain()
     }
-  }, [isOpen, resetOmnichain])
+  }, [isOpen])
 
   // Call parent callbacks when status changes (for persistence)
   useEffect(() => {
@@ -193,20 +201,19 @@ export default function SendPayoutsModal({
           transport: http(rpcUrl),
         })
 
-        // Payouts use the native token (or USDC based on baseCurrency)
-        const payoutToken = getPaymentTokenAddress(baseCurrency === 2 ? 'USDC' : 'ETH', chainId)
-        const terminal = await getPaymentTerminal(publicClient, chainId, BigInt(projectId), payoutToken)
+        // The token comes from the project's live accounting configuration.
+        const terminal = await getPaymentTerminal(publicClient, chainId, BigInt(projectId), payoutToken, 'accounting')
         setTerminalAddress(terminal.address)
       } catch (err) {
         console.error('Failed to fetch payment terminal:', err)
-        setError('Failed to fetch payment terminal')
+        setError(err instanceof Error ? err.message : 'Failed to fetch payment terminal')
       } finally {
         setTerminalLoading(false)
       }
     }
 
     fetchTerminal()
-  }, [isOpen, projectId, chainId, baseCurrency])
+  }, [isOpen, projectId, chainId, payoutToken])
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
@@ -222,26 +229,7 @@ export default function SendPayoutsModal({
       }
     }
 
-    if (useAllChains && allChainProjects && allChainProjects.length > 1) {
-      // Use Relayr omnichain distribution
-      setStatus('signing')
-      setError(null)
-
-      const projectIds: Record<number, number> = {}
-      allChainProjects.forEach(cp => {
-        projectIds[cp.chainId] = typeof cp.projectId === 'string' ? parseInt(cp.projectId) : cp.projectId
-      })
-
-      await distribute({
-        chainIds: allChainProjects.map(cp => cp.chainId),
-        projectIds,
-        type: 'payouts',
-      })
-      return
-    }
-
     // Single chain execution
-    setStatus('signing')
     setError(null)
 
     const chain = CHAINS[chainId]
@@ -252,14 +240,109 @@ export default function SendPayoutsModal({
       return
     }
 
-    if (!terminalAddress) {
-      setError('Terminal address not available')
-      setStatus('failed')
-      return
-    }
-
     try {
-      // Create transaction record
+      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+      if (!rpcUrl) throw new Error(`No RPC endpoint configured for chain ${chainId}`)
+      const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+      const splitSignature = (entries: Array<{
+        beneficiary: string
+        percent: number
+        hook?: string
+        projectId?: number
+        preferAddToBalance?: boolean
+        lockedUntil?: number
+      }>) =>
+        entries.map(split => [
+          split.beneficiary.toLowerCase(),
+          split.percent,
+          (split.hook || '').toLowerCase(),
+          split.projectId ?? 0,
+          split.preferAddToBalance === true,
+          split.lockedUntil ?? 0,
+        ].join(':')).join('|')
+      if (payoutAmount === null) throw new Error('Enter a valid payout amount')
+      const tokenCurrency = Number(BigInt(payoutToken) & 0xffffffffn)
+      if (payoutCurrency !== tokenCurrency) {
+        throw new Error('Payout currency conversion is not supported in this view')
+      }
+      const preparePayout = async () => {
+        const freshTerminal = await getPaymentTerminal(
+          publicClient,
+          chainId,
+          BigInt(projectId),
+          payoutToken,
+          'accounting',
+        )
+        const freshProject = await fetchProjectWithRuleset(projectId, chainId)
+        const currentRulesetId = freshProject?.currentRuleset?.id
+        if (!currentRulesetId) throw new Error('Current ruleset is unavailable')
+        const freshConfiguration = await fetchProjectSplits(projectId, chainId, currentRulesetId)
+        if (!freshConfiguration.configurationComplete) {
+          throw new Error('Payout configuration could not be verified')
+        }
+        const matchingGroups = (freshConfiguration.fundAccessLimitGroups || []).filter(group =>
+          group.terminal.toLowerCase() === freshTerminal.address.toLowerCase() &&
+          group.token.toLowerCase() === payoutToken.toLowerCase() &&
+          group.payoutLimits.some(limit => limit.currency === payoutCurrency)
+        )
+        if (matchingGroups.length !== 1 ||
+            matchingGroups[0].payoutLimits.filter(limit => limit.currency === payoutCurrency).length !== 1) {
+          throw new Error('The selected payout limit is no longer uniquely configured')
+        }
+        const freshSplits = freshConfiguration.splitGroups?.find(
+          group => group.groupId === BigInt(payoutToken).toString(),
+        )?.splits || []
+        assertSimpleStoredSplitGroups([{ splits: freshSplits }], {
+          kind: 'payout',
+          sourceProjectId: projectId,
+        })
+        if (splitSignature(freshSplits) !== splitSignature(splits)) {
+          throw new Error('Payout recipients changed. Close this review and load the latest configuration.')
+        }
+        const freshPayout = await fetchDistributablePayout(
+          projectId,
+          chainId,
+          payoutCurrency,
+          payoutToken,
+          payoutTokenDecimals,
+        )
+        if (!freshPayout || payoutAmount > freshPayout.available) {
+          throw new Error('The requested payout is no longer available')
+        }
+        const args = [
+          BigInt(projectId),
+          payoutToken,
+          payoutAmount,
+          BigInt(payoutCurrency),
+          payoutAmount,
+        ] as const
+        const { result: quotedAmount } = await publicClient.simulateContract({
+          address: freshTerminal.address,
+          abi: TERMINAL_SEND_PAYOUTS_ABI,
+          functionName: 'sendPayoutsOf',
+          args,
+          account: activeAddress as Address,
+        })
+        if (quotedAmount <= 0n) throw new Error('This payout would not send any tokens')
+        if (quotedAmount !== payoutAmount) {
+          throw new Error('The full reviewed payout is no longer available')
+        }
+        const data = encodeFunctionData({
+          abi: TERMINAL_SEND_PAYOUTS_ABI,
+          functionName: 'sendPayoutsOf',
+          args,
+        })
+        await simulateTransaction({
+          chainId,
+          account: activeAddress as Address,
+          to: freshTerminal.address,
+          data,
+        })
+        return { target: freshTerminal.address, data, quotedAmount }
+      }
+      const prepared = await preparePayout()
+
       const txId = addTransaction({
         type: 'deploy', // Reusing for now
         projectId,
@@ -268,57 +351,58 @@ export default function SendPayoutsModal({
         status: 'pending',
       })
 
-      const payoutAmount = parseEther(amount)
-
-      const callData = encodeFunctionData({
-        abi: TERMINAL_SEND_PAYOUTS_ABI,
-        functionName: 'sendPayoutsOf',
-        args: [
-          BigInt(projectId),
-          NATIVE_TOKEN,
-          payoutAmount,
-          BigInt(baseCurrency), // Currency (1 = ETH, 2 = USD)
-          0n, // minTokensPaidOut
-        ],
-      })
-
-      setStatus('pending')
-
       let hash: string
 
       if (isManagedMode) {
         // Execute via backend for managed mode
-        hash = await executeManagedTransaction(chainId, terminalAddress, callData, '0')
+        assertCurrentAccount()
+        setStatus('pending')
+        hash = await executeManagedTransaction(chainId, prepared.target, prepared.data, '0')
       } else {
         // Execute via wallet for self-custody mode
+        setStatus('signing')
         await switchChainAsync({ chainId })
+        if (await walletClient!.getChainId() !== chainId) {
+          throw new Error(`Wallet did not switch to chain ${chainId}`)
+        }
+        const finalPrepared = await preparePayout()
+        if (
+          finalPrepared.target.toLowerCase() !== prepared.target.toLowerCase() ||
+          finalPrepared.quotedAmount !== prepared.quotedAmount
+        ) {
+          throw new Error('The payout quote changed. Close this review and try again.')
+        }
+        assertCurrentAccount(walletClient!.account?.address)
         hash = await walletClient!.sendTransaction({
-          to: terminalAddress,
-          data: callData,
+          to: finalPrepared.target,
+          data: finalPrepared.data,
           value: 0n,
         })
+        setStatus('pending')
       }
 
       setTxHash(hash)
       updateTransaction(txId, { hash, status: 'submitted' })
+      onSubmitted?.(hash)
+      if (!isManagedMode) await waitForSuccessfulTransaction(chainId, hash as `0x${string}`)
+      updateTransaction(txId, { hash, status: 'confirmed' })
       setStatus('confirmed')
     } catch (err) {
       console.error('Send payouts failed:', err)
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, amount, baseCurrency, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, distribute, terminalAddress])
+  }, [walletClient, address, activeAddress, chainId, projectId, amount, payoutAmount, payoutCurrency, payoutToken, payoutTokenDecimals, splits, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, onSubmitted, assertCurrentAccount])
 
   const handleClose = useCallback(() => {
-    resetOmnichain()
     onClose()
-  }, [resetOmnichain, onClose])
+  }, [onClose])
 
   if (!isOpen) return null
 
-  const isProcessing = status === 'signing' || status === 'pending' || isExecuting
-  const showConfirmed = status === 'confirmed' || omnichainComplete
-  const showFailed = status === 'failed' || omnichainError
+  const isProcessing = status === 'signing' || status === 'pending'
+  const showConfirmed = status === 'confirmed'
+  const showFailed = status === 'failed'
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -347,7 +431,7 @@ export default function SendPayoutsModal({
                 {showConfirmed ? 'Payouts Sent' : showFailed ? 'Payout Failed' : 'Confirm Payouts'}
               </h2>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {useAllChains && allChainProjects ? `${allChainProjects.length} Chains` : chainName}
+                {chainName}
               </p>
             </div>
           </div>
@@ -368,7 +452,7 @@ export default function SendPayoutsModal({
         {/* Content */}
         <div className="p-5 space-y-4">
           {/* Status Messages */}
-          {status === 'signing' && !isExecuting && (
+          {status === 'signing' && (
             <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-orange/10' : 'bg-orange-50'}`}>
               <div className="animate-spin w-5 h-5 border-2 border-juice-orange border-t-transparent rounded-full" />
               <div>
@@ -382,23 +466,7 @@ export default function SendPayoutsModal({
             </div>
           )}
 
-          {isExecuting && (
-            <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
-              <div className="animate-spin w-5 h-5 border-2 border-juice-cyan border-t-transparent rounded-full" />
-              <div>
-                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {bundleState.status === 'creating' ? 'Creating bundle...' :
-                   bundleState.status === 'awaiting_payment' ? 'Awaiting payment...' :
-                   'Distributing on all chains...'}
-                </p>
-                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Relayr is processing transactions
-                </p>
-              </div>
-            </div>
-          )}
-
-          {status === 'pending' && !isExecuting && (
+          {status === 'pending' && (
             <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
               <div className="animate-spin w-5 h-5 border-2 border-juice-cyan border-t-transparent rounded-full" />
               <div>
@@ -433,11 +501,6 @@ export default function SendPayoutsModal({
                     View on explorer →
                   </a>
                 )}
-                {useAllChains && omnichainComplete && (
-                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Distributed on all {allChainProjects?.length} chains
-                  </p>
-                )}
               </div>
             </div>
           )}
@@ -448,7 +511,7 @@ export default function SendPayoutsModal({
                 Transaction failed
               </p>
               <p className={`text-sm mt-1 ${isDark ? 'text-red-400/70' : 'text-red-500'}`}>
-                {error || bundleState.error}
+                {error}
               </p>
             </div>
           )}
@@ -456,37 +519,6 @@ export default function SendPayoutsModal({
           {/* Payout Details */}
           {(status === 'preview' || isProcessing) && !showConfirmed && !showFailed && (
             <>
-              {/* Omnichain toggle */}
-              {hasMultipleChains && !isManagedMode && status === 'preview' && (
-                <div className={`p-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={useAllChains}
-                      onChange={(e) => setUseAllChains(e.target.checked)}
-                      className="w-4 h-4 rounded"
-                    />
-                    <div>
-                      <div className={`text-sm font-medium ${isDark ? 'text-juice-cyan' : 'text-cyan-700'}`}>
-                        Distribute on all {allChainProjects?.length} chains
-                      </div>
-                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Pay gas once via Relayr, execute everywhere
-                      </div>
-                    </div>
-                  </label>
-                </div>
-              )}
-
-              {/* Payment chain selector */}
-              {useAllChains && bundleState.paymentOptions.length > 0 && status === 'preview' && (
-                <ChainPaymentSelector
-                  paymentOptions={bundleState.paymentOptions}
-                  selectedChainId={bundleState.selectedPaymentChain}
-                  onSelect={setPaymentChain}
-                />
-              )}
-
               {/* Project */}
               <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                 <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -508,21 +540,17 @@ export default function SendPayoutsModal({
 
                 <div className="flex justify-between items-center">
                   <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                    Protocol fee (2.5%)
+                    Maximum protocol fee (2.5%)
                   </span>
                   <span className={`font-mono ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                    -{protocolFee.toFixed(4)} {currencyLabel}
+                    up to {maximumProtocolFee.toFixed(4)} {currencyLabel}
                   </span>
                 </div>
-
-                <div className={`flex justify-between items-center pt-2 border-t ${
-                  isDark ? 'border-white/10' : 'border-gray-200'
+                <p className={`pt-2 border-t text-xs ${
+                  isDark ? 'border-white/10 text-gray-400' : 'border-gray-200 text-gray-500'
                 }`}>
-                  <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Net to splits</span>
-                  <span className={`font-mono font-bold text-lg ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                    {netPayout.toFixed(4)} {currencyLabel}
-                  </span>
-                </div>
+                  Fees are calculated per recipient. Recognized project-to-project destinations may be fee-free.
+                </p>
               </div>
 
               {/* Splits preview */}
@@ -532,12 +560,24 @@ export default function SendPayoutsModal({
                     Recipients
                   </div>
                   {splits.slice(0, 3).map((split, i) => (
-                    <div key={i} className="flex justify-between">
-                      <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {split.beneficiary.slice(0, 6)}...{split.beneficiary.slice(-4)}
-                      </span>
+                    <div key={i} className="flex items-start justify-between gap-3">
+                      {split.projectId ? (
+                        <ProjectSplitRoute
+                          projectId={split.projectId}
+                          chainId={chainId}
+                          beneficiary={split.beneficiary}
+                          kind="payout"
+                          preferAddToBalance={split.preferAddToBalance}
+                          hook={split.hook}
+                          isDark={isDark}
+                        />
+                      ) : (
+                        <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {split.beneficiary.slice(0, 6)}...{split.beneficiary.slice(-4)}
+                        </span>
+                      )}
                       <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        {split.percent}%
+                        {((split.percent / 1_000_000_000) * 100).toFixed(2)}%
                       </span>
                     </div>
                   ))}
@@ -550,20 +590,14 @@ export default function SendPayoutsModal({
               )}
 
               {/* Gas balance check */}
-              <div className={`flex justify-between items-center text-sm ${
-                isDark ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                <span>Your ETH balance (for gas)</span>
-                <span className={`font-mono ${!hasGasBalance ? 'text-red-400' : ''}`}>
-                  {formatEthBalance(totalEth)} {currencyLabel}
-                </span>
-              </div>
-
-              {!hasGasBalance && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                  Insufficient ETH for gas fees
-                </div>
-              )}
+              <GasBalanceStatus
+                balance={totalEth}
+                hasGasBalance={hasGasBalance}
+                loading={balancesLoading}
+                available={balancesAvailable}
+                managed={isManagedMode}
+                isDark={isDark}
+              />
 
               {/* Transaction Summary */}
               <TransactionSummary
@@ -573,12 +607,11 @@ export default function SendPayoutsModal({
                   projectName,
                   amount: amountNum.toString(),
                   amountFormatted: `${amountNum.toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
-                  fee: protocolFee.toString(),
-                  feeFormatted: `${protocolFee.toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
+                  fee: maximumProtocolFee.toString(),
+                  feeFormatted: `${maximumProtocolFee.toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
                   recipients: splits.map(s => ({
                     address: s.beneficiary,
                     percent: s.percent,
-                    amount: `${((netPayout * s.percent) / 100).toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
                   })),
                   currency: currencyLabel,
                 }}
@@ -609,15 +642,10 @@ export default function SendPayoutsModal({
                 contractAddress={terminalAddress || '0x0000000000000000000000000000000000000000'}
                 functionName="sendPayoutsOf"
                 chainId={chainId}
-                chainName={useAllChains ? `${allChainProjects?.length} chains` : chainName}
+                chainName={chainName}
                 projectId={projectId}
                 parameters={verificationResult.verifiedParams}
                 isDark={isDark}
-                allChains={useAllChains && allChainProjects ? allChainProjects.map(cp => ({
-                  chainId: cp.chainId,
-                  chainName: CHAIN_NAMES[cp.chainId] || `Chain ${cp.chainId}`,
-                  projectId: typeof cp.projectId === 'string' ? parseInt(cp.projectId) : cp.projectId,
-                })) : undefined}
               />
             </>
           )}
@@ -627,21 +655,15 @@ export default function SendPayoutsModal({
             <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Distributed</span>
+                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Requested payout</span>
                   <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {amountNum.toFixed(4)} {currencyLabel}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Protocol fee</span>
+                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Maximum protocol fee</span>
                   <span className={`font-mono ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                    -{protocolFee.toFixed(4)} {currencyLabel}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Sent to splits</span>
-                  <span className={`font-mono text-green-500`}>
-                    {netPayout.toFixed(4)} {currencyLabel}
+                    up to {maximumProtocolFee.toFixed(4)} {currencyLabel}
                   </span>
                 </div>
               </div>
@@ -668,7 +690,7 @@ export default function SendPayoutsModal({
                 disabled={!canProceed}
                 className="flex-1 py-3 font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {useAllChains ? `Send on ${allChainProjects?.length} Chains` : 'Send Payouts'}
+                Send Payouts
               </button>
             </div>
           )}

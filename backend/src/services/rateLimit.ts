@@ -28,6 +28,15 @@ interface RateLimitResult {
   current: number;
 }
 
+interface RateLimitContext {
+  req: {
+    header(name: string): string | undefined;
+  };
+  get(key: string): unknown;
+  header(name: string, value: string): void;
+  json(body: unknown, status: 429): Response;
+}
+
 // Predefined rate limit configurations for different endpoints
 export const RATE_LIMITS = {
   // Chat endpoints - moderate limits
@@ -69,9 +78,6 @@ export const RATE_LIMITS = {
 
   // AI Tool-specific limits (per user, per hour) - abuse prevention
   toolPinToIpfs: { limit: 10, windowSeconds: 3600 }, // 10 IPFS pins/hour
-  toolExecuteBridge: { limit: 5, windowSeconds: 3600 }, // 5 bridge executions/hour
-  toolPrepareBridge: { limit: 20, windowSeconds: 3600 }, // 20 bridge prepares/hour
-  toolClaimBridge: { limit: 20, windowSeconds: 3600 }, // 20 bridge claims/hour
 } as const;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;
@@ -91,7 +97,7 @@ export type RateLimitKey = keyof typeof RATE_LIMITS;
  */
 export async function checkRateLimit(
   key: RateLimitKey,
-  identifier: string
+  identifier: string,
 ): Promise<RateLimitResult> {
   const config = RATE_LIMITS[key];
   const fullKey = `${key}:${identifier}`;
@@ -115,7 +121,7 @@ export async function checkRateLimit(
          ELSE rate_limits.window_start               -- Same window, keep start
        END
        RETURNING count, window_start`,
-      [fullKey, windowStart]
+      [fullKey, windowStart],
     );
 
     if (!result) {
@@ -145,9 +151,11 @@ export async function checkRateLimit(
  */
 export function rateLimitMiddleware(
   key: RateLimitKey,
-  getIdentifier: (c: any) => string = (c) => c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || c.req.header('CF-Connecting-IP') || 'unknown'
+  getIdentifier: (c: RateLimitContext) => string = (c) =>
+    c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || c.req.header('CF-Connecting-IP') ||
+    'unknown',
 ) {
-  return async (c: any, next: any) => {
+  return async (c: RateLimitContext, next: () => Promise<void>) => {
     const identifier = getIdentifier(c);
     const result = await checkRateLimit(key, identifier);
 
@@ -163,7 +171,7 @@ export function rateLimitMiddleware(
           error: 'Rate limit exceeded',
           retryAfter: result.resetAt - Math.floor(Date.now() / 1000),
         },
-        429
+        429,
       );
     }
 
@@ -176,8 +184,9 @@ export function rateLimitMiddleware(
  */
 export function rateLimitByWallet(key: RateLimitKey) {
   return rateLimitMiddleware(key, (c) => {
-    const walletSession = c.get('walletSession');
-    return walletSession?.address || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || 'unknown';
+    const walletSession = c.get('walletSession') as { address?: string } | undefined;
+    return walletSession?.address || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() ||
+      'unknown';
   });
 }
 
@@ -186,7 +195,7 @@ export function rateLimitByWallet(key: RateLimitKey) {
  */
 export function rateLimitByUser(key: RateLimitKey) {
   return rateLimitMiddleware(key, (c) => {
-    const user = c.get('user');
+    const user = c.get('user') as { id?: string } | undefined;
     return user?.id || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || 'unknown';
   });
 }
@@ -203,7 +212,7 @@ export async function cleanupExpiredRateLimits(): Promise<number> {
 
   const deleted = await execute(
     'DELETE FROM rate_limits WHERE window_start < $1',
-    [cutoff]
+    [cutoff],
   );
 
   return deleted;
@@ -218,9 +227,6 @@ export async function cleanupExpiredRateLimits(): Promise<number> {
  */
 const TOOL_RATE_LIMIT_MAP: Record<string, RateLimitKey> = {
   'pin_to_ipfs': 'toolPinToIpfs',
-  'execute_bridge_transaction': 'toolExecuteBridge',
-  'prepare_bridge_transaction': 'toolPrepareBridge',
-  'claim_bridge_transaction': 'toolClaimBridge',
 };
 
 /**
@@ -230,15 +236,15 @@ const TOOL_RATE_LIMIT_MAP: Record<string, RateLimitKey> = {
  * @param identifier - User identifier (wallet address, user ID, etc.)
  * @returns RateLimitResult or null if tool has no specific limit
  */
-export async function checkToolRateLimit(
+export function checkToolRateLimit(
   toolName: string,
-  identifier: string
+  identifier: string,
 ): Promise<RateLimitResult | null> {
   const rateLimitKey = TOOL_RATE_LIMIT_MAP[toolName];
 
   // If no specific limit for this tool, allow it
   if (!rateLimitKey) {
-    return null;
+    return Promise.resolve(null);
   }
 
   return checkRateLimit(rateLimitKey, identifier);

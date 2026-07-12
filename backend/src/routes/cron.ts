@@ -1,16 +1,15 @@
 import { Hono } from 'hono';
 import { getConfig } from '../utils/config.ts';
-import { executeReadyTransfers } from '../services/wallet.ts';
 import { executeReadySmartAccountTransfers } from '../services/smartAccounts.ts';
 import { cleanupExpiredSessions } from '../services/auth.ts';
 import { cleanupRateLimits } from '../services/aiProvider.ts';
 import { processSettlements } from '../services/settlement.ts';
 import {
+  processCashOuts as processJuiceCashOuts,
   processCredits as processJuiceCredits,
   processSpends as processJuiceSpends,
-  processCashOuts as processJuiceCashOuts,
 } from '../services/juice.ts';
-import { cleanupExpiredJobs, cancelStaleJobs } from '../services/forge.ts';
+import { cancelStaleJobs, cleanupExpiredJobs } from '../services/forge.ts';
 import { cleanupExpiredCache } from '../services/rulesetCache.ts';
 import { refreshTrendingContext } from '../services/trendingContext.ts';
 
@@ -20,39 +19,31 @@ export const cronRouter = new Hono();
 // Cron Authentication Middleware
 // ============================================================================
 
-// GCP Cloud Scheduler sends requests with OIDC tokens or we can use a shared secret.
-// This middleware validates either:
-// 1. X-CloudScheduler-JobName header (present when called by Cloud Scheduler)
-// 2. X-Cron-Secret header matching our configured secret
-// 3. Authorization header with OIDC token (for production GCP setup)
+// Cron callers authenticate with the configured secret, either in
+// X-Cron-Secret or as a Bearer token. Scheduler-identification headers are
+// metadata only: clients can forge them, so they never grant access.
 
-async function verifyCronAuth(
+async function secretsMatch(candidate: string, expected: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [candidateHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(candidate)),
+    crypto.subtle.digest('SHA-256', encoder.encode(expected)),
+  ]);
+  const left = new Uint8Array(candidateHash);
+  const right = new Uint8Array(expectedHash);
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index++) mismatch |= left[index] ^ right[index];
+  return mismatch === 0;
+}
+
+function verifyCronAuth(
   authHeader: string | undefined,
   cronSecret: string | undefined,
-  jobName: string | undefined
 ): Promise<boolean> {
   const config = getConfig();
-
-  // In development, accept the dev secret
-  if (config.env === 'development') {
-    if (cronSecret === config.cronSecret) {
-      return true;
-    }
-  }
-
-  // Accept X-CloudScheduler-JobName header (GCP sets this automatically)
-  if (jobName) {
-    // In production, you might want to verify the job name matches expected values
-    console.log(`Cron request from Cloud Scheduler job: ${jobName}`);
-    return true;
-  }
-
-  // Check shared secret (primary auth method for Railway/external cron services)
-  if (cronSecret && cronSecret === config.cronSecret) {
-    return true;
-  }
-
-  return false;
+  const bearerSecret = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const candidate = cronSecret ?? bearerSecret;
+  return candidate ? secretsMatch(candidate, config.cronSecret) : Promise.resolve(false);
 }
 
 // Cron auth middleware
@@ -61,11 +52,13 @@ cronRouter.use('*', async (c, next) => {
   const cronSecret = c.req.header('X-Cron-Secret');
   const jobName = c.req.header('X-CloudScheduler-JobName');
 
-  const isAuthorized = await verifyCronAuth(authHeader, cronSecret, jobName);
+  const isAuthorized = await verifyCronAuth(authHeader, cronSecret);
 
   if (!isAuthorized) {
     return c.json({ success: false, error: 'Unauthorized' }, 401);
   }
+
+  if (jobName) console.log(`Authorized cron request from scheduler job: ${jobName}`);
 
   await next();
 });
@@ -79,15 +72,12 @@ cronRouter.post('/transfers', async (c) => {
   const startTime = Date.now();
 
   try {
-    // Execute both legacy transfers and smart account transfers
-    const legacyCount = await executeReadyTransfers();
     const smartAccountCount = await executeReadySmartAccountTransfers();
 
     return c.json({
       success: true,
       data: {
-        executedCount: legacyCount + smartAccountCount,
-        legacyCount,
+        executedCount: smartAccountCount,
         smartAccountCount,
         durationMs: Date.now() - startTime,
       },
@@ -100,7 +90,7 @@ cronRouter.post('/transfers', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });
@@ -127,7 +117,7 @@ cronRouter.post('/cleanup-sessions', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });
@@ -156,13 +146,13 @@ cronRouter.post('/settlements', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });
 
 // Cleanup rate limit entries
-cronRouter.post('/cleanup-ratelimits', async (c) => {
+cronRouter.post('/cleanup-ratelimits', (c) => {
   const startTime = Date.now();
 
   try {
@@ -182,7 +172,7 @@ cronRouter.post('/cleanup-ratelimits', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });
@@ -190,13 +180,15 @@ cronRouter.post('/cleanup-ratelimits', async (c) => {
 // Combined cleanup job (runs all maintenance tasks)
 cronRouter.post('/maintenance', async (c) => {
   const startTime = Date.now();
-  const results: Record<string, { success: boolean; count?: number; failed?: number; pending?: number; error?: string }> = {};
+  const results: Record<
+    string,
+    { success: boolean; count?: number; failed?: number; pending?: number; error?: string }
+  > = {};
 
-  // Execute ready transfers (both legacy and smart account)
+  // Execute allowlisted smart-account transfers.
   try {
-    const legacyCount = await executeReadyTransfers();
     const smartAccountCount = await executeReadySmartAccountTransfers();
-    results.transfers = { success: true, count: legacyCount + smartAccountCount };
+    results.transfers = { success: true, count: smartAccountCount };
   } catch (error) {
     console.error('Transfer execution failed:', error);
     results.transfers = {
@@ -338,7 +330,7 @@ cronRouter.post('/maintenance', async (c) => {
         durationMs: Date.now() - startTime,
       },
     },
-    allSuccess ? 200 : 207 // 207 Multi-Status if partial success
+    allSuccess ? 200 : 207, // 207 Multi-Status if partial success
   );
 });
 
@@ -370,7 +362,7 @@ cronRouter.post('/juice/credits', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });
@@ -399,7 +391,7 @@ cronRouter.post('/juice/spends', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });
@@ -428,7 +420,7 @@ cronRouter.post('/juice/cash-outs', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });
@@ -462,7 +454,7 @@ cronRouter.post('/forge/cleanup', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });
@@ -496,7 +488,7 @@ cronRouter.post('/rulesets/cleanup', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });
@@ -523,7 +515,7 @@ cronRouter.post('/trending', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });
@@ -537,7 +529,9 @@ cronRouter.post('/intent-metrics/aggregate', async (c) => {
   const startTime = Date.now();
 
   try {
-    const { aggregateHourlyStats, aggregateDailyStats, cleanupOldMetrics } = await import('../services/intentMetrics.ts');
+    const { aggregateHourlyStats, aggregateDailyStats, cleanupOldMetrics } = await import(
+      '../services/intentMetrics.ts'
+    );
 
     // Aggregate hourly stats
     await aggregateHourlyStats();
@@ -568,7 +562,7 @@ cronRouter.post('/intent-metrics/aggregate', async (c) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         durationMs: Date.now() - startTime,
       },
-      500
+      500,
     );
   }
 });

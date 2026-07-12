@@ -297,6 +297,7 @@ export interface EnvConfig {
   // AI Provider
   aiProvider: 'anthropic' | 'moonshot';
   aiFreeMode: boolean; // Beta: AI is free when true
+  aiBillingProjectId: number; // Explicit recipient; 0 disables paid AI billing
 
   // Anthropic
   anthropicApiKey: string;
@@ -309,22 +310,22 @@ export interface EnvConfig {
   reservesPrivateKey: string; // Hot wallet for executing payments
 
   // External API keys (for proxy endpoints)
-  bendystrawApiKey: string;   // Bendystraw GraphQL API
-  theGraphApiKey: string;     // The Graph Uniswap subgraph
-  ankrApiKey: string;         // Ankr RPC endpoints (optional)
+  bendystrawApiKey: string; // Bendystraw GraphQL API
+  theGraphApiKey: string; // The Graph Uniswap subgraph
+  ankrApiKey: string; // Ankr RPC endpoints (optional)
 
   // IPFS (Pinata)
-  ipfsApiUrl?: string;        // Pinata API URL
-  ipfsApiKey?: string;        // Pinata API key
-  ipfsApiSecret?: string;     // Pinata API secret
+  ipfsApiUrl?: string; // Pinata API URL
+  ipfsApiKey?: string; // Pinata API key
+  ipfsApiSecret?: string; // Pinata API secret
 
   // Forge (Hook Development)
-  forgeDockerEnabled?: boolean;  // Enable Docker-based forge execution
-  semgrepEnabled?: boolean;      // Enable Semgrep security analysis
+  forgeDockerEnabled?: boolean; // Enable Docker-based forge execution
+  semgrepEnabled?: boolean; // Enable Semgrep security analysis
 
   // Replicate (Image Generation)
-  replicateApiToken?: string;    // Replicate API token for image generation
+  replicateApiToken?: string; // Replicate API token for image generation
 
   // Voyage AI (Embeddings)
-  voyageApiKey?: string;          // Voyage AI API key for semantic embeddings
+  voyageApiKey?: string; // Voyage AI API key for semantic embeddings
 }

@@ -1,24 +1,85 @@
 /**
  * PayTerm Payment Page
  *
- * Minimal, Apple Pay-like interface for terminal payments.
- * Consumer taps NFC or scans QR → Opens this page → Pays with Juice/Apple Pay/Wallet
+ * Minimal interface for terminal payments.
+ * Consumer taps NFC or scans QR, then pays with existing Pay Credits or a wallet.
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { loadStripe } from '@stripe/stripe-js'
-import {
-  EmbeddedCheckoutProvider,
-  EmbeddedCheckout,
-} from '@stripe/react-stripe-js'
+import { useParams } from 'react-router-dom'
 import { useAccount, useConnect, useWalletClient, useSwitchChain } from 'wagmi'
+import { createPublicClient, encodeFunctionData, erc20Abi, formatUnits, http, type Address, type Hex } from 'viem'
 import { useThemeStore, useAuthStore } from '../../stores'
-import { useManagedWallet } from '../../hooks'
 import Button from '../../components/ui/Button'
 import { getChainName } from '../../components/dynamic/charts/utils'
+import { RPC_ENDPOINTS, USDC_ADDRESSES, VIEM_CHAINS, type SupportedChainId } from '../../constants'
+import { getPaymentTerminal } from '../../utils/paymentTerminal'
+import {
+  assertCurrentProjectPayConfigurationTrusted,
+  requireRecognizedRuntimeHook,
+} from '../../utils/projectTrust'
+import { requestPaymentReview, type PaymentReview } from '../../utils/paymentReview'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
+const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
+
+const TERMINAL_PAY_ABI = [{
+  name: 'pay',
+  type: 'function',
+  stateMutability: 'payable',
+  inputs: [
+    { name: 'projectId', type: 'uint256' },
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'beneficiary', type: 'address' },
+    { name: 'minReturnedTokens', type: 'uint256' },
+    { name: 'memo', type: 'string' },
+    { name: 'metadata', type: 'bytes' },
+  ],
+  outputs: [{ name: 'beneficiaryTokenCount', type: 'uint256' }],
+}] as const
+
+const TERMINAL_PREVIEW_PAY_ABI = [{
+  name: 'previewPayFor',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [
+    { name: 'projectId', type: 'uint256' },
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'beneficiary', type: 'address' },
+    { name: 'metadata', type: 'bytes' },
+  ],
+  outputs: [
+    {
+      name: 'ruleset',
+      type: 'tuple',
+      components: [
+        { name: 'cycleNumber', type: 'uint256' },
+        { name: 'id', type: 'uint256' },
+        { name: 'basedOnId', type: 'uint256' },
+        { name: 'start', type: 'uint256' },
+        { name: 'duration', type: 'uint256' },
+        { name: 'weight', type: 'uint256' },
+        { name: 'weightCutPercent', type: 'uint256' },
+        { name: 'approvalHook', type: 'address' },
+        { name: 'metadata', type: 'uint256' },
+      ],
+    },
+    { name: 'beneficiaryTokenCount', type: 'uint256' },
+    { name: 'reservedTokenCount', type: 'uint256' },
+    {
+      name: 'hookSpecifications',
+      type: 'tuple[]',
+      components: [
+        { name: 'hook', type: 'address' },
+        { name: 'noop', type: 'bool' },
+        { name: 'amount', type: 'uint256' },
+        { name: 'metadata', type: 'bytes' },
+      ],
+    },
+  ],
+}] as const
 
 // Payment session types
 interface PaymentSession {
@@ -28,6 +89,8 @@ interface PaymentSession {
   token: string | null
   tokenSymbol: string
   status: 'pending' | 'paying' | 'completed' | 'failed' | 'expired' | 'cancelled'
+  paymentMethod: 'juice' | 'wallet' | 'apple_pay' | 'google_pay' | null
+  txHash: Hex | null
   merchantId: string
   merchantName: string
   projectId: number
@@ -36,21 +99,19 @@ interface PaymentSession {
   createdAt: string
 }
 
-type PaymentStep = 'loading' | 'ready' | 'auth' | 'checkout' | 'paying' | 'success' | 'error'
+type PaymentStep = 'loading' | 'ready' | 'auth' | 'paying' | 'success' | 'error'
 
 export default function PaymentPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
-  const navigate = useNavigate()
   const { theme } = useThemeStore()
-  const { token, isAuthenticated, login, user } = useAuthStore()
-  const { address: smartAccountAddress, isManagedMode } = useManagedWallet()
+  const { token, isAuthenticated, login } = useAuthStore()
   const isDark = theme === 'dark'
 
   // Wallet connection
   const { address: walletAddress, isConnected } = useAccount()
   const { connect, connectors, isPending: isConnecting } = useConnect()
   const { data: walletClient } = useWalletClient()
-  const { switchChain } = useSwitchChain()
+  const { switchChainAsync } = useSwitchChain()
 
   // State for wallet connector selection
   const [showWalletOptions, setShowWalletOptions] = useState(false)
@@ -60,10 +121,7 @@ export default function PaymentPage() {
   const [session, setSession] = useState<PaymentSession | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-
-  // Stripe state
-  const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null)
-  const [clientSecret, setClientSecret] = useState<string | null>(null)
+  const [pendingWalletTxHash, setPendingWalletTxHash] = useState<Hex | null>(null)
 
   // Auth state for email login
   const [email, setEmail] = useState('')
@@ -113,6 +171,15 @@ export default function PaymentPage() {
           return
         }
 
+        if (sess.status === 'paying') {
+          setSession(sess)
+          if (sess.paymentMethod === 'wallet' && sess.txHash) {
+            setPendingWalletTxHash(sess.txHash)
+          }
+          setStep('paying')
+          return
+        }
+
         // Check expiry
         if (new Date(sess.expiresAt) < new Date()) {
           setError('This payment session has expired')
@@ -128,20 +195,6 @@ export default function PaymentPage() {
         setStep('error')
       })
   }, [sessionId])
-
-  // Fetch Stripe config
-  useEffect(() => {
-    fetch(`${API_BASE}/juice/stripe-config`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.data.publishableKey) {
-          setStripePromise(loadStripe(data.data.publishableKey))
-        }
-      })
-      .catch(() => {
-        // Stripe not required - wallet payments still work
-      })
-  }, [])
 
   // WebSocket for real-time session status updates
   useEffect(() => {
@@ -190,6 +243,21 @@ export default function PaymentPage() {
 
     const poll = setInterval(async () => {
       try {
+        if (pendingWalletTxHash) {
+          const confirmRes = await fetch(`${API_BASE}/terminal/session/${sessionId}/pay/wallet/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ txHash: pendingWalletTxHash }),
+          })
+          const confirmData = await confirmRes.json()
+          if (confirmData.success) {
+            setPendingWalletTxHash(null)
+            setSession(prev => prev ? { ...prev, status: 'completed' } : null)
+            setStep('success')
+            return
+          }
+        }
+
         const res = await fetch(`${API_BASE}/terminal/session/${sessionId}/status`)
         const data = await res.json()
 
@@ -208,7 +276,7 @@ export default function PaymentPage() {
     }, 5000) // Slower polling as backup
 
     return () => clearInterval(poll)
-  }, [step, sessionId])
+  }, [step, sessionId, pendingWalletTxHash])
 
   // Request OTP code
   const handleRequestCode = async () => {
@@ -284,54 +352,6 @@ export default function PaymentPage() {
     }
   }, [session, token])
 
-  // Pay with Apple Pay / Stripe
-  const handlePayWithApplePay = useCallback(async () => {
-    if (!session || !token || !stripePromise) {
-      if (!isAuthenticated()) {
-        setStep('auth')
-        return
-      }
-      setError('Payment system not available')
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      // Create a Stripe checkout session for this payment
-      const res = await fetch(`${API_BASE}/juice/purchase`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          amount: session.amountUsd,
-          // Metadata to link to terminal session
-          metadata: {
-            terminalSessionId: session.id,
-            projectId: session.projectId,
-            chainId: session.chainId,
-          },
-        }),
-      })
-
-      const data = await res.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to start payment')
-      }
-
-      setClientSecret(data.data.clientSecret)
-      setStep('checkout')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start payment')
-    } finally {
-      setLoading(false)
-    }
-  }, [session, token, stripePromise, isAuthenticated])
-
   // Pay with connected wallet
   const handlePayWithWallet = useCallback(async () => {
     if (!session) return
@@ -344,12 +364,9 @@ export default function PaymentPage() {
     setLoading(true)
     setError(null)
 
+    let submittedTxHash: Hex | null = null
+    let transactionReverted = false
     try {
-      // Switch to correct chain if needed
-      if (walletClient?.chain?.id !== session.chainId) {
-        await switchChain({ chainId: session.chainId })
-      }
-
       // Get payment parameters
       const paramsRes = await fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet`)
       const paramsData = await paramsRes.json()
@@ -358,95 +375,281 @@ export default function PaymentPage() {
         throw new Error(paramsData.error || 'Failed to get payment params')
       }
 
-      const { terminalAddress, projectId, amountUsd, tokenAddress } = paramsData.data
+      const { terminalAddress, projectId, tokenAddress, paymentAmount, paymentMemo, quoteExpiresAt } = paramsData.data
+      if (Date.now() >= new Date(quoteExpiresAt).getTime()) throw new Error('Payment quote expired; request a new quote')
 
-      // Mark payment as started
-      await fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet/start`, {
+      const chain = VIEM_CHAINS[session.chainId as SupportedChainId]
+      const rpcUrl = RPC_ENDPOINTS[session.chainId]?.[0]
+      if (!chain || !rpcUrl) throw new Error('Unsupported payment chain')
+      const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+      const terminal = terminalAddress as Address
+      const paymentToken = tokenAddress as Address
+      const amount = BigInt(paymentAmount)
+      const isNativeToken = paymentToken.toLowerCase() === NATIVE_TOKEN.toLowerCase()
+      const canonicalUsdc = USDC_ADDRESSES[session.chainId as SupportedChainId]
+      if (!isNativeToken && paymentToken.toLowerCase() !== canonicalUsdc?.toLowerCase()) {
+        throw new Error('The payment quote uses an unsupported token')
+      }
+      const fetchTrustedPreview = async () => {
+        const discoveredTerminal = await getPaymentTerminal(
+          publicClient,
+          session.chainId,
+          BigInt(projectId),
+          paymentToken,
+        )
+        if (discoveredTerminal.address.toLowerCase() !== terminal.toLowerCase()) {
+          throw new Error('The project payment terminal changed; request a new quote')
+        }
+        await assertCurrentProjectPayConfigurationTrusted({
+          client: publicClient,
+          projectId: BigInt(projectId),
+        })
+        const trustedPreview = await publicClient.readContract({
+          account: walletAddress,
+          address: terminal,
+          abi: TERMINAL_PREVIEW_PAY_ABI,
+          functionName: 'previewPayFor',
+          args: [BigInt(projectId), paymentToken, amount, walletAddress, '0x'],
+        })
+        for (const specification of trustedPreview[3]) {
+          if (!specification.noop) {
+            await requireRecognizedRuntimeHook({
+              client: publicClient,
+              projectId: BigInt(projectId),
+              rulesetId: trustedPreview[0].id,
+              hook: specification.hook,
+            })
+          }
+        }
+        return { preview: trustedPreview, route: discoveredTerminal.type }
+      }
+
+      if (!walletClient?.account || walletClient.account.address.toLowerCase() !== walletAddress.toLowerCase()) {
+        throw new Error('Wallet not ready')
+      }
+
+      const reviewed = await fetchTrustedPreview()
+      if (reviewed.preview[1] <= 0n) throw new Error('The payment quote returns no project tokens')
+      const quotedMinimum = (reviewed.preview[1] * 99n) / 100n
+      const minReturnedTokens = quotedMinimum > 0n ? quotedMinimum : 1n
+
+      let reviewedAllowance = 0n
+      const nativeBalance = await publicClient.getBalance({ address: walletAddress })
+      if (isNativeToken ? nativeBalance <= amount : nativeBalance === 0n) {
+        throw new Error(isNativeToken ? 'Insufficient ETH balance and gas' : 'Insufficient ETH for gas')
+      }
+      if (!isNativeToken) {
+        const [balance, allowance] = await Promise.all([
+          publicClient.readContract({
+            address: paymentToken,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [walletAddress],
+          }),
+          publicClient.readContract({
+            address: paymentToken,
+            abi: erc20Abi,
+            functionName: 'allowance',
+            args: [walletAddress, terminal],
+          }),
+        ])
+        if (balance < amount) throw new Error('Insufficient USDC balance')
+        reviewedAllowance = allowance
+      }
+
+      const value = isNativeToken ? amount : 0n
+      const approvalRequired = !isNativeToken && reviewedAllowance < amount
+      const approveData = approvalRequired
+        ? encodeFunctionData({
+            abi: erc20Abi,
+            functionName: 'approve',
+            args: [terminal, amount],
+          })
+        : null
+      const payData = encodeFunctionData({
+        abi: TERMINAL_PAY_ABI,
+        functionName: 'pay',
+        args: [BigInt(projectId), paymentToken, amount, walletAddress, minReturnedTokens, paymentMemo, '0x'],
+      })
+      const paymentReview: PaymentReview = {
+        txId: session.id,
+        account: walletAddress,
+        chainId: session.chainId,
+        chainName: chain.name,
+        projectId: String(projectId),
+        terminal,
+        route: reviewed.route === 'router' ? 'routed payment' : 'direct terminal payment',
+        tokenSymbol: isNativeToken ? 'ETH' : 'USDC',
+        tokenAddress: paymentToken,
+        amount: formatUnits(amount, isNativeToken ? 18 : 6),
+        amountRaw: amount.toString(),
+        valueRaw: value.toString(),
+        beneficiary: walletAddress,
+        memo: paymentMemo,
+        rulesetId: reviewed.preview[0].id.toString(),
+        expectedProjectTokens: reviewed.preview[1].toString(),
+        minimumProjectTokens: minReturnedTokens.toString(),
+        metadata: '0x',
+        callData: payData,
+        approval: approvalRequired ? {
+          token: paymentToken,
+          spender: terminal,
+          amount: amount.toString(),
+          callData: approveData!,
+        } : null,
+        nfts: [],
+      }
+      if (!await requestPaymentReview(paymentReview)) return
+
+      if (Date.now() >= new Date(quoteExpiresAt).getTime()) {
+        throw new Error('Payment quote expired; request a new quote')
+      }
+      if (!walletClient.account || walletClient.account.address.toLowerCase() !== walletAddress.toLowerCase()) {
+        throw new Error('The connected wallet changed; review the payment again')
+      }
+
+      const hookFingerprint = (preview: typeof reviewed.preview) => preview[3].map(specification => [
+        specification.hook.toLowerCase(),
+        specification.noop,
+        specification.amount.toString(),
+        specification.metadata.toLowerCase(),
+      ].join(':')).join('|')
+      const assertReviewedPreviewUnchanged = async () => {
+        const current = await fetchTrustedPreview()
+        if (
+          current.route !== reviewed.route ||
+          current.preview[0].id !== reviewed.preview[0].id ||
+          current.preview[1] !== reviewed.preview[1] ||
+          current.preview[2] !== reviewed.preview[2] ||
+          hookFingerprint(current.preview) !== hookFingerprint(reviewed.preview)
+        ) {
+          throw new Error('The payment quote changed; review the payment again')
+        }
+      }
+      await assertReviewedPreviewUnchanged()
+
+      const startRes = await fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payerAddress: walletAddress }),
       })
-
+      const startData = await startRes.json()
+      if (!startData.success) throw new Error(startData.error || 'Payment session is no longer available')
       setStep('paying')
 
-      // Calculate payment amount (convert USD to token amount)
-      // For ETH, we'd need a price oracle. For now, use a simple estimate
-      // This is simplified - in production, use proper price feeds
-      const isNativeToken = tokenAddress === '0x000000000000000000000000000000000000EEEe'
-      const ethPrice = 2500 // Simplified - should use oracle
-      const paymentAmount = isNativeToken
-        ? BigInt(Math.floor((amountUsd / ethPrice) * 1e18))
-        : BigInt(Math.floor(amountUsd * 1e6)) // USDC has 6 decimals
+      // Only prompt the wallet after the target, project configuration, runtime
+      // hooks, exact call, balance, quote, and session have all been verified.
+      if (await walletClient.getChainId() !== session.chainId) {
+        await switchChainAsync({ chainId: session.chainId })
+      }
+      if (await walletClient.getChainId() !== session.chainId) {
+        throw new Error(`Wallet did not switch to chain ${session.chainId}`)
+      }
+      if (!walletClient.account || walletClient.account.address.toLowerCase() !== walletAddress.toLowerCase()) {
+        throw new Error('The connected wallet changed; review the payment again')
+      }
 
-      // Build the pay transaction
-      // JBMultiTerminal.pay(projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata)
-      const txHash = await walletClient!.writeContract({
-        address: terminalAddress as `0x${string}`,
-        abi: [
-          {
-            name: 'pay',
-            type: 'function',
-            stateMutability: 'payable',
-            inputs: [
-              { name: 'projectId', type: 'uint256' },
-              { name: 'token', type: 'address' },
-              { name: 'amount', type: 'uint256' },
-              { name: 'beneficiary', type: 'address' },
-              { name: 'minReturnedTokens', type: 'uint256' },
-              { name: 'memo', type: 'string' },
-              { name: 'metadata', type: 'bytes' },
-            ],
-            outputs: [{ name: 'beneficiaryTokenCount', type: 'uint256' }],
-          },
-        ],
-        functionName: 'pay',
-        args: [
-          BigInt(projectId),
-          tokenAddress as `0x${string}`,
-          paymentAmount,
-          walletAddress, // beneficiary
-          BigInt(0), // minReturnedTokens
-          'PayTerm payment',
-          '0x', // empty metadata
-        ],
-        value: isNativeToken ? paymentAmount : BigInt(0),
+      if (!isNativeToken) {
+        await assertReviewedPreviewUnchanged()
+        const allowance = await publicClient.readContract({
+          address: paymentToken,
+          abi: erc20Abi,
+          functionName: 'allowance',
+          args: [walletAddress, terminal],
+        })
+        if ((allowance < amount) !== approvalRequired) {
+          throw new Error('The token allowance changed; review the payment again')
+        }
+        if (approvalRequired) {
+          await publicClient.call({ account: walletAddress, to: paymentToken, data: approveData! })
+          const approveHash = await walletClient.sendTransaction({
+            account: walletAddress,
+            chain,
+            to: paymentToken,
+            data: approveData!,
+            value: 0n,
+          })
+          const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash })
+          if (approveReceipt.status !== 'success') throw new Error('USDC approval reverted')
+        }
+      }
+
+      await assertReviewedPreviewUnchanged()
+      if (!walletClient.account ||
+        walletClient.account.address.toLowerCase() !== walletAddress.toLowerCase() ||
+        await walletClient.getChainId() !== session.chainId) {
+        throw new Error('Wallet account or network changed; review the payment again')
+      }
+
+      await publicClient.call({ account: walletAddress, to: terminal, data: payData, value })
+
+      const txHash = await walletClient.sendTransaction({
+        account: walletAddress,
+        chain,
+        to: terminal,
+        data: payData,
+        value,
       })
+      submittedTxHash = txHash
+      setPendingWalletTxHash(txHash)
+
+      // Give the backend the exact transaction immediately. It binds the hash
+      // before checking the receipt, so an RPC timeout cannot invite a second pay.
+      void fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txHash }),
+      }).catch(() => {})
+
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+      if (receipt.status !== 'success') {
+        transactionReverted = true
+        throw new Error('Payment transaction reverted')
+      }
 
       // Confirm payment with backend
-      await fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet/confirm`, {
+      const confirmRes = await fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ txHash }),
       })
+      const confirmData = await confirmRes.json()
+      if (!confirmData.success) throw new Error(confirmData.error || 'On-chain payment verification is delayed')
 
+      setPendingWalletTxHash(null)
       setSession(prev => prev ? { ...prev, status: 'completed' } : null)
       setStep('success')
     } catch (err) {
-      // Mark payment as failed
-      await fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet/fail`, {
+      if (submittedTxHash && !transactionReverted) {
+        setError('Your transaction was submitted. Do not pay again while on-chain verification is still processing.')
+        setStep('paying')
+        return
+      }
+
+      // Release only a pre-broadcast attempt or a transaction proven reverted.
+      await fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet/reset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ errorMessage: err instanceof Error ? err.message : 'Unknown error' }),
+        body: JSON.stringify({
+          payerAddress: walletAddress,
+          txHash: transactionReverted ? submittedTxHash : undefined,
+          errorMessage: err instanceof Error ? err.message : 'Unknown error',
+        }),
       }).catch(() => {})
 
+      setPendingWalletTxHash(null)
       setError(err instanceof Error ? err.message : 'Wallet payment failed')
       setStep('ready')
     } finally {
       setLoading(false)
     }
-  }, [session, isConnected, walletAddress, walletClient, switchChain])
+  }, [session, isConnected, walletAddress, walletClient, switchChainAsync])
 
   // Handle wallet connector selection
   const handleConnectWallet = (connector: typeof connectors[number]) => {
     connect({ connector })
     setShowWalletOptions(false)
   }
-
-  // Handle Stripe checkout completion
-  const handleCheckoutComplete = useCallback(() => {
-    // Stripe payment complete - now trigger the Juice spend
-    handlePayWithJuice()
-  }, [handlePayWithJuice])
 
   // Countdown timer
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
@@ -627,32 +830,6 @@ export default function PaymentPage() {
     )
   }
 
-  // Render checkout step (Stripe)
-  if (step === 'checkout' && stripePromise && clientSecret) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-juice-dark' : 'bg-gray-50'}`}>
-        <div className={`w-full max-w-sm border ${isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'}`}>
-          <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-            <h1 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Complete Payment
-            </h1>
-          </div>
-          <div className="p-4">
-            <EmbeddedCheckoutProvider
-              stripe={stripePromise}
-              options={{
-                clientSecret,
-                onComplete: handleCheckoutComplete,
-              }}
-            >
-              <EmbeddedCheckout />
-            </EmbeddedCheckoutProvider>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   // Render paying state (processing)
   if (step === 'paying') {
     return (
@@ -706,21 +883,6 @@ export default function PaymentPage() {
 
             {/* Payment options */}
             <div className={`p-4 space-y-3 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-              {/* Apple Pay / Google Pay button */}
-              {stripePromise && (
-                <Button
-                  variant="primary"
-                  onClick={handlePayWithApplePay}
-                  loading={loading}
-                  className="w-full py-3 bg-black hover:bg-gray-900 text-white"
-                >
-                  <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
-                  </svg>
-                  Apple Pay
-                </Button>
-              )}
-
               {/* Pay with Juice Credits */}
               {isAuthenticated() && (
                 <Button

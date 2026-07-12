@@ -29,16 +29,21 @@ import projectConversationsRouter from './src/routes/projectConversations.ts';
 import { imagesRouter } from './src/routes/images.ts';
 import { terminalRouter } from './src/routes/terminal.ts';
 import { rulesetsRouter } from './src/routes/rulesets.ts';
-import { getConfig, validateConfigForAuth, validateConfigForEncryption, validateConfigForReserves } from './src/utils/config.ts';
+import {
+  getConfig,
+  validateConfigForAuth,
+  validateConfigForEncryption,
+  validateConfigForReserves,
+} from './src/utils/config.ts';
 import { getPrimaryChainId } from '@shared/chains.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
-import { executeReadyTransfers } from './src/services/wallet.ts';
+import { executeReadySmartAccountTransfers } from './src/services/smartAccounts.ts';
 import { cleanupExpiredChallenges } from './src/services/passkey.ts';
 import {
+  processCashOuts as processJuiceCashOuts,
   processCredits as processJuiceCredits,
   processSpends as processJuiceSpends,
-  processCashOuts as processJuiceCashOuts,
 } from './src/services/juice.ts';
 import { expireSessions as expireTerminalSessions } from './src/services/terminal.ts';
 import { cleanupExpiredCache as cleanupRulesetCache } from './src/services/rulesetCache.ts';
@@ -94,14 +99,23 @@ app.use(
     },
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Session-ID', 'X-Wallet-Session', 'X-Terminal-Key'],
-  })
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Session-ID',
+      'X-Wallet-Session',
+      'X-Terminal-Key',
+    ],
+  }),
 );
 
 // Security headers - allow cross-origin resources for WalletConnect
-app.use('*', secureHeaders({
-  crossOriginResourcePolicy: 'cross-origin',
-}));
+app.use(
+  '*',
+  secureHeaders({
+    crossOriginResourcePolicy: 'cross-origin',
+  }),
+);
 
 // Request logging
 app.use('*', logger());
@@ -173,7 +187,7 @@ app.route('/rulesets', rulesetsRouter);
 // Error Handling
 // ============================================================================
 
-import { AppError, isAppError } from './src/errors/AppError.ts';
+import { isAppError } from './src/errors/AppError.ts';
 
 app.onError((err, c) => {
   // Handle structured AppErrors
@@ -191,7 +205,7 @@ app.onError((err, c) => {
         success: false,
         ...err.toJSON(),
       },
-      err.statusCode as 400 | 401 | 402 | 403 | 404 | 409 | 429 | 500 | 502 | 503
+      err.statusCode as 400 | 401 | 402 | 403 | 404 | 409 | 429 | 500 | 502 | 503,
     );
   }
 
@@ -200,10 +214,9 @@ app.onError((err, c) => {
 
   // Don't expose internal errors in production
   const config = getConfig();
-  const message =
-    config.env === 'production'
-      ? 'Internal server error'
-      : err.message || 'Unknown error';
+  const message = config.env === 'production'
+    ? 'Internal server error'
+    : err.message || 'Unknown error';
 
   return c.json(
     {
@@ -211,7 +224,7 @@ app.onError((err, c) => {
       error: 'INTERNAL_ERROR',
       message,
     },
-    500
+    500,
   );
 });
 
@@ -221,7 +234,7 @@ app.notFound((c) => {
       success: false,
       error: 'Not found',
     },
-    404
+    404,
   );
 });
 
@@ -254,7 +267,7 @@ if (config.env === 'development') {
   // Execute ready transfers every hour
   setInterval(async () => {
     try {
-      const count = await executeReadyTransfers();
+      const count = await executeReadySmartAccountTransfers();
       if (count > 0) {
         console.log(`[Dev] Executed ${count} ready transfers`);
       }
@@ -325,7 +338,9 @@ if (config.env === 'development') {
     try {
       const result = await cleanupRulesetCache();
       if (result.rulesets > 0 || result.splits > 0 || result.shop > 0) {
-        console.log(`[Dev] Cleaned up ${result.rulesets} rulesets, ${result.splits} splits, ${result.shop} shop entries from cache`);
+        console.log(
+          `[Dev] Cleaned up ${result.rulesets} rulesets, ${result.splits} splits, ${result.shop} shop entries from cache`,
+        );
       }
     } catch (error) {
       console.error('[Dev] Failed to cleanup ruleset cache:', error);
@@ -391,17 +406,17 @@ console.log(`
 
 // Import WebSocket handler functions
 import {
+  handleWsMessage,
   registerConnection,
   removeConnection,
-  handleWsMessage,
   type WsClient,
 } from './src/services/websocket.ts';
 
 // Import Terminal WebSocket handler functions
 import {
+  handleTerminalWsMessage,
   registerSessionConnection,
   removeSessionConnection,
-  handleTerminalWsMessage,
   type TerminalWsClient,
 } from './src/services/terminalWs.ts';
 import { getSession } from './src/services/terminal.ts';
@@ -411,7 +426,7 @@ import { generatePseudoAddress } from './src/utils/crypto.ts';
 
 // WebSocket authentication helper (duplicated from chat.ts for use at server level)
 async function extractWalletSessionForWs(
-  sessionToken: string | undefined
+  sessionToken: string | undefined,
 ): Promise<{ address: string; userId?: string; sessionId?: string; isAnonymous?: boolean } | null> {
   if (!sessionToken) return null;
 
@@ -422,20 +437,23 @@ async function extractWalletSessionForWs(
   const jwtResult = await validateSession(sessionToken);
   if (jwtResult) {
     const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, getPrimaryChainId(config.isTestnet));
+    const smartAccount = await getOrCreateSmartAccount(
+      jwtResult.user.id,
+      getPrimaryChainId(config.isTestnet),
+    );
     return { address: smartAccount.address, userId: jwtResult.user.id };
   }
 
   // Try SIWE session token
   const session = await queryOne<{ wallet_address: string; expires_at: Date }>(
     `SELECT wallet_address, expires_at FROM wallet_sessions WHERE session_token = $1 AND expires_at > NOW()`,
-    [sessionToken]
+    [sessionToken],
   );
 
   if (session) {
     const user = await queryOne<{ id: string }>(
       `SELECT u.id FROM users u JOIN multi_chat_members mcm ON mcm.member_user_id = u.id WHERE mcm.member_address = $1 LIMIT 1`,
-      [session.wallet_address]
+      [session.wallet_address],
     );
     return { address: session.wallet_address, userId: user?.id };
   }
@@ -479,7 +497,7 @@ async function handleRequest(req: Request): Promise<Response> {
         }
 
         // Check permission
-        let canRead = await checkPermission(chatId, walletSession.address, 'read');
+        const canRead = await checkPermission(chatId, walletSession.address, 'read');
 
         // Fallback to session pseudo-address (already using correct address from generatePseudoAddress)
 

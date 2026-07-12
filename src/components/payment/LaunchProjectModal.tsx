@@ -1,16 +1,21 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
+import { formatEther, isAddress } from 'viem'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { useOmnichainLaunchProject } from '../../hooks/relayr'
 import { type JBRulesetConfig, type JBTerminalConfig } from '../../services/relayr'
-import { type JBDeployTiersHookConfig } from '../../services/omnichainDeployer'
-import { CHAINS, EXPLORER_URLS, JB_CONTRACTS } from '../../constants'
+import {
+  fetchProjectCreationFee,
+  type JBDeployTiersHookConfig,
+} from '../../services/omnichainDeployer'
+import { CHAINS, EXPLORER_URLS, JB_OMNICHAIN_DEPLOYER } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyLaunchProjectParams } from '../../utils/transactionVerification'
+import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 
 interface LaunchProjectModalProps {
   isOpen: boolean
@@ -35,7 +40,6 @@ export default function LaunchProjectModal({
   isOpen,
   onClose,
   projectName,
-  owner,
   projectUri,
   chainIds,
   rulesetConfig,
@@ -81,15 +85,26 @@ export default function LaunchProjectModal({
     if (isConnected && connectedAddress) {
       return connectedAddress
     }
-    // Fallback to prop value (may be empty or from AI output)
-    return owner
-  }, [hasBothOptions, ownerChoice, isManagedMode, managedAddress, isConnected, connectedAddress, owner])
+    return undefined
+  }, [hasBothOptions, ownerChoice, isManagedMode, managedAddress, isConnected, connectedAddress])
 
   // Determine if we should force self-custody mode (wallet signing)
   const forceSelfCustody = hasBothOptions && ownerChoice === 'wallet'
+  const usesManagedOwner = !!effectiveOwner && !!managedAddress &&
+    effectiveOwner.toLowerCase() === managedAddress.toLowerCase() && !forceSelfCustody
+  const reviewedMode = usesManagedOwner ? 'managed' : 'self_custody'
+  const reviewSelectionComplete = isOpen && (!hasBothOptions || ownerChoice !== null)
+  const { assertCurrentAccount } = useReviewedTransactionAccount(
+    reviewSelectionComplete,
+    effectiveOwner,
+    reviewedMode,
+  )
 
   const [hasStarted, setHasStarted] = useState(false)
   const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
+  const [creationFeesWei, setCreationFeesWei] = useState<Record<number, bigint>>({})
+  const [creationFeesLoading, setCreationFeesLoading] = useState(false)
+  const [creationFeeError, setCreationFeeError] = useState<string | null>(null)
 
   const {
     launch,
@@ -113,7 +128,6 @@ export default function LaunchProjectModal({
   const allCompleted = isComplete || hasError
 
   // Slow-chain detection
-  const [slowChainDismissed, setSlowChainDismissed] = useState(false)
   const [tick, setTick] = useState(0)
   const SLOW_CHAIN_THRESHOLD_MS = 90_000
 
@@ -121,10 +135,6 @@ export default function LaunchProjectModal({
     if (!isLaunching) return
     const id = setInterval(() => setTick(t => t + 1), 5000)
     return () => clearInterval(id)
-  }, [isLaunching])
-
-  useEffect(() => {
-    if (!isLaunching) setSlowChainDismissed(false)
   }, [isLaunching])
 
   const { slowChainIds, hasSlowChains } = useMemo(() => {
@@ -158,7 +168,38 @@ export default function LaunchProjectModal({
   }, [effectiveOwner, projectUri, chainIds, rulesetConfig, terminalConfigurations, memo])
 
   const hasWarnings = verificationResult.doubts.length > 0
-  const canProceed = !hasWarnings || warningsAcknowledged
+  const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
+  const creationFeesReady = chainIds.every(chainId => creationFeesWei[chainId] !== undefined)
+  const totalCreationFee = Object.values(creationFeesWei).reduce((total, fee) => total + fee, 0n)
+  const canProceed = !!effectiveOwner &&
+    isAddress(effectiveOwner) &&
+    !hasCriticalDoubts &&
+    (!hasWarnings || warningsAcknowledged) &&
+    creationFeesReady &&
+    !creationFeesLoading
+
+  useEffect(() => {
+    if (!isOpen || chainIds.length === 0) return
+    let cancelled = false
+    setCreationFeesLoading(true)
+    setCreationFeeError(null)
+    Promise.all(chainIds.map(async chainId => [chainId, await fetchProjectCreationFee(chainId)] as const))
+      .then(entries => {
+        if (!cancelled) setCreationFeesWei(Object.fromEntries(entries))
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setCreationFeesWei({})
+          setCreationFeeError(err instanceof Error ? err.message : 'Project creation fee unavailable')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCreationFeesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, chainIds])
 
   // Reset state when modal opens
   useEffect(() => {
@@ -174,18 +215,33 @@ export default function LaunchProjectModal({
     // If both options available but no choice made, don't proceed
     if (hasBothOptions && !ownerChoice) return
 
-    setHasStarted(true)
-    await launch({
-      chainIds,
-      owner: effectiveOwner,
-      projectUri,
-      rulesetConfigurations: [rulesetConfig],
-      terminalConfigurations,
-      memo,
-      forceSelfCustody,
-      deployTiersHookConfig,
-    })
-  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, terminalConfigurations, memo, deployTiersHookConfig, launch])
+    try {
+      assertCurrentAccount(reviewedMode === 'self_custody' ? connectedAddress : undefined)
+      const freshFees = Object.fromEntries(await Promise.all(
+        chainIds.map(async chainId => [chainId, await fetchProjectCreationFee(chainId)] as const),
+      ))
+      for (const chainId of chainIds) {
+        if (freshFees[chainId] !== creationFeesWei[chainId]) {
+          setCreationFeesWei(freshFees)
+          throw new Error('The project creation fee changed. Review the updated fee before continuing.')
+        }
+      }
+      setHasStarted(true)
+      assertCurrentAccount(reviewedMode === 'self_custody' ? connectedAddress : undefined)
+      await launch({
+        chainIds,
+        owner: effectiveOwner,
+        projectUri,
+        rulesetConfigurations: [rulesetConfig],
+        terminalConfigurations,
+        memo,
+        forceSelfCustody,
+        deployTiersHookConfig,
+      })
+    } catch (err) {
+      setCreationFeeError(err instanceof Error ? err.message : 'Project creation fee unavailable')
+    }
+  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, terminalConfigurations, memo, deployTiersHookConfig, launch, creationFeesWei, reviewedMode, connectedAddress, assertCurrentAccount])
 
   const handleClose = useCallback(() => {
     reset()
@@ -422,7 +478,11 @@ export default function LaunchProjectModal({
                   Gas Sponsored
                 </div>
                 <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Project creation on all {chainIds.length} chain{chainIds.length !== 1 ? 's' : ''} is free
+                  {creationFeesLoading
+                    ? 'Checking the protocol creation fee...'
+                    : !creationFeesReady
+                      ? creationFeeError
+                      : `${creationFeeError ? `${creationFeeError} ` : ''}Protocol creation fee included: ${formatEther(totalCreationFee)} ETH total across ${chainIds.length} chain${chainIds.length !== 1 ? 's' : ''}.`}
                 </div>
               </div>
 
@@ -431,7 +491,7 @@ export default function LaunchProjectModal({
                 type="launchProject"
                 details={{
                   projectName,
-                  owner: effectiveOwner,
+                  owner: effectiveOwner || '',
                   chainIds,
                 }}
                 isDark={isDark}
@@ -449,8 +509,8 @@ export default function LaunchProjectModal({
 
               {/* Technical Details */}
               <TechnicalDetails
-                contract="JB_CONTROLLER"
-                contractAddress={JB_CONTRACTS.JBController}
+                contract="JB_OMNICHAIN_DEPLOYER"
+                contractAddress={JB_OMNICHAIN_DEPLOYER}
                 functionName="launchProjectFor"
                 chainId={chainIds[0]}
                 parameters={verificationResult.verifiedParams}
@@ -499,7 +559,7 @@ export default function LaunchProjectModal({
               </div>
               {chainIds.length > 1 && (
                 <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Deploy suckers to link these projects for cross-chain token bridging.
+                  Cross-chain bridges were deployed atomically with these projects.
                 </div>
               )}
             </div>

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAccount, useConfig, useSignTypedData } from 'wagmi'
-import { encodeFunctionData, getContract, createPublicClient, http, fallback, zeroAddress, type Address, type Hex, type PublicClient } from 'viem'
+import { encodeFunctionData, getContract, createPublicClient, http, fallback, type Address, type Hex, type PublicClient } from 'viem'
 import { useManagedWallet, createManagedRelayrBundle } from '../useManagedWallet'
-import { createBalanceBundle } from '../../services/relayr'
+import { assertTransactionAccountUnchanged } from '../useReviewedTransactionAccount'
+import { createReviewedForwarderBundle } from '../../services/relayr'
 import {
   buildOmnichainSetUriTransactions,
+  encodeSetUriOf,
   type ChainProjectMapping,
 } from '../../services/omnichainDeployer'
 import { useRelayrBundle } from './useRelayrBundle'
@@ -16,6 +18,7 @@ import {
   FORWARD_REQUEST_TYPES,
 } from '../../constants/abis'
 import { getProjectController } from '../../utils/paymentTerminal'
+import { getSafetyPublicClient } from '../../utils/transactionSafety'
 import { RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants/chains'
 
 // Relayr app ID for sponsored bundles
@@ -43,45 +46,13 @@ export interface UseOmnichainSetUriReturn {
   signingChainId: number | null
   isComplete: boolean
   hasError: boolean
+  persistedTxHashes: Record<number, string> | null
+  persistedBundleId: string | null
   reset: () => void
 }
 
 // 48 hours deadline for signatures
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60
-
-/**
- * Search localStorage for a deployment result matching a projectId on a specific chain.
- * Deployment results (from on-chain receipts) are the ground truth for per-chain project IDs.
- * This corrects stale IDs that the AI may get from bendystraw indexing lag.
- */
-export function findDeploymentResultByProjectId(
-  projectId: number,
-  chainId: number,
-  chatId?: string,
-): Record<number, number> | null {
-  try {
-    const prefix = 'juicy-vision:deployment-result:'
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (!key || !key.startsWith(prefix)) continue
-
-      const stored = localStorage.getItem(key)
-      if (!stored) continue
-
-      const result = JSON.parse(stored) as { projectIds?: Record<number, number>; chatId?: string }
-
-      // Skip results from different chats to prevent cross-chat contamination
-      if (chatId && result.chatId && result.chatId !== chatId) continue
-
-      if (result.projectIds && result.projectIds[chainId] === projectId) {
-        return result.projectIds
-      }
-    }
-  } catch {
-    // Ignore localStorage errors
-  }
-  return null
-}
 
 // localStorage key prefix for persisting state
 const SET_URI_RESULT_PREFIX = 'juicy-vision:set-uri-result:'
@@ -126,9 +97,8 @@ function loadSetUriResult(deploymentKey: string | undefined): PersistedSetUriRes
   }
 }
 
-function clearSetUriResult(deploymentKey: string | undefined): void {
+function clearInProgressSetUri(deploymentKey: string | undefined): void {
   try {
-    localStorage.removeItem(getResultKey(deploymentKey))
     localStorage.removeItem(getInProgressKey(deploymentKey))
   } catch {
     // Ignore
@@ -174,13 +144,13 @@ function loadInProgressSetUri(deploymentKey: string | undefined): PersistedInPro
  *     { chainId: 1, projectId: 123 },   // Ethereum project ID
  *     { chainId: 10, projectId: 456 },  // Optimism project ID (different!)
  *   ],
- *   uri: 'QmNewMetadataCid...',
+ *   uri: 'ipfs://QmNewMetadataCid...',
  * })
  */
 export function useOmnichainSetUri(
   options: UseOmnichainTransactionOptions = {}
 ): UseOmnichainSetUriReturn {
-  const { onSuccess, onError, deploymentKey, chatId } = options
+  const { onSuccess, onError, deploymentKey } = options
 
   // Use refs for callbacks to avoid infinite loops
   const onSuccessRef = useRef(onSuccess)
@@ -193,6 +163,10 @@ export function useOmnichainSetUri(
   // Get wallet address
   const { address: managedAddress, isManagedMode } = useManagedWallet()
   const { address: connectedAddress } = useAccount()
+  const latestManagedAddress = useRef(managedAddress)
+  const latestConnectedAddress = useRef(connectedAddress)
+  latestManagedAddress.current = managedAddress
+  latestConnectedAddress.current = connectedAddress
   const config = useConfig()
   const { signTypedDataAsync } = useSignTypedData()
 
@@ -220,8 +194,15 @@ export function useOmnichainSetUri(
   }
   const { bundleState, reset: resetBundle } = bundle
 
-  // Restore in-progress on mount
+  // Keep persisted state scoped to the reviewed operation when a component is reused.
   const hasResumedRef = useRef(false)
+  useEffect(() => {
+    setPersistedResult(loadSetUriResult(deploymentKey))
+    setResumedInProgress(loadInProgressSetUri(deploymentKey))
+    hasResumedRef.current = false
+  }, [deploymentKey])
+
+  // Restore in-progress on mount.
   useEffect(() => {
     if (resumedInProgress && !hasResumedRef.current && bundleState.status === 'idle') {
       hasResumedRef.current = true
@@ -286,43 +267,47 @@ export function useOmnichainSetUri(
     }
   }, [bundleState.status, bundleState.bundleId, bundleState.chainStates, deploymentKey])
 
-  // Handle errors
+  // Handle errors. A failed bundle may be retried; a confirmed bundle may not.
   useEffect(() => {
-    if (bundleState.status === 'failed' && bundleState.error) {
-      onErrorRef.current?.(new Error(bundleState.error))
+    if (bundleState.status === 'failed' || bundleState.status === 'partial') {
+      clearInProgressSetUri(deploymentKey)
+      setResumedInProgress(null)
+      if (bundleState.error) onErrorRef.current?.(new Error(bundleState.error))
     }
-  }, [bundleState.status, bundleState.error])
+  }, [bundleState.status, bundleState.error, deploymentKey])
 
   /**
    * Update project URI on all specified chains.
    * Fetches the controller address from JBDirectory.controllerOf for each chain.
    */
   const setUri = useCallback(async (params: OmnichainSetUriParams) => {
-    const { chainProjectMappings: rawMappings, uri, forceSelfCustody = false } = params
+    const { chainProjectMappings, uri, forceSelfCustody = false } = params
 
-    // Correct chainProjectMappings using stored deployment results from localStorage.
-    // The AI may provide stale per-chain IDs from bendystraw (indexing lag).
-    // Deployment results from on-chain receipts are the ground truth.
-    let chainProjectMappings = rawMappings
-    const primaryMapping = rawMappings[0]
-    if (primaryMapping && rawMappings.length > 1) {
-      const storedIds = findDeploymentResultByProjectId(
-        Number(primaryMapping.projectId),
-        primaryMapping.chainId,
-        chatId,
-      )
-      if (storedIds) {
-        chainProjectMappings = rawMappings.map(m => ({
-          ...m,
-          projectId: storedIds[m.chainId] ?? m.projectId,
-        }))
-        console.log('Corrected chainProjectMappings from stored deployment result:', storedIds)
-      }
+    if (persistedResult) {
+      bundle._setError('This metadata update is already confirmed')
+      return
     }
-
-    // Clear any previous state
-    clearSetUriResult(deploymentKey)
-    setPersistedResult(null)
+    if (resumedInProgress) {
+      bundle._setError('This metadata update is already in progress')
+      return
+    }
+    if (
+      chainProjectMappings.length === 0 ||
+      new Set(chainProjectMappings.map(mapping => mapping.chainId)).size !== chainProjectMappings.length
+    ) {
+      bundle._setError('Update chains must be a non-empty unique list')
+      return
+    }
+    let hasInvalidProjectId = false
+    try {
+      hasInvalidProjectId = chainProjectMappings.some(mapping => BigInt(mapping.projectId) <= 0n)
+    } catch {
+      hasInvalidProjectId = true
+    }
+    if (hasInvalidProjectId) {
+      bundle._setError('Every update must use a valid project ID')
+      return
+    }
 
     const useServerSigning = isManagedMode && !forceSelfCustody
     const signerAddress = useServerSigning ? managedAddress : connectedAddress
@@ -331,10 +316,15 @@ export function useOmnichainSetUri(
       bundle._setError('No wallet address available')
       return
     }
-
-    bundle._setCreating()
+    const assertSignerUnchanged = () => assertTransactionAccountUnchanged(
+      signerAddress,
+      useServerSigning ? latestManagedAddress.current : latestConnectedAddress.current,
+    )
 
     try {
+      if (!/^ipfs:\/\/(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,120})$/.test(uri)) {
+        throw new Error('Project metadata URI must be a valid IPFS CID')
+      }
       // Fetch controller address for each chain from JBDirectory
       console.log('Fetching controller addresses for each chain...')
       const mappingsWithControllers: ChainProjectMapping[] = await Promise.all(
@@ -359,6 +349,11 @@ export function useOmnichainSetUri(
             publicClient,
             BigInt(projectId)
           )
+          await publicClient.call({
+            account: signerAddress as Address,
+            to: controller,
+            data: encodeSetUriOf({ projectId, uri }),
+          })
 
           console.log(`Chain ${chainId}: Project ${projectId} uses controller ${controller}`)
 
@@ -370,27 +365,9 @@ export function useOmnichainSetUri(
         })
       )
 
-      // Filter out chains where project doesn't exist yet (controller is zero address)
-      // This can happen with omnichain projects where cross-chain messages haven't arrived
-      const validMappings = mappingsWithControllers.filter(m => {
-        if (m.controller === zeroAddress) {
-          console.warn(`Skipping chain ${m.chainId}: Project ${m.projectId} has no controller (not deployed yet?)`)
-          return false
-        }
-        return true
-      })
-
-      if (validMappings.length === 0) {
-        throw new Error('Project not found on any chain. If this is a new omnichain project, wait a minute for cross-chain deployment to complete.')
-      }
-
-      if (validMappings.length < mappingsWithControllers.length) {
-        console.warn(`Only ${validMappings.length} of ${mappingsWithControllers.length} chains have the project deployed`)
-      }
-
       // Build transactions for all chains with their respective controllers
       const txs = buildOmnichainSetUriTransactions({
-        chainProjectMappings: validMappings,
+        chainProjectMappings: mappingsWithControllers,
         uri,
       })
 
@@ -401,8 +378,13 @@ export function useOmnichainSetUri(
         value: tx.value,
       }))
 
-      const chainIds = validMappings.map(m => m.chainId)
+      const chainIds = mappingsWithControllers.map(m => m.chainId)
       let bundleId: string
+
+      // Discovery and exact simulations have passed on every chain. Only now
+      // expose an execution state or request authorization from the user.
+      assertSignerUnchanged()
+      bundle._setCreating()
 
       if (useServerSigning) {
         // Server-side signing with smart account routing via ERC-2771
@@ -421,10 +403,12 @@ export function useOmnichainSetUri(
 
         // Pass smart account address for ERC-2771 routing through ForwardableSimpleAccount
         // The forwarder calls SmartAccount.execute(), _msgSender() = reserves EOA = owner
+        assertSignerUnchanged()
         const result = await createManagedRelayrBundle(
           serverTransactions,
           signerAddress,
-          managedAddress ?? undefined  // Smart account address for routing
+          managedAddress ?? undefined,  // Smart account address for routing
+          deploymentKey,
         )
         bundleId = result.bundleId
         console.log('Server created bundle:', bundleId)
@@ -473,7 +457,9 @@ export function useOmnichainSetUri(
             message: messageData,
           }
 
+          assertSignerUnchanged()
           const signature = await signTypedDataAsync(typedData)
+          assertSignerUnchanged()
           console.log(`Signature obtained for chain ${tx.chain}`)
 
           const executeData = encodeFunctionData({
@@ -500,7 +486,33 @@ export function useOmnichainSetUri(
 
         setIsSigning(false)
         setSigningChainId(null)
-        console.log('=== ERC-2771 SIGNING COMPLETE ===')
+
+        await Promise.all(mappingsWithControllers.map(async mapping => {
+          const publicClient = getSafetyPublicClient(mapping.chainId)
+          const currentController = await getProjectController(
+            publicClient,
+            BigInt(mapping.projectId),
+          )
+          if (currentController.toLowerCase() !== mapping.controller?.toLowerCase()) {
+            throw new Error(`The project controller changed on chain ${mapping.chainId}`)
+          }
+          const transaction = transactions.find(candidate => candidate.chain === mapping.chainId)
+          const wrapped = wrappedTransactions.find(candidate => candidate.chain === mapping.chainId)
+          if (!transaction || !wrapped) {
+            throw new Error(`Missing signed metadata transaction for chain ${mapping.chainId}`)
+          }
+          await publicClient.call({
+            account: signerAddress as Address,
+            to: currentController,
+            data: transaction.data as Hex,
+          })
+          await publicClient.call({
+            account: signerAddress as Address,
+            to: ERC2771_FORWARDER_ADDRESS,
+            data: wrapped.data as Hex,
+            value: BigInt(wrapped.value),
+          })
+        }))
 
         const bundleRequest = {
           app_id: RELAYR_APP_ID,
@@ -509,7 +521,8 @@ export function useOmnichainSetUri(
           virtual_nonce_mode: 'Disabled' as const,
         }
 
-        const bundleResponse = await createBalanceBundle(bundleRequest)
+        assertSignerUnchanged()
+        const bundleResponse = await createReviewedForwarderBundle(bundleRequest)
         bundleId = bundleResponse.bundle_uuid
       }
 
@@ -522,7 +535,7 @@ export function useOmnichainSetUri(
 
       // Initialize bundle state
       const projectIds: Record<number, number> = {}
-      validMappings.forEach(m => {
+      mappingsWithControllers.forEach(m => {
         projectIds[m.chainId] = typeof m.projectId === 'bigint' ? Number(m.projectId) : m.projectId
       })
 
@@ -541,15 +554,24 @@ export function useOmnichainSetUri(
       bundle._setError(errorMessage)
       onErrorRef.current?.(err instanceof Error ? err : new Error(errorMessage))
     }
-  }, [isManagedMode, managedAddress, connectedAddress, bundle, config, signTypedDataAsync, deploymentKey])
+  }, [
+    isManagedMode,
+    managedAddress,
+    connectedAddress,
+    bundle,
+    config,
+    signTypedDataAsync,
+    deploymentKey,
+    persistedResult,
+    resumedInProgress,
+  ])
 
   const reset = useCallback(() => {
     resetBundle()
     setIsSigning(false)
     setSigningChainId(null)
-    clearSetUriResult(deploymentKey)
-    setPersistedResult(null)
-    setResumedInProgress(null)
+    setPersistedResult(loadSetUriResult(deploymentKey))
+    setResumedInProgress(loadInProgressSetUri(deploymentKey))
     hasResumedRef.current = false
   }, [resetBundle, deploymentKey])
 
@@ -566,6 +588,8 @@ export function useOmnichainSetUri(
     signingChainId,
     isComplete,
     hasError: bundleState.status === 'failed' || bundleState.status === 'partial',
+    persistedTxHashes: persistedResult?.txHashes ?? null,
+    persistedBundleId: persistedResult?.bundleId ?? null,
     reset,
-  }), [setUri, bundleState, isUpdating, isSigning, signingChainId, isComplete, reset])
+  }), [setUri, bundleState, isUpdating, isSigning, signingChainId, isComplete, persistedResult, reset])
 }

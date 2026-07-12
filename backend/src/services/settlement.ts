@@ -6,75 +6,19 @@
  * executed on-chain at the current exchange rate.
  */
 
-import { query, queryOne, execute, transaction } from '../db/index.ts';
+import { execute, query, queryOne, transaction } from '../db/index.ts';
 import { logger } from '../utils/logger.ts';
 import { getConfig } from '../utils/config.ts';
-import {
-  createPublicClient,
-  createWalletClient,
-  http,
-  encodeFunctionData,
-  parseEther,
-  formatEther,
-  type Chain,
-} from 'viem';
+import { type Address, formatEther, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { mainnet, optimism, arbitrum, base } from 'viem/chains';
+import { executeJuiceProjectPayment, getEthUsdRate, verifyJuiceProjectPayment } from './juice.ts';
+import { getPublicClient } from './chainReader.ts';
 
 // Default settlement delay in days (used when no risk score provided)
 const DEFAULT_SETTLEMENT_DELAY_DAYS = 7;
 
 // Maximum retries before marking as failed
 const MAX_RETRIES = 5;
-
-// Chain configurations
-const CHAINS: Record<number, { chain: Chain; rpcUrl: string }> = {
-  1: { chain: mainnet, rpcUrl: 'https://eth.llamarpc.com' },
-  10: { chain: optimism, rpcUrl: 'https://optimism.llamarpc.com' },
-  42161: { chain: arbitrum, rpcUrl: 'https://arbitrum.llamarpc.com' },
-  8453: { chain: base, rpcUrl: 'https://base.llamarpc.com' },
-};
-
-// JBMultiTerminal ABI (pay function)
-const TERMINAL_ABI = [
-  {
-    name: 'pay',
-    type: 'function',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'beneficiary', type: 'address' },
-      { name: 'minReturnedTokens', type: 'uint256' },
-      { name: 'memo', type: 'string' },
-      { name: 'metadata', type: 'bytes' },
-    ],
-    outputs: [{ name: 'beneficiaryTokenCount', type: 'uint256' }],
-    stateMutability: 'payable',
-  },
-] as const;
-
-// JBMultiTerminal address (same on all chains)
-const JB_MULTI_TERMINAL = '0x130f5dd2bd8805443cf41755253d778a75a67f53' as const;
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const;
-
-// Chainlink ETH/USD price feed (mainnet)
-const CHAINLINK_ETH_USD = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419' as const;
-const CHAINLINK_ABI = [
-  {
-    name: 'latestRoundData',
-    type: 'function',
-    inputs: [],
-    outputs: [
-      { name: 'roundId', type: 'uint80' },
-      { name: 'answer', type: 'int256' },
-      { name: 'startedAt', type: 'uint256' },
-      { name: 'updatedAt', type: 'uint256' },
-      { name: 'answeredInRound', type: 'uint80' },
-    ],
-    stateMutability: 'view',
-  },
-] as const;
 
 interface PendingPayment {
   id: string;
@@ -86,6 +30,8 @@ interface PendingPayment {
   memo: string | null;
   beneficiary_address: string;
   retry_count: number;
+  settlement_amount_wei?: string | null;
+  settlement_tx_hash?: string | null;
 }
 
 interface SettlementResult {
@@ -141,7 +87,7 @@ export async function createPendingPayment(params: {
       settlesAt,
       params.riskScore ?? null,
       delayDays,
-    ]
+    ],
   );
 
   logger.info('Created pending fiat payment', {
@@ -164,14 +110,14 @@ export async function createPendingPayment(params: {
 export async function markPaymentDisputed(
   stripePaymentIntentId: string,
   stripeDisputeId: string,
-  disputeReason?: string
+  disputeReason?: string,
 ): Promise<boolean> {
   return await transaction(async (client) => {
     // Find the payment
     const { rows: payments } = await client.queryObject<{ id: string; status: string }>(
       `SELECT id, status FROM pending_fiat_payments
        WHERE stripe_payment_intent_id = $1`,
-      [stripePaymentIntentId]
+      [stripePaymentIntentId],
     );
 
     if (!payments[0]) {
@@ -181,8 +127,8 @@ export async function markPaymentDisputed(
 
     const payment = payments[0];
 
-    if (payment.status === 'settled') {
-      logger.error('Dispute received for already settled payment', undefined, {
+    if (payment.status !== 'pending_settlement') {
+      logger.error('Dispute received after settlement processing began', undefined, {
         paymentId: payment.id,
         stripePaymentIntentId,
       });
@@ -191,19 +137,20 @@ export async function markPaymentDisputed(
     }
 
     // Mark as disputed
-    await client.queryObject(
+    const disputed = await client.queryObject(
       `UPDATE pending_fiat_payments
        SET status = 'disputed', updated_at = NOW()
-       WHERE id = $1`,
-      [payment.id]
+       WHERE id = $1 AND status = 'pending_settlement'`,
+      [payment.id],
     );
+    if ((disputed.rowCount ?? 0) !== 1) return false;
 
     // Log the dispute
     await client.queryObject(
       `INSERT INTO fiat_payment_disputes (
         pending_payment_id, stripe_dispute_id, dispute_reason
       ) VALUES ($1, $2, $3)`,
-      [payment.id, stripeDisputeId, disputeReason || null]
+      [payment.id, stripeDisputeId, disputeReason || null],
     );
 
     logger.warn('Payment marked as disputed', {
@@ -220,14 +167,14 @@ export async function markPaymentDisputed(
  * Mark payment as refunded (manual refund via Stripe)
  */
 export async function markPaymentRefunded(
-  stripePaymentIntentId: string
+  stripePaymentIntentId: string,
 ): Promise<boolean> {
   const count = await execute(
     `UPDATE pending_fiat_payments
      SET status = 'refunded', updated_at = NOW()
      WHERE stripe_payment_intent_id = $1
      AND status = 'pending_settlement'`,
-    [stripePaymentIntentId]
+    [stripePaymentIntentId],
   );
 
   if (count > 0) {
@@ -240,7 +187,7 @@ export async function markPaymentRefunded(
 /**
  * Get payments ready for settlement (past 7-day hold)
  */
-export async function getPaymentsReadyForSettlement(): Promise<PendingPayment[]> {
+export function getPaymentsReadyForSettlement(): Promise<PendingPayment[]> {
   return query<PendingPayment>(
     `SELECT id, user_id, amount_usd, amount_cents, project_id, chain_id,
             memo, beneficiary_address, retry_count
@@ -250,31 +197,8 @@ export async function getPaymentsReadyForSettlement(): Promise<PendingPayment[]>
      AND retry_count < $1
      ORDER BY settles_at ASC
      LIMIT 50`,
-    [MAX_RETRIES]
+    [MAX_RETRIES],
   );
-}
-
-/**
- * Fetch current ETH/USD rate from Chainlink
- */
-export async function getEthUsdRate(): Promise<number> {
-  const client = createPublicClient({
-    chain: mainnet,
-    transport: http(CHAINS[1].rpcUrl),
-  });
-
-  const data = await client.readContract({
-    address: CHAINLINK_ETH_USD,
-    abi: CHAINLINK_ABI,
-    functionName: 'latestRoundData',
-  });
-
-  // Chainlink returns price with 8 decimals
-  const price = Number(data[1]) / 1e8;
-
-  logger.debug('Fetched ETH/USD rate', { rate: price });
-
-  return price;
 }
 
 /**
@@ -288,51 +212,19 @@ async function executeJuiceboxPayment(
     amountWei: bigint;
     beneficiary: `0x${string}`;
     memo: string;
-  }
+    onSubmitted?: (txHash: Hex) => Promise<void>;
+  },
 ): Promise<SettlementResult> {
-  const chainConfig = CHAINS[params.chainId];
-  if (!chainConfig) {
-    throw new Error(`Unsupported chain: ${params.chainId}`);
-  }
-
-  const account = privateKeyToAccount(privateKey);
-
-  const walletClient = createWalletClient({
-    account,
-    chain: chainConfig.chain,
-    transport: http(chainConfig.rpcUrl),
+  const result = await executeJuiceProjectPayment({
+    privateKey,
+    chainId: params.chainId,
+    projectId: params.projectId,
+    beneficiary: params.beneficiary,
+    amountWei: params.amountWei,
+    memo: params.memo,
+    onSubmitted: params.onSubmitted,
   });
-
-  const publicClient = createPublicClient({
-    chain: chainConfig.chain,
-    transport: http(chainConfig.rpcUrl),
-  });
-
-  // Execute pay transaction
-  const txHash = await walletClient.writeContract({
-    address: JB_MULTI_TERMINAL,
-    abi: TERMINAL_ABI,
-    functionName: 'pay',
-    args: [
-      BigInt(params.projectId),
-      NATIVE_TOKEN,
-      params.amountWei,
-      params.beneficiary,
-      0n, // minReturnedTokens - accept any
-      params.memo,
-      '0x', // metadata
-    ],
-    value: params.amountWei,
-  });
-
-  // Wait for confirmation
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-
-  // TODO: Parse logs to get actual tokens received
-  // For now, return 0 (would need to decode Pay event)
-  const tokensReceived = 0n;
-
-  return { txHash, tokensReceived };
+  return { txHash: result.txHash, tokensReceived: BigInt(result.tokensReceived) };
 }
 
 /**
@@ -346,23 +238,20 @@ export async function settlePayment(paymentId: string): Promise<SettlementResult
     throw new Error('RESERVES_PRIVATE_KEY not configured');
   }
 
-  // Mark as settling
-  await execute(
+  const payment = await queryOne<PendingPayment>(
     `UPDATE pending_fiat_payments
      SET status = 'settling', updated_at = NOW()
-     WHERE id = $1`,
-    [paymentId]
-  );
-
-  const payment = await queryOne<PendingPayment>(
-    `SELECT * FROM pending_fiat_payments WHERE id = $1`,
-    [paymentId]
+     WHERE id = $1 AND status = 'pending_settlement'
+       AND settles_at <= NOW() AND retry_count < $2
+     RETURNING *`,
+    [paymentId, MAX_RETRIES],
   );
 
   if (!payment) {
-    throw new Error(`Payment not found: ${paymentId}`);
+    throw new Error('Payment is not ready for settlement');
   }
 
+  let submittedTxHash: Hex | null = null;
   try {
     // Get current exchange rate
     const ethUsdRate = await getEthUsdRate();
@@ -370,6 +259,7 @@ export async function settlePayment(paymentId: string): Promise<SettlementResult
     // Convert USD to ETH
     const amountEth = payment.amount_usd / ethUsdRate;
     const amountWei = BigInt(Math.floor(amountEth * 1e18));
+    if (amountWei <= 0n) throw new Error('Settlement amount is too small to transfer');
 
     logger.info('Settling payment', {
       paymentId,
@@ -386,6 +276,17 @@ export async function settlePayment(paymentId: string): Promise<SettlementResult
       amountWei,
       beneficiary: payment.beneficiary_address as `0x${string}`,
       memo: payment.memo || `Fiat payment: $${payment.amount_usd}`,
+      onSubmitted: async (hash) => {
+        submittedTxHash = hash;
+        const recorded = await execute(
+          `UPDATE pending_fiat_payments
+           SET settlement_rate_eth_usd = $1, settlement_amount_wei = $2,
+               settlement_tx_hash = $3, updated_at = NOW()
+           WHERE id = $4 AND status = 'settling' AND settlement_tx_hash IS NULL`,
+          [ethUsdRate, amountWei.toString(), hash, paymentId],
+        );
+        if (recorded !== 1) throw new Error('Could not bind submitted settlement payment');
+      },
     });
 
     // Mark as settled
@@ -398,14 +299,14 @@ export async function settlePayment(paymentId: string): Promise<SettlementResult
         settlement_tx_hash = $3,
         tokens_received = $4,
         updated_at = NOW()
-      WHERE id = $5`,
+      WHERE id = $5 AND status = 'settling' AND settlement_tx_hash = $3`,
       [
         ethUsdRate,
         amountWei.toString(),
         txHash,
         tokensReceived.toString(),
         paymentId,
-      ]
+      ],
     );
 
     logger.info('Payment settled successfully', {
@@ -415,11 +316,24 @@ export async function settlePayment(paymentId: string): Promise<SettlementResult
     });
 
     return { txHash, tokensReceived };
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    // Mark as failed but allow retry
+    if (submittedTxHash) {
+      await execute(
+        `UPDATE pending_fiat_payments
+         SET error_message = $1, updated_at = NOW()
+         WHERE id = $2 AND status = 'settling' AND settlement_tx_hash = $3`,
+        [errorMessage, paymentId, submittedTxHash],
+      );
+      logger.error('Submitted settlement awaits reconciliation', error as Error, {
+        paymentId,
+        txHash: submittedTxHash,
+      });
+      throw error;
+    }
+
+    // Only failures which happened before broadcast can be retried.
     await execute(
       `UPDATE pending_fiat_payments SET
         status = 'pending_settlement',
@@ -427,8 +341,8 @@ export async function settlePayment(paymentId: string): Promise<SettlementResult
         last_retry_at = NOW(),
         error_message = $1,
         updated_at = NOW()
-      WHERE id = $2`,
-      [errorMessage, paymentId]
+      WHERE id = $2 AND status = 'settling' AND settlement_tx_hash IS NULL`,
+      [errorMessage, paymentId],
     );
 
     logger.error('Payment settlement failed', error as Error, {
@@ -448,10 +362,65 @@ export async function processSettlements(): Promise<{
   failed: number;
   pending: number;
 }> {
-  const payments = await getPaymentsReadyForSettlement();
-
   let settled = 0;
   let failed = 0;
+  const privateKey = getConfig().reservesPrivateKey as Hex;
+  if (privateKey) {
+    const payer = privateKeyToAccount(privateKey).address;
+    const submitted = await query<
+      PendingPayment & {
+        settlement_amount_wei: string;
+        settlement_tx_hash: string;
+      }
+    >(
+      `SELECT * FROM pending_fiat_payments
+       WHERE status = 'settling'
+         AND settlement_tx_hash IS NOT NULL
+         AND settlement_amount_wei IS NOT NULL
+       LIMIT 50`,
+    );
+    for (const payment of submitted) {
+      const client = getPublicClient(payment.chain_id);
+      const hash = payment.settlement_tx_hash as Hex;
+      try {
+        const receipt = await client.getTransactionReceipt({ hash });
+        if (receipt.status === 'reverted') {
+          const count = await execute(
+            `UPDATE pending_fiat_payments
+             SET status = 'pending_settlement', retry_count = retry_count + 1,
+                 last_retry_at = NOW(), settlement_rate_eth_usd = NULL,
+                 settlement_amount_wei = NULL, settlement_tx_hash = NULL,
+                 error_message = 'Settlement transaction reverted', updated_at = NOW()
+             WHERE id = $1 AND status = 'settling' AND settlement_tx_hash = $2`,
+            [payment.id, hash],
+          );
+          if (count === 1) failed++;
+          continue;
+        }
+        const tokensReceived = await verifyJuiceProjectPayment({
+          client,
+          txHash: hash,
+          payer,
+          projectId: payment.project_id,
+          beneficiary: payment.beneficiary_address as Address,
+          amountWei: BigInt(payment.settlement_amount_wei),
+          memo: payment.memo || `Fiat payment: $${payment.amount_usd}`,
+        });
+        const count = await execute(
+          `UPDATE pending_fiat_payments
+           SET status = 'settled', settled_at = NOW(), tokens_received = $1,
+               error_message = NULL, updated_at = NOW()
+           WHERE id = $2 AND status = 'settling' AND settlement_tx_hash = $3`,
+          [tokensReceived.toString(), payment.id, hash],
+        );
+        if (count === 1) settled++;
+      } catch {
+        // A pending receipt or temporary RPC failure remains non-retryable.
+      }
+    }
+  }
+
+  const payments = await getPaymentsReadyForSettlement();
 
   for (const payment of payments) {
     try {
@@ -469,7 +438,7 @@ export async function processSettlements(): Promise<{
   const [{ count }] = await query<{ count: string }>(
     `SELECT COUNT(*) as count FROM pending_fiat_payments
      WHERE status = 'pending_settlement'`,
-    []
+    [],
   );
 
   return {
@@ -484,7 +453,7 @@ export async function processSettlements(): Promise<{
  */
 export async function getProjectPendingBalance(
   projectId: number,
-  chainId: number
+  chainId: number,
 ): Promise<{
   pendingUsd: number;
   pendingCount: number;
@@ -502,15 +471,13 @@ export async function getProjectPendingBalance(
     FROM pending_fiat_payments
     WHERE project_id = $1 AND chain_id = $2
     AND status = 'pending_settlement'`,
-    [projectId, chainId]
+    [projectId, chainId],
   );
 
   return {
     pendingUsd: row ? parseFloat(row.pending_usd || '0') : 0,
     pendingCount: row ? parseInt(row.pending_count) : 0,
-    nextSettlement: row?.next_settlement_at
-      ? new Date(row.next_settlement_at)
-      : null,
+    nextSettlement: row?.next_settlement_at ? new Date(row.next_settlement_at) : null,
   };
 }
 
@@ -518,7 +485,7 @@ export async function getProjectPendingBalance(
  * Get user's pending payments
  */
 export async function getUserPendingPayments(
-  userId: string
+  userId: string,
 ): Promise<
   Array<{
     id: string;
@@ -542,7 +509,7 @@ export async function getUserPendingPayments(
      WHERE user_id = $1
      AND status IN ('pending_settlement', 'settling')
      ORDER BY settles_at ASC`,
-    [userId]
+    [userId],
   );
 
   return rows.map((r) => ({

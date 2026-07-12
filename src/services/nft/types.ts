@@ -10,37 +10,26 @@ export interface NFTTier {
   imageUri?: string
   price: bigint
   currency: number // 1=ETH, 2=USD
+  pricingDecimals: number
   initialSupply: number
   remainingSupply: number
   reservedRate: number
+  reserveBeneficiary?: string
   votingUnits: bigint
   category: number
   allowOwnerMint: boolean
   transfersPausable: boolean
   encodedIPFSUri?: string
+  /** Canonical DAG-PB first, then the recoverable legacy raw-CID candidate. */
+  metadataUris?: string[]
+  animationUrl?: string
+  mediaType?: string
   // Additional tier config fields
   discountPercent?: number
   cannotBeRemoved?: boolean
   cannotIncreaseDiscountPercent?: boolean
-}
-
-/**
- * Raw tier data from the contract
- */
-export interface RawTierData {
-  id: bigint
-  price: bigint
-  remainingSupply: bigint
-  initialSupply: bigint
-  votingUnits: bigint
-  reservedRate: bigint
-  reserveFrequency: bigint
-  category: bigint
-  allowOwnerMint: boolean
-  transfersPausable: boolean
-  cannotBeRemoved: boolean
-  cannotIncreaseDiscountPercent: boolean
-  encodedIPFSUri: `0x${string}`
+  cannotBuyWithCredits?: boolean
+  splitPercent?: number
 }
 
 /**
@@ -48,9 +37,14 @@ export interface RawTierData {
  */
 export interface NFTTierMetadata {
   name: string
+  productName?: string
+  categoryName?: string
   description?: string
   image?: string
   imageUri?: string
+  animation_url?: string
+  animationUrl?: string
+  mediaType?: string
   external_url?: string
   attributes?: Array<{
     trait_type: string
@@ -100,6 +94,8 @@ export interface JB721HookFlags {
   noNewTiersWithOwnerMinting: boolean
   /** If true, overspending (paying more than tier price) is prevented */
   preventOverspending: boolean
+  /** Whether token issuance includes the portion routed through tier splits */
+  issueTokensForSplits: boolean
 }
 
 /**

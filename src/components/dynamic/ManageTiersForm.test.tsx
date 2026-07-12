@@ -6,7 +6,8 @@ import * as bendystraw from '../../services/bendystraw'
 import * as nftService from '../../services/nft'
 
 // Mock wagmi
-vi.mock('wagmi', () => ({
+vi.mock('wagmi', async (importOriginal) => ({
+  ...await importOriginal<typeof import('wagmi')>(),
   useAccount: vi.fn(() => ({
     address: undefined,
     isConnected: false,
@@ -35,11 +36,14 @@ vi.mock('../../services/nft', () => ({
   fetchNFTTiersWithPermissions: vi.fn(),
   fetchHookFlags: vi.fn(),
   getBlockedOperations: vi.fn(() => []),
+  fetchNFTPricingContext: vi.fn().mockResolvedValue({ currency: 1, decimals: 18 }),
+  getEffectiveTierPrice: vi.fn((tier) => tier.price),
 }))
 
 // Mock IPFS utils
 vi.mock('../../utils/ipfs', () => ({
   resolveIpfsUri: vi.fn((uri) => (uri ? `https://ipfs.io/${uri}` : null)),
+  ipfsGatewayUrls: vi.fn((uri) => (uri ? [`https://ipfs.io/${uri}`] : [])),
   encodeIpfsUri: vi.fn(() => '0x1234'),
   pinJson: vi.fn().mockResolvedValue('QmTest'),
   pinFile: vi.fn().mockResolvedValue('QmTestFile'),
@@ -74,6 +78,7 @@ describe('ManageTiersForm', () => {
     noNewTiersWithVotes: false,
     noNewTiersWithOwnerMinting: false,
     preventOverspending: false,
+    issueTokensForSplits: false,
   }
 
   const mockTiers = [
@@ -152,7 +157,7 @@ describe('ManageTiersForm', () => {
       render(<ManageTiersForm projectId="1" />)
 
       await waitFor(() => {
-        expect(screen.getByText(/No NFT collection configured/i)).toBeInTheDocument()
+        expect(screen.getByText(/No recognized NFT hook configured/i)).toBeInTheDocument()
       })
     })
   })
@@ -295,6 +300,7 @@ describe('ManageTiersForm', () => {
     it('shows permission alert when flags are restrictive', async () => {
       ;(nftService.fetchHookFlags as Mock).mockResolvedValue({
         noNewTiersWithReserves: true,
+        issueTokensForSplits: false,
         noNewTiersWithVotes: true,
         noNewTiersWithOwnerMinting: false,
         preventOverspending: false,

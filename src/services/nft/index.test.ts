@@ -1,11 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import {
+  fetchTierMetadata,
   validateTierChange,
   validateDiscountChange,
   getBlockedOperations,
+  getEffectiveTierPrice,
 } from './index'
 import type { JB721HookFlags, TierPermissions } from './types'
 import type { JB721TierConfigInput } from '../tiersHook'
+
+afterEach(() => vi.unstubAllGlobals())
 
 // Helper to create default hook flags
 function createHookFlags(overrides: Partial<JB721HookFlags> = {}): JB721HookFlags {
@@ -14,6 +18,7 @@ function createHookFlags(overrides: Partial<JB721HookFlags> = {}): JB721HookFlag
     noNewTiersWithVotes: false,
     noNewTiersWithOwnerMinting: false,
     preventOverspending: false,
+    issueTokensForSplits: false,
     ...overrides,
   }
 }
@@ -316,5 +321,63 @@ describe('getBlockedOperations', () => {
     expect(blocked).toContain('Adding tiers with voting power')
     expect(blocked).toContain('Adding tiers with owner minting')
     expect(blocked).toContain('Overspending on tier purchases')
+  })
+})
+
+describe('getEffectiveTierPrice', () => {
+  it('uses the contract discount denominator of 200', () => {
+    expect(getEffectiveTierPrice({ price: 1_000n, discountPercent: 50 })).toBe(750n)
+  })
+
+  it('rejects impossible discount values instead of clamping them', () => {
+    expect(() => getEffectiveTierPrice({ price: 1_000n, discountPercent: 201 })).toThrow(
+      'Invalid tier discount',
+    )
+  })
+})
+
+describe('legacy tier metadata recovery', () => {
+  it('tries the legacy raw CID after canonical DAG-PB gateways fail', async () => {
+    const fetchMock = vi.fn(async (url: string) => ({
+      ok: url.includes('bafkrei'),
+      json: async () => ({ name: 'Recovered legacy tier' }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchTierMetadata([
+      'ipfs://Qmb7EZvTHUeVTDi6YmwDFQvKEfCR4UGciUka24coJcNJzS',
+      'ipfs://bafkreif5xakuko65fh226ynfihtdqlt2vtuga5vjxi6kh5vtxx34lcvcp4',
+    ])).resolves.toMatchObject({ name: 'Recovered legacy tier' })
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('bafkrei'))).toBe(true)
+  })
+
+  it('sanitizes malformed user-controlled media fields', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        name: 'Safe name',
+        description: 42,
+        animation_url: { url: 'https://example.com/video.mp4' },
+        mediaType: ['video/mp4'],
+        attributes: [
+          { trait_type: 'Edition', value: 1 },
+          { trait_type: 2, value: 'bad' },
+        ],
+      }),
+    })))
+
+    await expect(fetchTierMetadata('https://example.com/tier.json')).resolves.toEqual({
+      name: 'Safe name',
+      productName: undefined,
+      categoryName: undefined,
+      description: undefined,
+      image: undefined,
+      imageUri: undefined,
+      animation_url: undefined,
+      animationUrl: undefined,
+      mediaType: undefined,
+      external_url: undefined,
+      attributes: [{ trait_type: 'Edition', value: 1 }],
+    })
   })
 })

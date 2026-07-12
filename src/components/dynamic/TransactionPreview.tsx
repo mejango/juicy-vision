@@ -5,13 +5,12 @@ import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useProjectDraftStore } from '../../stores/projectDraftStore'
 import { useManagedWallet } from '../../hooks'
-import { useTransactionPreviewState, type TransactionPreviewState } from '../../hooks/useComponentState'
+import { useTransactionPreviewState } from '../../hooks/useComponentState'
 import { getWalletSession } from '../../services/siwe'
 import { useOmnichainLaunchProject, useOmnichainSetUri } from '../../hooks/relayr'
-import { findDeploymentResultByProjectId } from '../../hooks/relayr/useOmnichainSetUri'
 import { clearProjectsByOwnerCache } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
-import { decodeEncodedIPFSUri, encodeIpfsUri } from '../../utils/ipfs'
+import { decodeEncodedIPFSUri, encodeIpfsUri, isIpfsUri } from '../../utils/ipfs'
 
 /**
  * Create a stable deployment key from component parameters.
@@ -21,20 +20,11 @@ import { decodeEncodedIPFSUri, encodeIpfsUri } from '../../utils/ipfs'
 function createStableDeploymentKey(
   action: string,
   parameters: string,
+  chainConfigs?: string,
   chatId?: string
 ): string {
-  // Extract projectUri from parameters - this uniquely identifies the deployment
-  let projectUri = ''
-  try {
-    const params = JSON.parse(parameters)
-    projectUri = params.projectUri || ''
-  } catch {
-    // Use full parameters as fallback
-    projectUri = parameters
-  }
-
   // Create a simple hash from the key components
-  const input = `${chatId || 'nochat'}:${action}:${projectUri}`
+  const input = `${chatId || 'nochat'}:${action}:${parameters}:${chainConfigs || ''}`
   let hash = 0
   for (let i = 0; i < input.length; i++) {
     const char = input.charCodeAt(i)
@@ -43,12 +33,7 @@ function createStableDeploymentKey(
   }
   return `deploy-${Math.abs(hash).toString(36)}`
 }
-import {
-  verifyLaunchProjectParams,
-  autoCorrectTerminalConfigurations,
-  autoCorrectChainConfigs,
-  type TransactionDoubt,
-} from '../../utils/transactionVerification'
+import { verifyLaunchProjectParams } from '../../utils/transactionVerification'
 import {
   CHAIN_NAMES,
   CHAIN_COLORS,
@@ -67,12 +52,12 @@ import {
 } from '../../utils/technicalDetails'
 import { CHAINS, EXPLORER_URLS, ALL_CHAIN_IDS } from '../../constants'
 import type { JBRulesetConfig, JBTerminalConfig } from '../../services/relayr'
+import type { JB721TierConfig, JBDeployTiersHookConfig } from '../../services/omnichainDeployer'
 import {
   parseSuckerDeployerConfig,
   shouldConfigureSuckers,
   getAllChainSuckerConfigs,
   SUCKER_DEPLOYER_LABELS,
-  CCIP_SUCKER_DEPLOYER_ADDRESSES,
 } from '../../utils/suckerConfig'
 
 interface ChainOverride {
@@ -93,22 +78,6 @@ interface TransactionPreviewProps {
   _isStreaming?: boolean // True if parent message is still actively streaming
   messageId?: string // Message ID for persisting component state server-side
   chatId?: string // Chat ID for isolating deployment state between chats
-}
-
-const ACTION_ICONS: Record<string, string> = {
-  pay: '💰',
-  cashOut: '🔄',
-  sendPayouts: '📤',
-  useAllowance: '💸',
-  mintTokens: '🪙',
-  burnTokens: '🔥',
-  launchProject: '🚀',
-  launch721Project: '🚀',
-  deployRevnet: '🔄',
-  queueRuleset: '📋',
-  deployERC20: '🎟️',
-  setUri: '📝',
-  setUriOf: '📝',
 }
 
 const ACTION_BUTTON_LABEL_KEYS: Record<string, string> = {
@@ -136,7 +105,7 @@ const ACTION_FUNCTION_NAMES: Record<string, string> = {
   mintTokens: 'mintTokensOf',
   burnTokens: 'burnTokensOf',
   launchProject: 'launchProjectFor',
-  launch721Project: 'launch721RulesetsFor',
+  launch721Project: 'launchProjectFor',
   deployRevnet: 'deployFor',
   queueRuleset: 'queueRulesetsOf',
   deployERC20: 'deployERC20For',
@@ -188,6 +157,51 @@ function updateTimestampsForLaunch<T>(obj: T): T {
     return result as T
   }
   return obj
+}
+
+function generateRandomSalt(): `0x${string}` {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  return `0x${Array.from(bytes).map(byte => byte.toString(16).padStart(2, '0')).join('')}`
+}
+
+// Prepare streamed parameters for technical display without mutating the source.
+function updatePreviewParameters(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj
+  if (Array.isArray(obj)) return obj.map(updatePreviewParameters)
+  if (typeof obj !== 'object') return obj
+
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+    if (key.toLowerCase() === 'muststartatorafter') {
+      result[key] = Math.floor(Date.now() / 1000) + 300
+    } else if (key.toLowerCase() === 'salt') {
+      result[key] = generateRandomSalt()
+    } else {
+      result[key] = updatePreviewParameters(value)
+    }
+  }
+  return result
+}
+
+// Convert the AI-friendly media field into the bytes32 URI representation used
+// by the tiers contract, while preserving any pre-encoded fallback.
+function processMediaUris(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj
+  if (Array.isArray(obj)) return obj.map(processMediaUris)
+  if (typeof obj !== 'object') return obj
+
+  const record = obj as Record<string, unknown>
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(record)) {
+    if (key === 'media') continue
+    if (key === 'encodedIPFSUri' && typeof record.media === 'string') {
+      result[key] = encodeIpfsUri(record.media) || value
+    } else {
+      result[key] = processMediaUris(value)
+    }
+  }
+  return result
 }
 
 // Info popover component with click-to-open and X to close
@@ -490,149 +504,6 @@ function CurrencyDisplay({ currency, isDark }: { currency: number; isDark: boole
       )}
     </span>
   )
-}
-
-// Component to display a sucker deployer address with chain-pair specific dropdown
-function SuckerDeployerDisplay({
-  address,
-  targetChainId,
-  allChainIds,
-  isDark
-}: {
-  address: string;
-  targetChainId: number;
-  allChainIds: number[];
-  isDark: boolean
-}) {
-  const [showChainDeployers, setShowChainDeployers] = useState(false)
-
-  const deployerInfo = SUCKER_DEPLOYER_LABELS[address.toLowerCase()]
-  const label = deployerInfo?.label || 'CCIP Deployer'
-  const truncated = truncateAddress(address)
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(address)
-  }
-
-  const handleBadgeClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setShowChainDeployers(!showChainDeployers)
-  }
-
-  // Get all deployer addresses that will be used for this deployment
-  const getDeployersByChain = () => {
-    const result: { chainId: number; chainName: string; deployers: { remoteChain: string; address: string; label: string }[] }[] = []
-
-    for (const chainId of allChainIds) {
-      const remoteChains = allChainIds.filter(c => c !== chainId)
-      const deployers: { remoteChain: string; address: string; label: string }[] = []
-
-      for (const remoteChainId of remoteChains) {
-        const deployerAddr = CCIP_SUCKER_DEPLOYER_ADDRESSES[chainId]?.[remoteChainId]
-        if (deployerAddr) {
-          const info = SUCKER_DEPLOYER_LABELS[deployerAddr.toLowerCase()]
-          deployers.push({
-            remoteChain: CHAIN_NAMES[remoteChainId.toString()] || `Chain ${remoteChainId}`,
-            address: deployerAddr,
-            label: info?.label || 'CCIP',
-          })
-        }
-      }
-
-      result.push({
-        chainId,
-        chainName: CHAIN_NAMES[chainId.toString()] || `Chain ${chainId}`,
-        deployers,
-      })
-    }
-
-    return result
-  }
-
-  const deployersByChain = getDeployersByChain()
-
-  return (
-    <span className="inline-flex items-center gap-1 flex-wrap relative">
-      <span
-        className="font-mono cursor-pointer hover:underline inline-flex items-center gap-1"
-        onClick={handleCopy}
-        title={`Click to copy: ${address}`}
-      >
-        <span className={isDark ? 'text-yellow-400' : 'text-yellow-600'}>
-          {label}
-        </span>
-        <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>
-          ({truncated})
-        </span>
-      </span>
-      {/* Chain-specific badge - clickable to show all deployers per chain */}
-      {allChainIds.length > 1 && (
-        <button
-          onClick={handleBadgeClick}
-          className={`text-[9px] px-1 py-0.5 rounded cursor-pointer hover:opacity-80 ${
-            isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
-          }`}
-          title="Click to see deployers per chain"
-        >
-          chain-specific {showChainDeployers ? '▲' : '▼'}
-        </button>
-      )}
-      {/* Expanded chain deployers dropdown */}
-      {showChainDeployers && (
-        <div className={`absolute top-full right-0 mt-1 z-10 p-2 rounded border text-[10px] max-h-80 overflow-auto ${
-          isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200 shadow-lg'
-        }`} style={{ minWidth: '320px' }}>
-          <div className={`font-semibold mb-2 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            Sucker deployers by chain:
-          </div>
-          {deployersByChain.map(({ chainId, chainName, deployers }) => (
-            <div key={chainId} className={`mb-2 pb-2 border-b last:border-0 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-              <div className={`font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                On {chainName}:
-              </div>
-              {deployers.map((d, i) => (
-                <div key={i} className="flex gap-2 py-0.5 pl-2">
-                  <span className={`font-medium w-20 text-right ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    → {d.remoteChain}:
-                  </span>
-                  <span
-                    className={`font-mono cursor-pointer hover:underline ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}
-                    onClick={() => navigator.clipboard.writeText(d.address)}
-                    title="Click to copy"
-                  >
-                    {d.label}
-                  </span>
-                  <span className={`font-mono ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    ({truncateAddress(d.address)})
-                  </span>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </span>
-  )
-}
-
-// Deep merge two objects, with source overriding target
-function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
-  const result = { ...target }
-  for (const key of Object.keys(source)) {
-    if (
-      source[key] &&
-      typeof source[key] === 'object' &&
-      !Array.isArray(source[key]) &&
-      target[key] &&
-      typeof target[key] === 'object' &&
-      !Array.isArray(target[key])
-    ) {
-      result[key] = deepMerge(target[key] as Record<string, unknown>, source[key] as Record<string, unknown>)
-    } else {
-      result[key] = source[key]
-    }
-  }
-  return result
 }
 
 // Component to display sucker deployment configuration with per-chain deployers
@@ -1003,7 +874,7 @@ function SectionHeader({ title, isDark, onEdit }: { title: string; isDark: boole
 }
 
 // Component to show a preview of project metadata (name, description, website, etc.)
-function ProjectMetadataPreview({ metadata, isDark, onEdit }: { metadata: Record<string, unknown>; isDark: boolean; onEdit?: () => void }) {
+function ProjectMetadataPreview({ metadata, isDark }: { metadata: Record<string, unknown>; isDark: boolean }) {
   const { t } = useTranslation()
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState((metadata.name as string) || '')
@@ -1378,8 +1249,8 @@ function FundingBreakdown({
   splits,
   isDark,
   onEdit,
-  juicyFeeEnabled,
-  onToggleJuicyFee,
+  payoutDecimals = 6,
+  payoutUnit = 'USD',
   hasEmptyFundAccessLimits,
   reservedPercent
 }: {
@@ -1387,144 +1258,59 @@ function FundingBreakdown({
   splits: SplitInfo[];
   isDark: boolean;
   onEdit?: () => void;
-  juicyFeeEnabled: boolean;
-  onToggleJuicyFee: (enabled: boolean) => void;
+  payoutDecimals?: number;
+  payoutUnit?: string;
   hasEmptyFundAccessLimits?: boolean;
   reservedPercent?: number;
 }) {
   const { t } = useTranslation()
-  const [isEditing, setIsEditing] = useState(false)
 
-  // uint224.max for unlimited payouts
-  const UINT224_MAX = '26959946667150639794667015087019630673637144422540572481103610249215'
-  const UNLIMITED_THRESHOLD = 1e15 // $1 quadrillion - anything above this is effectively unlimited
-
-  // Check if current value is unlimited (above threshold or uint224.max)
-  const isCurrentlyUnlimited = !payoutLimit || payoutLimit >= UNLIMITED_THRESHOLD
-
-  // Initialize edit field as empty for unlimited, otherwise show the dollar amount
-  const [editPayoutLimit, setEditPayoutLimit] = useState(
-    isCurrentlyUnlimited ? '' : (payoutLimit! / 1000000).toString()
-  )
+  const UNLIMITED_THRESHOLD = 1e60
+  const payoutDivisor = 10 ** payoutDecimals
 
   const formatPercent = (p: number) => `${(p / 10000000).toFixed(1)}%`
   const formatAmount = (limit: number, percent: number) => {
-    const amount = (limit / 1000000) * (percent / 1000000000)
-    return `$${amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+    const amount = (limit / payoutDivisor) * (percent / 1000000000)
+    const formatted = amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 })
+    return payoutUnit === 'ETH' ? `${formatted} ETH` : `$${formatted}`
   }
 
-  // Filter out Juicy fee from display (projectId === 1)
-  const juicyFee = splits.find(s => s.projectId === 1)
-  const displaySplits = splits.filter(s => s.projectId !== 1)
-
-  // Calculate total split percentage and implied owner share
-  // When Juicy is disabled, exclude Juicy from calculations
-  const activeSplits = juicyFeeEnabled ? splits : displaySplits
-  const totalSplitPercent = activeSplits.reduce((sum, s) => sum + s.percent, 0)
+  const totalSplitPercent = splits.reduce((sum, s) => sum + s.percent, 0)
   const ownerPercent = 1000000000 - totalSplitPercent // 100% in basis points
-  const hasImpliedOwner = ownerPercent > 0 && !activeSplits.some(s => s.projectId === 0 || (s.beneficiary && s.beneficiary !== '0x0000000000000000000000000000000000000000'))
+  const hasImpliedOwner = ownerPercent > 0
 
   // Check if payout limit is defined (not unlimited)
   // Unlimited is represented by very large values (type(uint224).max) or 0/undefined
   const hasDefinedLimit = payoutLimit && payoutLimit > 0 && payoutLimit < UNLIMITED_THRESHOLD
 
-  // Calculate effective payout limit - when Juicy is disabled, reduce the limit
-  // to the user's original intended amount (floor to remove rounding artifacts)
-  const effectivePayoutLimit = useMemo(() => {
-    if (!hasDefinedLimit || !juicyFee || juicyFeeEnabled) {
-      return payoutLimit
-    }
-    // Owner's original dollar amount (what they'd get after Juicy's cut)
-    const ownerAmount = (payoutLimit! / 1000000) * ((1000000000 - (juicyFee?.percent || 0)) / 1000000000)
-    // Floor to get the user's original intended amount (e.g., $5,000.775 → $5,000)
-    return Math.floor(ownerAmount) * 1000000
-  }, [payoutLimit, juicyFee, juicyFeeEnabled, hasDefinedLimit])
-
-  // Find owner split (projectId 0, regardless of beneficiary)
-  const ownerSplit = activeSplits.find(s => s.projectId === 0)
-
-  // When Juicy is disabled, the owner gets 100% of the reduced payout limit
-  const effectiveOwnerPercent = !juicyFeeEnabled && juicyFee ? 1000000000 : (ownerSplit?.percent || ownerPercent)
+  const effectivePayoutLimit = payoutLimit
+  const effectiveOwnerPercent = ownerPercent
 
   const handleEdit = () => {
-    setIsEditing(true)
-  }
-
-  const handleSave = () => {
-    // Empty field means unlimited - use uint224.max
-    // Otherwise convert dollars to 6 decimal fixed point (USDC decimals)
-    const newLimit = editPayoutLimit.trim() === ''
-      ? UINT224_MAX  // Unlimited
-      : (parseFloat(editPayoutLimit) * 1000000).toString()
-
-    window.dispatchEvent(new CustomEvent('juice:update-funding', {
-      detail: { payoutLimit: newLimit }
-    }))
-    setIsEditing(false)
-  }
-
-  const handleCancel = () => {
-    // Reset to empty for unlimited, otherwise show the dollar amount
-    setEditPayoutLimit(isCurrentlyUnlimited ? '' : (payoutLimit! / 1000000).toString())
-    setIsEditing(false)
+    onEdit?.()
   }
 
   return (
     <div className="space-y-3">
-      <SectionHeader title={t('deployment.payoutDistribution')} isDark={isDark} onEdit={isEditing ? undefined : handleEdit} />
+      <SectionHeader title={t('deployment.payoutDistribution')} isDark={isDark} onEdit={handleEdit} />
 
-      {isEditing ? (
-        <div className="space-y-3">
-          <div>
-            <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {t('deployment.payoutLimit')} (USD)
-            </label>
-            <input
-              type="number"
-              value={editPayoutLimit}
-              onChange={(e) => setEditPayoutLimit(e.target.value)}
-              className={`w-full px-3 py-2 rounded border text-sm ${
-                isDark
-                  ? 'bg-white/5 border-white/10 text-white placeholder:text-gray-500 focus:border-juice-orange'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-orange-500'
-              } focus:outline-none`}
-              placeholder="Leave blank for unlimited"
-            />
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={handleCancel}
-              className={`px-3 py-1.5 text-xs rounded ${
-                isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-3 py-1.5 text-xs rounded bg-juice-orange text-black font-medium hover:bg-juice-orange/90"
-            >
-              Save
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Payout limit header - show prominently */}
-          <div className={`flex justify-between items-center py-2 ${hasEmptyFundAccessLimits ? '' : `border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}`}>
+      {/* Payout limit header - show prominently */}
+      <div className={`flex justify-between items-center py-2 ${hasEmptyFundAccessLimits ? '' : `border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}`}>
             <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>{t('deployment.payoutLimit')}</span>
             <span className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {hasEmptyFundAccessLimits
                 ? 'None'
                 : hasDefinedLimit && effectivePayoutLimit
-                  ? `$${(effectivePayoutLimit / 1000000).toLocaleString()}`
+                  ? payoutUnit === 'ETH'
+                    ? `${(effectivePayoutLimit / payoutDivisor).toLocaleString()} ETH`
+                    : `$${(effectivePayoutLimit / payoutDivisor).toLocaleString()}`
                   : t('deployment.unlimited')}
             </span>
-          </div>
+      </div>
 
-          {/* Only show splits when there's a payout limit - splits don't matter without one */}
-          {!hasEmptyFundAccessLimits && (
-          <div className="space-y-2">
+      {/* Only show splits when there's a payout limit - splits don't matter without one */}
+      {!hasEmptyFundAccessLimits && (
+        <div className="space-y-2">
             {/* Show implied owner share first (when not explicitly split) */}
             {hasImpliedOwner && (
               <div className="flex justify-between items-center">
@@ -1535,27 +1321,15 @@ function FundingBreakdown({
               </div>
             )}
 
-            {/* Show explicit owner split if it exists */}
-            {ownerSplit && (
-              <div className="flex justify-between items-center">
-                <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>{t('deployment.you')}</span>
-                <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {hasDefinedLimit && effectivePayoutLimit ? formatAmount(effectivePayoutLimit, effectiveOwnerPercent) : formatPercent(effectiveOwnerPercent)}
-                </span>
-              </div>
-            )}
-
-            {/* Show other explicit splits (excluding Juicy fee and owner) */}
-            {displaySplits.filter(s =>
-              // Exclude owner split by comparing properties (more robust than reference equality)
-              !(s.projectId === 0 && ownerSplit && s.percent === ownerSplit.percent && s.beneficiary === ownerSplit.beneficiary)
-            ).map((split, i) => (
+            {splits.map((split, i) => (
               <div key={i} className="flex justify-between items-center">
                 <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>
                   {split.projectId > 0 ? (
                     <span>Project #{split.projectId}</span>
                   ) : (
-                    <span>{t('deployment.recipient')}</span>
+                    <span>{split.beneficiary
+                      ? `${split.beneficiary.slice(0, 6)}...${split.beneficiary.slice(-4)}`
+                      : t('deployment.recipient')}</span>
                   )}
                 </span>
                 <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -1564,55 +1338,16 @@ function FundingBreakdown({
               </div>
             ))}
 
-            {/* Show Juicy fee with toggle to opt out */}
-            {juicyFee && (
-              <div className={`flex justify-between items-center text-sm ${
-                juicyFeeEnabled
-                  ? (isDark ? 'text-gray-500' : 'text-gray-400')
-                  : (isDark ? 'text-gray-600 line-through' : 'text-gray-300 line-through')
-              }`}>
-                <span className="inline-flex items-center gap-1.5">
-                  {/* Toggle checkbox */}
-                  <button
-                    onClick={() => onToggleJuicyFee(!juicyFeeEnabled)}
-                    className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                      juicyFeeEnabled
-                        ? (isDark
-                            ? 'border-gray-600 bg-gray-700 hover:border-gray-500 text-gray-400'
-                            : 'border-gray-300 bg-gray-100 hover:border-gray-400 text-gray-500')
-                        : (isDark
-                            ? 'border-gray-700 bg-transparent hover:border-gray-600'
-                            : 'border-gray-200 bg-transparent hover:border-gray-300')
-                    }`}
-                    title={juicyFeeEnabled ? "Click to leave Juicy" : "Click to join Juicy"}
-                  >
-                    {juicyFeeEnabled && (
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </button>
-                  {t('deployment.joinJuicy')}
-                  <InfoPopover
-                    content="JUICY runs like a co-op that keeps this open source site running and this public network growing. When you pay into Juicy, you receive JUICY proportional to your payment. As the balance grows, so does the value backing each JUICY. You can cash out anytime for your share, or hold to support the community business and benefit from growth. Fully automated by blockchains, your money and your data remain accessible even if this website goes down."
-                    isDark={isDark}
-                  />
-                </span>
-                <span>{hasDefinedLimit ? formatAmount(payoutLimit!, juicyFee.percent) : formatPercent(juicyFee.percent)}</span>
-              </div>
-            )}
-          </div>
-          )}
+        </div>
+      )}
 
-          {/* Reserved rate info - shows when payers get a share of tokens (reservedPercent < 100%) */}
-          {reservedPercent !== undefined && reservedPercent > 0 && reservedPercent < 10000 && (
-            <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Payers get {100 - reservedPercent / 100}% of shares which can later access funds if you choose.
-              </p>
-            </div>
-          )}
-        </>
+      {/* Reserved rate info - shows when payers get a share of tokens (reservedPercent < 100%) */}
+      {reservedPercent !== undefined && reservedPercent > 0 && reservedPercent < 10000 && (
+        <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            Payers get {100 - reservedPercent / 100}% of shares which can later access funds if you choose.
+          </p>
+        </div>
       )}
     </div>
   )
@@ -1633,9 +1368,7 @@ export default function TransactionPreview({
 }: TransactionPreviewProps) {
   const [expanded, setExpanded] = useState(false)
   const [technicalDetailsReady, setTechnicalDetailsReady] = useState(false)
-  const [juicyFeeEnabled, setJuicyFeeEnabled] = useState(true)
   const [showRawJson, setShowRawJson] = useState(false)
-  const [issuesAcknowledged, setIssuesAcknowledged] = useState(false)
   const [showDeploymentDetails, setShowDeploymentDetails] = useState(false)
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
   const [slowChainDismissed, setSlowChainDismissed] = useState(false)
@@ -1647,14 +1380,13 @@ export default function TransactionPreview({
   // Create a STABLE deployment key from component content (not messageId which can change on reload)
   // IMPORTANT: Include chatId to isolate deployments between different chats
   const stableDeploymentKey = useMemo(
-    () => createStableDeploymentKey(action, parameters, chatId),
-    [action, parameters, chatId]
+    () => createStableDeploymentKey(action, parameters, chainConfigs, chatId),
+    [action, parameters, chainConfigs, chatId]
   )
 
   // Server-side persisted state for this component
   const {
     state: persistedState,
-    isLoading: persistedStateLoading,
     setState: setPersistedState,
   } = useTransactionPreviewState(messageId)
 
@@ -1694,8 +1426,10 @@ export default function TransactionPreview({
   const siweSession = getWalletSession()
   const externalWalletAddress = connectedAddress || siweSession?.address
 
-  // Effective user address - prefer managed, then external wallet
-  const effectiveUserAddress = managedAddress || externalWalletAddress || ''
+  // A cached managed address must never override an active self-custody session.
+  const effectiveUserAddress = isManagedMode
+    ? managedAddress || ''
+    : externalWalletAddress || ''
 
   // Juicy Identity state - load from localStorage and listen for changes
   const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(() => {
@@ -1738,13 +1472,10 @@ export default function TransactionPreview({
     launch,
     bundleState,
     isLaunching,
-    isSigning,
-    signingChainId,
     isComplete,
     hasError,
     createdProjectIds,
     persistedTxHashes,
-    reset: resetLaunch,
   } = useOmnichainLaunchProject({
     deploymentKey: stableDeploymentKey,
     chatId,
@@ -1758,11 +1489,8 @@ export default function TransactionPreview({
     setUri,
     bundleState: setUriBundleState,
     isUpdating: isSettingUri,
-    isSigning: isSigningSetUri,
-    signingChainId: signingSetUriChainId,
     isComplete: isSetUriComplete,
     hasError: hasSetUriError,
-    reset: resetSetUri,
   } = useOmnichainSetUri({
     deploymentKey: `setUri-${stableDeploymentKey}`,
     chatId,
@@ -1864,14 +1592,22 @@ export default function TransactionPreview({
 
       // Also update server state for backup
       if (messageId) {
+        const txHashes: Record<number, string> = {}
+        bundleState.chainStates?.forEach(cs => {
+          if (cs.txHash) txHashes[cs.chainId] = cs.txHash
+        })
         setPersistedState({
           ...persistedState,
-          status: persistedState?.status || 'in_progress',
+          status: 'completed',
+          projectIds: createdProjectIds,
+          txHashes: Object.keys(txHashes).length > 0 ? txHashes : persistedTxHashes || undefined,
+          bundleId: bundleState.bundleId || undefined,
+          completedAt: new Date().toISOString(),
           hasShownLoadingMessage: true,
         })
       }
     }, 500)
-  }, [action, isComplete, getFollowUpFlags, setFollowUpFlag, messageId, setPersistedState, persistedState, effectiveUserAddress])
+  }, [action, isComplete, getFollowUpFlags, setFollowUpFlag, messageId, setPersistedState, persistedState, effectiveUserAddress, createdProjectIds, bundleState, persistedTxHashes])
 
   // Phase 2: Show project card once IDs are extracted
   useEffect(() => {
@@ -1981,47 +1717,9 @@ export default function TransactionPreview({
     // as the parameters might be complete even if initially marked truncated
     if (_isTruncated === 'true' && _isStreaming === true) return null
     try {
-      // Clean up malformed JSON from AI (e.g., embedded JS expressions)
-      let cleanedParams = parameters || '{}'
-      const futureTimestamp = Math.floor(Date.now() / 1000 + 300)
-
-      // Pattern 1: Template literal style '${Math.floor(Date.now()/1000) + 300}'
-      cleanedParams = cleanedParams.replace(
-        /"mustStartAtOrAfter":\s*'\$\{[^}]+\}'/g,
-        `"mustStartAtOrAfter": ${futureTimestamp}`
-      )
-      // Pattern 2: Concatenation style ' + Math.floor(...) + '
-      cleanedParams = cleanedParams.replace(
-        /"mustStartAtOrAfter":\s*'\s*\+\s*Math\.floor\([^)]+\)\s*\+\s*'/g,
-        `"mustStartAtOrAfter": ${futureTimestamp}`
-      )
-      // Pattern 3: Other concatenation variations
-      cleanedParams = cleanedParams.replace(
-        /"mustStartAtOrAfter":\s*["']\s*\+[^,}]+\+\s*["']/g,
-        `"mustStartAtOrAfter": ${futureTimestamp}`
-      )
-
-      const raw = JSON.parse(cleanedParams)
-
-      // For setUri actions, correct chainProjectMappings using stored deployment results.
-      // The AI may provide stale per-chain IDs from bendystraw (indexing lag ~5 minutes after deployment).
-      // Deployment results from on-chain receipts are the ground truth.
-      if ((action === 'setUri' || action === 'setUriOf') &&
-          raw.chainProjectMappings && Array.isArray(raw.chainProjectMappings) && raw.chainProjectMappings.length > 1) {
-        const pm = raw.chainProjectMappings[0]
-        if (pm) {
-          const pChainId = typeof pm.chainId === 'string' ? parseInt(pm.chainId) : pm.chainId
-          const pProjectId = typeof pm.projectId === 'string' ? parseInt(pm.projectId) : pm.projectId
-          const storedIds = findDeploymentResultByProjectId(pProjectId, pChainId, chatId)
-          if (storedIds) {
-            console.log('[TransactionPreview] Correcting chainProjectMappings from stored deployment result:', storedIds)
-            raw.chainProjectMappings = raw.chainProjectMappings.map((m: { chainId: string | number; projectId: string | number }) => {
-              const cid = typeof m.chainId === 'string' ? parseInt(m.chainId) : m.chainId
-              return { ...m, projectId: storedIds[cid] ?? m.projectId }
-            })
-          }
-        }
-      }
+      // Transaction parameters are security-sensitive. Parse exactly what is shown;
+      // malformed or stale AI output must be regenerated, never silently rewritten.
+      const raw = JSON.parse(parameters || '{}')
 
       // Extract project metadata
       const projectMetadata = raw?.projectMetadata as Record<string, unknown> | null
@@ -2038,13 +1736,22 @@ export default function TransactionPreview({
       }
 
       // Extract funding info
-      let fundingInfo: { splits: SplitInfo[]; payoutLimit?: number; hasEmptyFundAccessLimits?: boolean; reservedPercent?: number } | null = null
+      let fundingInfo: {
+        splits: SplitInfo[]
+        payoutLimit?: number
+        payoutDecimals?: number
+        payoutUnit?: string
+        hasEmptyFundAccessLimits?: boolean
+        reservedPercent?: number
+      } | null = null
       const rulesets = raw?.rulesetConfigurations || raw?.launchProjectConfig?.rulesetConfigurations
       if (rulesets && Array.isArray(rulesets) && rulesets.length > 0) {
         const firstRuleset = rulesets[0]
         const splits: SplitInfo[] = []
         let payoutLimit: number | undefined
         let payoutLimitGroupId: string | undefined
+        let payoutDecimals = 6
+        let payoutUnit = 'USD'
         // Track if fundAccessLimitGroups was explicitly set to empty array (means ZERO payouts, not unlimited!)
         let hasEmptyFundAccessLimits = false
 
@@ -2059,8 +1766,15 @@ export default function TransactionPreview({
                 for (const limit of group.payoutLimits) {
                   if (limit.amount) {
                     payoutLimit = typeof limit.amount === 'string' ? parseInt(limit.amount) : limit.amount
-                    // The currency field matches the splitGroup's groupId for the same token
-                    payoutLimitGroupId = limit.currency?.toString()
+                    payoutLimitGroupId = group.token ? BigInt(group.token).toString() : undefined
+                    const terminalConfigs = (raw?.terminalConfigurations || raw?.launchProjectConfig?.terminalConfigurations || []) as Array<{
+                      accountingContextsToAccept?: Array<{ token?: string; decimals?: number }>
+                    }>
+                    const context = terminalConfigs
+                      .flatMap(config => config.accountingContextsToAccept || [])
+                      .find(candidate => candidate.token?.toLowerCase() === group.token?.toLowerCase())
+                    payoutDecimals = context?.decimals ?? (group.token?.toLowerCase().endsWith('eeee') ? 18 : 6)
+                    payoutUnit = getCurrencyLabel(Number(limit.currency)) || (payoutDecimals === 18 ? 'ETH' : 'USD')
                     break
                   }
                 }
@@ -2095,7 +1809,14 @@ export default function TransactionPreview({
         // Extract reserved percent from metadata (scale: 10000 = 100%)
         const reservedPercent = firstRuleset.metadata?.reservedPercent
 
-        fundingInfo = { splits, payoutLimit, hasEmptyFundAccessLimits, reservedPercent }
+        fundingInfo = {
+          splits,
+          payoutLimit,
+          payoutDecimals,
+          payoutUnit,
+          hasEmptyFundAccessLimits,
+          reservedPercent,
+        }
       }
 
       // Check for multi-chain suckers
@@ -2106,7 +1827,7 @@ export default function TransactionPreview({
       console.error('[TransactionPreview] Failed to parse parameters:', err, parameters?.slice(0, 200))
       return null
     }
-  }, [parameters, _isTruncated, _isStreaming, action, chatId])
+  }, [parameters, _isTruncated, _isStreaming])
 
   // "Sticky" content: once we've successfully parsed content, remember it
   // This prevents flashing back to shimmer during state transitions
@@ -2120,70 +1841,10 @@ export default function TransactionPreview({
   const isParamsValid = effectivePreviewData?.isValid ?? false
   const projectMetadata = effectivePreviewData?.projectMetadata ?? null
 
-  // Helper to generate a random 32-byte hex string for salt
-  const generateRandomSalt = (): string => {
-    const bytes = new Uint8Array(32)
-    crypto.getRandomValues(bytes)
-    return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
-  }
-
   // Stable random salt for preview - generated once per component mount
   const previewSaltRef = useRef<`0x${string}` | null>(null)
   if (!previewSaltRef.current) {
-    previewSaltRef.current = generateRandomSalt() as `0x${string}`
-  }
-
-  // Helper to transform parameters before display/execution
-  // - Updates mustStartAtOrAfter to 5 minutes from now
-  // - Randomizes salt values
-  // Must be defined before useMemo that uses it
-  const updateTimestamps = (obj: unknown): unknown => {
-    if (obj === null || obj === undefined) return obj
-    if (Array.isArray(obj)) return obj.map(updateTimestamps)
-    if (typeof obj === 'object') {
-      const result: Record<string, unknown> = {}
-      for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-        if (key.toLowerCase() === 'muststartatOrafter'.toLowerCase()) {
-          // Always set to 5 minutes from now
-          result[key] = Math.floor(Date.now() / 1000) + 300
-        } else if (key.toLowerCase() === 'salt') {
-          // Always use a random salt for unique deployments
-          result[key] = generateRandomSalt()
-        } else {
-          result[key] = updateTimestamps(value)
-        }
-      }
-      return result
-    }
-    return obj
-  }
-
-  // Helper to encode media URIs into encodedIPFSUri and remove media field
-  // This converts the AI's convenience "media" field (ipfs://...) into the contract's
-  // expected "encodedIPFSUri" (bytes32 hex) format
-  const processMediaUris = (obj: unknown): unknown => {
-    if (obj === null || obj === undefined) return obj
-    if (Array.isArray(obj)) return obj.map(processMediaUris)
-    if (typeof obj === 'object') {
-      const record = obj as Record<string, unknown>
-      const result: Record<string, unknown> = {}
-
-      for (const [key, value] of Object.entries(record)) {
-        // Skip the media field - we'll encode it into encodedIPFSUri
-        if (key === 'media') {
-          continue
-        }
-        // If this object has a media field, encode it into encodedIPFSUri
-        if (key === 'encodedIPFSUri' && record.media && typeof record.media === 'string') {
-          const encoded = encodeIpfsUri(record.media as string)
-          result[key] = encoded || value // Use encoded value or fallback to original
-        } else {
-          result[key] = processMediaUris(value)
-        }
-      }
-      return result
-    }
-    return obj
+    previewSaltRef.current = generateRandomSalt()
   }
 
   // Deferred full parameter parsing - only computed when technical details are expanded
@@ -2196,7 +1857,7 @@ export default function TransactionPreview({
     try {
       const rawParams = JSON.parse(parameters)
       // Apply transformations: timestamps, then media URI encoding
-      const withTimestamps = updateTimestamps(rawParams)
+      const withTimestamps = updatePreviewParameters(rawParams)
       return processMediaUris(withTimestamps) as Record<string, unknown>
     } catch {
       return { raw: parameters }
@@ -2261,17 +1922,18 @@ export default function TransactionPreview({
   // Prefer draft data if streamed data exists but is empty
   const streamedFundingInfo = effectivePreviewData?.fundingInfo
   const hasStreamedFundingData = streamedFundingInfo && (streamedFundingInfo.payoutLimit || streamedFundingInfo.splits.length > 0 || streamedFundingInfo.hasEmptyFundAccessLimits)
-  // Draft funding info uses user's intended payout limit directly
-  // Don't include Juicy fee in draft splits - the toggle will add it dynamically
+  // Draft funding info uses the user's intended gross payout limit directly.
   const draftFundingInfo = draftPayoutLimit ? {
-    splits: [
-      { percent: 1000000000, projectId: 0, beneficiary: '' }, // 100% to owner initially
-    ],
+    splits: [],
     payoutLimit: draftPayoutLimit * (draftPayoutCurrency === 2 ? 1000000 : 1e18),
+    payoutDecimals: draftPayoutCurrency === 2 ? 6 : 18,
+    payoutUnit: draftPayoutCurrency === 2 ? 'USD' : 'ETH',
     hasEmptyFundAccessLimits: false,
     reservedPercent: undefined as number | undefined
   } : null
   const fundingInfo = hasStreamedFundingData ? streamedFundingInfo : draftFundingInfo
+
+  let earlyContent: React.ReactNode = null
 
   // If component is still being streamed (truncated) AND we don't have valid data yet:
   // - If still actively streaming (_isStreaming === true), show shimmer/loading state
@@ -2280,7 +1942,7 @@ export default function TransactionPreview({
   if (_isTruncated === 'true' && !lastValidPreviewData.current) {
     // Streaming stopped but we never got valid data - show error
     if (_isStreaming === false) {
-      return (
+      earlyContent = (
         <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
           isDark
             ? 'bg-juice-dark-lighter border-white/10'
@@ -2303,35 +1965,36 @@ export default function TransactionPreview({
           </div>
         </div>
       )
-    }
-    // Still streaming - show shimmer
-    return (
-      <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
-        isDark
-          ? 'bg-juice-dark-lighter border-white/10'
-          : 'bg-white border-gray-200'
-      }`}>
-        <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          <div className="flex items-center gap-2">
-            <div className={`w-6 h-6 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-            <div className={`h-5 w-40 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+    } else {
+      // Still streaming - show shimmer
+      earlyContent = (
+        <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
+          isDark
+            ? 'bg-juice-dark-lighter border-white/10'
+            : 'bg-white border-gray-200'
+        }`}>
+          <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+              <div className={`h-5 w-40 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            </div>
+          </div>
+          <div className="px-4 py-3 space-y-2">
+            <div className={`h-4 w-full rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <div className={`h-4 w-3/4 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <div className={`h-4 w-1/2 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          </div>
+          <div className={`px-4 py-3 border-t flex justify-end ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+            <div className={`h-9 w-28 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
           </div>
         </div>
-        <div className="px-4 py-3 space-y-2">
-          <div className={`h-4 w-full rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-          <div className={`h-4 w-3/4 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-          <div className={`h-4 w-1/2 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-        </div>
-        <div className={`px-4 py-3 border-t flex justify-end ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-          <div className={`h-9 w-28 rounded animate-pulse ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-        </div>
-      </div>
-    )
+      )
+    }
   }
 
   // If parameters are invalid after streaming finished, show error state
-  if (!isParamsValid) {
-    return (
+  if (!earlyContent && !isParamsValid) {
+    earlyContent = (
       <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
         isDark
           ? 'bg-juice-dark-lighter border-white/10'
@@ -2355,32 +2018,31 @@ export default function TransactionPreview({
     )
   }
 
-  // Parse chain-specific configs for multi-chain deployments
-  // Check both the chainConfigs prop AND inside the parameters (AI often puts it there)
-  let parsedChainConfigs: ChainOverride[] = []
-  try {
-    if (chainConfigs) {
-      parsedChainConfigs = JSON.parse(chainConfigs)
-    } else if (effectivePreviewData?.raw?.chainConfigs && Array.isArray(effectivePreviewData.raw.chainConfigs)) {
-      // Fallback: check if chainConfigs is inside the parameters JSON
-      parsedChainConfigs = effectivePreviewData.raw.chainConfigs as ChainOverride[]
+  // Parse chain-specific configs once. The prop is authoritative; embedded
+  // configs are a compatibility fallback for older AI responses.
+  const embeddedChainConfigs = effectivePreviewData?.raw?.chainConfigs
+  const parsedChainConfigs = useMemo<ChainOverride[]>(() => {
+    try {
+      if (chainConfigs) {
+        const parsed = JSON.parse(chainConfigs)
+        return Array.isArray(parsed) ? parsed as ChainOverride[] : []
+      }
+      return Array.isArray(embeddedChainConfigs)
+        ? embeddedChainConfigs as ChainOverride[]
+        : []
+    } catch {
+      return []
     }
-  } catch {
-    // Ignore parsing errors
-  }
+  }, [chainConfigs, embeddedChainConfigs])
 
   // Check for multi-chain: chainConfigs (launch), chainProjectMappings (setUri), or suckers
   const hasChainProjectMappings = effectivePreviewData?.raw?.chainProjectMappings?.length > 1
   const isMultiChain = parsedChainConfigs.length > 0 || hasMultiChainSuckers || hasChainProjectMappings
 
-  // All supported chains for multi-chain deployments
-  const ALL_CHAINS = ['1', '10', '8453', '42161'] // Ethereum, Optimism, Base, Arbitrum
-
   // Handle undefined/invalid chainId - default to multi-chain if chainConfigs exist
   const validChainId = chainId && chainId !== 'undefined' && CHAIN_NAMES[chainId] ? chainId : null
   const chainName = validChainId ? CHAIN_NAMES[validChainId] : 'Multi-chain'
   const chainColor = validChainId ? CHAIN_COLORS[validChainId] : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-  const actionIcon = ACTION_ICONS[action] || '📝'
 
   // For launchProject, extract and validate parameters
   const launchValidation = useMemo(() => {
@@ -2401,14 +2063,13 @@ export default function TransactionPreview({
     const projectUri = (raw.projectUri as string) || (launchConfig?.projectUri as string) || ''
 
     // Get chain IDs
-    // For launch actions, default to ALL chains (omnichain) unless chainConfigs specifies otherwise
-    // A single chainId prop is ignored for launch - we always go multi-chain
+    // Never infer extra destination chains. An explicit chainId means exactly
+    // that chain; omnichain launches must enumerate their chain configs.
     let launchChainIds: number[] = []
     if (parsedChainConfigs.length > 0) {
       launchChainIds = parsedChainConfigs.map(c => Number(c.chainId))
-    } else {
-      // Default to all supported chains for omnichain deployment
-      launchChainIds = [...ALL_CHAIN_IDS]
+    } else if (validChainId) {
+      launchChainIds = [Number(validChainId)]
     }
 
     // Get ruleset configurations (check both top-level and nested in launchProjectConfig)
@@ -2424,30 +2085,11 @@ export default function TransactionPreview({
     const terminalConfigurations = (raw.terminalConfigurations as unknown[]) ||
       (launchConfig?.terminalConfigurations as unknown[]) || []
 
-    // Auto-correct any hallucinated addresses in terminal configurations
-    // AI sometimes drops characters from addresses (e.g., a known address with a dropped character)
-    const terminalCorrections = autoCorrectTerminalConfigurations(
-      terminalConfigurations as Array<{ terminal?: string; accountingContextsToAccept?: Array<{ token?: string }> }>
-    )
-    if (terminalCorrections.length > 0) {
-      console.log('[LaunchValidation] Auto-corrected hallucinated addresses:', terminalCorrections)
-    }
-
-    // Also auto-correct chain config overrides
-    if (parsedChainConfigs.length > 0) {
-      const chainConfigCorrections = autoCorrectChainConfigs(
-        parsedChainConfigs as Array<{
-          chainId: number | string
-          overrides?: { terminalConfigurations?: Array<{ terminal?: string; accountingContextsToAccept?: Array<{ token?: string }> }> }
-        }>
-      )
-      if (chainConfigCorrections.length > 0) {
-        console.log('[LaunchValidation] Auto-corrected hallucinated addresses in chain configs:', chainConfigCorrections)
-      }
-    }
-
     // Get memo (check both top-level and nested)
     const memo = (raw.memo as string) || (launchConfig?.memo as string) || 'Project launch via Juicy Vision'
+
+    const deployTiersHookConfig = (raw.deployTiersHookConfig || launchConfig?.deployTiersHookConfig) as
+      JBDeployTiersHookConfig | undefined
 
     // Get sucker deployment configuration (for atomic project+sucker deployment via JBOmnichainDeployer)
     // If not provided by AI and deploying to multiple chains, auto-generate it
@@ -2539,13 +2181,7 @@ export default function TransactionPreview({
     // Check if user needs to sign in - show friendly prompt instead of scary errors
     // When user isn't signed in, most validation errors are expected (missing owner, placeholder addresses)
     // Don't overwhelm first-time users with red "Critical" warnings - just nudge them to sign in
-    const needsSignIn = !effectiveUserAddress && !owner
-    const signInRelatedDoubts = verification.doubts.filter(d =>
-      d.field === 'owner' ||
-      d.message.toLowerCase().includes('owner') ||
-      d.message.includes('USER_WALLET')
-    )
-    const genuineDoubts = verification.doubts.filter(d => !signInRelatedDoubts.includes(d))
+    const needsSignIn = !effectiveUserAddress
     // Show sign-in prompt when user needs to sign in, regardless of other validation issues
     const onlySignInIssue = needsSignIn
 
@@ -2553,6 +2189,35 @@ export default function TransactionPreview({
     let filteredDoubts = (isWaitingForManagedWallet || hasWalletError || onlySignInIssue)
       ? [] // Hide all validation errors when just prompting to sign in
       : verification.doubts
+
+    if (
+      effectiveUserAddress &&
+      owner &&
+      owner.toLowerCase() !== effectiveUserAddress.toLowerCase()
+    ) {
+      filteredDoubts = [
+        {
+          field: 'owner',
+          message: 'Project owner must match the active signing account',
+          severity: 'critical' as const,
+        },
+        ...filteredDoubts,
+      ]
+    }
+
+    if (action === 'launch721Project' && !onlySignInIssue && !isWaitingForManagedWallet) {
+      const tiers = deployTiersHookConfig?.tiersConfig?.tiers
+      if (!deployTiersHookConfig || !Array.isArray(tiers) || tiers.length === 0) {
+        filteredDoubts = [
+          {
+            field: 'deployTiersHookConfig',
+            message: 'The NFT shop has no valid tiers to deploy.',
+            severity: 'critical' as const,
+          },
+          ...filteredDoubts,
+        ]
+      }
+    }
 
     // If there's a wallet error, add a specific doubt for it
     if (hasWalletError) {
@@ -2567,10 +2232,15 @@ export default function TransactionPreview({
     }
 
     // Convert parsedChainConfigs to the format expected by buildOmnichainLaunchTransactions
-    const chainConfigOverrides = parsedChainConfigs.map(cfg => ({
-      chainId: Number(cfg.chainId),
-      terminalConfigurations: cfg.overrides?.terminalConfigurations as JBTerminalConfig[] | undefined,
-    })).filter(cfg => cfg.terminalConfigurations)
+    const chainConfigOverrides = parsedChainConfigs.map(cfg => {
+      const tierOverride = cfg.overrides?.deployTiersHookConfig as
+        { tiersConfig?: { tiers?: JB721TierConfig[] } } | undefined
+      return {
+        chainId: Number(cfg.chainId),
+        terminalConfigurations: cfg.overrides?.terminalConfigurations as JBTerminalConfig[] | undefined,
+        tiers: tierOverride?.tiersConfig?.tiers,
+      }
+    }).filter(cfg => cfg.terminalConfigurations || cfg.tiers)
 
     // Extract per-chain token addresses for sucker config display
     // This shows which ERC20 tokens will be bridged between chains
@@ -2598,6 +2268,7 @@ export default function TransactionPreview({
       rulesetConfigurations,
       terminalConfigurations,
       memo,
+      deployTiersHookConfig,
       suckerDeploymentConfiguration,
       chainConfigs: chainConfigOverrides.length > 0 ? chainConfigOverrides : undefined,
       tokenAddresses: Object.keys(extractedTokenAddresses).length > 0 ? extractedTokenAddresses : undefined,
@@ -2614,7 +2285,7 @@ export default function TransactionPreview({
   // Handle launch button click
   const handleLaunchClick = useCallback(async () => {
     if (!launchValidation) return
-    if (launchValidation.hasCritical && !issuesAcknowledged) return
+    if (launchValidation.hasCritical) return
 
     const {
       owner,
@@ -2624,6 +2295,7 @@ export default function TransactionPreview({
       terminalConfigurations,
       memo,
       chainConfigs,
+      deployTiersHookConfig,
     } = launchValidation
 
     // Note: DON'T pass suckerDeploymentConfiguration here!
@@ -2637,14 +2309,15 @@ export default function TransactionPreview({
       terminalConfigurations: terminalConfigurations as JBTerminalConfig[],
       memo,
       chainConfigs, // Per-chain terminal overrides (different USDC addresses, etc.)
+      deployTiersHookConfig,
     })
-  }, [launchValidation, issuesAcknowledged, launch])
+  }, [launchValidation, launch])
 
   // Can proceed with launch?
   const canLaunch = launchValidation &&
     !launchValidation.isWaitingForWallet &&
     launchValidation.owner &&
-    (!launchValidation.hasCritical || issuesAcknowledged)
+    !launchValidation.hasCritical
 
   // For setUri/setUriOf, extract and validate parameters
   const setUriValidation = useMemo(() => {
@@ -2706,6 +2379,12 @@ export default function TransactionPreview({
         message: 'No URI specified for project metadata',
         severity: 'critical',
       })
+    } else if (!isIpfsUri(uri, false)) {
+      doubts.push({
+        field: 'uri',
+        message: 'Project metadata must use a verified IPFS URI',
+        severity: 'critical',
+      })
     }
 
     if (chainProjectMappings.length === 0) {
@@ -2723,6 +2402,32 @@ export default function TransactionPreview({
         })
       }
     }
+
+    const seenChains = new Set<number>()
+    chainProjectMappings.forEach((mapping, index) => {
+      if (!ALL_CHAIN_IDS.includes(mapping.chainId)) {
+        doubts.push({
+          field: `chainProjectMappings[${index}].chainId`,
+          message: `Unsupported chain ID: ${mapping.chainId}`,
+          severity: 'critical',
+        })
+      }
+      if (!Number.isSafeInteger(mapping.projectId) || mapping.projectId <= 0) {
+        doubts.push({
+          field: `chainProjectMappings[${index}].projectId`,
+          message: `Invalid project ID for chain ${mapping.chainId}`,
+          severity: 'critical',
+        })
+      }
+      if (seenChains.has(mapping.chainId)) {
+        doubts.push({
+          field: `chainProjectMappings[${index}].chainId`,
+          message: `Duplicate chain mapping for ${mapping.chainId}`,
+          severity: 'critical',
+        })
+      }
+      seenChains.add(mapping.chainId)
+    })
 
     // Check if user is signed in
     const isWaitingForManagedWallet = isManagedMode && !managedAddress && managedWalletLoading
@@ -2752,7 +2457,7 @@ export default function TransactionPreview({
   // Handle setUri button click
   const handleSetUriClick = useCallback(async () => {
     if (!setUriValidation) return
-    if (setUriValidation.hasCritical && !issuesAcknowledged) return
+    if (setUriValidation.hasCritical) return
 
     const { uri, chainProjectMappings } = setUriValidation
 
@@ -2760,16 +2465,18 @@ export default function TransactionPreview({
       chainProjectMappings,
       uri,
     })
-  }, [setUriValidation, issuesAcknowledged, setUri])
+  }, [setUriValidation, setUri])
 
   // Can proceed with setUri?
   const canSetUri = setUriValidation &&
     !setUriValidation.isWaitingForWallet &&
     effectiveUserAddress &&
-    (!setUriValidation.hasCritical || issuesAcknowledged)
+    !setUriValidation.hasCritical
 
   // Helper to check if this is a setUri action
   const isSetUriAction = action === 'setUri' || action === 'setUriOf'
+
+  if (earlyContent) return earlyContent
 
   return (
     <div className={`inline-block border overflow-hidden min-w-[360px] max-w-2xl ${
@@ -2794,7 +2501,6 @@ export default function TransactionPreview({
           <ProjectMetadataPreview
             metadata={projectMetadata}
             isDark={isDark}
-            onEdit={() => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: 'I want to edit the project details' } }))}
           />
         </div>
       )}
@@ -2822,8 +2528,8 @@ export default function TransactionPreview({
               splits={fundingInfo.splits}
               isDark={isDark}
               onEdit={() => window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: 'I want to edit the payout distribution' } }))}
-              juicyFeeEnabled={juicyFeeEnabled}
-              onToggleJuicyFee={setJuicyFeeEnabled}
+              payoutDecimals={fundingInfo.payoutDecimals}
+              payoutUnit={fundingInfo.payoutUnit}
               hasEmptyFundAccessLimits={fundingInfo.hasEmptyFundAccessLimits}
               reservedPercent={fundingInfo.reservedPercent}
             />
@@ -2922,12 +2628,12 @@ export default function TransactionPreview({
               <span>Chains</span>
               <div className="flex gap-1 flex-wrap justify-end">
                 {isMultiChain ? (
-                  // Get chain IDs from: parsedChainConfigs, chainProjectMappings, or fallback to ALL_CHAINS
+                  // Show only chains explicitly present in the transaction data.
                   (parsedChainConfigs.length > 0
                     ? parsedChainConfigs.map(c => c.chainId)
                     : hasChainProjectMappings
                       ? (effectivePreviewData?.raw?.chainProjectMappings as Array<{chainId: string | number}>).map(m => String(m.chainId))
-                      : ALL_CHAINS
+                      : validChainId ? [validChainId] : []
                   ).map((cid) => {
                     const config = parsedChainConfigs.find(c => c.chainId === cid)
                     const name = config?.label || CHAIN_NAMES[cid] || `Chain ${cid}`
@@ -3112,6 +2818,12 @@ export default function TransactionPreview({
             </div>
           )}
 
+          {effectiveIsComplete && Object.keys(effectiveProjectIds).length === 0 && (
+            <div className={`p-3 text-sm ${isDark ? 'bg-green-500/10 text-gray-300' : 'bg-green-50 text-gray-700'}`}>
+              Deployment is confirmed. Project IDs could not be decoded yet; verify the confirmed transaction links below. No second launch is needed.
+            </div>
+          )}
+
           {/* Error state */}
           {hasError && bundleState.error && (
             <div className={`p-4 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
@@ -3268,24 +2980,33 @@ export default function TransactionPreview({
               ))}
             </div>
             {launchValidation.hasCritical && (
-              <label className={`flex items-center gap-2 mt-3 cursor-pointer ${
-                isDark ? 'text-gray-400' : 'text-gray-600'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={issuesAcknowledged}
-                  onChange={(e) => setIssuesAcknowledged(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <span className="text-xs">{t('deployment.understandRisks')}</span>
-              </label>
+              <p className={`text-xs mt-3 ${isDark ? 'text-red-300' : 'text-red-700'}`}>
+                This transaction cannot be prepared safely. Correct the fields above and try again.
+              </p>
             )}
           </div>
         </div>
       )}
 
+      {setUriValidation?.hasIssues && !isSettingUri && !isSetUriComplete && (
+        <div className={`px-4 py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <div className={`p-3 border-l-4 ${isDark ? 'bg-red-500/10 border-red-500' : 'bg-red-50 border-red-500'}`}>
+            <div className={`text-sm font-medium mb-2 ${isDark ? 'text-red-400' : 'text-red-700'}`}>
+              Metadata update blocked
+            </div>
+            <div className="space-y-1">
+              {setUriValidation.doubts.map((doubt, i) => (
+                <p key={i} className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {doubt.message}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Action button - hide entire section when complete with project IDs */}
-      {!((action === 'launchProject' || action === 'launch721Project') && effectiveIsComplete && Object.keys(effectiveProjectIds).length > 0) && (
+      {!((action === 'launchProject' || action === 'launch721Project') && effectiveIsComplete) && (
       <div className={`px-4 py-3 border-t flex justify-end ${
         isDark ? 'border-white/10' : 'border-gray-200'
       }`}>
@@ -3375,53 +3096,9 @@ export default function TransactionPreview({
             </button>
           )
         ) : (
-          // Original dispatch for other actions
-          <button
-            onClick={() => {
-              // Parse parameters on-demand for the action (avoids waiting for deferred parsing)
-              let actionParams: Record<string, unknown>
-              try {
-                const rawParams = JSON.parse(parameters)
-                // Apply transformations: timestamps, then media URI encoding
-                const withTimestamps = updateTimestamps(rawParams)
-                actionParams = processMediaUris(withTimestamps) as Record<string, unknown>
-
-                // If Juicy fee is disabled, remove the Juicy split (projectId === 1)
-                if (!juicyFeeEnabled) {
-                  const removeJuicySplit = (obj: unknown): unknown => {
-                    if (obj === null || obj === undefined) return obj
-                    if (Array.isArray(obj)) return obj.map(removeJuicySplit)
-                    if (typeof obj === 'object') {
-                      const record = obj as Record<string, unknown>
-                      // Check if this is a splitGroups array
-                      if (record.splitGroups && Array.isArray(record.splitGroups)) {
-                        record.splitGroups = (record.splitGroups as Array<{ groupId?: string; splits?: Array<{ projectId?: number }> }>).map(group => ({
-                          ...group,
-                          splits: group.splits?.filter(split => split.projectId !== 1) || []
-                        }))
-                      }
-                      // Recursively process all values
-                      const result: Record<string, unknown> = {}
-                      for (const [key, value] of Object.entries(record)) {
-                        result[key] = removeJuicySplit(value)
-                      }
-                      return result
-                    }
-                    return obj
-                  }
-                  actionParams = removeJuicySplit(actionParams) as Record<string, unknown>
-                }
-              } catch {
-                actionParams = { raw: parameters }
-              }
-              window.dispatchEvent(new CustomEvent('juice:execute-action', {
-                detail: { action, contract, chainId: validChainId || '1', projectId, parameters: actionParams }
-              }))
-            }}
-            className="px-5 py-2 text-sm font-bold border-2 bg-green-500 text-black border-green-500 hover:bg-green-600 hover:border-green-600 transition-colors"
-          >
-            {ACTION_BUTTON_LABEL_KEYS[action] ? t(ACTION_BUTTON_LABEL_KEYS[action]) : action}
-          </button>
+          <div className={`max-w-sm text-right text-xs ${isDark ? 'text-red-300' : 'text-red-700'}`}>
+            This action was not prepared by a supported transaction form. Ask Juicy to try again.
+          </div>
         )}
       </div>
       )}

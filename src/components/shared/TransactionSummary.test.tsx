@@ -79,7 +79,9 @@ describe('TransactionSummary', () => {
       tokensFormatted: '1,000 TEST',
       estimatedReturn: '800000000000000000',
       estimatedReturnFormatted: '0.8 ETH',
-      taxRate: 20,
+      previewReturnFormatted: '0.8 ETH',
+      minimumReturnFormatted: '0.792 ETH',
+      taxRate: 2000,
       currency: 'ETH',
     }
 
@@ -92,12 +94,13 @@ describe('TransactionSummary', () => {
 
     it('displays tax rate', () => {
       render(<TransactionSummary type="cashOut" details={cashOutDetails} isDark={false} />)
-      expect(screen.getByText(/20% cash out tax/)).toBeInTheDocument()
+      expect(screen.getByText(/Current cash-out curve rate: 20%/)).toBeInTheDocument()
     })
 
     it('displays estimated return', () => {
       render(<TransactionSummary type="cashOut" details={cashOutDetails} isDark={false} />)
       expect(screen.getByText('0.8 ETH')).toBeInTheDocument()
+      expect(screen.getByText(/Transaction minimum: 0.792 ETH/)).toBeInTheDocument()
     })
 
     it('shows permanent burn warning', () => {
@@ -298,7 +301,7 @@ describe('TransactionSummary', () => {
 
     it('displays net amount received', () => {
       render(<TransactionSummary type="useAllowance" details={useAllowanceDetails} isDark={false} />)
-      expect(screen.getByText(/You receive:/)).toBeInTheDocument()
+      expect(screen.getByText(/You receive at least:/)).toBeInTheDocument()
       expect(screen.getByText('4.875 ETH')).toBeInTheDocument()
     })
 
@@ -317,7 +320,7 @@ describe('TransactionSummary', () => {
       changes: [
         { field: 'Token issuance', from: '1M tokens/ETH', to: '500K tokens/ETH' },
         { field: 'Reserved rate', from: '10%', to: '20%' },
-        { field: 'Cash out tax', to: '15%' },
+        { field: 'Cash-out curve rate', to: '15%' },
       ],
     }
 
@@ -343,7 +346,7 @@ describe('TransactionSummary', () => {
 
     it('displays changes with only to value', () => {
       render(<TransactionSummary type="queueRuleset" details={queueRulesetDetails} isDark={false} />)
-      expect(screen.getByText(/Cash out tax:/)).toBeInTheDocument()
+      expect(screen.getByText(/Cash-out curve rate:/)).toBeInTheDocument()
       expect(screen.getByText('15%')).toBeInTheDocument()
     })
   })

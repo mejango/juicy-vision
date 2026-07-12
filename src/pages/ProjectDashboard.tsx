@@ -6,15 +6,14 @@ import { createPortal } from 'react-dom'
 import { useThemeStore, useChatStore } from '../stores'
 import { useManagedWallet, useIsMobile } from '../hooks'
 import { CHAINS, MAINNET_CHAINS } from '../constants'
-import { fetchProject, fetchProjectWithRuleset, fetchConnectedChains, fetchSuckerGroupBalance, isRevnetProject, fetchRevnetOperator, fetchEthPrice, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
+import { fetchProject, fetchConnectedChains, fetchSuckerGroupBalance, isRevnetProject, fetchRevnetOperator, fetchEthPrice, type Project, type ConnectedChain, type SuckerGroupBalance } from '../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../utils/ens'
-import { getProjectSupporters, type ProjectConversation } from '../api/projectConversations'
 import { getWalletSession } from '../services/siwe'
-import { resolveIpfsUri } from '../utils/ipfs'
 import { formatBalanceUsd, formatBalanceNative } from '../utils/currency'
+import { IpfsImage } from '../components/ui/IpfsMedia'
 
 // Chat components
-import { ChatInput, ProtocolActivity } from '../components/chat'
+import { ChatInput } from '../components/chat'
 
 // Dynamic components
 import BalanceChart from '../components/dynamic/charts/BalanceChart'
@@ -32,7 +31,7 @@ import { ExplainerMessage } from '../components/ui/ExplainerMessage'
 
 // Payment modals
 import CashOutForm from '../components/dynamic/CashOutForm'
-import SendPayoutsModal from '../components/payment/SendPayoutsModal'
+import SendPayoutsForm from '../components/dynamic/SendPayoutsForm'
 // Note: QueueRulesetForm is used for ruleset changes - it has its own modal internally
 import QueueRulesetForm from '../components/dynamic/QueueRulesetForm'
 
@@ -43,6 +42,7 @@ import UseSurplusAllowanceForm from '../components/dynamic/UseSurplusAllowanceFo
 import ManageTiersForm from '../components/dynamic/ManageTiersForm'
 import SetSplitsForm from '../components/dynamic/SetSplitsForm'
 import SetUriForm from '../components/dynamic/SetUriForm'
+import { ChainMappingWarning } from '../components/dynamic/ChainMappingWarning'
 
 type DashboardTab = 'about' | 'rulesets' | 'funds' | 'tokens' | 'shop'
 type ModalType =
@@ -62,21 +62,10 @@ const CHAIN_DISPLAY: Record<number, string> = {
   10: 'Optimism',
   8453: 'Base',
   42161: 'Arbitrum',
-}
-
-function formatTimeAgo(timestamp: string): string {
-  const now = Date.now()
-  const time = new Date(timestamp).getTime()
-  const diff = now - time
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 7) return `${days}d ago`
-  return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  11155111: 'Sepolia',
+  11155420: 'OP Sepolia',
+  84532: 'Base Sepolia',
+  421614: 'Arb Sepolia',
 }
 
 // Strip HTML tags from description for plain text display
@@ -161,15 +150,15 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
   const [project, setProject] = useState<Project | null>(null)
   const [projectLoading, setProjectLoading] = useState(true)
-  const [supporters, setSupporters] = useState<ProjectConversation[]>([])
-  const [supportersLoading, setSupportersLoading] = useState(false)
-  const [supportersLoaded, setSupportersLoaded] = useState(false)
-  const [supportersTotal, setSupportersTotal] = useState(0)
+  const [projectLoadError, setProjectLoadError] = useState<string | null>(null)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [suckerGroupBalance, setSuckerGroupBalance] = useState<SuckerGroupBalance | null>(null)
   const [revnetOperator, setRevnetOperator] = useState<string | null>(null)
+  const [revnetOperatorError, setRevnetOperatorError] = useState<string | null>(null)
   const [displayAddressEns, setDisplayAddressEns] = useState<string | null>(null)
   const [hasNftHook, setHasNftHook] = useState(false)
+  const [nftHookError, setNftHookError] = useState<string | null>(null)
   const [ethPrice, setEthPrice] = useState<number | null>(null)
 
   // Modal state
@@ -198,72 +187,102 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
   // Get current user's address from wallet connections
   const { address: wagmiAddress } = useAccount()
-  const { address: managedAddress } = useManagedWallet()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
   const walletSession = getWalletSession()
 
-  // Current user address: SIWE session > managed wallet > wagmi
+  // Select the identity from the active custody mode; cached managed state is
+  // not evidence that the managed account is currently active.
   const currentUserAddress = useMemo(() => {
-    return walletSession?.address || managedAddress || wagmiAddress
-  }, [walletSession?.address, managedAddress, wagmiAddress])
+    return isManagedMode ? managedAddress : walletSession?.address || wagmiAddress
+  }, [isManagedMode, walletSession?.address, managedAddress, wagmiAddress])
 
   // Check if current user is the project owner
   const isOwner = useMemo(() => {
-    if (!currentUserAddress || !project?.owner) return false
-    return currentUserAddress.toLowerCase() === project.owner.toLowerCase()
-  }, [currentUserAddress, project?.owner])
+    if (!currentUserAddress || !project?.owner || project.configurationError) return false
+    const authority = isRevnetProject(project) ? revnetOperator : project.owner
+    return !!authority && currentUserAddress.toLowerCase() === authority.toLowerCase()
+  }, [currentUserAddress, project, revnetOperator])
 
   // Check if project has deployed an ERC20 token
   const hasErc20Token = useMemo(() => {
     return Boolean(project?.tokenSymbol)
   }, [project?.tokenSymbol])
 
-  // Use aggregated sucker group balance when available (for omnichain projects)
-  const displayBalance = useMemo(() => {
-    if (suckerGroupBalance && suckerGroupBalance.totalBalance !== '0') {
-      return suckerGroupBalance.totalBalance
-    }
-    return project?.balance || '0'
-  }, [suckerGroupBalance, project?.balance])
+  const balanceAvailable = !!suckerGroupBalance && suckerGroupBalance.balanceAvailable !== false
+  const paymentsAvailable = !!suckerGroupBalance && suckerGroupBalance.paymentsAvailable !== false
+  const volumeAvailable = !!suckerGroupBalance && (
+    suckerGroupBalance.dataScope === 'project'
+      ? !!project && /^\d+$/.test(project.volume)
+      : suckerGroupBalance.volumeAvailable !== false
+  )
+  const balanceScope = suckerGroupBalance?.dataScope === 'project' ? ' on this chain' : ''
 
-  const displayPaymentsCount = useMemo(() => {
-    if (suckerGroupBalance && suckerGroupBalance.totalPaymentsCount > 0) {
-      return suckerGroupBalance.totalPaymentsCount
-    }
-    return project?.paymentsCount || 0
-  }, [suckerGroupBalance, project?.paymentsCount])
-
-  // Use aggregated volume from sucker group when available (for omnichain projects)
-  const displayVolume = useMemo(() => {
-    if (suckerGroupBalance && suckerGroupBalance.totalVolume !== '0') {
-      return suckerGroupBalance.totalVolume
-    }
-    return project?.volume || '0'
-  }, [suckerGroupBalance, project?.volume])
+  const displayBalance = balanceAvailable ? suckerGroupBalance.totalBalance : ''
+  const displayPaymentsCount = paymentsAvailable ? suckerGroupBalance.totalPaymentsCount : Number.NaN
+  const displayVolume = volumeAvailable
+    ? suckerGroupBalance.dataScope === 'project'
+      ? project!.volume
+      : suckerGroupBalance.totalVolume
+    : ''
 
   // Load project data
   useEffect(() => {
+    let cancelled = false
     async function loadProject() {
       setProjectLoading(true)
+      setProject(null)
+      setProjectLoadError(null)
+      setConnectedChains([{ chainId, projectId }])
+      setChainMappingAvailable(true)
+      setSuckerGroupBalance(null)
+      setNftHookError(null)
       try {
-        const [data, chains, groupBalance, nftHook, price] = await Promise.all([
+        const nftHookResult = hasNFTHook(String(projectId), chainId)
+          .then(value => ({ value, error: null }))
+          .catch(error => ({
+            value: false,
+            error: error instanceof Error ? error.message : 'Reward configuration unavailable',
+          }))
+        const [projectResult, chainsResult, balanceResult, nftResult, priceResult] = await Promise.allSettled([
           fetchProject(String(projectId), chainId),
           fetchConnectedChains(String(projectId), chainId),
           fetchSuckerGroupBalance(String(projectId), chainId),
-          hasNFTHook(String(projectId), chainId),
+          nftHookResult,
           fetchEthPrice(),
         ])
-        setProject(data)
-        setConnectedChains(chains)
-        setSuckerGroupBalance(groupBalance)
-        setHasNftHook(nftHook)
-        setEthPrice(price)
+        if (cancelled) return
+        if (projectResult.status === 'rejected') throw projectResult.reason
+
+        setProject(projectResult.value)
+        if (chainsResult.status === 'fulfilled') {
+          setConnectedChains(chainsResult.value.length > 0
+            ? chainsResult.value
+            : [{ chainId, projectId }])
+        } else {
+          setConnectedChains([{ chainId, projectId }])
+          setChainMappingAvailable(false)
+        }
+        setSuckerGroupBalance(balanceResult.status === 'fulfilled' ? balanceResult.value : null)
+        if (nftResult.status === 'fulfilled') {
+          setHasNftHook(nftResult.value.value)
+          setNftHookError(nftResult.value.error)
+        } else {
+          setHasNftHook(false)
+          setNftHookError('Reward configuration unavailable')
+        }
+        setEthPrice(priceResult.status === 'fulfilled' ? priceResult.value : null)
       } catch (error) {
         console.error('Failed to load project:', error)
+        if (!cancelled) {
+          setProject(null)
+          setProjectLoadError(error instanceof Error ? error.message : 'Project verification failed')
+        }
       } finally {
-        setProjectLoading(false)
+        if (!cancelled) setProjectLoading(false)
       }
     }
     loadProject()
+    return () => { cancelled = true }
   }, [projectId, chainId])
 
   // Determine if revnet and fetch operator, then resolve ENS
@@ -276,7 +295,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     if (projectIsRevnet && revnetOperator) {
       return revnetOperator
     }
-    return project?.owner || null
+    return projectIsRevnet ? null : project?.owner || null
   }, [projectIsRevnet, revnetOperator, project?.owner])
 
   // Fetch revnet operator and resolve ENS for display address
@@ -286,12 +305,16 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
       // If revnet, fetch the operator
       if (projectIsRevnet) {
-        const operator = await fetchRevnetOperator(String(projectId), chainId)
-        setRevnetOperator(operator)
-        // Resolve ENS for operator (or owner if no operator)
-        const addressToResolve = operator || project.owner
-        const ensName = await resolveEnsName(addressToResolve)
-        setDisplayAddressEns(ensName)
+        setRevnetOperatorError(null)
+        try {
+          const operator = await fetchRevnetOperator(String(projectId), chainId)
+          setRevnetOperator(operator)
+          setDisplayAddressEns(operator ? await resolveEnsName(operator) : null)
+        } catch (error) {
+          setRevnetOperator(null)
+          setDisplayAddressEns(null)
+          setRevnetOperatorError(error instanceof Error ? error.message : 'Revnet operator unavailable')
+        }
       } else {
         // Resolve ENS for owner
         const ensName = await resolveEnsName(project.owner)
@@ -300,28 +323,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     }
     loadDisplayInfo()
   }, [project?.owner, projectIsRevnet, projectId, chainId])
-
-  // Load supporters when payments tab is active (kept for compatibility)
-  const loadSupporters = useCallback(async () => {
-    if (supportersLoading || supportersLoaded) return
-    setSupportersLoading(true)
-    try {
-      const result = await getProjectSupporters(projectId, chainId)
-      setSupporters(result.supporters)
-      setSupportersTotal(result.total)
-      setSupportersLoaded(true)
-    } catch (error) {
-      console.error('Failed to load supporters:', error)
-    } finally {
-      setSupportersLoading(false)
-    }
-  }, [projectId, chainId, supportersLoading, supportersLoaded])
-
-  const handleSupporterClick = (chatId: string) => {
-    // Only owners can access supporter chats
-    if (!isOwner) return
-    navigate(`/chat/${chatId}`)
-  }
 
   const handleBackClick = () => {
     navigate('/')
@@ -336,14 +337,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     useChatStore.getState().setActiveChat(null)
     useChatStore.getState().setQueuedNewChatMessage(contextMessage)
     navigate('/') // Go to home where ChatContainer will process the queued message
-  }
-
-  // Handle activity project click
-  const handleActivityProjectClick = (query: string) => {
-    window.dispatchEvent(new CustomEvent('juice:send-message', {
-      detail: { message: query, newChat: true }
-    }))
-    navigate('/')
   }
 
   // Tab configuration - dynamic based on project features
@@ -380,10 +373,15 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         isDark ? 'bg-juice-dark text-white' : 'bg-white text-gray-900'
       }`}>
         <div className="text-center max-w-md px-4">
-          <h1 className="text-xl font-semibold mb-2">{t('project.notFound', 'Project not found')}</h1>
+          <h1 className="text-xl font-semibold mb-2">Project unavailable</h1>
           <p className={`text-sm mb-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            {t('project.notFoundDesc', 'This project may not exist or the chain/ID is invalid.')}
+            Project existence could not be verified from the chain. No project actions are available.
           </p>
+          {projectLoadError && (
+            <p className={`mb-6 break-words text-xs ${isDark ? 'text-red-300' : 'text-red-700'}`}>
+              {projectLoadError}
+            </p>
+          )}
           <button
             onClick={handleBackClick}
             className="px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
@@ -428,10 +426,11 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               <div className="flex items-start gap-4">
                 {/* Square logo */}
                 {project.logoUri ? (
-                  <img
-                    src={resolveIpfsUri(project.logoUri) || undefined}
+                  <IpfsImage
+                    uri={project.logoUri}
                     alt=""
                     className="w-16 h-16 object-cover"
+                    fallback={<div className={`w-16 h-16 flex items-center justify-center text-2xl ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}>?</div>}
                   />
                 ) : (
                   <div className={`w-16 h-16 flex items-center justify-center text-2xl ${
@@ -455,10 +454,12 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       onClick={() => setShowBalanceTooltip(prev => !prev)}
                     >
                       <span className={`font-semibold cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                        {formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance
+                        {balanceAvailable
+                          ? `${formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance${balanceScope}`
+                          : 'Balance unavailable'}
                       </span>
                       {/* Per-chain balance breakdown tooltip */}
-                      {showBalanceTooltip && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
+                      {showBalanceTooltip && balanceAvailable && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
                         <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-50 min-w-[200px] text-xs ${
                           isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
                         }`}>
@@ -488,13 +489,13 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     </div>
                     <span>
                       <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                        {displayPaymentsCount.toLocaleString()}
+                        {paymentsAvailable ? displayPaymentsCount.toLocaleString() : 'Unavailable'}
                       </span>
-                      {' '}payments
+                      {' '}payment{!paymentsAvailable || displayPaymentsCount !== 1 ? 's' : ''}
                     </span>
                   </div>
                   {/* Operator/Owner and Website */}
-                  {(displayAddress || project.metadata?.infoUri) && (
+                  {(displayAddress || revnetOperatorError || project.metadata?.infoUri) && (
                     <div className={`flex items-center flex-wrap gap-x-1.5 gap-y-1 mt-1.5 text-xs ${
                       isDark ? 'text-gray-500' : 'text-gray-400'
                     }`}>
@@ -650,6 +651,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                           )}
                         </>
                       )}
+                      {projectIsRevnet && revnetOperatorError && !displayAddress && (
+                        <span className="text-red-400">Operator unavailable</span>
+                      )}
                       {displayAddress && project.metadata?.infoUri && (
                         <span className="opacity-50">|</span>
                       )}
@@ -673,6 +677,18 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   )}
                 </div>
               </div>
+              {project.configurationError && (
+                <div className={`mt-3 border px-3 py-2 text-xs ${
+                  isDark
+                    ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                    : 'border-red-300 bg-red-50 text-red-800'
+                }`}>
+                  {project.configurationError}. Project actions are unavailable.
+                </div>
+              )}
+              {!chainMappingAvailable && (
+                <div className="mt-3"><ChainMappingWarning isDark={isDark} /></div>
+              )}
             </div>
           </div>
 
@@ -743,6 +759,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       balance={displayBalance}
                       volume={displayVolume}
                       paymentsCount={displayPaymentsCount}
+                      balanceAvailable={balanceAvailable}
+                      volumeAvailable={volumeAvailable}
+                      paymentsAvailable={paymentsAvailable}
                       createdAt={project.createdAt}
                       isRevnet={projectIsRevnet}
                       hasNftHook={hasNftHook}
@@ -751,6 +770,15 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       currency={suckerGroupBalance?.currency}
                       decimals={suckerGroupBalance?.decimals}
                     />
+                    {nftHookError && (
+                      <div className={`border px-3 py-2 text-xs ${
+                        isDark
+                          ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                          : 'border-amber-300 bg-amber-50 text-amber-800'
+                      }`}>
+                        Reward data unavailable: {nftHookError}
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -810,6 +838,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     chainId={String(chainId)}
                     isOwner={isOwner}
                     connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
+                    onManageTiers={() => setActiveModal('manageTiers')}
                   />
                 )}
               </div>
@@ -833,16 +862,28 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         <div className="w-[4px] bg-juice-orange shrink-0" />
 
         {/* Modals */}
-        {activeModal === 'payouts' && (
-          <SendPayoutsModal
-            isOpen
-            onClose={() => setActiveModal(null)}
-            projectId={String(projectId)}
-            projectName={project.name}
-            chainId={chainId}
-            amount="0"
-            allChainProjects={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
-          />
+        {activeModal === 'payouts' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+                aria-label="Close"
+              >
+                <span aria-hidden="true">X</span>
+              </button>
+              <SendPayoutsForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
         )}
 
         {activeModal === 'cashout' && createPortal(
@@ -1086,10 +1127,11 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           <div className="flex items-start gap-3">
             {/* Square logo */}
             {project.logoUri ? (
-              <img
-                src={resolveIpfsUri(project.logoUri) || undefined}
+              <IpfsImage
+                uri={project.logoUri}
                 alt=""
                 className="w-14 h-14 object-cover"
+                fallback={<div className={`w-14 h-14 flex items-center justify-center text-xl ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}>?</div>}
               />
             ) : (
               <div className={`w-14 h-14 flex items-center justify-center text-xl ${
@@ -1113,10 +1155,12 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   onClick={() => setShowBalanceTooltip(prev => !prev)}
                 >
                   <span className={`font-semibold cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance
+                    {balanceAvailable
+                      ? `${formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance${balanceScope}`
+                      : 'Balance unavailable'}
                   </span>
                   {/* Per-chain balance breakdown tooltip */}
-                  {showBalanceTooltip && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
+                  {showBalanceTooltip && balanceAvailable && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
                     <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-50 min-w-[200px] text-xs ${
                       isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
                     }`}>
@@ -1146,13 +1190,13 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 </div>
                 <span>
                   <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {displayPaymentsCount.toLocaleString()}
+                    {paymentsAvailable ? displayPaymentsCount.toLocaleString() : 'Unavailable'}
                   </span>
-                  {' '}payments
+                  {' '}payment{!paymentsAvailable || displayPaymentsCount !== 1 ? 's' : ''}
                 </span>
               </div>
               {/* Operator/Owner and Website */}
-              {(displayAddress || project.metadata?.infoUri) && (
+              {(displayAddress || revnetOperatorError || project.metadata?.infoUri) && (
                 <div className={`flex items-center flex-wrap gap-x-1.5 gap-y-1 mt-1.5 text-xs ${
                   isDark ? 'text-gray-500' : 'text-gray-400'
                 }`}>
@@ -1307,6 +1351,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                       )}
                     </>
                   )}
+                  {projectIsRevnet && revnetOperatorError && !displayAddress && (
+                    <span className="text-red-400">Operator unavailable</span>
+                  )}
                   {displayAddress && project.metadata?.infoUri && (
                     <span className="opacity-50">|</span>
                   )}
@@ -1329,6 +1376,18 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               )}
             </div>
           </div>
+          {project.configurationError && (
+            <div className={`mt-3 border px-3 py-2 text-xs ${
+              isDark
+                ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                : 'border-red-300 bg-red-50 text-red-800'
+            }`}>
+              {project.configurationError}. Project actions are unavailable.
+            </div>
+          )}
+          {!chainMappingAvailable && (
+            <div className="mt-3"><ChainMappingWarning isDark={isDark} /></div>
+          )}
         </div>
 
         {/* Tab navigation */}
@@ -1374,6 +1433,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               balance={displayBalance}
               volume={displayVolume}
               paymentsCount={displayPaymentsCount}
+              balanceAvailable={balanceAvailable}
+              volumeAvailable={volumeAvailable}
+              paymentsAvailable={paymentsAvailable}
               createdAt={project.createdAt}
               isRevnet={projectIsRevnet}
               hasNftHook={hasNftHook}
@@ -1462,6 +1524,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             chainId={String(chainId)}
             isOwner={isOwner}
             connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
+            onManageTiers={() => setActiveModal('manageTiers')}
           />
         )}
       </div>
@@ -1476,16 +1539,28 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
       </div>
 
       {/* Mobile modals */}
-      {activeModal === 'payouts' && (
-        <SendPayoutsModal
-          isOpen
-          onClose={() => setActiveModal(null)}
-          projectId={String(projectId)}
-          projectName={project.name}
-          chainId={chainId}
-          amount="0"
-          allChainProjects={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
-        />
+      {activeModal === 'payouts' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              aria-label="Close"
+            >
+              <span aria-hidden="true">X</span>
+            </button>
+            <SendPayoutsForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
       )}
 
       {activeModal === 'ruleset' && createPortal(

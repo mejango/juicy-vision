@@ -3,22 +3,34 @@ import { useAccount } from 'wagmi'
 import { formatEther, formatUnits, parseUnits, parseEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import { useQueueRulesetFormState } from '../../hooks/useComponentState'
+import { useManagedWallet } from '../../hooks'
 import {
   fetchProject,
   fetchProjectWithRuleset,
   fetchProjectSplits,
-  fetchConnectedChains,
   type Project,
   type ProjectRuleset,
-  type ConnectedChain,
   type JBSplitData,
+  type JBSplitGroupData,
   type FundAccessLimits,
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
-import { calculateSynchronizedStartTime, type JBRulesetConfig, type JBRulesetMetadataConfig } from '../../services/relayr'
+import {
+  calculateSynchronizedStartTime,
+  type JBFundAccessLimitGroupConfig,
+  type JBRulesetConfig,
+  type JBRulesetMetadataConfig,
+} from '../../services/relayr'
 import { QueueRulesetModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
-import { ZERO_ADDRESS, USDC_ADDRESSES, type SupportedChainId, JB_CONTRACTS } from '../../constants'
+import { ZERO_ADDRESS } from '../../constants'
+import { getSafetyPublicClient } from '../../utils/transactionSafety'
+import { assertRulesetConfigurationTrusted, resolveRulesetQueueRoute } from '../../utils/projectTrust'
+import { IpfsImage } from '../ui/IpfsMedia'
+import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
+import { assertRulesetConfigurationSafe } from '../../utils/rulesetSafety'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
 
 interface QueueRulesetFormProps {
   projectId: string
@@ -34,7 +46,12 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string
   42161: { name: 'Arbitrum', shortName: 'ARB', slug: 'arb', color: '#28A0F0' },
 }
 
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
+interface AccountingContext {
+  terminal: string
+  token: string
+  tokenDecimals: number
+  currency: number
+}
 
 // Per-chain ruleset data
 interface ChainRulesetData {
@@ -44,6 +61,15 @@ interface ChainRulesetData {
   payoutSplits: JBSplitData[]
   reservedSplits: JBSplitData[]
   fundAccessLimits: FundAccessLimits | null
+  splitGroups: JBSplitGroupData[]
+  fundAccessLimitGroups: FundAccessLimits[]
+  accountingContexts: AccountingContext[]
+  configurationComplete: boolean
+  queueTarget: `0x${string}` | null
+  nextDataHook: `0x${string}`
+  nextUseDataHookForPay: boolean
+  nextUseDataHookForCashOut: boolean
+  error?: string
   selected: boolean  // Whether to queue on this chain
 }
 
@@ -78,7 +104,16 @@ function formStateToRulesetConfig(
   state: RulesetFormState,
   mustStartAtOrAfter: number,
   existingConfig?: ProjectRuleset,
-  chainId: number = 1
+  existingLimits?: FundAccessLimits | null,
+  chainId: number = 1,
+  existingSplitGroups: JBSplitGroupData[] = [],
+  existingFundAccessLimitGroups: FundAccessLimits[] = [],
+  defaultAccountingContext?: AccountingContext,
+  dataHookConfig?: {
+    dataHook: string
+    useDataHookForPay: boolean
+    useDataHookForCashOut: boolean
+  },
 ): JBRulesetConfig {
   // Convert duration from days to seconds (0 means ongoing)
   const durationDays = parseFloat(state.duration) || 0
@@ -95,74 +130,84 @@ function formStateToRulesetConfig(
   const metadata: JBRulesetMetadataConfig = {
     reservedPercent,
     cashOutTaxRate,
-    baseCurrency: existingConfig?.baseCurrency || 1, // Preserve existing or default to ETH
+    baseCurrency: existingConfig?.baseCurrency ?? 1,
     pausePay: state.pausePay,
-    pauseCreditTransfers: false,
+    pauseCreditTransfers: existingConfig?.pauseCreditTransfers ?? false,
     allowOwnerMinting: state.allowOwnerMinting,
-    allowSetCustomToken: true,
-    allowTerminalMigration: true,
-    allowSetTerminals: true,
-    allowSetController: true,
-    allowAddAccountingContext: true,
-    allowAddPriceFeed: true,
+    allowSetCustomToken: existingConfig?.allowSetCustomToken ?? false,
+    allowTerminalMigration: existingConfig?.allowTerminalMigration ?? false,
+    allowSetTerminals: existingConfig?.allowSetTerminals ?? false,
+    allowSetController: existingConfig?.allowSetController ?? false,
+    allowAddAccountingContext: existingConfig?.allowAddAccountingContext ?? false,
+    allowAddPriceFeed: existingConfig?.allowAddPriceFeed ?? false,
     ownerMustSendPayouts: state.ownerMustSendPayouts,
-    holdFees: false,
-    scopeCashOutsToLocalBalances: false,
-    useDataHookForPay: false,
-    useDataHookForCashOut: false,
-    dataHook: ZERO_ADDRESS,
-    metadata: 0,
+    holdFees: existingConfig?.holdFees ?? false,
+    scopeCashOutsToLocalBalances: existingConfig?.scopeCashOutsToLocalBalances ?? false,
+    useDataHookForPay: dataHookConfig?.useDataHookForPay ?? existingConfig?.useDataHookForPay ?? false,
+    useDataHookForCashOut: dataHookConfig?.useDataHookForCashOut ?? existingConfig?.useDataHookForCashOut ?? false,
+    dataHook: dataHookConfig?.dataHook ?? existingConfig?.dataHook ?? ZERO_ADDRESS,
+    metadata: existingConfig?.metadata ?? 0,
   }
 
-  // Build fund access limit groups
-  const fundAccessLimitGroups = []
+  const fundAccessLimitGroups: JBFundAccessLimitGroupConfig[] = existingFundAccessLimitGroups.map(group => ({
+    terminal: group.terminal,
+    token: group.token,
+    payoutLimits: group.payoutLimits.map(limit => ({ ...limit })),
+    surplusAllowances: group.surplusAllowances.map(({ amount, currency }) => ({ amount, currency })),
+  }))
 
-  // Only add if there's a payout limit or surplus allowance
-  if (state.payoutLimitType !== 'none' || state.surplusAllowanceType !== 'none') {
-    const payoutLimits = []
-    const surplusAllowances = []
+  const baseCurrency = existingConfig?.baseCurrency ?? 1
+  const targetContext = existingLimits || defaultAccountingContext
 
-    // Use existing project's baseCurrency for fund access limits
-    const currency = existingConfig?.baseCurrency || 1
-    // Decimals: 6 for USDC (baseCurrency 2), 18 for ETH (baseCurrency 1)
-    const decimals = currency === 2 ? 6 : 18
-    // Token address: USDC for baseCurrency 2, NATIVE_TOKEN for baseCurrency 1
-    const token = currency === 2
-      ? USDC_ADDRESSES[chainId as SupportedChainId]
-      : NATIVE_TOKEN
+  let targetGroupIndex = existingLimits
+    ? fundAccessLimitGroups.findIndex(group =>
+        group.terminal.toLowerCase() === existingLimits.terminal.toLowerCase() &&
+        group.token.toLowerCase() === existingLimits.token.toLowerCase())
+    : -1
 
-    if (state.payoutLimitType === 'limited') {
-      payoutLimits.push({
-        amount: parseUnits(state.payoutLimit || '0', decimals).toString(),
-        currency,
-      })
-    } else if (state.payoutLimitType === 'unlimited') {
-      // Max uint224 for unlimited
-      payoutLimits.push({
-        amount: '26959946667150639794667015087019630673637144422540572481103610249215',
-        currency,
-      })
-    }
-
-    if (state.surplusAllowanceType === 'limited') {
-      surplusAllowances.push({
-        amount: parseUnits(state.surplusAllowance || '0', decimals).toString(),
-        currency,
-      })
-    } else if (state.surplusAllowanceType === 'unlimited') {
-      surplusAllowances.push({
-        amount: '26959946667150639794667015087019630673637144422540572481103610249215',
-        currency,
-      })
-    }
-
-    if (payoutLimits.length > 0 || surplusAllowances.length > 0) {
+  if (targetGroupIndex === -1 && (state.payoutLimitType !== 'none' || state.surplusAllowanceType !== 'none')) {
+    if (targetContext) {
       fundAccessLimitGroups.push({
-        terminal: JB_CONTRACTS.JBMultiTerminal,
-        token,
-        payoutLimits,
-        surplusAllowances,
+        terminal: targetContext.terminal,
+        token: targetContext.token,
+        payoutLimits: [],
+        surplusAllowances: [],
       })
+      targetGroupIndex = fundAccessLimitGroups.length - 1
+    }
+  }
+
+  if (targetGroupIndex !== -1) {
+    const group = fundAccessLimitGroups[targetGroupIndex]
+    const tokenDecimals = targetContext?.tokenDecimals
+    if (tokenDecimals === undefined) throw new Error(`Accounting token decimals unavailable on chain ${chainId}`)
+    const payoutCurrency = existingLimits?.payoutLimits[0]?.currency ?? baseCurrency
+    const allowanceCurrency = existingLimits?.surplusAllowances[0]?.currency ?? baseCurrency
+    const decimalsFor = (_currency: number) => tokenDecimals
+    const maxUint224 = '26959946667150639794667015087019630673637144422540572481103610249215'
+
+    const nextPrimaryLimit = (
+      type: 'none' | 'limited' | 'unlimited',
+      value: string,
+      currency: number,
+    ) => type === 'none'
+      ? []
+      : [{
+          amount: type === 'unlimited' ? maxUint224 : parseUnits(value || '0', decimalsFor(currency)).toString(),
+          currency,
+        }]
+
+    group.payoutLimits = [
+      ...nextPrimaryLimit(state.payoutLimitType, state.payoutLimit, payoutCurrency),
+      ...group.payoutLimits.slice(1),
+    ]
+    group.surplusAllowances = [
+      ...nextPrimaryLimit(state.surplusAllowanceType, state.surplusAllowance, allowanceCurrency),
+      ...group.surplusAllowances.slice(1),
+    ]
+
+    if (group.payoutLimits.length === 0 && group.surplusAllowances.length === 0) {
+      fundAccessLimitGroups.splice(targetGroupIndex, 1)
     }
   }
 
@@ -173,7 +218,10 @@ function formStateToRulesetConfig(
     weightCutPercent,
     approvalHook: existingConfig?.approvalHook || ZERO_ADDRESS,
     metadata,
-    splitGroups: [], // Splits are preserved from current config by default
+    splitGroups: existingSplitGroups.map(group => ({
+      groupId: group.groupId,
+      splits: group.splits.map(split => ({ ...split })),
+    })),
     fundAccessLimitGroups,
   }
 }
@@ -187,6 +235,8 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
   const isDark = theme === 'dark'
 
   const { isConnected } = useAccount()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected
 
   // Persistent state for transaction status
   const { state: persistedState, updateState: updatePersistedState } = useQueueRulesetFormState(messageId)
@@ -201,6 +251,7 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
 
   // Omnichain state
   const [chainRulesetData, setChainRulesetData] = useState<ChainRulesetData[]>([])
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
 
   // Form state
   const [formState, setFormState] = useState<RulesetFormState>({
@@ -239,25 +290,29 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
         const primaryChainId = parseInt(chainId)
 
         // Fetch project and connected chains
-        const [projectData, connectedChains] = await Promise.all([
+        const [projectData, chainResolution] = await Promise.all([
           fetchProject(projectId, primaryChainId),
-          fetchConnectedChains(projectId, primaryChainId),
+          resolveProjectChains(projectId, primaryChainId),
         ])
         setProject(projectData)
-
-        // Determine chains to fetch
-        const chainsToFetch: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: primaryChainId, projectId: parseInt(projectId) }]
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
         // Fetch ruleset data from all chains in parallel
-        const rulesetDataPromises = chainsToFetch.map(async (chain): Promise<ChainRulesetData> => {
+        const rulesetDataPromises = chainResolution.chains.map(async (chain): Promise<ChainRulesetData> => {
           try {
             const chainProject = await fetchProjectWithRuleset(String(chain.projectId), chain.chainId)
 
             let payoutSplits: JBSplitData[] = []
             let reservedSplits: JBSplitData[] = []
             let fundAccessLimits: FundAccessLimits | null = null
+            let splitGroups: JBSplitGroupData[] = []
+            let fundAccessLimitGroups: FundAccessLimits[] = []
+            let accountingContexts: AccountingContext[] = []
+            let configurationComplete = false
+            let queueTarget: `0x${string}` | null = null
+            let nextDataHook = ZERO_ADDRESS as `0x${string}`
+            let nextUseDataHookForPay = false
+            let nextUseDataHookForCashOut = false
 
             if (chainProject?.currentRuleset?.id) {
               const splitsData = await fetchProjectSplits(
@@ -268,6 +323,30 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
               payoutSplits = splitsData.payoutSplits
               reservedSplits = splitsData.reservedSplits
               fundAccessLimits = splitsData.fundAccessLimits || null
+              splitGroups = splitsData.splitGroups || []
+              fundAccessLimitGroups = splitsData.fundAccessLimitGroups || []
+              accountingContexts = splitsData.accountingContexts || []
+              configurationComplete = splitsData.configurationComplete === true
+              if (configurationComplete) {
+                assertSimpleStoredSplitGroups(splitGroups, { sourceProjectId: chain.projectId })
+                const route = await resolveRulesetQueueRoute({
+                  client: getSafetyPublicClient(chain.chainId),
+                  projectId: BigInt(chain.projectId),
+                  expectedRulesetId: BigInt(chainProject.currentRuleset.id),
+                })
+                queueTarget = route.target
+                nextDataHook = route.dataHook
+                nextUseDataHookForPay = route.useDataHookForPay
+                nextUseDataHookForCashOut = route.useDataHookForCashOut
+                await assertRulesetConfigurationTrusted({
+                  client: getSafetyPublicClient(chain.chainId),
+                  projectId: BigInt(chain.projectId),
+                  rulesetId: BigInt(chainProject.currentRuleset.id),
+                  approvalHook: chainProject.currentRuleset.approvalHook || ZERO_ADDRESS,
+                  dataHook: nextDataHook,
+                  splitGroups,
+                })
+              }
             }
 
             return {
@@ -277,7 +356,21 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
               payoutSplits,
               reservedSplits,
               fundAccessLimits,
-              selected: true, // Select all chains by default
+              splitGroups,
+              fundAccessLimitGroups,
+              accountingContexts,
+              configurationComplete: !!chainProject?.currentRuleset && configurationComplete && !!queueTarget,
+              queueTarget,
+              nextDataHook,
+              nextUseDataHookForPay,
+              nextUseDataHookForCashOut,
+              error: !chainProject?.currentRuleset
+                ? 'Current ruleset unavailable'
+                : !configurationComplete ? 'Could not verify the complete on-chain configuration' : undefined,
+              selected: chain.chainId === primaryChainId &&
+                chain.projectId === parseInt(projectId) &&
+                !!chainProject?.currentRuleset &&
+                configurationComplete,
             }
           } catch (err) {
             console.error(`Failed to fetch ruleset data for chain ${chain.chainId}:`, err)
@@ -288,7 +381,16 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
               payoutSplits: [],
               reservedSplits: [],
               fundAccessLimits: null,
-              selected: true,
+              splitGroups: [],
+              fundAccessLimitGroups: [],
+              accountingContexts: [],
+              configurationComplete: false,
+              queueTarget: null,
+              nextDataHook: ZERO_ADDRESS,
+              nextUseDataHookForPay: false,
+              nextUseDataHookForCashOut: false,
+              error: err instanceof Error ? err.message : 'Could not load the on-chain ruleset configuration',
+              selected: false,
             }
           }
         })
@@ -312,6 +414,7 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
             cashOutTaxRate: (firstRuleset.cashOutTaxRate / 100).toString(),
             pausePay: firstRuleset.pausePay,
             allowOwnerMinting: firstRuleset.allowOwnerMinting,
+            ownerMustSendPayouts: firstRuleset.ownerMustSendPayouts ?? false,
           }))
         }
 
@@ -325,16 +428,16 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
           const payoutLimit = payoutLimitAmount ? BigInt(payoutLimitAmount) : 0n
           const surplusAllowance = surplusAllowanceAmount ? BigInt(surplusAllowanceAmount) : 0n
 
-          // Use correct decimals based on project's baseCurrency (6 for USDC, 18 for ETH)
-          const limitDecimals = firstRuleset?.baseCurrency === 2 ? 6 : 18
+          const payoutDecimals = firstLimits.tokenDecimals
+          const allowanceDecimals = firstLimits.tokenDecimals
           const unlimitedThreshold = BigInt('1000000000000000000000000000000')
 
           setFormState(prev => ({
             ...prev,
             payoutLimitType: payoutLimit === 0n ? 'none' : payoutLimit > unlimitedThreshold ? 'unlimited' : 'limited',
-            payoutLimit: payoutLimit > 0n && payoutLimit < unlimitedThreshold ? formatUnits(payoutLimit, limitDecimals) : '0',
+            payoutLimit: payoutLimit > 0n && payoutLimit < unlimitedThreshold ? formatUnits(payoutLimit, payoutDecimals) : '0',
             surplusAllowanceType: surplusAllowance === 0n ? 'none' : surplusAllowance > unlimitedThreshold ? 'unlimited' : 'limited',
-            surplusAllowance: surplusAllowance > 0n && surplusAllowance < unlimitedThreshold ? formatUnits(surplusAllowance, limitDecimals) : '0',
+            surplusAllowance: surplusAllowance > 0n && surplusAllowance < unlimitedThreshold ? formatUnits(surplusAllowance, allowanceDecimals) : '0',
           }))
         }
 
@@ -352,7 +455,7 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
     setChainRulesetData(prev =>
       prev.map(cd =>
         cd.chainId === chainId
-          ? { ...cd, selected: !cd.selected }
+          ? { ...cd, selected: cd.configurationComplete ? !cd.selected : false }
           : cd
       )
     )
@@ -376,24 +479,12 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
   }, [updatePersistedState])
 
   const handleQueue = () => {
-    if (selectedChains.length === 0 || isLocked) return
+    if (selectedChains.length === 0 || isLocked || fundLimitTargetUnavailable || rulesetConfigError) return
 
-    if (!isConnected) {
+    if (!hasActiveWallet) {
       openWalletPanel()
       return
     }
-
-    // Persist in_progress state
-    updatePersistedState({
-      status: 'in_progress',
-      duration: formState.duration,
-      weight: formState.weight,
-      decayPercent: formState.weightCutPercent,
-      reservedPercent: formState.reservedPercent,
-      cashOutTaxRate: formState.cashOutTaxRate,
-      selectedChains: selectedChains.map(c => c.chainId),
-      submittedAt: new Date().toISOString(),
-    })
 
     setShowModal(true)
   }
@@ -403,12 +494,38 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
   }
 
   // Build ruleset config for modal
-  const rulesetConfig = formStateToRulesetConfig(
-    formState,
-    synchronizedStartTime,
-    chainRulesetData[0]?.ruleset || undefined,
-    parseInt(chainId)
+  const changesFundLimits = formState.payoutLimitType !== 'none' || formState.surplusAllowanceType !== 'none'
+  const fundLimitTargetUnavailable = changesFundLimits && selectedChains.some(
+    chainData => !chainData.fundAccessLimits && chainData.accountingContexts.length !== 1,
   )
+  let rulesetConfigError: string | null = null
+  let rulesetConfigsByChain: Record<number, JBRulesetConfig> = {}
+  try {
+    rulesetConfigsByChain = Object.fromEntries(chainRulesetData.filter(
+      chainData => chainData.configurationComplete && chainData.ruleset,
+    ).map(chainData => {
+      const config = formStateToRulesetConfig(
+        formState,
+        synchronizedStartTime,
+        chainData.ruleset || undefined,
+        chainData.fundAccessLimits,
+        chainData.chainId,
+        chainData.splitGroups,
+        chainData.fundAccessLimitGroups,
+        chainData.accountingContexts.length === 1 ? chainData.accountingContexts[0] : undefined,
+        {
+          dataHook: chainData.nextDataHook,
+          useDataHookForPay: chainData.nextUseDataHookForPay,
+          useDataHookForCashOut: chainData.nextUseDataHookForCashOut,
+        },
+      )
+      assertRulesetConfigurationSafe(chainData.chainId, config, chainData.accountingContexts)
+      return [chainData.chainId, config]
+    }))
+    if (formState.memo.length > 280) rulesetConfigError = 'Memo must be 280 characters or fewer'
+  } catch (err) {
+    rulesetConfigError = err instanceof Error ? err.message : 'Ruleset configuration is invalid'
+  }
 
   if (loading) {
     return (
@@ -431,10 +548,11 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
       <div className={`max-w-lg border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
           {logoUrl ? (
-            <img src={logoUrl} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" />
+            <IpfsImage uri={project?.logoUri} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" fallback={<div className="w-14 h-14 bg-purple-500/20" />} />
           ) : (
             <div className="w-14 h-14 bg-purple-500/20 flex items-center justify-center">
               <span className="text-2xl">⚙️</span>
@@ -463,14 +581,16 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
                   <button
                     key={cd.chainId}
                     onClick={() => toggleChainSelection(cd.chainId)}
+                    disabled={!cd.configurationComplete}
+                    title={cd.error}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium transition-colors ${
                       cd.selected
                         ? isDark
                           ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50'
                           : 'bg-purple-100 text-purple-700 border border-purple-300'
                         : isDark
-                          ? 'bg-white/5 text-gray-400 border border-white/10'
-                          : 'bg-gray-100 text-gray-500 border border-gray-200'
+                          ? 'bg-white/5 text-gray-400 border border-white/10 disabled:opacity-40 disabled:cursor-not-allowed'
+                          : 'bg-gray-100 text-gray-500 border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed'
                     }`}
                   >
                     <span
@@ -479,6 +599,7 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
                     />
                     {chain?.shortName || cd.chainId}
                     {cd.selected && <span>✓</span>}
+                    {!cd.configurationComplete && <span>Unavailable</span>}
                   </button>
                 )
               })}
@@ -612,7 +733,7 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
             {/* Cash Out Tax */}
             <div>
               <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Exit Tax (%)
+                Cash-out curve rate (%)
               </label>
               <input
                 type="number"
@@ -629,7 +750,7 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
                 }`}
               />
               <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                0 = full refund
+                0 = proportional baseline; 100 = disabled
               </span>
             </div>
           </div>
@@ -728,6 +849,11 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
               </div>
             )}
           </div>
+          {fundLimitTargetUnavailable && (
+            <div className={`mt-3 text-xs ${isDark ? 'text-red-300' : 'text-red-600'}`}>
+              Fund limits cannot be changed here because the project does not have one unambiguous recognized accounting context.
+            </div>
+          )}
         </div>
 
         {/* Advanced Settings Toggle */}
@@ -798,6 +924,7 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
             type="text"
             value={formState.memo}
             onChange={(e) => updateFormState('memo', e.target.value)}
+            maxLength={280}
             placeholder="Describe the changes..."
             className={`w-full px-3 py-2 text-sm outline-none ${
               isDark
@@ -874,11 +1001,21 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
         )}
 
         {/* Queue Button */}
+        {chainRulesetData.some(cd => !cd.configurationComplete) && (
+          <div className={`mb-3 p-3 text-xs ${isDark ? 'bg-red-500/10 text-red-300' : 'bg-red-50 text-red-700'}`}>
+            Chains marked unavailable cannot be selected because their current on-chain configuration could not be verified.
+          </div>
+        )}
+        {rulesetConfigError && (
+          <div className={`mb-3 p-3 text-xs ${isDark ? 'bg-red-500/10 text-red-300' : 'bg-red-50 text-red-700'}`}>
+            {rulesetConfigError}
+          </div>
+        )}
         <button
           onClick={handleQueue}
-          disabled={selectedChains.length === 0 || isLocked}
+          disabled={selectedChains.length === 0 || isLocked || fundLimitTargetUnavailable || !!rulesetConfigError}
           className={`w-full py-3 text-sm font-bold transition-colors ${
-            selectedChains.length === 0 || isLocked
+            selectedChains.length === 0 || isLocked || fundLimitTargetUnavailable || rulesetConfigError
               ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
               : 'bg-purple-500 hover:bg-purple-500/90 text-white'
           }`}
@@ -903,8 +1040,13 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
         isOpen={showModal}
         onClose={() => setShowModal(false)}
         projectName={project?.name}
-        chainRulesetData={selectedChains}
-        rulesetConfig={rulesetConfig}
+        chainRulesetData={selectedChains.map(chainData => ({
+          chainId: chainData.chainId,
+          projectId: chainData.projectId,
+          currentRulesetId: chainData.ruleset!.id!,
+          expectedQueueTarget: chainData.queueTarget!,
+        }))}
+        rulesetConfigsByChain={rulesetConfigsByChain}
         synchronizedStartTime={synchronizedStartTime}
         memo={formState.memo}
         onConfirmed={handleConfirmed}

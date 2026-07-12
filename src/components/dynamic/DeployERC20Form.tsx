@@ -6,13 +6,15 @@ import {
   fetchProject,
   fetchProjectTokenAddress,
   fetchProjectTokenSymbol,
-  fetchConnectedChains,
   type Project,
-  type ConnectedChain,
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { DeployERC20Modal } from '../payment'
 import { ProjectLink } from './ProjectLink'
+import { useManagedWallet } from '../../hooks'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface DeployERC20FormProps {
   projectId: string
@@ -34,6 +36,7 @@ interface ChainTokenData {
   projectId: number
   tokenAddress: string | null
   tokenSymbol: string | null
+  configurationError?: string
 }
 
 // Inline chain selector component
@@ -49,7 +52,7 @@ function InlineChainSelector({
   isDark: boolean
 }) {
   // Only show chains that don't have a token deployed
-  const deployCandidates = chainData.filter(cd => !cd.tokenAddress)
+  const deployCandidates = chainData.filter(cd => !cd.tokenAddress && !cd.configurationError)
   if (deployCandidates.length <= 1) return null
 
   return (
@@ -89,6 +92,7 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
 
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [tokenName, setTokenName] = useState('')
   const [tokenSymbol, setTokenSymbol] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -96,6 +100,8 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
   const isDark = theme === 'dark'
 
   const { isConnected } = useAccount()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected
 
   // Check if form should be locked due to active/completed transaction
   const isLocked = persistedState?.status && persistedState.status !== 'pending'
@@ -107,7 +113,7 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
       if (persistedState.tokenSymbol) setTokenSymbol(persistedState.tokenSymbol)
       if (persistedState.selectedChainId) setSelectedChainId(persistedState.selectedChainId)
     }
-  }, [persistedState?.status])
+  }, [persistedState])
 
   // Transaction callbacks for persistence
   const handleConfirmed = useCallback((txHash: string) => {
@@ -115,6 +121,14 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
       status: 'completed',
       txHash,
       confirmedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState])
+
+  const handleSubmitted = useCallback((txHash: string) => {
+    updatePersistedState({
+      status: 'in_progress',
+      txHash,
+      submittedAt: new Date().toISOString(),
     })
   }, [updatePersistedState])
 
@@ -131,14 +145,16 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
 
   // Omnichain state
   const [chainTokenData, setChainTokenData] = useState<ChainTokenData[]>([])
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [selectedChainId, setSelectedChainId] = useState<number>(parseInt(chainId))
 
   // Check if all chains have tokens deployed
-  const allChainsHaveTokens = chainTokenData.length > 0 && chainTokenData.every(cd => cd.tokenAddress)
+  const allChainsHaveTokens = chainTokenData.length > 0 && chainTokenData.every(cd => cd.tokenAddress && !cd.configurationError)
   const hasAnyTokenDeployed = chainTokenData.some(cd => cd.tokenAddress)
+  const configurationErrors = chainTokenData.filter(cd => cd.configurationError)
 
   // Get chains without tokens
-  const chainsWithoutTokens = chainTokenData.filter(cd => !cd.tokenAddress)
+  const chainsWithoutTokens = chainTokenData.filter(cd => !cd.tokenAddress && !cd.configurationError)
   const chainsWithTokens = chainTokenData.filter(cd => cd.tokenAddress)
 
   // Get active chain data
@@ -150,27 +166,26 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
     async function load() {
       try {
         setLoading(true)
+        setLoadError(null)
+        setProject(null)
+        setChainTokenData([])
         const primaryChainId = parseInt(chainId)
 
         // Fetch project and connected chains
-        const [projectData, connectedChains] = await Promise.all([
+        const [projectData, chainResolution] = await Promise.all([
           fetchProject(projectId, primaryChainId),
-          fetchConnectedChains(projectId, primaryChainId),
+          resolveProjectChains(projectId, primaryChainId),
         ])
         setProject(projectData)
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
         // Pre-fill token name from project name
         if (projectData.name) {
           setTokenName(projectData.name)
         }
 
-        // Determine chains to check
-        const chainsToCheck: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: primaryChainId, projectId: parseInt(projectId) }]
-
         // Check token status on all chains in parallel
-        const tokenDataPromises = chainsToCheck.map(async (chain): Promise<ChainTokenData> => {
+        const tokenDataPromises = chainResolution.chains.map(async (chain): Promise<ChainTokenData> => {
           try {
             const [tokenAddress, tokenSymbol] = await Promise.all([
               fetchProjectTokenAddress(String(chain.projectId), chain.chainId),
@@ -190,6 +205,7 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
               projectId: chain.projectId,
               tokenAddress: null,
               tokenSymbol: null,
+              configurationError: err instanceof Error ? err.message : 'Token configuration unavailable',
             }
           }
         })
@@ -204,7 +220,7 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
         }
 
         // Select first chain without a token
-        const firstWithoutToken = allTokenData.find(td => !td.tokenAddress)
+        const firstWithoutToken = allTokenData.find(td => !td.tokenAddress && !td.configurationError)
         if (firstWithoutToken) {
           setSelectedChainId(firstWithoutToken.chainId)
         } else {
@@ -213,6 +229,7 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
 
       } catch (err) {
         console.error('Failed to load project:', err)
+        setLoadError(err instanceof Error ? err.message : 'Project configuration unavailable')
       } finally {
         setLoading(false)
       }
@@ -221,16 +238,16 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
   }, [projectId, chainId])
 
   const handleDeploy = () => {
-    if (!tokenName.trim() || !tokenSymbol.trim() || isLocked) return
+    if (!tokenName.trim() || !tokenSymbol.trim() || isLocked || loadError || !activeChainData || activeChainData.configurationError) return
 
-    if (!isConnected) {
+    if (!hasActiveWallet) {
       openWalletPanel()
       return
     }
 
-    // Persist in_progress state
+    // Save reviewed inputs without claiming a transaction exists yet.
     updatePersistedState({
-      status: 'in_progress',
+      status: 'pending',
       tokenName: tokenName.trim(),
       tokenSymbol: tokenSymbol.trim(),
       selectedChainId,
@@ -311,10 +328,11 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
       <div className={`max-w-md border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Header */}
         <div className="flex items-center gap-3 mb-3">
           {logoUrl ? (
-            <img src={logoUrl} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" />
+            <IpfsImage uri={project?.logoUri} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" fallback={<div className="w-14 h-14 bg-juice-cyan/20" />} />
           ) : (
             <div className="w-14 h-14 bg-juice-cyan/20 flex items-center justify-center">
               <span className="text-2xl">🪙</span>
@@ -356,6 +374,26 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
                 )
               })}
             </div>
+          </div>
+        )}
+
+        {configurationErrors.length > 0 && (
+          <div className={`p-3 mb-3 text-xs ${
+            isDark
+              ? 'border border-red-500/40 bg-red-500/10 text-red-300'
+              : 'border border-red-300 bg-red-50 text-red-800'
+          }`}>
+            Token status could not be verified on {configurationErrors.map(cd => CHAIN_INFO[cd.chainId]?.name || `chain ${cd.chainId}`).join(', ')}. Deployment is blocked on those chains.
+          </div>
+        )}
+
+        {loadError && (
+          <div className={`p-3 mb-3 text-xs border ${
+            isDark
+              ? 'border-red-500/40 bg-red-500/10 text-red-300'
+              : 'border-red-300 bg-red-50 text-red-800'
+          }`}>
+            Token deployment is unavailable because project configuration could not be verified.
           </div>
         )}
 
@@ -426,9 +464,9 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
           {/* Deploy Button */}
           <button
             onClick={handleDeploy}
-            disabled={!isValidName || !isValidSymbol || isLocked}
+            disabled={!isValidName || !isValidSymbol || isLocked || !!loadError || !activeChainData || !!activeChainData.configurationError}
             className={`w-full py-3 text-sm font-medium transition-colors ${
-              !isValidName || !isValidSymbol || isLocked
+              !isValidName || !isValidSymbol || isLocked || loadError || !activeChainData || activeChainData.configurationError
                 ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                 : 'bg-juice-cyan hover:bg-juice-cyan/90 text-black'
             }`}
@@ -511,6 +549,7 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
         chainId={selectedChainId}
         tokenName={tokenName.trim()}
         tokenSymbol={tokenSymbol.trim()}
+        onSubmitted={handleSubmitted}
         onConfirmed={handleConfirmed}
         onError={handleError}
       />

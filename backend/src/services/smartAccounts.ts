@@ -10,28 +10,29 @@
  */
 
 import {
+  type Address,
   createPublicClient,
   createWalletClient,
-  http,
-  encodeFunctionData,
-  keccak256,
   encodeAbiParameters,
-  type Address,
+  encodeFunctionData,
   type Hash,
   type Hex,
+  http,
+  keccak256,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
   mainnet,
   optimism,
-  arbitrum,
-  base,
-  sepolia,
   optimismSepolia,
-  baseSepolia,
-  arbitrumSepolia,
+  sepolia,
 } from 'viem/chains';
-import { query, queryOne, execute, transaction } from '../db/index.ts';
+import { CANONICAL_USDC_BY_CHAIN, DEAD_ADDRESS as SHARED_DEAD_ADDRESS } from '@shared/chains.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import { logger } from '../utils/logger.ts';
 import { getConfig } from '../utils/config.ts';
 
@@ -78,6 +79,17 @@ const FALLBACK_RPC_URLS: Record<number, string> = {
   421614: 'https://arbitrum-sepolia.drpc.org',
 };
 
+const NATIVE_WALLET_TOKEN = '0x0000000000000000000000000000000000000000' as Address;
+const DEAD_ADDRESS = SHARED_DEAD_ADDRESS.toLowerCase() as Address;
+const USDC_BY_CHAIN = CANONICAL_USDC_BY_CHAIN as Record<number, Address>;
+
+function requireRecognizedWalletToken(chainId: number, tokenAddress: Address): 'ETH' | 'USDC' {
+  const normalized = tokenAddress.toLowerCase();
+  if (normalized === NATIVE_WALLET_TOKEN) return 'ETH';
+  if (normalized === USDC_BY_CHAIN[chainId]?.toLowerCase()) return 'USDC';
+  throw new Error(`Wallet token not recognized on chain ${chainId}: ${tokenAddress}`);
+}
+
 // Get RPC URL for chain, preferring Ankr with API key
 function getRpcUrl(chainId: number): string {
   const config = getConfig();
@@ -97,8 +109,6 @@ function getRpcUrl(chainId: number): string {
 // ForwardableSimpleAccountFactory: SimpleAccount + ERC2771Context
 // Deployed via CREATE2 (deterministic deployer) - same address on all EVM chains
 const SIMPLE_ACCOUNT_FACTORY = '0x69a05d911af23501ff9d6b811a97cac972dade05' as const;
-const ENTRY_POINT = '0x0000000071727De22E5E9d8BAf0edAc6f37da032' as const; // v0.7
-
 // Factory ABI for creating accounts
 const FACTORY_ABI = [
   {
@@ -245,7 +255,7 @@ function getWalletClient(chainId: number, privateKey: `0x${string}`) {
  */
 function generateSalt(userId: string): bigint {
   const hash = keccak256(
-    encodeAbiParameters([{ type: 'string' }], [`juicy-vision:${userId}`])
+    encodeAbiParameters([{ type: 'string' }], [`juicy-vision:${userId}`]),
   );
   return BigInt(hash);
 }
@@ -259,7 +269,7 @@ function generateSalt(userId: string): bigint {
 async function computeSmartAccountAddress(
   chainId: number,
   ownerAddress: Address,
-  salt: bigint
+  salt: bigint,
 ): Promise<Address> {
   const client = getPublicClient(chainId);
   const address = await client.readContract({
@@ -271,12 +281,21 @@ async function computeSmartAccountAddress(
   return address;
 }
 
+/** Derive the canonical account address for a user and account owner. */
+export function deriveSmartAccountAddress(
+  userId: string,
+  chainId: number,
+  ownerAddress: Address,
+): Promise<Address> {
+  return computeSmartAccountAddress(chainId, ownerAddress, generateSalt(userId));
+}
+
 /**
  * Check if a smart account is deployed (has code)
  */
 async function isAccountDeployed(
   chainId: number,
-  address: Address
+  address: Address,
 ): Promise<boolean> {
   const client = getPublicClient(chainId);
   const code = await client.getCode({ address });
@@ -293,12 +312,12 @@ async function isAccountDeployed(
  */
 export async function getOrCreateSmartAccount(
   userId: string,
-  chainId: number
+  chainId: number,
 ): Promise<SmartAccount> {
   // Check if we already have this account in DB
   const existing = await queryOne<DbSmartAccount>(
     `SELECT * FROM user_smart_accounts WHERE user_id = $1 AND chain_id = $2`,
-    [userId, chainId]
+    [userId, chainId],
   );
 
   if (existing) {
@@ -324,7 +343,7 @@ export async function getOrCreateSmartAccount(
   const address = await computeSmartAccountAddress(
     chainId,
     systemAccount.address,
-    salt
+    salt,
   );
 
   // Store in database - salt as hex string (fits in varchar(66) as 0x + 64 hex chars)
@@ -337,7 +356,7 @@ export async function getOrCreateSmartAccount(
       `INSERT INTO user_smart_accounts (user_id, chain_id, address, salt)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [userId, chainId, address, saltHex]
+      [userId, chainId, address, saltHex],
     );
 
     logger.info('Created smart account record', {
@@ -369,7 +388,7 @@ export async function getOrCreateSmartAccount(
 
       const existingRow = await queryOne<DbSmartAccount>(
         `SELECT * FROM user_smart_accounts WHERE user_id = $1 AND chain_id = $2`,
-        [userId, chainId]
+        [userId, chainId],
       );
 
       if (existingRow) {
@@ -406,7 +425,7 @@ export async function getOrCreateSmartAccount(
 export async function getUserSmartAccounts(userId: string): Promise<SmartAccount[]> {
   const rows = await query<DbSmartAccount>(
     `SELECT * FROM user_smart_accounts WHERE user_id = $1`,
-    [userId]
+    [userId],
   );
 
   return rows.map((r) => ({
@@ -427,7 +446,7 @@ export async function getUserSmartAccounts(userId: string): Promise<SmartAccount
  */
 export async function deploySmartAccount(
   userId: string,
-  chainId: number
+  chainId: number,
 ): Promise<{ txHash: Hash; address: Address }> {
   const account = await getOrCreateSmartAccount(userId, chainId);
 
@@ -447,7 +466,7 @@ export async function deploySmartAccount(
       `UPDATE user_smart_accounts
        SET deployed = TRUE, deployed_at = NOW(), updated_at = NOW()
        WHERE id = $1`,
-      [account.id]
+      [account.id],
     );
     logger.info('Smart account was already deployed on-chain', {
       userId,
@@ -464,7 +483,16 @@ export async function deploySmartAccount(
 
   const systemAccount = privateKeyToAccount(systemKey);
   const walletClient = getWalletClient(chainId, systemKey);
+  const publicClient = getPublicClient(chainId);
   const salt = BigInt(account.salt);
+
+  await publicClient.simulateContract({
+    account: systemAccount.address,
+    address: SIMPLE_ACCOUNT_FACTORY,
+    abi: FACTORY_ABI,
+    functionName: 'createAccount',
+    args: [systemAccount.address, salt],
+  });
 
   const txHash = await walletClient.writeContract({
     address: SIMPLE_ACCOUNT_FACTORY,
@@ -474,15 +502,18 @@ export async function deploySmartAccount(
   });
 
   // Wait for deployment
-  const publicClient = getPublicClient(chainId);
-  await publicClient.waitForTransactionReceipt({ hash: txHash });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  if (receipt.status !== 'success') throw new Error('Smart account deployment reverted');
+  if (!await isAccountDeployed(chainId, account.address)) {
+    throw new Error('Smart account factory did not deploy the expected account');
+  }
 
   // Update database
   await execute(
     `UPDATE user_smart_accounts
      SET deployed = TRUE, deploy_tx_hash = $1, deployed_at = NOW(), updated_at = NOW()
      WHERE id = $2`,
-    [txHash, account.id]
+    [txHash, account.id],
   );
 
   logger.info('Deployed smart account', {
@@ -501,7 +532,7 @@ export async function deploySmartAccount(
  */
 export async function ensureDeployed(
   userId: string,
-  chainId: number
+  chainId: number,
 ): Promise<Address> {
   const account = await getOrCreateSmartAccount(userId, chainId);
 
@@ -537,9 +568,9 @@ export function getFactoryDeployData(
 // ============================================================================
 
 /**
- * Execute an arbitrary transaction via the smart account
+ * Execute a transaction approved by the managed-wallet policy via the smart account.
  * System sponsors gas for managed accounts
- * Used for: paying into projects, approving tokens, etc.
+ * Callers must run assertManagedTransactionAllowed before entering this service.
  */
 export async function executeTransaction(params: {
   userId: string;
@@ -575,6 +606,15 @@ export async function executeTransaction(params: {
   const walletClient = getWalletClient(chainId, systemKey);
   const publicClient = getPublicClient(chainId);
 
+  // Simulate the inner call as the smart account before asking the account to
+  // execute it. This catches permission, routing, value, and ABI failures.
+  await publicClient.call({
+    account: accountAddress,
+    to,
+    data,
+    value,
+  });
+
   const txHash = await walletClient.writeContract({
     address: accountAddress,
     abi: SIMPLE_ACCOUNT_ABI,
@@ -583,7 +623,10 @@ export async function executeTransaction(params: {
   });
 
   // Wait for confirmation
-  await publicClient.waitForTransactionReceipt({ hash: txHash });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  if (receipt.status !== 'success') {
+    throw new Error(`Managed transaction reverted: ${txHash}`);
+  }
 
   logger.info('Transaction executed via smart account', {
     userId,
@@ -597,142 +640,11 @@ export async function executeTransaction(params: {
   return { txHash, accountAddress };
 }
 
-// ============================================================================
-// Withdrawals (Gas-sponsored for managed accounts)
-// ============================================================================
-
-/**
- * Request a withdrawal from a managed smart account
- * System executes the withdrawal and sponsors gas
- */
-export async function requestWithdrawal(params: {
-  userId: string;
-  chainId: number;
-  tokenAddress: Address;
-  amount: bigint;
-  toAddress: Address;
-}): Promise<{ withdrawalId: string; txHash: Hash }> {
-  const { userId, chainId, tokenAddress, amount, toAddress } = params;
-
-  // Get account and verify it's managed
-  const account = await getOrCreateSmartAccount(userId, chainId);
-
-  if (account.custodyStatus !== 'managed') {
-    throw new Error('Account is not managed - use your own wallet to withdraw');
-  }
-
-  // Ensure deployed
-  const accountAddress = await ensureDeployed(userId, chainId);
-
-  // Verify balance
-  const publicClient = getPublicClient(chainId);
-  const isNative = tokenAddress === '0x0000000000000000000000000000000000000000';
-
-  let balance: bigint;
-  if (isNative) {
-    balance = await publicClient.getBalance({ address: accountAddress });
-  } else {
-    balance = await publicClient.readContract({
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: 'balanceOf',
-      args: [accountAddress],
-    });
-  }
-
-  if (balance < amount) {
-    throw new Error(`Insufficient balance: have ${balance}, need ${amount}`);
-  }
-
-  // Create withdrawal record
-  const [withdrawal] = await query<{ id: string }>(
-    `INSERT INTO smart_account_withdrawals
-     (smart_account_id, token_address, amount, to_address, status)
-     VALUES ($1, $2, $3, $4, 'processing')
-     RETURNING id`,
-    [account.id, tokenAddress, amount.toString(), toAddress]
-  );
-
-  try {
-    // Execute withdrawal via the smart account
-    const config = getConfig();
-    const systemKey = config.reservesPrivateKey as `0x${string}`;
-    const walletClient = getWalletClient(chainId, systemKey);
-
-    let txHash: Hash;
-
-    if (isNative) {
-      // Native ETH transfer
-      txHash = await walletClient.writeContract({
-        address: accountAddress,
-        abi: SIMPLE_ACCOUNT_ABI,
-        functionName: 'execute',
-        args: [toAddress, amount, '0x'],
-      });
-    } else {
-      // ERC20 transfer
-      const transferData = encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: 'transfer',
-        args: [toAddress, amount],
-      });
-
-      txHash = await walletClient.writeContract({
-        address: accountAddress,
-        abi: SIMPLE_ACCOUNT_ABI,
-        functionName: 'execute',
-        args: [tokenAddress, 0n, transferData],
-      });
-    }
-
-    // Wait for confirmation
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-
-    // Update withdrawal record
-    await execute(
-      `UPDATE smart_account_withdrawals
-       SET status = 'completed', tx_hash = $1, executed_at = NOW(),
-           gas_cost_wei = $2
-       WHERE id = $3`,
-      [txHash, receipt.gasUsed.toString(), withdrawal.id]
-    );
-
-    logger.info('Withdrawal completed', {
-      withdrawalId: withdrawal.id,
-      userId,
-      chainId,
-      tokenAddress,
-      amount: amount.toString(),
-      toAddress,
-      txHash,
-    });
-
-    return { withdrawalId: withdrawal.id, txHash };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-
-    await execute(
-      `UPDATE smart_account_withdrawals
-       SET status = 'failed', error_message = $1
-       WHERE id = $2`,
-      [errorMessage, withdrawal.id]
-    );
-
-    logger.error('Withdrawal failed', error as Error, {
-      withdrawalId: withdrawal.id,
-      userId,
-      chainId,
-    });
-
-    throw error;
-  }
-}
-
 /**
  * Get user's withdrawal history
  */
 export async function getUserWithdrawals(
-  userId: string
+  userId: string,
 ): Promise<
   Array<{
     id: string;
@@ -761,7 +673,7 @@ export async function getUserWithdrawals(
      JOIN user_smart_accounts sa ON sa.id = w.smart_account_id
      WHERE sa.user_id = $1
      ORDER BY w.created_at DESC`,
-    [userId]
+    [userId],
   );
 
   return rows.map((r) => ({
@@ -787,9 +699,18 @@ export async function getUserWithdrawals(
 export async function transferCustody(
   userId: string,
   chainId: number,
-  newOwnerAddress: Address
+  newOwnerAddress: Address,
 ): Promise<{ txHash: Hash }> {
   const account = await getOrCreateSmartAccount(userId, chainId);
+  const normalizedOwner = newOwnerAddress.toLowerCase();
+
+  if (
+    normalizedOwner === NATIVE_WALLET_TOKEN ||
+    normalizedOwner === DEAD_ADDRESS ||
+    normalizedOwner === account.address.toLowerCase()
+  ) {
+    throw new Error('New owner must be a different explicit wallet address');
+  }
 
   if (account.custodyStatus !== 'managed') {
     throw new Error('Account custody has already been transferred');
@@ -798,29 +719,56 @@ export async function transferCustody(
   // Ensure deployed before transfer
   const accountAddress = await ensureDeployed(userId, chainId);
 
-  // Mark as transferring
-  await execute(
+  const claimed = await execute(
     `UPDATE user_smart_accounts
      SET custody_status = 'transferring', updated_at = NOW()
-     WHERE id = $1`,
-    [account.id]
+     WHERE id = $1 AND custody_status = 'managed'`,
+    [account.id],
   );
+  if (claimed !== 1) throw new Error('Account custody is already being transferred');
 
+  let txHash: Hash | null = null;
+  let provenReverted = false;
   try {
     const config = getConfig();
     const systemKey = config.reservesPrivateKey as `0x${string}`;
+    if (!systemKey) throw new Error('RESERVES_PRIVATE_KEY not configured');
     const walletClient = getWalletClient(chainId, systemKey);
     const publicClient = getPublicClient(chainId);
 
-    // Transfer ownership
-    const txHash = await walletClient.writeContract({
+    await publicClient.simulateContract({
+      account: privateKeyToAccount(systemKey).address,
+      address: accountAddress,
+      abi: SIMPLE_ACCOUNT_ABI,
+      functionName: 'transferOwnership',
+      args: [newOwnerAddress],
+    });
+    txHash = await walletClient.writeContract({
       address: accountAddress,
       abi: SIMPLE_ACCOUNT_ABI,
       functionName: 'transferOwnership',
       args: [newOwnerAddress],
     });
 
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    await execute(
+      `UPDATE user_smart_accounts
+       SET owner_address = $1, custody_transfer_tx_hash = $2, updated_at = NOW()
+       WHERE id = $3 AND custody_status = 'transferring'`,
+      [newOwnerAddress, txHash, account.id],
+    );
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    if (receipt.status !== 'success') {
+      provenReverted = true;
+      throw new Error('Custody transfer reverted');
+    }
+    const onchainOwner = await publicClient.readContract({
+      address: accountAddress,
+      abi: SIMPLE_ACCOUNT_ABI,
+      functionName: 'owner',
+    });
+    if (onchainOwner.toLowerCase() !== normalizedOwner) {
+      throw new Error('Smart account owner does not match the requested wallet');
+    }
 
     // Update database
     await execute(
@@ -831,7 +779,7 @@ export async function transferCustody(
            custody_transfer_tx_hash = $2,
            updated_at = NOW()
        WHERE id = $3`,
-      [newOwnerAddress, txHash, account.id]
+      [newOwnerAddress, txHash, account.id],
     );
 
     logger.info('Custody transferred', {
@@ -844,13 +792,15 @@ export async function transferCustody(
 
     return { txHash };
   } catch (error) {
-    // Revert status on failure
-    await execute(
-      `UPDATE user_smart_accounts
-       SET custody_status = 'managed', updated_at = NOW()
-       WHERE id = $1`,
-      [account.id]
-    );
+    if (!txHash || provenReverted) {
+      await execute(
+        `UPDATE user_smart_accounts
+         SET custody_status = 'managed', owner_address = NULL,
+             custody_transfer_tx_hash = NULL, updated_at = NOW()
+         WHERE id = $1 AND custody_status = 'transferring'`,
+        [account.id],
+      );
+    }
 
     logger.error('Custody transfer failed', error as Error, {
       userId,
@@ -872,7 +822,7 @@ export async function syncAccountBalances(
   accountId: string,
   chainId: number,
   address: Address,
-  tokenAddresses: Address[]
+  tokenAddresses: Address[],
 ): Promise<void> {
   const publicClient = getPublicClient(chainId);
 
@@ -906,7 +856,7 @@ export async function syncAccountBalances(
          VALUES ($1, $2, $3, $4, $5, NOW())
          ON CONFLICT (smart_account_id, token_address)
          DO UPDATE SET balance = $5, last_synced_at = NOW()`,
-        [accountId, tokenAddress, symbol, decimals, balance.toString()]
+        [accountId, tokenAddress, symbol, decimals, balance.toString()],
       );
     } catch (error) {
       logger.error('Failed to sync balance', error as Error, {
@@ -923,7 +873,7 @@ export async function syncAccountBalances(
  */
 export async function getAccountBalances(
   userId: string,
-  chainId: number
+  chainId: number,
 ): Promise<
   Array<{
     tokenAddress: string;
@@ -943,7 +893,7 @@ export async function getAccountBalances(
      JOIN user_smart_accounts sa ON sa.id = b.smart_account_id
      WHERE sa.user_id = $1 AND sa.chain_id = $2
      AND b.balance != '0'`,
-    [userId, chainId]
+    [userId, chainId],
   );
 
   return rows.map((r) => ({
@@ -982,7 +932,7 @@ export async function recordProjectRole(params: {
       params.splitGroup || null,
       params.percentBps || null,
       params.txHash || null,
-    ]
+    ],
   );
 
   logger.info('Recorded project role', params);
@@ -992,7 +942,7 @@ export async function recordProjectRole(params: {
  * Get all project roles for a user's smart accounts
  */
 export async function getUserProjectRoles(
-  userId: string
+  userId: string,
 ): Promise<
   Array<{
     projectId: number;
@@ -1014,7 +964,7 @@ export async function getUserProjectRoles(
      JOIN user_smart_accounts sa ON sa.id = r.smart_account_id
      WHERE sa.user_id = $1
      ORDER BY r.created_at DESC`,
-    [userId]
+    [userId],
   );
 
   return rows.map((r) => ({
@@ -1085,7 +1035,7 @@ export async function checkExportBlockers(userId: string): Promise<{
      FROM smart_account_withdrawals w
      JOIN user_smart_accounts sa ON sa.id = w.smart_account_id
      WHERE sa.user_id = $1 AND w.status IN ('pending', 'processing')`,
-    [userId]
+    [userId],
   );
 
   const blockers: ExportBlocker[] = pendingWithdrawals.map((w) => ({
@@ -1116,10 +1066,10 @@ async function buildExportSnapshot(userId: string): Promise<ExportSnapshot> {
         // Get cached balances
         const balances = await getAccountBalances(userId, account.chainId);
         const ethBalance = balances.find(
-          (b) => b.tokenAddress === '0x0000000000000000000000000000000000000000'
+          (b) => b.tokenAddress === '0x0000000000000000000000000000000000000000',
         );
         const tokens = balances.filter(
-          (b) => b.tokenAddress !== '0x0000000000000000000000000000000000000000'
+          (b) => b.tokenAddress !== '0x0000000000000000000000000000000000000000',
         );
 
         return {
@@ -1129,7 +1079,7 @@ async function buildExportSnapshot(userId: string): Promise<ExportSnapshot> {
           ethBalance: ethBalance?.balance || '0',
           tokens: tokens.map((t) => ({ symbol: t.tokenSymbol, balance: t.balance })),
         };
-      })
+      }),
   );
 
   return {
@@ -1151,7 +1101,7 @@ async function buildExportSnapshot(userId: string): Promise<ExportSnapshot> {
  */
 export async function requestExport(
   userId: string,
-  newOwnerAddress: Address
+  newOwnerAddress: Address,
 ): Promise<{
   exportId: string;
   blocked: boolean;
@@ -1168,6 +1118,14 @@ export async function requestExport(
 
   if (managedAccounts.length === 0) {
     throw new Error('No managed accounts to export');
+  }
+  const normalizedOwner = newOwnerAddress.toLowerCase();
+  if (
+    normalizedOwner === NATIVE_WALLET_TOKEN ||
+    normalizedOwner === DEAD_ADDRESS ||
+    managedAccounts.some((account) => account.address.toLowerCase() === normalizedOwner)
+  ) {
+    throw new Error('Export destination must be a different explicit wallet address');
   }
 
   const chainIds = managedAccounts.map((a) => a.chainId);
@@ -1189,7 +1147,7 @@ export async function requestExport(
       !canExport,
       blockers.length > 0 ? JSON.stringify({ withdrawals: blockers }) : null,
       JSON.stringify(snapshot),
-    ]
+    ],
   );
 
   logger.info('Export requested', {
@@ -1228,14 +1186,14 @@ export async function confirmExport(exportId: string): Promise<{
   }>(
     `SELECT id, user_id, new_owner_address, chain_ids, status, blocked_by_pending_ops
      FROM smart_account_exports WHERE id = $1`,
-    [exportId]
+    [exportId],
   );
 
   if (!exportReq) {
     throw new Error('Export request not found');
   }
 
-  if (exportReq.status !== 'pending') {
+  if (exportReq.status !== 'pending' && exportReq.status !== 'blocked') {
     throw new Error(`Export is ${exportReq.status}, cannot confirm`);
   }
 
@@ -1250,28 +1208,33 @@ export async function confirmExport(exportId: string): Promise<{
       `UPDATE smart_account_exports
        SET blocked_by_pending_ops = FALSE, pending_ops_details = NULL, status = 'pending'
        WHERE id = $1`,
-      [exportId]
+      [exportId],
     );
   }
 
-  // Mark as confirmed and processing
-  await execute(
+  // Claim the request atomically so duplicate confirmations cannot transfer the
+  // same account twice.
+  const claimed = await execute(
     `UPDATE smart_account_exports
      SET user_confirmed_at = NOW(), started_at = NOW(), status = 'processing'
-     WHERE id = $1`,
-    [exportId]
+     WHERE id = $1 AND status IN ('pending', 'blocked')`,
+    [exportId],
   );
+  if (claimed !== 1) throw new Error('Export is already being processed');
 
   // Execute transfers
   const chainResults: Record<number, { success: boolean; txHash?: string; error?: string }> = {};
-  const chainStatus: Record<string, { status: string; txHash?: string; error?: string; completedAt?: string }> = {};
+  const chainStatus: Record<
+    string,
+    { status: string; txHash?: string; error?: string; completedAt?: string }
+  > = {};
 
   for (const chainId of exportReq.chain_ids) {
     try {
       const { txHash } = await transferCustody(
         exportReq.user_id,
         chainId,
-        exportReq.new_owner_address as Address
+        exportReq.new_owner_address as Address,
       );
 
       chainResults[chainId] = { success: true, txHash };
@@ -1296,7 +1259,7 @@ export async function confirmExport(exportId: string): Promise<{
     // Update chain status after each chain
     await execute(
       `UPDATE smart_account_exports SET chain_status = $1, updated_at = NOW() WHERE id = $2`,
-      [JSON.stringify(chainStatus), exportId]
+      [JSON.stringify(chainStatus), exportId],
     );
   }
 
@@ -1310,7 +1273,7 @@ export async function confirmExport(exportId: string): Promise<{
     `UPDATE smart_account_exports
      SET status = $1, completed_at = NOW(), updated_at = NOW()
      WHERE id = $2`,
-    [finalStatus, exportId]
+    [finalStatus, exportId],
   );
 
   logger.info('Export finished', {
@@ -1335,13 +1298,16 @@ export async function retryExport(exportId: string): Promise<{
     user_id: string;
     new_owner_address: string;
     chain_ids: number[];
-    chain_status: Record<string, { status: string; txHash?: string; error?: string; completedAt?: string }>;
+    chain_status: Record<
+      string,
+      { status: string; txHash?: string; error?: string; completedAt?: string }
+    >;
     status: string;
     retry_count: number;
   }>(
     `SELECT id, user_id, new_owner_address, chain_ids, chain_status, status, retry_count
      FROM smart_account_exports WHERE id = $1`,
-    [exportId]
+    [exportId],
   );
 
   if (!exportReq) {
@@ -1354,7 +1320,7 @@ export async function retryExport(exportId: string): Promise<{
 
   // Find failed chains
   const failedChainIds = exportReq.chain_ids.filter(
-    (chainId) => exportReq.chain_status[chainId.toString()]?.status !== 'completed'
+    (chainId) => exportReq.chain_status[chainId.toString()]?.status !== 'completed',
   );
 
   if (failedChainIds.length === 0) {
@@ -1366,7 +1332,7 @@ export async function retryExport(exportId: string): Promise<{
     `UPDATE smart_account_exports
      SET status = 'processing', retry_count = retry_count + 1, last_retry_at = NOW(), updated_at = NOW()
      WHERE id = $1`,
-    [exportId]
+    [exportId],
   );
 
   const chainResults: Record<number, { success: boolean; txHash?: string; error?: string }> = {};
@@ -1377,7 +1343,7 @@ export async function retryExport(exportId: string): Promise<{
       const { txHash } = await transferCustody(
         exportReq.user_id,
         chainId,
-        exportReq.new_owner_address as Address
+        exportReq.new_owner_address as Address,
       );
 
       chainResults[chainId] = { success: true, txHash };
@@ -1397,13 +1363,13 @@ export async function retryExport(exportId: string): Promise<{
 
     await execute(
       `UPDATE smart_account_exports SET chain_status = $1, updated_at = NOW() WHERE id = $2`,
-      [JSON.stringify(chainStatus), exportId]
+      [JSON.stringify(chainStatus), exportId],
     );
   }
 
   // Check overall status (including previously successful chains)
   const allChainStatuses = exportReq.chain_ids.map(
-    (chainId) => chainStatus[chainId.toString()]?.status
+    (chainId) => chainStatus[chainId.toString()]?.status,
   );
   const allCompleted = allChainStatuses.every((s) => s === 'completed');
   const allFailed = allChainStatuses.every((s) => s === 'failed');
@@ -1413,7 +1379,7 @@ export async function retryExport(exportId: string): Promise<{
     `UPDATE smart_account_exports
      SET status = $1, completed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE completed_at END, updated_at = NOW()
      WHERE id = $2`,
-    [finalStatus, exportId]
+    [finalStatus, exportId],
   );
 
   return { status: finalStatus, chainResults };
@@ -1427,7 +1393,7 @@ export async function cancelExport(exportId: string): Promise<void> {
     `UPDATE smart_account_exports
      SET status = 'cancelled', updated_at = NOW()
      WHERE id = $1 AND status IN ('pending', 'blocked')`,
-    [exportId]
+    [exportId],
   );
 
   if (result === 0) {
@@ -1490,7 +1456,7 @@ export async function getUserExports(userId: string): Promise<ExportRequest[]> {
     created_at: string;
   }>(
     `SELECT * FROM smart_account_exports WHERE user_id = $1 ORDER BY created_at DESC`,
-    [userId]
+    [userId],
   );
 
   return rows.map((row) => ({
@@ -1541,20 +1507,18 @@ export async function requestTransfer(params: {
   userId: string;
   chainId: number;
   tokenAddress: Address;
-  tokenSymbol: string;
   amount: bigint;
   toAddress: Address;
-  holdMs?: number;
 }): Promise<PendingTransfer> {
   const {
     userId,
     chainId,
     tokenAddress,
-    tokenSymbol,
     amount,
     toAddress,
-    holdMs = TRANSFER_HOLD_MS,
   } = params;
+  const tokenSymbol = requireRecognizedWalletToken(chainId, tokenAddress);
+  if (amount <= 0n) throw new Error('Transfer amount must be greater than zero');
 
   // Get account and verify it's managed
   const account = await getOrCreateSmartAccount(userId, chainId);
@@ -1566,7 +1530,15 @@ export async function requestTransfer(params: {
   // Verify balance
   const publicClient = getPublicClient(chainId);
   const accountAddress = account.address as Address;
-  const isNative = tokenAddress === '0x0000000000000000000000000000000000000000';
+  const normalizedRecipient = toAddress.toLowerCase();
+  if (
+    normalizedRecipient === NATIVE_WALLET_TOKEN ||
+    normalizedRecipient === DEAD_ADDRESS ||
+    normalizedRecipient === accountAddress.toLowerCase()
+  ) {
+    throw new Error('Transfer recipient must be a different explicit wallet address');
+  }
+  const isNative = tokenSymbol === 'ETH';
 
   let balance: bigint;
   if (isNative) {
@@ -1584,7 +1556,7 @@ export async function requestTransfer(params: {
     throw new Error(`Insufficient balance: have ${balance.toString()}, need ${amount.toString()}`);
   }
 
-  const availableAt = new Date(Date.now() + holdMs);
+  const availableAt = new Date(Date.now() + TRANSFER_HOLD_MS);
 
   // Create pending transfer record
   const [withdrawal] = await query<{
@@ -1595,7 +1567,7 @@ export async function requestTransfer(params: {
      (smart_account_id, token_address, amount, to_address, status, transfer_type, available_at)
      VALUES ($1, $2, $3, $4, 'pending', 'delayed', $5)
      RETURNING id, created_at`,
-    [account.id, tokenAddress, amount.toString(), toAddress, availableAt]
+    [account.id, tokenAddress, amount.toString(), toAddress, availableAt],
   );
 
   logger.info('Pending transfer created', {
@@ -1627,7 +1599,7 @@ export async function requestTransfer(params: {
  */
 export async function cancelTransfer(
   transferId: string,
-  userId: string
+  userId: string,
 ): Promise<void> {
   const result = await execute(
     `UPDATE smart_account_withdrawals w
@@ -1638,7 +1610,7 @@ export async function cancelTransfer(
        AND a.user_id = $2
        AND w.status = 'pending'
        AND w.transfer_type = 'delayed'`,
-    [transferId, userId]
+    [transferId, userId],
   );
 
   if (result === 0) {
@@ -1669,7 +1641,7 @@ export async function getUserPendingTransfers(userId: string): Promise<PendingTr
      JOIN user_smart_accounts a ON a.id = w.smart_account_id
      WHERE a.user_id = $1 AND w.transfer_type = 'delayed'
      ORDER BY w.created_at DESC`,
-    [userId]
+    [userId],
   );
 
   return rows.map((r) => ({
@@ -1694,7 +1666,43 @@ export async function getUserPendingTransfers(userId: string): Promise<PendingTr
  * @returns Number of transfers executed
  */
 export async function executeReadySmartAccountTransfers(): Promise<number> {
-  // Find all pending delayed transfers that are now available
+  let executed = 0;
+
+  // Reconcile hashes recorded by a prior run before claiming new work. An RPC
+  // timeout after broadcast must never turn into a second transfer.
+  const submittedTransfers = await query<{
+    id: string;
+    chain_id: number;
+    tx_hash: string;
+  }>(
+    `SELECT w.id, a.chain_id, w.tx_hash
+     FROM smart_account_withdrawals w
+     JOIN user_smart_accounts a ON a.id = w.smart_account_id
+     WHERE w.status = 'processing'
+       AND w.transfer_type = 'delayed'
+       AND w.tx_hash IS NOT NULL
+     LIMIT 50`,
+  );
+  for (const transfer of submittedTransfers) {
+    try {
+      const receipt = await getPublicClient(transfer.chain_id).getTransactionReceipt({
+        hash: transfer.tx_hash as Hash,
+      });
+      const status = receipt.status === 'success' ? 'completed' : 'failed';
+      const count = await execute(
+        `UPDATE smart_account_withdrawals
+         SET status = $1, executed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE executed_at END,
+             error_message = CASE WHEN $1 = 'failed' THEN 'Transfer transaction reverted' ELSE NULL END
+         WHERE id = $2 AND status = 'processing' AND tx_hash = $3`,
+        [status, transfer.id, transfer.tx_hash],
+      );
+      if (status === 'completed' && count === 1) executed++;
+    } catch {
+      // Transaction is still pending or the RPC is temporarily unavailable.
+    }
+  }
+
+  // Atomically claim pending delayed transfers that are now available.
   const readyTransfers = await query<{
     id: string;
     smart_account_id: string;
@@ -1705,79 +1713,117 @@ export async function executeReadySmartAccountTransfers(): Promise<number> {
     amount: string;
     to_address: string;
   }>(
-    `SELECT w.id, w.smart_account_id, a.user_id, a.chain_id,
-            a.address as account_address, w.token_address, w.amount, w.to_address
-     FROM smart_account_withdrawals w
-     JOIN user_smart_accounts a ON a.id = w.smart_account_id
-     WHERE w.status = 'pending'
-       AND w.transfer_type = 'delayed'
-       AND w.available_at <= NOW()
-       AND a.custody_status = 'managed'`
+    `WITH candidates AS (
+       SELECT w.id
+       FROM smart_account_withdrawals w
+       JOIN user_smart_accounts a ON a.id = w.smart_account_id
+       WHERE w.status = 'pending'
+         AND w.transfer_type = 'delayed'
+         AND w.available_at <= NOW()
+         AND a.custody_status = 'managed'
+       ORDER BY w.available_at ASC
+       LIMIT 50
+       FOR UPDATE OF w SKIP LOCKED
+     )
+     UPDATE smart_account_withdrawals AS withdrawal
+     SET status = 'processing'
+     FROM candidates, user_smart_accounts AS account
+     WHERE withdrawal.id = candidates.id
+       AND account.id = withdrawal.smart_account_id
+     RETURNING withdrawal.id, withdrawal.smart_account_id, account.user_id,
+               account.chain_id, account.address AS account_address,
+               withdrawal.token_address, withdrawal.amount, withdrawal.to_address`,
   );
 
   if (readyTransfers.length === 0) {
-    return 0;
+    return executed;
   }
 
   logger.info(`Processing ${readyTransfers.length} ready transfers`);
 
-  let executed = 0;
-
   for (const transfer of readyTransfers) {
+    let txHash: Hash | null = null;
     try {
-      // Mark as processing
-      await execute(
-        `UPDATE smart_account_withdrawals SET status = 'processing' WHERE id = $1`,
-        [transfer.id]
-      );
-
       // Execute the transfer
       const config = getConfig();
       const systemKey = config.reservesPrivateKey as `0x${string}`;
+      if (!systemKey) throw new Error('RESERVES_PRIVATE_KEY not configured');
       const walletClient = getWalletClient(transfer.chain_id, systemKey);
 
       const accountAddress = transfer.account_address as Address;
       const tokenAddress = transfer.token_address as Address;
       const toAddress = transfer.to_address as Address;
       const amount = BigInt(transfer.amount);
-      const isNative = tokenAddress === '0x0000000000000000000000000000000000000000';
-
-      let txHash: Hash;
+      const tokenSymbol = requireRecognizedWalletToken(transfer.chain_id, tokenAddress);
+      if (amount <= 0n) throw new Error('Transfer amount must be greater than zero');
+      const normalizedRecipient = toAddress.toLowerCase();
+      if (
+        normalizedRecipient === NATIVE_WALLET_TOKEN ||
+        normalizedRecipient === DEAD_ADDRESS ||
+        normalizedRecipient === transfer.account_address.toLowerCase()
+      ) {
+        throw new Error('Transfer recipient must be a different explicit wallet address');
+      }
+      const isNative = tokenSymbol === 'ETH';
+      const deployedAddress = await ensureDeployed(transfer.user_id, transfer.chain_id);
+      if (deployedAddress.toLowerCase() !== accountAddress.toLowerCase()) {
+        throw new Error('Managed account address changed');
+      }
+      const publicClient = getPublicClient(transfer.chain_id);
+      let target: Address;
+      let value: bigint;
+      let callData: Hex;
 
       if (isNative) {
-        // Native ETH transfer
-        txHash = await walletClient.writeContract({
-          address: accountAddress,
-          abi: SIMPLE_ACCOUNT_ABI,
-          functionName: 'execute',
-          args: [toAddress, amount, '0x'],
-        });
+        target = toAddress;
+        value = amount;
+        callData = '0x';
       } else {
-        // ERC20 transfer
-        const transferData = encodeFunctionData({
+        target = tokenAddress;
+        value = 0n;
+        callData = encodeFunctionData({
           abi: ERC20_ABI,
           functionName: 'transfer',
           args: [toAddress, amount],
         });
-
-        txHash = await walletClient.writeContract({
-          address: accountAddress,
-          abi: SIMPLE_ACCOUNT_ABI,
-          functionName: 'execute',
-          args: [tokenAddress, 0n, transferData],
-        });
       }
 
+      const outerData = encodeFunctionData({
+        abi: SIMPLE_ACCOUNT_ABI,
+        functionName: 'execute',
+        args: [target, value, callData],
+      });
+      const systemAccount = privateKeyToAccount(systemKey);
+      await publicClient.call({
+        account: systemAccount.address,
+        to: accountAddress,
+        data: outerData,
+      });
+      txHash = await walletClient.writeContract({
+        address: accountAddress,
+        abi: SIMPLE_ACCOUNT_ABI,
+        functionName: 'execute',
+        args: [target, value, callData],
+      });
+
+      const recorded = await execute(
+        `UPDATE smart_account_withdrawals
+         SET tx_hash = $1
+         WHERE id = $2 AND status = 'processing' AND tx_hash IS NULL`,
+        [txHash, transfer.id],
+      );
+      if (recorded !== 1) throw new Error('Could not bind submitted transfer hash');
+
       // Wait for confirmation
-      const publicClient = getPublicClient(transfer.chain_id);
-      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status !== 'success') throw new Error('Transfer transaction reverted');
 
       // Mark as completed
       await execute(
         `UPDATE smart_account_withdrawals
          SET status = 'completed', tx_hash = $1, executed_at = NOW()
-         WHERE id = $2`,
-        [txHash, transfer.id]
+         WHERE id = $2 AND status = 'processing' AND tx_hash = $1`,
+        [txHash, transfer.id],
       );
 
       logger.info('Transfer executed', {
@@ -1789,17 +1835,29 @@ export async function executeReadySmartAccountTransfers(): Promise<number> {
       executed++;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error('Transfer execution failed', error instanceof Error ? error : new Error(errorMsg), {
-        transferId: transfer.id,
-      });
-
-      // Mark as failed
-      await execute(
-        `UPDATE smart_account_withdrawals
-         SET status = 'failed', error_message = $1
-         WHERE id = $2`,
-        [errorMsg, transfer.id]
+      logger.error(
+        'Transfer execution failed',
+        error instanceof Error ? error : new Error(errorMsg),
+        {
+          transferId: transfer.id,
+        },
       );
+
+      if (txHash) {
+        await execute(
+          `UPDATE smart_account_withdrawals
+           SET error_message = $1
+           WHERE id = $2 AND status = 'processing' AND tx_hash = $3`,
+          [errorMsg, transfer.id, txHash],
+        );
+      } else {
+        await execute(
+          `UPDATE smart_account_withdrawals
+           SET status = 'failed', error_message = $1
+           WHERE id = $2 AND status = 'processing' AND tx_hash IS NULL`,
+          [errorMsg, transfer.id],
+        );
+      }
     }
   }
 

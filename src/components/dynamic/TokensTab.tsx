@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
-import { formatEther, formatUnits, createPublicClient, http, erc20Abi } from 'viem'
+import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
   fetchProject,
@@ -8,24 +9,23 @@ import {
   fetchProjectTokenSymbol,
   fetchProjectTokenAddress,
   fetchProjectTokenSupply,
-  fetchDistributablePayout,
-  fetchConnectedChains,
   fetchProjectSplits,
   fetchPendingReservedTokens,
-  calculateFloorPrice,
+  fetchUserTokenBalance,
   isRevnetProject,
   type Project,
-  type ConnectedChain,
   type JBSplitData,
   type ProjectRuleset,
 } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
-import { resolveAccountingToken } from '../../utils/currency'
-import { VIEM_CHAINS, RPC_ENDPOINTS, CHAINS, MAINNET_CHAINS, type SupportedChainId } from '../../constants'
-import { SendReservedTokensModal } from '../payment'
+import { CHAINS, MAINNET_CHAINS } from '../../constants'
+import SendReservedTokensForm from './SendReservedTokensForm'
 import HoldersChart from './charts/HoldersChart'
 import PriceChart from './PriceChart'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { ProjectSplitRoute } from './ProjectSplitRoute'
 
 interface TokensTabProps {
   projectId: string
@@ -39,6 +39,10 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; color: strin
   10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
   8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
   42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
+  11155111: { name: 'Sepolia', shortName: 'SEP', color: '#627EEA' },
+  11155420: { name: 'OP Sepolia', shortName: 'OP-SEP', color: '#FF0420' },
+  84532: { name: 'Base Sepolia', shortName: 'BASE-SEP', color: '#0052FF' },
+  421614: { name: 'Arb Sepolia', shortName: 'ARB-SEP', color: '#28A0F0' },
 }
 
 // Per-chain token data
@@ -51,11 +55,7 @@ interface ChainTokenData {
   reservedSplits: JBSplitData[]
   reservedPercent: number
   ruleset: ProjectRuleset | null
-  balance: string           // Project treasury balance
-  baseCurrency: number      // 1 = ETH, 2 = USDC
-  decimals: number          // 18 for ETH, 6 for USDC
-  cashOutPerToken: number   // Calculated floor price
-  cashOutTaxRate: number    // From ruleset
+  configurationError?: string
 }
 
 function formatTokenAmount(wei: string): string {
@@ -67,11 +67,11 @@ function formatTokenAmount(wei: string): string {
     if (num >= 1e3) return `${(num / 1e3).toFixed(2)}K`
     return num.toLocaleString(undefined, { maximumFractionDigits: 2 })
   } catch {
-    return '0'
+    return 'Unavailable'
   }
 }
 
-export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProps) {
+export default function TokensTab({ projectId, chainId }: TokensTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { address, isConnected } = useAccount()
@@ -83,13 +83,17 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   const [userBalance, setUserBalance] = useState<string>('0')
   const [userBalanceByChain, setUserBalanceByChain] = useState<Record<number, string>>({})
   const [chainTokenData, setChainTokenData] = useState<ChainTokenData[]>([])
-  const [selectedChainId, setSelectedChainId] = useState<number>(parseInt(chainId))
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
+  const selectedChainId = parseInt(chainId)
   const [showSplits, setShowSplits] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
   const [showReservedBreakdown, setShowReservedBreakdown] = useState(false)
   const [showIssuedBreakdown, setShowIssuedBreakdown] = useState(false)
   const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [userBalanceAvailable, setUserBalanceAvailable] = useState(false)
+  const [userBalanceLoading, setUserBalanceLoading] = useState(false)
 
   const chainIdNum = parseInt(chainId)
   const chain = CHAINS[chainIdNum] || MAINNET_CHAINS[chainIdNum]
@@ -97,17 +101,13 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
   // Get active chain data
   const activeChainData = chainTokenData.find(cd => cd.chainId === selectedChainId) || chainTokenData[0]
   const isOmnichain = chainTokenData.length > 1
+  const tokenDataComplete = chainTokenData.length > 0 && chainTokenData.every(cd => !cd.configurationError)
 
   // Cross-chain aggregate supply (project token is always 18 decimals). The headline
   // shows the omnichain total; the per-chain "Breakdown" is the disclosure.
   const totalSupplyAllChains = chainTokenData
     .reduce((sum, cd) => sum + BigInt(cd.totalSupply || '0'), 0n)
     .toString()
-
-  // Calculate pending tokens
-  const pendingTokens = activeChainData
-    ? parseFloat(activeChainData.pendingReserved) / 1e18
-    : 0
 
   // Total pending across all chains
   const totalPendingAcrossChains = chainTokenData.reduce((sum, cd) => {
@@ -118,24 +118,21 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
     async function load() {
       try {
         setLoading(true)
+        setLoadError(null)
 
         // Fetch project and token info
-        const [projectData, symbol, connectedChains] = await Promise.all([
+        const [projectData, symbol, chainResolution] = await Promise.all([
           fetchProject(projectId, chainIdNum),
           fetchProjectTokenSymbol(projectId, chainIdNum),
-          fetchConnectedChains(projectId, chainIdNum),
+          resolveProjectChains(projectId, chainIdNum),
         ])
 
         setProject(projectData)
         setTokenSymbol(symbol || 'TOKEN')
-
-        // Determine chains to fetch
-        const chainsToFetch: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: chainIdNum, projectId: parseInt(projectId) }]
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
         // Fetch token data from all chains in parallel
-        const chainDataPromises = chainsToFetch.map(async (chain): Promise<ChainTokenData> => {
+        const chainDataPromises = chainResolution.chains.map(async (chain): Promise<ChainTokenData> => {
           try {
             const [pendingReserved, chainProject, supply, tokenAddr] = await Promise.all([
               fetchPendingReservedTokens(String(chain.projectId), chain.chainId),
@@ -143,6 +140,9 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
               fetchProjectTokenSupply(String(chain.projectId), chain.chainId),
               fetchProjectTokenAddress(String(chain.projectId), chain.chainId),
             ])
+
+            if (!chainProject) throw new Error('Current project ruleset could not be verified')
+            if (supply === null) throw new Error('Project token supply could not be verified')
 
             // Fetch splits if we have a ruleset
             let reservedSplits: JBSplitData[] = []
@@ -152,52 +152,21 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                 chain.chainId,
                 chainProject.currentRuleset.id
               )
+              if (!splitsData.configurationComplete) {
+                throw new Error('Reserved split configuration could not be verified')
+              }
               reservedSplits = splitsData.reservedSplits
             }
-
-            // Calculate cash out value per token
-            const cashOutTaxRate = chainProject?.currentRuleset?.cashOutTaxRate ?? 10000
-            const balance = BigInt(chainProject?.balance || '0')
-            const supplyBigInt = BigInt(supply || '0')
-            const baseCurrency = chainProject?.currentRuleset?.baseCurrency || 1
-            // Accounting-currency decimals (cashout VALUE). Project *token* amounts
-            // (supply, user balance, pending) are always 18 decimals — see below.
-            const decimals = resolveAccountingToken(baseCurrency).decimals
-
-            // Cash out draws from SURPLUS (balance net of the remaining payout
-            // limit) and dilutes across supply PLUS undistributed reserved tokens.
-            // Keeps this in lockstep with FundsSection so the two tabs agree.
-            let remainingPayout = 0n
-            if (!isRevnetProject(chainProject)) {
-              try {
-                const payoutData = await fetchDistributablePayout(
-                  String(chain.projectId),
-                  chain.chainId,
-                  baseCurrency
-                )
-                remainingPayout = payoutData?.available ?? 0n
-              } catch {
-                // ignore — treat as no payout limit
-              }
-            }
-            const reclaimableSurplus = balance > remainingPayout ? balance - remainingPayout : 0n
-            const cashOutSupply = supplyBigInt + BigInt(pendingReserved || '0')
-            const cashOutPerToken = calculateFloorPrice(reclaimableSurplus, cashOutSupply, cashOutTaxRate, decimals)
 
             return {
               chainId: chain.chainId,
               projectId: chain.projectId,
               tokenAddress: tokenAddr || null,
-              totalSupply: supply || '0',
+              totalSupply: supply,
               pendingReserved,
               reservedSplits,
               reservedPercent: chainProject?.currentRuleset?.reservedPercent || 0,
               ruleset: chainProject?.currentRuleset || null,
-              balance: chainProject?.balance || '0',
-              baseCurrency,
-              decimals,
-              cashOutPerToken,
-              cashOutTaxRate,
             }
           } catch (err) {
             console.error(`Failed to fetch token data for chain ${chain.chainId}:`, err)
@@ -210,11 +179,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
               reservedSplits: [],
               reservedPercent: 0,
               ruleset: null,
-              balance: '0',
-              baseCurrency: 1,
-              decimals: 18,
-              cashOutPerToken: 0,
-              cashOutTaxRate: 10000,
+              configurationError: err instanceof Error ? err.message : 'Token configuration unavailable',
             }
           }
         })
@@ -253,6 +218,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
 
       } catch (err) {
         console.error('Failed to load token data:', err)
+        setLoadError(err instanceof Error ? err.message : 'Token data unavailable')
       } finally {
         setLoading(false)
       }
@@ -269,35 +235,19 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
       if (!address || chainTokenData.length === 0) {
         setUserBalance('0')
         setUserBalanceByChain({})
+        setUserBalanceAvailable(true)
+        setUserBalanceLoading(false)
         return
       }
 
       try {
+        setUserBalanceLoading(true)
+        setUserBalanceAvailable(false)
         const results = await Promise.all(
           chainTokenData.map(async (cd): Promise<{ chainId: number; balance: bigint }> => {
-            if (!cd.tokenAddress) return { chainId: cd.chainId, balance: 0n }
-
-            const viemChain = VIEM_CHAINS[cd.chainId as SupportedChainId]
-            if (!viemChain) return { chainId: cd.chainId, balance: 0n }
-
-            const rpcUrl = RPC_ENDPOINTS[cd.chainId]?.[0]
-            const publicClient = createPublicClient({
-              chain: viemChain,
-              transport: http(rpcUrl),
-            })
-
-            try {
-              const balance = await publicClient.readContract({
-                address: cd.tokenAddress as `0x${string}`,
-                abi: erc20Abi,
-                functionName: 'balanceOf',
-                args: [address as `0x${string}`],
-              })
-              return { chainId: cd.chainId, balance }
-            } catch (err) {
-              console.error(`Failed to fetch user token balance on chain ${cd.chainId}:`, err)
-              return { chainId: cd.chainId, balance: 0n }
-            }
+            if (cd.configurationError) throw new Error(cd.configurationError)
+            const participant = await fetchUserTokenBalance(String(cd.projectId), cd.chainId, address)
+            return { chainId: cd.chainId, balance: BigInt(participant.balance) }
           })
         )
 
@@ -310,19 +260,21 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
 
         setUserBalance(total.toString())
         setUserBalanceByChain(byChain)
+        setUserBalanceAvailable(true)
       } catch (err) {
         console.error('Failed to fetch user token balance:', err)
         setUserBalance('0')
         setUserBalanceByChain({})
+        setUserBalanceAvailable(false)
+      } finally {
+        setUserBalanceLoading(false)
       }
     }
 
     fetchUserBalance()
   }, [address, chainTokenData])
 
-  const reservedPercent = activeChainData?.reservedPercent || 0
-  const hasPendingTokens = pendingTokens > 0
-
+  const reservedPercent = tokenDataComplete ? activeChainData?.reservedPercent || 0 : 0
   if (loading) {
     return (
       <div className={`p-4 border animate-pulse ${
@@ -338,14 +290,21 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
     )
   }
 
-  // Check if cash outs are enabled on any chain (tax rate < 10000 = 100%)
-  const cashOutsEnabled = chainTokenData.some(cd => cd.cashOutTaxRate < 10000)
-
   return (
     <div className="space-y-4">
       <ExplainerMessage>
         Membership is represented on blockchains to make agreements permanent.
       </ExplainerMessage>
+
+      {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
+
+      {(loadError || !tokenDataComplete) && (
+        <div className={`border p-3 text-sm ${
+          isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-800'
+        }`}>
+          Token information is unavailable because every project chain could not be verified.
+        </div>
+      )}
 
       {/* Project Token Info */}
       <div className={`p-4 border ${
@@ -425,7 +384,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                 Total issued
               </span>
               <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {formatTokenAmount(totalSupplyAllChains)}
+                {tokenDataComplete ? formatTokenAmount(totalSupplyAllChains) : 'Unavailable'}
               </span>
             </div>
             {/* Per-chain breakdown */}
@@ -460,7 +419,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                             {chainInfo.shortName}
                           </span>
                           <span className={`text-xs font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                            {formatTokenAmount(cd.totalSupply)}
+                            {cd.configurationError ? 'Unavailable' : formatTokenAmount(cd.totalSupply)}
                           </span>
                         </div>
                       )
@@ -480,35 +439,14 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                     Your membership
                   </span>
                   <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {formatTokenAmount(userBalance)}
+                    {userBalanceLoading
+                      ? 'Loading…'
+                      : userBalanceAvailable ? formatTokenAmount(userBalance) : 'Unavailable'}
                   </span>
                 </div>
-                {(() => {
-                  const userBalanceNum = parseFloat(userBalance) / 1e18
-                  const currencySymbol = resolveAccountingToken(activeChainData?.baseCurrency).symbol
-                  const cashOutValue = userBalanceNum * (activeChainData?.cashOutPerToken || 0)
-                  const isCashOutDisabled = activeChainData?.cashOutTaxRate === 10000
-
-                  if (userBalanceNum > 0 && activeChainData) {
-                    if (isCashOutDisabled) {
-                      return (
-                        <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                          No cash out
-                        </span>
-                      )
-                    } else if (cashOutValue > 0) {
-                      return (
-                        <span className={`text-xs font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          ~{cashOutValue < 0.0001 ? '<0.0001' : cashOutValue.toFixed(4)} {currencySymbol}
-                        </span>
-                      )
-                    }
-                  }
-                  return null
-                })()}
               </div>
               {/* Per-chain balance breakdown for omnichain holders */}
-              {isOmnichain && parseFloat(userBalance) > 0 && (
+              {isOmnichain && userBalanceAvailable && parseFloat(userBalance) > 0 && (
                 <div className="mt-2">
                   <button
                     onClick={() => setShowBalanceBreakdown(!showBalanceBreakdown)}
@@ -539,7 +477,9 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                               {chainInfo.shortName}
                             </span>
                             <span className={`text-xs font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                              {formatTokenAmount(userBalanceByChain[cd.chainId] || '0')}
+                              {userBalanceByChain[cd.chainId] === undefined
+                                ? 'Unavailable'
+                                : formatTokenAmount(userBalanceByChain[cd.chainId])}
                             </span>
                           </div>
                         )
@@ -559,17 +499,21 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
       }`}>
         {/* Header with reserved rate */}
         <h3 className={`text-sm font-semibold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Reserved membership: <span className={`font-mono ${reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>{(reservedPercent / 100).toFixed(0)}%</span>
+          Reserved membership: <span className={`font-mono ${reservedPercent > 0 ? 'text-amber-400' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            {tokenDataComplete ? `${(reservedPercent / 100).toFixed(0)}%` : 'Unavailable'}
+          </span>
         </h3>
 
         {/* Description */}
         <p className={`text-xs mb-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          A portion of new membership is currently set aside for recipients below.
-          {isRevnetProject(project) && ' These recipients are locked in and cannot be changed.'}
+          {tokenDataComplete
+            ? <>A portion of new membership is currently set aside for recipients below.{isRevnetProject(project) && ' These recipients are locked in and cannot be changed.'}</>
+            : 'Reserved membership settings could not be verified.'}
         </p>
 
         {/* Check for chain differences */}
         {(() => {
+          if (!tokenDataComplete) return null
           const rates = chainTokenData.map(cd => cd.reservedPercent)
           const ratesDiffer = isOmnichain && rates.length > 1 && !rates.every(r => r === rates[0])
 
@@ -651,7 +595,7 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
         })()}
 
         {/* Pending tokens to distribute */}
-        {totalPendingAcrossChains > 0 && (
+        {tokenDataComplete && totalPendingAcrossChains > 0 && (
           <div className="flex items-center gap-2 mb-3">
             <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {totalPendingAcrossChains.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
@@ -700,17 +644,29 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                   const displayName = splitEnsNames[beneficiary] || truncateAddress(split.beneficiary || '')
 
                   return (
-                    <div key={idx} className="flex items-center gap-3 text-sm">
-                      <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                        {split.projectId > 0 ? (
-                          `Project #${split.projectId}`
-                        ) : (
-                          displayName
+                    <div key={idx} className="flex items-start justify-between gap-3 text-sm">
+                      {split.projectId > 0 ? (
+                        <ProjectSplitRoute
+                          projectId={split.projectId}
+                          chainId={activeChainData.chainId}
+                          beneficiary={split.beneficiary}
+                          kind="reserved"
+                          hook={split.hook}
+                          isDark={isDark}
+                        />
+                      ) : (
+                        <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                          {displayName}
+                        </span>
+                      )}
+                      <div className="flex shrink-0 items-center gap-1">
+                        <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                          {percent}%
+                        </span>
+                        {split.lockedUntil > Math.floor(Date.now() / 1000) && (
+                          <span className="text-[10px] text-amber-500">Locked</span>
                         )}
-                      </span>
-                      <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                        {percent}%
-                      </span>
+                      </div>
                     </div>
                   )
                 })}
@@ -742,13 +698,29 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
                                 const beneficiary = split.beneficiary?.toLowerCase() || ''
                                 const displayName = splitEnsNames[beneficiary] || truncateAddress(split.beneficiary || '')
                                 return (
-                                  <div key={idx} className="flex items-center gap-3 text-xs">
-                                    <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                      {split.projectId > 0 ? `Project #${split.projectId}` : displayName}
-                                    </span>
-                                    <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                                      {percent}%
-                                    </span>
+                                  <div key={idx} className="flex items-start justify-between gap-3 text-xs">
+                                    {split.projectId > 0 ? (
+                                      <ProjectSplitRoute
+                                        projectId={split.projectId}
+                                        chainId={cd.chainId}
+                                        beneficiary={split.beneficiary}
+                                        kind="reserved"
+                                        hook={split.hook}
+                                        isDark={isDark}
+                                      />
+                                    ) : (
+                                      <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        {displayName}
+                                      </span>
+                                    )}
+                                    <div className="flex shrink-0 items-center gap-1">
+                                      <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                                        {percent}%
+                                      </span>
+                                      {split.lockedUntil > Math.floor(Date.now() / 1000) && (
+                                        <span className="text-[10px] text-amber-500">Locked</span>
+                                      )}
+                                    </div>
                                   </div>
                                 )
                               })}
@@ -789,18 +761,31 @@ export default function TokensTab({ projectId, chainId, isOwner }: TokensTabProp
       <HoldersChart projectId={projectId} chainId={chainId} limit={10} />
 
       {/* Send Reserved Tokens Modal */}
-      {showModal && activeChainData && (
-        <SendReservedTokensModal
-          isOpen
-          onClose={() => setShowModal(false)}
-          projectId={projectId}
-          projectName={project?.name || `Project #${projectId}`}
-          chainId={selectedChainId}
-          tokenSymbol={tokenSymbol}
-          amount={activeChainData.pendingReserved}
-          reservedRate={reservedPercent / 100}
-          allChainProjects={chainTokenData.map(cd => ({ chainId: cd.chainId, projectId: cd.projectId }))}
-        />
+      {showModal && activeChainData && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setShowModal(false)}
+          />
+          <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+          }`}>
+            <button
+              onClick={() => setShowModal(false)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              aria-label="Close"
+            >
+              <span aria-hidden="true">X</span>
+            </button>
+            <SendReservedTokensForm
+              projectId={String(activeChainData.projectId)}
+              chainId={String(activeChainData.chainId)}
+            />
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )

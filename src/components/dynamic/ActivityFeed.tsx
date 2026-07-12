@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { formatEther, formatUnits } from 'viem'
+import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
   fetchPayEventsPage,
   fetchCashOutEventsPage,
   fetchProject,
-  fetchSuckerGroupBalance,
   type PayEventHistoryItem,
   type CashOutEventHistoryItem,
 } from '../../services/bendystraw'
@@ -65,16 +64,18 @@ function formatTokenAmount(wei: string): string {
   }
 }
 
-function formatCurrencyAmount(wei: string, decimals: number, currency: number): string {
+function formatIndexedUsd(scaledUsd?: string): string {
+  if (!scaledUsd) return ''
   try {
-    const num = parseFloat(formatUnits(BigInt(wei), decimals))
-    const symbol = currency === 2 ? 'USDC' : 'ETH'
-    // More decimals for USDC display since values are often smaller
-    const precision = currency === 2 ? 2 : 4
-    return `${num.toFixed(precision)} ${symbol}`
+    const usd = Number(BigInt(scaledUsd) / 1_000_000_000_000n) / 1e6
+    if (usd <= 0) return ''
+    return usd.toLocaleString(undefined, {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: usd < 1 ? 4 : 2,
+    })
   } catch {
-    const symbol = currency === 2 ? 'USDC' : 'ETH'
-    return `${wei} ${symbol}`
+    return ''
   }
 }
 
@@ -90,9 +91,8 @@ export default function ActivityFeed({
   const [payEvents, setPayEvents] = useState<PayEventHistoryItem[]>([])
   const [cashOutEvents, setCashOutEvents] = useState<CashOutEventHistoryItem[]>([])
   const [projectName, setProjectName] = useState<string>('')
-  const [currency, setCurrency] = useState<number>(1) // 1 = ETH, 2 = USDC
-  const [decimals, setDecimals] = useState<number>(18)
   const [loading, setLoading] = useState(true)
+  const [activityError, setActivityError] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
 
@@ -118,12 +118,12 @@ export default function ActivityFeed({
       setCashOutHasMore(true)
       setPayEvents([])
       setCashOutEvents([])
+      setActivityError(false)
 
       try {
         // Fetch project info, currency info, and first page of events in parallel
-        const [project, balanceInfo, payPage, cashOutPage] = await Promise.all([
+        const [project, payPage, cashOutPage] = await Promise.all([
           fetchProject(projectId, chainIdNum),
-          fetchSuckerGroupBalance(projectId, chainIdNum),
           fetchPayEventsPage(projectId, chainIdNum, 6, PAGE_SIZE * 2),
           fetchCashOutEventsPage(projectId, chainIdNum, 6, PAGE_SIZE * 2),
         ])
@@ -131,10 +131,6 @@ export default function ActivityFeed({
         if (project?.name) {
           setProjectName(project.name)
         }
-
-        // Set currency info from balance response
-        setCurrency(balanceInfo.currency)
-        setDecimals(balanceInfo.decimals)
 
         setPayEvents(payPage.items)
         setPayCursor(payPage.endCursor)
@@ -145,6 +141,7 @@ export default function ActivityFeed({
         setCashOutHasMore(cashOutPage.hasNextPage)
       } catch (err) {
         console.error('Failed to load activity:', err)
+        setActivityError(true)
       } finally {
         setLoading(false)
       }
@@ -164,7 +161,7 @@ export default function ActivityFeed({
         txHash: e.txHash,
         timestamp: e.timestamp,
         from: e.from,
-        amount: formatCurrencyAmount(e.amount, decimals, currency),
+        amount: formatIndexedUsd(e.amountUsd),
         tokenAmount: formatTokenAmount(e.newlyIssuedTokenCount),
         memo: e.memo,
       })
@@ -177,14 +174,14 @@ export default function ActivityFeed({
         txHash: e.txHash,
         timestamp: e.timestamp,
         from: e.from,
-        amount: formatCurrencyAmount(e.reclaimAmount, decimals, currency),
+        amount: formatIndexedUsd(e.reclaimAmountUsd),
         tokenAmount: formatTokenAmount(e.cashOutCount),
       })
     }
 
     // Sort by timestamp descending (most recent first)
     return combined.sort((a, b) => b.timestamp - a.timestamp)
-  }, [payEvents, cashOutEvents, decimals, currency])
+  }, [payEvents, cashOutEvents])
 
   const displayedEvents = events.slice(0, displayCount)
   // Has more if there are more events to display OR if server has more data
@@ -227,6 +224,7 @@ export default function ActivityFeed({
       }
     } catch (err) {
       console.error('Failed to load more activity:', err)
+      setActivityError(true)
     } finally {
       setLoadingMore(false)
     }
@@ -326,7 +324,7 @@ export default function ActivityFeed({
             rel="noopener noreferrer"
             className={`text-sm font-medium hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
           >
-            {event.amount}
+            {event.amount || 'View transaction'}
           </a>
         </div>
         {event.tokenAmount && (
@@ -353,6 +351,10 @@ export default function ActivityFeed({
         {loading ? (
           <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             Loading activity...
+          </div>
+        ) : activityError && displayedEvents.length === 0 ? (
+          <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            Activity unavailable
           </div>
         ) : displayedEvents.length === 0 ? (
           <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -402,6 +404,10 @@ export default function ActivityFeed({
           {loading ? (
             <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
               Loading activity...
+            </div>
+          ) : activityError && displayedEvents.length === 0 ? (
+            <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              Activity unavailable
             </div>
           ) : displayedEvents.length === 0 ? (
             <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

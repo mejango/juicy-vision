@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import { shouldShowAdminDashboard } from './utils/subdomain'
-import ProjectDashboard from './pages/ProjectDashboard'
 
-// Lazy load admin app
+// Route-level code splitting keeps project/payment/admin dependencies out of
+// the conversational home-page bundle until a user actually opens that route.
 const AdminApp = lazy(() => import('./admin/AdminApp'))
+const ProjectDashboard = lazy(() => import('./pages/ProjectDashboard'))
+const JoinChatPage = lazy(() => import('./components/JoinChatPage'))
+const PaymentPage = lazy(() => import('./pages/pay/PaymentPage'))
+const TerminalsPage = lazy(() => import('./pages/merchant/TerminalsPage'))
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { useTranslation } from 'react-i18next'
@@ -13,17 +17,15 @@ import { EnvironmentBadge } from './components/common/EnvironmentBadge'
 import { QueryErrorPanel } from './components/debug/QueryErrorPanel'
 import { ChatContainer, ProtocolActivity, MascotPanel } from './components/chat'
 import ParticipantAvatars from './components/chat/ParticipantAvatars'
-import JoinChatPage from './components/JoinChatPage'
-import PaymentPage from './pages/pay/PaymentPage'
-import TerminalsPage from './pages/merchant/TerminalsPage'
 import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import { useChatStore, useThemeStore, type ChatMember } from './stores'
 import { useTransactionExecutor, useManagedWallet, useIsMobile } from './hooks'
 import ActionExecutor from './components/ActionExecutor'
-import { getSessionId, getSessionPseudoAddress, getCachedPseudoAddress } from './services/session'
+import { getSessionPseudoAddress, getCachedPseudoAddress } from './services/session'
 import { getWalletSession } from './services/siwe'
 import { useEnsNameResolved } from './hooks'
+import { PaymentReviewModal } from './components/payment'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +35,14 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+      <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
 
 function Header({ showActions = false }: { showActions?: boolean }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -381,7 +391,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const PROJECT_SLUG_REGEX = /^([a-z]+):(\d+)$/i
 
 // Import chain IDs from environment config for URL routing
-import { CHAIN_IDS, IS_TESTNET } from './config/environment'
+import { IS_TESTNET } from './config/environment'
 
 // Map chain slugs to chain IDs
 // URL format: /{chain}:{projectId} e.g., /op:83, /opsep:123
@@ -569,7 +579,7 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
 // Component that activates transaction execution listener
 function TransactionExecutor() {
   useTransactionExecutor()
-  return null
+  return <PaymentReviewModal />
 }
 
 // Welcome layout with simplified dock pinning
@@ -726,14 +736,12 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
 
 function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   const { theme } = useThemeStore()
-  const { activeChatId: storeActiveChatId, getActiveChat, pendingNewChat } = useChatStore()
+  const { activeChatId: storeActiveChatId, pendingNewChat } = useChatStore()
   const isMobile = useIsMobile()
   const [showMobileActivity, setShowMobileActivity] = useState(false)
 
   // Use forced value if provided, otherwise read from store
   const activeChatId = forceActiveChatId || storeActiveChatId
-  const activeChat = getActiveChat()
-
   // Show chat mode if we're viewing a specific chat (via URL or store) OR a new
   // chat is being created (pendingNewChat). Including pendingNewChat keeps this
   // layout switch in the SAME commit as ChatContainer's welcome->messages switch,
@@ -863,16 +871,18 @@ function MainApp() {
       <QueryErrorPanel />
       <AppProviders>
         <BrowserRouter>
-          <Routes>
-            <Route path="/pay/:sessionId" element={<PaymentPage />} />
-            <Route path="/merchant" element={<TerminalsPage />} />
-            <Route path="/merchant/terminals" element={<TerminalsPage />} />
-            <Route path="/join/:code" element={<JoinChatPage />} />
-            <Route path="/chat/:chatId/*" element={<ChatRouteHandler />} />
-            <Route path="/:projectSlug" element={<ProjectRouteHandler />} />
-            <Route path="/" element={<HomeRouteHandler />} />
-            <Route path="*" element={<HomeRouteHandler />} />
-          </Routes>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/pay/:sessionId" element={<PaymentPage />} />
+              <Route path="/merchant" element={<TerminalsPage />} />
+              <Route path="/merchant/terminals" element={<TerminalsPage />} />
+              <Route path="/join/:code" element={<JoinChatPage />} />
+              <Route path="/chat/:chatId/*" element={<ChatRouteHandler />} />
+              <Route path="/:projectSlug" element={<ProjectRouteHandler />} />
+              <Route path="/" element={<HomeRouteHandler />} />
+              <Route path="*" element={<HomeRouteHandler />} />
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </AppProviders>
     </ErrorBoundary>
@@ -885,11 +895,7 @@ export default function App() {
   if (shouldShowAdminDashboard()) {
     return (
       <ErrorBoundary>
-        <Suspense fallback={
-          <div className="min-h-screen flex items-center justify-center bg-zinc-950">
-            <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
-          </div>
-        }>
+        <Suspense fallback={<RouteFallback />}>
           <AdminApp />
         </Suspense>
       </ErrorBoundary>

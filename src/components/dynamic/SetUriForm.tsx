@@ -4,13 +4,15 @@ import { useThemeStore } from '../../stores'
 import { useSetUriFormState } from '../../hooks/useComponentState'
 import {
   fetchProject,
-  fetchConnectedChains,
   type Project,
-  type ConnectedChain,
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { SetUriModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
+import { useManagedWallet } from '../../hooks'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface SetUriFormProps {
   projectId: string
@@ -35,10 +37,8 @@ interface ChainProjectData {
 
 // Validate IPFS CID format (basic check)
 function isValidIpfsCid(value: string): boolean {
-  // Allow both raw CIDs and ipfs:// URIs
-  const cid = value.replace(/^ipfs:\/\//, '')
-  // Basic CID validation: starts with Qm (CIDv0) or b (CIDv1) and has reasonable length
-  return /^(Qm[a-zA-Z0-9]{44}|b[a-z2-7]{58})$/.test(cid) || cid.length >= 46
+  const cid = extractCid(value)
+  return /^(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,120})$/.test(cid)
 }
 
 // Extract CID from input (handles both raw CIDs and ipfs:// URIs)
@@ -50,6 +50,8 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { isConnected } = useAccount()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected
 
   // Persistent state
   const { state: persistedState, updateState: updatePersistedState } = useSetUriFormState(messageId)
@@ -62,6 +64,7 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
 
   // Chain state
   const [chainProjectData, setChainProjectData] = useState<ChainProjectData[]>([])
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const primaryChainId = parseInt(chainId)
 
   // Form state
@@ -73,6 +76,7 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
   const isOmnichain = chainProjectData.length > 1
   const currentUri = project?.metadataUri || ''
   const newCid = extractCid(newUri)
+  const normalizedUri = newCid ? `ipfs://${newCid}` : ''
   const isValidUri = newUri.trim() === '' || isValidIpfsCid(newUri)
   const hasChange = newCid && newCid !== extractCid(currentUri)
 
@@ -88,18 +92,14 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
       setError(null)
 
       try {
-        const [projectData, connectedChains] = await Promise.all([
+        const [projectData, chainResolution] = await Promise.all([
           fetchProject(projectId, primaryChainId),
-          fetchConnectedChains(projectId, primaryChainId),
+          resolveProjectChains(projectId, primaryChainId),
         ])
         setProject(projectData)
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
-        // Determine chains to update
-        const chainsToUpdate: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: primaryChainId, projectId: parseInt(projectId) }]
-
-        setChainProjectData(chainsToUpdate.map(chain => ({
+        setChainProjectData(chainResolution.chains.map(chain => ({
           chainId: chain.chainId,
           projectId: chain.projectId,
           selected: true,
@@ -135,6 +135,15 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
     })
   }, [updatePersistedState])
 
+  const handleStarted = useCallback(() => {
+    updatePersistedState({
+      status: 'in_progress',
+      uri: normalizedUri,
+      selectedChains: selectedChains.map(c => c.chainId),
+      submittedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState, normalizedUri, selectedChains])
+
   const handleError = useCallback((errorMsg: string) => {
     updatePersistedState({
       status: 'failed',
@@ -147,21 +156,21 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
     if (isLocked || selectedChains.length === 0) return
     if (!newCid || !isValidUri) return
 
-    if (!isConnected) {
+    if (!hasActiveWallet) {
       openWalletPanel()
       return
     }
 
-    // Persist in_progress state
+    // Save reviewed inputs without claiming execution has started.
     updatePersistedState({
-      status: 'in_progress',
-      uri: newCid,
+      status: 'pending',
+      uri: normalizedUri,
       selectedChains: selectedChains.map(c => c.chainId),
       submittedAt: new Date().toISOString(),
     })
 
     setShowModal(true)
-  }, [isLocked, selectedChains, newCid, isValidUri, isConnected, updatePersistedState])
+  }, [isLocked, selectedChains, newCid, normalizedUri, isValidUri, hasActiveWallet, updatePersistedState])
 
   // Loading state
   if (loading) {
@@ -201,11 +210,12 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
       <div className={`max-w-2xl border ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Header */}
         <div className="p-4 border-b border-gray-600/50">
           <div className="flex items-center gap-3">
             {logoUrl ? (
-              <img src={logoUrl} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" />
+              <IpfsImage uri={project?.logoUri} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" fallback={<div className="w-14 h-14 bg-purple-500/20" />} />
             ) : (
               <div className="w-14 h-14 bg-purple-500/20 flex items-center justify-center">
                 <span className="text-2xl">📝</span>
@@ -420,8 +430,9 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
           onClose={() => setShowModal(false)}
           projectName={project?.name}
           chainProjectData={selectedChains}
-          newUri={newCid}
+          newUri={normalizedUri}
           currentUri={currentUri}
+          onStarted={handleStarted}
           onConfirmed={handleConfirmed}
           onError={handleError}
         />

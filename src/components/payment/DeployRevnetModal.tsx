@@ -1,16 +1,21 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { useAccount } from 'wagmi'
+import { formatEther, isAddress, keccak256, toBytes } from 'viem'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
-import { useOmnichainDeployRevnet, useOmnichainDeploySuckers } from '../../hooks/relayr'
+import { useOmnichainDeployRevnet } from '../../hooks/relayr'
 import { type REVStageConfig } from '../../services/relayr'
-import type { JBDeployTiersHookConfig } from '../../services/omnichainDeployer'
-import { CHAINS, EXPLORER_URLS, REV_DEPLOYER, JB_SUCKER_REGISTRY } from '../../constants'
+import {
+  fetchProjectCreationFee,
+  type JBDeployTiersHookConfig,
+} from '../../services/omnichainDeployer'
+import { CHAINS, EXPLORER_URLS, REV_DEPLOYER } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyDeployRevnetParams } from '../../utils/transactionVerification'
+import { isIpfsUri } from '../../utils/ipfs'
+import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 
 const CHAIN_NAMES: Record<number, string> = {
   1: 'Ethereum',
@@ -19,12 +24,20 @@ const CHAIN_NAMES: Record<number, string> = {
   42161: 'Arbitrum',
 }
 
+function revnetDeploymentKey(value: unknown): string {
+  return keccak256(toBytes(JSON.stringify(
+    value,
+    (_key, item) => typeof item === 'bigint' ? item.toString() : item,
+  )))
+}
+
 interface DeployRevnetModalProps {
   isOpen: boolean
   onClose: () => void
   name: string
-  ticker?: string
+  ticker: string
   tagline: string
+  projectUri: string
   splitOperator: string
   chainIds: number[]
   stageConfigurations: REVStageConfig[]
@@ -33,14 +46,13 @@ interface DeployRevnetModalProps {
   deployTiersHookConfig?: JBDeployTiersHookConfig
 }
 
-type DeployPhase = 'revnet' | 'suckers' | 'complete'
-
 export default function DeployRevnetModal({
   isOpen,
   onClose,
   name,
   ticker,
   tagline,
+  projectUri,
   splitOperator,
   chainIds,
   stageConfigurations,
@@ -52,12 +64,39 @@ export default function DeployRevnetModal({
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
 
-  const { isConnected } = useAccount()
   const { address: managedAddress } = useManagedWallet()
+  const { assertCurrentAccount } = useReviewedTransactionAccount(
+    isOpen,
+    managedAddress,
+    'managed',
+  )
 
   const [hasStarted, setHasStarted] = useState(false)
-  const [phase, setPhase] = useState<DeployPhase>('revnet')
   const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
+  const [creationFeesWei, setCreationFeesWei] = useState<Record<number, bigint>>({})
+  const [creationFeesLoading, setCreationFeesLoading] = useState(false)
+  const [creationFeeError, setCreationFeeError] = useState<string | null>(null)
+  const deploymentKey = useMemo(() => revnetDeploymentKey({
+    chainIds,
+    stageConfigurations,
+    splitOperator,
+    name,
+    ticker,
+    tagline,
+    projectUri,
+    autoDeploySuckers,
+    deployTiersHookConfig,
+  }), [
+    chainIds,
+    stageConfigurations,
+    splitOperator,
+    name,
+    ticker,
+    tagline,
+    projectUri,
+    autoDeploySuckers,
+    deployTiersHookConfig,
+  ])
 
   // Revnet deployment hook
   const {
@@ -68,56 +107,23 @@ export default function DeployRevnetModal({
     hasError: revnetError,
     createdProjectIds,
     predictedTokenAddress,
+    persistedTxHashes,
     reset: resetRevnet,
   } = useOmnichainDeployRevnet({
+    deploymentKey,
     onSuccess: (bundleId, txHashes) => {
       console.log('Revnet deployed:', bundleId, txHashes)
-      if (autoDeploySuckers && chainIds.length > 1) {
-        setPhase('suckers')
-      } else {
-        setPhase('complete')
-      }
     },
     onError: (error) => {
       console.error('Revnet deployment failed:', error)
     },
   })
 
-  // Sucker deployment hook
-  const {
-    deploySuckers,
-    bundleState: suckerBundleState,
-    isDeploying: isDeployingSuckers,
-    isComplete: suckersComplete,
-    hasError: suckersError,
-    suckerAddresses,
-    reset: resetSuckers,
-  } = useOmnichainDeploySuckers({
-    onSuccess: (bundleId, txHashes) => {
-      console.log('Suckers deployed:', bundleId, txHashes)
-      setPhase('complete')
-    },
-    onError: (error) => {
-      console.error('Sucker deployment failed:', error)
-    },
-  })
-
-  // Auto-deploy suckers when revnet completes
-  useEffect(() => {
-    if (phase === 'suckers' && revnetComplete && Object.keys(createdProjectIds).length > 0) {
-      deploySuckers({
-        chainIds,
-        projectIds: createdProjectIds,
-      })
-    }
-  }, [phase, revnetComplete, createdProjectIds, chainIds, deploySuckers])
-
-  const isDeploying = isDeployingRevnet || isDeployingSuckers
-  const allComplete = phase === 'complete' || (!autoDeploySuckers && revnetComplete)
-  const hasError = revnetError || suckersError
+  const isDeploying = isDeployingRevnet
+  const allComplete = revnetComplete
+  const hasError = revnetError
 
   // Slow-chain detection
-  const [slowChainDismissed, setSlowChainDismissed] = useState(false)
   const [tick, setTick] = useState(0)
   const SLOW_CHAIN_THRESHOLD_MS = 90_000
 
@@ -127,13 +133,9 @@ export default function DeployRevnetModal({
     return () => clearInterval(id)
   }, [isDeploying])
 
-  useEffect(() => {
-    if (!isDeploying) setSlowChainDismissed(false)
-  }, [isDeploying])
-
   const { slowChainIds, hasSlowChains } = useMemo(() => {
     void tick
-    const bs = phase === 'suckers' ? suckerBundleState : revnetBundleState
+    const bs = revnetBundleState
     const startedAt = bs.processingStartedAt
     if (!startedAt || !isDeploying) {
       return { slowChainIds: [] as number[], hasSlowChains: false }
@@ -148,58 +150,111 @@ export default function DeployRevnetModal({
       .map(cs => cs.chainId)
     const hasSlow = hasConfirmed && stuck.length > 0
     return { slowChainIds: hasSlow ? stuck : [], hasSlowChains: hasSlow }
-  }, [tick, phase, suckerBundleState, revnetBundleState, isDeploying])
+  }, [tick, revnetBundleState, isDeploying])
 
   // Verify transaction parameters
   const verificationResult = useMemo(() => {
     return verifyDeployRevnetParams({
       splitOperator: splitOperator as `0x${string}`,
       name,
+      ticker,
       tagline,
+      projectUri,
       chainIds,
       stageConfigurations,
     })
-  }, [splitOperator, name, tagline, chainIds, stageConfigurations])
+  }, [splitOperator, name, ticker, tagline, projectUri, chainIds, stageConfigurations])
 
   const hasWarnings = verificationResult.doubts.length > 0
-  const canProceed = !hasWarnings || warningsAcknowledged
+  const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
+  const creationFeesReady = chainIds.every(chainId => creationFeesWei[chainId] !== undefined)
+  const totalCreationFee = Object.values(creationFeesWei).reduce((total, fee) => total + fee, 0n)
+  const operatorMatchesManagedAccount = !!managedAddress &&
+    isAddress(splitOperator) &&
+    splitOperator.toLowerCase() === managedAddress.toLowerCase()
+  const canProceed = operatorMatchesManagedAccount &&
+    isManagedMode &&
+    !hasCriticalDoubts &&
+    (!hasWarnings || warningsAcknowledged) &&
+    creationFeesReady &&
+    !creationFeesLoading &&
+    isIpfsUri(projectUri, false)
+
+  useEffect(() => {
+    if (!isOpen || chainIds.length === 0) return
+    let cancelled = false
+    setCreationFeesLoading(true)
+    setCreationFeeError(null)
+    Promise.all(chainIds.map(async chainId => [chainId, await fetchProjectCreationFee(chainId)] as const))
+      .then(entries => {
+        if (!cancelled) setCreationFeesWei(Object.fromEntries(entries))
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setCreationFeesWei({})
+          setCreationFeeError(err instanceof Error ? err.message : 'Project creation fee unavailable')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCreationFeesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, chainIds])
 
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setHasStarted(false)
-      setPhase('revnet')
       setWarningsAcknowledged(false)
       resetRevnet()
-      resetSuckers()
     }
-  }, [isOpen, resetRevnet, resetSuckers])
+  }, [isOpen, resetRevnet])
+
+  useEffect(() => {
+    if (isOpen && (isDeploying || allComplete)) setHasStarted(true)
+  }, [isOpen, isDeploying, allComplete])
 
   const handleDeploy = useCallback(async () => {
-    if (!splitOperator) return
-
-    setHasStarted(true)
-    await deploy({
-      chainIds,
-      stageConfigurations,
-      splitOperator,
-      name,
-      ticker,
-      tagline,
-      deployTiersHookConfig,
-    })
-  }, [splitOperator, chainIds, stageConfigurations, name, ticker, tagline, deployTiersHookConfig, deploy])
+    if (!isManagedMode || !managedAddress || !operatorMatchesManagedAccount) return
+    try {
+      assertCurrentAccount()
+      const freshFees = Object.fromEntries(await Promise.all(
+        chainIds.map(async chainId => [chainId, await fetchProjectCreationFee(chainId)] as const),
+      ))
+      for (const chainId of chainIds) {
+        if (freshFees[chainId] !== creationFeesWei[chainId]) {
+          setCreationFeesWei(freshFees)
+          throw new Error('The project creation fee changed. Review the updated fee before continuing.')
+        }
+      }
+      setHasStarted(true)
+      assertCurrentAccount()
+      await deploy({
+        chainIds,
+        stageConfigurations,
+        splitOperator,
+        name,
+        ticker,
+        tagline,
+        projectUri,
+        configureSuckers: autoDeploySuckers && chainIds.length > 1,
+        deployTiersHookConfig,
+      })
+    } catch (err) {
+      setCreationFeeError(err instanceof Error ? err.message : 'Project creation fee unavailable')
+    }
+  }, [splitOperator, chainIds, stageConfigurations, name, ticker, tagline, projectUri, autoDeploySuckers, deployTiersHookConfig, deploy, isManagedMode, managedAddress, operatorMatchesManagedAccount, creationFeesWei, assertCurrentAccount])
 
   const handleClose = useCallback(() => {
     resetRevnet()
-    resetSuckers()
     onClose()
-  }, [resetRevnet, resetSuckers, onClose])
+  }, [resetRevnet, onClose])
 
   if (!isOpen) return null
 
-  // Choose which bundle state to show based on phase
-  const activeBundleState = phase === 'suckers' ? suckerBundleState : revnetBundleState
+  const activeBundleState = revnetBundleState
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -233,11 +288,9 @@ export default function DeployRevnetModal({
                   ? 'Revnet Deployed'
                   : hasError
                     ? 'Deployment Failed'
-                    : phase === 'suckers'
-                      ? 'Deploying Suckers...'
-                      : hasStarted
-                        ? 'Deploying Revnet...'
-                        : 'Deploy Revnet'}
+                    : hasStarted
+                      ? 'Deploying Revnet...'
+                      : 'Deploy Revnet'}
               </h2>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 {name || 'New Revnet'}
@@ -260,47 +313,22 @@ export default function DeployRevnetModal({
 
         {/* Content */}
         <div className="p-5 space-y-4">
-          {/* Phase indicator */}
+          {/* Atomic deployment indicator */}
           {hasStarted && (
             <div className={`p-3 ${isDark ? 'bg-purple-500/10' : 'bg-purple-50'}`}>
-              <div className="flex items-center gap-4">
-                <div className={`flex items-center gap-2 ${
-                  phase === 'revnet' || revnetComplete ? 'opacity-100' : 'opacity-50'
-                }`}>
+              <div className="flex items-center gap-2">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                     revnetComplete
                       ? 'bg-green-500 text-white'
-                      : phase === 'revnet'
-                        ? 'bg-purple-500 text-white'
-                        : isDark ? 'bg-white/10 text-gray-400' : 'bg-gray-200 text-gray-500'
+                      : 'bg-purple-500 text-white'
                   }`}>
                     {revnetComplete ? '✓' : '1'}
                   </div>
                   <span className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                    Revnet
+                    {autoDeploySuckers && chainIds.length > 1
+                      ? 'Revnet and cross-chain bridges'
+                      : 'Revnet'}
                   </span>
-                </div>
-
-                <div className={`flex-1 h-px ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-
-                {autoDeploySuckers && chainIds.length > 1 && (
-                  <div className={`flex items-center gap-2 ${
-                    phase === 'suckers' || suckersComplete ? 'opacity-100' : 'opacity-50'
-                  }`}>
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      suckersComplete
-                        ? 'bg-green-500 text-white'
-                        : phase === 'suckers'
-                          ? 'bg-purple-500 text-white'
-                          : isDark ? 'bg-white/10 text-gray-400' : 'bg-gray-200 text-gray-500'
-                    }`}>
-                      {suckersComplete ? '✓' : '2'}
-                    </div>
-                    <span className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                      Suckers
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -310,8 +338,10 @@ export default function DeployRevnetModal({
             {chainIds.map((chainId) => {
               const chain = CHAINS[chainId]
               const chainState = activeBundleState.chainStates.find(cs => cs.chainId === chainId)
+              const persistedHash = persistedTxHashes?.[chainId]
+              const displayStatus = chainState?.status || (persistedHash ? 'confirmed' : undefined)
+              const displayHash = chainState?.txHash || persistedHash
               const projectId = createdProjectIds[chainId]
-              const suckerAddr = suckerAddresses[chainId]
 
               return (
                 <div
@@ -335,32 +365,32 @@ export default function DeployRevnetModal({
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {!chainState && (
+                    {!displayStatus && (
                       <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         Waiting...
                       </span>
                     )}
-                    {chainState?.status === 'pending' && (
+                    {displayStatus === 'pending' && (
                       slowChainIds.includes(chainId)
                         ? <span className="text-xs text-amber-500">Slow</span>
                         : <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Pending</span>
                     )}
-                    {chainState?.status === 'submitted' && (
+                    {displayStatus === 'submitted' && (
                       slowChainIds.includes(chainId)
                         ? <span className="text-xs text-amber-500">Slow</span>
                         : <div className="flex items-center gap-2">
                             <div className="animate-spin w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full" />
                             <span className={`text-xs ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>
-                              {phase === 'suckers' ? 'Deploying sucker...' : 'Creating...'}
+                              Creating...
                             </span>
                           </div>
                     )}
-                    {chainState?.status === 'confirmed' && (
+                    {displayStatus === 'confirmed' && (
                       <div className="flex items-center gap-2">
                         <span className="text-green-500">✓</span>
-                        {chainState.txHash && (
+                        {displayHash && (
                           <a
-                            href={`${EXPLORER_URLS[chainId]}${chainState.txHash}`}
+                            href={`${EXPLORER_URLS[chainId]}${displayHash}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-juice-cyan hover:underline"
@@ -370,7 +400,7 @@ export default function DeployRevnetModal({
                         )}
                       </div>
                     )}
-                    {chainState?.status === 'failed' && (
+                    {displayStatus === 'failed' && (
                       <span className="text-xs text-red-400">
                         Failed
                       </span>
@@ -382,16 +412,16 @@ export default function DeployRevnetModal({
           </div>
 
           {/* Error details */}
-          {hasError && (revnetBundleState.error || suckerBundleState.error) && (
+          {hasError && revnetBundleState.error && (
             <div className={`p-3 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
               <span className={`text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-                {revnetBundleState.error || suckerBundleState.error}
+                {revnetBundleState.error}
               </span>
             </div>
           )}
 
           {/* Pre-deploy info */}
-          {!hasStarted && (
+          {!hasStarted && !allComplete && (
             <>
               {/* Stages summary */}
               <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
@@ -424,7 +454,7 @@ export default function DeployRevnetModal({
                     Auto-Deploy Suckers
                   </div>
                   <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Cross-chain token bridging will be enabled after revnet creation
+                    Cross-chain bridges will be deployed atomically with the revnet
                   </div>
                 </div>
               )}
@@ -435,9 +465,25 @@ export default function DeployRevnetModal({
                   Gas Sponsored
                 </div>
                 <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Revnet deployment on all {chainIds.length} chain{chainIds.length !== 1 ? 's' : ''} is free
+                  {creationFeesLoading
+                    ? 'Checking the protocol creation fee...'
+                    : !creationFeesReady
+                      ? creationFeeError
+                      : `${creationFeeError ? `${creationFeeError} ` : ''}Protocol creation fee included: ${formatEther(totalCreationFee)} ETH total across ${chainIds.length} chain${chainIds.length !== 1 ? 's' : ''}.`}
                 </div>
               </div>
+
+              {!isManagedMode && (
+                <div className={`p-3 text-xs ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-800'}`}>
+                  Revnet deployment is unavailable until you sign in with a managed wallet.
+                </div>
+              )}
+
+              {isManagedMode && !operatorMatchesManagedAccount && (
+                <div className={`p-3 text-xs ${isDark ? 'bg-red-500/10 text-red-300' : 'bg-red-50 text-red-800'}`}>
+                  Deployment blocked: the revnet operator must be your active managed account.
+                </div>
+              )}
 
               {/* Transaction Summary */}
               <TransactionSummary
@@ -479,25 +525,6 @@ export default function DeployRevnetModal({
                 }))}
               />
 
-              {/* Technical Details - Sucker Deployment (if enabled) */}
-              {autoDeploySuckers && chainIds.length > 1 && (
-                <TechnicalDetails
-                  contract="JB_SUCKER_REGISTRY"
-                  contractAddress={JB_SUCKER_REGISTRY}
-                  functionName="deploySuckersFor"
-                  chainId={chainIds[0]}
-                  parameters={{
-                    note: 'Suckers will be deployed after revnet creation',
-                    chainIds,
-                    projectIds: 'TBD after revnet deploys',
-                  }}
-                  isDark={isDark}
-                  allChains={chainIds.map(cid => ({
-                    chainId: cid,
-                    chainName: CHAIN_NAMES[cid] || `Chain ${cid}`,
-                  }))}
-                />
-              )}
             </>
           )}
 
@@ -507,9 +534,7 @@ export default function DeployRevnetModal({
               <div className="animate-spin w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full" />
               <div>
                 <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {phase === 'suckers'
-                    ? 'Deploying suckers...'
-                    : activeBundleState.status === 'creating'
+                  {activeBundleState.status === 'creating'
                       ? 'Creating bundle...'
                       : 'Deploying revnet...'}
                 </p>
@@ -542,6 +567,12 @@ export default function DeployRevnetModal({
                 ))}
               </div>
 
+              {Object.keys(createdProjectIds).length === 0 && (
+                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Project IDs could not be decoded yet. Use the confirmed transaction links below to verify them.
+                </div>
+              )}
+
               {/* Token address */}
               {predictedTokenAddress && (
                 <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -549,8 +580,7 @@ export default function DeployRevnetModal({
                 </div>
               )}
 
-              {/* Sucker addresses */}
-              {Object.keys(suckerAddresses).length > 0 && (
+              {autoDeploySuckers && chainIds.length > 1 && (
                 <div className={`mt-2 pt-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
                   <div className={`text-xs font-medium mb-1 ${isDark ? 'text-juice-cyan' : 'text-cyan-700'}`}>
                     Suckers Deployed

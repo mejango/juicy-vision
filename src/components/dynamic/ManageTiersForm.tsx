@@ -1,27 +1,32 @@
-import { useState, useEffect, useCallback } from 'react'
-import { formatEther } from 'viem'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { formatUnits } from 'viem'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { useManageTiersFormState } from '../../hooks/useComponentState'
+import { useManagedWallet } from '../../hooks'
 import {
   fetchProject,
-  fetchConnectedChains,
   type Project,
-  type ConnectedChain,
 } from '../../services/bendystraw'
 import {
   getProjectDataHook,
   fetchNFTTiersWithPermissions,
   fetchHookFlags,
+  fetchNFTPricingContext,
+  getEffectiveTierPrice,
   type NFTTierWithPermissions,
   type JB721HookFlags,
 } from '../../services/nft'
+import { isUsdcCurrency } from '../../utils/technicalDetails'
 import type { JB721TierConfigInput } from '../../services/tiersHook'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import TierPermissionsAlert from './TierPermissionsAlert'
 import TierEditor, { type TierMetadata } from './TierEditor'
 import { ManageTiersModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface ManageTiersFormProps {
   projectId: string
@@ -41,8 +46,6 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string
 interface PendingChanges {
   tiersToAdd: Array<{ config: JB721TierConfigInput; metadata: TierMetadata }>
   tierIdsToRemove: number[]
-  metadataUpdates: Array<{ tierId: number; uri: string; metadata: TierMetadata }>
-  discountUpdates: Array<{ tierId: number; discountPercent: number }>
 }
 
 // Per-chain hook data
@@ -51,7 +54,9 @@ interface ChainHookData {
   projectId: number
   hookAddress: `0x${string}` | null
   flags: JB721HookFlags | null
+  pricing: { currency: number; decimals: number } | null
   tiers: NFTTierWithPermissions[]
+  error?: string
   selected: boolean
 }
 
@@ -60,6 +65,8 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
   const { pinataJwt } = useSettingsStore()
   const isDark = theme === 'dark'
   const { isConnected } = useAccount()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected
 
   // Persistent state for transaction status
   const { state: persistedState, updateState: updatePersistedState } = useManageTiersFormState(messageId)
@@ -74,17 +81,14 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
 
   // Chain & hook state
   const [chainHookData, setChainHookData] = useState<ChainHookData[]>([])
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
 
   // Editing state
   const [showEditor, setShowEditor] = useState(false)
-  const [editingTier, setEditingTier] = useState<NFTTierWithPermissions | null>(null)
-
   // Pending changes
   const [pendingChanges, setPendingChanges] = useState<PendingChanges>({
     tiersToAdd: [],
     tierIdsToRemove: [],
-    metadataUpdates: [],
-    discountUpdates: [],
   })
 
   // Modal state
@@ -96,14 +100,22 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
   const isOmnichain = chainHookData.length > 1
   const primaryHookData = chainHookData.find(cd => cd.chainId === primaryChainId) || chainHookData[0]
   const hookFlags = primaryHookData?.flags
-  const currentTiers = primaryHookData?.tiers || []
+  const pricing = primaryHookData?.pricing
+  const currentTiers = useMemo(() => primaryHookData?.tiers || [], [primaryHookData?.tiers])
+  const pricingMismatch = selectedChains.some(chainData =>
+    !chainData.pricing ||
+    !pricing ||
+    chainData.pricing.currency !== pricing.currency ||
+    chainData.pricing.decimals !== pricing.decimals
+  )
+  const pricingRecognized = !!pricing && (
+    pricing.currency === 1 || pricing.currency === 2 || isUsdcCurrency(pricing.currency)
+  )
 
   // Check if there are any pending changes
   const hasPendingChanges =
     pendingChanges.tiersToAdd.length > 0 ||
-    pendingChanges.tierIdsToRemove.length > 0 ||
-    pendingChanges.metadataUpdates.length > 0 ||
-    pendingChanges.discountUpdates.length > 0
+    pendingChanges.tierIdsToRemove.length > 0
 
   // Dispatch event to open wallet panel
   const openWalletPanel = () => {
@@ -134,19 +146,15 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
 
       try {
         // Fetch project data
-        const [projectData, connectedChains] = await Promise.all([
+        const [projectData, chainResolution] = await Promise.all([
           fetchProject(projectId, primaryChainId),
-          fetchConnectedChains(projectId, primaryChainId),
+          resolveProjectChains(projectId, primaryChainId),
         ])
         setProject(projectData)
-
-        // Determine chains to fetch
-        const chainsToFetch: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: primaryChainId, projectId: parseInt(projectId) }]
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
         // Fetch hook data from all chains in parallel
-        const hookDataPromises = chainsToFetch.map(async (chain): Promise<ChainHookData> => {
+        const hookDataPromises = chainResolution.chains.map(async (chain): Promise<ChainHookData> => {
           try {
             const hookAddress = await getProjectDataHook(String(chain.projectId), chain.chainId)
 
@@ -156,14 +164,17 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
                 projectId: chain.projectId,
                 hookAddress: null,
                 flags: null,
+                pricing: null,
                 tiers: [],
-                selected: true,
+                error: 'No recognized NFT hook configured',
+                selected: false,
               }
             }
 
-            const [flags, tiers] = await Promise.all([
+            const [flags, tiers, pricingContext] = await Promise.all([
               fetchHookFlags(hookAddress, chain.chainId),
               fetchNFTTiersWithPermissions(hookAddress, chain.chainId),
+              fetchNFTPricingContext(hookAddress, chain.chainId),
             ])
 
             return {
@@ -171,8 +182,9 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
               projectId: chain.projectId,
               hookAddress,
               flags,
+              pricing: pricingContext,
               tiers,
-              selected: true,
+              selected: chain.chainId === primaryChainId && chain.projectId === parseInt(projectId),
             }
           } catch (err) {
             console.error(`Failed to fetch hook data for chain ${chain.chainId}:`, err)
@@ -181,8 +193,10 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
               projectId: chain.projectId,
               hookAddress: null,
               flags: null,
+              pricing: null,
               tiers: [],
-              selected: true,
+              error: err instanceof Error ? err.message : 'Could not verify NFT hook',
+              selected: false,
             }
           }
         })
@@ -193,7 +207,7 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
         // Check if any chain has a hook
         const hasHook = allHookData.some(cd => cd.hookAddress)
         if (!hasHook) {
-          setError('No NFT collection configured for this project')
+          setError(allHookData.find(cd => cd.error)?.error || 'No NFT collection configured for this project')
         }
       } catch (err) {
         console.error('Failed to load project:', err)
@@ -214,6 +228,13 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
       )
     )
   }, [])
+
+  const incompatibleRemoval = selectedChains.find(chainData =>
+    pendingChanges.tierIdsToRemove.some(tierId => {
+      const tier = chainData.tiers.find(candidate => candidate.tierId === tierId)
+      return !tier || tier.permissions.cannotBeRemoved
+    })
+  )
 
   // Add new tier
   const handleAddTier = useCallback((config: JB721TierConfigInput, metadata: TierMetadata) => {
@@ -258,32 +279,21 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
 
   // Handle submit
   const handleSubmit = useCallback(() => {
-    if (!hasPendingChanges || isLocked) return
+    if (!hasPendingChanges || isLocked || incompatibleRemoval || pricingMismatch || !pricingRecognized) return
 
-    if (!isConnected) {
+    if (!hasActiveWallet) {
       openWalletPanel()
       return
     }
 
-    // Persist in_progress state
-    updatePersistedState({
-      status: 'in_progress',
-      tiersToAddCount: pendingChanges.tiersToAdd.length,
-      tierIdsToRemove: pendingChanges.tierIdsToRemove,
-      metadataUpdatesCount: pendingChanges.metadataUpdates.length + pendingChanges.discountUpdates.length,
-      submittedAt: new Date().toISOString(),
-    })
-
     setShowModal(true)
-  }, [hasPendingChanges, isConnected, isLocked, pendingChanges, updatePersistedState])
+  }, [hasPendingChanges, hasActiveWallet, isLocked, incompatibleRemoval, pricingMismatch, pricingRecognized])
 
   // Reset after successful transaction
   const handleTransactionComplete = useCallback((txHash?: string) => {
     setPendingChanges({
       tiersToAdd: [],
       tierIdsToRemove: [],
-      metadataUpdates: [],
-      discountUpdates: [],
     })
     setShowModal(false)
     // Update persisted state
@@ -339,11 +349,12 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
       <div className={`max-w-2xl border ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Header */}
         <div className="p-4 border-b border-gray-600/50">
           <div className="flex items-center gap-3">
             {logoUrl ? (
-              <img src={logoUrl} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" />
+              <IpfsImage uri={project?.logoUri} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" fallback={<div className="w-14 h-14 bg-purple-500/20" />} />
             ) : (
               <div className="w-14 h-14 bg-purple-500/20 flex items-center justify-center">
                 <span className="text-2xl">NFT</span>
@@ -429,7 +440,7 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
                 >
                   {/* Image */}
                   {imageUrl ? (
-                    <img src={imageUrl} alt={tier.name} className="w-12 h-12 object-cover" />
+                    <IpfsImage uri={tier.imageUri} fallbackSrc={imageUrl} alt={tier.name} className="w-12 h-12 object-cover" fallback={<div className={`w-12 h-12 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />} />
                   ) : (
                     <div className={`w-12 h-12 flex items-center justify-center ${
                       isDark ? 'bg-white/10' : 'bg-gray-200'
@@ -451,7 +462,7 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
                       )}
                     </div>
                     <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {formatEther(tier.price)} ETH · {tier.remainingSupply}/{tier.initialSupply} left
+                      {formatUnits(getEffectiveTierPrice(tier), tier.pricingDecimals)} {tier.currency === 2 || isUsdcCurrency(tier.currency) ? 'USD' : 'ETH'} · {tier.remainingSupply}/{tier.initialSupply} left
                     </div>
                   </div>
 
@@ -520,7 +531,7 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
                         {metadata.name}
                       </div>
                       <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {formatEther(BigInt(config.price))} ETH · {config.initialSupply} supply
+                        {formatUnits(BigInt(config.price), pricing?.decimals ?? 18)} {pricing && (pricing.currency === 2 || isUsdcCurrency(pricing.currency)) ? 'USD' : 'ETH'} · {config.initialSupply} supply
                       </div>
                     </div>
                     <button
@@ -550,25 +561,12 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
           {showEditor && hookFlags && (
             <div className="mb-4">
               <TierEditor
-                existingTier={editingTier ? {
-                  tierId: editingTier.tierId,
-                  name: editingTier.name,
-                  description: editingTier.description,
-                  imageUri: editingTier.imageUri,
-                  price: editingTier.price.toString(),
-                  initialSupply: editingTier.initialSupply,
-                  votingUnits: Number(editingTier.votingUnits),
-                  reserveFrequency: editingTier.reservedRate,
-                  category: editingTier.category,
-                  allowOwnerMint: editingTier.allowOwnerMint,
-                  transfersPausable: editingTier.transfersPausable,
-                  permissions: editingTier.permissions,
-                } : undefined}
                 hookFlags={hookFlags}
+                currencyLabel={pricing && (pricing.currency === 2 || isUsdcCurrency(pricing.currency)) ? 'USD' : 'ETH'}
+                pricingDecimals={pricing?.decimals ?? 18}
                 onSave={handleAddTier}
                 onCancel={() => {
                   setShowEditor(false)
-                  setEditingTier(null)
                 }}
                 pinataJwt={pinataJwt}
               />
@@ -576,7 +574,17 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
           )}
 
           {/* Add Tier Button */}
-          {!showEditor && !isLocked && (
+          {!pricingRecognized && (
+            <p className={`mb-3 text-xs ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
+              Tier pricing currency not recognized. Changes are unavailable.
+            </p>
+          )}
+          {pricingMismatch && (
+            <p className={`mb-3 text-xs ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
+              Selected chains use different tier pricing. Update one chain at a time.
+            </p>
+          )}
+          {!showEditor && !isLocked && pricingRecognized && !pricingMismatch && (
             <button
               onClick={() => setShowEditor(true)}
               className={`w-full py-3 text-sm font-medium border-2 border-dashed transition-colors ${
@@ -653,6 +661,11 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
 
             {!isLocked && (
               <>
+                {incompatibleRemoval && (
+                  <div className={`mb-3 p-3 text-xs ${isDark ? 'bg-red-500/10 text-red-300' : 'bg-red-50 text-red-700'}`}>
+                    A selected chain does not have every removable tier in the same unlocked state.
+                  </div>
+                )}
                 <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   {pendingChanges.tiersToAdd.length > 0 && (
                     <span className="text-green-500">+{pendingChanges.tiersToAdd.length} add </span>
@@ -667,9 +680,9 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
 
                 <button
                   onClick={handleSubmit}
-                  disabled={selectedChains.length === 0 || isLocked}
+                  disabled={selectedChains.length === 0 || isLocked || !!incompatibleRemoval || pricingMismatch || !pricingRecognized}
                   className={`w-full py-3 text-sm font-bold transition-colors ${
-                    selectedChains.length === 0 || isLocked
+                    selectedChains.length === 0 || isLocked || incompatibleRemoval || pricingMismatch || !pricingRecognized
                       ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                       : 'bg-juice-orange hover:bg-juice-orange/90 text-black'
                   }`}
@@ -689,7 +702,9 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
           onClose={() => setShowModal(false)}
           projectName={project?.name}
           chainHookData={selectedChains}
-          pendingChanges={pendingChanges}
+        pendingChanges={pendingChanges}
+        pricingCurrency={pricing?.currency ?? 0}
+        pricingDecimals={pricing?.decimals ?? 0}
           onComplete={handleTransactionComplete}
           onError={handleError}
         />

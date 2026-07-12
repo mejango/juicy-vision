@@ -11,19 +11,19 @@
  * 4. Attachment Summaries - Document extracts (preserved independently)
  */
 
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
 import {
-  getTransactionState,
-  formatStateForPrompt,
   ChatTransactionState,
+  formatStateForPrompt,
+  getTransactionState,
 } from './transactionState.ts';
 import {
-  getLatestSummary,
-  getAttachmentSummaries,
-  estimateTokens,
-  ChatSummary,
   AttachmentSummary,
+  ChatSummary,
+  estimateTokens,
+  getAttachmentSummaries,
+  getLatestSummary,
 } from './summarization.ts';
 import { getContextForSystemPrompt } from './userContext.ts';
 import { getTrendingContext } from './trendingContext.ts';
@@ -31,31 +31,26 @@ import type { ChatMessage } from './claude.ts';
 import {
   BASE_PROMPT,
   DATA_QUERY_CONTEXT,
-  HOOK_DEVELOPER_CONTEXT,
-  TRANSACTION_CONTEXT,
   EXAMPLE_INTERACTIONS,
+  HOOK_DEVELOPER_CONTEXT,
   INTENT_HINTS,
   MODULE_TOKENS,
+  TRANSACTION_CONTEXT,
 } from '@shared/prompts.ts';
 import {
-  TRANSACTION_SUB_MODULES,
-  TRANSACTION_CORE,
-  TRANSACTION_CORE_TOKEN_ESTIMATE,
-  matchSubModulesByKeywords,
   buildTransactionContext,
   estimateSubModuleTokens,
-  type SubModule,
+  matchSubModulesByKeywords,
+  TRANSACTION_CORE,
+  TRANSACTION_CORE_TOKEN_ESTIMATE,
 } from '@shared/prompts/index.ts';
-import {
-  generateChainTable,
-  generateChainConfigs,
-  getPrimaryChainId,
-} from '@shared/chains.ts';
+import { CONTRACTS, generateChainTable, getPrimaryChainId } from '@shared/chains.ts';
 
 // Juicebox V6 terminal addresses (same on every chain, mainnets and testnets, via CREATE2)
 const JB_V6_CONTRACTS = {
-  JBMultiTerminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
-  JBRouterTerminal: '0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7',
+  JBMultiTerminal: CONTRACTS.JBMultiTerminal,
+  JBRouterTerminal: CONTRACTS.JBRouterTerminal,
+  JBRouterTerminalRegistry: CONTRACTS.JBRouterTerminalRegistry,
 } as const;
 
 // ============================================================================
@@ -134,7 +129,6 @@ export const TOKEN_BUDGET = {
   // Variable allocations (with safety margin for approximation errors)
   attachmentSummaries: Math.floor(3000 * TOKEN_SAFETY_MARGIN), // ~2400
   summaries: Math.floor(10000 * TOKEN_SAFETY_MARGIN), // ~8000
-
   // Remainder goes to recent messages
   // recentMessages = total - fixed - variable = ~35600 (more headroom after safety margin)
 };
@@ -162,22 +156,22 @@ export interface DetectedIntents {
  * 3. User's experience level (from userContext)
  * 4. Active project being discussed
  */
-export async function detectIntentsWithContext(
+export function detectIntentsWithContext(
   messages: ChatMessage[],
   transactionState?: ChatTransactionState | null,
-  userJargonLevel?: string
-): Promise<DetectedIntents> {
+  userJargonLevel?: string,
+): DetectedIntents {
   const reasons: string[] = [];
 
   // Combine recent messages for keyword analysis (last 5 user messages)
   const recentUserMessages = messages
-    .filter(m => m.role === 'user')
+    .filter((m) => m.role === 'user')
     .slice(-5)
-    .map(m => typeof m.content === 'string' ? m.content.toLowerCase() : '')
+    .map((m) => typeof m.content === 'string' ? m.content.toLowerCase() : '')
     .join(' ');
 
   const checkHints = (hints: string[]): boolean =>
-    hints.some(hint => recentUserMessages.includes(hint.toLowerCase()));
+    hints.some((hint) => recentUserMessages.includes(hint.toLowerCase()));
 
   // 1. Keyword-based detection
   let needsDataQuery = checkHints(INTENT_HINTS.dataQuery);
@@ -207,9 +201,9 @@ export async function detectIntentsWithContext(
     }
 
     // If they have pending questions about configuration
-    if (transactionState.pendingQuestions?.some(q =>
-      /ruleset|split|payout|terminal|chain/i.test(q)
-    )) {
+    if (
+      transactionState.pendingQuestions?.some((q) => /ruleset|split|payout|terminal|chain/i.test(q))
+    ) {
       if (!needsTransaction) {
         needsTransaction = true;
         reasons.push('pending config questions');
@@ -220,9 +214,11 @@ export async function detectIntentsWithContext(
   // 3. User jargon level signals
   if (userJargonLevel === 'advanced') {
     // Advanced users asking technical questions likely need hook context
-    if (recentUserMessages.includes('contract') ||
-        recentUserMessages.includes('solidity') ||
-        recentUserMessages.includes('implement')) {
+    if (
+      recentUserMessages.includes('contract') ||
+      recentUserMessages.includes('solidity') ||
+      recentUserMessages.includes('implement')
+    ) {
       if (!needsHookDeveloper) {
         needsHookDeveloper = true;
         reasons.push('advanced user + technical keywords');
@@ -248,7 +244,10 @@ export async function detectIntentsWithContext(
     // If no specific sub-modules matched but transaction is needed, load core modules
     if (transactionSubModules.length === 0) {
       // Default to deployment-related modules for new projects
-      if (transactionState?.designPhase === 'configuration' || transactionState?.designPhase === 'ready') {
+      if (
+        transactionState?.designPhase === 'configuration' ||
+        transactionState?.designPhase === 'ready'
+      ) {
         transactionSubModules = ['v6_addresses', 'terminals', 'deployment'];
         reasons.push('default transaction sub-modules (design phase)');
       } else {
@@ -277,17 +276,17 @@ export function detectIntents(messages: ChatMessage[]): DetectedIntents {
   const reasons: string[] = [];
 
   const recentUserMessages = messages
-    .filter(m => m.role === 'user')
+    .filter((m) => m.role === 'user')
     .slice(-5)
-    .map(m => typeof m.content === 'string' ? m.content.toLowerCase() : '')
+    .map((m) => typeof m.content === 'string' ? m.content.toLowerCase() : '')
     .join(' ');
 
   const checkHints = (hints: string[]): boolean =>
-    hints.some(hint => recentUserMessages.includes(hint.toLowerCase()));
+    hints.some((hint) => recentUserMessages.includes(hint.toLowerCase()));
 
   let needsDataQuery = checkHints(INTENT_HINTS.dataQuery);
   const needsHookDeveloper = checkHints(INTENT_HINTS.hookDeveloper);
-  let needsTransaction = checkHints(INTENT_HINTS.transaction);
+  const needsTransaction = checkHints(INTENT_HINTS.transaction);
 
   if (needsDataQuery) reasons.push('keywords: data query');
   if (needsHookDeveloper) reasons.push('keywords: hook developer');
@@ -333,7 +332,9 @@ export function buildModularPrompt(intents: DetectedIntents, useSubModules = fal
   }
 
   if (intents.needsTransaction) {
-    if (useSubModules && intents.transactionSubModules && intents.transactionSubModules.length > 0) {
+    if (
+      useSubModules && intents.transactionSubModules && intents.transactionSubModules.length > 0
+    ) {
       // Use granular sub-modules for token efficiency
       parts.push(TRANSACTION_CORE);
       parts.push(buildTransactionContext(intents.transactionSubModules));
@@ -360,14 +361,19 @@ export function buildModularPromptWithSubModules(intents: DetectedIntents): stri
 /**
  * Estimate token count for the modular prompt
  */
-export function estimateModularPromptTokens(intents: DetectedIntents, useSubModules = false): number {
+export function estimateModularPromptTokens(
+  intents: DetectedIntents,
+  useSubModules = false,
+): number {
   let tokens = MODULE_TOKENS.BASE_PROMPT + MODULE_TOKENS.EXAMPLE_INTERACTIONS;
 
   if (intents.needsDataQuery) tokens += MODULE_TOKENS.DATA_QUERY_CONTEXT;
   if (intents.needsHookDeveloper) tokens += MODULE_TOKENS.HOOK_DEVELOPER_CONTEXT;
 
   if (intents.needsTransaction) {
-    if (useSubModules && intents.transactionSubModules && intents.transactionSubModules.length > 0) {
+    if (
+      useSubModules && intents.transactionSubModules && intents.transactionSubModules.length > 0
+    ) {
       // Granular sub-module tokens
       tokens += TRANSACTION_CORE_TOKEN_ESTIMATE;
       tokens += estimateSubModuleTokens(intents.transactionSubModules);
@@ -396,7 +402,9 @@ export function getLoadedModules(intents: DetectedIntents, useSubModules = false
   if (intents.needsHookDeveloper) modules.push('HOOK_DEVELOPER_CONTEXT');
 
   if (intents.needsTransaction) {
-    if (useSubModules && intents.transactionSubModules && intents.transactionSubModules.length > 0) {
+    if (
+      useSubModules && intents.transactionSubModules && intents.transactionSubModules.length > 0
+    ) {
       modules.push('TRANSACTION_CORE');
       for (const subModule of intents.transactionSubModules) {
         modules.push(`TRANSACTION.${subModule}`);
@@ -426,7 +434,7 @@ export function getLoadedModulesWithSubModules(intents: DetectedIntents): string
  */
 export async function buildOptimizedContext(
   chatId: string,
-  userId?: string
+  userId?: string,
 ): Promise<OptimizedContext> {
   // Initialize metadata
   const metadata: OptimizedContext['metadata'] = {
@@ -453,7 +461,10 @@ export async function buildOptimizedContext(
   if (transactionState) {
     const formatted = formatStateForPrompt(transactionState);
     transactionStateTokens = estimateTokens(formatted);
-    metadata.transactionStateTokens = Math.min(transactionStateTokens, TOKEN_BUDGET.transactionState);
+    metadata.transactionStateTokens = Math.min(
+      transactionStateTokens,
+      TOKEN_BUDGET.transactionState,
+    );
   }
   remainingBudget -= metadata.transactionStateTokens;
 
@@ -463,7 +474,7 @@ export async function buildOptimizedContext(
     userContext = await getContextForSystemPrompt(userId);
     metadata.userContextTokens = Math.min(
       estimateTokens(userContext),
-      TOKEN_BUDGET.userContext
+      TOKEN_BUDGET.userContext,
     );
   }
   remainingBudget -= metadata.userContextTokens;
@@ -473,14 +484,14 @@ export async function buildOptimizedContext(
   if (participantContext) {
     metadata.participantContextTokens = Math.min(
       estimateTokens(participantContext),
-      TOKEN_BUDGET.participantContext
+      TOKEN_BUDGET.participantContext,
     );
   }
   remainingBudget -= metadata.participantContextTokens;
 
   // 4. Attachment summaries (Layer 4)
   const allAttachmentSummaries = await getAttachmentSummaries(chatId);
-  let attachmentSummaries: AttachmentSummary[] = [];
+  const attachmentSummaries: AttachmentSummary[] = [];
   let attachmentTokens = 0;
 
   // Include most recent attachment summaries up to budget
@@ -514,15 +525,17 @@ export async function buildOptimizedContext(
 
   // 6. Recent messages (Layer 1) - fill remaining budget
   const recentMessageBudget = Math.max(0, remainingBudget);
-  const { messages: recentMessages, tokenCount: recentTokens } =
-    await getRecentMessagesWithBudget(chatId, recentMessageBudget, latestSummary?.coversToCreatedAt);
+  const { messages: recentMessages, tokenCount: recentTokens } = await getRecentMessagesWithBudget(
+    chatId,
+    recentMessageBudget,
+    latestSummary?.coversToCreatedAt,
+  );
 
   metadata.recentMessageTokens = recentTokens;
   metadata.recentMessageCount = recentMessages.length;
 
   // Calculate total
-  metadata.totalTokens =
-    metadata.transactionStateTokens +
+  metadata.totalTokens = metadata.transactionStateTokens +
     metadata.userContextTokens +
     metadata.participantContextTokens +
     metadata.attachmentSummaryTokens +
@@ -548,18 +561,14 @@ export async function buildOptimizedContext(
 async function getRecentMessagesWithBudget(
   chatId: string,
   tokenBudget: number,
-  afterTimestamp?: Date
+  afterTimestamp?: Date,
 ): Promise<{ messages: ChatMessage[]; tokenCount: number }> {
   // Get more messages than we need, then trim by token count
   const maxMessages = 50;
 
-  const whereClause = afterTimestamp
-    ? `AND created_at > $2`
-    : '';
+  const whereClause = afterTimestamp ? `AND created_at > $2` : '';
 
-  const params = afterTimestamp
-    ? [chatId, afterTimestamp, maxMessages]
-    : [chatId, maxMessages];
+  const params = afterTimestamp ? [chatId, afterTimestamp, maxMessages] : [chatId, maxMessages];
 
   const dbMessages = await query<{
     role: string;
@@ -574,7 +583,7 @@ async function getRecentMessagesWithBudget(
      ${whereClause}
      ORDER BY created_at DESC
      LIMIT $${afterTimestamp ? '3' : '2'}`,
-    params
+    params,
   );
 
   // Reverse to get chronological order
@@ -621,7 +630,7 @@ async function buildParticipantContext(chatId: string): Promise<string | null> {
        mcm.display_name
      FROM multi_chat_members mcm
      WHERE mcm.chat_id = $1 AND mcm.is_active = true`,
-    [chatId]
+    [chatId],
   );
 
   if (participants.length <= 1) {
@@ -650,7 +659,7 @@ async function buildParticipantContext(chatId: string): Promise<string | null> {
  * Format optimized context for Claude API consumption
  */
 export function formatContextForClaude(
-  context: OptimizedContext
+  context: OptimizedContext,
 ): ChatMessage[] {
   // The main messages are the recent messages
   const messages = [...context.recentMessages];
@@ -698,7 +707,7 @@ function formatSummariesForContext(summaries: ChatSummary[]): string {
  * Format attachment summaries for system prompt injection
  */
 export function formatAttachmentSummariesForPrompt(
-  summaries: AttachmentSummary[]
+  summaries: AttachmentSummary[],
 ): string {
   if (summaries.length === 0) return '';
 
@@ -727,7 +736,7 @@ export function formatAttachmentSummariesForPrompt(
 export async function logContextUsage(
   chatId: string,
   messageId: string | null,
-  context: OptimizedContext
+  context: OptimizedContext,
 ): Promise<void> {
   try {
     await execute(
@@ -752,7 +761,7 @@ export async function logContextUsage(
         context.metadata.attachmentCount,
         context.metadata.budgetExceeded,
         context.metadata.triggeredSummarization,
-      ]
+      ],
     );
   } catch (error) {
     // Non-critical, just log
@@ -772,13 +781,13 @@ export async function logContextUsage(
  * 2. Modular: Pass messages array for intent detection (saves tokens)
  */
 export async function buildEnhancedSystemPrompt(options: {
-  basePrompt?: string;  // Legacy: use this prompt directly
-  messages?: ChatMessage[];  // Modular: detect intent and build minimal prompt
+  basePrompt?: string; // Legacy: use this prompt directly
+  messages?: ChatMessage[]; // Modular: detect intent and build minimal prompt
   chatId?: string;
   userId?: string;
   includeOmnichain?: boolean;
   omnichainContext?: string;
-  useSubModules?: boolean;  // Enable granular sub-module loading (Phase 1)
+  useSubModules?: boolean; // Enable granular sub-module loading (Phase 1)
 }): Promise<{ systemPrompt: string; context: OptimizedContext | null; intents?: DetectedIntents }> {
   const parts: string[] = [];
   let context: OptimizedContext | null = null;
@@ -803,7 +812,7 @@ export async function buildEnhancedSystemPrompt(options: {
       detectedIntents = await detectIntentsWithContext(
         options.messages,
         transactionState,
-        jargonLevel
+        jargonLevel,
       );
     } else {
       // No chat context, use simple keyword detection
@@ -826,8 +835,6 @@ export async function buildEnhancedSystemPrompt(options: {
   // Uses shared/chains.ts as single source of truth
   if (config.isTestnet) {
     const chainTable = generateChainTable(true);
-    const chainConfigs = generateChainConfigs(true);
-
     parts.push(`
 
 ---
@@ -842,15 +849,14 @@ ${chainTable}
 
 **Primary chainId for transaction-preview:** ${getPrimaryChainId(true)} (Sepolia)
 
-**For launchProject/launch721Project, ALWAYS include chainConfigs with ALL 4 testnet chains:**
+For new projects, default to one low-cost testnet chain. Use only chains the user explicitly selects in the create flow. Never infer all four chains from the environment or a primary chain ID; a multi-chain launch must enumerate exactly the reviewed destinations.
 
-\`\`\`json
-"chainConfigs": ${chainConfigs}
-\`\`\`
-
-**Terminal addresses (same on mainnet and testnet via CREATE2):**
+**Recognition references (same on mainnet and testnet via CREATE2):**
 - JBMultiTerminal: ${JB_V6_CONTRACTS.JBMultiTerminal}
 - JBRouterTerminal: ${JB_V6_CONTRACTS.JBRouterTerminal} (V6 has no swap terminal — the router terminal routes arbitrary-token payments)
+- JBRouterTerminalRegistry: ${JB_V6_CONTRACTS.JBRouterTerminalRegistry}
+
+For an existing project, never route from this list. Use only JBDirectory and JBProjects as hardcoded discovery roots, derive the live route and dependencies, and block any unknown address unconditionally even if it matches the expected ABI/interface or simulates successfully.
 
 `);
   }
@@ -865,7 +871,9 @@ ${chainTable}
   const trendingContext = await getTrendingContext();
   if (trendingContext) {
     parts.push('\n\n---\n\n## Currently Trending Projects\n\n');
-    parts.push('Use this data when asked about trending/popular projects. Do NOT make up stats.\n\n');
+    parts.push(
+      'Use this data when asked about trending/popular projects. Do NOT make up stats.\n\n',
+    );
     parts.push(trendingContext);
   }
 

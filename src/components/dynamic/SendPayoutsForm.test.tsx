@@ -5,7 +5,8 @@ import { useThemeStore } from '../../stores'
 import * as bendystraw from '../../services/bendystraw'
 
 // Mock wagmi
-vi.mock('wagmi', () => ({
+vi.mock('wagmi', async (importOriginal) => ({
+  ...await importOriginal<typeof import('wagmi')>(),
   useAccount: vi.fn(() => ({
     address: undefined,
     isConnected: false,
@@ -13,7 +14,8 @@ vi.mock('wagmi', () => ({
 }))
 
 // Mock viem
-vi.mock('viem', () => ({
+vi.mock('viem', async (importOriginal) => ({
+  ...await importOriginal<typeof import('viem')>(),
   formatEther: vi.fn((val) => (Number(val) / 1e18).toString()),
 }))
 
@@ -24,11 +26,13 @@ vi.mock('../../services/bendystraw', () => ({
   fetchConnectedChains: vi.fn(),
   fetchProjectSplits: vi.fn(),
   fetchProjectWithRuleset: vi.fn(),
+  fetchProjectAccountingContexts: vi.fn(),
 }))
 
 // Mock IPFS utils
 vi.mock('../../utils/ipfs', () => ({
   resolveIpfsUri: vi.fn((uri) => (uri ? `https://ipfs.io/${uri}` : null)),
+  ipfsGatewayUrls: vi.fn((uri) => (uri ? [`https://ipfs.io/${uri}`] : [])),
 }))
 
 // Mock ENS utils
@@ -96,6 +100,12 @@ describe('SendPayoutsForm', () => {
     ;(bendystraw.fetchConnectedChains as Mock).mockResolvedValue([])
     ;(bendystraw.fetchProjectSplits as Mock).mockResolvedValue(mockSplits)
     ;(bendystraw.fetchProjectWithRuleset as Mock).mockResolvedValue(mockRuleset)
+    ;(bendystraw.fetchProjectAccountingContexts as Mock).mockResolvedValue([{
+      terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
+      token: '0x000000000000000000000000000000000000eeee',
+      decimals: 18,
+      currency: 61166,
+    }])
 
     mockedUseAccount.mockReturnValue({
       address: undefined,

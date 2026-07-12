@@ -129,12 +129,6 @@ vi.mock('./LandingPagePreview', () => ({
   ),
 }))
 
-vi.mock('./SuccessVisualization', () => ({
-  default: ({ targetRaise }: { targetRaise?: string }) => (
-    <div data-testid="success-visualization">SuccessVisualization: {targetRaise}</div>
-  ),
-}))
-
 vi.mock('./charts', () => ({
   BalanceChart: ({ projectId }: { projectId: string }) => (
     <div data-testid="balance-chart">BalanceChart: {projectId}</div>
@@ -147,12 +141,6 @@ vi.mock('./charts', () => ({
   ),
   TokenPriceChart: ({ projectId }: { projectId: string }) => (
     <div data-testid="token-price-chart">TokenPriceChart: {projectId}</div>
-  ),
-  PoolPriceChart: ({ poolAddress }: { poolAddress: string }) => (
-    <div data-testid="pool-price-chart">PoolPriceChart: {poolAddress}</div>
-  ),
-  MultiChainCashOutChart: ({ projectId }: { projectId: string }) => (
-    <div data-testid="multi-chain-cash-out-chart">MultiChainCashOutChart: {projectId}</div>
   ),
 }))
 
@@ -561,23 +549,6 @@ describe('ComponentRegistry', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('landing-page-preview')).toBeInTheDocument()
-      })
-    })
-  })
-
-  describe('success-visualization component', () => {
-    it('renders SuccessVisualization with props', async () => {
-      const component: ParsedComponent = {
-        type: 'success-visualization',
-        props: { targetRaise: '100000' },
-        raw: '<juice-component type="success-visualization" targetRaise="100000" />',
-      }
-
-      render(<ComponentRegistry component={component} />)
-
-      await waitFor(() => {
-        expect(screen.getByTestId('success-visualization')).toBeInTheDocument()
-        expect(screen.getByText(/100000/)).toBeInTheDocument()
       })
     })
   })

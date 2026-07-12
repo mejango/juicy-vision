@@ -1,15 +1,29 @@
 import { useState, useCallback } from 'react'
-import { useAccount } from 'wagmi'
-import { parseEther } from 'viem'
+import { isAddress } from 'viem'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { calculateSynchronizedStartTime, type REVStageConfig } from '../../services/relayr'
 import { DeployRevnetModal } from '../payment'
 import { ALL_CHAIN_IDS, CHAINS } from '../../constants'
+import { pinMetadata } from '../../services/ipfsPinning'
+import { buildRevnetStageConfigurations, revnetStageError } from '../../utils/revnetStages'
 
 interface CreateRevnetFormProps {
-  defaultOperator?: string
-  defaultChainIds?: number[]
+  defaultChainIds?: number[] | string
+}
+
+const DEFAULT_CHAIN_ID = ALL_CHAIN_IDS.find(id => CHAINS[id]?.name.includes('Base')) ?? ALL_CHAIN_IDS[0]
+
+function normalizeChainIds(input: number[] | string | undefined): number[] {
+  const candidates = Array.isArray(input)
+    ? input
+    : typeof input === 'string'
+      ? input.split(',').map(value => Number.parseInt(value.trim(), 10))
+      : []
+  const supported = [...new Set(candidates.filter(
+    id => Number.isInteger(id) && (ALL_CHAIN_IDS as readonly number[]).includes(id),
+  ))]
+  return supported.length > 0 ? supported : [DEFAULT_CHAIN_ID]
 }
 
 // Single stage configuration in form
@@ -26,8 +40,8 @@ interface StageFormState {
 // Main form state
 interface RevnetFormState {
   name: string
+  ticker: string
   tagline: string
-  splitOperator: string
   autoDeploySuckers: boolean
 }
 
@@ -42,8 +56,8 @@ const DEFAULT_STAGE: Omit<StageFormState, 'id'> = {
 
 const DEFAULT_FORM_STATE: RevnetFormState = {
   name: '',
+  ticker: '',
   tagline: '',
-  splitOperator: '',
   autoDeploySuckers: true,
 }
 
@@ -60,84 +74,36 @@ function createDefaultStage(): StageFormState {
   }
 }
 
-/**
- * Convert form stage to REVStageConfig for contract call
- */
-function stageFormToConfig(
-  stage: StageFormState,
-  previousEndTime: number,
-  isFirst: boolean
-): REVStageConfig {
-  // For first stage, use synchronized start time
-  // For subsequent stages, calculate from previous + days offset
-  let startsAtOrAfter: number
-  if (isFirst) {
-    const daysOffset = parseFloat(stage.startsAtOrAfter) || 0
-    startsAtOrAfter = previousEndTime + Math.floor(daysOffset * 24 * 60 * 60)
-  } else {
-    const daysOffset = parseFloat(stage.startsAtOrAfter) || 0
-    startsAtOrAfter = previousEndTime + Math.floor(daysOffset * 24 * 60 * 60)
-  }
-
-  // Convert split percent (0-100) to V6 protocol scale (0-10000)
-  const splitPercent = Math.floor((parseFloat(stage.splitPercent) || 0) * 100)
-
-  // Convert issuance to wei (18 decimals)
-  const initialIssuance = parseEther(stage.initialIssuance || '1000000').toString()
-
-  // Convert cut frequency from days to seconds (V6: issuanceCutFrequency)
-  const decayDays = parseFloat(stage.decayFrequency) || 7
-  const issuanceCutFrequency = Math.floor(decayDays * 24 * 60 * 60)
-
-  // Convert cut percent (0-100) to protocol scale (0-1000000000)
-  const issuanceCutPercent = Math.floor((parseFloat(stage.decayPercent) || 0) * 10000000)
-
-  // Convert cash out tax (0-100) to protocol scale (0-10000)
-  const cashOutTaxRate = Math.floor((parseFloat(stage.cashOutTaxRate) || 0) * 100)
-
-  return {
-    startsAtOrAfter,
-    splitPercent,
-    initialIssuance,
-    issuanceCutFrequency,
-    issuanceCutPercent,
-    cashOutTaxRate,
-    extraMetadata: 0,
-  }
-}
-
-export default function CreateRevnetForm({ defaultOperator, defaultChainIds }: CreateRevnetFormProps) {
+export default function CreateRevnetForm({ defaultChainIds }: CreateRevnetFormProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
 
-  const { address, isConnected } = useAccount()
   const { address: managedAddress } = useManagedWallet()
 
-  const [formState, setFormState] = useState<RevnetFormState>({
-    ...DEFAULT_FORM_STATE,
-    splitOperator: defaultOperator || '',
-  })
+  const [formState, setFormState] = useState<RevnetFormState>(DEFAULT_FORM_STATE)
   const [stages, setStages] = useState<StageFormState[]>([createDefaultStage()])
-  const [selectedChains, setSelectedChains] = useState<number[]>(
-    defaultChainIds || [...ALL_CHAIN_IDS]
-  )
+  const [selectedChains, setSelectedChains] = useState<number[]>(() => normalizeChainIds(defaultChainIds))
   const [showModal, setShowModal] = useState(false)
+  const [preparedProjectUri, setPreparedProjectUri] = useState('')
+  const [preparingMetadata, setPreparingMetadata] = useState(false)
+  const [preparationError, setPreparationError] = useState<string | null>(null)
 
-  // Get operator address - use managed wallet if in managed mode and not specified
-  const operatorAddress = formState.splitOperator ||
-    (isManagedMode ? managedAddress : address) || ''
+  const operatorAddress = isManagedMode ? managedAddress || '' : ''
 
   // Calculate synchronized start time for omnichain deployment
   const synchronizedStartTime = calculateSynchronizedStartTime()
   const startDate = new Date(synchronizedStartTime * 1000)
 
   // Validation
-  const isValid = formState.name.trim().length > 0 &&
+  const stageError = stages.map(revnetStageError).find(Boolean) || null
+  const configurationValid = formState.name.trim().length > 0 &&
+    /^[A-Za-z0-9]{1,11}$/.test(formState.ticker) &&
     selectedChains.length > 0 &&
-    operatorAddress &&
-    stages.length > 0
+    stages.length > 0 &&
+    !stageError
+  const isValid = configurationValid && (!isManagedMode || isAddress(operatorAddress))
 
   const updateFormState = useCallback((key: keyof RevnetFormState, value: string | boolean) => {
     setFormState(prev => ({ ...prev, [key]: value }))
@@ -172,25 +138,37 @@ export default function CreateRevnetForm({ defaultOperator, defaultChainIds }: C
     )
   }, [])
 
-  const handleDeploy = useCallback(() => {
-    if (!isValid) return
+  const handleDeploy = useCallback(async () => {
+    if (!configurationValid) return
 
-    if (!isConnected && !isManagedMode) {
-      window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
+    if (!isManagedMode) {
+      window.dispatchEvent(new CustomEvent('juice:open-auth-modal'))
       return
     }
+    if (!isAddress(operatorAddress)) return
 
-    setShowModal(true)
-  }, [isValid, isConnected, isManagedMode])
+    setPreparingMetadata(true)
+    setPreparationError(null)
+    try {
+      const uri = await pinMetadata({
+        name: formState.name,
+        tagline: formState.tagline,
+        tokenSymbol: formState.ticker,
+      }, `revnet-${formState.name}`)
+      setPreparedProjectUri(uri)
+      setShowModal(true)
+    } catch (err) {
+      setPreparedProjectUri('')
+      setPreparationError(err instanceof Error ? err.message : 'Could not prepare revnet metadata')
+    } finally {
+      setPreparingMetadata(false)
+    }
+  }, [configurationValid, isManagedMode, operatorAddress, formState.name, formState.tagline, formState.ticker])
 
   // Build stage configurations for modal
-  const stageConfigurations: REVStageConfig[] = stages.map((stage, index) =>
-    stageFormToConfig(
-      stage,
-      index === 0 ? synchronizedStartTime : 0,
-      index === 0
-    )
-  )
+  const stageConfigurations: REVStageConfig[] = stageError
+    ? []
+    : buildRevnetStageConfigurations(stages, synchronizedStartTime)
 
   return (
     <div className="w-full">
@@ -289,6 +267,23 @@ export default function CreateRevnetForm({ defaultOperator, defaultChainIds }: C
 
             <div>
               <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Token Ticker *
+              </label>
+              <input
+                type="text"
+                value={formState.ticker}
+                onChange={(e) => updateFormState('ticker', e.target.value.toUpperCase().slice(0, 11))}
+                placeholder="TOKEN"
+                className={`w-full px-3 py-2 text-sm font-mono uppercase outline-none ${
+                  isDark
+                    ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-500'
+                    : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
+                }`}
+              />
+            </div>
+
+            <div>
+              <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 Tagline
               </label>
               <input
@@ -304,25 +299,18 @@ export default function CreateRevnetForm({ defaultOperator, defaultChainIds }: C
               />
             </div>
 
-            <div>
-              <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Split Operator Address
-              </label>
-              <input
-                type="text"
-                value={formState.splitOperator}
-                onChange={(e) => updateFormState('splitOperator', e.target.value)}
-                placeholder={operatorAddress || '0x...'}
-                className={`w-full px-3 py-2 text-sm font-mono outline-none ${
-                  isDark
-                    ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-500'
-                    : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
-                }`}
-              />
-              <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                Receives operator split from each stage
-              </span>
-            </div>
+            {isManagedMode && isAddress(operatorAddress) && (
+              <div>
+                <div className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Revnet operator
+                </div>
+                <div className={`px-3 py-2 text-sm font-mono ${
+                  isDark ? 'bg-juice-dark text-white' : 'bg-gray-50 text-gray-900'
+                }`}>
+                  {operatorAddress}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -471,13 +459,13 @@ export default function CreateRevnetForm({ defaultOperator, defaultChainIds }: C
                   {/* Cash Out Tax */}
                   <div>
                     <label className={`block text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      Exit Tax (%)
+                      Cash-out curve rate (%)
                     </label>
                     <input
                       type="number"
                       min="0"
-                      max="100"
-                      step="0.1"
+                      max="99.99"
+                      step="0.01"
                       value={stage.cashOutTaxRate}
                       onChange={(e) => updateStage(stage.id, 'cashOutTaxRate', e.target.value)}
                       className={`w-full px-2 py-1.5 text-xs outline-none ${
@@ -486,6 +474,9 @@ export default function CreateRevnetForm({ defaultOperator, defaultChainIds }: C
                           : 'bg-gray-50 border border-gray-200 text-gray-900'
                       }`}
                     />
+                    <span className={`text-[9px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      Higher rates reduce partial exits
+                    </span>
                   </div>
                 </div>
               </div>
@@ -517,22 +508,36 @@ export default function CreateRevnetForm({ defaultOperator, defaultChainIds }: C
             Gas Sponsored
           </div>
           <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Revnet deployment is free - gas is sponsored by the platform
+            Gas is sponsored. The exact protocol creation fee is shown before deployment.
           </div>
         </div>
 
         {/* Deploy Button */}
         <button
           onClick={handleDeploy}
-          disabled={!isValid}
+          disabled={!isValid || preparingMetadata}
           className={`w-full py-3 text-sm font-bold transition-colors ${
-            isValid
+            isValid && !preparingMetadata
               ? 'bg-purple-500 hover:bg-purple-600 text-white'
               : 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
           }`}
         >
-          Deploy Revnet{selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}
+          {preparingMetadata
+            ? 'Preparing metadata...'
+            : !isManagedMode
+              ? 'Sign in to deploy'
+              : `Deploy Revnet${selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}`}
         </button>
+        {preparationError && (
+          <p className={`mt-2 text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+            {preparationError}
+          </p>
+        )}
+        {stageError && (
+          <p className={`mt-2 text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+            {stageError}
+          </p>
+        )}
 
         {/* Info */}
         <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -545,7 +550,9 @@ export default function CreateRevnetForm({ defaultOperator, defaultChainIds }: C
         isOpen={showModal}
         onClose={() => setShowModal(false)}
         name={formState.name}
+        ticker={formState.ticker}
         tagline={formState.tagline}
+        projectUri={preparedProjectUri}
         splitOperator={operatorAddress}
         chainIds={selectedChains}
         stageConfigurations={stageConfigurations}

@@ -11,18 +11,17 @@ import {
   verifyLaunchProjectParams,
   verifyDeployRevnetParams,
   createVerificationResult,
-  autoCorrectAddress,
-  autoCorrectTerminalConfigurations,
-  autoCorrectChainConfigs,
   type TransactionDoubt,
   type VerificationResult,
 } from './transactionVerification'
 import { NATIVE_TOKEN } from '../constants/abis'
+import { ALL_CHAIN_IDS, JB_CONTRACTS } from '../constants'
 
 describe('transactionVerification', () => {
   const VALID_ADDRESS = '0x1234567890123456789012345678901234567890'
   const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
   const INVALID_ADDRESS = '0xinvalid'
+  const NATIVE_CURRENCY = BigInt(NATIVE_TOKEN) & 0xffff_ffffn
 
   describe('verifyPayParams', () => {
     const validParams = {
@@ -30,7 +29,7 @@ describe('transactionVerification', () => {
       token: NATIVE_TOKEN,
       amount: 1000000000000000000n, // 1 ETH
       beneficiary: VALID_ADDRESS,
-      minReturnedTokens: 0n,
+      minReturnedTokens: 1n,
       memo: 'Test payment',
     }
 
@@ -99,14 +98,25 @@ describe('transactionVerification', () => {
       )
     })
 
-    it('warns on zero amount', () => {
+    it('rejects a zero amount', () => {
       const result = verifyPayParams({ ...validParams, amount: 0n })
-      expect(result.isValid).toBe(true) // Warning, not critical
+      expect(result.isValid).toBe(false)
       expect(result.doubts).toContainEqual(
         expect.objectContaining({
-          severity: 'warning',
+          severity: 'critical',
           field: 'amount',
           message: 'Payment amount is zero',
+        })
+      )
+    })
+
+    it('rejects a zero minimum token return', () => {
+      const result = verifyPayParams({ ...validParams, minReturnedTokens: 0n })
+      expect(result.isValid).toBe(false)
+      expect(result.doubts).toContainEqual(
+        expect.objectContaining({
+          severity: 'critical',
+          field: 'minReturnedTokens',
         })
       )
     })
@@ -138,7 +148,7 @@ describe('transactionVerification', () => {
         token: NATIVE_TOKEN,
         amount: '1000000000000000000',
         beneficiary: VALID_ADDRESS,
-        minReturnedTokens: '0',
+        minReturnedTokens: '1',
         memo: 'Test payment',
         metadata: '0x',
       })
@@ -151,7 +161,7 @@ describe('transactionVerification', () => {
       projectId: 1n,
       cashOutCount: 1000000000000000000000n, // 1000 tokens
       tokenToReclaim: NATIVE_TOKEN,
-      minTokensReclaimed: 0n,
+      minTokensReclaimed: 1n,
       beneficiary: VALID_ADDRESS,
     }
 
@@ -176,12 +186,12 @@ describe('transactionVerification', () => {
       expect(result.isValid).toBe(false)
     })
 
-    it('warns on zero cash out amount', () => {
+    it('rejects a zero cash out amount', () => {
       const result = verifyCashOutParams({ ...validParams, cashOutCount: 0n })
-      expect(result.isValid).toBe(true)
+      expect(result.isValid).toBe(false)
       expect(result.doubts).toContainEqual(
         expect.objectContaining({
-          severity: 'warning',
+          severity: 'critical',
           field: 'cashOutCount',
         })
       )
@@ -210,8 +220,8 @@ describe('transactionVerification', () => {
       projectId: 1n,
       token: NATIVE_TOKEN,
       amount: 1000000000000000000n, // 1 ETH
-      currency: 1n,
-      minTokensPaidOut: 0n,
+      currency: NATIVE_CURRENCY,
+      minTokensPaidOut: 1000000000000000000n,
     }
 
     it('accepts valid parameters', () => {
@@ -229,12 +239,12 @@ describe('transactionVerification', () => {
       expect(result.isValid).toBe(false)
     })
 
-    it('warns on zero amount', () => {
-      const result = verifySendPayoutsParams({ ...validParams, amount: 0n })
-      expect(result.isValid).toBe(true)
+    it('rejects a zero amount', () => {
+      const result = verifySendPayoutsParams({ ...validParams, amount: 0n, minTokensPaidOut: 0n })
+      expect(result.isValid).toBe(false)
       expect(result.doubts).toContainEqual(
         expect.objectContaining({
-          severity: 'warning',
+          severity: 'critical',
           field: 'amount',
           message: 'Payout amount is zero',
         })
@@ -243,7 +253,7 @@ describe('transactionVerification', () => {
 
     it('warns on large payout', () => {
       const largeAmount = BigInt('2000000000000000000000') // 2000 ETH
-      const result = verifySendPayoutsParams({ ...validParams, amount: largeAmount })
+      const result = verifySendPayoutsParams({ ...validParams, amount: largeAmount, minTokensPaidOut: largeAmount })
       expect(result.doubts).toContainEqual(
         expect.objectContaining({
           severity: 'warning',
@@ -252,19 +262,20 @@ describe('transactionVerification', () => {
       )
     })
 
-    it('warns on unusual currency code', () => {
+    it('rejects a currency which does not match the accounting token', () => {
       const result = verifySendPayoutsParams({ ...validParams, currency: 99n })
-      expect(result.warnings).toContainEqual(expect.stringContaining('Unusual currency code'))
+      expect(result.isValid).toBe(false)
+      expect(result.doubts).toContainEqual(expect.objectContaining({ field: 'currency', severity: 'critical' }))
     })
 
-    it('accepts ETH currency (1)', () => {
-      const result = verifySendPayoutsParams({ ...validParams, currency: 1 })
-      expect(result.warnings).not.toContainEqual(expect.stringContaining('Unusual currency'))
+    it('accepts the native token-keyed currency', () => {
+      const result = verifySendPayoutsParams({ ...validParams, currency: NATIVE_CURRENCY })
+      expect(result.isValid).toBe(true)
     })
 
-    it('accepts USD currency (2)', () => {
-      const result = verifySendPayoutsParams({ ...validParams, currency: 2 })
-      expect(result.warnings).not.toContainEqual(expect.stringContaining('Unusual currency'))
+    it('rejects legacy base currency codes', () => {
+      expect(verifySendPayoutsParams({ ...validParams, currency: 1 }).isValid).toBe(false)
+      expect(verifySendPayoutsParams({ ...validParams, currency: 2 }).isValid).toBe(false)
     })
   })
 
@@ -273,8 +284,8 @@ describe('transactionVerification', () => {
       projectId: 1n,
       token: NATIVE_TOKEN,
       amount: 1000000000000000000n,
-      currency: 1n,
-      minTokensPaidOut: 0n,
+      currency: NATIVE_CURRENCY,
+      minTokensPaidOut: 975000000000000000n,
       beneficiary: VALID_ADDRESS,
       feeBeneficiary: VALID_ADDRESS,
       memo: 'Withdrawal',
@@ -297,7 +308,11 @@ describe('transactionVerification', () => {
 
     it('warns on large withdrawal', () => {
       const largeAmount = BigInt('2000000000000000000000')
-      const result = verifyUseAllowanceParams({ ...validParams, amount: largeAmount })
+      const result = verifyUseAllowanceParams({
+        ...validParams,
+        amount: largeAmount,
+        minTokensPaidOut: largeAmount - (largeAmount / 40n),
+      })
       expect(result.doubts).toContainEqual(
         expect.objectContaining({
           severity: 'warning',
@@ -422,13 +437,13 @@ describe('transactionVerification', () => {
       )
     })
 
-    it('warns when cash outs are disabled (100% tax)', () => {
+    it('warns when cash outs use the disabled sentinel', () => {
       const disabledCashOutParams = {
         ...validParams,
         rulesetConfigurations: [
           {
             ...validParams.rulesetConfigurations[0],
-            metadata: { cashOutTaxRate: 10000 }, // 100%
+            metadata: { cashOutTaxRate: 10000 }, // Disabled sentinel
           },
         ],
       }
@@ -474,10 +489,17 @@ describe('transactionVerification', () => {
   describe('verifyLaunchProjectParams', () => {
     const validParams = {
       owner: VALID_ADDRESS,
-      projectUri: 'ipfs://QmXyz123',
-      chainIds: [1, 10, 8453],
+      projectUri: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3gq2t5lz2wqzzx4m6w6v7s7qm',
+      chainIds: ALL_CHAIN_IDS.slice(0, 3),
       rulesetConfigurations: [{ /* ruleset */ }],
-      terminalConfigurations: [{ /* terminal */ }],
+      terminalConfigurations: [{
+        terminal: JB_CONTRACTS.JBMultiTerminal,
+        accountingContextsToAccept: [{
+          token: NATIVE_TOKEN,
+          decimals: 18,
+          currency: Number(NATIVE_CURRENCY),
+        }],
+      }],
       memo: 'Launch project',
     }
 
@@ -502,31 +524,31 @@ describe('transactionVerification', () => {
       )
     })
 
-    it('warns on missing project URI', () => {
+    it('rejects a missing project URI', () => {
       const result = verifyLaunchProjectParams({ ...validParams, projectUri: '' })
-      expect(result.warnings).toContainEqual('No project metadata URI provided')
+      expect(result.doubts).toContainEqual(expect.objectContaining({ field: 'projectUri', severity: 'critical' }))
     })
 
-    it('warns on non-IPFS project URI', () => {
+    it('rejects a non-IPFS project URI', () => {
       const result = verifyLaunchProjectParams({ ...validParams, projectUri: 'https://example.com' })
-      expect(result.warnings).toContainEqual('Project URI is not an IPFS link')
+      expect(result.doubts).toContainEqual(expect.objectContaining({ field: 'projectUri', severity: 'critical' }))
     })
 
-    it('warns on unsupported chain ID', () => {
-      const result = verifyLaunchProjectParams({ ...validParams, chainIds: [1, 999] })
+    it('rejects an unsupported chain ID', () => {
+      const result = verifyLaunchProjectParams({ ...validParams, chainIds: [ALL_CHAIN_IDS[0], 999] })
       expect(result.doubts).toContainEqual(
         expect.objectContaining({
-          severity: 'warning',
+          severity: 'critical',
           message: 'Unsupported chain ID: 999',
         })
       )
     })
 
-    it('warns on duplicate chain IDs', () => {
-      const result = verifyLaunchProjectParams({ ...validParams, chainIds: [1, 10, 1] })
+    it('rejects duplicate chain IDs', () => {
+      const result = verifyLaunchProjectParams({ ...validParams, chainIds: [ALL_CHAIN_IDS[0], ALL_CHAIN_IDS[0]] })
       expect(result.doubts).toContainEqual(
         expect.objectContaining({
-          severity: 'warning',
+          severity: 'critical',
           message: 'Duplicate chain IDs detected',
         })
       )
@@ -541,18 +563,35 @@ describe('transactionVerification', () => {
       const result = verifyLaunchProjectParams({ ...validParams, terminalConfigurations: [] })
       expect(result.isValid).toBe(false)
     })
+
+    it('does not correct a near-miss terminal address', () => {
+      const nearMiss = '0x130f5dd2bd8805443cf41755253d78a75a67f53'
+      const terminalConfigurations = [{
+        terminal: nearMiss,
+        accountingContextsToAccept: [{ token: NATIVE_TOKEN, decimals: 18, currency: Number(NATIVE_CURRENCY) }],
+      }]
+      const result = verifyLaunchProjectParams({ ...validParams, terminalConfigurations })
+      expect(result.isValid).toBe(false)
+      expect(terminalConfigurations[0].terminal).toBe(nearMiss)
+      expect(result.doubts).toContainEqual(expect.objectContaining({
+        field: 'terminalConfigurations[0].terminal',
+        severity: 'critical',
+      }))
+    })
   })
 
   describe('verifyDeployRevnetParams', () => {
     const validParams = {
       name: 'Test Revnet',
+      ticker: 'TEST',
       tagline: 'A test revenue network',
+      projectUri: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3gq2t5lz2wqzzx4m6w6v7s7qm',
       splitOperator: VALID_ADDRESS,
-      chainIds: [1, 10, 8453],
+      chainIds: ALL_CHAIN_IDS.slice(0, 3),
       stageConfigurations: [
         {
           startsAtOrAfter: Math.floor(Date.now() / 1000) + 300,
-          splitPercent: 200000000, // 20%
+          splitPercent: 2000, // 20%
           initialIssuance: 1000000000000000000000000n,
           issuanceCutFrequency: 604800,
           issuanceCutPercent: 50000000, // 5%
@@ -581,11 +620,11 @@ describe('transactionVerification', () => {
       expect(result.isValid).toBe(false)
     })
 
-    it('warns on unsupported chain ID', () => {
-      const result = verifyDeployRevnetParams({ ...validParams, chainIds: [1, 999] })
+    it('rejects an unsupported chain ID', () => {
+      const result = verifyDeployRevnetParams({ ...validParams, chainIds: [ALL_CHAIN_IDS[0], 999] })
       expect(result.doubts).toContainEqual(
         expect.objectContaining({
-          severity: 'warning',
+          severity: 'critical',
           message: 'Unsupported chain ID: 999',
         })
       )
@@ -602,7 +641,7 @@ describe('transactionVerification', () => {
         stageConfigurations: [
           {
             ...validParams.stageConfigurations[0],
-            splitPercent: 600000000, // 60%
+            splitPercent: 6000, // 60%
           },
         ],
       }
@@ -634,7 +673,7 @@ describe('transactionVerification', () => {
       )
     })
 
-    it('warns when cash outs are disabled', () => {
+    it('rejects a 100% cash-out tax', () => {
       const disabledCashOutParams = {
         ...validParams,
         stageConfigurations: [
@@ -645,7 +684,11 @@ describe('transactionVerification', () => {
         ],
       }
       const result = verifyDeployRevnetParams(disabledCashOutParams)
-      expect(result.warnings).toContainEqual(expect.stringContaining('Cash outs are disabled'))
+      expect(result.isValid).toBe(false)
+      expect(result.doubts).toContainEqual(expect.objectContaining({
+        severity: 'critical',
+        field: 'stageConfigurations[0].cashOutTaxRate',
+      }))
     })
   })
 
@@ -808,7 +851,7 @@ describe('transactionVerification', () => {
         token: NATIVE_TOKEN,
         amount: maxUint256 + 1n, // Overflow
         beneficiary: VALID_ADDRESS,
-        minReturnedTokens: 0n,
+        minReturnedTokens: 1n,
         memo: '',
       })
       expect(result.doubts).toContainEqual(
@@ -828,7 +871,7 @@ describe('transactionVerification', () => {
         token: NATIVE_TOKEN,
         amount: 1000000000000000000n,
         beneficiary: checksummed,
-        minReturnedTokens: 0n,
+        minReturnedTokens: 1n,
         memo: '',
       })
 
@@ -837,7 +880,7 @@ describe('transactionVerification', () => {
         token: NATIVE_TOKEN,
         amount: 1000000000000000000n,
         beneficiary: lowercase,
-        minReturnedTokens: 0n,
+        minReturnedTokens: 1n,
         memo: '',
       })
 
@@ -852,118 +895,11 @@ describe('transactionVerification', () => {
         token: NATIVE_TOKEN,
         amount: '1000000000000000000',
         beneficiary: VALID_ADDRESS,
-        minReturnedTokens: '0',
+        minReturnedTokens: '1',
         memo: '',
       })
       expect(result.isValid).toBe(true)
       expect(result.verifiedParams.amount).toBe('1000000000000000000')
-    })
-  })
-
-  describe('autoCorrectAddress', () => {
-    it('does not modify valid addresses', () => {
-      const result = autoCorrectAddress('0x1234567890123456789012345678901234567890')
-      expect(result.wasCorrected).toBe(false)
-      expect(result.address).toBe('0x1234567890123456789012345678901234567890')
-    })
-
-    it('does not modify known canonical addresses', () => {
-      const result = autoCorrectAddress('0x130f5dd2bd8805443cf41755253d778a75a67f53')
-      expect(result.wasCorrected).toBe(false)
-    })
-
-    it('corrects hallucinated JBRouterTerminalRegistry address (missing "05")', () => {
-      // AI dropped '05' from 'de05810' making it 'de1810'
-      const hallucinated = '0xe0427f250fdb0379c88e884ee4570521208cbc'
-      const correct = '0xe0427f250fdb0379c8e98e884ee4570521208cbc'
-
-      const result = autoCorrectAddress(hallucinated)
-      expect(result.wasCorrected).toBe(true)
-      expect(result.address).toBe(correct)
-      expect(result.originalAddress).toBe(hallucinated)
-      expect(result.matchedContract).toBe('JBRouterTerminalRegistry')
-    })
-
-    it('corrects hallucinated JBMultiTerminal address (missing characters)', () => {
-      // AI dropped 'd' from 'ad0ecd' making it 'a0ecd'
-      const hallucinated = '0x130f5dd2bd8805443cf41755253d78a75a67f53'
-      const correct = '0x130f5dd2bd8805443cf41755253d778a75a67f53'
-
-      const result = autoCorrectAddress(hallucinated)
-      expect(result.wasCorrected).toBe(true)
-      expect(result.address).toBe(correct)
-      expect(result.matchedContract).toBe('JBMultiTerminal')
-    })
-
-    it('does not correct addresses with too many differences', () => {
-      // This is a completely different address
-      const different = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-      const result = autoCorrectAddress(different)
-      expect(result.wasCorrected).toBe(false)
-    })
-
-    it('handles empty and null addresses', () => {
-      expect(autoCorrectAddress('').wasCorrected).toBe(false)
-      expect(autoCorrectAddress(null as unknown as string).wasCorrected).toBe(false)
-    })
-  })
-
-  describe('autoCorrectTerminalConfigurations', () => {
-    it('corrects hallucinated terminal addresses', () => {
-      const configs = [
-        {
-          terminal: '0x130f5dd2bd8805443cf41755253d78a75a67f53', // Missing 'd'
-          accountingContextsToAccept: [
-            { token: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' }
-          ]
-        }
-      ]
-
-      const corrections = autoCorrectTerminalConfigurations(configs)
-
-      expect(corrections.length).toBe(1)
-      expect(corrections[0].field).toBe('terminalConfigurations[0].terminal')
-      expect(corrections[0].corrected).toBe('0x130f5dd2bd8805443cf41755253d778a75a67f53')
-      // Mutated in place
-      expect(configs[0].terminal).toBe('0x130f5dd2bd8805443cf41755253d778a75a67f53')
-    })
-
-    it('handles configs with no corrections needed', () => {
-      const configs = [
-        {
-          terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
-          accountingContextsToAccept: []
-        }
-      ]
-
-      const corrections = autoCorrectTerminalConfigurations(configs)
-      expect(corrections.length).toBe(0)
-    })
-  })
-
-  describe('autoCorrectChainConfigs', () => {
-    it('corrects addresses in chain config overrides', () => {
-      const chainConfigs = [
-        {
-          chainId: 11155111,
-          overrides: {
-            terminalConfigurations: [
-              {
-                terminal: '0xe0427f250fdb0379c88e884ee4570521208cbc', // Missing '05'
-                accountingContextsToAccept: []
-              }
-            ]
-          }
-        }
-      ]
-
-      const corrections = autoCorrectChainConfigs(chainConfigs)
-
-      expect(corrections.length).toBe(1)
-      expect(corrections[0].corrected).toBe('0xe0427f250fdb0379c8e98e884ee4570521208cbc')
-      // Mutated in place
-      expect(chainConfigs[0].overrides?.terminalConfigurations?.[0].terminal)
-        .toBe('0xe0427f250fdb0379c8e98e884ee4570521208cbc')
     })
   })
 
@@ -1010,7 +946,7 @@ describe('transactionVerification', () => {
                 token: NATIVE_TOKEN,
                 amount: BigInt('1000000000000000000'),
                 beneficiary: address,
-                minReturnedTokens: 0n,
+                minReturnedTokens: 1n,
                 memo: '',
               })
               return result.doubts.some(d =>
@@ -1030,7 +966,7 @@ describe('transactionVerification', () => {
               token: address,
               amount: BigInt('1000000000000000000'),
               beneficiary: address,
-              minReturnedTokens: 0n,
+              minReturnedTokens: 1n,
               memo: '',
             })
             // Should not have critical address-related doubts (except zero address)
@@ -1058,7 +994,7 @@ describe('transactionVerification', () => {
               token: NATIVE_TOKEN,
               amount,
               beneficiary: '0x1234567890123456789012345678901234567890',
-              minReturnedTokens: 0n,
+              minReturnedTokens: 1n,
               memo: '',
             })
             // Should not have overflow error for reasonable amounts
@@ -1080,7 +1016,7 @@ describe('transactionVerification', () => {
                 token: NATIVE_TOKEN,
                 amount,
                 beneficiary: '0x1234567890123456789012345678901234567890',
-                minReturnedTokens: 0n,
+                minReturnedTokens: 1n,
                 memo: '',
               })
               return result.doubts.some(d =>
@@ -1092,7 +1028,7 @@ describe('transactionVerification', () => {
         )
       })
 
-      it('always warns for zero amounts', () => {
+      it('always rejects zero amounts', () => {
         fc.assert(
           fc.property(
             positiveBigIntArb,
@@ -1103,11 +1039,11 @@ describe('transactionVerification', () => {
                 token: NATIVE_TOKEN,
                 amount: 0n,
                 beneficiary: address,
-                minReturnedTokens: 0n,
+                minReturnedTokens: 1n,
                 memo: '',
               })
               return result.doubts.some(d =>
-                d.severity === 'warning' && d.message === 'Payment amount is zero'
+                d.severity === 'critical' && d.message === 'Payment amount is zero'
               )
             }
           ),
@@ -1125,7 +1061,7 @@ describe('transactionVerification', () => {
               token: NATIVE_TOKEN,
               amount: BigInt('1000000000000000000'),
               beneficiary: '0x1234567890123456789012345678901234567890',
-              minReturnedTokens: 0n,
+              minReturnedTokens: 1n,
               memo: '',
             })
             return !result.doubts.some(d =>
@@ -1146,7 +1082,7 @@ describe('transactionVerification', () => {
                 token: NATIVE_TOKEN,
                 amount: BigInt('1000000000000000000'),
                 beneficiary: '0x1234567890123456789012345678901234567890',
-                minReturnedTokens: 0n,
+                minReturnedTokens: 1n,
                 memo: '',
               })
               return result.doubts.some(d =>
@@ -1169,7 +1105,7 @@ describe('transactionVerification', () => {
                 token: NATIVE_TOKEN,
                 amount: BigInt('1000000000000000000'),
                 beneficiary: '0x1234567890123456789012345678901234567890',
-                minReturnedTokens: 0n,
+                minReturnedTokens: 1n,
                 memo: '',
               }
 
@@ -1190,72 +1126,6 @@ describe('transactionVerification', () => {
       })
     })
 
-    describe('autoCorrectAddress edge cases', () => {
-      // Known canonical addresses for testing
-      const knownAddresses = [
-        '0x130f5dd2bd8805443cf41755253d778a75a67f53',
-        '0xe0427f250fdb0379c8e98e884ee4570521208cbc',
-      ]
-
-      it('never modifies valid addresses', () => {
-        fc.assert(
-          fc.property(validAddressArb, (address) => {
-            const result = autoCorrectAddress(address)
-            // If address is already valid format and not close to a known address,
-            // it should not be corrected
-            if (/^0x[a-fA-F0-9]{40}$/.test(address)) {
-              // Can only be corrected if it's within edit distance of a known address
-              return result.wasCorrected === false || result.matchedContract !== undefined
-            }
-            return true
-          }),
-          { numRuns: 100 }
-        )
-      })
-
-      it('returns original address for completely different strings', () => {
-        fc.assert(
-          fc.property(
-            fc.string().filter(s => !s.startsWith('0x')),
-            (str) => {
-              const result = autoCorrectAddress(str)
-              return result.wasCorrected === false && result.address === str
-            }
-          ),
-          { numRuns: 50 }
-        )
-      })
-
-      it('Levenshtein corrections are within 3 edits', () => {
-        // For any corrected address, the edit distance should be <= 3
-        fc.assert(
-          fc.property(
-            fc.constantFrom(...knownAddresses),
-            fc.integer({ min: 0, max: 3 }),
-            fc.integer({ min: 2, max: 40 }),
-            (knownAddr, numDeletes, startPos) => {
-              // Create a hallucinated address by removing characters
-              let hallucinated = knownAddr
-              for (let i = 0; i < numDeletes && hallucinated.length > 2; i++) {
-                const pos = Math.min(startPos + i, hallucinated.length - 1)
-                hallucinated = hallucinated.slice(0, pos) + hallucinated.slice(pos + 1)
-              }
-
-              const result = autoCorrectAddress(hallucinated)
-
-              // If it was corrected, the corrected address should be known
-              if (result.wasCorrected) {
-                return knownAddresses.includes(result.address.toLowerCase())
-              }
-              // If not corrected, either it's already valid or too far from any known
-              return true
-            }
-          ),
-          { numRuns: 100 }
-        )
-      })
-    })
-
     describe('verification result invariants', () => {
       it('isValid is false iff there are critical doubts', () => {
         fc.assert(
@@ -1269,7 +1139,7 @@ describe('transactionVerification', () => {
                 token: NATIVE_TOKEN,
                 amount,
                 beneficiary: address,
-                minReturnedTokens: 0n,
+                minReturnedTokens: 1n,
                 memo: '',
               })
 
@@ -1292,7 +1162,7 @@ describe('transactionVerification', () => {
                 token: NATIVE_TOKEN,
                 amount,
                 beneficiary: '0x1234567890123456789012345678901234567890',
-                minReturnedTokens: 0n,
+                minReturnedTokens: 1n,
                 memo: '',
               })
 

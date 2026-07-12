@@ -69,6 +69,10 @@ vi.mock('../../hooks/relayr', () => ({
   })),
 }))
 
+vi.mock('../../services/omnichainDeployer', () => ({
+  fetchProjectCreationFee: vi.fn().mockResolvedValue(1_000_000_000_000_000n),
+}))
+
 // Mock createPortal to render directly
 vi.mock('react-dom', async () => {
   const actual = await vi.importActual('react-dom')
@@ -86,7 +90,7 @@ describe('LaunchProjectModal', () => {
     onClose: vi.fn(),
     projectName: 'Test Project',
     owner: '0x1234567890123456789012345678901234567890',
-    projectUri: 'QmXyz123',
+    projectUri: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3gq2t5lz2wqzzx4m6w6v7s7qm',
     chainIds: CHAIN_IDS,
     rulesetConfig: {
       mustStartAtOrAfter: 0,
@@ -123,7 +127,7 @@ describe('LaunchProjectModal', () => {
       accountingContextsToAccept: [{
         token: '0x000000000000000000000000000000000000EEEe',
         decimals: 18,
-        currency: 1,
+        currency: 61166,
       }],
     }],
     synchronizedStartTime: Math.floor(Date.now() / 1000) + 300,
@@ -187,11 +191,13 @@ describe('LaunchProjectModal', () => {
       expect(screen.getAllByText('Waiting...')).toHaveLength(4)
     })
 
-    it('shows gas sponsored notice', () => {
+    it('shows gas sponsorship separately from the protocol creation fee', async () => {
       render(<LaunchProjectModal {...defaultProps} />)
 
       expect(screen.getByText('Gas Sponsored')).toBeInTheDocument()
-      expect(screen.getByText(/Project creation on all 4 chains is free/)).toBeInTheDocument()
+      expect(await screen.findByText(/Protocol creation fee included:/)).toHaveTextContent(
+        /0.004 ETH total across 4 chains/,
+      )
     })
 
     it('shows project owner', () => {
@@ -215,6 +221,7 @@ describe('LaunchProjectModal', () => {
       render(<LaunchProjectModal {...defaultProps} />)
 
       const createButton = screen.getByRole('button', { name: 'Create Projects' })
+      await waitFor(() => expect(createButton).toBeEnabled())
       await user.click(createButton)
 
       expect(mockLaunch).toHaveBeenCalledWith({
@@ -245,6 +252,7 @@ describe('LaunchProjectModal', () => {
 
       // Click create to trigger hasStarted state
       const createButton = screen.getByRole('button', { name: 'Create Projects' })
+      await waitFor(() => expect(createButton).toBeEnabled())
       await user.click(createButton)
 
       // Component sets hasStarted to true after clicking, showing "Creating Projects..."
@@ -259,6 +267,7 @@ describe('LaunchProjectModal', () => {
 
       // Simulate clicking create to set hasStarted
       const createButton = screen.getByRole('button', { name: 'Create Projects' })
+      await waitFor(() => expect(createButton).toBeEnabled())
       await user.click(createButton)
 
       expect(screen.getByText('Creating projects...')).toBeInTheDocument()
@@ -269,6 +278,7 @@ describe('LaunchProjectModal', () => {
       render(<LaunchProjectModal {...defaultProps} />)
 
       const createButton = screen.getByRole('button', { name: 'Create Projects' })
+      await waitFor(() => expect(createButton).toBeEnabled())
       await user.click(createButton)
 
       expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
@@ -365,10 +375,10 @@ describe('LaunchProjectModal', () => {
       expect(screen.getByText(new RegExp(`${SHORT3}: #103`))).toBeInTheDocument()
     })
 
-    it('shows sucker deployment hint for multi-chain', () => {
+    it('confirms cross-chain bridges were deployed atomically', () => {
       render(<LaunchProjectModal {...defaultProps} />)
 
-      expect(screen.getByText(/Deploy suckers to link these projects/)).toBeInTheDocument()
+      expect(screen.getByText(/Cross-chain bridges were deployed atomically/)).toBeInTheDocument()
     })
 
     it('shows Done button', () => {
@@ -439,6 +449,7 @@ describe('LaunchProjectModal', () => {
 
       // Click create to start the launch (sets hasStarted = true)
       const createButton = screen.getByRole('button', { name: 'Create Projects' })
+      await waitFor(() => expect(createButton).toBeEnabled())
       await user.click(createButton)
 
       // Reset the onClose mock to track only backdrop clicks
@@ -480,10 +491,12 @@ describe('LaunchProjectModal', () => {
   })
 
   describe('single chain', () => {
-    it('shows singular text for single chain', () => {
+    it('shows the exact single-chain protocol fee', async () => {
       render(<LaunchProjectModal {...defaultProps} chainIds={[C0]} />)
 
-      expect(screen.getByText(/Project creation on all 1 chain is free/)).toBeInTheDocument()
+      expect(await screen.findByText(/Protocol creation fee included:/)).toHaveTextContent(
+        /0.001 ETH total across 1 chain/,
+      )
     })
 
     it('shows Create Project (singular) button', () => {

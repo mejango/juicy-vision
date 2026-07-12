@@ -1,12 +1,24 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
-import { useThemeStore } from '../../stores'
+import { formatUnits, parseUnits } from 'viem'
+import { useThemeStore, useAuthStore } from '../../stores'
 import { useCashOutFormState } from '../../hooks/useComponentState'
-import { fetchProject, fetchIssuanceRate, fetchConnectedChains, type Project, type IssuanceRate, type ConnectedChain } from '../../services/bendystraw'
+import { useManagedWallet } from '../../hooks'
+import {
+  fetchProject,
+  fetchProjectAccountingContexts,
+  fetchUserTokenBalance,
+  type ConnectedChain,
+  type Project,
+  type ProjectAccountingContext,
+} from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { CashOutModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
-import { CHAINS, MAINNET_CHAINS, ALL_CHAIN_IDS, CURRENCIES } from '../../constants'
+import { CHAINS, MAINNET_CHAINS } from '../../constants'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface CashOutFormProps {
   projectId: string
@@ -19,28 +31,39 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
   const { state: persistedState, updateState: updatePersistedState } = useCashOutFormState(messageId)
 
   const [project, setProject] = useState<Project | null>(null)
-  const [issuanceRate, setIssuanceRate] = useState<IssuanceRate | null>(null)
+  const [accountingContexts, setAccountingContexts] = useState<ProjectAccountingContext[]>([])
+  const [selectedAccountingToken, setSelectedAccountingToken] = useState('')
+  const [configurationError, setConfigurationError] = useState<string | null>(null)
+  const [userTokenBalance, setUserTokenBalance] = useState<bigint | null>(null)
+  const [balanceLoading, setBalanceLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [tokenAmount, setTokenAmount] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [selectedChainId, setSelectedChainId] = useState(initialChainId)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [chainDropdownOpen, setChainDropdownOpen] = useState(false)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
-  const { isConnected } = useAccount()
+  const { isConnected, address } = useAccount()
+  const { mode, isAuthenticated } = useAuthStore()
+  const { address: managedAddress } = useManagedWallet()
+  const isManagedMode = mode === 'managed' && isAuthenticated()
+  const activeAddress = isManagedMode ? managedAddress : address
+  const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected && !!address
 
   // Check if form should be locked due to active/completed transaction
-  const isLocked = persistedState?.status && persistedState.status !== 'pending'
+  const isLocked = persistedState?.status === 'in_progress' || persistedState?.status === 'completed'
 
   // Restore state from persisted data on load
   useEffect(() => {
     if (persistedState && persistedState.status !== 'pending') {
       if (persistedState.tokenAmount) setTokenAmount(persistedState.tokenAmount)
       if (persistedState.selectedChainId) setSelectedChainId(String(persistedState.selectedChainId))
+      if (persistedState.accountingToken) setSelectedAccountingToken(persistedState.accountingToken)
     }
-  }, [persistedState?.status])
+  }, [persistedState])
 
   // Transaction callbacks for persistence
   const handleConfirmed = useCallback((txHash: string) => {
@@ -48,6 +71,14 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
       status: 'completed',
       txHash,
       confirmedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState])
+
+  const handleSubmitted = useCallback((txHash: string) => {
+    updatePersistedState({
+      status: 'in_progress',
+      txHash,
+      submittedAt: new Date().toISOString(),
     })
   }, [updatePersistedState])
 
@@ -60,47 +91,95 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
 
   const chainInfo = CHAINS[parseInt(selectedChainId)] || MAINNET_CHAINS[parseInt(selectedChainId)] || MAINNET_CHAINS[1]
 
-  // Determine currency from project's baseCurrency (if available)
-  const baseCurrency = (project as { baseCurrency?: number } | null)?.baseCurrency || 1
-  const currencySymbol = baseCurrency === 2 ? 'USDC' : 'ETH'
-
   // Use connected chains if available, otherwise fall back to single chain
   const availableChains = connectedChains.length > 0
     ? connectedChains
     : [{ chainId: parseInt(initialChainId), projectId: parseInt(projectId) }]
+  const selectedProjectId = availableChains.find(chain => chain.chainId === parseInt(selectedChainId))?.projectId ?? parseInt(projectId)
+  const accountingContext = accountingContexts.find(
+    context => context.token.toLowerCase() === selectedAccountingToken.toLowerCase(),
+  ) || accountingContexts[0]
 
-  // Fetch project data and connected chains
+  // Resolve the omnichain project IDs once from the chain/project in the tag.
+  useEffect(() => {
+    resolveProjectChains(projectId, parseInt(initialChainId)).then(resolution => {
+      setConnectedChains(resolution.chains)
+      setChainMappingAvailable(resolution.mappingAvailable)
+    })
+  }, [projectId, initialChainId])
+
+  // Fetch the selected chain's actual project ID and current ruleset.
   useEffect(() => {
     async function load() {
       try {
         setLoading(true)
         const chainIdNum = parseInt(selectedChainId)
-
-        // Fetch connected chains first
-        const chains = await fetchConnectedChains(projectId, chainIdNum)
-        setConnectedChains(chains)
-
-        // Fetch project data for selected chain
-        const [data, rate] = await Promise.all([
-          fetchProject(projectId, chainIdNum),
-          fetchIssuanceRate(projectId, chainIdNum),
+        const chainProjectId = String(selectedProjectId)
+        const [data, contexts] = await Promise.all([
+          fetchProject(chainProjectId, chainIdNum),
+          fetchProjectAccountingContexts(chainProjectId, chainIdNum),
         ])
         setProject(data)
-        setIssuanceRate(rate)
+        setAccountingContexts(contexts)
+        setConfigurationError(contexts.length > 0 ? null : 'No recognized accounting context is configured')
+        setSelectedAccountingToken(previous => {
+          const stillAvailable = contexts.some(context => context.token.toLowerCase() === previous.toLowerCase())
+          return stillAvailable ? previous : contexts[0]?.token || ''
+        })
       } catch (err) {
         console.error('Failed to load project:', err)
+        setAccountingContexts([])
+        setSelectedAccountingToken('')
+        setConfigurationError(err instanceof Error ? err.message : 'Accounting configuration unavailable')
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [projectId, selectedChainId])
+  }, [selectedProjectId, selectedChainId])
 
-  // Calculate estimated return (in whatever currency the project holds)
-  const tokenNum = parseFloat(tokenAmount) || 0
-  const estimatedReturn = issuanceRate && tokenNum > 0
-    ? tokenNum / issuanceRate.tokensPerEth
-    : 0
+  useEffect(() => {
+    let cancelled = false
+    if (!activeAddress) {
+      setUserTokenBalance(null)
+      setBalanceLoading(false)
+      return
+    }
+
+    setBalanceLoading(true)
+    fetchUserTokenBalance(String(selectedProjectId), parseInt(selectedChainId), activeAddress)
+      .then(result => {
+        if (!cancelled) setUserTokenBalance(BigInt(result.balance))
+      })
+      .catch(err => {
+        console.error('Failed to load selected-chain token balance:', err)
+        if (!cancelled) setUserTokenBalance(null)
+      })
+      .finally(() => {
+        if (!cancelled) setBalanceLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeAddress, selectedProjectId, selectedChainId])
+
+  let tokenAmountRaw: bigint | null = null
+  try {
+    tokenAmountRaw = tokenAmount.trim() === '' ? null : parseUnits(tokenAmount, 18)
+  } catch {
+    tokenAmountRaw = null
+  }
+  const hasValidAmount = tokenAmountRaw !== null && tokenAmountRaw > 0n
+  const exceedsBalance = tokenAmountRaw !== null
+    && userTokenBalance !== null
+    && tokenAmountRaw > userTokenBalance
+  const balanceUnavailable = hasActiveWallet && !balanceLoading && userTokenBalance === null
+  const tokenNum = tokenAmountRaw !== null ? Number(formatUnits(tokenAmountRaw, 18)) : 0
+  const transactionBlocked = !hasValidAmount
+    || isLocked
+    || !accountingContext
+    || (hasActiveWallet && (balanceLoading || balanceUnavailable || exceedsBalance))
 
   // Dispatch event to open wallet panel
   const openWalletPanel = () => {
@@ -108,18 +187,22 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
   }
 
   const handleCashOut = () => {
-    if (!tokenAmount || parseFloat(tokenAmount) <= 0 || isLocked) return
+    if (!hasValidAmount || isLocked || !accountingContext) return
 
-    if (!isConnected) {
+    if (!hasActiveWallet) {
       openWalletPanel()
       return
     }
 
-    // Persist in_progress state
+    if (balanceLoading || balanceUnavailable || exceedsBalance) return
+
+    // Persist the reviewed inputs without locking the form. It becomes in-progress
+    // only after a wallet or managed account actually submits a transaction.
     updatePersistedState({
-      status: 'in_progress',
+      status: 'pending',
       tokenAmount,
       selectedChainId: parseInt(selectedChainId),
+      accountingToken: accountingContext.token,
       submittedAt: new Date().toISOString(),
     })
 
@@ -146,10 +229,11 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
       <div className={`max-w-md border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Header */}
         <div className="flex items-center gap-3 mb-3">
           {logoUrl ? (
-            <img src={logoUrl} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" />
+            <IpfsImage uri={project?.logoUri} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" fallback={<div className="w-14 h-14 bg-juice-cyan/20" />} />
           ) : (
             <div className="w-14 h-14 bg-juice-cyan/20 flex items-center justify-center">
               <span className="text-2xl">🔄</span>
@@ -159,8 +243,8 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
             <h3 className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
               Cash Out
             </h3>
-            <ProjectLink chainSlug={chainInfo.slug} projectId={projectId} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
-              {project?.name || `Project #${projectId}`}
+            <ProjectLink chainSlug={chainInfo.slug} projectId={String(selectedProjectId)} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
+              {project?.name || `Project #${selectedProjectId}`}
             </ProjectLink>
           </div>
           {/* Chain selector - show dropdown if multiple chains available */}
@@ -189,6 +273,7 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
                         key={chain.chainId}
                         onClick={() => {
                           setSelectedChainId(String(chain.chainId))
+                          setTokenAmount('')
                           setChainDropdownOpen(false)
                         }}
                         className={`w-full px-3 py-1.5 text-xs text-left flex items-center gap-2 ${
@@ -218,6 +303,35 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
             Burn tokens for funds
           </div>
 
+          {accountingContexts.length > 1 && (
+            <div className="mb-3">
+              <div className={`text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Receive</div>
+              <div className="grid grid-cols-2 gap-2">
+                {accountingContexts.map(context => (
+                  <button
+                    key={context.token}
+                    type="button"
+                    onClick={() => setSelectedAccountingToken(context.token)}
+                    disabled={isLocked}
+                    className={`px-3 py-2 text-xs font-medium border ${
+                      accountingContext?.token.toLowerCase() === context.token.toLowerCase()
+                        ? isDark ? 'border-juice-cyan text-juice-cyan bg-juice-cyan/10' : 'border-cyan-600 text-cyan-700 bg-cyan-50'
+                        : isDark ? 'border-white/10 text-gray-400' : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {context.symbol}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {configurationError && (
+            <div className={`mb-3 p-2 text-xs ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-700'}`}>
+              {configurationError}
+            </div>
+          )}
+
           {/* Amount input */}
           <div className="flex gap-2">
             <div className={`flex-1 min-w-0 flex items-center ${
@@ -227,8 +341,9 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
             }`}>
               <input
                 type="number"
-                step="1"
+                step="any"
                 min="0"
+                max={userTokenBalance !== null ? formatUnits(userTokenBalance, 18) : undefined}
                 value={tokenAmount}
                 onChange={(e) => setTokenAmount(e.target.value)}
                 placeholder="10000"
@@ -245,9 +360,9 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
             </div>
             <button
               onClick={handleCashOut}
-              disabled={!tokenAmount || parseFloat(tokenAmount) <= 0 || isLocked}
+              disabled={transactionBlocked}
               className={`px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
-                !tokenAmount || parseFloat(tokenAmount) <= 0 || isLocked
+                transactionBlocked
                   ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                   : 'bg-juice-cyan hover:bg-juice-cyan/90 text-black'
               }`}
@@ -255,6 +370,29 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
               {persistedState?.status === 'completed' ? 'Cashed out' : persistedState?.status === 'in_progress' ? 'Pending...' : 'Cash Out'}
             </button>
           </div>
+
+          {hasActiveWallet && (
+            <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Selected-chain balance:{' '}
+              {balanceLoading
+                ? 'Checking...'
+                : userTokenBalance !== null
+                  ? `${formatUnits(userTokenBalance, 18)} tokens`
+                  : 'Unavailable'}
+            </div>
+          )}
+
+          {exceedsBalance && (
+            <div className={`mt-2 text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+              Amount exceeds your token balance on {chainInfo.name}.
+            </div>
+          )}
+
+          {balanceUnavailable && (
+            <div className={`mt-2 text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+              Your selected-chain balance could not be verified. Cash out is blocked.
+            </div>
+          )}
 
           {/* Transaction status indicator */}
           {isLocked && (
@@ -314,50 +452,60 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
             </div>
           )}
 
-          {/* Quick amount options */}
+          {/* Balance-based amount options */}
+          {userTokenBalance !== null && userTokenBalance > 0n && (
           <div className="flex gap-2 mt-2">
-            {['1000', '10000', '100000', '1000000'].map(val => (
+            {[
+              { label: '25%', value: (userTokenBalance * 25n) / 100n },
+              { label: '50%', value: (userTokenBalance * 50n) / 100n },
+              { label: 'Max', value: userTokenBalance },
+            ].map(option => (
               <button
-                key={val}
-                onClick={() => setTokenAmount(val)}
+                key={option.label}
+                type="button"
+                disabled={isLocked || option.value <= 0n}
+                onClick={() => setTokenAmount(formatUnits(option.value, 18))}
                 className={`flex-1 px-2 py-1 text-xs transition-colors ${
-                  tokenAmount === val
+                  tokenAmountRaw === option.value
                     ? isDark ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-900'
                     : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-500 hover:bg-gray-150'
                 }`}
               >
-                {parseInt(val).toLocaleString()}
+                {option.label}
               </button>
             ))}
           </div>
+          )}
 
-          {/* Estimated return */}
-          {tokenNum > 0 && estimatedReturn > 0 && (
-            <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-              Estimated return: ~{estimatedReturn.toFixed(baseCurrency === 2 ? 2 : 4)} {currencySymbol}
+          {tokenNum > 0 && accountingContext && (
+            <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              The exact {accountingContext.symbol} return is checked from the terminal before confirmation.
             </div>
           )}
         </div>
 
         {/* Info */}
         <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          Burn your tokens to receive funds from the project. Amount depends on balance and cash out tax rate.
+          Burn project tokens for the terminal's live cash-out quote. The active curve, surplus scope, hooks, and fees all affect the return.
         </p>
       </div>
 
       {/* Modal */}
-      <CashOutModal
+      {accountingContext && <CashOutModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        projectId={projectId}
+        projectId={String(selectedProjectId)}
         projectName={project?.name}
         chainId={parseInt(selectedChainId)}
         tokenAmount={tokenAmount}
-        estimatedReturn={estimatedReturn}
-        currencySymbol={currencySymbol}
+        reclaimToken={accountingContext.token}
+        reclaimTokenDecimals={accountingContext.decimals}
+        currencySymbol={accountingContext.symbol}
+        expectedTerminal={accountingContext.terminal}
+        onSubmitted={handleSubmitted}
         onConfirmed={handleConfirmed}
         onError={handleError}
-      />
+      />}
     </div>
   )
 }

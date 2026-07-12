@@ -12,11 +12,6 @@ interface ChainPaymentSelectorProps {
   disabled?: boolean
 }
 
-interface ChainBalance {
-  chainId: number
-  balance: bigint
-}
-
 /**
  * Dropdown for selecting which chain to pay gas from.
  * Shows cost per chain and user's balance, highlights cheapest option.
@@ -39,13 +34,14 @@ export default function ChainPaymentSelector({
   const [isOpen, setIsOpen] = useState(false)
 
   // Get user's ETH balance per chain
-  const { perChain } = useWalletBalances()
+  const { perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Find the chain balance for a given chain ID
-  const getChainBalance = useCallback((chainId: number): bigint => {
+  const getChainBalance = useCallback((chainId: number): bigint | null => {
+    if (!balancesAvailable) return null
     const chainBalance = perChain.find(b => b.chainId === chainId)
-    return chainBalance ? chainBalance.eth : 0n
-  }, [perChain])
+    return chainBalance?.eth ?? null
+  }, [balancesAvailable, perChain])
 
   // Sort options: cheapest first, then by whether user has enough balance
   const sortedOptions = useMemo(() => {
@@ -56,8 +52,8 @@ export default function ChainPaymentSelector({
       const bBalance = getChainBalance(b.chainId)
 
       // First, prioritize options where user has enough balance
-      const aHasEnough = aBalance >= aAmount
-      const bHasEnough = bBalance >= bAmount
+      const aHasEnough = aBalance !== null && aBalance >= aAmount
+      const bHasEnough = bBalance !== null && bBalance >= bAmount
 
       if (aHasEnough && !bHasEnough) return -1
       if (!aHasEnough && bHasEnough) return 1
@@ -69,6 +65,7 @@ export default function ChainPaymentSelector({
 
   const cheapestOption = sortedOptions[0]
   const selectedOption = paymentOptions.find(o => o.chainId === selectedChainId)
+  const selectionDisabled = disabled || balancesLoading || !balancesAvailable
 
   const formatAmount = (amount: string) => {
     const eth = formatEther(BigInt(amount))
@@ -102,13 +99,13 @@ export default function ChainPaymentSelector({
 
       {/* Selected option button */}
       <button
-        onClick={() => !disabled && setIsOpen(!isOpen)}
-        disabled={disabled}
+        onClick={() => !selectionDisabled && setIsOpen(!isOpen)}
+        disabled={selectionDisabled}
         className={`w-full p-3 flex items-center justify-between transition-colors ${
           isDark
             ? 'bg-white/5 border border-white/10 hover:bg-white/10'
             : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        } ${selectionDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
       >
         {selectedOption ? (
           <div className="flex items-center gap-3">
@@ -126,6 +123,11 @@ export default function ChainPaymentSelector({
                   <span className="ml-2 text-green-500">Cheapest</span>
                 )}
               </div>
+              {(balancesLoading || !balancesAvailable) && (
+                <div className="text-xs text-red-400">
+                  {balancesLoading ? 'Checking balance...' : 'Balance unavailable'}
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -154,7 +156,7 @@ export default function ChainPaymentSelector({
             {sortedOptions.map((option, idx) => {
               const chainInfo = CHAINS[option.chainId] || MAINNET_CHAINS[option.chainId]
               const balance = getChainBalance(option.chainId)
-              const hasEnough = balance >= BigInt(option.amount)
+              const hasEnough = balance !== null && balance >= BigInt(option.amount)
               const isSelected = option.chainId === selectedChainId
               const isCheapest = idx === 0
 
@@ -198,9 +200,9 @@ export default function ChainPaymentSelector({
                         ? isDark ? 'text-gray-300' : 'text-gray-600'
                         : 'text-red-400'
                     }`}>
-                      {formatBalance(balance)} ETH
+                      {balance === null ? 'Unavailable' : `${formatBalance(balance)} ETH`}
                     </div>
-                    {!hasEnough && (
+                    {balance !== null && !hasEnough && (
                       <div className="text-xs text-red-400">
                         Insufficient
                       </div>

@@ -102,30 +102,21 @@ export default function TransactionWarning({
         ))}
       </div>
 
-      {/* Acknowledgment checkbox */}
-      <div className={`px-4 py-3 border-t ${
-        hasCritical
-          ? isDark ? 'border-red-500/20' : 'border-red-200'
-          : isDark ? 'border-yellow-500/20' : 'border-yellow-200'
-      }`}>
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(e) => setAcknowledged(e.target.checked)}
-            className={`mt-0.5 w-4 h-4 rounded border-2 ${
-              hasCritical
-                ? 'border-red-400 text-red-500 focus:ring-red-500'
-                : 'border-yellow-400 text-yellow-500 focus:ring-yellow-500'
-            }`}
-          />
-          <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-            {hasCritical
-              ? 'I understand the risks and want to proceed anyway'
-              : 'I have reviewed the warnings and want to proceed'}
-          </span>
-        </label>
-      </div>
+      {!hasCritical && (
+        <div className={`px-4 py-3 border-t ${isDark ? 'border-yellow-500/20' : 'border-yellow-200'}`}>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded border-2 border-yellow-400 text-yellow-500 focus:ring-yellow-500"
+            />
+            <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+              I have reviewed the warnings and want to proceed
+            </span>
+          </label>
+        </div>
+      )}
 
       {/* Actions */}
       <div className={`px-4 py-3 flex gap-3 border-t ${
@@ -135,27 +126,27 @@ export default function TransactionWarning({
       }`}>
         <button
           onClick={onCancel}
-          className={`flex-1 py-2 px-4 font-medium border transition-colors ${
+          className={`${hasCritical ? 'w-full' : 'flex-1'} py-2 px-4 font-medium border transition-colors ${
             isDark
               ? 'border-white/20 text-white hover:bg-white/10'
               : 'border-gray-200 text-gray-700 hover:bg-gray-50'
           }`}
         >
-          Cancel
+          {hasCritical ? 'Go Back' : 'Cancel'}
         </button>
-        <button
-          onClick={onConfirm}
-          disabled={!acknowledged}
-          className={`flex-1 py-2 px-4 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-            hasCritical
-              ? 'bg-red-500 text-white hover:bg-red-600 disabled:hover:bg-red-500'
-              : isDark
+        {!hasCritical && (
+          <button
+            onClick={onConfirm}
+            disabled={!acknowledged}
+            className={`flex-1 py-2 px-4 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              isDark
                 ? 'bg-yellow-500 text-black hover:bg-yellow-400 disabled:hover:bg-yellow-500'
                 : 'bg-yellow-500 text-black hover:bg-yellow-600 disabled:hover:bg-yellow-500'
-          }`}
-        >
-          Proceed Anyway
-        </button>
+            }`}
+          >
+            Proceed
+          </button>
+        )}
       </div>
     </div>
   )

@@ -12,15 +12,7 @@ import {
   type IssuanceRate,
   type SuckerGroupBalance,
 } from '../services/bendystraw'
-import { fetchIpfsMetadata, type IpfsProjectMetadata } from '../utils/ipfs'
-
-// All chains as fallback when no sucker data available
-const ALL_CHAINS: ConnectedChain[] = [
-  { chainId: 1, projectId: 0 },
-  { chainId: 10, projectId: 0 },
-  { chainId: 8453, projectId: 0 },
-  { chainId: 42161, projectId: 0 },
-]
+import type { IpfsProjectMetadata } from '../utils/ipfs'
 
 export interface UseProjectDataOptions {
   projectId: string
@@ -65,8 +57,14 @@ export function useProjectData({
   const [ownersCount, setOwnersCount] = useState<number | null>(null)
   const [projectTokenSymbol, setProjectTokenSymbol] = useState<string | null>(null)
 
-  // Use connected chains if available, otherwise fall back to all chains
-  const availableChains = connectedChains.length > 0 ? connectedChains : ALL_CHAINS
+  // A missing sucker/indexer result does not prove the same project ID exists
+  // elsewhere. Fall back only to the chain the caller actually supplied.
+  const availableChains = useMemo(
+    () => connectedChains.length > 0
+      ? connectedChains
+      : [{ chainId: parseInt(initialChainId), projectId: parseInt(projectId) }],
+    [connectedChains, initialChainId, projectId],
+  )
 
   // Get the current project ID for the selected chain (may differ from initial projectId)
   const currentProjectId = useMemo(() => {
@@ -79,8 +77,12 @@ export function useProjectData({
   // Fetch connected chains on mount
   useEffect(() => {
     async function loadConnectedChains() {
-      const chains = await fetchConnectedChains(projectId, parseInt(initialChainId))
-      setConnectedChains(chains)
+      try {
+        const chains = await fetchConnectedChains(projectId, parseInt(initialChainId))
+        setConnectedChains(chains)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Connected project chains unavailable')
+      }
     }
     loadConnectedChains()
   }, [projectId, initialChainId])
@@ -109,11 +111,7 @@ export function useProjectData({
         setOwnersCount(owners)
         setProjectTokenSymbol(tokenSymbol)
 
-        // Fetch full metadata from IPFS if metadataUri available
-        if (data.metadataUri) {
-          const ipfsMetadata = await fetchIpfsMetadata(data.metadataUri)
-          setFullMetadata(ipfsMetadata)
-        }
+        setFullMetadata((data.metadata as IpfsProjectMetadata | undefined) ?? null)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load project')
       } finally {

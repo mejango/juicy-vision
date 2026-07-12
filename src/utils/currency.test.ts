@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   resolveAccountingToken,
+  resolveBaseCurrency,
   toTokenFloat,
   formatBalanceUsd,
   formatBalanceNative,
@@ -14,6 +15,22 @@ describe('currency util', () => {
     // explicit decimals override
     expect(resolveAccountingToken(2, 6).decimals).toBe(6)
     expect(resolveAccountingToken(undefined).symbol).toBe('ETH')
+  })
+
+  it('never treats an unknown token-derived currency as ETH', () => {
+    expect(resolveAccountingToken(61167, 6)).toEqual({
+      symbol: 'TOKEN',
+      decimals: 6,
+      isUsd: false,
+    })
+    expect(formatBalanceUsd('1000000', 2000, 61167, 6)).toBe('$--')
+    expect(formatBalanceNative('1000000', 61167, 6)).toBe('1 TOKEN')
+  })
+
+  it('labels ruleset base currencies independently from accounting tokens', () => {
+    expect(resolveBaseCurrency(1)).toBe('ETH')
+    expect(resolveBaseCurrency(2)).toBe('USD')
+    expect(resolveBaseCurrency(61167)).toBe('currency 61167')
   })
 
   it('parses raw amounts at the correct decimals (USDC=6, not 18)', () => {

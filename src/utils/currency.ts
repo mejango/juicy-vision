@@ -2,13 +2,10 @@ import { formatUnits } from 'viem'
 
 // Single source of truth for accounting-token rendering across the project page.
 //
-// Juicebox V6 classifies a project's accounting currency as an integer:
-//   1 = the native token (ETH), 18 decimals
-//   2 = USD-denominated (USDC on-chain), 6 decimals
-// Bendystraw reports `currency` + `decimals` on the sucker-group balance and on
-// per-chain accounting contexts. Everything user-facing should resolve the token
-// through here rather than assuming ETH/18 — a USDC project has 6 decimals, so a
-// raw balance divided by 1e18 (the old hardcode) is wrong by 1e12.
+// Bendystraw's project balance model normalizes a proven native token to 1 and
+// canonical USDC to 2. Other V6 accounting contexts keep their token-derived
+// uint32 currency ID. Unknown IDs must stay unknown rather than being priced as
+// ETH merely because they are not USD.
 
 export interface AccountingToken {
   /** Ticker shown next to native amounts, e.g. "ETH" or "USDC". */
@@ -23,7 +20,17 @@ export function resolveAccountingToken(currency?: number, decimals?: number): Ac
   if (currency === 2) {
     return { symbol: 'USDC', decimals: decimals ?? 6, isUsd: true }
   }
-  return { symbol: 'ETH', decimals: decimals ?? 18, isUsd: false }
+  if (currency === undefined || currency === 1) {
+    return { symbol: 'ETH', decimals: decimals ?? 18, isUsd: false }
+  }
+  return { symbol: 'TOKEN', decimals: decimals ?? 18, isUsd: false }
+}
+
+/** Ruleset base currencies use protocol denomination IDs, not token contexts. */
+export function resolveBaseCurrency(currency?: number): string {
+  if (currency === 1 || currency === undefined) return 'ETH'
+  if (currency === 2) return 'USD'
+  return `currency ${currency}`
 }
 
 /** Parse a raw on-chain amount to a float in the token's units. */
@@ -50,9 +57,11 @@ export function formatBalanceUsd(
     let usd: number
     if (currency === 2) {
       usd = value
-    } else {
+    } else if (currency === 1) {
       if (!ethPrice) return '$--'
       usd = value * ethPrice
+    } else {
+      return '$--'
     }
     if (usd === 0) return '$0'
     if (usd < 0.01) return '<$0.01'
@@ -83,12 +92,13 @@ export function formatBalanceNative(
       if (value >= 1_000) return `$${(value / 1_000).toFixed(2)}K`
       return `$${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
     }
-    if (value === 0) return '0 ETH'
-    if (value < 0.001) return '<0.001 ETH'
-    if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K ETH`
-    return `${value.toLocaleString(undefined, { maximumFractionDigits: 3 })} ETH`
+    const symbol = currency === 1 ? 'ETH' : 'TOKEN'
+    if (value === 0) return `0 ${symbol}`
+    if (value < 0.001) return `<0.001 ${symbol}`
+    if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K ${symbol}`
+    return `${value.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${symbol}`
   } catch {
-    return currency === 2 ? '$0' : '0 ETH'
+    return currency === 2 ? '$0' : currency === 1 ? '0 ETH' : '0 TOKEN'
   }
 }
 

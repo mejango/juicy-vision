@@ -4,7 +4,7 @@
  * Uses Stripe's Embedded Checkout (recommended approach) to let users
  * purchase Pay Credits with fiat currency.
  *
- * Flat rate: $1.01 per Pay Credit
+ * Flat rate: $1.05 per Pay Credit
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next'
 import { useThemeStore, useAuthStore } from '../../stores'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
-const PAY_CREDITS_RATE = 1.05 // Flat rate: $1.05 per Pay Credit
+const PAY_CREDITS_RATE = 1.05
 
 interface BuyJuiceModalProps {
   isOpen: boolean
@@ -262,7 +262,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
                     {t('wallet.rate', 'Rate')}
                   </span>
                   <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    $1.01 {t('wallet.perPayCredit', 'per Pay Credit')}
+                    $1.05 {t('wallet.perPayCredit', 'per Pay Credit')}
                   </span>
                 </div>
               </div>
@@ -327,6 +327,10 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
                   </span>
                 </div>
               </div>
+
+              <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Pay Credits become usable after payment verification. Verification can be immediate or take up to 120 days, depending on payment risk.
+              </p>
 
               {error && (
                 <div className={`px-3 py-2 text-xs border ${isDark ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-red-50 border-red-200 text-red-600'}`}>

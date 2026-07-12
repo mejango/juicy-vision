@@ -1,15 +1,36 @@
 import { useState, useCallback } from 'react'
 import { useAccount } from 'wagmi'
-import { parseEther } from 'viem'
+import { isAddress, parseEther } from 'viem'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { calculateSynchronizedStartTime, type JBRulesetConfig, type JBTerminalConfig } from '../../services/relayr'
 import { LaunchProjectModal } from '../payment'
-import { JB_CONTRACTS, ZERO_ADDRESS, NATIVE_TOKEN, ALL_CHAIN_IDS, CHAINS } from '../../constants'
+import { pinMetadata } from '../../services/ipfsPinning'
+import {
+  ALL_CHAIN_IDS,
+  CHAINS,
+  JB_CONTRACTS,
+  JB_ROUTER_TERMINAL_REGISTRY,
+  NATIVE_TOKEN,
+  ZERO_ADDRESS,
+} from '../../constants'
 
 interface CreateProjectFormProps {
-  defaultOwner?: string
-  defaultChainIds?: number[]
+  defaultChainIds?: number[] | string
+}
+
+const DEFAULT_CHAIN_ID = ALL_CHAIN_IDS.find(id => CHAINS[id]?.name.includes('Base')) ?? ALL_CHAIN_IDS[0]
+
+function normalizeChainIds(input: number[] | string | undefined): number[] {
+  const candidates = Array.isArray(input)
+    ? input
+    : typeof input === 'string'
+      ? input.split(',').map(value => Number.parseInt(value.trim(), 10))
+      : []
+  const supported = [...new Set(candidates.filter(
+    id => Number.isInteger(id) && (ALL_CHAIN_IDS as readonly number[]).includes(id),
+  ))]
+  return supported.length > 0 ? supported : [DEFAULT_CHAIN_ID]
 }
 
 // Form state for project configuration
@@ -97,24 +118,24 @@ function formStateToRulesetConfig(
     if (state.payoutLimitType === 'limited') {
       payoutLimits.push({
         amount: parseEther(state.payoutLimit || '0').toString(),
-        currency: 1, // ETH
+        currency: 61166, // Native accounting token ID.
       })
     } else if (state.payoutLimitType === 'unlimited') {
       payoutLimits.push({
         amount: '26959946667150639794667015087019630673637144422540572481103610249215',
-        currency: 1,
+        currency: 61166,
       })
     }
 
     if (state.surplusAllowanceType === 'limited') {
       surplusAllowances.push({
         amount: parseEther(state.surplusAllowance || '0').toString(),
-        currency: 1,
+        currency: 61166,
       })
     } else if (state.surplusAllowanceType === 'unlimited') {
       surplusAllowances.push({
         amount: '26959946667150639794667015087019630673637144422540572481103610249215',
-        currency: 1,
+        currency: 61166,
       })
     }
 
@@ -170,20 +191,26 @@ function buildTerminalConfigurations(state: ProjectFormState): JBTerminalConfig[
     accountingContexts.push({
       token: NATIVE_TOKEN,
       decimals: 18,
-      currency: 1, // ETH
+      currency: 61166,
     })
   }
 
   // USDC would need per-chain addresses, simplified for now
   // if (state.acceptUsdc) { ... }
 
-  return [{
-    terminal: JB_CONTRACTS.JBMultiTerminal,
-    accountingContextsToAccept: accountingContexts,
-  }]
+  return [
+    {
+      terminal: JB_CONTRACTS.JBMultiTerminal,
+      accountingContextsToAccept: accountingContexts,
+    },
+    {
+      terminal: JB_ROUTER_TERMINAL_REGISTRY,
+      accountingContextsToAccept: [],
+    },
+  ]
 }
 
-export default function CreateProjectForm({ defaultOwner, defaultChainIds }: CreateProjectFormProps) {
+export default function CreateProjectForm({ defaultChainIds }: CreateProjectFormProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { mode, isAuthenticated } = useAuthStore()
@@ -193,21 +220,22 @@ export default function CreateProjectForm({ defaultOwner, defaultChainIds }: Cre
   const { address: managedAddress } = useManagedWallet()
 
   const [formState, setFormState] = useState<ProjectFormState>(DEFAULT_FORM_STATE)
-  const [selectedChains, setSelectedChains] = useState<number[]>(
-    defaultChainIds || [...ALL_CHAIN_IDS]
-  )
+  const [selectedChains, setSelectedChains] = useState<number[]>(() => normalizeChainIds(defaultChainIds))
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [preparedProjectUri, setPreparedProjectUri] = useState('')
+  const [preparingMetadata, setPreparingMetadata] = useState(false)
+  const [preparationError, setPreparationError] = useState<string | null>(null)
 
-  // Get owner address
-  const ownerAddress = defaultOwner || (isManagedMode ? managedAddress : address) || ''
+  const ownerAddress = (isManagedMode ? managedAddress : address) || ''
 
   // Calculate synchronized start time for omnichain deployment
   const synchronizedStartTime = calculateSynchronizedStartTime()
   const startDate = new Date(synchronizedStartTime * 1000)
 
   // Validation
-  const isValid = formState.name.trim().length > 0 && selectedChains.length > 0 && ownerAddress
+  const configurationValid = formState.name.trim().length > 0 && selectedChains.length > 0
+  const isValid = configurationValid && (!isManagedMode || isAddress(ownerAddress))
 
   const updateFormState = useCallback((key: keyof ProjectFormState, value: string | boolean) => {
     setFormState(prev => ({ ...prev, [key]: value }))
@@ -221,27 +249,36 @@ export default function CreateProjectForm({ defaultOwner, defaultChainIds }: Cre
     )
   }, [])
 
-  const handleCreate = useCallback(() => {
-    if (!isValid) return
+  const handleCreate = useCallback(async () => {
+    if (!configurationValid) return
 
     if (!isConnected && !isManagedMode) {
       window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
       return
     }
+    if (!isAddress(ownerAddress)) return
 
-    setShowModal(true)
-  }, [isValid, isConnected, isManagedMode])
+    setPreparingMetadata(true)
+    setPreparationError(null)
+    try {
+      const uri = await pinMetadata({
+        name: formState.name,
+        description: formState.description,
+        logoUri: formState.logoUrl,
+      }, `project-${formState.name}`)
+      setPreparedProjectUri(uri)
+      setShowModal(true)
+    } catch (err) {
+      setPreparedProjectUri('')
+      setPreparationError(err instanceof Error ? err.message : 'Could not prepare project metadata')
+    } finally {
+      setPreparingMetadata(false)
+    }
+  }, [configurationValid, isConnected, isManagedMode, ownerAddress, formState.name, formState.description, formState.logoUrl])
 
   // Build config for modal
   const rulesetConfig = formStateToRulesetConfig(formState, synchronizedStartTime)
   const terminalConfigurations = buildTerminalConfigurations(formState)
-
-  // Build project URI (simple inline for now - real impl would use IPFS)
-  const projectUri = JSON.stringify({
-    name: formState.name,
-    description: formState.description,
-    logoUri: formState.logoUrl,
-  })
 
   return (
     <div className="w-full">
@@ -426,7 +463,7 @@ export default function CreateProjectForm({ defaultOwner, defaultChainIds }: Cre
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>
               <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Exit Tax (%)
+                Cash-out curve rate (%)
               </label>
               <input
                 type="number"
@@ -443,7 +480,7 @@ export default function CreateProjectForm({ defaultOwner, defaultChainIds }: Cre
                 }`}
               />
               <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                0 = full refund
+                0 = proportional baseline; 100 = disabled
               </span>
             </div>
 
@@ -652,27 +689,36 @@ export default function CreateProjectForm({ defaultOwner, defaultChainIds }: Cre
             Gas Sponsored
           </div>
           <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Project creation is free - gas is sponsored by the platform
+            Gas is sponsored. The exact protocol creation fee is shown before deployment.
           </div>
         </div>
 
         {/* Create Button */}
         <button
           onClick={handleCreate}
-          disabled={!isValid}
+          disabled={!isValid || preparingMetadata}
           className={`w-full py-3 text-sm font-bold transition-colors ${
-            isValid
+            isValid && !preparingMetadata
               ? 'bg-juice-orange hover:bg-juice-orange/90 text-black'
               : 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
           }`}
         >
-          Create Project{selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}
+          {preparingMetadata
+            ? 'Preparing metadata...'
+            : !isManagedMode && !isConnected
+              ? 'Connect wallet to create'
+            : `Create Project${selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}`}
         </button>
+        {preparationError && (
+          <p className={`mt-2 text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+            {preparationError}
+          </p>
+        )}
 
         {/* Info */}
         <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
           Your project will be created with the same configuration on all selected chains.
-          {selectedChains.length > 1 && ' You can deploy suckers afterward to link them for cross-chain token bridging.'}
+          {selectedChains.length > 1 && ' Cross-chain bridges are deployed atomically with the projects.'}
         </p>
       </div>
 
@@ -682,7 +728,7 @@ export default function CreateProjectForm({ defaultOwner, defaultChainIds }: Cre
         onClose={() => setShowModal(false)}
         projectName={formState.name}
         owner={ownerAddress}
-        projectUri={projectUri}
+        projectUri={preparedProjectUri}
         chainIds={selectedChains}
         rulesetConfig={rulesetConfig}
         terminalConfigurations={terminalConfigurations}

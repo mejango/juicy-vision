@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { fetchProject, fetchConnectedChains, type Project } from '../../services/bendystraw'
-import { resolveIpfsUri } from '../../utils/ipfs'
+import { fetchProject, type Project } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { useThemeStore } from '../../stores'
 import { CHAINS, ALL_CHAIN_IDS } from '../../constants'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface ProjectChainPickerProps {
   projectId: string
@@ -26,6 +28,7 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
   const [error, setError] = useState<string | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [ensNames, setEnsNames] = useState<Record<string, string>>({})
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -74,59 +77,33 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
           return
         }
 
-        // Step 2: Get sucker pairs for each project
-        const suckerPromises = foundProjects.map(async ({ chainId, project }) => {
-          const connected = await fetchConnectedChains(projectId, chainId)
-          return { chainId, project, suckerChainIds: new Set(connected.map(c => c.chainId)) }
-        })
+        // Step 2: Keep Bendystraw's actual project ID for every mapped chain.
+        // A group fingerprint deduplicates the same sucker group found from
+        // multiple seeds, while an unavailable index falls back to that seed.
+        const resolved = await Promise.all(foundProjects.map(async ({ chainId, project }) => ({
+          chainId,
+          project,
+          resolution: await resolveProjectChains(String(project.projectId), chainId),
+        })))
+        setChainMappingAvailable(resolved.every(item => item.resolution.mappingAvailable))
 
-        const withSuckers = await Promise.all(suckerPromises)
-
-        // Step 3: Group projects that are ACTUALLY connected via suckers
-        // Key insight: only group if BOTH projects list each other in their sucker groups
         const grouped: ProjectOption[] = []
-        const processed = new Set<number>()
-
-        for (const { chainId, project, suckerChainIds } of withSuckers) {
-          if (processed.has(chainId)) continue
-
-          // Find all other projects that are mutually connected to this one
-          const connectedProjects = withSuckers.filter(other => {
-            if (other.chainId === chainId) return false
-            if (processed.has(other.chainId)) return false
-            // Check mutual connection: this project lists the other AND the other lists this
-            return suckerChainIds.has(other.chainId) && other.suckerChainIds.has(chainId)
+        const fingerprints = new Set<string>()
+        for (const { chainId, project, resolution } of resolved) {
+          const mappings = [...resolution.chains].sort((a, b) =>
+            a.chainId - b.chainId || a.projectId - b.projectId
+          )
+          const fingerprint = mappings.map(mapping => `${mapping.chainId}:${mapping.projectId}`).join('|')
+          if (fingerprints.has(fingerprint)) continue
+          fingerprints.add(fingerprint)
+          grouped.push({
+            chainIds: mappings.map(mapping => mapping.chainId),
+            projectIds: mappings.map(mapping => mapping.projectId),
+            name: project.name,
+            logoUri: project.logoUri,
+            owner: project.owner,
+            primaryChainId: chainId,
           })
-
-          if (connectedProjects.length > 0) {
-            // This project is linked to others via suckers
-            const allConnected = [{ chainId, project }, ...connectedProjects.map(p => ({ chainId: p.chainId, project: p.project }))]
-            const chainIds = allConnected.map(p => p.chainId)
-            const projectIds = allConnected.map(() => parseInt(projectId))
-
-            // Mark all as processed
-            chainIds.forEach(id => processed.add(id))
-
-            grouped.push({
-              chainIds,
-              projectIds,
-              name: project.name,
-              logoUri: project.logoUri,
-              owner: project.owner,
-              primaryChainId: chainId,
-            })
-          } else {
-            // Standalone project on this chain (not connected via suckers)
-            processed.add(chainId)
-            grouped.push({
-              chainIds: [chainId],
-              projectIds: [parseInt(projectId)],
-              name: project.name,
-              logoUri: project.logoUri,
-              owner: project.owner,
-              primaryChainId: chainId,
-            })
-          }
         }
 
         setOptions(grouped)
@@ -146,7 +123,9 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
 
     // Send message with the selection
     const chainNames = selected.chainIds.map(id => CHAINS[id]?.name).filter(Boolean).join(' + ')
-    const message = `Show me ${selected.name} on ${chainNames} (chainId: ${selected.primaryChainId})`
+    const primaryIndex = selected.chainIds.indexOf(selected.primaryChainId)
+    const selectedProjectId = selected.projectIds[primaryIndex]
+    const message = `Show me ${selected.name} on ${chainNames} (projectId: ${selectedProjectId}, chainId: ${selected.primaryChainId})`
 
     window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message } }))
   }
@@ -189,13 +168,15 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
       <div className={`inline-block border overflow-hidden ${
         isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         <div className="p-3">
           <div className="flex items-center gap-3">
             {option.logoUri ? (
-              <img
-                src={resolveIpfsUri(option.logoUri) ?? undefined}
+              <IpfsImage
+                uri={option.logoUri}
                 alt={option.name}
                 className="w-10 h-10 object-cover"
+                fallback={<div className="w-10 h-10 bg-juice-orange/20" />}
               />
             ) : (
               <div className="w-10 h-10 bg-juice-orange/20 flex items-center justify-center">
@@ -233,6 +214,7 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
     <div className={`inline-block border overflow-hidden ${
       isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
     }`}>
+      {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
       <div className="p-3">
         <div className="space-y-2">
           {options.map((option, index) => {
@@ -264,10 +246,11 @@ export default function ProjectChainPicker({ projectId }: ProjectChainPickerProp
 
                 {/* Logo */}
                 {option.logoUri ? (
-                  <img
-                    src={resolveIpfsUri(option.logoUri) ?? undefined}
+                  <IpfsImage
+                    uri={option.logoUri}
                     alt={option.name}
                     className="w-10 h-10 object-cover shrink-0"
+                    fallback={<div className="w-10 h-10 bg-juice-orange/20 shrink-0" />}
                   />
                 ) : (
                   <div className="w-10 h-10 bg-juice-orange/20 flex items-center justify-center shrink-0">

@@ -97,13 +97,6 @@ export const JB721TierStoreAbi = [
     ],
   },
   {
-    name: 'numberOfTiersOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'hook', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
     name: 'maxTierIdOf',
     type: 'function',
     stateMutability: 'view',

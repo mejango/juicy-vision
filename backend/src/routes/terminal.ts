@@ -5,32 +5,32 @@
  * Supports both merchant auth (JWT) and terminal auth (API key).
  */
 
-import { Hono, Context, Next } from 'hono';
+import { Context, Hono, Next } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { requireAuth, optionalAuth } from '../middleware/auth.ts';
+import { optionalAuth, requireAuth } from '../middleware/auth.ts';
 import { rateLimitByUser } from '../services/rateLimit.ts';
 import {
-  registerDevice,
-  getDevice,
-  getMerchantDevices,
   authenticateDevice,
-  updateDevice,
-  regenerateApiKey,
-  deleteDevice,
+  cancelSession,
+  confirmWalletPayment,
   createSession,
+  deleteDevice,
+  getDevice,
+  getDeviceSessions,
+  getMerchantDevices,
+  getMerchantSessions,
+  getMerchantStats,
   getSession,
   getSessionWithDetails,
-  getDeviceSessions,
-  getMerchantSessions,
-  cancelSession,
-  payWithJuice,
-  getMerchantStats,
   getWalletPaymentParams,
+  payWithJuice,
+  regenerateApiKey,
+  registerDevice,
+  resetWalletPayment,
   startWalletPayment,
-  confirmWalletPayment,
-  failWalletPayment,
   type TerminalDevice,
+  updateDevice,
 } from '../services/terminal.ts';
 import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
 
@@ -137,7 +137,7 @@ terminalRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to register device';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // GET /api/terminal/devices - List merchant's terminal devices
@@ -211,7 +211,7 @@ terminalRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to update device';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // POST /api/terminal/devices/:id/regenerate-key - Regenerate API key
@@ -273,8 +273,8 @@ terminalRouter.get('/stats', requireAuth, async (c) => {
 // POST /api/terminal/session - Create a new payment session
 const CreateSessionSchema = z.object({
   amountUsd: z.number().positive().max(10000), // Max $10,000
-  token: z.string().optional(), // Token address
-  tokenSymbol: z.string().optional(), // e.g., "ETH", "USDC"
+  token: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  tokenSymbol: z.enum(['ETH', 'USDC']).optional(),
 });
 
 terminalRouter.post(
@@ -304,7 +304,7 @@ terminalRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to create session';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // GET /api/terminal/session/:id - Get session status (terminal or consumer)
@@ -418,7 +418,7 @@ terminalRouter.post(
       const message = error instanceof Error ? error.message : 'Payment failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -471,7 +471,7 @@ terminalRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to start payment';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // POST /api/terminal/session/:id/pay/wallet/confirm - Transaction confirmed
@@ -501,25 +501,32 @@ terminalRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to confirm payment';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
-// POST /api/terminal/session/:id/pay/wallet/fail - Transaction failed
-const FailWalletPaymentSchema = z.object({
+// POST /api/terminal/session/:id/pay/wallet/reset - Release a wallet attempt
+const ResetWalletPaymentSchema = z.object({
+  payerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
   errorMessage: z.string().optional(),
 });
 
 terminalRouter.post(
-  '/session/:id/pay/wallet/fail',
-  zValidator('json', FailWalletPaymentSchema),
+  '/session/:id/pay/wallet/reset',
+  zValidator('json', ResetWalletPaymentSchema),
   async (c) => {
     const sessionId = c.req.param('id');
-    const { errorMessage } = c.req.valid('json');
+    const { payerAddress, txHash, errorMessage } = c.req.valid('json');
 
     try {
-      const session = await failWalletPayment(sessionId, errorMessage);
+      const session = await resetWalletPayment(
+        sessionId,
+        payerAddress,
+        txHash,
+        errorMessage,
+      );
       if (!session) {
-        return c.json({ success: false, error: 'Session not in paying state' }, 400);
+        return c.json({ success: false, error: 'Wallet payment cannot be safely reset' }, 400);
       }
 
       return c.json({
@@ -527,10 +534,10 @@ terminalRouter.post(
         data: { session: formatSession(session) },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update session';
+      const message = error instanceof Error ? error.message : 'Failed to reset wallet payment';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -563,7 +570,7 @@ terminalRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to list transactions';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // GET /api/terminal/devices/:id/sessions - Get device's session history
@@ -608,7 +615,7 @@ terminalRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to list sessions';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // ============================================================================

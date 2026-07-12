@@ -7,21 +7,20 @@
  */
 
 import { useCallback, useEffect, useRef, useMemo } from 'react'
-import { useAccount, useWalletClient } from 'wagmi'
-import { encodeFunctionData, createPublicClient, http, fallback, type PublicClient } from 'viem'
+import { encodeFunctionData, createPublicClient, http, fallback, isAddress, type Address, type PublicClient } from 'viem'
 import { useAuthStore } from '../../stores'
 import { useManagedWallet, createManagedRelayrBundle, type RelayrTransaction } from '../useManagedWallet'
-import { createPrepaidBundle } from '../../services/relayr'
+import { assertTransactionAccountUnchanged } from '../useReviewedTransactionAccount'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { BundleState } from './types'
 import { JB_CONTROLLER_ABI } from '../../constants/abis/jbController'
-import { SPLIT_GROUP_RESERVED, getPayoutSplitGroup, NATIVE_TOKEN } from '../../constants/abis/jbSplits'
-import { USDC_ADDRESSES, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
+import { SPLIT_GROUP_RESERVED } from '../../constants/abis/jbSplits'
+import { RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import { getProjectController } from '../../utils/paymentTerminal'
-
-// Relayr app ID for sponsored bundles
-const RELAYR_APP_ID = import.meta.env.VITE_RELAYR_APP_ID || 'juicy-vision'
+import { assertCurrentRulesetId } from '../../utils/projectTrust'
+import { buildSplitGroup } from '../../utils/splitSafety'
+import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
 
 // Split data as used in the form
 export interface FormSplit {
@@ -31,6 +30,7 @@ export interface FormSplit {
   preferAddToBalance: boolean
   lockedUntil: number
   hook: string
+  isNew?: boolean
 }
 
 // Chain data for setting splits
@@ -39,6 +39,9 @@ export interface ChainSplitData {
   projectId: number
   rulesetId: string
   baseCurrency: number
+  payoutGroupId: string | null
+  payoutSplits: JBSplitData[]
+  reservedSplits: JBSplitData[]
 }
 
 interface UseOmnichainSetSplitsOptions {
@@ -57,33 +60,6 @@ interface UseOmnichainSetSplitsReturn {
   isComplete: boolean
   hasError: boolean
   reset: () => void
-  setPaymentChain: (chainId: number) => void
-}
-
-// Convert form percent (0-100) to basis points (0-1_000_000_000)
-function toBasisPoints(displayPercent: string): number {
-  const pct = parseFloat(displayPercent) || 0
-  return Math.floor((pct / 100) * 1_000_000_000)
-}
-
-// Build JBSplit struct from form data
-// Note: JBController uses uint56 for projectId (not uint64 like JBSplits directly)
-function buildSplit(split: FormSplit): {
-  preferAddToBalance: boolean
-  percent: number
-  projectId: bigint
-  beneficiary: `0x${string}`
-  lockedUntil: number
-  hook: `0x${string}`
-} {
-  return {
-    preferAddToBalance: split.preferAddToBalance,
-    percent: toBasisPoints(split.percent),
-    projectId: BigInt(split.projectId || 0),
-    beneficiary: (split.beneficiary || '0x0000000000000000000000000000000000000000') as `0x${string}`,
-    lockedUntil: split.lockedUntil,
-    hook: (split.hook || '0x0000000000000000000000000000000000000000') as `0x${string}`,
-  }
 }
 
 export function useOmnichainSetSplits(
@@ -104,10 +80,9 @@ export function useOmnichainSetSplits(
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
 
-  // Wallet state
-  const { address } = useAccount()
-  const { data: walletClient } = useWalletClient()
   const { address: managedAddress } = useManagedWallet()
+  const latestManagedAddress = useRef(managedAddress)
+  latestManagedAddress.current = managedAddress
 
   // Bundle state management
   const bundle = useRelayrBundle() as ReturnType<typeof useRelayrBundle> & {
@@ -123,7 +98,7 @@ export function useOmnichainSetSplits(
     _setProcessing: (txHash: string) => void
     _setError: (error: string) => void
   }
-  const { bundleState, reset, setPaymentChain, updateFromStatus } = bundle
+  const { bundleState, reset, updateFromStatus } = bundle
 
   // Status polling
   const { data: statusData } = useRelayrStatus({
@@ -177,19 +152,45 @@ export function useOmnichainSetSplits(
     const { chainData, payoutSplits, reservedSplits } = params
 
     // Validate wallet
-    const activeAddress = isManagedMode ? managedAddress : address
-    if (!activeAddress) {
-      bundle._setError('Wallet not connected')
+    if (!isManagedMode || !managedAddress || !isAddress(managedAddress)) {
+      bundle._setError('Omnichain split updates require an active managed account')
       return
     }
-
-    bundle._setCreating()
+    const activeAddress = managedAddress
+    const simulationAccount = managedAddress as Address
 
     try {
+      const splitFingerprint = (split: JBSplitData) => [
+        split.percent,
+        split.projectId,
+        split.beneficiary.toLowerCase(),
+        split.preferAddToBalance,
+        split.lockedUntil,
+        split.hook.toLowerCase(),
+      ].join(':')
+      const assertReviewedSplitsUnchanged = async (chain: ChainSplitData) => {
+        const fresh = await fetchProjectSplits(
+          String(chain.projectId),
+          chain.chainId,
+          chain.rulesetId,
+        )
+        const matches = (left: JBSplitData[], right: JBSplitData[]) =>
+          left.length === right.length && left.every((split, index) =>
+            splitFingerprint(split) === splitFingerprint(right[index])
+          )
+        if (
+          !matches(fresh.payoutSplits, chain.payoutSplits) ||
+          !matches(fresh.reservedSplits, chain.reservedSplits)
+        ) {
+          throw new Error(`Splits changed on chain ${chain.chainId}. Reload before submitting.`)
+        }
+      }
+
       // Fetch controller address for each chain from JBDirectory
       console.log('Fetching controller addresses for each chain...')
       const chainDataWithControllers = await Promise.all(
         chainData.map(async (chain) => {
+          await assertReviewedSplitsUnchanged(chain)
           const viemChain = VIEM_CHAINS[chain.chainId as SupportedChainId]
           if (!viemChain) {
             throw new Error(`Unsupported chain ID: ${chain.chainId}`)
@@ -210,46 +211,50 @@ export function useOmnichainSetSplits(
             publicClient,
             BigInt(chain.projectId)
           )
+          await assertCurrentRulesetId({
+            client: publicClient,
+            projectId: BigInt(chain.projectId),
+            expectedRulesetId: BigInt(chain.rulesetId),
+          })
 
           console.log(`Chain ${chain.chainId}: Project ${chain.projectId} uses controller ${controller}`)
 
           return {
             ...chain,
             controller,
+            publicClient,
           }
         })
       )
 
       // Build transactions for each chain using the controller
-      const transactions = chainDataWithControllers.map(chain => {
-        // Determine payout token based on baseCurrency
-        const payoutToken = chain.baseCurrency === 2
-          ? USDC_ADDRESSES[chain.chainId as SupportedChainId]
-          : NATIVE_TOKEN
-
+      const transactions = await Promise.all(chainDataWithControllers.map(async chain => {
+        if (!chain.payoutGroupId) throw new Error(`Payout split group unavailable on chain ${chain.chainId}`)
+        const builtPayoutSplits = buildSplitGroup(payoutSplits, 'Payout splits', {
+          kind: 'payout',
+          sourceProjectId: chain.projectId,
+        })
+        const builtReservedSplits = buildSplitGroup(reservedSplits, 'Reserved-token splits', {
+          kind: 'reserved',
+          sourceProjectId: chain.projectId,
+        })
         // Build split groups
         const splitGroups: Array<{
           groupId: bigint
-          splits: ReturnType<typeof buildSplit>[]
+          splits: ReturnType<typeof buildSplitGroup>
         }> = []
 
         // Add payout splits group (keyed by token address)
-        const validPayoutSplits = payoutSplits.filter(s => s.percent && parseFloat(s.percent) > 0)
-        if (validPayoutSplits.length > 0) {
-          splitGroups.push({
-            groupId: getPayoutSplitGroup(payoutToken),
-            splits: validPayoutSplits.map(buildSplit),
-          })
-        }
+        splitGroups.push({
+          groupId: BigInt(chain.payoutGroupId),
+          splits: builtPayoutSplits,
+        })
 
         // Add reserved splits group (always group ID 1)
-        const validReservedSplits = reservedSplits.filter(s => s.percent && parseFloat(s.percent) > 0)
-        if (validReservedSplits.length > 0) {
-          splitGroups.push({
-            groupId: SPLIT_GROUP_RESERVED,
-            splits: validReservedSplits.map(buildSplit),
-          })
-        }
+        splitGroups.push({
+          groupId: SPLIT_GROUP_RESERVED,
+          splits: builtReservedSplits,
+        })
 
         // Encode the setSplitGroupsOf call targeting the controller
         const calldata = encodeFunctionData({
@@ -262,13 +267,23 @@ export function useOmnichainSetSplits(
           ],
         })
 
+        await chain.publicClient.call({
+          account: simulationAccount,
+          to: chain.controller,
+          data: calldata,
+        })
+
         return {
           chain: chain.chainId,
           target: chain.controller, // Use controller, not JBSplits
           data: calldata,
           value: '0',
         }
-      })
+      }))
+
+      // Close the gap between preview construction and handing the bundle to Relayr.
+      await Promise.all(chainData.map(assertReviewedSplitsUnchanged))
+      assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
 
       // Build projectIds mapping
       const projectIds: Record<number, number> = {}
@@ -276,61 +291,40 @@ export function useOmnichainSetSplits(
         projectIds[cd.chainId] = cd.projectId
       })
 
-      if (isManagedMode) {
-        // MANAGED MODE: Create balance-sponsored bundle with smart account routing
-        // Transactions are wrapped through SmartAccount.execute() so that
-        // _msgSender() inside the target contract = smart account = project owner
-        console.log('=== SERVER SIGNING MODE (setSplits) ===')
-        console.log(`Smart account routing: ${managedAddress}`)
+      // Transactions are wrapped through SmartAccount.execute() so that
+      // _msgSender() inside the target contract = smart account = project owner.
+      console.log('=== SERVER SIGNING MODE (setSplits) ===')
+      console.log(`Smart account routing: ${managedAddress}`)
 
-        // Convert to RelayrTransaction format
-        const relayrTransactions: RelayrTransaction[] = transactions.map(tx => ({
-          chainId: tx.chain,
-          target: tx.target,
-          data: tx.data,
-          value: tx.value,
-        }))
+      bundle._setCreating()
 
-        // Use createManagedRelayrBundle with smart account routing
-        const result = await createManagedRelayrBundle(
-          relayrTransactions,
-          activeAddress,
-          managedAddress ?? undefined  // Smart account address for routing
-        )
+      const relayrTransactions: RelayrTransaction[] = transactions.map(tx => ({
+        chainId: tx.chain,
+        target: tx.target,
+        data: tx.data,
+        value: tx.value,
+      }))
 
-        bundle._initializeBundle(
-          result.bundleId,
-          chainData.map(cd => cd.chainId),
-          projectIds,
-          []
-        )
-        bundle._setProcessing('sponsored')
-      } else {
-        // SELF-CUSTODY MODE: Create prepaid bundle
-        if (!walletClient) {
-          throw new Error('Wallet client not available')
-        }
+      assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
+      const result = await createManagedRelayrBundle(
+        relayrTransactions,
+        activeAddress,
+        managedAddress
+      )
 
-        const bundleResponse = await createPrepaidBundle({
-          signer_address: activeAddress,
-          transactions,
-        })
-
-        bundle._initializeBundle(
-          bundleResponse.bundle_uuid,
-          chainData.map(cd => cd.chainId),
-          projectIds,
-          bundleResponse.payment_options,
-          undefined,
-          bundleResponse.expires_at
-        )
-      }
+      bundle._initializeBundle(
+        result.bundleId,
+        chainData.map(cd => cd.chainId),
+        projectIds,
+        []
+      )
+      bundle._setProcessing('sponsored')
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create bundle'
       bundle._setError(errorMessage)
       onErrorRef.current?.(errorMessage)
     }
-  }, [isManagedMode, managedAddress, address, walletClient, bundle])
+  }, [isManagedMode, managedAddress, bundle])
 
   const isExecuting = bundleState.status === 'creating' ||
     bundleState.status === 'awaiting_payment' ||
@@ -343,12 +337,10 @@ export function useOmnichainSetSplits(
     isComplete: bundleState.status === 'completed',
     hasError: bundleState.status === 'failed' || bundleState.status === 'partial' || bundleState.status === 'expired',
     reset,
-    setPaymentChain,
   }), [
     setSplits,
     bundleState,
     isExecuting,
     reset,
-    setPaymentChain,
   ])
 }

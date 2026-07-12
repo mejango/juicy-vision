@@ -5,36 +5,42 @@
  * including the V6 contract set, suckers, cross-chain token bridging, and user flows.
  */
 
+import { CONTRACTS } from '@shared/chains.ts';
+
 export const OMNICHAIN_CONTEXT = `
 ## Juicebox V6
 
-Juicebox V6 is the protocol. There is a single contract set — every project, including Revnets, uses the same V6 contracts. There is no per-project version detection: resolve a project's controller and terminals through JBDirectory, never by guessing a version.
+Juicebox V6 is the protocol. There is a single contract set — every project, including Revnets, uses the same V6 contracts. There is no per-project version detection. JBDirectory and JBProjects are the only hardcoded discovery roots. For every existing-project action, derive the current controller, terminals, accounting contexts, dependencies, and hooks from live project state. Require every singleton to be explicitly recognized. For clone-type 721, Defifa, and LP split hooks, derive the address registry from a recognized deployer and require that registry to identify the same recognized deployer for the clone. Any unknown controller, terminal, hook, dependency, or other target blocks unconditionally. ABI/interface compatibility, successful reads, and successful simulation never establish trust and must never authorize a transaction.
+
+Juicy Vision exposes bridge discovery and status as read-only information. It does not prepare \`prepare\`, \`toRemote\`, or \`claim\` transactions. Never construct raw bridge calldata or prompt a user to send a bridge transaction from tool output.
 
 ### V6 Core Contracts (same address on every supported chain — mainnets and Sepolia testnets — via CREATE2)
 
+Except for JBDirectory and JBProjects, these are deployment and recognition references, not existing-project routing fallbacks.
+
 | Contract | Address | Role |
 |----------|---------|------|
-| JBController | 0x3fcec3572e84b624477bcff4e2cf1f7deab648f1 | Rulesets, token issuance, reserved splits, project URI |
-| JBMultiTerminal | 0x130f5dd2bd8805443cf41755253d778a75a67f53 | Payments, cash outs, payouts, surplus allowance |
-| JBRulesets | 0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba | Ruleset storage and cycling |
-| JBTerminalStore | 0x7497ae014a60561925b51c0a3b4ade7460b9927c | Terminal balance/accounting reads |
-| JBTokens | 0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9 | Project token + credit balances |
-| JBProjects | 0x6017d1fba9dc279bfa0b03fd931c22e242ab3691 | Project ownership NFTs |
-| JBDirectory | 0x5aff29060e023e6fb87be5596652b33c65af535b | controllerOf / terminalsOf / primaryTerminalOf |
-| JBSplits | 0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3 | Split storage |
-| JBPermissions | 0xf92ac1ab5a00033e35a3975739124f61928c36b0 | Operator permissions |
-| JBOmnichainDeployer | 0xb853758a70a6b4216c09f1d071ea2344aba0a34f | Project deployment (use this to deploy, not the controller) |
-| JBRouterTerminal | 0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7 | Routes arbitrary-token payments (V6 has NO swap terminal — the router terminal replaces it) |
-| JBSuckerRegistry | 0x7903a854ae91eaf635430d120a1a434085cef297 | Sucker deployments and pair discovery |
-| REVDeployer | 0xb552eb94284f94b833837d4b2cbb237128415d4e | Revnet deployment |
-| REVLoans | 0x056265c31157748818f0910d1859acd2f7d427de | Loans against revnet tokens |
+| JBController | ${CONTRACTS.JBController} | Rulesets, token issuance, reserved splits, project URI |
+| JBMultiTerminal | ${CONTRACTS.JBMultiTerminal} | Payments, cash outs, payouts, surplus allowance |
+| JBRulesets | ${CONTRACTS.JBRulesets} | Ruleset storage and cycling |
+| JBTerminalStore | ${CONTRACTS.JBTerminalStore} | Terminal balance/accounting reads |
+| JBTokens | ${CONTRACTS.JBTokens} | Project token + credit balances |
+| JBProjects | ${CONTRACTS.JBProjects} | Project ownership NFTs |
+| JBDirectory | ${CONTRACTS.JBDirectory} | controllerOf / terminalsOf / primaryTerminalOf |
+| JBSplits | ${CONTRACTS.JBSplits} | Split storage |
+| JBPermissions | ${CONTRACTS.JBPermissions} | Operator permissions |
+| JBOmnichainDeployer | ${CONTRACTS.JBOmnichainDeployer} | Project deployment (use this to deploy, not the controller) |
+| JBRouterTerminal | ${CONTRACTS.JBRouterTerminal} | Routes arbitrary-token payments (V6 has NO swap terminal — the router terminal replaces it) |
+| JBSuckerRegistry | ${CONTRACTS.JBSuckerRegistry} | Sucker deployments and pair discovery |
+| REVDeployer | ${CONTRACTS.REVDeployer} | Revnet deployment |
+| REVLoans | ${CONTRACTS.REVLoans} | Loans against revnet tokens |
 
 ### V6 Flows in Brief
 
-- **Pay**: \`JBMultiTerminal.pay(projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata)\`. The terminal must have an accounting context for the token; use JBRouterTerminal for tokens the project doesn't accept natively.
-- **Cash out**: \`JBMultiTerminal.cashOutTokensOf(holder, projectId, cashOutCount, tokenToReclaim, minTokensReclaimed, beneficiary, metadata)\`. The ruleset's cashOutTaxRate is a bonding-curve parameter, not a flat fee.
-- **Payouts**: \`JBMultiTerminal.sendPayoutsOf(...)\` distributes up to the ruleset's payout limit to the payout splits.
-- **Rulesets**: queue with \`JBController.queueRulesetsOf(...)\`; metadata includes reservedPercent, cashOutTaxRate, baseCurrency, pause flags, and \`scopeCashOutsToLocalBalances\` (whether omnichain cash outs use only local-chain balances).
+- **Pay**: Resolve the project's live terminal route through JBDirectory, require the returned terminal to be recognized, and only then call \`pay(projectId, token, amount, beneficiary, minReturnedTokens, memo, metadata)\` with a fresh non-zero output floor. If no recognized live route exists, block; never direct a payment to a hardcoded or merely interface-compatible terminal.
+- **Cash out**: Resolve the selected accounting token's terminal from JBDirectory and require it to be the recognized accounting terminal before using \`cashOutTokensOf(...)\`. The ruleset's cashOutTaxRate is a bonding-curve parameter, not a flat fee.
+- **Payouts**: Resolve and recognize the current accounting terminal before \`sendPayoutsOf(...)\`; use the current limit and split group for that exact terminal/token context.
+- **Rulesets**: Resolve the current controller and data-hook route live. Direct projects queue through their recognized controller. Projects whose current ruleset is wrapped by the recognized JBOmnichainDeployer queue through that derived wrapper so its next-ruleset hook mappings are configured. Unknown routes and Revnets block. Metadata includes reservedPercent, cashOutTaxRate, baseCurrency, pause flags, and \`scopeCashOutsToLocalBalances\` (whether omnichain cash outs use only local-chain balances).
 
 ## Omnichain Juicebox Projects
 
@@ -65,7 +71,7 @@ Each chain pair has a sucker contract on both ends that communicate as peers.
    - User calls \`prepare(projectTokenCount, beneficiary, minTokensReclaimed, token, metadata)\`
    - \`beneficiary\` is a bytes32 (an EVM address left-padded to 32 bytes, for cross-VM compatibility); \`metadata\` is an opaque bytes32 attribution payload — pass zero for ordinary bridges
    - Sucker burns the user's project tokens
-   - Sucker cashes out from terminal, receiving proportional ETH/USDC
+   - Sucker cashes out through the project's live accounting terminal, receiving the selected mapped backing token
    - Transaction added as a leaf to the outbox merkle tree
    - Status: "pending"
 
@@ -73,7 +79,7 @@ Each chain pair has a sucker contract on both ends that communicate as peers.
    - User or relayer calls \`toRemote(token)\`
    - Sucker computes merkle root of all pending leaves
    - Root + funds sent via bridge (OP Messenger, Arbitrum Inbox, or CCIP)
-   - Status: "claimable" on destination chain
+   - The transfer becomes "claimable" only after the root arrives on the destination chain
 
 3. **Claim Phase** (Destination Chain)
    - User calls \`claim()\` with merkle proof
@@ -84,12 +90,7 @@ Each chain pair has a sucker contract on both ends that communicate as peers.
 
 ### Bridge Fee Structure
 
-Bridge fees vary by chain and protocol:
-- **OP Stack (Optimism, Base)**: Native bridge, minimal fees (~0.0005-0.002 ETH)
-- **Arbitrum**: Retryable tickets with dynamic gas pricing
-- **CCIP (L2↔L2)**: Chainlink fees, typically higher
-
-Fees are discovered dynamically via contract simulation before execution.
+Bridge fees vary by route. Native suckers require the registry's exact \`toRemoteFee\`; adding a buffer can make them revert. CCIP suckers also require a live transport budget, which must be discovered by simulating the exact verified sucker, token, and caller. A successful simulation never makes an otherwise unknown sucker trusted.
 
 ### Transaction States
 
@@ -103,7 +104,6 @@ Fees are discovered dynamically via contract simulation before execution.
 
 Projects must explicitly map which tokens can be bridged:
 - Local token address → Remote token address
-- Minimum bridge amount (prevents dust)
 - Minimum gas for cross-chain call
 
 Common mappings:
@@ -117,11 +117,9 @@ If a bridge becomes non-functional:
 2. Users can exit locally via \`exitThroughEmergencyHatch()\`
 3. Funds recovered on original chain without bridging
 
-### Key Addresses
+### Bridge Discovery
 
-**JBSuckerRegistry** (0x7903a854ae91eaf635430d120a1a434085cef297, same on all chains): Manages sucker deployments and tracks all sucker pairs for each project.
-
-**Sucker Discovery**: Call \`suckerPairsOf(projectId)\` on JBSuckerRegistry to get all available bridge destinations. Each pair's \`remote\` is a bytes32 (EVM addresses occupy the low 20 bytes).
+Derive the project's current controller from JBDirectory, derive its current recognized bridge-aware data hook, then read that hook's \`SUCKER_REGISTRY()\`. The derived registry must be a recognized deployment whose \`DIRECTORY()\` and \`PROJECTS()\` are the two trusted roots. Only then may \`suckerPairsOf(projectId)\` be used. Every returned sucker must also be registered for that project and report the same roots, registry, project ID, peer, and peer chain. If any check fails, report that the bridge route is not recognized and stop.
 
 ### Important Considerations for Users
 
@@ -149,7 +147,7 @@ To check a user's project tokens across all chains:
 A: Cross-chain messaging is asynchronous. The claim step verifies your proof after the root arrives.
 
 **Q: Can I bridge to any chain?**
-A: Only to chains where the project has deployed suckers. Check the sucker registry.
+A: Only to chains exposed by the project's live, recognized sucker registry. Juicy Vision can show those verified routes and their status, but does not prepare bridge transactions.
 
 **Q: What happens if the bridge fails?**
 A: Your funds stay in the outbox on the source chain. Wait for the bridge to recover, or use emergency hatch if enabled.
@@ -182,11 +180,6 @@ export const BRIDGE_PROTOCOLS: Record<string, string> = {
   '10-8453': 'Chainlink CCIP',
   '8453-42161': 'Chainlink CCIP',
 };
-
-/**
- * V6 JBSuckerRegistry address (same on all chains via CREATE2)
- */
-export const SUCKER_REGISTRY_ADDRESS = '0x7903a854ae91eaf635430d120a1a434085cef297' as const;
 
 /**
  * Tool definitions for omnichain operations
@@ -246,7 +239,8 @@ export const OMNICHAIN_TOOLS = [
         chainId: {
           type: 'string',
           enum: ['1', '10', '8453', '42161', 'all'],
-          description: 'Chain ID: 1 (Ethereum), 10 (Optimism), 8453 (Base), 42161 (Arbitrum), or all',
+          description:
+            'Chain ID: 1 (Ethereum), 10 (Optimism), 8453 (Base), 42161 (Arbitrum), or all',
         },
         category: {
           type: 'string',
@@ -286,7 +280,8 @@ export const OMNICHAIN_TOOLS = [
         },
         chainId: {
           type: 'number',
-          description: 'The chain ID (1=Ethereum, 10=Optimism, 8453=Base, 42161=Arbitrum). Default: 1',
+          description:
+            'The chain ID (1=Ethereum, 10=Optimism, 8453=Base, 42161=Arbitrum). Default: 1',
         },
       },
       required: ['projectId'],
@@ -357,125 +352,6 @@ export const OMNICHAIN_TOOLS = [
     },
   },
   {
-    name: 'estimate_bridge_fee',
-    description:
-      'Estimate the fee required to execute a bridge (toRemote call). Returns the estimated ETH cost.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        sourceChainId: {
-          type: 'number',
-          description: 'The source chain ID',
-        },
-        destinationChainId: {
-          type: 'number',
-          description: 'The destination chain ID',
-        },
-        suckerAddress: {
-          type: 'string',
-          description: 'The sucker contract address on the source chain',
-        },
-        token: {
-          type: 'string',
-          description: 'The terminal token address being bridged',
-        },
-      },
-      required: ['sourceChainId', 'destinationChainId', 'suckerAddress', 'token'],
-    },
-  },
-  {
-    name: 'prepare_bridge_transaction',
-    description:
-      'Generate transaction data for preparing a token bridge (first step). Returns calldata for the prepare() function.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        chainId: {
-          type: 'number',
-          description: 'The source chain ID',
-        },
-        suckerAddress: {
-          type: 'string',
-          description: 'The sucker contract address',
-        },
-        projectTokenAmount: {
-          type: 'string',
-          description: 'Amount of project tokens to bridge (in wei/smallest unit)',
-        },
-        beneficiary: {
-          type: 'string',
-          description: 'Recipient address on the destination chain',
-        },
-        minTokensReclaimed: {
-          type: 'string',
-          description: 'Minimum terminal tokens to receive (slippage protection)',
-        },
-        terminalToken: {
-          type: 'string',
-          description: 'Terminal token address (ETH or ERC20)',
-        },
-      },
-      required: [
-        'chainId',
-        'suckerAddress',
-        'projectTokenAmount',
-        'beneficiary',
-        'minTokensReclaimed',
-        'terminalToken',
-      ],
-    },
-  },
-  {
-    name: 'execute_bridge_transaction',
-    description:
-      'Generate transaction data for executing the bridge (toRemote step). Returns calldata and required ETH value.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        chainId: {
-          type: 'number',
-          description: 'The source chain ID',
-        },
-        suckerAddress: {
-          type: 'string',
-          description: 'The sucker contract address',
-        },
-        token: {
-          type: 'string',
-          description: 'Terminal token address to bridge',
-        },
-      },
-      required: ['chainId', 'suckerAddress', 'token'],
-    },
-  },
-  {
-    name: 'claim_bridge_transaction',
-    description:
-      'Generate transaction data for claiming bridged tokens on the destination chain. Returns calldata with merkle proof.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        chainId: {
-          type: 'number',
-          description: 'The destination chain ID',
-        },
-        suckerAddress: {
-          type: 'string',
-          description: 'The sucker contract address on destination',
-        },
-        token: {
-          type: 'string',
-          description: 'Terminal token address',
-        },
-        beneficiary: {
-          type: 'string',
-          description: 'The beneficiary address to claim for',
-        },
-      },
-      required: ['chainId', 'suckerAddress', 'token', 'beneficiary'],
-    },
-  },
-  {
     name: 'get_cross_chain_balance',
     description:
       "Get a user's project token balance across all chains where the project exists. Returns per-chain and total balances.",
@@ -504,7 +380,8 @@ export const OMNICHAIN_TOOLS = [
       properties: {
         content: {
           type: 'object',
-          description: 'The JSON object to pin to IPFS (e.g., project metadata with name, description, logoUri, infoUri). Must contain actual user-provided values, not placeholders.',
+          description:
+            'The JSON object to pin to IPFS (e.g., project metadata with name, description, logoUri, infoUri). Must contain actual user-provided values, not placeholders.',
         },
         name: {
           type: 'string',

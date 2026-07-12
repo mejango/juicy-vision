@@ -3,8 +3,8 @@ import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import { fetchEthPrice, fetchProject, type Project } from '../../services/bendystraw'
 import { getProjectDataHook, fetchResolvedNFTTiers, type ResolvedNFTTier } from '../../services/nft'
-import { resolveIpfsUri } from '../../utils/ipfs'
 import NFTTierCard from './NFTTierCard'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface StorefrontProps {
   projectId: string
@@ -133,8 +133,6 @@ export default function Storefront({
     loadStorefront()
   }, [projectId, chainIdNum])
 
-  const logoUrl = project ? resolveIpfsUri(project.logoUri) : null
-
   // Handle missing projectId - must be after all hooks
   if (!projectId) {
     return (
@@ -200,8 +198,13 @@ export default function Storefront({
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
         <div className="flex items-center gap-3 mb-3">
-          {logoUrl ? (
-            <img src={logoUrl} alt={project?.name} className="w-12 h-12 object-cover" />
+          {project?.logoUri ? (
+            <IpfsImage
+              uri={project.logoUri}
+              alt={project.name}
+              className="w-12 h-12 object-cover"
+              fallback={<div className={`w-12 h-12 ${isDark ? 'bg-white/10' : 'bg-gray-100'}`} />}
+            />
           ) : (
             <div className={`w-12 h-12 flex items-center justify-center ${
               isDark ? 'bg-white/10' : 'bg-gray-100'

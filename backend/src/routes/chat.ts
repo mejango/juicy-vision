@@ -6,84 +6,82 @@
  * - External wallets (SIWE session) for self-custody users
  */
 
-import { Hono } from 'hono';
+import { type Context, Hono, type Next } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { requireAuth, optionalAuth } from '../middleware/auth.ts';
+import { optionalAuth } from '../middleware/auth.ts';
 import {
-  createChat,
-  getChatById,
-  getChatsForAddress,
-  getPublicChats,
-  getChatMembers,
-  getMember,
   addMember,
   addMemberViaInvite,
-  removeMember,
-  updateMemberPermissions,
-  updateMemberProfile,
-  updateUserEmoji,
-  sendMessage,
-  getChatMessages,
-  deleteMessage,
+  type Chat,
+  type ChatMember,
+  type ChatMessage,
   checkPermission,
-  submitFeedback,
-  pinChat,
-  unpinChat,
-  moveChatToFolder,
-  reorderPinnedChats,
-  updateChatName,
-  deleteChat,
-  reportChat,
-  toggleChatAiEnabled,
-  type ChatFolder,
+  createChat,
   createFolder,
+  deleteChat,
+  deleteFolder,
+  deleteMessage,
+  getChatById,
+  getChatMembers,
+  getChatMessages,
+  getChatsForAddress,
   getFolder,
   getFoldersForUser,
-  updateFolder,
-  deleteFolder,
-  pinFolder,
-  unpinFolder,
-  reorderPinnedFolders,
-  type CreateChatParams,
+  getMember,
+  getPublicChats,
   type JuicyRating,
+  moveChatToFolder,
+  pinChat,
+  pinFolder,
+  removeMember,
+  reorderPinnedChats,
+  reorderPinnedFolders,
+  reportChat,
+  sendMessage,
+  submitFeedback,
+  toggleChatAiEnabled,
+  unpinChat,
+  unpinFolder,
+  updateChatName,
+  updateFolder,
+  updateMemberPermissions,
+  updateUserEmoji,
 } from '../services/chat.ts';
 import {
-  getAiBalanceStatus,
+  AI_PRICING,
   canInvokeAi,
-  generateSqueezePayment,
-  encodePayCalldata,
   confirmPayment,
+  encodePayCalldata,
+  generateSqueezePayment,
+  getAiBalanceStatus,
   getBillingHistory,
   getSqueezePromptMessage,
-  AI_PRICING,
   SUPPORTED_CHAINS,
 } from '../services/aiBilling.ts';
-import {
-  archiveChat,
-  fetchArchivedChat,
-  getLatestArchiveCid,
-} from '../services/ipfs.ts';
+import { archiveChat, fetchArchivedChat, getLatestArchiveCid } from '../services/ipfs.ts';
 import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
-import {
-  getOnlineMembers,
-} from '../services/websocket.ts';
-import { query, queryOne, execute } from '../db/index.ts';
+import { getOnlineMembers } from '../services/websocket.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
 import { getPrimaryChainId } from '@shared/chains.ts';
-import { getPseudoAddress, verifyWalletSignature, parseSessionMergeMessage, isTimestampValid } from '../utils/crypto.ts';
-import { rateLimitMiddleware, rateLimitByWallet } from '../services/rateLimit.ts';
+import {
+  getPseudoAddress,
+  isTimestampValid,
+  parseSessionMergeMessage,
+  verifyWalletSignature,
+} from '../utils/crypto.ts';
+import { rateLimitByWallet } from '../services/rateLimit.ts';
 import { parseConfidence } from '../services/claude.ts';
+import { parseEther } from 'viem';
 import { createEscalation, updateMessageConfidence } from '../services/escalation.ts';
 import {
-  getComponentState,
-  setComponentState,
-  getMessageComponentStates,
   type ComponentState,
+  getComponentState,
+  getMessageComponentStates,
+  setComponentState,
 } from '../services/componentState.ts';
 // Rate limiting removed - AI is free for everyone
-
-const chatRouter = new Hono();
 
 // ============================================================================
 // Middleware - Wallet Session Auth
@@ -96,6 +94,15 @@ interface WalletSession {
   isAnonymous?: boolean;
 }
 
+type ChatEnv = {
+  Variables: {
+    user?: { id: string };
+    walletSession?: WalletSession;
+  };
+};
+
+const chatRouter = new Hono<ChatEnv>();
+
 declare module 'hono' {
   interface ContextVariableMap {
     walletSession?: WalletSession;
@@ -107,7 +114,7 @@ declare module 'hono' {
  */
 async function extractWalletSession(
   authHeader: string | undefined,
-  sessionToken: string | undefined
+  sessionToken: string | undefined,
 ): Promise<WalletSession | null> {
   const token = sessionToken || authHeader?.replace('Bearer ', '');
   if (!token) return null;
@@ -119,7 +126,10 @@ async function extractWalletSession(
   const jwtResult = await validateSession(token);
   if (jwtResult) {
     const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, getPrimaryChainId(config.isTestnet));
+    const smartAccount = await getOrCreateSmartAccount(
+      jwtResult.user.id,
+      getPrimaryChainId(config.isTestnet),
+    );
     return {
       address: smartAccount.address,
       userId: jwtResult.user.id,
@@ -133,7 +143,7 @@ async function extractWalletSession(
   }>(
     `SELECT wallet_address, expires_at FROM wallet_sessions
      WHERE session_token = $1 AND expires_at > NOW()`,
-    [token]
+    [token],
   );
 
   if (session) {
@@ -143,7 +153,7 @@ async function extractWalletSession(
        JOIN multi_chat_members mcm ON mcm.member_user_id = u.id
        WHERE mcm.member_address = $1
        LIMIT 1`,
-      [session.wallet_address]
+      [session.wallet_address],
     );
 
     return {
@@ -159,7 +169,7 @@ async function extractWalletSession(
  * Middleware that requires wallet session OR user auth OR anonymous session
  * Anonymous sessions use X-Session-ID header and get a pseudo-address
  */
-async function requireWalletOrAuth(c: any, next: any) {
+async function requireWalletOrAuth(c: Context<ChatEnv>, next: Next) {
   // First try JWT auth
   const authHeader = c.req.header('Authorization');
   const user = c.get('user');
@@ -168,7 +178,10 @@ async function requireWalletOrAuth(c: any, next: any) {
     // User authenticated - get their smart account address
     const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
     const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
+    const smartAccount = await getOrCreateSmartAccount(
+      user.id,
+      getPrimaryChainId(config.isTestnet),
+    );
     c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
@@ -203,7 +216,7 @@ async function requireWalletOrAuth(c: any, next: any) {
  * Middleware that optionally extracts wallet session without requiring it
  * Used for endpoints that have different behavior for authenticated vs anonymous users
  */
-async function optionalWalletSession(c: any, next: any) {
+async function optionalWalletSession(c: Context<ChatEnv>, next: Next) {
   // First check if user is already authenticated via JWT
   const user = c.get('user');
   const authHeader = c.req.header('Authorization');
@@ -212,7 +225,10 @@ async function optionalWalletSession(c: any, next: any) {
     // User authenticated - get their smart account address
     const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
     const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
+    const smartAccount = await getOrCreateSmartAccount(
+      user.id,
+      getPrimaryChainId(config.isTestnet),
+    );
     c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
@@ -279,12 +295,14 @@ chatRouter.post(
         isPublic: body.isPublic,
         isPrivate: body.isPrivate,
         encrypted: body.encrypted,
-        tokenGate: body.tokenGate ? {
-          chainId: body.tokenGate.chainId,
-          tokenAddress: body.tokenGate.tokenAddress,
-          projectId: body.tokenGate.projectId,
-          minBalance: BigInt(body.tokenGate.minBalance),
-        } : undefined,
+        tokenGate: body.tokenGate
+          ? {
+            chainId: body.tokenGate.chainId,
+            tokenAddress: body.tokenGate.tokenAddress,
+            projectId: body.tokenGate.projectId,
+            minBalance: BigInt(body.tokenGate.minBalance),
+          }
+          : undefined,
       });
 
       return c.json({ success: true, data: serializeChat(chat) });
@@ -292,7 +310,7 @@ chatRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to create chat';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /chat - List user's chats (optionally filtered by folder)
@@ -307,7 +325,12 @@ chatRouter.get(
     const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!, 10) : undefined;
     const offset = c.req.query('offset') ? parseInt(c.req.query('offset')!, 10) : undefined;
 
-    const options: { folderId?: string | null; pinnedOnly?: boolean; limit?: number; offset?: number } = {};
+    const options: {
+      folderId?: string | null;
+      pinnedOnly?: boolean;
+      limit?: number;
+      offset?: number;
+    } = {};
     if (folderId === 'null' || folderId === 'root') {
       options.folderId = null; // Root level (no folder)
     } else if (folderId) {
@@ -323,9 +346,12 @@ chatRouter.get(
       options.offset = offset;
     }
 
-    const { chats, total } = await getChatsForAddress(walletSession.address, Object.keys(options).length > 0 ? options : undefined);
+    const { chats, total } = await getChatsForAddress(
+      walletSession.address,
+      Object.keys(options).length > 0 ? options : undefined,
+    );
     return c.json({ success: true, data: chats.map(serializeChat), total });
-  }
+  },
 );
 
 // GET /chat/public - Discover public chats
@@ -349,7 +375,7 @@ chatRouter.get(
     const walletSession = c.get('walletSession')!;
     const folders = await getFoldersForUser(walletSession.address);
     return c.json({ success: true, data: folders });
-  }
+  },
 );
 
 // POST /chat/folders - Create a folder
@@ -372,14 +398,14 @@ chatRouter.post(
         walletSession.address,
         body.name,
         body.parentFolderId,
-        walletSession.userId
+        walletSession.userId,
       );
       return c.json({ success: true, data: folder });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create folder';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /chat/folders/:folderId - Get folder details
@@ -402,7 +428,7 @@ chatRouter.get(
     }
 
     return c.json({ success: true, data: folder });
-  }
+  },
 );
 
 // PATCH /chat/folders/:folderId - Update folder
@@ -445,7 +471,7 @@ chatRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to update folder';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // DELETE /chat/folders/:folderId - Delete folder
@@ -474,7 +500,7 @@ chatRouter.delete(
       const message = error instanceof Error ? error.message : 'Failed to delete folder';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // PATCH /chat/folders/:folderId/pin - Pin/unpin a folder
@@ -515,7 +541,7 @@ chatRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to update pin status';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // POST /chat/folders/reorder-pinned - Reorder pinned folders
@@ -539,7 +565,7 @@ chatRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to reorder folders';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // Debug log (console only, no filesystem writes for security)
@@ -598,7 +624,10 @@ chatRouter.get('/:chatId', optionalAuth, optionalWalletSession, async (c) => {
   const members = await getChatMembers(chatId);
   const onlineMembers = getOnlineMembers(chatId);
 
-  console.log(`[FetchChat] Chat ${chatId} returning ${members.length} members:`, members.map(m => ({ address: m.memberAddress, role: m.role })));
+  console.log(
+    `[FetchChat] Chat ${chatId} returning ${members.length} members:`,
+    members.map((m) => ({ address: m.memberAddress, role: m.role })),
+  );
 
   return c.json({
     success: true,
@@ -624,10 +653,14 @@ chatRouter.delete(
       return c.json({ success: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete chat';
-      const status = message.includes('not found') ? 404 : message.includes('Only the founder') ? 403 : 400;
+      const status = message.includes('not found')
+        ? 404
+        : message.includes('Only the founder')
+        ? 403
+        : 400;
       return c.json({ success: false, error: message }, status);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -670,9 +703,12 @@ chatRouter.get(
     }
 
     const members = await getChatMembers(chatId);
-    console.log(`[Members Endpoint] Chat ${chatId} returning ${members.length} members:`, members.map(m => ({ address: m.memberAddress, role: m.role })));
+    console.log(
+      `[Members Endpoint] Chat ${chatId} returning ${members.length} members:`,
+      members.map((m) => ({ address: m.memberAddress, role: m.role })),
+    );
     return c.json({ success: true, data: members.map(serializeMember) });
-  }
+  },
 );
 
 const AddMemberSchema = z.object({
@@ -697,14 +733,14 @@ chatRouter.post(
         walletSession.address,
         body.address,
         undefined, // userId will be looked up if they register
-        body.role
+        body.role,
       );
       return c.json({ success: true, data: serializeMember(member) });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to add member';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // DELETE /chat/:chatId/members/:address - Remove member
@@ -724,7 +760,7 @@ chatRouter.delete(
       const message = error instanceof Error ? error.message : 'Failed to remove member';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // PATCH /chat/:chatId/members/:address - Update member permissions
@@ -752,14 +788,14 @@ chatRouter.patch(
         chatId,
         walletSession.address,
         targetAddress,
-        body
+        body,
       );
       return c.json({ success: true, data: serializeMember(member) });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update permissions';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // PATCH /chat/me/emoji - Update current user's emoji across all chats
@@ -788,7 +824,7 @@ chatRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to update emoji';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -809,7 +845,7 @@ const SendMessageSchema = z.object({
   attachments: z.array(AttachmentSchema).max(5).optional(),
 }).refine(
   (data) => data.content.length > 0 || (data.attachments && data.attachments.length > 0),
-  { message: 'Message must have content or attachments' }
+  { message: 'Message must have content or attachments' },
 );
 
 // POST /chat/:chatId/messages - Send message
@@ -851,7 +887,7 @@ chatRouter.post(
               // Deactivate the pseudo-address member to avoid duplicates
               await execute(
                 `UPDATE multi_chat_members SET is_active = FALSE, left_at = NOW() WHERE chat_id = $1 AND member_address = $2`,
-                [chatId, pseudoAddress]
+                [chatId, pseudoAddress],
               );
               // Now use wallet address for sending
               senderAddress = walletSession.address;
@@ -875,14 +911,21 @@ chatRouter.post(
 
     try {
       // Pin attachments to IPFS before saving the message
-      let attachmentMetadata: Array<{ type: 'image' | 'document'; name: string; mimeType: string; cid: string }> | undefined;
+      let attachmentMetadata:
+        | Array<{ type: 'image' | 'document'; name: string; mimeType: string; cid: string }>
+        | undefined;
       if (body.attachments && body.attachments.length > 0) {
         const { pinFileToIpfs } = await import('../services/ipfs.ts');
         attachmentMetadata = [];
         for (const att of body.attachments) {
           try {
             const cid = await pinFileToIpfs(att.data, att.name, att.mimeType);
-            attachmentMetadata.push({ type: att.type, name: att.name, mimeType: att.mimeType, cid });
+            attachmentMetadata.push({
+              type: att.type,
+              name: att.name,
+              mimeType: att.mimeType,
+              cid,
+            });
           } catch (err) {
             console.error(`[IPFS] Failed to pin attachment ${att.name}:`, err);
             // Skip failed attachments, don't fail the message
@@ -905,7 +948,7 @@ chatRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to send message';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /chat/:chatId/messages - Get messages
@@ -961,7 +1004,7 @@ chatRouter.delete(
       const message = error instanceof Error ? error.message : 'Failed to delete message';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -989,7 +1032,7 @@ chatRouter.get(
         message: getSqueezePromptMessage(balance) || undefined,
       },
     });
-  }
+  },
 );
 
 // GET /chat/:chatId/ai/can-invoke - Check if AI can be invoked
@@ -1016,20 +1059,22 @@ chatRouter.get(
       success: true,
       data: {
         ...result,
-        balance: result.balance ? {
-          ...result.balance,
-          balanceWei: result.balance.balanceWei.toString(),
-          totalSpentWei: result.balance.totalSpentWei.toString(),
-        } : undefined,
+        balance: result.balance
+          ? {
+            ...result.balance,
+            balanceWei: result.balance.balanceWei.toString(),
+            totalSpentWei: result.balance.totalSpentWei.toString(),
+          }
+          : undefined,
       },
     });
-  }
+  },
 );
 
 // GET /chat/:chatId/ai/squeeze - Get payment data for "squeezing" the bot
 const SqueezeSchema = z.object({
   chainId: z.coerce.number(),
-  amount: z.string().optional(), // Amount in ETH
+  amount: z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d{1,18})?$/).optional(), // Amount in ETH
 });
 
 chatRouter.get(
@@ -1046,18 +1091,16 @@ chatRouter.get(
       return c.json({ success: false, error: 'Unsupported chain' }, 400);
     }
 
-    const amountWei = amount
-      ? BigInt(Math.floor(parseFloat(amount) * 1e18))
-      : AI_PRICING.recommendedDeposit;
+    const amountWei = amount ? parseEther(amount) : AI_PRICING.recommendedDeposit;
 
-    const payment = generateSqueezePayment(
+    const payment = await generateSqueezePayment(
       chatId,
       chainId,
       amountWei,
-      walletSession.address as `0x${string}`
+      walletSession.address as `0x${string}`,
     );
 
-    const calldata = encodePayCalldata(payment);
+    const calldata = await encodePayCalldata(payment);
 
     return c.json({
       success: true,
@@ -1075,11 +1118,12 @@ chatRouter.get(
           costPerRequest: AI_PRICING.costPerRequest.toString(),
           minDeposit: AI_PRICING.minDeposit.toString(),
           recommendedDeposit: AI_PRICING.recommendedDeposit.toString(),
+          maxDeposit: AI_PRICING.maxDeposit.toString(),
           estimatedRequests: Number(amountWei / AI_PRICING.costPerRequest),
         },
       },
     });
-  }
+  },
 );
 
 // POST /chat/:chatId/ai/confirm-payment - Confirm payment
@@ -1106,7 +1150,7 @@ chatRouter.post(
         chainId: body.chainId,
         amountWei: BigInt(body.amountWei),
         payerAddress: walletSession.address,
-        projectId: 1, // NANA
+        projectId: getConfig().aiBillingProjectId,
       });
 
       const balance = await getAiBalanceStatus(chatId);
@@ -1121,7 +1165,7 @@ chatRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to confirm payment';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /chat/:chatId/ai/history - Get billing history
@@ -1141,7 +1185,7 @@ chatRouter.get(
         amountWei: r.amountWei.toString(),
       })),
     });
-  }
+  },
 );
 
 // PATCH /chat/:chatId/ai/toggle - Toggle AI enabled state for the chat
@@ -1175,7 +1219,7 @@ chatRouter.patch(
       const status = message.includes('permission') ? 403 : 400;
       return c.json({ success: false, error: message }, status);
     }
-  }
+  },
 );
 
 // POST /chat/:chatId/ai/invoke - Invoke AI to respond to the chat (streaming)
@@ -1186,7 +1230,7 @@ const InvokeAiSchema = z.object({
   savePrompt: z.boolean().optional(), // Save prompt to DB for future AI context (hidden messages)
 }).refine(
   (data) => data.prompt.length > 0 || (data.attachments && data.attachments.length > 0),
-  { message: 'Message must have prompt or attachments' }
+  { message: 'Message must have prompt or attachments' },
 );
 
 chatRouter.post(
@@ -1212,15 +1256,22 @@ chatRouter.post(
       // Check if user can invoke AI
       const canInvokePermission = await checkPermission(chatId, walletSession.address, 'invoke_ai');
       if (!canInvokePermission) {
-        return c.json({ success: false, error: 'You do not have permission to invoke AI in this chat' }, 403);
+        return c.json({
+          success: false,
+          error: 'You do not have permission to invoke AI in this chat',
+        }, 403);
       }
 
       // AI is free for everyone - no rate limiting
 
       // Build optimized context with summaries, state, and token budgeting
-      const { buildOptimizedContext, formatContextForClaude, logContextUsage } = await import('../services/contextManager.ts');
+      const { buildOptimizedContext, formatContextForClaude, logContextUsage } = await import(
+        '../services/contextManager.ts'
+      );
       const { buildEnhancedPrompt } = await import('../services/aiProvider.ts');
-      const { logIntentDetection, createMetricsEntryFromResult } = await import('../services/intentMetrics.ts');
+      const { logIntentDetection, createMetricsEntryFromResult } = await import(
+        '../services/intentMetrics.ts'
+      );
 
       const optimizedContext = await buildOptimizedContext(chatId, walletSession.userId);
       const chatHistory = formatContextForClaude(optimizedContext);
@@ -1232,8 +1283,8 @@ chatRouter.post(
         chatId,
         userId: walletSession.userId,
         includeOmnichain: true,
-        useSubModules: true,  // Phase 1: Granular sub-module loading
-        useSemanticDetection: false,  // Phase 2: Enable when embeddings are seeded
+        useSubModules: true, // Phase 1: Granular sub-module loading
+        useSemanticDetection: false, // Phase 2: Enable when embeddings are seeded
       });
 
       // Log intent detection metrics for optimization
@@ -1257,7 +1308,12 @@ chatRouter.post(
       }
 
       // Build multimodal content blocks for the new prompt
-      const contentBlocks: Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } } | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }> = [];
+      const contentBlocks: Array<
+        { type: 'text'; text: string } | {
+          type: 'image';
+          source: { type: 'base64'; media_type: string; data: string };
+        } | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }
+      > = [];
 
       // Pin image attachments to IPFS first so we can include URIs in the prompt
       const ipfsUris: Record<string, string> = {};
@@ -1269,7 +1325,7 @@ chatRouter.post(
               const cid = await pinFileToIpfs(
                 attachment.data,
                 attachment.name || `image.${attachment.mimeType.split('/')[1] || 'png'}`,
-                attachment.mimeType
+                attachment.mimeType,
               );
               // Extract field ID from attachment name (format: fieldId.ext)
               const fieldId = attachment.name?.split('.')[0] || 'image';
@@ -1288,7 +1344,8 @@ chatRouter.post(
         const uriList = Object.entries(ipfsUris)
           .map(([fieldId, uri]) => `- ${fieldId}: ${uri}`)
           .join('\n');
-        promptText += `\n\n[Uploaded images pinned to IPFS - use these URIs in transaction parameters:\n${uriList}]`;
+        promptText +=
+          `\n\n[Uploaded images pinned to IPFS - use these URIs in transaction parameters:\n${uriList}]`;
       }
 
       // Add text content if present
@@ -1332,7 +1389,7 @@ chatRouter.post(
       // Import services
       const { streamMessageWithTools } = await import('../services/aiProvider.ts');
       const { importMessage } = await import('../services/chat.ts');
-      const { streamAiToken, broadcastChatMessage } = await import('../services/websocket.ts');
+      const { streamAiToken } = await import('../services/websocket.ts');
 
       // When savePrompt is true, persist the hidden prompt to the database so it's
       // available in future AI context. importMessage doesn't broadcast to the UI.
@@ -1361,13 +1418,30 @@ chatRouter.post(
       let duplicatePreviewDetected = false;
       let firstPreviewComplete = false; // Track when first preview is complete
 
-      console.log(`[AI] ${chatId}: Starting AI stream with ${chatHistory.length} messages (userApiKey: ${userApiKey ? 'yes' : 'no'})`);
+      console.log(
+        `[AI] ${chatId}: Starting AI stream with ${chatHistory.length} messages (userApiKey: ${
+          userApiKey ? 'yes' : 'no'
+        })`,
+      );
       console.log(`[AI] ${chatId}: System prompt length: ${enhancedSystem.length} chars`);
-      console.log(`[AI] ${chatId}: Last user message: "${(chatHistory[chatHistory.length-1]?.content as string)?.substring(0, 100)}..."`);
+      console.log(
+        `[AI] ${chatId}: Last user message: "${
+          (chatHistory[chatHistory.length - 1]?.content as string)?.substring(0, 100)
+        }..."`,
+      );
       try {
-        for await (const event of streamMessageWithTools(chatId, { messages: chatHistory, system: enhancedSystem }, userApiKey)) {
+        for await (
+          const event of streamMessageWithTools(chatId, {
+            messages: chatHistory,
+            system: enhancedSystem,
+          }, userApiKey)
+        ) {
           if (!streamingStarted) {
-            console.log(`[AI] ${chatId}: First event received, type: ${event.type}, data preview: ${JSON.stringify(event.data)?.substring(0, 100)}`);
+            console.log(
+              `[AI] ${chatId}: First event received, type: ${event.type}, data preview: ${
+                JSON.stringify(event.data)?.substring(0, 100)
+              }`,
+            );
           }
           streamingStarted = true;
           if (event.type === 'text') {
@@ -1380,28 +1454,39 @@ chatRouter.post(
             if (firstPreviewComplete) {
               // Check if new content tries to start another transaction-preview
               const afterFirstPreview = testContent.substring(fullContent.lastIndexOf('/>') + 2);
-              if (afterFirstPreview.includes('<juice-component') ||
-                  afterFirstPreview.includes('type="transaction-preview"') ||
-                  afterFirstPreview.includes("type='transaction-preview'")) {
-                console.warn(`[AI] ${chatId}: Detected attempt to start second transaction-preview after first was complete, stopping stream`);
+              if (
+                afterFirstPreview.includes('<juice-component') ||
+                afterFirstPreview.includes('type="transaction-preview"') ||
+                afterFirstPreview.includes("type='transaction-preview'")
+              ) {
+                console.warn(
+                  `[AI] ${chatId}: Detected attempt to start second transaction-preview after first was complete, stopping stream`,
+                );
                 duplicatePreviewDetected = true;
                 break;
               }
             }
 
             // Check for complete transaction-preview (ends with />)
-            const completePreviewRegex = /<juice-component[^>]*type=["']transaction-preview["'][^>]*\/>/g;
+            const completePreviewRegex =
+              /<juice-component[^>]*type=["']transaction-preview["'][^>]*\/>/g;
             const completeMatches = [...testContent.matchAll(completePreviewRegex)];
 
             if (completeMatches.length >= 1 && !firstPreviewComplete) {
               firstPreviewComplete = true;
-              console.log(`[AI] ${chatId}: First complete transaction-preview detected, will stop if second starts`);
+              console.log(
+                `[AI] ${chatId}: First complete transaction-preview detected, will stop if second starts`,
+              );
             }
 
             // Also catch if a single chunk contains multiple previews
-            const newCount = (testContent.match(/<juice-component[^>]*type=["']transaction-preview["']/g) || []).length;
+            const newCount =
+              (testContent.match(/<juice-component[^>]*type=["']transaction-preview["']/g) || [])
+                .length;
             if (newCount > 1 && newCount > transactionPreviewCount) {
-              console.warn(`[AI] ${chatId}: Detected ${newCount} transaction-previews in content - Claude violated ONE TRANSACTION-PREVIEW rule`);
+              console.warn(
+                `[AI] ${chatId}: Detected ${newCount} transaction-previews in content - Claude violated ONE TRANSACTION-PREVIEW rule`,
+              );
               duplicatePreviewDetected = true;
 
               // Try to salvage: keep only up to end of first complete preview
@@ -1429,7 +1514,12 @@ chatRouter.post(
             console.log(`[AI] ${chatId}: ${event.data}`);
           } else if (event.type === 'tool_result') {
             // Optionally show tool results (could be verbose, so we keep it subtle)
-            const result = event.data as { id: string; name: string; result?: string; error?: string };
+            const result = event.data as {
+              id: string;
+              name: string;
+              result?: string;
+              error?: string;
+            };
             if (result.error) {
               const errorText = `\n\n> ⚠️ Tool error: ${result.error}\n\n`;
               fullContent += errorText;
@@ -1461,16 +1551,17 @@ chatRouter.post(
             : "I'm temporarily unavailable due to a service limit. The team has been notified - please try again shortly!";
         } else if (rawMsg.includes('rate_limit') || rawMsg.includes('too many requests')) {
           userFriendlyMsg = isUsingOwnKey
-            ? "Your API key has hit a rate limit. Please wait a moment and try again."
+            ? 'Your API key has hit a rate limit. Please wait a moment and try again.'
             : "I'm getting a lot of requests right now. Please wait a moment and try again.";
         } else if (rawMsg.includes('overloaded') || rawMsg.includes('capacity')) {
-          userFriendlyMsg = "The AI service is a bit overloaded. Please try again in a few seconds.";
+          userFriendlyMsg =
+            'The AI service is a bit overloaded. Please try again in a few seconds.';
         } else if (rawMsg.includes('invalid_api_key') || rawMsg.includes('authentication')) {
           userFriendlyMsg = isUsingOwnKey
-            ? "Your API key appears to be invalid. Please check your key in Settings."
+            ? 'Your API key appears to be invalid. Please check your key in Settings.'
             : "There's a configuration issue. The team has been notified.";
         } else {
-          userFriendlyMsg = "Something went wrong. Please try again.";
+          userFriendlyMsg = 'Something went wrong. Please try again.';
         }
 
         if (streamingStarted) {
@@ -1486,7 +1577,8 @@ chatRouter.post(
       // Find incomplete transaction-preview tags and remove them
       if (duplicatePreviewDetected || transactionPreviewCount > 1) {
         // Find the last complete transaction-preview (ends with />)
-        const completePreviewRegex = /<juice-component[^>]*type=["']transaction-preview["'][^>]*\/>/g;
+        const completePreviewRegex =
+          /<juice-component[^>]*type=["']transaction-preview["'][^>]*\/>/g;
         const completeMatches = [...fullContent.matchAll(completePreviewRegex)];
 
         if (completeMatches.length > 0) {
@@ -1494,13 +1586,16 @@ chatRouter.post(
           const firstComplete = completeMatches[0];
           const endOfFirst = (firstComplete.index || 0) + firstComplete[0].length;
           fullContent = fullContent.substring(0, endOfFirst);
-          console.log(`[AI] ${chatId}: Cleaned up duplicate previews, keeping first complete preview`);
+          console.log(
+            `[AI] ${chatId}: Cleaned up duplicate previews, keeping first complete preview`,
+          );
         } else {
           // No complete previews - find start of first one and remove everything after it
           const previewStart = fullContent.indexOf('<juice-component');
           if (previewStart > 0) {
             fullContent = fullContent.substring(0, previewStart).trim();
-            fullContent += '\n\n*Something went wrong generating the transaction. Please try again.*';
+            fullContent +=
+              '\n\n*Something went wrong generating the transaction. Please try again.*';
             console.log(`[AI] ${chatId}: No complete preview found, removed incomplete content`);
           }
         }
@@ -1511,7 +1606,9 @@ chatRouter.post(
 
       // Debug: Log if content significantly changed (potential truncation)
       if (fullContent.length > 0 && cleanedContent.length < fullContent.length * 0.9) {
-        console.warn(`[AI] ${chatId}: Content significantly shortened after parseConfidence - original: ${fullContent.length} chars, cleaned: ${cleanedContent.length} chars`);
+        console.warn(
+          `[AI] ${chatId}: Content significantly shortened after parseConfidence - original: ${fullContent.length} chars, cleaned: ${cleanedContent.length} chars`,
+        );
         console.warn(`[AI] ${chatId}: First 100 chars before: ${fullContent.substring(0, 100)}`);
         console.warn(`[AI] ${chatId}: First 100 chars after: ${cleanedContent.substring(0, 100)}`);
       }
@@ -1533,7 +1630,7 @@ chatRouter.post(
           messageId: aiMessage.id,
           confidenceLevel: confidence.level,
           confidenceReason: confidence.reason,
-        }).catch(err => {
+        }).catch((err) => {
           console.error('Failed to update message confidence:', err);
         });
 
@@ -1542,7 +1639,7 @@ chatRouter.post(
           const { updateIntentMetrics } = await import('../services/intentMetrics.ts');
           updateIntentMetrics(metricsId, {
             aiConfidenceLevel: confidence.level,
-          }).catch(err => {
+          }).catch((err) => {
             console.error('Failed to update intent metrics with confidence:', err);
           });
         }
@@ -1556,7 +1653,7 @@ chatRouter.post(
             aiResponse: cleanedContent,
             confidenceLevel: confidence.level,
             confidenceReason: confidence.reason,
-          }).catch(err => {
+          }).catch((err) => {
             console.error('Failed to create escalation:', err);
           });
         }
@@ -1567,20 +1664,22 @@ chatRouter.post(
 
       // Context management: Extract transaction state and trigger summarization (async, non-blocking)
       const { extractStateFromResponse } = await import('../services/transactionState.ts');
-      const { checkAndTriggerSummarization, queueAttachmentSummary } = await import('../services/summarization.ts');
+      const { checkAndTriggerSummarization, queueAttachmentSummary } = await import(
+        '../services/summarization.ts'
+      );
 
       // Extract project design decisions from the response
-      extractStateFromResponse(chatId, fullContent, aiMessage.id).catch(err => {
+      extractStateFromResponse(chatId, fullContent, aiMessage.id).catch((err) => {
         console.error('Failed to extract transaction state:', err);
       });
 
       // Check if we need to summarize older messages
-      checkAndTriggerSummarization(chatId).catch(err => {
+      checkAndTriggerSummarization(chatId).catch((err) => {
         console.error('Failed to check/trigger summarization:', err);
       });
 
       // Log context usage for analytics
-      logContextUsage(chatId, aiMessage.id, optimizedContext).catch(err => {
+      logContextUsage(chatId, aiMessage.id, optimizedContext).catch((err) => {
         console.error('Failed to log context usage:', err);
       });
 
@@ -1588,7 +1687,7 @@ chatRouter.post(
       if (body.attachments && body.attachments.length > 0) {
         // We need the user message ID - get the latest user message
         const userMessages = await getChatMessages(chatId, 2);
-        const userMessage = userMessages.find(m => m.role === 'user');
+        const userMessage = userMessages.find((m) => m.role === 'user');
         if (userMessage) {
           for (let i = 0; i < body.attachments.length; i++) {
             const att = body.attachments[i];
@@ -1603,12 +1702,14 @@ chatRouter.post(
       }
 
       // Auto-generate title if the chat has a generic name
-      const { isGenericName, generateChatTitle, setAutoGeneratedTitle } = await import('../services/chatCategorization.ts');
+      const { isGenericName, generateChatTitle, setAutoGeneratedTitle } = await import(
+        '../services/chatCategorization.ts'
+      );
       const currentChat = await getChatById(chatId);
       if (currentChat && isGenericName(currentChat.name) && !currentChat.autoGeneratedTitle) {
         // Get messages for title generation
         const messagesForTitle = await getChatMessages(chatId, 10);
-        const titleMessages = messagesForTitle.map(m => ({ role: m.role, content: m.content }));
+        const titleMessages = messagesForTitle.map((m) => ({ role: m.role, content: m.content }));
 
         // Generate title asynchronously (don't block response)
         generateChatTitle(titleMessages).then(async (title) => {
@@ -1618,7 +1719,7 @@ chatRouter.post(
             const { broadcastChatUpdate } = await import('../services/websocket.ts');
             broadcastChatUpdate(chatId, { autoGeneratedTitle: title });
           }
-        }).catch(err => {
+        }).catch((err) => {
           console.error('Failed to generate chat title:', err);
         });
       }
@@ -1628,7 +1729,7 @@ chatRouter.post(
       const errorMessage = error instanceof Error ? error.message : 'Failed to invoke AI';
       return c.json({ success: false, error: errorMessage }, 500);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -1657,7 +1758,7 @@ chatRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to archive';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // GET /chat/:chatId/archive - Get archive info
@@ -1717,14 +1818,14 @@ chatRouter.post(
         walletSession.address,
         walletSession.userId,
         body.rating as JuicyRating,
-        body.customFeedback
+        body.customFeedback,
       );
       return c.json({ success: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to submit feedback';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -1765,7 +1866,7 @@ chatRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to update pin status';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // PATCH /chat/:chatId/folder - Move chat to folder
@@ -1797,7 +1898,7 @@ chatRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to move chat';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // PATCH /chat/:chatId/name - Rename a chat
@@ -1828,7 +1929,7 @@ chatRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to rename chat';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // POST /chat/reorder-pinned - Reorder pinned chats
@@ -1852,7 +1953,7 @@ chatRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to reorder chats';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -1869,14 +1970,16 @@ chatRouter.post(
   '/:chatId/report',
   optionalAuth,
   optionalWalletSession,
-  zValidator('json', z.object({
-    reason: z.string().optional(),
-  }).optional()),
+  zValidator(
+    'json',
+    z.object({
+      reason: z.string().optional(),
+    }).optional(),
+  ),
   async (c) => {
     const chatId = c.req.param('chatId');
     const body = c.req.valid('json') || {};
     const wallet = c.get('walletSession');
-    const user = c.get('user');
 
     // Get reporter address from wallet session or user
     const reporterAddress = wallet?.address;
@@ -1906,7 +2009,7 @@ chatRouter.post(
       }
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -1973,7 +2076,7 @@ chatRouter.post(
       const token = authHeader.replace('Bearer ', '');
       const siweSession = await queryOne<{ wallet_address: string }>(
         `SELECT wallet_address FROM wallet_sessions WHERE session_token = $1 AND expires_at > NOW()`,
-        [token]
+        [token],
       );
       if (siweSession && siweSession.wallet_address.toLowerCase() === newAddress) {
         isAuthorized = true;
@@ -1985,7 +2088,11 @@ chatRouter.post(
     if (!isAuthorized && body.signature && body.message) {
       const parsed = parseSessionMergeMessage(body.message);
       if (parsed && parsed.address === newAddress && isTimestampValid(parsed.timestamp)) {
-        const isValidSignature = await verifyWalletSignature(body.message, body.signature, newAddress);
+        const isValidSignature = await verifyWalletSignature(
+          body.message,
+          body.signature,
+          newAddress,
+        );
         if (isValidSignature) {
           isAuthorized = true;
           authorizedAddress = newAddress;
@@ -2002,16 +2109,27 @@ chatRouter.post(
 
     if (pseudoAddress.toLowerCase() === newAddress) {
       // Same address, nothing to merge
-      return c.json({ success: true, data: { mergedChatIds: [], message: 'Addresses match, no merge needed' } });
+      return c.json({
+        success: true,
+        data: { mergedChatIds: [], message: 'Addresses match, no merge needed' },
+      });
     }
 
     try {
       // Find all chats where pseudo-address is a member
-      const memberRecords = await query<{ chat_id: string; role: string; can_send_messages: boolean; can_invite: boolean; can_invoke_ai: boolean }>(
+      const memberRecords = await query<
+        {
+          chat_id: string;
+          role: string;
+          can_send_messages: boolean;
+          can_invite: boolean;
+          can_invoke_ai: boolean;
+        }
+      >(
         `SELECT chat_id, role, can_send_messages, can_invite, can_invoke_ai
          FROM multi_chat_members
          WHERE member_address = $1 AND is_active = TRUE`,
-        [pseudoAddress]
+        [pseudoAddress],
       );
 
       const mergedChatIds: string[] = [];
@@ -2020,20 +2138,20 @@ chatRouter.post(
         // Check if new address is already a member of this chat
         const existingMember = await queryOne<{ id: string }>(
           `SELECT id FROM multi_chat_members WHERE chat_id = $1 AND member_address = $2`,
-          [record.chat_id, newAddress]
+          [record.chat_id, newAddress],
         );
 
         if (existingMember) {
           // New address already has membership, just deactivate the pseudo-address member
           await execute(
             `UPDATE multi_chat_members SET is_active = FALSE, left_at = NOW() WHERE chat_id = $1 AND member_address = $2`,
-            [record.chat_id, pseudoAddress]
+            [record.chat_id, pseudoAddress],
           );
         } else {
           // Transfer membership: update the pseudo-address record to use new address
           await execute(
             `UPDATE multi_chat_members SET member_address = $1 WHERE chat_id = $2 AND member_address = $3`,
-            [newAddress, record.chat_id, pseudoAddress]
+            [newAddress, record.chat_id, pseudoAddress],
           );
         }
 
@@ -2041,7 +2159,7 @@ chatRouter.post(
         // This ensures message history is associated with the user's real identity
         await execute(
           `UPDATE multi_chat_messages SET sender_address = $1 WHERE chat_id = $2 AND sender_address = $3`,
-          [newAddress, record.chat_id, pseudoAddress]
+          [newAddress, record.chat_id, pseudoAddress],
         );
 
         mergedChatIds.push(record.chat_id);
@@ -2051,14 +2169,14 @@ chatRouter.post(
         success: true,
         data: {
           mergedChatIds,
-          message: `Merged ${mergedChatIds.length} chat(s) to new address`
-        }
+          message: `Merged ${mergedChatIds.length} chat(s) to new address`,
+        },
       });
     } catch (error) {
       console.error('[Merge Session] Error:', error);
       return c.json({ success: false, error: 'Failed to merge session' }, 500);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -2087,7 +2205,7 @@ chatRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to get component states';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // GET /chat/messages/:messageId/components/:componentKey - Get specific component state
@@ -2106,7 +2224,7 @@ chatRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to get component state';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // PUT /chat/messages/:messageId/components/:componentKey - Set component state
@@ -2127,22 +2245,24 @@ chatRouter.put(
       const message = error instanceof Error ? error.message : 'Failed to set component state';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // ============================================================================
 // Serializers (convert BigInt to strings for JSON)
 // ============================================================================
 
-function serializeChat(chat: any) {
+function serializeChat(chat: Chat) {
   return {
     ...chat,
     aiBalanceWei: chat.aiBalanceWei?.toString(),
     aiTotalSpentWei: chat.aiTotalSpentWei?.toString(),
-    tokenGate: chat.tokenGate ? {
-      ...chat.tokenGate,
-      minBalance: chat.tokenGate.minBalance?.toString(),
-    } : undefined,
+    tokenGate: chat.tokenGate
+      ? {
+        ...chat.tokenGate,
+        minBalance: chat.tokenGate.minBalance?.toString(),
+      }
+      : undefined,
     // AI toggle
     aiEnabled: chat.aiEnabled ?? true,
     // Organization fields (already serializable)
@@ -2153,7 +2273,7 @@ function serializeChat(chat: any) {
   };
 }
 
-function serializeMember(member: any) {
+function serializeMember(member: ChatMember) {
   return {
     address: member.memberAddress,
     userId: member.memberUserId,
@@ -2169,7 +2289,7 @@ function serializeMember(member: any) {
   };
 }
 
-function serializeMessage(message: any) {
+function serializeMessage(message: ChatMessage) {
   return {
     ...message,
     aiCostWei: message.aiCostWei?.toString(),

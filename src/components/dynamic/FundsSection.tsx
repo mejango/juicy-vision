@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react'
-import { formatUnits } from 'viem'
+import { formatUnits, parseUnits } from 'viem'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
-import { hasValidWalletSession } from '../../services/siwe'
+import { getWalletSession, hasValidWalletSession } from '../../services/siwe'
 import {
-  fetchSuckerGroupBalance,
   fetchDistributablePayout,
-  fetchConnectedChains,
+  fetchProjectAccountingContexts,
   fetchProjectWithRuleset,
   fetchProjectSplits,
   fetchProjectTokenSupply,
@@ -15,15 +14,17 @@ import {
   fetchProjectTokenSymbol,
   fetchUpcomingRulesetWithMetadata,
   fetchUserTokenBalance,
+  calculateCashOutValue,
   calculateFloorPrice,
-  type SuckerGroupBalance,
   type DistributablePayout,
-  type ConnectedChain,
   type JBSplitData,
   type FundAccessLimits,
   type QueuedRulesetInfo,
 } from '../../services/bendystraw'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { ProjectSplitRoute } from './ProjectSplitRoute'
 
 interface FundsSectionProps {
   projectId: string
@@ -42,6 +43,10 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; color: strin
   10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
   8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
   42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
+  11155111: { name: 'Sepolia', shortName: 'SEP', color: '#627EEA' },
+  11155420: { name: 'OP Sepolia', shortName: 'OP-SEP', color: '#FF0420' },
+  84532: { name: 'Base Sepolia', shortName: 'BASE-SEP', color: '#0052FF' },
+  421614: { name: 'Arb Sepolia', shortName: 'ARB-SEP', color: '#28A0F0' },
 }
 
 // Per-chain funds data
@@ -52,12 +57,16 @@ interface ChainFundsData {
   distributablePayout: DistributablePayout | null
   payoutSplits: JBSplitData[]
   fundAccessLimits: FundAccessLimits | null
-  baseCurrency: number
+  accountingToken: string
+  accountingCurrency: number
+  accountingSymbol: 'ETH' | 'USDC'
   decimals: number
   // Cash out related data
   tokenSupply: string // Total token supply on this chain (raw totalSupplyOf, 18 decimals)
   cashOutTaxRate: number // 0-10000 basis points (10000 = 100% = no cash out)
   cashOutPerToken: number // Calculated floor price per token
+  scopeCashOutsToLocalBalances: boolean
+  useDataHookForCashOut: boolean
   // Reclaimable surplus = balance NET of the remaining (undistributed) payout limit,
   // in the accounting token's decimals. Cash outs draw only from this, never raw balance.
   reclaimableSurplus: string
@@ -77,76 +86,50 @@ function formatBalance(value: string, decimals: number = 18): string {
   }
 }
 
-function formatCurrency(value: string, decimals: number, currency: number): string {
+function formatCurrency(value: string, decimals: number, symbol: 'ETH' | 'USDC'): string {
   const formatted = formatBalance(value, decimals)
-  return currency === 2 ? `$${formatted}` : `${formatted} ETH`
+  return symbol === 'USDC' ? `${formatted} USDC` : `${formatted} ETH`
 }
 
-// Collapsible cash out calculator - calculates best return across all chains
+// Selected-chain baseline calculator. Execution uses the terminal's fresh preview instead.
 function CashOutCalculator({
-  chainFundsData,
+  chain,
   isDark,
   tokenSymbol,
   userTokenBalance,
 }: {
-  chainFundsData: ChainFundsData[]
+  chain: ChainFundsData
   tokenSymbol?: string | null
   isDark: boolean
   userTokenBalance?: bigint
 }) {
-  // Default to user's balance if available
   const defaultAmount = userTokenBalance && userTokenBalance > 0n
-    ? (Number(userTokenBalance) / Math.pow(10, 18)).toString()
+    ? formatUnits(userTokenBalance, 18)
     : ''
   const [expanded, setExpanded] = useState(false)
   const [tokenAmount, setTokenAmount] = useState(defaultAmount)
-  const [showBreakdown, setShowBreakdown] = useState(false)
-
-  const TOKEN_DECIMALS = 18
-  const tokensNum = parseFloat(tokenAmount) || 0
-
-  // Calculate return for a specific chain
-  const calculateChainReturn = (chain: ChainFundsData, tokensHuman: number): { returnAmount: number; exceedsSupply: boolean; supplyHuman: number } => {
-    // Denominator includes pending reserved tokens; pool is surplus net of the payout limit.
-    const supplyHuman = Number(BigInt(chain.cashOutSupply)) / Math.pow(10, TOKEN_DECIMALS)
-    const balance = BigInt(chain.reclaimableSurplus)
-    const r = chain.cashOutTaxRate / 10000
-
-    if (supplyHuman === 0 || tokensHuman <= 0) {
-      return { returnAmount: 0, exceedsSupply: false, supplyHuman }
-    }
-
-    const exceedsSupply = tokensHuman > supplyHuman
-    const x = Math.min(tokensHuman / supplyHuman, 1) // Cap at 100% of supply
-    const y = x * ((1 - r) + r * x)
-    const returnAmount = (y * Number(balance)) / Math.pow(10, chain.decimals)
-
-    return { returnAmount, exceedsSupply, supplyHuman }
+  const chainInfo = CHAIN_INFO[chain.chainId]
+  const supply = BigInt(chain.cashOutSupply)
+  let tokenAmountRaw = 0n
+  let amountIsValid = tokenAmount.trim() === ''
+  try {
+    tokenAmountRaw = tokenAmount.trim() === '' ? 0n : parseUnits(tokenAmount, 18)
+    amountIsValid = tokenAmountRaw >= 0n
+  } catch {
+    amountIsValid = false
   }
-
-  // Calculate returns for all chains
-  const chainResults = chainFundsData.map(chain => {
-    const { returnAmount, exceedsSupply, supplyHuman } = calculateChainReturn(chain, tokensNum)
-    const chainInfo = CHAIN_INFO[chain.chainId]
-    return {
-      chain,
-      chainInfo,
-      returnAmount,
-      exceedsSupply,
-      supplyHuman,
-      currencySymbol: chain.baseCurrency === 2 ? 'USDC' : 'ETH',
-    }
-  }).filter(r => r.chainInfo) // Filter out unknown chains
-
-  // Find the best chain (highest return that doesn't exceed supply)
-  const validResults = chainResults.filter(r => !r.exceedsSupply && r.returnAmount > 0)
-  const bestResult = validResults.length > 0
-    ? validResults.reduce((best, current) => current.returnAmount > best.returnAmount ? current : best)
-    : chainResults[0]
-
-  // Check if any chain can handle the full amount
-  const anyExceedsSupply = chainResults.some(r => r.exceedsSupply)
-  const allExceedSupply = chainResults.every(r => r.exceedsSupply)
+  const exceedsSupply = tokenAmountRaw > supply
+  const exceedsBalance = userTokenBalance !== undefined && tokenAmountRaw > userTokenBalance
+  const returnRaw = amountIsValid && !exceedsSupply && tokenAmountRaw > 0n
+    ? calculateCashOutValue(
+        BigInt(chain.reclaimableSurplus),
+        supply,
+        tokenAmountRaw,
+        chain.cashOutTaxRate,
+      )
+    : 0n
+  const returnAmount = Number(formatUnits(returnRaw, chain.decimals))
+  const tokensNum = Number(formatUnits(tokenAmountRaw, 18))
 
   return (
     <div className={`mb-3 border max-w-sm ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
@@ -177,6 +160,9 @@ function CashOutCalculator({
               </label>
               <input
                 type="number"
+                min="0"
+                max={userTokenBalance !== undefined ? formatUnits(userTokenBalance, 18) : undefined}
+                step="any"
                 value={tokenAmount}
                 onChange={(e) => setTokenAmount(e.target.value)}
                 placeholder="0"
@@ -188,80 +174,34 @@ function CashOutCalculator({
               />
             </div>
 
-            {/* Best result */}
-            {bestResult && (
-              <div className={`p-2 ${allExceedSupply ? (isDark ? 'bg-red-500/10' : 'bg-red-50') : (isDark ? 'bg-green-500/10' : 'bg-green-50')}`}>
+            <div className={`p-2 ${exceedsSupply || exceedsBalance || !amountIsValid ? (isDark ? 'bg-red-500/10' : 'bg-red-50') : (isDark ? 'bg-green-500/10' : 'bg-green-50')}`}>
                 <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {tokensNum > 0 && chainFundsData.length > 1 && !allExceedSupply
-                    ? `Best return (${bestResult.chainInfo?.shortName})`
-                    : 'You would receive'
-                  }
+                  Current {chainInfo?.shortName || `chain ${chain.chainId}`} curve estimate
                 </div>
-                <div className={`text-lg font-mono font-semibold ${allExceedSupply ? (isDark ? 'text-red-400' : 'text-red-600') : (isDark ? 'text-green-400' : 'text-green-600')}`}>
-                  {bestResult.returnAmount > 0 ? bestResult.returnAmount.toFixed(6) : '0'} {bestResult.currencySymbol}
+                <div className={`text-lg font-mono font-semibold ${exceedsSupply || exceedsBalance || !amountIsValid ? (isDark ? 'text-red-400' : 'text-red-600') : (isDark ? 'text-green-400' : 'text-green-600')}`}>
+                  {returnAmount > 0 ? returnAmount.toFixed(6) : '0'} {chain.accountingSymbol}
                 </div>
-                {tokensNum > 0 && bestResult.returnAmount > 0 && !bestResult.exceedsSupply && (
+                {tokensNum > 0 && returnAmount > 0 && !exceedsSupply && !exceedsBalance && (
                   <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    ≈ {(bestResult.returnAmount / tokensNum).toFixed(8)} {bestResult.currencySymbol}/{tokenSymbol || 'token'}
+                    ~{(returnAmount / tokensNum).toFixed(8)} {chain.accountingSymbol}/{tokenSymbol || 'token'}
                   </div>
                 )}
-                {allExceedSupply && tokensNum > 0 && (
+                {!amountIsValid && (
                   <div className={`text-[10px] mt-1 ${isDark ? 'text-red-400' : 'text-red-500'}`}>
-                    Amount exceeds supply on all chains
+                    Enter a valid token amount
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* Breakdown dropdown for multi-chain */}
-            {chainFundsData.length > 1 && tokensNum > 0 && (
-              <div>
-                <button
-                  onClick={() => setShowBreakdown(!showBreakdown)}
-                  className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
-                >
-                  <span>Breakdown</span>
-                  <svg
-                    className={`w-3 h-3 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {showBreakdown && (
-                  <div className="mt-2 space-y-2">
-                    {chainResults.map(result => (
-                      <div key={result.chain.chainId} className={`flex items-center justify-between text-xs ${result === bestResult ? (isDark ? 'text-green-400' : 'text-green-600') : ''}`}>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: result.chainInfo?.color }}
-                          />
-                          <span className={result === bestResult ? '' : (isDark ? 'text-gray-400' : 'text-gray-500')}>
-                            {result.chainInfo?.shortName}
-                          </span>
-                          {result === bestResult && (
-                            <span className={`text-[10px] ${isDark ? 'text-green-400' : 'text-green-600'}`}>Best</span>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <span className={`font-mono ${result.exceedsSupply ? (isDark ? 'text-red-400' : 'text-red-500') : (result === bestResult ? '' : (isDark ? 'text-gray-300' : 'text-gray-600'))}`}>
-                            {result.returnAmount > 0 ? result.returnAmount.toFixed(6) : '0'} {result.currencySymbol}
-                          </span>
-                          {result.exceedsSupply && (
-                            <div className={`text-[10px] ${isDark ? 'text-red-400' : 'text-red-500'}`}>
-                              Exceeds supply
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                {exceedsBalance && (
+                  <div className={`text-[10px] mt-1 ${isDark ? 'text-red-400' : 'text-red-500'}`}>
+                    Amount exceeds your balance on this chain
                   </div>
                 )}
-              </div>
-            )}
+                {exceedsSupply && !exceedsBalance && (
+                  <div className={`text-[10px] mt-1 ${isDark ? 'text-red-400' : 'text-red-500'}`}>
+                    Amount exceeds the cash-out supply on this chain
+                  </div>
+                )}
+            </div>
           </div>
         </div>
       )}
@@ -272,13 +212,13 @@ function CashOutCalculator({
 // Collapsible per-chain balance breakdown
 function PerChainBreakdown({
   projectBalances,
-  defaultCurrency,
   defaultDecimals,
+  defaultSymbol,
   isDark,
 }: {
-  projectBalances: Array<{ chainId: number; balance: string; currency?: number; decimals?: number }>
-  defaultCurrency: number
+  projectBalances: Array<{ chainId: number; balance: string; symbol?: 'ETH' | 'USDC'; decimals?: number }>
   defaultDecimals: number
+  defaultSymbol: 'ETH' | 'USDC'
   isDark: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -304,8 +244,8 @@ function PerChainBreakdown({
           {projectBalances.map(pb => {
             const chainInfo = CHAIN_INFO[pb.chainId]
             if (!chainInfo) return null
-            const pbCurrency = pb.currency ?? defaultCurrency
             const pbDecimals = pb.decimals ?? defaultDecimals
+            const pbSymbol = pb.symbol ?? defaultSymbol
             return (
               <div key={pb.chainId} className="flex items-center gap-3">
                 <span
@@ -316,70 +256,11 @@ function PerChainBreakdown({
                   {chainInfo.shortName}
                 </span>
                 <span className={`text-xs font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  {formatCurrency(pb.balance, pbDecimals, pbCurrency)}
+                  {formatCurrency(pb.balance, pbDecimals, pbSymbol)}
                 </span>
               </div>
             )
           })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Collapsible per-chain cash out values breakdown
-function PerChainCashOutBreakdown({
-  cashOutEnabledChains,
-  isDark,
-}: {
-  cashOutEnabledChains: ChainFundsData[]
-  isDark: boolean
-}) {
-  const [expanded, setExpanded] = useState(false)
-
-  return (
-    <div className="mb-3">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
-      >
-        <span>Breakdown</span>
-        <svg
-          className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {expanded && (
-        <div className="mt-2 space-y-1">
-          {cashOutEnabledChains.map(cd => {
-            const chainInfo = CHAIN_INFO[cd.chainId]
-            if (!chainInfo) return null
-            const chainRate = (cd.cashOutTaxRate / 10000).toFixed(2).replace(/\.?0+$/, '') || '0'
-            return (
-              <div key={cd.chainId} className="flex items-center gap-2">
-                <span
-                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: chainInfo.color }}
-                />
-                <span className={`text-xs w-10 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {chainInfo.shortName}
-                </span>
-                <span className={`text-xs font-mono ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                  {cd.cashOutPerToken > 0 ? cd.cashOutPerToken.toFixed(6) : '0'} {cd.baseCurrency === 2 ? 'USDC' : 'ETH'}
-                </span>
-                <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  (rate {chainRate})
-                </span>
-              </div>
-            )
-          })}
-          <div className={`text-[10px] mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Cash outs use each chain's balance and token supply.
-          </div>
         </div>
       )}
     </div>
@@ -436,13 +317,30 @@ function PayoutSplitsBreakdown({
                     const beneficiary = split.beneficiary?.toLowerCase() || ''
                     const displayName = splitEnsNames[beneficiary] || (split.beneficiary ? `${split.beneficiary.slice(0, 6)}...${split.beneficiary.slice(-4)}` : '')
                     return (
-                      <div key={idx} className="flex items-center gap-2 text-xs">
-                        <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {split.projectId > 0 ? `Project #${split.projectId}` : displayName}
-                        </span>
-                        <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                          {percent}%
-                        </span>
+                      <div key={idx} className="flex items-start justify-between gap-2 text-xs">
+                        {split.projectId > 0 ? (
+                          <ProjectSplitRoute
+                            projectId={split.projectId}
+                            chainId={cd.chainId}
+                            beneficiary={split.beneficiary}
+                            kind="payout"
+                            preferAddToBalance={split.preferAddToBalance}
+                            hook={split.hook}
+                            isDark={isDark}
+                          />
+                        ) : (
+                          <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {displayName}
+                          </span>
+                        )}
+                        <div className="flex shrink-0 items-center gap-1">
+                          <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                            {percent}%
+                          </span>
+                          {split.lockedUntil > Math.floor(Date.now() / 1000) && (
+                            <span className="text-[10px] text-amber-500">Locked</span>
+                          )}
+                        </div>
                       </div>
                     )
                   })}
@@ -468,14 +366,13 @@ function CashOutTaxRateDisplay({
 }) {
   const [showBreakdown, setShowBreakdown] = useState(false)
 
-  // Format tax rate as decimal (0.1 = 10% tax)
-  const formatTaxRate = (rate: number) => (rate / 10000).toFixed(2).replace(/\.?0+$/, '') || '0'
+  const formatTaxRate = (rate: number) => `${(rate / 100).toFixed(2).replace(/\.?0+$/, '') || '0'}%`
 
   return (
     <div className="mb-3">
       <div className="flex items-center gap-2">
         <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-          Current cash out tax rate:
+          Current cash-out curve rate:
         </span>
         {unifiedTaxRate !== null ? (
           <span className={`text-xs font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -530,7 +427,7 @@ function CashOutTaxRateDisplay({
 export default function FundsSection({ projectId, chainId, isOwner, onSendPayouts, isRevnet = false, onCashOut }: FundsSectionProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { isConnected, address: wagmiAddress } = useAccount()
+  const { address: wagmiAddress } = useAccount()
   const { mode, isAuthenticated } = useAuthStore()
   const { address: managedAddress } = useManagedWallet()
 
@@ -538,137 +435,129 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   const isSelfCustodySignedIn = mode === 'self_custody' && hasValidWalletSession()
   const isManagedSignedIn = mode === 'managed' && isAuthenticated()
   const isSignedIn = isSelfCustodySignedIn || isManagedSignedIn
-  const userAddress = managedAddress || wagmiAddress
+  const userAddress = isManagedSignedIn
+    ? managedAddress
+    : getWalletSession()?.address || wagmiAddress
 
   const [loading, setLoading] = useState(true)
-  const [suckerBalance, setSuckerBalance] = useState<SuckerGroupBalance | null>(null)
   const [chainFundsData, setChainFundsData] = useState<ChainFundsData[]>([])
+  const [selectedAccountingSymbol, setSelectedAccountingSymbol] = useState<'ETH' | 'USDC'>('ETH')
+  const [configurationError, setConfigurationError] = useState<string | null>(null)
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [upcomingRuleset, setUpcomingRuleset] = useState<QueuedRulesetInfo | null>(null)
   const [showSplits, setShowSplits] = useState(false)
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
   const [userTokenBalance, setUserTokenBalance] = useState<bigint>(0n)
+  const [userTokenBalanceAvailable, setUserTokenBalanceAvailable] = useState(false)
+  const [userTokenBalanceLoading, setUserTokenBalanceLoading] = useState(false)
   const [tokenSymbol, setTokenSymbol] = useState<string | null>(null)
 
   const chainIdNum = parseInt(chainId)
 
-  // Get active chain data
-  const activeChainData = chainFundsData.find(cd => cd.chainId === chainIdNum) || chainFundsData[0]
-  const currencySymbol = activeChainData?.baseCurrency === 2 ? 'USDC' : 'ETH'
+  const availableAccountingSymbols = [...new Set(chainFundsData.map(data => data.accountingSymbol))]
+  const activeAccountingSymbol = availableAccountingSymbols.includes(selectedAccountingSymbol)
+    ? selectedAccountingSymbol
+    : availableAccountingSymbols[0] || 'ETH'
+  const visibleChainFundsData = chainFundsData.filter(
+    data => data.accountingSymbol === activeAccountingSymbol,
+  )
+  const activeChainData = visibleChainFundsData.find(cd => cd.chainId === chainIdNum) || visibleChainFundsData[0]
+  const currencySymbol = activeAccountingSymbol
 
   useEffect(() => {
     async function load() {
       try {
         setLoading(true)
 
-        // Fetch sucker balance and connected chains
-        const [groupBalance, connectedChains] = await Promise.all([
-          fetchSuckerGroupBalance(projectId, chainIdNum),
-          fetchConnectedChains(projectId, chainIdNum),
-        ])
-
-        setSuckerBalance(groupBalance)
-
-        // Determine chains to fetch
-        const chainsToFetch: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: chainIdNum, projectId: parseInt(projectId) }]
+        setConfigurationError(null)
+        const chainResolution = await resolveProjectChains(projectId, chainIdNum)
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
         // Fetch payout data from all chains in parallel
         // Skip payout-related fetches for revnets since they don't have payouts
-        const chainDataPromises = chainsToFetch.map(async (chain): Promise<ChainFundsData> => {
+        const chainDataPromises = chainResolution.chains.map(async (chain): Promise<{ data: ChainFundsData[]; error?: string }> => {
           try {
-            // Fetch project with ruleset, token supply, and pending (undistributed) reserved tokens
-            const [chainProject, tokenSupply, pendingReserved] = await Promise.all([
+            const [chainProject, tokenSupply, pendingReserved, accountingContexts] = await Promise.all([
               fetchProjectWithRuleset(String(chain.projectId), chain.chainId),
               fetchProjectTokenSupply(String(chain.projectId), chain.chainId),
               fetchPendingReservedTokens(String(chain.projectId), chain.chainId),
+              fetchProjectAccountingContexts(String(chain.projectId), chain.chainId),
             ])
+            if (tokenSupply === null) throw new Error('Project token supply could not be verified')
+            if (accountingContexts.length === 0) throw new Error('No recognized accounting context')
 
-            let payoutData: DistributablePayout | null = null
-            if (!isRevnet) {
-              try {
-                // Pass the project's accounting currency so USDC projects query
-                // their USDC payout limit (not the empty ETH one).
-                payoutData = await fetchDistributablePayout(
-                  String(chain.projectId),
-                  chain.chainId,
-                  chainProject?.currentRuleset?.baseCurrency ?? 1
-                )
-              } catch {
-                // Silently ignore payout fetch errors (expected for some project types)
-              }
-            }
-
-            // Fetch splits if we have a ruleset (skip for revnets)
-            let payoutSplits: JBSplitData[] = []
-            let fundAccessLimits: FundAccessLimits | null = null
+            let splitsData: Awaited<ReturnType<typeof fetchProjectSplits>> | null = null
             if (!isRevnet && chainProject?.currentRuleset?.id) {
-              const splitsData = await fetchProjectSplits(
+              splitsData = await fetchProjectSplits(
                 String(chain.projectId),
                 chain.chainId,
                 chainProject.currentRuleset.id
               )
-              payoutSplits = splitsData.payoutSplits
-              fundAccessLimits = splitsData.fundAccessLimits || null
+              if (!splitsData.configurationComplete) throw new Error('Treasury configuration could not be verified')
             }
 
-            // Get cash out tax rate from ruleset (10000 = 100% tax = no cash out allowed)
             const cashOutTaxRate = chainProject?.currentRuleset?.cashOutTaxRate ?? 10000
-            const balance = BigInt(chainProject?.balance || '0')
-            const supply = BigInt(tokenSupply || '0')
-            const chainDecimals = groupBalance.decimals
+            const supply = BigInt(tokenSupply)
+            const cashOutSupply = supply + BigInt(pendingReserved)
 
-            // (A) Cash outs draw only from SURPLUS — balance net of the remaining
-            // (undistributed) payout limit. Funds still earmarked for payouts this
-            // cycle are not reclaimable by members. distributablePayout.available is
-            // that remaining limit (0 for revnets / no-limit projects; balance for
-            // unlimited-limit projects → surplus 0).
-            const remainingPayout = payoutData?.available ?? 0n
-            const reclaimableSurplus = balance > remainingPayout ? balance - remainingPayout : 0n
-            // (B) Pending (undistributed) reserved tokens still dilute each token's
-            // reclaim value, so they belong in the cash-out denominator.
-            const cashOutSupply = supply + BigInt(pendingReserved || '0')
+            const data = await Promise.all(accountingContexts.map(async context => {
+              const fundAccessLimits = splitsData?.fundAccessLimitGroups?.find(
+                group => group.token.toLowerCase() === context.token.toLowerCase(),
+              ) || null
+              const payoutSplits = splitsData?.splitGroups?.find(
+                group => group.groupId === BigInt(context.token).toString(),
+              )?.splits || []
+              const payoutData = isRevnet ? null : await fetchDistributablePayout(
+                String(chain.projectId),
+                chain.chainId,
+                context.currency,
+                context.token,
+                context.decimals,
+              )
+              const remainingPayout = payoutData?.available ?? 0n
+              const reclaimableSurplus = context.balance > remainingPayout
+                ? context.balance - remainingPayout
+                : 0n
 
-            // Calculate floor price per token using bonding curve over the surplus pool
-            const cashOutPerToken = calculateFloorPrice(reclaimableSurplus, cashOutSupply, cashOutTaxRate, chainDecimals)
-
-            return {
-              chainId: chain.chainId,
-              projectId: chain.projectId,
-              balance: chainProject?.balance || '0',
-              distributablePayout: payoutData,
-              payoutSplits,
-              fundAccessLimits,
-              baseCurrency: chainProject?.currentRuleset?.baseCurrency || 1,
-              decimals: chainDecimals,
-              tokenSupply: tokenSupply || '0',
-              cashOutTaxRate,
-              cashOutPerToken,
-              reclaimableSurplus: reclaimableSurplus.toString(),
-              cashOutSupply: cashOutSupply.toString(),
-            }
+              return {
+                chainId: chain.chainId,
+                projectId: chain.projectId,
+                balance: context.balance.toString(),
+                distributablePayout: payoutData,
+                payoutSplits,
+                fundAccessLimits,
+                accountingToken: context.token,
+                accountingCurrency: context.currency,
+                accountingSymbol: context.symbol,
+                decimals: context.decimals,
+                tokenSupply,
+                cashOutTaxRate,
+                scopeCashOutsToLocalBalances: chainProject?.currentRuleset?.scopeCashOutsToLocalBalances === true,
+                useDataHookForCashOut: chainProject?.currentRuleset?.useDataHookForCashOut === true,
+                cashOutPerToken: calculateFloorPrice(
+                  reclaimableSurplus,
+                  cashOutSupply,
+                  cashOutTaxRate,
+                  context.decimals,
+                ),
+                reclaimableSurplus: reclaimableSurplus.toString(),
+                cashOutSupply: cashOutSupply.toString(),
+              } satisfies ChainFundsData
+            }))
+            return { data }
           } catch (err) {
             console.error(`Failed to fetch funds data for chain ${chain.chainId}:`, err)
-            return {
-              chainId: chain.chainId,
-              projectId: chain.projectId,
-              balance: '0',
-              distributablePayout: null,
-              payoutSplits: [],
-              fundAccessLimits: null,
-              baseCurrency: 1,
-              decimals: 18,
-              tokenSupply: '0',
-              cashOutTaxRate: 10000,
-              cashOutPerToken: 0,
-              reclaimableSurplus: '0',
-              cashOutSupply: '0',
-            }
+            return { data: [], error: err instanceof Error ? err.message : 'Treasury configuration unavailable' }
           }
         })
 
-        const allChainData = await Promise.all(chainDataPromises)
+        const chainResults = await Promise.all(chainDataPromises)
+        const allChainData = chainResults.flatMap(result => result.data)
         setChainFundsData(allChainData)
+        const errors = chainResults.flatMap(result => result.error ? [result.error] : [])
+        setConfigurationError(errors.length > 0 ? [...new Set(errors)].join('. ') : null)
+        const symbols = [...new Set(allChainData.map(data => data.accountingSymbol))]
+        setSelectedAccountingSymbol(previous => symbols.includes(previous) ? previous : symbols[0] || 'ETH')
 
         // Fetch upcoming ruleset to check for cash out tax changes
         try {
@@ -717,43 +606,52 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
     load()
   }, [projectId, chainId, chainIdNum, isRevnet])
 
-  // Fetch user's token balance across all connected chains when signed in
+  // Cash-out actions are chain-local, so never present an aggregate balance as spendable.
   useEffect(() => {
     async function loadUserTokenBalance() {
       if (!isSignedIn || !userAddress || chainFundsData.length === 0) {
         setUserTokenBalance(0n)
+        setUserTokenBalanceAvailable(!isSignedIn || !userAddress)
+        setUserTokenBalanceLoading(false)
         return
       }
 
       try {
-        // Fetch balance from all chains and sum them
-        const balancePromises = chainFundsData.map(async cd => {
-          const result = await fetchUserTokenBalance(
-            String(cd.projectId),
-            cd.chainId,
-            userAddress
-          )
-          return result?.balance ? BigInt(result.balance) : 0n
-        })
-
-        const balances = await Promise.all(balancePromises)
-        const totalBalance = balances.reduce((sum, b) => sum + b, 0n)
-        setUserTokenBalance(totalBalance)
+        setUserTokenBalanceLoading(true)
+        setUserTokenBalanceAvailable(false)
+        const activeProject = chainFundsData.find(data => data.chainId === chainIdNum)
+        if (!activeProject) {
+          setUserTokenBalance(0n)
+          setUserTokenBalanceAvailable(false)
+          return
+        }
+        const result = await fetchUserTokenBalance(
+          String(activeProject.projectId),
+          activeProject.chainId,
+          userAddress,
+        )
+        setUserTokenBalance(BigInt(result.balance))
+        setUserTokenBalanceAvailable(true)
       } catch (err) {
         console.error('Failed to fetch user token balance:', err)
         setUserTokenBalance(0n)
+        setUserTokenBalanceAvailable(false)
+      } finally {
+        setUserTokenBalanceLoading(false)
       }
     }
     loadUserTokenBalance()
-  }, [isSignedIn, userAddress, chainFundsData])
+  }, [isSignedIn, userAddress, chainFundsData, chainIdNum])
 
   // Calculate totals
-  const totalBalance = suckerBalance?.totalBalance || '0'
-  const decimals = suckerBalance?.decimals || 18
-  const currency = suckerBalance?.currency || 1
+  const totalBalance = visibleChainFundsData.reduce(
+    (sum, data) => sum + BigInt(data.balance),
+    0n,
+  ).toString()
+  const decimals = activeChainData?.decimals || (currencySymbol === 'USDC' ? 6 : 18)
 
   // Calculate available to pay out (sum across chains)
-  const totalAvailable = chainFundsData.reduce((sum, cd) => {
+  const totalAvailable = visibleChainFundsData.reduce((sum, cd) => {
     if (cd.distributablePayout?.available) {
       return sum + BigInt(cd.distributablePayout.available)
     }
@@ -765,7 +663,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   // cycle (totalAvailable = remaining limit) are not part of member-reclaimable surplus.
   // (Subtracting `used` here would overstate surplus, since used funds have already
   // left the terminal balance.)
-  const surplus = BigInt(totalBalance) - totalAvailable
+  const surplus = BigInt(totalBalance) > totalAvailable ? BigInt(totalBalance) - totalAvailable : 0n
 
   if (loading) {
     return (
@@ -786,22 +684,53 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
     <div className={`p-4 border ${
       isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
     }`}>
+      {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
+      {availableAccountingSymbols.length > 1 && (
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {availableAccountingSymbols.map(symbol => (
+            <button
+              key={symbol}
+              type="button"
+              onClick={() => setSelectedAccountingSymbol(symbol)}
+              className={`px-3 py-2 text-xs font-medium border ${
+                currencySymbol === symbol
+                  ? isDark ? 'border-green-400 text-green-400 bg-green-500/10' : 'border-green-600 text-green-700 bg-green-50'
+                  : isDark ? 'border-white/10 text-gray-400' : 'border-gray-200 text-gray-600'
+              }`}
+            >
+              {symbol} treasury
+            </button>
+          ))}
+        </div>
+      )}
+
+      {configurationError && (
+        <div className={`p-3 mb-4 text-xs ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-700'}`}>
+          {configurationError}. Transactions are blocked until the live configuration can be verified.
+        </div>
+      )}
+
       {/* Balance */}
       <div className="mb-4">
         <h3 className={`text-sm font-semibold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
           Balance
         </h3>
         <div className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          {formatCurrency(totalBalance, decimals, currency)}
+          {formatCurrency(totalBalance, decimals, currencySymbol)}
         </div>
       </div>
 
       {/* Per-chain breakdown (collapsible) */}
-      {suckerBalance && suckerBalance.projectBalances.length > 1 && (
+      {visibleChainFundsData.length > 1 && (
         <PerChainBreakdown
-          projectBalances={suckerBalance.projectBalances}
-          defaultCurrency={currency}
+          projectBalances={visibleChainFundsData.map(data => ({
+            chainId: data.chainId,
+            balance: data.balance,
+            symbol: data.accountingSymbol,
+            decimals: data.decimals,
+          }))}
           defaultDecimals={decimals}
+          defaultSymbol={currencySymbol}
           isDark={isDark}
         />
       )}
@@ -824,9 +753,9 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
           <>
             <div className="flex items-center justify-between">
               <div className={`text-sm font-mono ${totalAvailable > 0n ? (isDark ? 'text-white' : 'text-gray-900') : (isDark ? 'text-gray-500' : 'text-gray-400')}`}>
-                {formatCurrency(totalAvailable.toString(), decimals, currency)} available
+                {formatCurrency(totalAvailable.toString(), decimals, currencySymbol)} available
               </div>
-              {totalAvailable > 0n && (
+              {totalAvailable > 0n && !configurationError && (
                 <button
                   onClick={onSendPayouts}
                   className={`px-2 py-1 text-xs font-medium transition-colors border ${
@@ -855,26 +784,18 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
             Surplus
           </span>
           <span className={`text-sm font-mono ${surplus > 0n ? 'text-green-500' : isDark ? 'text-white' : 'text-gray-900'}`}>
-            {formatCurrency(surplus > 0n ? surplus.toString() : '0', decimals, currency)}
+            {formatCurrency(surplus > 0n ? surplus.toString() : '0', decimals, currencySymbol)}
           </span>
         </div>
       </div>
 
-      {/* Cash Out Section - shows when cash outs are enabled (tax rate < 100%) */}
+      {/* Cash-out actions and estimates are scoped to the dashboard's selected chain. */}
       {(() => {
-        // Check if any chain has cash outs enabled (tax rate < 10000 = 100%)
-        const cashOutEnabledChains = chainFundsData.filter(cd => cd.cashOutTaxRate < 10000)
-        const hasCashOutsEnabled = cashOutEnabledChains.length > 0
-        const hasSurplus = surplus > 0n
-
-        // Get the active chain's data for display
-        const activeCashOut = chainFundsData.find(cd => cd.chainId === chainIdNum)
-        if (!hasCashOutsEnabled) return null
-
-        // Check if all chains have the same tax rate
-        const taxRates = cashOutEnabledChains.map(cd => cd.cashOutTaxRate)
-        const allSameTaxRate = taxRates.every(rate => rate === taxRates[0])
-        const unifiedTaxRate = allSameTaxRate ? taxRates[0] : null
+        const activeCashOut = visibleChainFundsData.find(cd => cd.chainId === chainIdNum)
+        if (!activeCashOut || activeCashOut.cashOutTaxRate >= 10000) return null
+        const hasSurplus = BigInt(activeCashOut.reclaimableSurplus) > 0n
+        const canShowLocalBaseline = activeCashOut.scopeCashOutsToLocalBalances
+          && !activeCashOut.useDataHookForCashOut
 
         return (
           <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
@@ -884,65 +805,58 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                 Membership cash out value
               </div>
               <div className={`text-lg font-mono font-semibold ${
-                hasSurplus && activeCashOut && activeCashOut.cashOutPerToken > 0
+                canShowLocalBaseline && hasSurplus && activeCashOut.cashOutPerToken > 0
                   ? isDark ? 'text-green-400' : 'text-green-600'
                   : isDark ? 'text-gray-500' : 'text-gray-400'
               }`}>
-                {hasSurplus && activeCashOut && activeCashOut.cashOutPerToken > 0
-                  ? `${activeCashOut.cashOutPerToken.toFixed(6)} ${currency === 2 ? 'USDC' : 'ETH'}`
-                  : 'No surplus'
+                {canShowLocalBaseline && hasSurplus && activeCashOut.cashOutPerToken > 0
+                  ? `${activeCashOut.cashOutPerToken.toFixed(6)} ${activeCashOut.accountingSymbol}`
+                  : 'Live quote required'
                 }
               </div>
             </div>
 
             {/* Explanation */}
             <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {hasSurplus
-                ? 'Since there is a surplus and cash out tax rate, members can cash out for a share of the surplus.'
-                : <>If there is a surplus and cash out tax rate, members can cash out for a share of the surplus.<span className={isDark ? 'text-yellow-400' : 'text-yellow-600'}> Currently no surplus available for cash outs.</span></>
+              {canShowLocalBaseline
+                ? hasSurplus
+                  ? `This is the selected chain's baseline share of reclaimable surplus.`
+                  : <>Cash outs require reclaimable surplus on the selected chain.<span className={isDark ? 'text-yellow-400' : 'text-yellow-600'}> None is currently visible.</span></>
+                : 'The active cross-chain or hook configuration must be quoted by the terminal for the amount you choose.'
               }
             </div>
 
             {/* Current cash out tax rate */}
             <CashOutTaxRateDisplay
-              cashOutEnabledChains={cashOutEnabledChains}
-              unifiedTaxRate={unifiedTaxRate}
+              cashOutEnabledChains={[activeCashOut]}
+              unifiedTaxRate={activeCashOut.cashOutTaxRate}
               isDark={isDark}
             />
 
-            {/* Protocol fee note — the value shown above is before the 2.5% fee */}
-            {cashOutEnabledChains.some(cd => cd.cashOutTaxRate > 0) && (
-              <div className={`text-xs mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                Cash outs take a 2.5% protocol fee, so members receive a little less than the value shown here.
-              </div>
-            )}
+            <div className={`text-xs mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              This is a current curve estimate before hooks and any protocol fee. The transaction uses a fresh terminal preview and a minimum return.
+            </div>
 
             {/* User token balance - right below tax rate */}
             {isSignedIn && (
               <div className="mb-3">
                 <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   Your balance: <span className={`font-mono ${userTokenBalance > 0n ? (isDark ? 'text-white' : 'text-gray-900') : ''}`}>
-                    {formatBalance(userTokenBalance.toString(), 18)}
-                  </span> {tokenSymbol || 'tokens'}
+                    {userTokenBalanceLoading
+                      ? 'Loading…'
+                      : userTokenBalanceAvailable ? formatBalance(userTokenBalance.toString(), 18) : 'Unavailable'}
+                  </span> {userTokenBalanceAvailable && !userTokenBalanceLoading ? tokenSymbol || 'tokens' : ''}
                 </span>
               </div>
             )}
 
-            {/* Per-chain cash out breakdown (collapsible) */}
-            {hasSurplus && cashOutEnabledChains.length > 1 && (
-              <PerChainCashOutBreakdown
-                cashOutEnabledChains={cashOutEnabledChains}
-                isDark={isDark}
-              />
-            )}
-
             {/* Cash out calculator (collapsible) - only show when there's surplus */}
-            {hasSurplus && activeCashOut && (
+            {canShowLocalBaseline && hasSurplus && (
               <CashOutCalculator
-                chainFundsData={cashOutEnabledChains}
+                chain={activeCashOut}
                 isDark={isDark}
                 tokenSymbol={tokenSymbol}
-                userTokenBalance={userTokenBalance}
+                userTokenBalance={userTokenBalanceAvailable ? userTokenBalance : undefined}
               />
             )}
 
@@ -957,18 +871,10 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               if (currentTax === upcomingTax) return null
 
               const isIncreasing = upcomingTax > currentTax
-              // Display as decimal (0-1) not percentage
-              const currentTaxDecimal = (currentTax / 10000).toFixed(2)
-              const upcomingTaxDecimal = (upcomingTax / 10000).toFixed(2)
+              const currentTaxPercent = (currentTax / 100).toFixed(2).replace(/\.?0+$/, '') || '0'
+              const upcomingTaxPercent = (upcomingTax / 100).toFixed(2).replace(/\.?0+$/, '') || '0'
               const effectiveDate = new Date(upcomingRuleset.start * 1000)
               const dateStr = effectiveDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-
-              // Calculate approximate value impact
-              // Current retention = (10000 - currentTax) / 10000
-              // Upcoming retention = (10000 - upcomingTax) / 10000
-              const currentRetention = (10000 - currentTax) / 10000
-              const upcomingRetention = (10000 - upcomingTax) / 10000
-              const valueChange = ((upcomingRetention - currentRetention) / currentRetention * 100).toFixed(0)
 
               return (
                 <div className={`p-2 mb-3 ${
@@ -988,11 +894,12 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                       ? isDark ? 'text-purple-300/80' : 'text-purple-600'
                       : isDark ? 'text-green-300/80' : 'text-green-600'
                   }`}>
-                    Rate changing from {currentTaxDecimal} to {upcomingTaxDecimal} on {dateStr}.
-                    {isIncreasing
-                      ? ` Cash out value will decrease.`
-                      : ` Cash out value will increase.`
-                    }
+                    Curve rate changing from {currentTaxPercent}% to {upcomingTaxPercent}% on {dateStr}.
+                    {upcomingTax >= 10000
+                      ? ' Cash outs will be disabled.'
+                      : isIncreasing
+                        ? ' The baseline for partial exits will decrease.'
+                        : ' The baseline for partial exits will increase.'}
                   </div>
                 </div>
               )
@@ -1016,9 +923,9 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                   ) : (
                     <div className="relative group">
                       <button
-                        onClick={userTokenBalance > 0n && hasSurplus ? onCashOut : undefined}
+                        onClick={userTokenBalanceAvailable && userTokenBalance > 0n && !configurationError ? onCashOut : undefined}
                         className={`px-3 py-1.5 text-xs transition-colors border ${
-                          userTokenBalance > 0n && hasSurplus
+                          userTokenBalanceAvailable && userTokenBalance > 0n && !configurationError
                             ? isDark
                               ? 'text-green-400 hover:text-green-300 border-green-400 hover:border-green-300'
                               : 'text-green-600 hover:text-green-700 border-green-600 hover:border-green-700'
@@ -1030,11 +937,15 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                         Cash out
                       </button>
                       {/* Tooltip for disabled state */}
-                      {(userTokenBalance === 0n || !hasSurplus) && (
+                      {(!userTokenBalanceAvailable || userTokenBalance === 0n || !!configurationError) && (
                         <div className={`absolute bottom-full left-0 mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap ${
                           isDark ? 'bg-juice-dark border border-white/20 text-gray-300' : 'bg-white border border-gray-200 text-gray-600 shadow-sm'
                         }`}>
-                          {userTokenBalance === 0n ? "You don't have tokens" : 'No surplus available'}
+                          {configurationError
+                            ? 'Live configuration could not be verified'
+                            : !userTokenBalanceAvailable
+                              ? 'Your balance could not be verified'
+                              : "You don't have tokens on this chain"}
                         </div>
                       )}
                     </div>
@@ -1136,24 +1047,37 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                 const displayName = splitEnsNames[beneficiary] || truncateAddress(split.beneficiary || '')
 
                 return (
-                  <div key={idx} className="flex items-center gap-3 text-sm">
-                    <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                      {split.projectId > 0 ? (
-                        `Project #${split.projectId}`
-                      ) : (
-                        displayName
+                  <div key={idx} className="flex items-start justify-between gap-3 text-sm">
+                    {split.projectId > 0 ? (
+                      <ProjectSplitRoute
+                        projectId={split.projectId}
+                        chainId={activeChainData.chainId}
+                        beneficiary={split.beneficiary}
+                        kind="payout"
+                        preferAddToBalance={split.preferAddToBalance}
+                        hook={split.hook}
+                        isDark={isDark}
+                      />
+                    ) : (
+                      <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        {displayName}
+                      </span>
+                    )}
+                    <div className="flex shrink-0 items-center gap-1">
+                      <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        {percent}%
+                      </span>
+                      {split.lockedUntil > Math.floor(Date.now() / 1000) && (
+                        <span className="text-[10px] text-amber-500">Locked</span>
                       )}
-                    </span>
-                    <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {percent}%
-                    </span>
+                    </div>
                   </div>
                 )
               })}
               {/* Per-chain breakdown for multi-chain projects */}
-              {chainFundsData.length > 1 && (
+              {visibleChainFundsData.length > 1 && (
                 <PayoutSplitsBreakdown
-                  chainFundsData={chainFundsData}
+                  chainFundsData={visibleChainFundsData}
                   splitEnsNames={splitEnsNames}
                   isDark={isDark}
                 />

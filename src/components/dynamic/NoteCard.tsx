@@ -1,12 +1,22 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { useTranslation } from 'react-i18next'
-import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchProjectTokenSymbol, type Project, type ConnectedChain, type IssuanceRate } from '../../services/bendystraw'
+import {
+  fetchProject,
+  fetchProjectAccountingContexts,
+  type Project,
+  type ConnectedChain,
+} from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
 import { ProjectLink } from './ProjectLink'
+import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
+import { assertCurrentProjectPayConfigurationTrusted } from '../../utils/projectTrust'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface NoteCardProps {
   projectId: string
@@ -21,12 +31,7 @@ const CHAIN_INFO: Record<string, { name: string; slug: string }> = {
   '42161': { name: 'Arbitrum', slug: 'arb' },
 }
 
-const ALL_CHAINS: Array<{ chainId: number; projectId: number }> = [
-  { chainId: 1, projectId: 0 },
-  { chainId: 10, projectId: 0 },
-  { chainId: 8453, projectId: 0 },
-  { chainId: 42161, projectId: 0 },
-]
+type PaymentToken = 'ETH' | 'USDC'
 
 export default function NoteCard({ projectId, chainId: initialChainId = '1', defaultNote = '' }: NoteCardProps) {
   const { t } = useTranslation()
@@ -34,20 +39,19 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState(defaultNote)
-  const [amount, setAmount] = useState('0')
-  const [selectedToken, setSelectedToken] = useState('ETH')
+  const [amount, setAmount] = useState('0.001')
+  const [selectedToken, setSelectedToken] = useState<PaymentToken>('ETH')
+  const [paymentTokens, setPaymentTokens] = useState<PaymentToken[]>([])
   const [sending, setSending] = useState(false)
   const [selectedChainId, setSelectedChainId] = useState(initialChainId)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [showPaymentOptions, setShowPaymentOptions] = useState(false)
-  const [issuanceRate, setIssuanceRate] = useState<IssuanceRate | null>(null)
-  const [projectTokenSymbol, setProjectTokenSymbol] = useState<string | null>(null)
-  const [walletEthBalance, setWalletEthBalance] = useState<bigint | null>(null)
-  const [walletUsdcBalance, setWalletUsdcBalance] = useState<bigint | null>(null)
-  const [payUs, setPayUs] = useState(true)
-  const [juicyIssuanceRate, setJuicyIssuanceRate] = useState<IssuanceRate | null>(null)
+  const [paymentSafetyError, setPaymentSafetyError] = useState<string | null>(null)
+  const [paymentSafetyLoading, setPaymentSafetyLoading] = useState(true)
   const { theme } = useThemeStore()
-  const { addTransaction } = useTransactionStore()
+  const { addTransaction, transactions } = useTransactionStore()
+  const [activeTransactionId, setActiveTransactionId] = useState<string | null>(null)
   const isDark = theme === 'dark'
   const { address, isConnected } = useAccount()
 
@@ -55,22 +59,25 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
     window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
   }
 
-  const availableChains = connectedChains.length > 0 ? connectedChains : ALL_CHAINS
+  const availableChains = connectedChains.length > 0
+    ? connectedChains
+    : [{ chainId: parseInt(initialChainId), projectId: parseInt(projectId) }]
   const chainData = availableChains.find(c => c.chainId === parseInt(selectedChainId))
   const currentProjectId = (chainData?.projectId && chainData.projectId !== 0)
     ? chainData.projectId.toString()
     : projectId
   const selectedChainInfo = CHAIN_INFO[selectedChainId] || CHAIN_INFO['1']
 
-  // JUICY fee configuration
-  const JUICY_PROJECT_ID = 1
-  const JUICY_FEE_PERCENT = 2.5
-
   // Fetch connected chains
   useEffect(() => {
     async function loadConnectedChains() {
-      const chains = await fetchConnectedChains(projectId, parseInt(initialChainId))
-      setConnectedChains(chains)
+      try {
+        const resolution = await resolveProjectChains(projectId, parseInt(initialChainId))
+        setConnectedChains(resolution.chains)
+        setChainMappingAvailable(resolution.mappingAvailable)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Project chain is invalid')
+      }
     }
     loadConnectedChains()
   }, [projectId, initialChainId])
@@ -81,14 +88,8 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
       try {
         setLoading(true)
         const chainIdNum = parseInt(selectedChainId)
-        const [data, rate, tokenSymbol] = await Promise.all([
-          fetchProject(currentProjectId, chainIdNum),
-          fetchIssuanceRate(currentProjectId, chainIdNum),
-          fetchProjectTokenSymbol(currentProjectId, chainIdNum),
-        ])
+        const data = await fetchProject(currentProjectId, chainIdNum)
         setProject(data)
-        setIssuanceRate(rate)
-        setProjectTokenSymbol(tokenSymbol)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load project')
       } finally {
@@ -98,20 +99,13 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
     load()
   }, [currentProjectId, selectedChainId])
 
-  // Fetch JUICY issuance rate when chain changes
-  useEffect(() => {
-    fetchIssuanceRate(String(JUICY_PROJECT_ID), parseInt(selectedChainId))
-      .then(setJuicyIssuanceRate)
-      .catch(() => setJuicyIssuanceRate(null))
-  }, [selectedChainId])
-
   // Fetch wallet balances
   const fetchWalletBalances = useCallback(async () => {
-    if (!address) return
+    if (!address) return null
 
     const chainIdNum = parseInt(selectedChainId)
     const chain = VIEM_CHAINS[chainIdNum as SupportedChainId]
-    if (!chain) return
+    if (!chain) return null
 
     try {
       const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
@@ -123,46 +117,106 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
       const ethBalance = await publicClient.getBalance({
         address: address as `0x${string}`,
       })
-      setWalletEthBalance(ethBalance)
 
       const usdcAddress = USDC_ADDRESSES[chainIdNum as SupportedChainId]
+      let usdcBalance: bigint | null = null
       if (usdcAddress) {
-        const usdcBalance = await publicClient.readContract({
+        usdcBalance = await publicClient.readContract({
           address: usdcAddress,
           abi: erc20Abi,
           functionName: 'balanceOf',
           args: [address as `0x${string}`],
         })
-        setWalletUsdcBalance(usdcBalance)
       }
+      return { eth: ethBalance, usdc: usdcBalance }
     } catch (err) {
       console.error('Failed to fetch wallet balances:', err)
+      return null
     }
   }, [address, selectedChainId])
 
   useEffect(() => {
-    fetchWalletBalances()
-  }, [fetchWalletBalances])
-
-  // Calculate expected tokens
-  const expectedTokens = useMemo(() => {
-    if (!issuanceRate || !amount || parseFloat(amount) <= 0) return null
-    try {
-      const amountFloat = parseFloat(amount)
-      const paymentInWei = selectedToken === 'ETH'
-        ? amountFloat * 1e18
-        : amountFloat * 1e6
-      const tokensWei = paymentInWei * issuanceRate.tokensPerEth
-      const tokens = tokensWei / 1e18
-      if (tokens < 0.001) return null
-      return tokens
-    } catch {
-      return null
+    let cancelled = false
+    async function verifyPaymentRoute() {
+      setPaymentSafetyLoading(true)
+      setPaymentSafetyError(null)
+      setPaymentTokens([])
+      try {
+        const chainIdNum = parseInt(selectedChainId)
+        const chain = VIEM_CHAINS[chainIdNum as SupportedChainId]
+        const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
+        if (!chain || !rpcUrl) throw new Error('Unsupported payment chain')
+        const client = createPublicClient({ chain, transport: http(rpcUrl) })
+        const accountingContexts = await fetchProjectAccountingContexts(currentProjectId, chainIdNum)
+        await assertCurrentProjectPayConfigurationTrusted({
+          client,
+          projectId: BigInt(currentProjectId),
+        })
+        const verified = (await Promise.all((['ETH', 'USDC'] as const).map(async candidate => {
+          const token = getPaymentTokenAddress(candidate, chainIdNum)
+          try {
+            const terminal = await getPaymentTerminal(
+              client,
+              chainIdNum,
+              BigInt(currentProjectId),
+              token,
+              'pay',
+            )
+            const directContext = accountingContexts.find(context => context.symbol === candidate)
+            if (terminal.type === 'multi' && !directContext) {
+              throw new Error(`${candidate} is not a live accounting context`)
+            }
+            return candidate
+          } catch (error) {
+            if (error instanceof Error && error.message === 'This project does not accept the selected payment token') {
+              return null
+            }
+            throw error
+          }
+        }))).filter((token): token is PaymentToken => token !== null)
+        if (verified.length === 0) throw new Error('This project has no recognized payment route')
+        if (!cancelled) {
+          setPaymentTokens(verified)
+          setSelectedToken(current => verified.includes(current) ? current : verified[0])
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPaymentSafetyError(err instanceof Error ? err.message : 'Payment route not recognized')
+        }
+      } finally {
+        if (!cancelled) setPaymentSafetyLoading(false)
+      }
     }
-  }, [amount, issuanceRate, selectedToken])
+    verifyPaymentRoute()
+    return () => {
+      cancelled = true
+    }
+  }, [currentProjectId, selectedChainId])
+
+  const activeTransaction = activeTransactionId
+    ? transactions.find(transaction => transaction.id === activeTransactionId)
+    : undefined
+  const paymentInProgress = activeTransaction?.status === 'pending' || activeTransaction?.status === 'submitted'
+
+  useEffect(() => {
+    if (!activeTransactionId || !activeTransaction) return
+    if (activeTransaction.status === 'confirmed') {
+      setNote('')
+      setAmount(selectedToken === 'USDC' ? '1' : '0.001')
+      setActiveTransactionId(null)
+    } else if (
+      activeTransaction.status === 'failed' ||
+      activeTransaction.status === 'cancelled'
+    ) {
+      setActiveTransactionId(null)
+    }
+  }, [activeTransactionId, activeTransaction, selectedToken])
 
   const handleSend = async () => {
+    if (paymentSafetyError || paymentSafetyLoading) return
+    if (!paymentTokens.includes(selectedToken) || paymentInProgress) return
     if (!note.trim()) return
+    if (!Number.isFinite(parseFloat(amount)) || parseFloat(amount) <= 0) return
 
     if (!isConnected) {
       openWalletPanel()
@@ -172,16 +226,21 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
     // Check balance for non-zero payments
     const amountNum = parseFloat(amount) || 0
     if (amountNum > 0) {
-      await fetchWalletBalances()
+      const balances = await fetchWalletBalances()
+      if (!balances) return
       if (selectedToken === 'ETH') {
-        const ethBalanceNum = walletEthBalance ? parseFloat(formatEther(walletEthBalance)) : 0
-        if (ethBalanceNum < amountNum + 0.001) {
+        const ethBalanceNum = parseFloat(formatEther(balances.eth))
+        if (ethBalanceNum <= amountNum) {
           openWalletPanel()
           return
         }
       } else {
-        const usdcBalanceNum = walletUsdcBalance ? Number(walletUsdcBalance) / 1e6 : 0
+        const usdcBalanceNum = balances.usdc ? Number(balances.usdc) / 1e6 : 0
         if (usdcBalanceNum < amountNum) {
+          openWalletPanel()
+          return
+        }
+        if (balances.eth <= 0n) {
           openWalletPanel()
           return
         }
@@ -198,6 +257,7 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
         token: selectedToken,
         status: 'pending',
       })
+      setActiveTransactionId(txId)
 
       window.dispatchEvent(new CustomEvent('juice:pay-project', {
         detail: {
@@ -207,12 +267,8 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
           amount: amountNum > 0 ? amount : '0',
           token: selectedToken,
           memo: note,
-          payUs: false,
-          feeAmount: '0',
         }
       }))
-      setNote('')
-      setAmount('0')
     } finally {
       setSending(false)
     }
@@ -238,21 +294,16 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
   const logoUrl = resolveIpfsUri(project.logoUri)
   const amountNum = parseFloat(amount) || 0
 
-  // Calculate fee and JUICY tokens
-  const feeAmount = payUs && amountNum > 0 ? amountNum * (JUICY_FEE_PERCENT / 100) : 0
-  const estimatedJuicyTokens = payUs && juicyIssuanceRate && feeAmount > 0
-    ? feeAmount * juicyIssuanceRate.tokensPerEth
-    : 0
-
   return (
     <div className="w-full">
       <div className={`max-w-md border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Compact header */}
         <div className="flex items-center gap-2 mb-3">
           {logoUrl ? (
-            <img src={logoUrl} alt={project.name} className="w-8 h-8 object-cover" />
+            <IpfsImage uri={project.logoUri} alt={project.name} className="w-8 h-8 object-cover" fallback={<div className="w-8 h-8 bg-juice-orange/20" />} />
           ) : (
             <div className="w-8 h-8 bg-juice-orange/20 flex items-center justify-center">
               <span className="text-juice-orange font-bold text-sm">{project.name.charAt(0).toUpperCase()}</span>
@@ -292,6 +343,7 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
             onChange={(e) => setNote(e.target.value)}
             placeholder={t('note.placeholder', 'Write your note...')}
             rows={3}
+            disabled={paymentInProgress}
             className={`w-full px-3 py-2 text-sm outline-none resize-none border ${
               isDark
                 ? 'bg-juice-dark border-juice-cyan/30 text-white placeholder-gray-500 focus:border-juice-cyan'
@@ -313,7 +365,7 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
             </svg>
             {amountNum > 0
               ? t('note.withPayment', 'With {{amount}} {{token}} payment', { amount, token: selectedToken })
-              : t('note.addPayment', 'Add a payment (optional)')}
+              : t('note.addPayment', 'Payment details')}
           </button>
 
           {showPaymentOptions && (
@@ -327,6 +379,7 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0"
+                  disabled={paymentInProgress}
                   className={`flex-1 px-3 py-2 text-sm outline-none border ${
                     isDark
                       ? 'bg-juice-dark border-white/10 text-white placeholder-gray-500'
@@ -335,87 +388,67 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
                 />
                 <select
                   value={selectedToken}
-                  onChange={(e) => setSelectedToken(e.target.value)}
+                  onChange={(e) => setSelectedToken(e.target.value as PaymentToken)}
+                  disabled={paymentInProgress}
                   className={`select-caret pl-2 pr-6 py-2 text-sm border ${
                     isDark
                       ? 'bg-juice-dark border-white/10 text-white'
                       : 'bg-white border-gray-200 text-gray-900'
                   }`}
                 >
-                  <option value="ETH">ETH</option>
-                  <option value="USDC">USDC</option>
+                  {paymentTokens.map(token => <option key={token} value={token}>{token}</option>)}
                 </select>
               </div>
 
               {/* Quick amounts */}
               <div className="flex gap-2 flex-wrap">
-                {(selectedToken === 'USDC' ? ['0', '1', '5', '10'] : ['0', '0.001', '0.01', '0.05']).map(val => (
+                {(selectedToken === 'USDC' ? ['1', '5', '10', '25'] : ['0.001', '0.01', '0.05', '0.1']).map(val => (
                   <button
                     key={val}
                     onClick={() => setAmount(val)}
+                    disabled={paymentInProgress}
                     className={`px-3 py-1.5 text-xs transition-colors ${
                       amount === val
                         ? isDark ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-900'
                         : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-500 hover:bg-gray-150'
                     }`}
                   >
-                    {val === '0' ? t('note.free', 'Free') : val}
+                    {val}
                   </button>
                 ))}
               </div>
 
-              {/* Token preview */}
-              {amountNum > 0 && expectedTokens !== null && (
-                <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  → ~{expectedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}
-                </div>
-              )}
-
-              {/* Pay JUICY checkbox - only show when payment > 0 */}
-              {amountNum > 0 && (
-                <div className="mt-3 pt-3 border-t border-white/10">
-                  <label
-                    className={`flex items-center gap-2 cursor-pointer text-xs ${
-                      isDark ? 'text-gray-300' : 'text-gray-600'
-                    }`}
-                    title="Help us keep building"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={payUs}
-                      onChange={(e) => setPayUs(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded border-gray-300 text-juice-orange focus:ring-juice-orange"
-                    />
-                    <span>{t('note.joinJuicy', 'Pay for Juicy (+{{percent}}%)', { percent: JUICY_FEE_PERCENT })}</span>
-                  </label>
-                  {payUs && estimatedJuicyTokens > 0 && (
-                    <div className={`ml-6 mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      {feeAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {selectedToken} → ~{estimatedJuicyTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} $JUICY
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>
 
+        {paymentSafetyError && (
+          <div className={`mb-3 border p-3 text-xs ${
+            isDark
+              ? 'border-red-500/40 bg-red-500/10 text-red-300'
+              : 'border-red-300 bg-red-50 text-red-800'
+          }`}>
+            {paymentSafetyError}. This payment is blocked.
+          </div>
+        )}
+
         {/* Send button */}
         <button
           onClick={handleSend}
-          disabled={sending || !note.trim()}
+          disabled={paymentSafetyLoading || !!paymentSafetyError || sending || paymentInProgress || !note.trim() || amountNum <= 0}
           className={`w-full py-2.5 text-sm font-medium transition-colors ${
-            sending || !note.trim()
+            paymentSafetyLoading || paymentSafetyError || sending || paymentInProgress || !note.trim() || amountNum <= 0
               ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
               : isDark
                 ? 'bg-juice-cyan hover:bg-juice-cyan/90 text-black'
                 : 'bg-teal-500 hover:bg-teal-600 text-white'
           }`}
         >
-          {sending
+          {paymentSafetyLoading
+            ? 'Checking...'
+            : sending
             ? '...'
-            : amountNum > 0
-              ? t('note.sendWithPayment', 'Send note with {{amount}} {{token}}', { amount, token: selectedToken })
-              : t('note.send', 'Send note')}
+            : t('note.sendWithPayment', 'Send note with {{amount}} {{token}}', { amount, token: selectedToken })}
         </button>
       </div>
     </div>

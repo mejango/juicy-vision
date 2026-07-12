@@ -6,7 +6,9 @@ import type { UseOmnichainTransactionOptions, UseOmnichainTransactionReturn } fr
 export interface OmnichainQueueParams {
   chainIds: number[]
   projectIds: Record<number, number>  // chainId -> projectId
-  rulesetConfigurations: JBRulesetConfig[]
+  rulesetConfigurations?: JBRulesetConfig[]
+  rulesetConfigurationsByChain?: Record<number, JBRulesetConfig[]>
+  queueTargets?: Record<number, string>
   memo: string
   mustStartAtOrAfter?: number
 }
@@ -18,7 +20,7 @@ export interface UseOmnichainQueueRulesetReturn extends Omit<UseOmnichainTransac
 
 /**
  * Hook for queueing rulesets across multiple chains with Relayr.
- * User pays gas on ONE chain, Relayr executes on ALL chains.
+ * Relayr executes the reviewed calls on every selected chain for a managed account.
  *
  * @example
  * const { queue, bundleState, isExecuting } = useOmnichainQueueRuleset({
@@ -39,13 +41,15 @@ export function useOmnichainQueueRuleset(
   const transaction = useOmnichainTransaction(options)
 
   const queue = useCallback(async (params: OmnichainQueueParams) => {
-    const { chainIds, projectIds, rulesetConfigurations, memo, mustStartAtOrAfter } = params
+    const { chainIds, projectIds, rulesetConfigurations, rulesetConfigurationsByChain, queueTargets, memo, mustStartAtOrAfter } = params
 
     await transaction.execute({
       chainIds,
       projectIds,
       rulesetConfig: {
         rulesetConfigurations,
+        rulesetConfigurationsByChain,
+        queueTargets,
         memo,
         mustStartAtOrAfter,
       },
@@ -60,8 +64,6 @@ export function useOmnichainQueueRuleset(
     isExpired: transaction.isExpired,
     hasError: transaction.hasError,
     reset: transaction.reset,
-    setPaymentChain: transaction.setPaymentChain,
-    submitPayment: transaction.submitPayment,
     synchronizedStartTime: transaction.bundleState.synchronizedStartTime,
   }), [transaction, queue])
 }

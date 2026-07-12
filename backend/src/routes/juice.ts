@@ -8,20 +8,22 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import Stripe from 'npm:stripe';
+import Stripe from 'npm:stripe@20.2.0';
 import { requireAuth } from '../middleware/auth.ts';
 import { getConfig, validateConfigForStripe } from '../utils/config.ts';
 import {
-  getBalance,
-  spendJuice,
-  initiateCashOut,
+  assertJuiceProjectPaymentRoute,
   cancelCashOut,
+  getBalance,
   getTransactions,
+  getUserCashOuts,
   getUserPurchases,
   getUserSpends,
-  getUserCashOuts,
+  initiateCashOut,
+  spendJuice,
 } from '../services/juice.ts';
 import { rateLimitByUser } from '../services/rateLimit.ts';
+import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
 
 // Flat rate for Pay Credits: $1.05 per credit
 const PAY_CREDITS_RATE = 1.05;
@@ -33,7 +35,7 @@ export const juiceRouter = new Hono();
 // ============================================================================
 
 // GET /api/juice/stripe-config - Get Stripe publishable key
-juiceRouter.get('/stripe-config', async (c) => {
+juiceRouter.get('/stripe-config', (c) => {
   const config = getConfig();
 
   if (!config.stripePublishableKey) {
@@ -52,8 +54,8 @@ juiceRouter.get('/stripe-config', async (c) => {
 // Credit Rate
 // ============================================================================
 
-// GET /api/juice/rate - Get flat Pay Credits rate ($1.01)
-juiceRouter.get('/rate', requireAuth, async (c) => {
+// GET /api/juice/rate - Get flat Pay Credits rate ($1.05)
+juiceRouter.get('/rate', requireAuth, (c) => {
   return c.json({
     success: true,
     data: {
@@ -118,7 +120,7 @@ juiceRouter.post(
     try {
       const stripe = new Stripe(config.stripeSecretKey);
 
-      // Flat rate: $1.01 per Pay Credit
+      // Flat rate: $1.05 per Pay Credit
       const fiatAmountCents = Math.round(amount * PAY_CREDITS_RATE * 100);
 
       // Use Checkout Sessions API (Stripe's recommended approach)
@@ -149,7 +151,9 @@ juiceRouter.post(
         // Enable dynamic payment methods (Stripe best practice)
         // Stripe automatically shows relevant payment methods based on user location
         payment_method_types: undefined, // Let Stripe choose dynamically
-        return_url: `${c.req.header('origin') || 'https://juicy.vision'}/pay-credits/purchase-complete?session_id={CHECKOUT_SESSION_ID}`,
+        return_url: `${
+          c.req.header('origin') || 'https://juicy.vision'
+        }/pay-credits/purchase-complete?session_id={CHECKOUT_SESSION_ID}`,
       });
 
       return c.json({
@@ -167,7 +171,7 @@ juiceRouter.post(
       const message = error instanceof Error ? error.message : 'Payment creation failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /api/juice/purchases - Get user's purchase history
@@ -179,7 +183,7 @@ juiceRouter.get('/purchases', requireAuth, async (c) => {
 
     return c.json({
       success: true,
-      data: purchases.map(p => ({
+      data: purchases.map((p) => ({
         id: p.id,
         amount: p.juiceAmount,
         status: p.status,
@@ -207,9 +211,11 @@ const SpendSchema = z.object({
   chainId: z.number().int().refine(
     (val): val is (typeof SUPPORTED_CHAINS)[number] =>
       SUPPORTED_CHAINS.includes(val as (typeof SUPPORTED_CHAINS)[number]),
-    { message: 'Unsupported chain. Supported: mainnet (1), optimism (10), arbitrum (42161), base (8453)' }
+    {
+      message:
+        'Unsupported chain. Supported: mainnet (1), optimism (10), arbitrum (42161), base (8453)',
+    },
   ),
-  beneficiaryAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   memo: z.string().max(500).optional(),
 });
 
@@ -223,12 +229,14 @@ juiceRouter.post(
     const body = c.req.valid('json');
 
     try {
+      await assertJuiceProjectPaymentRoute(body.chainId, body.projectId);
+      const smartAccount = await getOrCreateSmartAccount(user.id, body.chainId);
       const spendId = await spendJuice({
         userId: user.id,
         amount: body.amount,
         projectId: body.projectId,
         chainId: body.chainId,
-        beneficiaryAddress: body.beneficiaryAddress,
+        beneficiaryAddress: smartAccount.address,
         memo: body.memo,
       });
 
@@ -246,7 +254,7 @@ juiceRouter.post(
       const message = error instanceof Error ? error.message : 'Spend failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /api/juice/spends - Get user's spend history
@@ -258,7 +266,7 @@ juiceRouter.get('/spends', requireAuth, async (c) => {
 
     return c.json({
       success: true,
-      data: spends.map(s => ({
+      data: spends.map((s) => ({
         id: s.id,
         amount: s.juiceAmount,
         projectId: s.projectId,
@@ -286,8 +294,11 @@ const CashOutSchema = z.object({
   chainId: z.number().int().refine(
     (val): val is (typeof SUPPORTED_CHAINS)[number] =>
       SUPPORTED_CHAINS.includes(val as (typeof SUPPORTED_CHAINS)[number]),
-    { message: 'Unsupported chain. Supported: mainnet (1), optimism (10), arbitrum (42161), base (8453)' }
-  ).optional(),
+    {
+      message:
+        'Unsupported chain. Supported: mainnet (1), optimism (10), arbitrum (42161), base (8453)',
+    },
+  ),
 });
 
 juiceRouter.post(
@@ -309,7 +320,7 @@ juiceRouter.post(
 
       // Get the created cash out for response
       const cashOuts = await getUserCashOuts(user.id);
-      const cashOut = cashOuts.find(c => c.id === cashOutId);
+      const cashOut = cashOuts.find((c) => c.id === cashOutId);
 
       return c.json({
         success: true,
@@ -317,7 +328,7 @@ juiceRouter.post(
           cashOutId,
           amount: body.amount,
           destinationAddress: body.destinationAddress,
-          chainId: body.chainId || 1,
+          chainId: body.chainId,
           status: 'pending',
           availableAt: cashOut?.availableAt.toISOString(),
         },
@@ -326,7 +337,7 @@ juiceRouter.post(
       const message = error instanceof Error ? error.message : 'Cash out failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // DELETE /api/juice/cash-out/:id - Cancel a pending cash out
@@ -352,7 +363,7 @@ juiceRouter.get('/cash-outs', requireAuth, async (c) => {
 
     return c.json({
       success: true,
-      data: cashOuts.map(co => ({
+      data: cashOuts.map((co) => ({
         id: co.id,
         amount: co.juiceAmount,
         destinationAddress: co.destinationAddress,
@@ -390,12 +401,12 @@ juiceRouter.get('/transactions', requireAuth, async (c) => {
     const transactions = await getTransactions(
       user.id,
       query.limit || 50,
-      query.offset || 0
+      query.offset || 0,
     );
 
     return c.json({
       success: true,
-      data: transactions.map(t => ({
+      data: transactions.map((t) => ({
         id: t.id,
         type: t.type,
         amount: t.amount,

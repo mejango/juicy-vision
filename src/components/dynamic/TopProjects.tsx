@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { fetchProjects, type Project } from '../../services/bendystraw'
-import { resolveIpfsUri } from '../../utils/ipfs'
 import { useThemeStore } from '../../stores'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface TopProjectsProps {
   limit?: number
@@ -16,7 +16,8 @@ const CHAIN_INFO: Record<number, { name: string; color: string }> = {
 }
 
 function formatVolumeUsd(volumeUsd: string | undefined): string {
-  if (!volumeUsd || volumeUsd === '0') return '$0'
+  if (!volumeUsd) return 'Unavailable'
+  if (volumeUsd === '0') return '$0'
 
   try {
     // volumeUsd comes in 18 decimal format, use BigInt for precision
@@ -34,34 +35,7 @@ function formatVolumeUsd(volumeUsd: string | undefined): string {
     }
     return `$${usd.toFixed(2)}`
   } catch {
-    return '$0'
-  }
-}
-
-function formatTrendingVolume(trendingVolume: string | undefined, trendingVolumeUsd: string | undefined): string {
-  // Prefer USD volume when available (already converted, no ETH price assumption needed)
-  if (trendingVolumeUsd && trendingVolumeUsd !== '0') {
-    return formatVolumeUsd(trendingVolumeUsd)
-  }
-
-  // Fallback to ETH volume (legacy projects or API gaps)
-  if (!trendingVolume || trendingVolume === '0') return '$0'
-
-  try {
-    // trendingVolume is in wei (18 decimals)
-    const raw = BigInt(trendingVolume.split('.')[0])
-    const eth = Number(raw) / 1e18
-
-    // Format as ETH if we can't convert to USD
-    if (eth >= 1000) {
-      return `${(eth / 1000).toFixed(1)}k ETH`
-    }
-    if (eth >= 1) {
-      return `${eth.toFixed(2)} ETH`
-    }
-    return `${eth.toFixed(4)} ETH`
-  } catch {
-    return '$0'
+    return 'Unavailable'
   }
 }
 
@@ -95,7 +69,6 @@ export default function TopProjects({
         const grouped = new Map<string, Project & {
           chainIds: number[]
           totalScoreBigInt: bigint
-          totalTrendingVolume: bigint
           totalTrendingPayments: number
         }>()
 
@@ -109,7 +82,6 @@ export default function TopProjects({
             ? (project.trendingScore || '0')
             : (project.volumeUsd || '0')
           const projectScoreBigInt = BigInt(rawScore.split('.')[0] || '0')
-          const trendingVolumeBigInt = BigInt((project.trendingVolume || '0').split('.')[0] || '0')
           const trendingPayments = project.trendingPaymentsCount || 0
 
           if (existing) {
@@ -119,12 +91,10 @@ export default function TopProjects({
               existing.chainIds.push(chainIdNum)
             }
             existing.totalScoreBigInt += projectScoreBigInt
-            existing.totalTrendingVolume += trendingVolumeBigInt
             existing.totalTrendingPayments += trendingPayments
             // Update strings to reflect totals
             if (isTrending) {
               existing.trendingScore = existing.totalScoreBigInt.toString()
-              existing.trendingVolume = existing.totalTrendingVolume.toString()
               existing.trendingPaymentsCount = existing.totalTrendingPayments
             } else {
               existing.volumeUsd = existing.totalScoreBigInt.toString()
@@ -140,7 +110,6 @@ export default function TopProjects({
               ...project,
               chainIds: [Number(project.chainId)],
               totalScoreBigInt: projectScoreBigInt,
-              totalTrendingVolume: trendingVolumeBigInt,
               totalTrendingPayments: trendingPayments,
             })
           }
@@ -258,10 +227,11 @@ export default function TopProjects({
 
               {/* Logo */}
               {project.logoUri ? (
-                <img
-                  src={resolveIpfsUri(project.logoUri) ?? undefined}
+                <IpfsImage
+                  uri={project.logoUri}
                   alt={project.name}
                   className="w-10 h-10 rounded-lg object-cover"
+                  fallback={<div className="w-10 h-10 rounded-lg bg-juice-orange/20" />}
                 />
               ) : (
                 <div className="w-10 h-10 rounded-lg bg-juice-orange/20 flex items-center justify-center">
@@ -304,12 +274,12 @@ export default function TopProjects({
                   isDark ? 'text-emerald-400' : 'text-emerald-600'
                 }`}>
                   {orderBy === 'trendingScore'
-                    ? formatTrendingVolume(project.trendingVolume, undefined)
+                    ? `${project.trendingPaymentsCount || 0} recent payment${project.trendingPaymentsCount === 1 ? '' : 's'}`
                     : formatVolumeUsd(project.volumeUsd)}
                 </div>
                 <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                   {orderBy === 'trendingScore'
-                    ? `${project.trendingPaymentsCount || 0} payments`
+                    ? 'recent activity'
                     : 'total volume'}
                 </div>
               </div>

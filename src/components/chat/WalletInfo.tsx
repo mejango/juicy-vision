@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useAccount, useDisconnect, useChainId, useSignMessage } from 'wagmi'
+import { useAccount, useChainId, useSignMessage } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
@@ -52,7 +52,7 @@ export function JuicyIdPopover({
   const { signMessageAsync } = useSignMessage()
 
   // Check managed passkey auth (Touch ID)
-  const { isAuthenticated, user: authUser, token: authToken } = useAuthStore()
+  const { isAuthenticated, token: authToken } = useAuthStore()
   const isManagedAuth = isAuthenticated()
 
   const isSignedIn = hasValidWalletSession() || isManagedAuth
@@ -66,13 +66,17 @@ export function JuicyIdPopover({
   const storePendingClaim = useCallback((emoji: string, name: string) => {
     try {
       localStorage.setItem('juicy-pending-claim', JSON.stringify({ emoji, username: name, ts: Date.now() }))
-    } catch {}
+    } catch {
+      // Pending identity claims are best-effort in restricted browser contexts.
+    }
   }, [])
 
   const clearPendingClaim = useCallback(() => {
     try {
       localStorage.removeItem('juicy-pending-claim')
-    } catch {}
+    } catch {
+      // Clearing optional browser persistence must not block the UI.
+    }
   }, [])
 
   // Identity state
@@ -91,7 +95,7 @@ export function JuicyIdPopover({
     if (walletSession?.address) return walletSession.address
     const sessionId = getSessionId()
     return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
-  }, [connectedAddress, authUser?.id])
+  }, [connectedAddress])
   const defaultEmoji = getEmojiFromAddress(currentAddress)
   const currentEmoji = selectedFruit || defaultEmoji
 
@@ -539,14 +543,13 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
   const { t } = useTranslation()
   const { address, isConnected } = useAccount()
   const { ensName } = useEnsNameResolved(address)
-  const { disconnect } = useDisconnect()
-  const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
+  const { totalEth, totalUsdc, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
   const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
   const [isSessionStale, setIsSessionStale] = useState(false)
 
   // Auth store for managed passkey users (server-side passkey auth)
-  const { user: authUser, token: authToken, isAuthenticated } = useAuthStore()
+  const { token: authToken, isAuthenticated } = useAuthStore()
 
   // Reset stale connection - clears all auth state
   const resetConnection = useCallback(() => {
@@ -810,6 +813,8 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
           >
             {balancesLoading ? (
               <span className="ml-2 opacity-50 hidden sm:inline">Loading...</span>
+            ) : !balancesAvailable ? (
+              <span className="ml-2 opacity-50 hidden sm:inline">Balance unavailable</span>
             ) : (
               <span className="hidden sm:inline">
                 <span className="mx-1">·</span>

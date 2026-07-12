@@ -67,7 +67,7 @@ const APP_INTERACTIONS: InteractionCategory[] = [
       {
         id: 'pay',
         label: 'Pay a project',
-        description: 'Contribute ETH and receive project tokens',
+        description: 'Review a supported payment and expected shares',
         prompt: 'I want to pay a Juicebox project',
         icon: '💸',
         requiresWallet: true,
@@ -75,17 +75,9 @@ const APP_INTERACTIONS: InteractionCategory[] = [
       {
         id: 'cashout',
         label: 'Cash out tokens',
-        description: 'Redeem your tokens for ETH from the treasury',
+        description: 'Request a live quote from a supported project',
         prompt: 'How do I cash out my project tokens?',
         icon: '🏧',
-        requiresWallet: true,
-      },
-      {
-        id: 'bridge',
-        label: 'Bridge tokens cross-chain',
-        description: 'Move tokens between Ethereum, Base, Optimism, Arbitrum',
-        prompt: 'How do I bridge my Juicebox tokens to another chain?',
-        icon: '🌉',
         requiresWallet: true,
       },
       {
@@ -122,46 +114,11 @@ const APP_INTERACTIONS: InteractionCategory[] = [
       {
         id: 'manage',
         label: 'Manage my project',
-        description: 'Update rulesets, send payouts, mint tokens',
+        description: 'Review actions allowed by the current rules',
         prompt: 'Help me manage my Juicebox project',
         icon: '⚙️',
         requiresWallet: true,
         requiresOwner: true,
-      },
-    ],
-  },
-  {
-    id: 'build',
-    title: 'For Builders',
-    description: 'Integrate and extend',
-    interactions: [
-      {
-        id: 'landing',
-        label: 'Generate a landing page',
-        description: 'Export a standalone page for your project',
-        prompt: 'Generate a landing page for my project',
-        icon: '🎨',
-      },
-      {
-        id: 'query',
-        label: 'Query project data',
-        description: 'Access on-chain data via GraphQL or RPC',
-        prompt: 'How do I query Juicebox project data programmatically?',
-        icon: '🔌',
-      },
-      {
-        id: 'hooks',
-        label: 'Build custom hooks',
-        description: 'Create pay hooks, cash-out hooks, or split hooks',
-        prompt: 'How do I build a custom Juicebox hook?',
-        icon: '🪝',
-      },
-      {
-        id: 'docs',
-        label: 'Browse documentation',
-        description: 'Full protocol reference and guides',
-        prompt: 'Show me the Juicebox documentation',
-        icon: '📖',
       },
     ],
   },
@@ -219,7 +176,7 @@ function getProjectInteractions(projectId: string, chainId: string): Interaction
         {
           id: 'pay',
           label: 'Pay this project',
-          description: 'Send ETH and receive tokens',
+          description: 'Review a supported payment and expected shares',
           prompt: `I want to pay project ${projectId} on chain ${chainId}`,
           icon: '💸',
           requiresWallet: true,
@@ -235,7 +192,7 @@ function getProjectInteractions(projectId: string, chainId: string): Interaction
         {
           id: 'cashout',
           label: 'Cash out tokens',
-          description: 'Redeem tokens for ETH',
+          description: 'Request a fresh contract quote',
           prompt: `I want to cash out my tokens from project ${projectId} on chain ${chainId}`,
           icon: '🏧',
           requiresWallet: true,
@@ -277,7 +234,7 @@ function getProjectInteractions(projectId: string, chainId: string): Interaction
         {
           id: 'erc20',
           label: 'Deploy ERC-20 token',
-          description: 'Make tokens tradeable',
+          description: 'Represent project credits as an ERC-20',
           prompt: `Help me deploy an ERC-20 token for project ${projectId} on chain ${chainId}`,
           icon: '🪙',
           requiresWallet: true,
@@ -286,7 +243,7 @@ function getProjectInteractions(projectId: string, chainId: string): Interaction
         {
           id: 'surplus',
           label: 'Use surplus allowance',
-          description: 'Access excess treasury funds',
+          description: 'Review a permitted draw from shared surplus',
           prompt: `Help me use the surplus allowance for project ${projectId} on chain ${chainId}`,
           icon: '💰',
           requiresWallet: true,
@@ -309,7 +266,7 @@ function getProjectInteractions(projectId: string, chainId: string): Interaction
         {
           id: 'price',
           label: 'View price chart',
-          description: 'Token price over time',
+          description: 'View available price and issuance history',
           prompt: `Show me the price chart for project ${projectId} on chain ${chainId}`,
           icon: '📈',
         },

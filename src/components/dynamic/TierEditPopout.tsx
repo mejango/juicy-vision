@@ -32,7 +32,7 @@ export default function TierEditPopout({
   // Form state
   const [name, setName] = useState(tier.name || '')
   const [description, setDescription] = useState(tier.description || '')
-  const [discount, setDiscount] = useState(tier.discountPercent?.toString() || '0')
+  const [discount, setDiscount] = useState(((tier.discountPercent ?? 0) / 2).toString())
   const [discountError, setDiscountError] = useState<string | null>(null)
 
   // Reset form when tier changes or popout opens
@@ -40,7 +40,7 @@ export default function TierEditPopout({
     if (isOpen) {
       setName(tier.name || '')
       setDescription(tier.description || '')
-      setDiscount(tier.discountPercent?.toString() || '0')
+      setDiscount(((tier.discountPercent ?? 0) / 2).toString())
       setDiscountError(null)
     }
   }, [isOpen, tier])
@@ -143,7 +143,7 @@ export default function TierEditPopout({
     }
 
     const discountNum = parseFloat(discount) || 0
-    if (discountNum !== (tier.discountPercent ?? 0)) {
+    if (Math.round(discountNum * 2) !== (tier.discountPercent ?? 0)) {
       updates.discount = discountNum
     }
 

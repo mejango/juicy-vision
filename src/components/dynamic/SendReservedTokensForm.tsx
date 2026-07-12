@@ -4,13 +4,11 @@ import { useThemeStore } from '../../stores'
 import { useSendReservedTokensFormState } from '../../hooks/useComponentState'
 import {
   fetchProject,
-  fetchConnectedChains,
   fetchProjectSplits,
   fetchProjectWithRuleset,
   fetchPendingReservedTokens,
   fetchProjectTokenSymbol,
   type Project,
-  type ConnectedChain,
   type JBSplitData,
   type ProjectRuleset,
 } from '../../services/bendystraw'
@@ -18,6 +16,12 @@ import { resolveIpfsUri } from '../../utils/ipfs'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { SendReservedTokensModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
+import { ProjectSplitRoute } from './ProjectSplitRoute'
+import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
+import { useManagedWallet } from '../../hooks'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface SendReservedTokensFormProps {
   projectId: string
@@ -37,10 +41,11 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string
 interface ChainReservedData {
   chainId: number
   projectId: number
-  pendingReserved: string
+  pendingReserved: string | null
   reservedSplits: JBSplitData[]
   reservedPercent: number
   ruleset: ProjectRuleset | null
+  configurationError?: string
 }
 
 // Inline chain selector component
@@ -62,7 +67,7 @@ function InlineChainSelector({
       {chainData.map(cd => {
         const chain = CHAIN_INFO[cd.chainId] || { name: `Chain ${cd.chainId}`, shortName: String(cd.chainId), color: '#888888' }
         const isSelected = selectedChainId === cd.chainId
-        const hasPending = BigInt(cd.pendingReserved) > 0n
+        const hasPending = cd.pendingReserved !== null && BigInt(cd.pendingReserved) > 0n
         return (
           <button
             key={cd.chainId}
@@ -105,6 +110,8 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
   const isDark = theme === 'dark'
 
   const { isConnected } = useAccount()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected
 
   // Check if form should be locked due to active/completed transaction
   const isLocked = persistedState?.status && persistedState.status !== 'pending'
@@ -114,7 +121,7 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
     if (persistedState && persistedState.status !== 'pending') {
       if (persistedState.selectedChainId) setSelectedChainId(persistedState.selectedChainId)
     }
-  }, [persistedState?.status])
+  }, [persistedState])
 
   // Transaction callbacks for persistence
   const handleConfirmed = useCallback((txHash: string) => {
@@ -122,6 +129,14 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
       status: 'completed',
       txHash,
       confirmedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState])
+
+  const handleSubmitted = useCallback((txHash: string) => {
+    updatePersistedState({
+      status: 'in_progress',
+      txHash,
+      submittedAt: new Date().toISOString(),
     })
   }, [updatePersistedState])
 
@@ -138,6 +153,7 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
 
   // Omnichain state
   const [chainReservedData, setChainReservedData] = useState<ChainReservedData[]>([])
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [selectedChainId, setSelectedChainId] = useState<number>(parseInt(chainId))
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
 
@@ -148,13 +164,14 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
   const chainInfo = CHAIN_INFO[selectedChainId] || CHAIN_INFO[1]
 
   // Calculate pending tokens in human-readable format
-  const pendingTokens = activeChainData
+  const pendingTokens = activeChainData?.pendingReserved !== null && activeChainData?.pendingReserved !== undefined
     ? parseFloat(activeChainData.pendingReserved) / 1e18
-    : 0
+    : null
 
   // Total pending across all chains
+  const totalPendingAvailable = chainReservedData.every(cd => cd.pendingReserved !== null)
   const totalPendingAcrossChains = chainReservedData.reduce((sum, cd) => {
-    return sum + parseFloat(cd.pendingReserved) / 1e18
+    return sum + (cd.pendingReserved === null ? 0 : parseFloat(cd.pendingReserved) / 1e18)
   }, 0)
 
   // Fetch data for all chains
@@ -165,21 +182,17 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
         const primaryChainId = parseInt(chainId)
 
         // Fetch project and connected chains
-        const [projectData, connectedChains, symbol] = await Promise.all([
+        const [projectData, chainResolution, symbol] = await Promise.all([
           fetchProject(projectId, primaryChainId),
-          fetchConnectedChains(projectId, primaryChainId),
+          resolveProjectChains(projectId, primaryChainId),
           fetchProjectTokenSymbol(projectId, primaryChainId),
         ])
         setProject(projectData)
         setTokenSymbol(symbol || 'tokens')
-
-        // Determine chains to fetch
-        const chainsToFetch: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: primaryChainId, projectId: parseInt(projectId) }]
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
         // Fetch reserved token data from all chains in parallel
-        const chainDataPromises = chainsToFetch.map(async (chain): Promise<ChainReservedData> => {
+        const chainDataPromises = chainResolution.chains.map(async (chain): Promise<ChainReservedData> => {
           try {
             const [pendingReserved, chainProject] = await Promise.all([
               fetchPendingReservedTokens(String(chain.projectId), chain.chainId),
@@ -194,7 +207,14 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
                 chain.chainId,
                 chainProject.currentRuleset.id
               )
+              if (!splitsData.configurationComplete) {
+                throw new Error('Reserved split configuration could not be verified')
+              }
               reservedSplits = splitsData.reservedSplits
+              assertSimpleStoredSplitGroups([{ splits: reservedSplits }], {
+                kind: 'reserved',
+                sourceProjectId: chain.projectId,
+              })
             }
 
             return {
@@ -210,10 +230,11 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
             return {
               chainId: chain.chainId,
               projectId: chain.projectId,
-              pendingReserved: '0',
+              pendingReserved: null,
               reservedSplits: [],
               reservedPercent: 0,
               ruleset: null,
+              configurationError: err instanceof Error ? err.message : 'Reserved split configuration unavailable',
             }
           }
         })
@@ -222,7 +243,9 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
         setChainReservedData(allChainData)
 
         // Set initial selected chain to one with pending tokens, or primary
-        const chainWithPending = allChainData.find(cd => BigInt(cd.pendingReserved) > 0n)
+        const chainWithPending = allChainData.find(
+          cd => cd.pendingReserved !== null && BigInt(cd.pendingReserved) > 0n,
+        )
         setSelectedChainId(chainWithPending?.chainId || primaryChainId)
 
         // Resolve ENS names for split beneficiaries
@@ -257,16 +280,16 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
   }, [projectId, chainId])
 
   const handleSendReservedTokens = () => {
-    if (pendingTokens <= 0 || isLocked) return
+    if (pendingTokens === null || pendingTokens <= 0 || isLocked || activeChainData?.configurationError) return
 
-    if (!isConnected) {
+    if (!hasActiveWallet) {
       openWalletPanel()
       return
     }
 
-    // Persist in_progress state
+    // Save reviewed inputs without claiming a transaction exists yet.
     updatePersistedState({
-      status: 'in_progress',
+      status: 'pending',
       selectedChainId,
       submittedAt: new Date().toISOString(),
     })
@@ -289,7 +312,7 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
 
   const logoUrl = project?.logoUri ? resolveIpfsUri(project.logoUri) : null
 
-  const hasPendingTokens = pendingTokens > 0
+  const hasPendingTokens = pendingTokens !== null && pendingTokens > 0
   const reservedPercent = activeChainData?.reservedPercent || 0
 
   return (
@@ -297,10 +320,11 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
       <div className={`max-w-md border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Header */}
         <div className="flex items-center gap-3 mb-3">
           {logoUrl ? (
-            <img src={logoUrl} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" />
+            <IpfsImage uri={project?.logoUri} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" fallback={<div className="w-14 h-14 bg-amber-500/20" />} />
           ) : (
             <div className="w-14 h-14 bg-amber-500/20 flex items-center justify-center">
               <span className="text-2xl">🎟️</span>
@@ -310,7 +334,7 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
             <h3 className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
               Distribute Reserved {tokenSymbol}
             </h3>
-            <ProjectLink chainSlug={chainInfo.slug} projectId={projectId} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
+            <ProjectLink chainSlug={chainInfo.slug} projectId={String(activeChainData?.projectId ?? projectId)} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
               {project?.name || `Project #${projectId}`}
             </ProjectLink>
           </div>
@@ -364,7 +388,9 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
               Pending Distribution
             </span>
             <span className={`font-mono text-sm ${hasPendingTokens ? 'text-amber-400' : ''}`}>
-              {pendingTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
+              {pendingTokens === null
+                ? 'Unavailable'
+                : `${pendingTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${tokenSymbol}`}
             </span>
           </div>
           {hasPendingTokens && (
@@ -372,14 +398,19 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
               Reserved {tokenSymbol} waiting to be sent to recipients
             </div>
           )}
-          {!hasPendingTokens && (
+          {pendingTokens === 0 && (
             <div className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
               No reserved {tokenSymbol} pending distribution
             </div>
           )}
+          {pendingTokens === null && (
+            <div className="text-xs mt-1 text-amber-500">
+              Pending reserved tokens could not be verified
+            </div>
+          )}
 
           {/* Cross-chain total for omnichain */}
-          {isOmnichain && totalPendingAcrossChains > 0 && (
+          {isOmnichain && totalPendingAvailable && totalPendingAcrossChains > 0 && (
             <div className={`mt-2 pt-2 border-t ${isDark ? 'border-amber-500/20' : 'border-amber-200'}`}>
               <div className="flex justify-between items-center">
                 <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -420,16 +451,21 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
 
                   // Calculate estimated tokens
                   const estimatedTokens = hasPendingTokens
-                    ? (pendingTokens * splitPercent / 100).toFixed(2)
+                    ? (pendingTokens! * splitPercent / 100).toFixed(2)
                     : null
 
                   return (
                     <div key={idx} className={`flex items-center justify-between p-2 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
                       <div className="flex items-center gap-2">
                         {isProject ? (
-                          <span className="text-xs px-1.5 py-0.5 bg-purple-500/20 text-purple-400">
-                            Project #{split.projectId}
-                          </span>
+                          <ProjectSplitRoute
+                            projectId={split.projectId}
+                            chainId={activeChainData.chainId}
+                            beneficiary={split.beneficiary}
+                            kind="reserved"
+                            hook={split.hook}
+                            isDark={isDark}
+                          />
                         ) : (
                           <span className="font-mono text-xs text-juice-orange">
                             {displayName}
@@ -446,6 +482,9 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
                         <span className={`font-mono text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                           ({splitPercent.toFixed(0)}%)
                         </span>
+                        {split.lockedUntil > Math.floor(Date.now() / 1000) && (
+                          <span className="text-[10px] text-amber-500">Locked</span>
+                        )}
                       </div>
                     </div>
                   )
@@ -458,7 +497,7 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
                   const remainderActualPercent = (reservedRate * remainderSplitPercent) / 100
                   if (remainderSplitPercent > 0.01) {
                     const estimatedTokens = hasPendingTokens
-                      ? (pendingTokens * remainderSplitPercent / 100).toFixed(2)
+                      ? (pendingTokens! * remainderSplitPercent / 100).toFixed(2)
                       : null
                     return (
                       <div className={`flex items-center justify-between p-2 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
@@ -501,8 +540,10 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
             : persistedState?.status === 'in_progress'
               ? 'Pending...'
               : hasPendingTokens
-                ? `Distribute ${pendingTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${tokenSymbol}`
-                : `No ${tokenSymbol} to Distribute`
+                ? `Distribute ${pendingTokens!.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${tokenSymbol}`
+                : pendingTokens === null
+                  ? 'Distribution unavailable'
+                  : `No ${tokenSymbol} to Distribute`
           }
         </button>
 
@@ -566,7 +607,9 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
 
         {/* Info */}
         <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          {reservedPercent > 0
+          {activeChainData?.configurationError
+            ? activeChainData.configurationError
+            : reservedPercent > 0
             ? `Send accumulated reserved ${tokenSymbol} to the configured recipients. Anyone can trigger this distribution.`
             : `This project does not reserve any ${tokenSymbol}. All minted tokens go directly to contributors.`
           }
@@ -577,11 +620,19 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
       <SendReservedTokensModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        projectId={projectId}
+        projectId={String(activeChainData?.projectId ?? projectId)}
         projectName={project?.name}
         chainId={selectedChainId}
         tokenSymbol={tokenSymbol}
-        amount={activeChainData?.pendingReserved || '0'}
+        amount={activeChainData?.pendingReserved ?? ''}
+        splits={activeChainData?.reservedSplits.map(split => ({
+          address: split.beneficiary,
+          percent: split.percent,
+          projectId: split.projectId,
+          lockedUntil: split.lockedUntil,
+          hook: split.hook,
+        }))}
+        onSubmitted={handleSubmitted}
         onConfirmed={handleConfirmed}
         onError={handleError}
       />

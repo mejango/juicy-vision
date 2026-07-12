@@ -8,8 +8,8 @@ import { fetchMyChats } from '../../services/chat'
 import { fetchProjectsByOwner, clearProjectsByOwnerCache, type Project } from '../../services/bendystraw'
 import { useAuthStore } from '../../stores/authStore'
 import { useManagedWallet } from '../../hooks'
-import { resolveIpfsUri } from '../../utils/ipfs'
 import { CHAINS } from '../../constants'
+import { IpfsImage } from '../ui/IpfsMedia'
 import {
   getOwnerConversations,
   getSupporterConversations,
@@ -95,7 +95,6 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
 
   const [activeTab, setActiveTab] = useState<SidebarTab>('chats')
   const [isLoading, setIsLoading] = useState(false)
-  const [totalChats, setTotalChats] = useState(0)
 
   // Projects tab state
   const [ownedProjects, setOwnedProjects] = useState<Project[]>([])
@@ -119,8 +118,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     if (isLoading) return
     setIsLoading(true)
     try {
-      const { chats: newChats, total } = await fetchMyChats({ limit: 20 })
-      setTotalChats(total)
+      const { chats: newChats } = await fetchMyChats({ limit: 20 })
 
       const existingChatsMap = new Map(chats.map(c => [c.id, c]))
       const mergedChats = newChats.map(apiChat => {
@@ -615,13 +613,11 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
 
                             {/* Project logo */}
                             {project.logoUri ? (
-                              <img
-                                src={resolveIpfsUri(project.logoUri) ?? ''}
+                              <IpfsImage
+                                uri={project.logoUri}
                                 alt=""
                                 className="w-8 h-8 rounded-lg object-cover shrink-0"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = 'none'
-                                }}
+                                fallback={<div className={`w-8 h-8 rounded-lg shrink-0 ${theme === 'dark' ? 'bg-white/10' : 'bg-gray-100'}`} />}
                               />
                             ) : (
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${

@@ -54,6 +54,7 @@ export function loadConfig(): EnvConfig {
     // AI Provider
     aiProvider: getEnv('AI_PROVIDER', 'anthropic') as 'anthropic' | 'moonshot',
     aiFreeMode: getEnv('AI_FREE_MODE', 'true') === 'true', // Beta: AI is free by default
+    aiBillingProjectId: getEnvNumber('AI_BILLING_PROJECT_ID', 0),
 
     // Anthropic
     anthropicApiKey: getEnv('ANTHROPIC_API_KEY', ''),
@@ -115,7 +116,6 @@ export function validateConfigForEncryption(config: EnvConfig): void {
     }
   }
 }
-
 
 export function validateConfigForStripe(config: EnvConfig): void {
   if (!config.stripeSecretKey || !config.stripeWebhookSecret) {

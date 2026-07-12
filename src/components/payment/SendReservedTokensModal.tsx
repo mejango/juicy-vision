@@ -1,17 +1,26 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { encodeFunctionData, createPublicClient, http, type Chain, type Address } from 'viem'
+import { encodeFunctionData, createPublicClient, http, type Chain, type Address, zeroAddress } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainDistribute } from '../../hooks/relayr'
 import { CHAINS as CHAIN_INFO, RPC_ENDPOINTS } from '../../constants'
-import ChainPaymentSelector from './ChainPaymentSelector'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
+import { ProjectSplitRoute } from '../dynamic/ProjectSplitRoute'
 import { verifySendReservedTokensParams } from '../../utils/transactionVerification'
 import { getProjectController } from '../../utils/paymentTerminal'
+import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
+import {
+  fetchPendingReservedTokens,
+  fetchProjectSplits,
+  fetchProjectWithRuleset,
+} from '../../services/bendystraw'
+import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 
 const CONTROLLER_SEND_RESERVED_ABI = [
   {
@@ -44,6 +53,7 @@ interface ReservedSplit {
   percent: number
   projectId?: number
   lockedUntil?: number
+  hook?: string
 }
 
 interface SendReservedTokensModalProps {
@@ -87,12 +97,18 @@ export default function SendReservedTokensModal({
   const { data: walletClient } = useWalletClient()
   const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
-  const { totalEth } = useWalletBalances()
+  const { totalEth, perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Managed mode support
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
+  const activeAddress = isManagedMode ? managedAddress : address
+  const { assertCurrentAccount } = useReviewedTransactionAccount(
+    isOpen,
+    activeAddress,
+    isManagedMode ? 'managed' : 'self_custody',
+  )
 
   const [status, setStatus] = useState<DistributeStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
@@ -110,7 +126,6 @@ export default function SendReservedTokensModal({
     isComplete: omnichainComplete,
     hasError: omnichainError,
     reset: resetOmnichain,
-    setPaymentChain,
   } = useOmnichainDistribute({
     onSuccess: (bundleId, txHashes) => {
       console.log('Omnichain reserves distribution completed:', bundleId, txHashes)
@@ -126,10 +141,9 @@ export default function SendReservedTokensModal({
   const chainInfo = CHAIN_INFO[chainId] || CHAIN_INFO[1]
   const chainName = chainInfo.name
   const tokenAmount = parseFloat(amount) / 1e18
-  const hasGasBalance = totalEth >= 0.001
-
-  // Check if omnichain is available
-  const hasMultipleChains = allChainProjects && allChainProjects.length > 1
+  const hasGasBalance = isManagedMode || (balancesAvailable && (useAllChains
+    ? perChain.some(balance => balance.eth > 0n)
+    : (perChain.find(balance => balance.chainId === chainId)?.eth ?? 0n) > 0n))
 
   // Transaction verification
   const verificationResult = useMemo(() => {
@@ -197,7 +211,7 @@ export default function SendReservedTokensModal({
         setControllerAddress(controller)
       } catch (err) {
         console.error('Failed to fetch project controller:', err)
-        setError('Failed to fetch project controller')
+        setError(err instanceof Error ? err.message : 'Failed to fetch project controller')
       } finally {
         setControllerLoading(false)
       }
@@ -207,6 +221,62 @@ export default function SendReservedTokensModal({
   }, [isOpen, projectId, chainId])
 
   const handleConfirm = useCallback(async () => {
+    let reviewedPendingAmount = 0n
+    const reviewedSignature = (splits ?? []).map(split => [
+      split.address.toLowerCase(),
+      split.percent,
+      split.projectId ?? 0,
+      split.lockedUntil ?? 0,
+      (split.hook ?? zeroAddress).toLowerCase(),
+    ].join(':')).join('|')
+    const validateReviewedReservedState = async (target: { chainId: number; projectId: string }) => {
+      const chainProject = await fetchProjectWithRuleset(target.projectId, target.chainId)
+      const rulesetId = chainProject?.currentRuleset?.id
+      if (!rulesetId) throw new Error(`Current ruleset unavailable on chain ${target.chainId}`)
+      const splitConfiguration = await fetchProjectSplits(
+        target.projectId,
+        target.chainId,
+        rulesetId,
+      )
+      if (!splitConfiguration.configurationComplete) {
+        throw new Error(`Reserved split configuration could not be verified on chain ${target.chainId}`)
+      }
+      assertSimpleStoredSplitGroups([{ splits: splitConfiguration.reservedSplits }], {
+        kind: 'reserved',
+        sourceProjectId: target.projectId,
+      })
+      const freshSignature = splitConfiguration.reservedSplits.map(split => [
+        split.beneficiary.toLowerCase(),
+        split.percent,
+        split.projectId,
+        split.lockedUntil,
+        split.hook.toLowerCase(),
+      ].join(':')).join('|')
+      if (freshSignature !== reviewedSignature) {
+        throw new Error(`Reserved token recipients changed on chain ${target.chainId}`)
+      }
+      const freshPendingAmount = BigInt(
+        await fetchPendingReservedTokens(target.projectId, target.chainId),
+      )
+      if (freshPendingAmount !== reviewedPendingAmount) {
+        throw new Error(`Reserved token amount changed on chain ${target.chainId}`)
+      }
+    }
+    try {
+      reviewedPendingAmount = BigInt(amount)
+      if (reviewedPendingAmount <= 0n) throw new Error('No reserved tokens are ready to distribute')
+      const targets = useAllChains && allChainProjects?.length
+        ? allChainProjects.map(project => ({
+          chainId: project.chainId,
+          projectId: String(project.projectId),
+        }))
+        : [{ chainId, projectId }]
+      await Promise.all(targets.map(validateReviewedReservedState))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reserved split configuration is unavailable')
+      return
+    }
+
     // Check wallet connection based on mode
     if (isManagedMode) {
       if (!managedAddress) {
@@ -219,27 +289,46 @@ export default function SendReservedTokensModal({
         return
       }
     }
+    try {
+      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The reviewed account could not be verified')
+      return
+    }
 
     if (useAllChains && allChainProjects && allChainProjects.length > 1) {
       // Use Relayr omnichain distribution
-      setStatus('signing')
       setError(null)
+      try {
+        const projectIds: Record<number, number> = {}
+        allChainProjects.forEach(cp => {
+          projectIds[cp.chainId] = typeof cp.projectId === 'string' ? parseInt(cp.projectId) : cp.projectId
+        })
 
-      const projectIds: Record<number, number> = {}
-      allChainProjects.forEach(cp => {
-        projectIds[cp.chainId] = typeof cp.projectId === 'string' ? parseInt(cp.projectId) : cp.projectId
-      })
+        const controllerEntries = await Promise.all(allChainProjects.map(async cp => {
+          const chain = CHAINS[cp.chainId]
+          const rpcUrl = RPC_ENDPOINTS[cp.chainId]?.[0]
+          if (!chain || !rpcUrl) throw new Error(`Unsupported chain ${cp.chainId}`)
+          const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+          const controller = await getProjectController(publicClient, BigInt(projectIds[cp.chainId]))
+          return [cp.chainId, controller] as const
+        }))
 
-      await distribute({
-        chainIds: allChainProjects.map(cp => cp.chainId),
-        projectIds,
-        type: 'reserves',
-      })
+        assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+        await distribute({
+          chainIds: allChainProjects.map(cp => cp.chainId),
+          projectIds,
+          type: 'reserves',
+          controllerAddresses: Object.fromEntries(controllerEntries),
+        })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Reserved token distribution preflight failed')
+        setStatus('failed')
+      }
       return
     }
 
     // Single chain execution
-    setStatus('signing')
     setError(null)
 
     const chain = CHAINS[chainId]
@@ -251,7 +340,24 @@ export default function SendReservedTokensModal({
     }
 
     try {
-      // Create transaction record
+      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+      if (!rpcUrl) throw new Error(`No RPC endpoint configured for chain ${chainId}`)
+      const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+      const freshController = await getProjectController(publicClient, BigInt(projectId))
+
+      const callData = encodeFunctionData({
+        abi: CONTROLLER_SEND_RESERVED_ABI,
+        functionName: 'sendReservedTokensToSplitsOf',
+        args: [BigInt(projectId)],
+      })
+      await simulateTransaction({
+        chainId,
+        account: activeAddress as `0x${string}`,
+        to: freshController,
+        data: callData,
+      })
+
       const txId = addTransaction({
         type: 'deploy',
         projectId,
@@ -260,44 +366,52 @@ export default function SendReservedTokensModal({
         status: 'pending',
       })
 
-      const callData = encodeFunctionData({
-        abi: CONTROLLER_SEND_RESERVED_ABI,
-        functionName: 'sendReservedTokensToSplitsOf',
-        args: [BigInt(projectId)],
-      })
-
-      setStatus('pending')
-
-      if (!controllerAddress) {
-        setError('Controller address not available')
-        setStatus('failed')
-        return
-      }
-
       let hash: string
 
       if (isManagedMode) {
         // Execute via backend for managed mode
-        hash = await executeManagedTransaction(chainId, controllerAddress, callData, '0')
+        assertCurrentAccount()
+        setStatus('pending')
+        hash = await executeManagedTransaction(chainId, freshController, callData, '0')
       } else {
         // Execute via wallet for self-custody mode
+        setStatus('signing')
         await switchChainAsync({ chainId })
+        if (await walletClient!.getChainId() !== chainId) {
+          throw new Error(`Wallet did not switch to chain ${chainId}`)
+        }
+        await validateReviewedReservedState({ chainId, projectId })
+        const finalController = await getProjectController(publicClient, BigInt(projectId))
+        if (finalController.toLowerCase() !== freshController.toLowerCase()) {
+          throw new Error('The project controller changed. Close this review and try again.')
+        }
+        await simulateTransaction({
+          chainId,
+          account: activeAddress as `0x${string}`,
+          to: finalController,
+          data: callData,
+        })
+        assertCurrentAccount(walletClient!.account?.address)
         hash = await walletClient!.sendTransaction({
-          to: controllerAddress,
+          to: finalController,
           data: callData,
           value: 0n,
         })
+        setStatus('pending')
       }
 
       setTxHash(hash)
       updateTransaction(txId, { hash, status: 'submitted' })
+      onSubmitted?.(hash)
+      if (!isManagedMode) await waitForSuccessfulTransaction(chainId, hash as `0x${string}`)
+      updateTransaction(txId, { hash, status: 'confirmed' })
       setStatus('confirmed')
     } catch (err) {
       console.error('Send reserved tokens failed:', err)
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, tokenAmount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, distribute, controllerAddress])
+  }, [walletClient, address, activeAddress, chainId, projectId, tokenAmount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, distribute, onSubmitted, assertCurrentAccount, amount, splits])
 
   const handleClose = useCallback(() => {
     resetOmnichain()
@@ -446,6 +560,29 @@ export default function SendReservedTokensModal({
           {/* Distribution Details */}
           {(status === 'preview' || isProcessing) && !showConfirmed && !showFailed && (
             <>
+              {splits?.some(split => split.projectId) && (
+                <div className={`p-3 space-y-2 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                  <div className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Project recipients
+                  </div>
+                  {splits.filter(split => split.projectId).map((split, index) => (
+                    <div key={`${split.projectId}-${index}`} className="flex items-start justify-between gap-3">
+                      <ProjectSplitRoute
+                        projectId={split.projectId!}
+                        chainId={chainId}
+                        beneficiary={split.address}
+                        kind="reserved"
+                        hook={split.hook}
+                        isDark={isDark}
+                      />
+                      <span className="text-xs font-mono text-amber-500">
+                        {(split.percent / 10_000_000).toFixed(2)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Transaction Summary */}
               <TransactionSummary
                 type="sendReservedTokens"
@@ -458,9 +595,9 @@ export default function SendReservedTokensModal({
                   recipients: splits?.map(s => ({
                     name: s.name,
                     address: s.address,
-                    percent: s.percent,
+                    percent: s.percent / 10_000_000,
                     tokens: s.percent && tokenAmount
-                      ? `${((tokenAmount * s.percent) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                      ? `${((tokenAmount * (s.percent / 10_000_000)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
                       : undefined,
                     isProject: !!s.projectId,
                     projectId: s.projectId,
@@ -479,52 +616,15 @@ export default function SendReservedTokensModal({
                 />
               )}
 
-              {/* Omnichain toggle */}
-              {hasMultipleChains && !isManagedMode && status === 'preview' && (
-                <div className={`p-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={useAllChains}
-                      onChange={(e) => setUseAllChains(e.target.checked)}
-                      className="w-4 h-4 rounded"
-                    />
-                    <div>
-                      <div className={`text-sm font-medium ${isDark ? 'text-juice-cyan' : 'text-cyan-700'}`}>
-                        Distribute on all {allChainProjects?.length} chains
-                      </div>
-                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Pay gas once via Relayr, execute everywhere
-                      </div>
-                    </div>
-                  </label>
-                </div>
-              )}
-
-              {/* Payment chain selector */}
-              {useAllChains && bundleState.paymentOptions.length > 0 && status === 'preview' && (
-                <ChainPaymentSelector
-                  paymentOptions={bundleState.paymentOptions}
-                  selectedChainId={bundleState.selectedPaymentChain}
-                  onSelect={setPaymentChain}
-                />
-              )}
-
               {/* Gas balance check */}
-              <div className={`flex justify-between items-center text-sm ${
-                isDark ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                <span>Your ETH balance (for gas)</span>
-                <span className={`font-mono ${!hasGasBalance ? 'text-red-400' : ''}`}>
-                  {formatEthBalance(totalEth)} ETH
-                </span>
-              </div>
-
-              {!hasGasBalance && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                  Insufficient ETH for gas fees
-                </div>
-              )}
+              <GasBalanceStatus
+                balance={totalEth}
+                hasGasBalance={hasGasBalance}
+                loading={balancesLoading}
+                available={balancesAvailable}
+                managed={isManagedMode}
+                isDark={isDark}
+              />
 
               {controllerLoading && (
                 <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-juice-cyan/10 text-juice-cyan' : 'bg-cyan-50 text-cyan-700'}`}>

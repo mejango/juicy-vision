@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import Stripe from 'npm:stripe';
+import Stripe from 'npm:stripe@20.2.0';
 import { getConfig, validateConfigForStripe } from '../utils/config.ts';
 import { logger } from '../utils/logger.ts';
 import {
@@ -20,11 +20,11 @@ export const stripeWebhookRouter = new Hono();
 // Risk score thresholds for settlement delay
 // Stripe Radar risk_score ranges 0-100 (higher = riskier)
 const RISK_THRESHOLDS = {
-  IMMEDIATE: 20,     // 0-20: settle immediately
-  SHORT_DELAY: 40,   // 21-40: 7 days
-  MEDIUM_DELAY: 60,  // 41-60: 30 days
-  LONG_DELAY: 80,    // 61-80: 60 days
-  MAX_DELAY: 100,    // 81-100: 120 days
+  IMMEDIATE: 20, // 0-20: settle immediately
+  SHORT_DELAY: 40, // 21-40: 7 days
+  MEDIUM_DELAY: 60, // 41-60: 30 days
+  LONG_DELAY: 80, // 61-80: 60 days
+  MAX_DELAY: 100, // 81-100: 120 days
 };
 
 /**
@@ -108,7 +108,7 @@ stripeWebhookRouter.post('/', async (c) => {
     event = stripe.webhooks.constructEvent(
       rawBody,
       signature,
-      config.stripeWebhookSecret
+      config.stripeWebhookSecret,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -151,7 +151,6 @@ stripeWebhookRouter.post('/', async (c) => {
     }
 
     return c.json({ received: true });
-
   } catch (error) {
     logger.error('Stripe webhook handler error', error as Error, {
       eventType: event.type,
@@ -169,7 +168,7 @@ stripeWebhookRouter.post('/', async (c) => {
  */
 async function handleCheckoutSessionCompleted(
   stripe: Stripe,
-  session: Stripe.Checkout.Session
+  session: Stripe.Checkout.Session,
 ): Promise<void> {
   const metadata = session.metadata || {};
 
@@ -258,7 +257,7 @@ async function handleCheckoutSessionCompleted(
     });
 
     try {
-      await creditJuice(metadata.userId, creditsAmount, purchaseId);
+      await creditJuice(metadata.userId, purchaseId);
       logger.info('Immediate Pay Credits credit successful', {
         purchaseId,
         amount: creditsAmount,
@@ -277,7 +276,7 @@ async function handleCheckoutSessionCompleted(
  */
 async function handlePaymentSucceeded(
   stripe: Stripe,
-  paymentIntent: Stripe.PaymentIntent
+  paymentIntent: Stripe.PaymentIntent,
 ): Promise<void> {
   const metadata = paymentIntent.metadata;
 
@@ -296,7 +295,7 @@ async function handlePaymentSucceeded(
  */
 async function handlePayCreditsPurchaseSucceeded(
   stripe: Stripe,
-  paymentIntent: Stripe.PaymentIntent
+  paymentIntent: Stripe.PaymentIntent,
 ): Promise<void> {
   const metadata = paymentIntent.metadata;
 
@@ -368,7 +367,7 @@ async function handlePayCreditsPurchaseSucceeded(
     });
 
     try {
-      await creditJuice(metadata.userId, creditsAmount, purchaseId);
+      await creditJuice(metadata.userId, purchaseId);
       logger.info('Immediate Pay Credits credit successful', {
         purchaseId,
         amount: creditsAmount,
@@ -387,7 +386,7 @@ async function handlePayCreditsPurchaseSucceeded(
  */
 async function handleDirectPaymentSucceeded(
   stripe: Stripe,
-  paymentIntent: Stripe.PaymentIntent
+  paymentIntent: Stripe.PaymentIntent,
 ): Promise<void> {
   // Extract Juicebox payment metadata
   const paymentData = extractPaymentMetadata(paymentIntent);
@@ -482,7 +481,7 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
   const directSuccess = await markPaymentDisputed(
     paymentIntentId,
     dispute.id,
-    dispute.reason ?? undefined
+    dispute.reason ?? undefined,
   );
 
   const juiceSuccess = await markJuicePurchaseDisputed(paymentIntentId);
@@ -536,4 +535,3 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
     }
   }
 }
-

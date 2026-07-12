@@ -1,19 +1,25 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { parseEther, encodeFunctionData, createPublicClient, http, type Chain, type Address } from 'viem'
+import { parseUnits, encodeFunctionData, createPublicClient, http, type Chain, type Address } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
-import { RPC_ENDPOINTS } from '../../constants'
+import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import { GasBalanceStatus } from './GasBalanceStatus'
+import {
+  NATIVE_TOKEN,
+  RPC_ENDPOINTS,
+  USDC_ADDRESSES,
+  type SupportedChainId,
+} from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyUseAllowanceParams } from '../../utils/transactionVerification'
-import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
-
-// Contract constants
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
+import { getPaymentTerminal } from '../../utils/paymentTerminal'
+import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import { fetchProjectSplits, fetchProjectWithRuleset } from '../../services/bendystraw'
 
 const TERMINAL_USE_ALLOWANCE_ABI = [
   {
@@ -62,7 +68,9 @@ interface UseSurplusAllowanceModalProps {
   projectName?: string
   chainId: number
   amount: string
-  baseCurrency?: number // 1 = ETH, 2 = USD
+  allowanceCurrency: number
+  allowanceTokenAddress: Address
+  allowanceTokenDecimals: number
   // Transaction status callbacks for persistence
   onSubmitted?: (txHash: string) => void
   onConfirmed?: (txHash: string) => void
@@ -78,7 +86,9 @@ export default function UseSurplusAllowanceModal({
   projectName,
   chainId,
   amount,
-  baseCurrency = 1,
+  allowanceCurrency,
+  allowanceTokenAddress,
+  allowanceTokenDecimals,
   onSubmitted,
   onConfirmed,
   onError,
@@ -89,7 +99,7 @@ export default function UseSurplusAllowanceModal({
   const { data: walletClient } = useWalletClient()
   const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
-  const { totalEth } = useWalletBalances()
+  const { perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Managed mode support
   const { mode, isAuthenticated } = useAuthStore()
@@ -104,30 +114,55 @@ export default function UseSurplusAllowanceModal({
   const [terminalLoading, setTerminalLoading] = useState(false)
 
   const activeAddress = isManagedMode ? managedAddress : address
+  const { assertCurrentAccount } = useReviewedTransactionAccount(
+    isOpen,
+    activeAddress,
+    isManagedMode ? 'managed' : 'self_custody',
+  )
   const chainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`
-  const currencyLabel = baseCurrency === 2 ? 'USDC' : 'ETH'
+  const withdrawToken = allowanceTokenAddress
+  const canonicalUsdc = USDC_ADDRESSES[chainId as SupportedChainId]
+  const currencyLabel = withdrawToken.toLowerCase() === NATIVE_TOKEN.toLowerCase()
+    ? 'ETH'
+    : canonicalUsdc && withdrawToken.toLowerCase() === canonicalUsdc.toLowerCase()
+      ? 'USDC'
+      : 'TOKEN'
+  const amountDecimals = allowanceTokenDecimals
   const amountNum = parseFloat(amount) || 0
-  const protocolFee = amountNum * 0.025 // 2.5% protocol fee
-  const netWithdraw = amountNum - protocolFee
-  const hasGasBalance = totalEth >= 0.001
+  const maximumProtocolFee = amountNum * 0.025
+  const minimumWithdraw = amountNum - maximumProtocolFee
+  const chainGasBalance = perChain.find(balance => balance.chainId === chainId)?.eth ?? 0n
+  const hasGasBalance = isManagedMode || (balancesAvailable && chainGasBalance > 0n)
+
+  const withdrawalAmount = useMemo(() => {
+    try {
+      const parsed = parseUnits(amount, amountDecimals)
+      return parsed > 0n ? parsed : null
+    } catch {
+      return null
+    }
+  }, [amount, amountDecimals])
 
   // Verify transaction parameters
   const verificationResult = useMemo(() => {
     const defaultAddress = '0x0000000000000000000000000000000000000000'
+    const verifiedAmount = withdrawalAmount ?? 0n
+    const minimumTokensPaidOut = verifiedAmount - (verifiedAmount / 40n)
     return verifyUseAllowanceParams({
       projectId: BigInt(projectId),
-      token: NATIVE_TOKEN,
-      amount: parseEther(amount || '0'),
-      currency: BigInt(baseCurrency),
-      minTokensPaidOut: 0n,
+      token: withdrawToken,
+      amount: verifiedAmount,
+      currency: BigInt(allowanceCurrency),
+      minTokensPaidOut: minimumTokensPaidOut,
       beneficiary: activeAddress || defaultAddress,
       feeBeneficiary: activeAddress || defaultAddress,
       memo: '',
     })
-  }, [projectId, amount, baseCurrency, activeAddress])
+  }, [projectId, withdrawalAmount, allowanceCurrency, activeAddress, withdrawToken])
 
   const hasWarnings = verificationResult.doubts.length > 0
-  const canProceed = hasGasBalance && (!hasWarnings || warningsAcknowledged) && !!terminalAddress && !terminalLoading
+  const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
+  const canProceed = withdrawalAmount !== null && hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && !!terminalAddress && !terminalLoading
 
   // Reset state when modal opens
   useEffect(() => {
@@ -170,20 +205,19 @@ export default function UseSurplusAllowanceModal({
           transport: http(rpcUrl),
         })
 
-        // Use allowance withdraws the native token (or USDC based on baseCurrency)
-        const withdrawToken = getPaymentTokenAddress(baseCurrency === 2 ? 'USDC' : 'ETH', chainId)
-        const terminal = await getPaymentTerminal(publicClient, chainId, BigInt(projectId), withdrawToken)
+        // The token comes from the project's live accounting configuration.
+        const terminal = await getPaymentTerminal(publicClient, chainId, BigInt(projectId), withdrawToken, 'accounting')
         setTerminalAddress(terminal.address)
       } catch (err) {
         console.error('Failed to fetch payment terminal:', err)
-        setError('Failed to fetch payment terminal')
+        setError(err instanceof Error ? err.message : 'Failed to fetch payment terminal')
       } finally {
         setTerminalLoading(false)
       }
     }
 
     fetchTerminal()
-  }, [isOpen, projectId, chainId, baseCurrency])
+  }, [isOpen, projectId, chainId, withdrawToken])
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
@@ -200,7 +234,6 @@ export default function UseSurplusAllowanceModal({
       }
     }
 
-    setStatus('signing')
     setError(null)
 
     const chain = CHAINS[chainId]
@@ -211,14 +244,91 @@ export default function UseSurplusAllowanceModal({
       return
     }
 
-    if (!terminalAddress) {
-      setError('Terminal address not available')
-      setStatus('failed')
-      return
-    }
-
     try {
-      // Create transaction record
+      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+      if (!rpcUrl) throw new Error(`No RPC endpoint configured for chain ${chainId}`)
+      const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+      if (withdrawalAmount === null) throw new Error('Enter a valid withdrawal amount')
+      const withdrawAmount = withdrawalAmount
+      const tokenCurrency = Number(BigInt(withdrawToken) & 0xffffffffn)
+      if (allowanceCurrency !== tokenCurrency) {
+        throw new Error('Surplus allowance currency conversion is not supported in this view')
+      }
+      const minimumTokensPaidOut = withdrawAmount - (withdrawAmount / 40n)
+      const prepareAllowance = async () => {
+        const freshTerminal = await getPaymentTerminal(
+          publicClient,
+          chainId,
+          BigInt(projectId),
+          withdrawToken,
+          'accounting',
+        )
+        const freshProject = await fetchProjectWithRuleset(projectId, chainId)
+        const currentRulesetId = freshProject?.currentRuleset?.id
+        if (!currentRulesetId) throw new Error('Current ruleset is unavailable')
+        const freshConfiguration = await fetchProjectSplits(projectId, chainId, currentRulesetId)
+        if (!freshConfiguration.configurationComplete) {
+          throw new Error('Surplus allowance configuration could not be verified')
+        }
+        const matchingGroups = (freshConfiguration.fundAccessLimitGroups || []).filter(group =>
+          group.terminal.toLowerCase() === freshTerminal.address.toLowerCase() &&
+          group.token.toLowerCase() === withdrawToken.toLowerCase() &&
+          group.surplusAllowances.some(allowance => allowance.currency === allowanceCurrency)
+        )
+        if (matchingGroups.length !== 1) {
+          throw new Error('The selected surplus allowance is no longer uniquely configured')
+        }
+        const matchingAllowances = matchingGroups[0].surplusAllowances.filter(
+          allowance => allowance.currency === allowanceCurrency,
+        )
+        if (matchingAllowances.length !== 1) {
+          throw new Error('The selected surplus allowance is no longer uniquely configured')
+        }
+        const allowance = matchingAllowances[0]
+        const limit = BigInt(allowance.amount)
+        const used = BigInt(allowance.usedAmount)
+        const currentSurplus = BigInt(allowance.currentSurplus)
+        const remaining = limit > used ? limit - used : 0n
+        const available = remaining < currentSurplus ? remaining : currentSurplus
+        if (withdrawAmount > available) {
+          throw new Error('The requested surplus withdrawal is no longer available')
+        }
+        const args = [
+          BigInt(projectId),
+          withdrawToken,
+          withdrawAmount,
+          BigInt(allowanceCurrency),
+          minimumTokensPaidOut,
+          activeAddress as Address,
+          activeAddress as Address,
+          '',
+        ] as const
+        const { result: quotedAmount } = await publicClient.simulateContract({
+          address: freshTerminal.address,
+          abi: TERMINAL_USE_ALLOWANCE_ABI,
+          functionName: 'useAllowanceOf',
+          args,
+          account: activeAddress as Address,
+        })
+        if (quotedAmount < minimumTokensPaidOut) {
+          throw new Error('This withdrawal would return less than the reviewed minimum')
+        }
+        const data = encodeFunctionData({
+          abi: TERMINAL_USE_ALLOWANCE_ABI,
+          functionName: 'useAllowanceOf',
+          args,
+        })
+        await simulateTransaction({
+          chainId,
+          account: activeAddress as Address,
+          to: freshTerminal.address,
+          data,
+        })
+        return { target: freshTerminal.address, data, quotedAmount }
+      }
+      const prepared = await prepareAllowance()
+
       const txId = addTransaction({
         type: 'deploy',
         projectId,
@@ -227,49 +337,48 @@ export default function UseSurplusAllowanceModal({
         status: 'pending',
       })
 
-      const withdrawAmount = parseEther(amount)
-
-      const callData = encodeFunctionData({
-        abi: TERMINAL_USE_ALLOWANCE_ABI,
-        functionName: 'useAllowanceOf',
-        args: [
-          BigInt(projectId),
-          NATIVE_TOKEN,
-          withdrawAmount,
-          BigInt(baseCurrency), // Currency (1 = ETH, 2 = USD)
-          0n, // minTokensPaidOut
-          activeAddress as `0x${string}`, // beneficiary - send to caller
-          activeAddress as `0x${string}`, // feeBeneficiary
-          '', // memo
-        ],
-      })
-
-      setStatus('pending')
-
       let hash: string
 
       if (isManagedMode) {
         // Execute via backend for managed mode
-        hash = await executeManagedTransaction(chainId, terminalAddress, callData, '0')
+        assertCurrentAccount()
+        setStatus('pending')
+        hash = await executeManagedTransaction(chainId, prepared.target, prepared.data, '0')
       } else {
         // Execute via wallet for self-custody mode
+        setStatus('signing')
         await switchChainAsync({ chainId })
+        if (await walletClient!.getChainId() !== chainId) {
+          throw new Error(`Wallet did not switch to chain ${chainId}`)
+        }
+        const finalPrepared = await prepareAllowance()
+        if (
+          finalPrepared.target.toLowerCase() !== prepared.target.toLowerCase() ||
+          finalPrepared.quotedAmount !== prepared.quotedAmount
+        ) {
+          throw new Error('The surplus withdrawal quote changed. Close this review and try again.')
+        }
+        assertCurrentAccount(walletClient!.account?.address)
         hash = await walletClient!.sendTransaction({
-          to: terminalAddress,
-          data: callData,
+          to: finalPrepared.target,
+          data: finalPrepared.data,
           value: 0n,
         })
+        setStatus('pending')
       }
 
       setTxHash(hash)
       updateTransaction(txId, { hash, status: 'submitted' })
+      onSubmitted?.(hash)
+      if (!isManagedMode) await waitForSuccessfulTransaction(chainId, hash as `0x${string}`)
+      updateTransaction(txId, { hash, status: 'confirmed' })
       setStatus('confirmed')
     } catch (err) {
       console.error('Use surplus allowance failed:', err)
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, amount, baseCurrency, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, terminalAddress])
+  }, [walletClient, address, chainId, projectId, amount, withdrawalAmount, allowanceCurrency, withdrawToken, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, onSubmitted, assertCurrentAccount])
 
   if (!isOpen) return null
 
@@ -409,19 +518,19 @@ export default function UseSurplusAllowanceModal({
 
                 <div className="flex justify-between items-center">
                   <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                    Protocol fee (2.5%)
+                    Maximum protocol fee (2.5%)
                   </span>
                   <span className={`font-mono ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                    -{protocolFee.toFixed(4)} {currencyLabel}
+                    up to {maximumProtocolFee.toFixed(4)} {currencyLabel}
                   </span>
                 </div>
 
                 <div className={`flex justify-between items-center pt-2 border-t ${
                   isDark ? 'border-white/10' : 'border-gray-200'
                 }`}>
-                  <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>You receive</span>
+                  <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>You receive at least</span>
                   <span className={`font-mono font-bold text-lg ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>
-                    {netWithdraw.toFixed(4)} {currencyLabel}
+                    {minimumWithdraw.toFixed(4)} {currencyLabel}
                   </span>
                 </div>
               </div>
@@ -431,20 +540,14 @@ export default function UseSurplusAllowanceModal({
               </div>
 
               {/* Gas balance check */}
-              <div className={`flex justify-between items-center text-sm ${
-                isDark ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                <span>Your ETH balance (for gas)</span>
-                <span className={`font-mono ${!hasGasBalance ? 'text-red-400' : ''}`}>
-                  {formatEthBalance(totalEth)} {currencyLabel}
-                </span>
-              </div>
-
-              {!hasGasBalance && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                  Insufficient ETH for gas fees
-                </div>
-              )}
+              <GasBalanceStatus
+                balance={chainGasBalance}
+                hasGasBalance={hasGasBalance}
+                loading={balancesLoading}
+                available={balancesAvailable}
+                managed={isManagedMode}
+                isDark={isDark}
+              />
 
               {/* Transaction Summary */}
               <TransactionSummary
@@ -454,10 +557,10 @@ export default function UseSurplusAllowanceModal({
                   projectName,
                   amount: amountNum.toString(),
                   amountFormatted: `${amountNum.toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
-                  fee: protocolFee.toString(),
-                  feeFormatted: `${protocolFee.toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
-                  netAmount: (amountNum - protocolFee).toString(),
-                  netAmountFormatted: `${(amountNum - protocolFee).toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
+                  fee: maximumProtocolFee.toString(),
+                  feeFormatted: `${maximumProtocolFee.toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
+                  netAmount: minimumWithdraw.toString(),
+                  netAmountFormatted: `${minimumWithdraw.toFixed(currencyLabel === 'USDC' ? 2 : 4)} ${currencyLabel}`,
                   destination: activeAddress || '',
                   currency: currencyLabel,
                 }}
@@ -507,15 +610,15 @@ export default function UseSurplusAllowanceModal({
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Protocol fee</span>
+                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Maximum protocol fee</span>
                   <span className={`font-mono ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                    -{protocolFee.toFixed(4)} {currencyLabel}
+                    up to {maximumProtocolFee.toFixed(4)} {currencyLabel}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Received</span>
+                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Minimum expected</span>
                   <span className={`font-mono text-purple-500`}>
-                    {netWithdraw.toFixed(4)} {currencyLabel}
+                    {minimumWithdraw.toFixed(4)} {currencyLabel}
                   </span>
                 </div>
               </div>

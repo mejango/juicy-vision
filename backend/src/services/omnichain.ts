@@ -3,30 +3,27 @@
  *
  * Implements tool handlers for cross-chain operations:
  * - Querying sucker pairs and bridge status
- * - Encoding bridge transactions
- * - Fetching merkle proofs for claims
+ * - Read-only project and cross-chain accounting lookup
  */
 
-import {
-  createPublicClient,
-  http,
-  encodeFunctionData,
-  pad,
-  type Address,
-  type Chain,
-  type Hex,
-  formatEther,
-  parseUnits,
-} from 'viem';
-import { mainnet, optimism, arbitrum, base } from 'viem/chains';
+import { type Address, type Chain, createPublicClient, formatUnits, http, zeroAddress } from 'viem';
+import { arbitrum, base, mainnet, optimism } from 'viem/chains';
+import { CONTRACTS } from '@shared/chains.ts';
 import { logger } from '../utils/logger.ts';
 import { getConfig } from '../utils/config.ts';
+import { SUCKER_REGISTRY_ABI, SUPPORTED_CHAINS } from '../context/omnichain.ts';
+import { resolveRecognizedSuckerRegistry } from './projectTrust.ts';
 import {
-  SUCKER_ABI,
-  SUCKER_REGISTRY_ABI,
-  SUPPORTED_CHAINS,
-  BRIDGE_PROTOCOLS,
-} from '../context/omnichain.ts';
+  bendystrawEndpointForChain,
+  type ProjectMetadata,
+  resolveProjectMetadataForDisplay,
+} from './bendystraw.ts';
+import {
+  fetchCurrentRuleset,
+  fetchProjectAccountingState,
+  fetchProjectTokenBalance,
+  getProjectOwner,
+} from './chainReader.ts';
 
 // ============================================================================
 // Chain Configuration
@@ -39,25 +36,8 @@ const CHAINS: Record<number, { chain: Chain; rpcUrl: string }> = {
   42161: { chain: arbitrum, rpcUrl: 'https://arbitrum.llamarpc.com' },
 };
 
-// V6 JBSuckerRegistry address (same on all chains via CREATE2)
-const SUCKER_REGISTRY: Record<number, Address> = {
-  1: '0x7903a854ae91eaf635430d120a1a434085cef297',
-  10: '0x7903a854ae91eaf635430d120a1a434085cef297',
-  8453: '0x7903a854ae91eaf635430d120a1a434085cef297',
-  42161: '0x7903a854ae91eaf635430d120a1a434085cef297',
-};
-
-// 32 zero bytes — used for empty bytes32 metadata fields
-const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
-
-// Juicerkle API for merkle proofs
-const JUICERKLE_API = 'https://juicerkle-production.up.railway.app';
-
 // MCP Documentation API
 const MCP_API = 'https://docs.juicebox.money/api/mcp';
-
-// Bendystraw GraphQL API
-const BENDYSTRAW_API = 'https://bendystraw.xyz/graphql';
 
 // ============================================================================
 // Client Factory
@@ -83,7 +63,7 @@ const DEFAULT_TIMEOUT_MS = 10000; // 10 seconds
 async function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
-  timeoutMs: number = DEFAULT_TIMEOUT_MS
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -102,6 +82,33 @@ async function fetchWithTimeout(
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+interface BendystrawResponse<T> {
+  data?: T;
+  errors?: Array<{ message: string }>;
+}
+
+async function queryMainnetBendystraw<T>(
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<T> {
+  const endpoint = bendystrawEndpointForChain(getConfig().bendystrawApiKey, 1);
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Bendystraw query failed (${response.status}): ${detail}`);
+  }
+  const result = await response.json() as BendystrawResponse<T>;
+  if (result.errors?.length) {
+    throw new Error(result.errors.map((error) => error.message).join('; '));
+  }
+  if (!result.data) throw new Error('Bendystraw returned no data');
+  return result.data;
 }
 
 // ============================================================================
@@ -137,6 +144,105 @@ interface CrossChainBalance {
   formattedBalance: string;
 }
 
+const SUCKER_REGISTRY_MEMBERSHIP_ABI = [{
+  name: 'isSuckerOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [
+    { name: 'projectId', type: 'uint256' },
+    { name: 'addr', type: 'address' },
+  ],
+  outputs: [{ name: '', type: 'bool' }],
+}] as const;
+
+const SUCKER_IDENTITY_ABI = [
+  {
+    name: 'projectId',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'DIRECTORY',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'PROJECTS',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'REGISTRY',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'peer',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'bytes32' }],
+  },
+  {
+    name: 'peerChainId',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
+const ROOTS = {
+  directory: CONTRACTS.JBDirectory as Address,
+  projects: CONTRACTS.JBProjects as Address,
+};
+
+const RECOGNIZED_CONTROLLER = CONTRACTS.JBController as Address;
+const DIRECTORY_CONTROLLER_ABI = [{
+  name: 'controllerOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [{ name: 'projectId', type: 'uint256' }],
+  outputs: [{ name: '', type: 'address' }],
+}] as const;
+const CONTROLLER_URI_ABI = [{
+  name: 'uriOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [{ name: 'projectId', type: 'uint256' }],
+  outputs: [{ name: '', type: 'string' }],
+}] as const;
+
+async function readRecognizedControllerUri(
+  chainId: number,
+  projectId: number,
+): Promise<string | undefined> {
+  const client = getClient(chainId);
+  const controller = await client.readContract({
+    address: ROOTS.directory,
+    abi: DIRECTORY_CONTROLLER_ABI,
+    functionName: 'controllerOf',
+    args: [BigInt(projectId)],
+  });
+  if (controller === zeroAddress) return undefined;
+  if (controller.toLowerCase() !== RECOGNIZED_CONTROLLER.toLowerCase()) return undefined;
+  const uri = await client.readContract({
+    address: controller,
+    abi: CONTROLLER_URI_ABI,
+    functionName: 'uriOf',
+    args: [BigInt(projectId)],
+  });
+  return uri || undefined;
+}
+
 // ============================================================================
 // Tool Implementations
 // ============================================================================
@@ -151,127 +257,169 @@ export async function getProjectData(params: {
   projectId: number;
   chainId: number;
   version: number;
+  owner: Address;
   name: string | null;
-  balance: string;
-  formattedBalance: string;
+  description: string | null;
+  projectTagline: string | null;
+  logoUri: string | null;
+  metadataUri: string | null;
+  metadata: ProjectMetadata | null;
+  metadataSource: 'bendystraw' | 'onchain' | 'unavailable';
+  indexedDataAvailable: boolean;
+  indexedDataError: string | null;
+  balances: Array<{
+    terminal: Address;
+    token: Address;
+    decimals: number;
+    currency: number;
+    symbol: 'ETH' | 'USDC';
+    balance: string;
+    formattedBalance: string;
+  }>;
+  balancesAvailable: boolean;
+  balanceError: string | null;
   tokenSymbol: string | null;
-  totalSupply: string;
-  formattedTotalSupply: string;
+  totalSupply: string | null;
+  formattedTotalSupply: string | null;
   // Cash out tax rate is a BONDING CURVE parameter (0-1), NOT a simple percentage
   // 0 = linear redemption (full proportional share)
-  // 1 = quadratic curve (harsh penalty for larger redemptions)
-  cashOutTaxRate: number | null;       // Raw value in basis points (0-10000)
+  // Rates below 1 curve partial exits; 1 disables cash outs and returns zero
+  cashOutTaxRate: number | null; // Raw value in basis points (0-10000)
   cashOutTaxRateDecimal: number | null; // Converted to 0-1 scale
+  rulesetAvailable: boolean;
+  rulesetError: string | null;
 }> {
-  const config = getConfig();
-  const apiKey = config.bendystrawApiKey;
   const chainId = params.chainId ?? 1;
   const version = 6; // Juicebox V6 — the only supported protocol version
+  if (!CHAINS[chainId]) throw new Error(`Unsupported chain: ${chainId}`);
+  if (!Number.isSafeInteger(params.projectId) || params.projectId <= 0) {
+    throw new Error('Project ID is invalid');
+  }
 
-  // Query project data and current cash out tax rate
-  // Note: project() uses Float! types, but where clauses use Int
+  // Bendystraw supplies indexed display metadata. Current accounting and
+  // ruleset values are read separately from the live project contracts.
   const query = `
-    query GetProjectData(
-      $projectIdFloat: Float!,
-      $chainIdFloat: Float!,
-      $versionFloat: Float!,
-      $projectIdInt: Int!,
-      $chainIdInt: Int!,
-      $versionInt: Int!
-    ) {
-      project(projectId: $projectIdFloat, chainId: $chainIdFloat, version: $versionFloat) {
+    query GetProjectData($projectId: Float!, $chainId: Float!, $version: Float!) {
+      project(projectId: $projectId, chainId: $chainId, version: $version) {
         projectId
         chainId
         version
+        metadataUri
+        metadata
         name
-        balance
+        description
+        projectTagline
+        logoUri
+        coverImageUri
+        infoUri
+        payDisclosure
+        twitter
+        farcaster
+        discord
+        telegram
+        domain
+        tags
+        tokens
         tokenSymbol
-        tokenSupply
-      }
-      cashOutTaxSnapshots(
-        where: { projectId: $projectIdInt, chainId: $chainIdInt, version: $versionInt }
-        orderBy: "start"
-        orderDirection: "desc"
-        limit: 1
-      ) {
-        items {
-          cashOutTax
-          start
-          duration
-          rulesetId
-        }
       }
     }
   `;
 
   try {
-    const response = await fetchWithTimeout(BENDYSTRAW_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-      },
-      body: JSON.stringify({
+    let indexedProject: Record<string, unknown> | null = null;
+    let indexedDataError: string | null = null;
+    try {
+      const indexed = await queryMainnetBendystraw<{ project: Record<string, unknown> | null }>(
         query,
-        variables: {
-          projectIdFloat: params.projectId,
-          chainIdFloat: chainId,
-          versionFloat: version,
-          projectIdInt: params.projectId,
-          chainIdInt: chainId,
-          versionInt: version,
-        },
-      }),
+        { projectId: params.projectId, chainId, version },
+      );
+      indexedProject = indexed.project;
+    } catch (error) {
+      indexedDataError = error instanceof Error ? error.message : 'Bendystraw read failed';
+    }
+
+    const [ownerResult, accountingResult, rulesetResult] = await Promise.allSettled([
+      getProjectOwner(chainId, params.projectId),
+      fetchProjectAccountingState(chainId, params.projectId),
+      fetchCurrentRuleset(chainId, params.projectId),
+    ]);
+    if (ownerResult.status === 'rejected') {
+      throw new Error(
+        `Project ${params.projectId} could not be verified on chain ${chainId}: ${
+          ownerResult.reason instanceof Error ? ownerResult.reason.message : 'ownerOf failed'
+        }`,
+      );
+    }
+
+    const metadata = await resolveProjectMetadataForDisplay({
+      indexedMetadata: indexedProject?.metadata,
+      indexedFields: indexedProject,
+      indexedMetadataUri: typeof indexedProject?.metadataUri === 'string'
+        ? indexedProject.metadataUri
+        : undefined,
+      loadOnchainMetadataUri: async () => {
+        try {
+          return await readRecognizedControllerUri(chainId, params.projectId);
+        } catch {
+          return undefined;
+        }
+      },
     });
 
-    const data = await response.json();
-
-    if (data.errors) {
-      logger.error('Bendystraw GraphQL error', new Error(data.errors[0]?.message), {
-        projectId: params.projectId,
-        chainId,
-        errors: data.errors,
-      });
-      throw new Error(data.errors[0]?.message || 'GraphQL query failed');
-    }
-
-    const project = data.data?.project;
-
-    if (!project) {
-      throw new Error(`Project ${params.projectId} not found on chain ${chainId}`);
-    }
-
-    // Parse balance (in wei)
-    const balanceWei = BigInt(project.balance ?? '0');
-    const formattedBalance = formatEther(balanceWei);
-
-    // Parse total supply (in wei)
-    const supplyWei = BigInt(project.tokenSupply ?? '0');
-    const formattedTotalSupply = formatEther(supplyWei);
-
-    // Get cash out tax rate from snapshot (in basis points: 0-10000)
-    // This is a BONDING CURVE parameter, NOT a simple percentage tax.
-    // r=0 means linear redemption (full proportional share)
-    // r=1 means quadratic curve (harsh penalty for larger redemptions)
-    const taxSnapshot = data.data?.cashOutTaxSnapshots?.items?.[0];
-    const cashOutTaxRate = taxSnapshot?.cashOutTax ?? null;
-    // Convert to 0-1 scale for clarity (e.g., 1000 basis points = 0.1)
-    const cashOutTaxRateDecimal = cashOutTaxRate !== null
-      ? cashOutTaxRate / 10000
+    const accounting = accountingResult.status === 'fulfilled' ? accountingResult.value : null;
+    const balanceError = accountingResult.status === 'rejected'
+      ? accountingResult.reason instanceof Error
+        ? accountingResult.reason.message
+        : 'Live accounting read failed'
       : null;
+    const ruleset = rulesetResult.status === 'fulfilled' ? rulesetResult.value : null;
+    const rulesetError = rulesetResult.status === 'rejected'
+      ? rulesetResult.reason instanceof Error
+        ? rulesetResult.reason.message
+        : 'Live ruleset read failed'
+      : ruleset
+      ? null
+      : 'This project has no current ruleset';
+    const cashOutTaxRate = ruleset?.metadata.cashOutTaxRate ?? null;
+    const tokenSymbol = typeof indexedProject?.tokenSymbol === 'string'
+      ? indexedProject.tokenSymbol
+      : metadata.metadata?.tokenSymbol ?? metadata.metadata?.symbol ?? metadata.metadata?.ticker ??
+        null;
 
     return {
-      projectId: project.projectId,
-      chainId: project.chainId,
-      version: project.version,
-      name: project.name,
-      balance: project.balance ?? '0',
-      formattedBalance: `${formattedBalance} ETH`,
-      tokenSymbol: project.tokenSymbol,
-      totalSupply: project.tokenSupply ?? '0',
-      formattedTotalSupply: `${formattedTotalSupply} ${project.tokenSymbol ?? 'tokens'}`,
+      projectId: params.projectId,
+      chainId,
+      version,
+      owner: ownerResult.value,
+      name: metadata.metadata?.name ?? null,
+      description: metadata.metadata?.description ?? null,
+      projectTagline: metadata.metadata?.projectTagline ?? metadata.metadata?.tagline ?? null,
+      logoUri: metadata.metadata?.logoUri ?? null,
+      metadataUri: metadata.metadataUri ?? null,
+      metadata: metadata.metadata ?? null,
+      metadataSource: metadata.source,
+      indexedDataAvailable: indexedProject !== null,
+      indexedDataError,
+      balances: accounting?.balances.map((entry) => ({
+        terminal: entry.terminal,
+        token: entry.token,
+        decimals: entry.decimals,
+        currency: entry.currency,
+        symbol: entry.symbol,
+        balance: entry.balance.toString(),
+        formattedBalance: `${formatUnits(entry.balance, entry.decimals)} ${entry.symbol}`,
+      })) ?? [],
+      balancesAvailable: accounting !== null,
+      balanceError,
+      tokenSymbol,
+      totalSupply: accounting?.totalSupply.toString() ?? null,
+      formattedTotalSupply: accounting
+        ? `${formatUnits(accounting.totalSupply, 18)} ${tokenSymbol ?? 'tokens'}`
+        : null,
       cashOutTaxRate,
-      cashOutTaxRateDecimal,
+      cashOutTaxRateDecimal: cashOutTaxRate === null ? null : cashOutTaxRate / 10_000,
+      rulesetAvailable: ruleset !== null,
+      rulesetError,
     };
   } catch (error) {
     logger.error('Failed to get project data', error as Error, {
@@ -288,9 +436,12 @@ export async function getProjectData(params: {
  */
 function sanitizeForGraphQL(input: string): string {
   // Remove quotes, backslashes, and control characters
-  return input
-    .replace(/[\\"]/g, '') // Remove quotes and backslashes
-    .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+  return [...input.replace(/[\\"]/g, '')]
+    .filter((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint >= 0x20 && codePoint !== 0x7f;
+    })
+    .join('')
     .trim()
     .slice(0, 100); // Limit length to prevent abuse
 }
@@ -305,18 +456,19 @@ export async function searchProjects(params: {
   projects: Array<{
     projectId: number;
     chainId: number;
-    name: string;
+    name: string | null;
     description: string | null;
+    projectTagline: string | null;
     logoUri: string | null;
     handle: string | null;
     tags: string[];
-    volume: string;
-    balance: string;
+    volume: string | null;
+    volumeAvailable: boolean;
+    balance: null;
+    balanceAvailable: false;
   }>;
   count: number;
 }> {
-  const config = getConfig();
-  const apiKey = config.bendystrawApiKey;
   const limit = Math.min(params.limit ?? 10, 50);
 
   // Sanitize input to prevent GraphQL injection
@@ -335,9 +487,9 @@ export async function searchProjects(params: {
   ].filter((v, i, arr) => arr.indexOf(v) === i); // Deduplicate
 
   // Build OR conditions for all case variations (sanitized)
-  const nameConditions = caseVariations.map(v => `{ name_contains: "${v}" }`).join(', ');
-  const descConditions = caseVariations.map(v => `{ description_contains: "${v}" }`).join(', ');
-  const tagConditions = caseVariations.map(v => `{ tags_has: "${v}" }`).join(', ');
+  const nameConditions = caseVariations.map((v) => `{ name_contains: "${v}" }`).join(', ');
+  const descConditions = caseVariations.map((v) => `{ description_contains: "${v}" }`).join(', ');
+  const tagConditions = caseVariations.map((v) => `{ tags_has: "${v}" }`).join(', ');
 
   // Use Bendystraw's project search with OR filters for multiple case variations
   const query = `
@@ -358,11 +510,23 @@ export async function searchProjects(params: {
         items {
           projectId
           chainId
+          metadataUri
+          metadata
           name
           description
+          projectTagline
           logoUri
+          coverImageUri
+          infoUri
+          payDisclosure
+          twitter
+          farcaster
+          discord
+          telegram
+          domain
           handle
           tags
+          tokens
           volume
           balance
         }
@@ -371,55 +535,39 @@ export async function searchProjects(params: {
   `;
 
   try {
-    const response = await fetchWithTimeout(BENDYSTRAW_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-      },
-      body: JSON.stringify({
-        query,
-        variables: {
-          limit,
-        },
-      }),
-    });
-
-    const data = await response.json();
-
-    if (data.errors) {
-      logger.error('Bendystraw GraphQL error', new Error(data.errors[0]?.message), {
-        query: params.query,
-        errors: data.errors,
+    const data = await queryMainnetBendystraw<{
+      projects?: { items?: Array<Record<string, unknown>> };
+    }>(query, { limit });
+    const projects = data.projects?.items ?? [];
+    const resolvedProjects = await Promise.all(projects.map(async (project) => {
+      const metadata = await resolveProjectMetadataForDisplay({
+        indexedMetadata: project.metadata,
+        indexedFields: project,
+        indexedMetadataUri: typeof project.metadataUri === 'string'
+          ? project.metadataUri
+          : undefined,
       });
-      throw new Error(data.errors[0]?.message || 'GraphQL query failed');
-    }
-
-    const projects = data.data?.projects?.items ?? [];
+      return { project, metadata: metadata.metadata };
+    }));
 
     return {
-      projects: projects.map((p: {
-        projectId: number;
-        chainId: number;
-        name: string;
-        description: string | null;
-        logoUri: string | null;
-        handle: string | null;
-        tags: string[] | null;
-        volume: string;
-        balance: string;
-      }) => ({
-        projectId: p.projectId,
-        chainId: p.chainId,
-        name: p.name,
-        description: p.description,
-        logoUri: p.logoUri,
-        handle: p.handle,
-        tags: p.tags ?? [],
-        volume: p.volume,
-        balance: p.balance,
+      projects: resolvedProjects.map(({ project, metadata }) => ({
+        projectId: Number(project.projectId),
+        chainId: Number(project.chainId),
+        name: metadata?.name ?? null,
+        description: metadata?.description ?? null,
+        projectTagline: metadata?.projectTagline ?? metadata?.tagline ?? null,
+        logoUri: metadata?.logoUri ?? null,
+        handle: typeof project.handle === 'string' ? project.handle : null,
+        tags: metadata?.tags ?? [],
+        volume: typeof project.volume === 'string' ? project.volume : null,
+        volumeAvailable: typeof project.volume === 'string',
+        // Project search is indexed discovery. Current balances require a
+        // separate live project lookup and are never copied from the indexer.
+        balance: null,
+        balanceAvailable: false as const,
       })),
-      count: projects.length,
+      count: resolvedProjects.length,
     };
   } catch (error) {
     logger.error('Failed to search projects', error as Error, { query: params.query });
@@ -432,102 +580,87 @@ export async function searchProjects(params: {
  */
 export async function getSuckerPairs(
   projectId: number,
-  chainId: number = 1
+  chainId: number = 1,
 ): Promise<SuckerPair[]> {
   const client = getClient(chainId);
-  const registryAddress = SUCKER_REGISTRY[chainId];
+  const projectIdBigInt = BigInt(projectId);
+  const registryAddress = await resolveRecognizedSuckerRegistry({
+    client,
+    projectId: projectIdBigInt,
+  });
+  const pairs = await client.readContract({
+    address: registryAddress,
+    abi: SUCKER_REGISTRY_ABI,
+    functionName: 'suckerPairsOf',
+    args: [projectIdBigInt],
+  });
 
-  if (!registryAddress || registryAddress === '0x0000000000000000000000000000000000000000') {
-    // Fallback: Query Bendystraw for sucker group data
-    return getSuckerPairsFromSubgraph(projectId, chainId);
-  }
-
-  try {
-    const pairs = await client.readContract({
-      address: registryAddress,
-      abi: SUCKER_REGISTRY_ABI,
-      functionName: 'suckerPairsOf',
-      args: [BigInt(projectId)],
-    });
-
-    return pairs.map((p) => ({
-      local: p.local,
-      // V6 pairs store the remote as bytes32 (cross-VM); EVM addresses are the low 20 bytes
-      remote: `0x${p.remote.slice(-40)}` as Address,
-      remoteChainId: Number(p.remoteChainId),
-    }));
-  } catch (error) {
-    logger.warn('Failed to fetch sucker pairs from registry, using subgraph', {
-      projectId,
-      chainId,
-      error,
-    });
-    return getSuckerPairsFromSubgraph(projectId, chainId);
-  }
-}
-
-/**
- * Fallback: Get sucker pairs from Bendystraw sucker transactions.
- *
- * Bendystraw V6 has no suckerDeployments table; pairs are derived from
- * sucker transactions the project has already processed. The on-chain
- * registry (primary path) is authoritative for freshly deployed suckers.
- */
-async function getSuckerPairsFromSubgraph(
-  projectId: number,
-  chainId: number
-): Promise<SuckerPair[]> {
-  const config = getConfig();
-  const apiKey = config.bendystrawApiKey;
-
-  const query = `
-    query GetSuckerPairs($projectId: Int!, $chainId: Int!) {
-      suckerTransactions(
-        where: { projectId: $projectId, chainId: $chainId, version: 6 }
-        limit: 100
-      ) {
-        items {
-          sucker
-          peer
-          peerChainId
-        }
-      }
+  return Promise.all(pairs.map(async (pair) => {
+    const remoteChainId = Number(pair.remoteChainId);
+    const remote = `0x${pair.remote.slice(-40)}` as Address;
+    if (
+      pair.local.toLowerCase() === zeroAddress ||
+      remote.toLowerCase() === zeroAddress ||
+      !CHAINS[remoteChainId] ||
+      remoteChainId === chainId
+    ) {
+      throw new Error(`Project bridge route not recognized: ${pair.local}`);
     }
-  `;
 
-  try {
-    const response = await fetchWithTimeout(BENDYSTRAW_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-      },
-      body: JSON.stringify({
-        query,
-        variables: { projectId, chainId },
-      }),
-    });
+    const [registered, suckerProjectId, directory, projects, registry, peer, peerChain] =
+      await Promise.all([
+        client.readContract({
+          address: registryAddress,
+          abi: SUCKER_REGISTRY_MEMBERSHIP_ABI,
+          functionName: 'isSuckerOf',
+          args: [projectIdBigInt, pair.local],
+        }),
+        client.readContract({
+          address: pair.local,
+          abi: SUCKER_IDENTITY_ABI,
+          functionName: 'projectId',
+        }),
+        client.readContract({
+          address: pair.local,
+          abi: SUCKER_IDENTITY_ABI,
+          functionName: 'DIRECTORY',
+        }),
+        client.readContract({
+          address: pair.local,
+          abi: SUCKER_IDENTITY_ABI,
+          functionName: 'PROJECTS',
+        }),
+        client.readContract({
+          address: pair.local,
+          abi: SUCKER_IDENTITY_ABI,
+          functionName: 'REGISTRY',
+        }),
+        client.readContract({
+          address: pair.local,
+          abi: SUCKER_IDENTITY_ABI,
+          functionName: 'peer',
+        }),
+        client.readContract({
+          address: pair.local,
+          abi: SUCKER_IDENTITY_ABI,
+          functionName: 'peerChainId',
+        }),
+      ]);
 
-    const data = await response.json();
-    const transactions = data.data?.suckerTransactions?.items ?? [];
-
-    // Deduplicate (sucker, peer, peerChainId) triples across transactions
-    const seen = new Set<string>();
-    const pairs: SuckerPair[] = [];
-    for (const t of transactions as Array<{ sucker: Address; peer: Address; peerChainId: number }>) {
-      const key = `${t.sucker}-${t.peer}-${t.peerChainId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      pairs.push({ local: t.sucker, remote: t.peer, remoteChainId: t.peerChainId });
+    if (
+      !registered ||
+      suckerProjectId !== projectIdBigInt ||
+      directory.toLowerCase() !== ROOTS.directory.toLowerCase() ||
+      projects.toLowerCase() !== ROOTS.projects.toLowerCase() ||
+      registry.toLowerCase() !== registryAddress.toLowerCase() ||
+      peer.toLowerCase() !== pair.remote.toLowerCase() ||
+      peerChain !== pair.remoteChainId
+    ) {
+      throw new Error(`Project bridge contract not recognized: ${pair.local}`);
     }
-    return pairs;
-  } catch (error) {
-    logger.error('Failed to fetch sucker pairs from subgraph', error as Error, {
-      projectId,
-      chainId,
-    });
-    return [];
-  }
+
+    return { local: pair.local, remote, remoteChainId };
+  }));
 }
 
 /**
@@ -538,9 +671,6 @@ export async function getBridgeTransactions(params: {
   status?: 'pending' | 'claimable' | 'claimed';
   beneficiary?: string;
 }): Promise<BridgeTransaction[]> {
-  const config = getConfig();
-  const apiKey = config.bendystrawApiKey;
-
   const query = `
     query SuckerTransactions($suckerGroupId: String!, $status: suckerTransactionStatus, $beneficiary: String) {
       suckerTransactions(
@@ -569,239 +699,21 @@ export async function getBridgeTransactions(params: {
   `;
 
   try {
-    const response = await fetchWithTimeout(BENDYSTRAW_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-      },
-      body: JSON.stringify({
-        query,
-        variables: {
-          suckerGroupId: params.suckerGroupId,
-          status: params.status,
-          beneficiary: params.beneficiary,
-        },
-      }),
+    const data = await queryMainnetBendystraw<{
+      suckerTransactions?: { items?: BridgeTransaction[] };
+    }>(query, {
+      suckerGroupId: params.suckerGroupId,
+      status: params.status,
+      beneficiary: params.beneficiary,
     });
-
-    const data = await response.json();
-    return data.data?.suckerTransactions?.items ?? [];
+    if (!data.suckerTransactions?.items) {
+      throw new Error('Bendystraw sucker transaction data is unavailable');
+    }
+    return data.suckerTransactions.items;
   } catch (error) {
     logger.error('Failed to fetch bridge transactions', error as Error, params);
-    return [];
+    throw error;
   }
-}
-
-/**
- * Estimate bridge fee via simulation
- */
-export async function estimateBridgeFee(params: {
-  sourceChainId: number;
-  destinationChainId: number;
-  suckerAddress: Address;
-  token: Address;
-}): Promise<{ fee: string; formattedFee: string; protocol: string }> {
-  const client = getClient(params.sourceChainId);
-
-  // Binary search for minimum viable fee
-  let low = 0n;
-  let high = parseUnits('0.04', 18); // Max 0.04 ETH
-  let result = high;
-
-  for (let i = 0; i < 10; i++) {
-    const mid = (low + high) / 2n;
-
-    try {
-      await client.simulateContract({
-        address: params.suckerAddress,
-        abi: SUCKER_ABI,
-        functionName: 'toRemote',
-        args: [params.token],
-        value: mid,
-      });
-      // Success - try lower
-      result = mid;
-      high = mid;
-    } catch {
-      // Failed - try higher
-      low = mid;
-    }
-  }
-
-  // Add 10% buffer
-  const bufferedFee = (result * 110n) / 100n;
-
-  const protocolKey = `${params.sourceChainId}-${params.destinationChainId}`;
-  const protocol = BRIDGE_PROTOCOLS[protocolKey] ?? 'Unknown';
-
-  return {
-    fee: bufferedFee.toString(),
-    formattedFee: formatEther(bufferedFee),
-    protocol,
-  };
-}
-
-/**
- * Generate prepare transaction calldata
- */
-export function prepareBridgeTransaction(params: {
-  suckerAddress: Address;
-  projectTokenAmount: string;
-  beneficiary: Address;
-  minTokensReclaimed: string;
-  terminalToken: Address;
-}): { to: Address; data: `0x${string}`; value: string } {
-  const data = encodeFunctionData({
-    abi: SUCKER_ABI,
-    functionName: 'prepare',
-    args: [
-      BigInt(params.projectTokenAmount),
-      // V6 beneficiaries are bytes32 (EVM address left-padded to 32 bytes)
-      pad(params.beneficiary, { size: 32 }),
-      BigInt(params.minTokensReclaimed),
-      params.terminalToken,
-      // No attribution metadata for an ordinary bridge
-      ZERO_BYTES32,
-    ],
-  });
-
-  return {
-    to: params.suckerAddress,
-    data,
-    value: '0',
-  };
-}
-
-/**
- * Generate toRemote transaction calldata
- */
-export async function executeBridgeTransaction(params: {
-  chainId: number;
-  suckerAddress: Address;
-  token: Address;
-}): Promise<{ to: Address; data: `0x${string}`; value: string }> {
-  // Estimate fee first
-  // Note: We can't know destination chain without more context, so use a reasonable default
-  const fee = await estimateBridgeFee({
-    sourceChainId: params.chainId,
-    destinationChainId: params.chainId === 1 ? 10 : 1, // Default to mainnet or OP
-    suckerAddress: params.suckerAddress,
-    token: params.token,
-  });
-
-  const data = encodeFunctionData({
-    abi: SUCKER_ABI,
-    functionName: 'toRemote',
-    args: [params.token],
-  });
-
-  return {
-    to: params.suckerAddress,
-    data,
-    value: fee.fee,
-  };
-}
-
-/**
- * Juicerkle claim response format (PascalCase)
- */
-interface JuicerkleClaim {
-  Token: string;
-  Leaf: {
-    Index: number;
-    Beneficiary: string;
-    ProjectTokenCount: string;
-    TerminalTokenAmount: string;
-    Metadata?: string; // bytes32 attribution payload (V6 leaves); zero when absent
-  };
-  Proof: number[][]; // Array of 32-byte arrays
-}
-
-/**
- * Fetch merkle proof from Juicerkle and generate claim transaction
- */
-export async function claimBridgeTransaction(params: {
-  chainId: number;
-  suckerAddress: Address;
-  token: Address;
-  beneficiary: Address;
-}): Promise<{
-  to: Address;
-  data: `0x${string}`;
-  value: string;
-  claims: Array<{
-    index: number;
-    projectTokenCount: string;
-    terminalTokenAmount: string;
-  }>;
-}> {
-  // Fetch proofs from Juicerkle (note: addresses must be lowercase)
-  const response = await fetchWithTimeout(`${JUICERKLE_API}/claims`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chainId: params.chainId,
-      sucker: params.suckerAddress.toLowerCase(),
-      token: params.token.toLowerCase(),
-      beneficiary: params.beneficiary.toLowerCase(),
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Juicerkle API error: ${response.status}`);
-  }
-
-  const proofs = (await response.json()) as JuicerkleClaim[];
-
-  if (!proofs || proofs.length === 0) {
-    throw new Error('No claimable proofs found for this beneficiary');
-  }
-
-  // For simplicity, claim the first available proof
-  // In production, could batch multiple claims
-  const claim = proofs[0];
-
-  // Convert Proof from number[][] to bytes32[]
-  const proofBytes = claim.Proof.map((arr) => {
-    const hex = arr.map((b) => b.toString(16).padStart(2, '0')).join('');
-    return `0x${hex}` as `0x${string}`;
-  });
-
-  const claimData = {
-    token: params.token,
-    leaf: {
-      index: BigInt(claim.Leaf.Index),
-      // V6 leaves store the beneficiary as bytes32 (EVM address left-padded)
-      beneficiary: pad(claim.Leaf.Beneficiary as Hex, { size: 32 }),
-      projectTokenCount: BigInt(claim.Leaf.ProjectTokenCount),
-      terminalTokenAmount: BigInt(claim.Leaf.TerminalTokenAmount),
-      metadata: claim.Leaf.Metadata
-        ? pad(claim.Leaf.Metadata as Hex, { size: 32 })
-        : ZERO_BYTES32,
-    },
-    proof: proofBytes,
-  } as const;
-
-  // Cast needed: viem infers a fixed-length tuple for proof from the ABI,
-  // but we have a dynamic-length array from the API response
-  const data = encodeFunctionData({
-    abi: SUCKER_ABI,
-    functionName: 'claim',
-    // deno-lint-ignore no-explicit-any
-    args: [claimData] as any,
-  });
-
-  return {
-    to: params.suckerAddress,
-    data,
-    value: '0',
-    claims: proofs.map((p) => ({
-      index: p.Leaf.Index,
-      projectTokenCount: p.Leaf.ProjectTokenCount,
-      terminalTokenAmount: p.Leaf.TerminalTokenAmount,
-    })),
-  };
 }
 
 /**
@@ -815,9 +727,6 @@ export async function getCrossChainBalance(params: {
   totalBalance: string;
   formattedTotal: string;
 }> {
-  const config = getConfig();
-  const apiKey = config.bendystrawApiKey;
-
   // First get all projects in the sucker group
   const query = `
     query SuckerGroup($id: String!) {
@@ -826,81 +735,51 @@ export async function getCrossChainBalance(params: {
           items {
             chainId
             projectId
-            token
-            tokenSymbol
-            decimals
           }
         }
       }
     }
   `;
 
-  const response = await fetchWithTimeout(BENDYSTRAW_API, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-    },
-    body: JSON.stringify({
-      query,
-      variables: { id: params.suckerGroupId },
-    }),
-  });
+  const data = await queryMainnetBendystraw<{
+    suckerGroup?: { projects?: { items?: Array<{ chainId: number; projectId: number }> } };
+  }>(query, { id: params.suckerGroupId });
+  const projects = data.suckerGroup?.projects?.items;
+  if (!projects?.length) throw new Error('Sucker group project mapping is unavailable');
 
-  const data = await response.json();
-  const projects = data.data?.suckerGroup?.projects?.items ?? [];
-
-  // Query balance on each chain
+  // Bendystraw supplies only the group mapping. Every balance is read from the
+  // live JBTokens dependency derived through that project's controller.
   const balancePromises = projects.map(
-    async (project: { chainId: number; token: Address; decimals: number }) => {
-      if (!CHAINS[project.chainId]) return null;
-
-      const client = getClient(project.chainId);
-
-      try {
-        const balance = await client.readContract({
-          address: project.token,
-          abi: [
-            {
-              name: 'balanceOf',
-              type: 'function',
-              inputs: [{ name: 'account', type: 'address' }],
-              outputs: [{ name: 'balance', type: 'uint256' }],
-              stateMutability: 'view',
-            },
-          ],
-          functionName: 'balanceOf',
-          args: [params.userAddress],
-        });
-
-        const chainInfo = SUPPORTED_CHAINS[project.chainId as keyof typeof SUPPORTED_CHAINS];
-
-        return {
-          chainId: project.chainId,
-          chainName: chainInfo?.name ?? `Chain ${project.chainId}`,
-          balance: balance.toString(),
-          formattedBalance: formatEther(balance),
-        };
-      } catch (error) {
-        logger.warn('Failed to fetch balance on chain', {
-          chainId: project.chainId,
-          error,
-        });
-        return null;
+    async (project) => {
+      if (!CHAINS[project.chainId]) {
+        throw new Error(`Unsupported sucker-group chain: ${project.chainId}`);
       }
-    }
+      if (!Number.isSafeInteger(project.projectId) || project.projectId <= 0) {
+        throw new Error('Sucker group contains an invalid project ID');
+      }
+      const balance = await fetchProjectTokenBalance(
+        project.chainId,
+        project.projectId,
+        params.userAddress,
+      );
+      const chainInfo = SUPPORTED_CHAINS[project.chainId as keyof typeof SUPPORTED_CHAINS];
+      return {
+        chainId: project.chainId,
+        chainName: chainInfo?.name ?? `Chain ${project.chainId}`,
+        balance: balance.toString(),
+        formattedBalance: formatUnits(balance, 18),
+      };
+    },
   );
 
-  const balances = (await Promise.all(balancePromises)).filter(
-    (b): b is CrossChainBalance => b !== null
-  );
+  const balances: CrossChainBalance[] = await Promise.all(balancePromises);
 
   const totalBalance = balances.reduce((sum, b) => sum + BigInt(b.balance), 0n);
 
   return {
     balances,
     totalBalance: totalBalance.toString(),
-    formattedTotal: formatEther(totalBalance),
+    formattedTotal: formatUnits(totalBalance, 18),
   };
 }
 
@@ -1019,7 +898,9 @@ async function pinToIpfs(params: PinToIpfsParams): Promise<PinToIpfsResult> {
   const apiSecret = config.ipfsApiSecret;
 
   if (!apiKey || !apiSecret) {
-    throw new Error('IPFS pinning not configured. Set IPFS_API_KEY and IPFS_API_SECRET in environment.');
+    throw new Error(
+      'IPFS pinning not configured. Set IPFS_API_KEY and IPFS_API_SECRET in environment.',
+    );
   }
 
   const body = {
@@ -1058,9 +939,9 @@ async function pinToIpfs(params: PinToIpfsParams): Promise<PinToIpfsResult> {
 // Tool Handler Router
 // ============================================================================
 
-export async function handleOmnichainTool(
+export function handleOmnichainTool(
   toolName: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
 ): Promise<unknown> {
   switch (toolName) {
     case 'get_project_data':
@@ -1078,7 +959,7 @@ export async function handleOmnichainTool(
     case 'get_sucker_pairs':
       return getSuckerPairs(
         input.projectId as number,
-        (input.chainId as number) ?? 1
+        (input.chainId as number) ?? 1,
       );
 
     case 'get_bridge_transactions':
@@ -1086,38 +967,6 @@ export async function handleOmnichainTool(
         suckerGroupId: input.suckerGroupId as string,
         status: input.status as 'pending' | 'claimable' | 'claimed' | undefined,
         beneficiary: input.beneficiary as string | undefined,
-      });
-
-    case 'estimate_bridge_fee':
-      return estimateBridgeFee({
-        sourceChainId: input.sourceChainId as number,
-        destinationChainId: input.destinationChainId as number,
-        suckerAddress: input.suckerAddress as Address,
-        token: input.token as Address,
-      });
-
-    case 'prepare_bridge_transaction':
-      return prepareBridgeTransaction({
-        suckerAddress: input.suckerAddress as Address,
-        projectTokenAmount: input.projectTokenAmount as string,
-        beneficiary: input.beneficiary as Address,
-        minTokensReclaimed: input.minTokensReclaimed as string,
-        terminalToken: input.terminalToken as Address,
-      });
-
-    case 'execute_bridge_transaction':
-      return executeBridgeTransaction({
-        chainId: input.chainId as number,
-        suckerAddress: input.suckerAddress as Address,
-        token: input.token as Address,
-      });
-
-    case 'claim_bridge_transaction':
-      return claimBridgeTransaction({
-        chainId: input.chainId as number,
-        suckerAddress: input.suckerAddress as Address,
-        token: input.token as Address,
-        beneficiary: input.beneficiary as Address,
       });
 
     case 'get_cross_chain_balance':

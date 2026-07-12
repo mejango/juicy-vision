@@ -4,15 +4,18 @@ import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { encodeFunctionData, keccak256, toBytes, createPublicClient, http, type Chain, type Address } from 'viem'
 import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainDeployERC20 } from '../../hooks/relayr'
 import { RPC_ENDPOINTS } from '../../constants'
-import ChainPaymentSelector from './ChainPaymentSelector'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyDeployERC20Params } from '../../utils/transactionVerification'
 import { getProjectController } from '../../utils/paymentTerminal'
+import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import { assertSafeErc20TokenMetadata } from '../../utils/erc20Safety'
+import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 
 const CONTROLLER_DEPLOY_ERC20_ABI = [
   {
@@ -92,12 +95,18 @@ export default function DeployERC20Modal({
   const { data: walletClient } = useWalletClient()
   const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
-  const { totalEth } = useWalletBalances()
+  const { totalEth, perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Managed mode support
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
+  const activeAddress = isManagedMode ? managedAddress : address
+  const { assertCurrentAccount } = useReviewedTransactionAccount(
+    isOpen,
+    activeAddress,
+    isManagedMode ? 'managed' : 'self_custody',
+  )
 
   const [status, setStatus] = useState<DeployStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
@@ -115,7 +124,6 @@ export default function DeployERC20Modal({
     isComplete: omnichainComplete,
     hasError: omnichainError,
     reset: resetOmnichain,
-    setPaymentChain,
   } = useOmnichainDeployERC20({
     onSuccess: (bundleId, txHashes) => {
       console.log('Omnichain ERC20 deployment completed:', bundleId, txHashes)
@@ -129,10 +137,9 @@ export default function DeployERC20Modal({
   })
 
   const chainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`
-  const hasGasBalance = totalEth >= 0.001
-
-  // Check if omnichain is available
-  const hasMultipleChains = allChainProjects && allChainProjects.length > 1
+  const hasGasBalance = isManagedMode || (balancesAvailable && (useAllChains
+    ? perChain.some(balance => balance.eth > 0n)
+    : (perChain.find(balance => balance.chainId === chainId)?.eth ?? 0n) > 0n))
 
   // Verify transaction parameters
   const verificationResult = useMemo(() => {
@@ -145,7 +152,8 @@ export default function DeployERC20Modal({
   }, [projectId, tokenName, tokenSymbol])
 
   const hasWarnings = verificationResult.doubts.length > 0
-  const canProceed = hasGasBalance && (!hasWarnings || warningsAcknowledged) && !!controllerAddress && !controllerLoading
+  const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
+  const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && !!controllerAddress && !controllerLoading
 
   // Reset state when modal opens
   useEffect(() => {
@@ -194,7 +202,7 @@ export default function DeployERC20Modal({
         setControllerAddress(controller)
       } catch (err) {
         console.error('Failed to fetch project controller:', err)
-        setError('Failed to fetch project controller')
+        setError(err instanceof Error ? err.message : 'Failed to fetch project controller')
       } finally {
         setControllerLoading(false)
       }
@@ -204,8 +212,13 @@ export default function DeployERC20Modal({
   }, [isOpen, projectId, chainId])
 
   const handleConfirm = useCallback(async () => {
+    try {
+      assertSafeErc20TokenMetadata(tokenName, tokenSymbol)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Token metadata is invalid')
+      return
+    }
     // Check wallet connection based on mode
-    const activeAddress = isManagedMode ? managedAddress : address
     if (isManagedMode) {
       if (!managedAddress) {
         setError('Managed wallet not available')
@@ -220,25 +233,39 @@ export default function DeployERC20Modal({
 
     if (useAllChains && allChainProjects && allChainProjects.length > 1) {
       // Use Relayr omnichain deployment - same token address on all chains
-      setStatus('signing')
       setError(null)
+      try {
+        assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+        const projectIds: Record<number, number> = {}
+        allChainProjects.forEach(cp => {
+          projectIds[cp.chainId] = typeof cp.projectId === 'string' ? parseInt(cp.projectId) : cp.projectId
+        })
 
-      const projectIds: Record<number, number> = {}
-      allChainProjects.forEach(cp => {
-        projectIds[cp.chainId] = typeof cp.projectId === 'string' ? parseInt(cp.projectId) : cp.projectId
-      })
+        const controllerEntries = await Promise.all(allChainProjects.map(async cp => {
+          const chain = CHAINS[cp.chainId]
+          const rpcUrl = RPC_ENDPOINTS[cp.chainId]?.[0]
+          if (!chain || !rpcUrl) throw new Error(`Unsupported chain ${cp.chainId}`)
+          const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+          const controller = await getProjectController(publicClient, BigInt(projectIds[cp.chainId]))
+          return [cp.chainId, controller] as const
+        }))
 
-      await deploy({
-        chainIds: allChainProjects.map(cp => cp.chainId),
-        projectIds,
-        tokenName,
-        tokenSymbol,
-      })
+        assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+        await deploy({
+          chainIds: allChainProjects.map(cp => cp.chainId),
+          projectIds,
+          tokenName,
+          tokenSymbol,
+          controllerAddresses: Object.fromEntries(controllerEntries),
+        })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Token deployment preflight failed')
+        setStatus('failed')
+      }
       return
     }
 
     // Single chain deployment
-    setStatus('signing')
     setError(null)
 
     const chain = CHAINS[chainId]
@@ -249,21 +276,12 @@ export default function DeployERC20Modal({
       return
     }
 
-    if (!controllerAddress) {
-      setError('Controller address not available')
-      setStatus('failed')
-      return
-    }
-
     try {
-      // Create transaction record
-      const txId = addTransaction({
-        type: 'deploy',
-        projectId,
-        chainId,
-        amount: '0',
-        status: 'pending',
-      })
+      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
+      if (!rpcUrl) throw new Error(`No RPC endpoint configured for chain ${chainId}`)
+      const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+      const freshController = await getProjectController(publicClient, BigInt(projectId))
 
       // Generate a salt based on project, timestamp, and wallet address for uniqueness
       const saltInput = `${projectId}-${tokenSymbol}-${Date.now()}-${activeAddress}`
@@ -279,33 +297,66 @@ export default function DeployERC20Modal({
           salt,
         ],
       })
+      await simulateTransaction({
+        chainId,
+        account: activeAddress as `0x${string}`,
+        to: freshController,
+        data: callData,
+      })
 
-      setStatus('pending')
+      const txId = addTransaction({
+        type: 'deploy',
+        projectId,
+        chainId,
+        amount: '0',
+        status: 'pending',
+      })
 
       let hash: string
 
       if (isManagedMode) {
         // Execute via backend for managed mode
-        hash = await executeManagedTransaction(chainId, controllerAddress, callData, '0')
+        assertCurrentAccount()
+        setStatus('pending')
+        hash = await executeManagedTransaction(chainId, freshController, callData, '0')
       } else {
         // Execute via wallet for self-custody mode
+        setStatus('signing')
         await switchChainAsync({ chainId })
+        if (await walletClient!.getChainId() !== chainId) {
+          throw new Error(`Wallet did not switch to chain ${chainId}`)
+        }
+        const finalController = await getProjectController(publicClient, BigInt(projectId))
+        if (finalController.toLowerCase() !== freshController.toLowerCase()) {
+          throw new Error('The project controller changed. Close this review and try again.')
+        }
+        await simulateTransaction({
+          chainId,
+          account: activeAddress as `0x${string}`,
+          to: finalController,
+          data: callData,
+        })
+        assertCurrentAccount(walletClient!.account?.address)
         hash = await walletClient!.sendTransaction({
-          to: controllerAddress,
+          to: finalController,
           data: callData,
           value: 0n,
         })
+        setStatus('pending')
       }
 
       setTxHash(hash)
       updateTransaction(txId, { hash, status: 'submitted' })
+      onSubmitted?.(hash)
+      if (!isManagedMode) await waitForSuccessfulTransaction(chainId, hash as `0x${string}`)
+      updateTransaction(txId, { hash, status: 'confirmed' })
       setStatus('confirmed')
     } catch (err) {
       console.error('Deploy ERC20 failed:', err)
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, tokenName, tokenSymbol, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, deploy, controllerAddress])
+  }, [walletClient, address, activeAddress, chainId, projectId, tokenName, tokenSymbol, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, deploy, onSubmitted, assertCurrentAccount])
 
   const handleClose = useCallback(() => {
     resetOmnichain()
@@ -454,37 +505,6 @@ export default function DeployERC20Modal({
           {/* Deployment Details */}
           {(status === 'preview' || isProcessing) && !showConfirmed && !showFailed && (
             <>
-              {/* Omnichain toggle */}
-              {hasMultipleChains && !isManagedMode && status === 'preview' && (
-                <div className={`p-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={useAllChains}
-                      onChange={(e) => setUseAllChains(e.target.checked)}
-                      className="w-4 h-4 rounded"
-                    />
-                    <div>
-                      <div className={`text-sm font-medium ${isDark ? 'text-juice-cyan' : 'text-cyan-700'}`}>
-                        Deploy on all {allChainProjects?.length} chains
-                      </div>
-                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Same token address everywhere via CREATE2
-                      </div>
-                    </div>
-                  </label>
-                </div>
-              )}
-
-              {/* Payment chain selector */}
-              {useAllChains && bundleState.paymentOptions.length > 0 && status === 'preview' && (
-                <ChainPaymentSelector
-                  paymentOptions={bundleState.paymentOptions}
-                  selectedChainId={bundleState.selectedPaymentChain}
-                  onSelect={setPaymentChain}
-                />
-              )}
-
               {/* Project */}
               <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                 <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -526,20 +546,14 @@ export default function DeployERC20Modal({
               </div>
 
               {/* Gas balance check */}
-              <div className={`flex justify-between items-center text-sm ${
-                isDark ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                <span>Your ETH balance (for gas)</span>
-                <span className={`font-mono ${!hasGasBalance ? 'text-red-400' : ''}`}>
-                  {formatEthBalance(totalEth)} ETH
-                </span>
-              </div>
-
-              {!hasGasBalance && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                  Insufficient ETH for gas fees
-                </div>
-              )}
+              <GasBalanceStatus
+                balance={totalEth}
+                hasGasBalance={hasGasBalance}
+                loading={balancesLoading}
+                available={balancesAvailable}
+                managed={isManagedMode}
+                isDark={isDark}
+              />
 
               {/* Transaction Summary */}
               <TransactionSummary

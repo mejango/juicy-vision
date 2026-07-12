@@ -8,7 +8,7 @@
  * that persists independently of message history.
  */
 
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, queryOne } from '../db/index.ts';
 
 // ============================================================================
 // Types
@@ -118,7 +118,7 @@ const DEFAULT_STATE: ChatTransactionState = {
 export async function getTransactionState(chatId: string): Promise<ChatTransactionState> {
   const result = await queryOne<DbTransactionState>(
     'SELECT state FROM chat_transaction_state WHERE chat_id = $1',
-    [chatId]
+    [chatId],
   );
 
   if (result) {
@@ -130,7 +130,7 @@ export async function getTransactionState(chatId: string): Promise<ChatTransacti
     `INSERT INTO chat_transaction_state (chat_id, state, schema_version)
      VALUES ($1, $2::jsonb, 1)
      ON CONFLICT (chat_id) DO NOTHING`,
-    [chatId, JSON.stringify(DEFAULT_STATE)]
+    [chatId, JSON.stringify(DEFAULT_STATE)],
   );
 
   return { ...DEFAULT_STATE };
@@ -142,7 +142,7 @@ export async function getTransactionState(chatId: string): Promise<ChatTransacti
 export async function updateTransactionState(
   chatId: string,
   updates: Partial<ChatTransactionState>,
-  messageId?: string
+  messageId?: string,
 ): Promise<ChatTransactionState> {
   // Get current state
   const current = await getTransactionState(chatId);
@@ -162,7 +162,7 @@ export async function updateTransactionState(
        state = $2::jsonb,
        last_updated_by_message_id = COALESCE($3, chat_transaction_state.last_updated_by_message_id),
        updated_at = NOW()`,
-    [chatId, JSON.stringify(newState), messageId || null]
+    [chatId, JSON.stringify(newState), messageId || null],
   );
 
   return newState;
@@ -186,7 +186,7 @@ export async function addPendingQuestion(chatId: string, question: string): Prom
  */
 export async function resolvePendingQuestion(chatId: string, question: string): Promise<void> {
   const state = await getTransactionState(chatId);
-  const pending = (state.pendingQuestions || []).filter(q => q !== question);
+  const pending = (state.pendingQuestions || []).filter((q) => q !== question);
   await updateTransactionState(chatId, { pendingQuestions: pending });
 }
 
@@ -196,7 +196,7 @@ export async function resolvePendingQuestion(chatId: string, question: string): 
 export async function addConfirmedDecision(
   chatId: string,
   decision: string,
-  messageId?: string
+  messageId?: string,
 ): Promise<void> {
   const state = await getTransactionState(chatId);
   const confirmed = state.confirmedDecisions || [];
@@ -217,13 +217,13 @@ export async function addArtifact(
     name: string;
     summary?: string;
     messageId?: string;
-  }
+  },
 ): Promise<void> {
   const state = await getTransactionState(chatId);
   const artifacts = state.artifacts || [];
 
   // Don't duplicate same artifact
-  if (!artifacts.some(a => a.name === artifact.name && a.type === artifact.type)) {
+  if (!artifacts.some((a) => a.name === artifact.name && a.type === artifact.type)) {
     artifacts.push(artifact);
     await updateTransactionState(chatId, { artifacts });
   }
@@ -234,7 +234,7 @@ export async function addArtifact(
  */
 export async function transitionPhase(
   chatId: string,
-  phase: ChatTransactionState['designPhase']
+  phase: ChatTransactionState['designPhase'],
 ): Promise<void> {
   await updateTransactionState(chatId, { designPhase: phase });
 }
@@ -243,7 +243,8 @@ export async function transitionPhase(
 // AI-Powered State Extraction
 // ============================================================================
 
-const STATE_EXTRACTION_PROMPT = `You are analyzing an AI assistant's response to extract any project design decisions that were made or confirmed.
+const STATE_EXTRACTION_PROMPT =
+  `You are analyzing an AI assistant's response to extract any project design decisions that were made or confirmed.
 
 Extract ONLY explicit decisions or configurations mentioned in the response. Do NOT infer or assume.
 
@@ -284,7 +285,7 @@ Return ONLY valid JSON. If nothing was decided/confirmed, return {}.`;
 export async function extractStateFromResponse(
   chatId: string,
   aiResponse: string,
-  messageId: string
+  messageId: string,
 ): Promise<Partial<ChatTransactionState> | null> {
   // Skip extraction for short or obviously non-decision responses
   if (aiResponse.length < 100) return null;
@@ -298,7 +299,10 @@ export async function extractStateFromResponse(
       messages: [
         {
           role: 'user',
-          content: `Analyze this AI assistant response and extract any project design decisions:\n\n${aiResponse.slice(0, 3000)}`,
+          content:
+            `Analyze this AI assistant response and extract any project design decisions:\n\n${
+              aiResponse.slice(0, 3000)
+            }`,
         },
       ],
       system: STATE_EXTRACTION_PROMPT,
@@ -350,7 +354,7 @@ function containsDesignPatterns(text: string): boolean {
     /confirm|agree|decide|set to|configured/i,
   ];
 
-  return patterns.some(p => p.test(text));
+  return patterns.some((p) => p.test(text));
 }
 
 // ============================================================================
@@ -388,7 +392,11 @@ export function formatStateForPrompt(state: ChatTransactionState): string {
       sections.push(`- **Type:** ${state.projectType}`);
     }
     if (state.fundingGoal) {
-      sections.push(`- **Goal:** ${state.fundingGoal}${state.fundingCurrency ? ` ${state.fundingCurrency}` : ''}`);
+      sections.push(
+        `- **Goal:** ${state.fundingGoal}${
+          state.fundingCurrency ? ` ${state.fundingCurrency}` : ''
+        }`,
+      );
     }
     if (state.targetChains?.length) {
       const chainNames = state.targetChains.map(chainIdToName).join(', ');
@@ -408,10 +416,12 @@ export function formatStateForPrompt(state: ChatTransactionState): string {
       sections.push(`- Reserved rate: ${rc.reservedPercent}%`);
     }
     if (rc.cashOutTaxRate !== undefined) {
-      sections.push(`- Cash out tax: ${rc.cashOutTaxRate}%`);
+      sections.push(`- Cash-out curve rate: ${rc.cashOutTaxRate}%`);
     }
     if (rc.duration !== undefined) {
-      sections.push(`- Cycle duration: ${rc.duration === 0 ? 'Unlimited' : `${rc.duration / 86400} days`}`);
+      sections.push(
+        `- Cycle duration: ${rc.duration === 0 ? 'Unlimited' : `${rc.duration / 86400} days`}`,
+      );
     }
     if (rc.decayPercent !== undefined) {
       sections.push(`- Issuance decay: ${rc.decayPercent}% per cycle`);
@@ -425,14 +435,18 @@ export function formatStateForPrompt(state: ChatTransactionState): string {
   if (state.tiers?.length) {
     sections.push('\n## Contribution Tiers');
     state.tiers.forEach((tier, i) => {
-      sections.push(`${i + 1}. **${tier.name}** - ${tier.price}${tier.description ? `: ${tier.description}` : ''}`);
+      sections.push(
+        `${i + 1}. **${tier.name}** - ${tier.price}${
+          tier.description ? `: ${tier.description}` : ''
+        }`,
+      );
     });
   }
 
   // Splits
   if (state.payoutSplits?.length) {
     sections.push('\n## Payout Splits');
-    state.payoutSplits.forEach(split => {
+    state.payoutSplits.forEach((split) => {
       if (split.address) {
         sections.push(`- ${formatAddress(split.address)}: ${split.percent}%`);
       } else if (split.projectId) {
@@ -444,7 +458,7 @@ export function formatStateForPrompt(state: ChatTransactionState): string {
   // Pending questions
   if (state.pendingQuestions?.length) {
     sections.push('\n## Pending Questions');
-    state.pendingQuestions.forEach(q => {
+    state.pendingQuestions.forEach((q) => {
       sections.push(`- [ ] ${q}`);
     });
   }
@@ -452,7 +466,7 @@ export function formatStateForPrompt(state: ChatTransactionState): string {
   // Artifacts
   if (state.artifacts?.length) {
     sections.push('\n## Referenced Materials');
-    state.artifacts.forEach(a => {
+    state.artifacts.forEach((a) => {
       sections.push(`- **${a.name}** (${a.type})${a.summary ? `: ${a.summary}` : ''}`);
     });
   }

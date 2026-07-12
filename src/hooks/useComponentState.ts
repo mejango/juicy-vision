@@ -215,6 +215,7 @@ export interface SendPayoutsFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   amount?: string
   selectedChainId?: number
+  accountingToken?: string
   txHash?: string
   error?: string
   submittedAt?: string
@@ -260,6 +261,7 @@ export interface UseSurplusAllowanceFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   amount?: string
   selectedChainId?: number
+  accountingToken?: string
   txHash?: string
   error?: string
   submittedAt?: string
@@ -283,6 +285,7 @@ export interface CashOutFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   tokenAmount?: string
   selectedChainId?: number
+  accountingToken?: string
   txHash?: string
   error?: string
   submittedAt?: string

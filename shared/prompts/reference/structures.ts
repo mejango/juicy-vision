@@ -50,6 +50,8 @@ export const STRUCTURES_CONTEXT = `
 
 **JB721TierConfigFlags:** \`{ allowOwnerMint: bool, useReserveBeneficiaryAsDefault: bool, transfersPausable: bool, useVotingUnits: bool, cantBeRemoved: bool, cantIncreaseDiscountPercent: bool, cantBuyWithCredits: bool }\`
 
+\`discountPercent\` uses a denominator of 200 (20% off = 40 onchain), and tiers must be sorted by category.
+
 **JB721InitTiersConfig:** \`{ tiers: JB721TierConfig[], currency: uint32, decimals: uint8 }\`
 
 **JBDeploy721TiersHookConfig:**
@@ -64,9 +66,16 @@ export const STRUCTURES_CONTEXT = `
 `;
 
 export const STRUCTURES_HINTS = [
-  'struct', 'JBRulesetConfig', 'JBSplit', 'JBTerminalConfig',
-  'JBRulesetMetadata', 'JBFundAccessLimitGroup', 'JBAccountingContext',
-  'JB721TierConfig', 'JBDeploy721TiersHookConfig', 'JBSuckerDeploymentConfig'
+  'struct',
+  'JBRulesetConfig',
+  'JBSplit',
+  'JBTerminalConfig',
+  'JBRulesetMetadata',
+  'JBFundAccessLimitGroup',
+  'JBAccountingContext',
+  'JB721TierConfig',
+  'JBDeploy721TiersHookConfig',
+  'JBSuckerDeploymentConfig',
 ];
 
 export const STRUCTURES_TOKEN_ESTIMATE = 600;

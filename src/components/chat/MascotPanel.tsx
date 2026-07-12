@@ -19,9 +19,13 @@ export default function MascotPanel({ onSuggestionClick }: MascotPanelProps) {
           fetchSuckerGroupBalance('1', 1),
           fetchEthPrice(),
         ])
-        if (balance && ethPrice) {
-          const balanceEth = parseFloat(balance.totalBalance) / 1e18
-          setBalanceUsd(balanceEth * ethPrice)
+        if (balance.balanceAvailable !== false && /^\d+$/.test(balance.totalBalance)) {
+          const amount = parseFloat(balance.totalBalance) / (10 ** balance.decimals)
+          if (balance.currency === 2) {
+            setBalanceUsd(amount)
+          } else if (balance.currency === 1 && ethPrice) {
+            setBalanceUsd(amount * ethPrice)
+          }
         }
       } catch (err) {
         console.error('Failed to fetch NANA balance:', err)

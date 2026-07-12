@@ -64,14 +64,12 @@ export interface UseRelayrBundleReturn {
 
 export interface UseOmnichainTransactionReturn {
   execute: (params: OmnichainExecuteParams) => Promise<void>
-  submitPayment: (signedTx: string) => Promise<void>
   bundleState: BundleState
   isExecuting: boolean
   isComplete: boolean
   isExpired: boolean
   hasError: boolean
   reset: () => void
-  setPaymentChain: (chainId: number) => void
 }
 
 // ============================================================================
@@ -83,17 +81,21 @@ export interface OmnichainExecuteParams {
   projectIds: Record<number, number>  // chainId -> projectId
   // One of these must be provided
   rulesetConfig?: {
-    rulesetConfigurations: unknown[]  // JBRulesetConfig[]
+    rulesetConfigurations?: unknown[]  // JBRulesetConfig[]
+    rulesetConfigurationsByChain?: Record<number, unknown[]>
+    queueTargets?: Record<number, string>
     memo: string
     mustStartAtOrAfter?: number
   }
   distributeConfig?: {
-    type: 'payouts' | 'reserves'
+    type: 'reserves'
+    controllerAddresses?: Record<number, string>
   }
   deployERC20Config?: {
     tokenName: string
     tokenSymbol: string
     salt: string  // bytes32 - SAME salt for all chains to get same address
+    controllerAddresses?: Record<number, string>
   }
 }
 
@@ -116,7 +118,6 @@ export interface UseRelayrStatusOptions {
 export interface UseOmnichainTransactionOptions {
   onSuccess?: (bundleId: string, txHashes: Record<number, string>) => void
   onError?: (error: Error) => void
-  onPaymentRequired?: (paymentOptions: PaymentOption[]) => void
   /** Unique key to scope persisted deployment state. Each unique key gets its own cache. */
   deploymentKey?: string
   /** Chat ID for scoping deployment results to prevent cross-chat contamination. */

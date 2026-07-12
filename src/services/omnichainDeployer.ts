@@ -1,12 +1,13 @@
 /**
  * JBOmnichainDeployer transaction encoding service (Juicebox V6).
- * Encodes calldata for launchProjectFor, queueRulesetsOf, launchRulesetsFor and 721 variants locally.
+ * Encodes calldata for new-project launches and recognized management targets locally.
  *
  * Encoding notes:
  * - No `controller` parameter on any deployer function (the deployer is wired to the canonical JBController)
  * - launchProjectFor is payable: msg.value must equal JBProjects.creationFee() exactly
- * - 721 variants are overloads of launchProjectFor / launchRulesetsFor / queueRulesetsOf that take a
- *   JBOmnichain721Config `deploy721Config` argument
+ * - The 721 launch variant takes a JBOmnichain721Config `deploy721Config` argument
+ * - Existing-project ruleset writes are intentionally absent: callers must derive the live
+ *   controller from JBDirectory and require that controller to be recognized
  * - Sucker mappings: remoteToken is bytes32, config has a `peer` field, minBridgeAmount removed
  */
 
@@ -18,9 +19,9 @@ import {
 } from '../constants/abis'
 import {
   JB_CONTRACTS,
-  JB_ROUTER_TERMINAL,
   JB_ROUTER_TERMINAL_REGISTRY,
   CHAIN_SUCKER_DEPLOYER,
+  USDC_ADDRESSES,
   VIEM_CHAINS,
   MAINNET_VIEM_CHAINS,
   RPC_ENDPOINTS,
@@ -36,6 +37,12 @@ import {
   CCIP_SUCKER_DEPLOYER_ADDRESSES,
   ZERO_BYTES32,
 } from '../utils/suckerConfig'
+import {
+  requireRecognizedApprovalHook,
+  requireRecognizedNewProjectDataHook,
+  requireRecognizedSplitHook,
+} from '../utils/projectTrust'
+import { isIpfsUri } from '../utils/ipfs'
 import type {
   JBRulesetConfig,
   JBTerminalConfig,
@@ -64,10 +71,11 @@ const JB_PROJECTS_CREATION_FEE_ABI = [
 export async function fetchProjectCreationFee(chainId: number): Promise<bigint> {
   const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
     MAINNET_VIEM_CHAINS[chainId as keyof typeof MAINNET_VIEM_CHAINS]
-  if (!chain) return 0n
+  if (!chain) throw new Error(`Unsupported chain for project creation fee: ${chainId}`)
 
   const rpcUrl = RPC_ENDPOINTS[chainId]?.[0] ||
     MAINNET_RPC_ENDPOINTS[chainId as keyof typeof MAINNET_RPC_ENDPOINTS]?.[0]
+  if (!rpcUrl) throw new Error(`No RPC endpoint for project creation fee on chain ${chainId}`)
   const client = createPublicClient({ chain, transport: http(rpcUrl) })
 
   try {
@@ -78,8 +86,20 @@ export async function fetchProjectCreationFee(chainId: number): Promise<bigint> 
     })
   } catch (err) {
     console.error(`Failed to read JBProjects.creationFee on chain ${chainId}:`, err)
-    return 0n
+    throw new Error(`Could not verify the project creation fee on chain ${chainId}`)
   }
+}
+
+function requireCreationFee(value: string | undefined, chainId: number): string {
+  if (value === undefined) {
+    throw new Error(`Project creation fee was not verified on chain ${chainId}`)
+  }
+  try {
+    if (BigInt(value) < 0n) throw new Error('negative')
+  } catch {
+    throw new Error(`Invalid project creation fee on chain ${chainId}`)
+  }
+  return value
 }
 
 // ============================================================================
@@ -118,9 +138,7 @@ function getKnownTerminalAddresses(_chainId: number): Set<string> {
   // JBMultiTerminal - same address on all chains
   addresses.add(JB_CONTRACTS.JBMultiTerminal.toLowerCase())
 
-  // JBRouterTerminal + registry (V6 replacement for the swap terminals)
-  // Projects register the REGISTRY (with empty accounting contexts).
-  addresses.add(JB_ROUTER_TERMINAL.toLowerCase())
+  // Projects register the router REGISTRY, never the router implementation.
   addresses.add(JB_ROUTER_TERMINAL_REGISTRY.toLowerCase())
 
   return addresses
@@ -200,6 +218,21 @@ function validateUserAddress(address: string, fieldName: string): `0x${string}` 
  */
 function validateTokenAddress(address: string, fieldName: string): `0x${string}` {
   return validateAddress(address, fieldName)
+}
+
+function tokenCurrencyId(token: string): number {
+  return Number(BigInt(token) & 0xffffffffn)
+}
+
+function requireRecognizedAccountingToken(
+  token: `0x${string}`,
+  chainId: number,
+  fieldName: string,
+): 6 | 18 {
+  if (token.toLowerCase() === '0x000000000000000000000000000000000000eeee') return 18
+  const usdc = USDC_ADDRESSES[chainId as SupportedChainId]
+  if (usdc && token.toLowerCase() === usdc.toLowerCase()) return 6
+  throw new Error(`${fieldName}: Accounting token not recognized on chain ${chainId}: ${token}`)
 }
 
 /**
@@ -285,27 +318,75 @@ export interface JBDeployTiersHookConfig {
   useDataHookForCashOut?: boolean
 }
 
-export interface JBQueueRulesetsConfig {
-  projectId: number
-  rulesetConfigurations: JBRulesetConfig[]
-  memo: string
-}
-
 /**
  * Format a sucker deployment configuration into the V6 tuple shape, with validation.
  */
-function formatSuckerDeploymentConfiguration(config: JBSuckerDeploymentConfig, prefix: string) {
+function formatSuckerDeploymentConfiguration(
+  config: JBSuckerDeploymentConfig,
+  prefix: string,
+  chainId: number,
+) {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(config.salt)) {
+    throw new Error(`${prefix}.salt: Invalid bytes32 salt`)
+  }
+  if (config.deployerConfigurations.length === 0) {
+    if (config.salt.toLowerCase() !== ZERO_BYTES32.toLowerCase()) {
+      throw new Error(`${prefix}.salt: Empty sucker configuration must use the zero salt`)
+    }
+    return { deployerConfigurations: [], salt: ZERO_BYTES32 }
+  }
+  if (config.salt.toLowerCase() === ZERO_BYTES32.toLowerCase()) {
+    throw new Error(`${prefix}.salt: Sucker deployments require a non-zero salt`)
+  }
+
+  const seenDeployers = new Set<string>()
   return {
-    deployerConfigurations: config.deployerConfigurations.map((dc, idx) => ({
-      deployer: validateSuckerDeployerAddress(dc.deployer, `${prefix}.deployerConfigurations[${idx}].deployer`),
-      // Zero peer = default same-address deterministic peer sucker
-      peer: (dc.peer && dc.peer !== ZERO_ADDRESS ? validateRemoteToken(dc.peer, `${prefix}.deployerConfigurations[${idx}].peer`) : ZERO_BYTES32),
-      mappings: dc.mappings.map((mapping, mapIdx) => ({
-        localToken: validateTokenAddress(mapping.localToken, `${prefix}.deployerConfigurations[${idx}].mappings[${mapIdx}].localToken`),
-        minGas: mapping.minGas,
-        remoteToken: validateRemoteToken(mapping.remoteToken, `${prefix}.deployerConfigurations[${idx}].mappings[${mapIdx}].remoteToken`),
-      })),
-    })),
+    deployerConfigurations: config.deployerConfigurations.map((dc, idx) => {
+      const field = `${prefix}.deployerConfigurations[${idx}]`
+      const deployer = validateSuckerDeployerAddress(dc.deployer, `${field}.deployer`)
+      if (seenDeployers.has(deployer.toLowerCase())) {
+        throw new Error(`${field}.deployer: Duplicate sucker deployer`)
+      }
+      seenDeployers.add(deployer.toLowerCase())
+      if (dc.peer && dc.peer !== ZERO_ADDRESS && dc.peer.toLowerCase() !== ZERO_BYTES32.toLowerCase()) {
+        throw new Error(`${field}.peer: Explicit sucker peers are not supported`)
+      }
+      if (dc.mappings.length === 0) throw new Error(`${field}.mappings: At least one token mapping is required`)
+
+      const seenLocalTokens = new Set<string>()
+      return {
+        deployer,
+        peer: ZERO_BYTES32,
+        mappings: dc.mappings.map((mapping, mapIdx) => {
+          const mappingField = `${field}.mappings[${mapIdx}]`
+          const localToken = validateTokenAddress(mapping.localToken, `${mappingField}.localToken`)
+          requireRecognizedAccountingToken(localToken, chainId, `${mappingField}.localToken`)
+          if (seenLocalTokens.has(localToken.toLowerCase())) {
+            throw new Error(`${mappingField}.localToken: Duplicate token mapping`)
+          }
+          seenLocalTokens.add(localToken.toLowerCase())
+          if (!Number.isSafeInteger(mapping.minGas) || mapping.minGas <= 0 || mapping.minGas > 5_000_000) {
+            throw new Error(`${mappingField}.minGas: Invalid sucker gas limit`)
+          }
+          const remoteToken = validateRemoteToken(mapping.remoteToken, `${mappingField}.remoteToken`)
+          if (remoteToken.slice(2, 26) !== '0'.repeat(24)) {
+            throw new Error(`${mappingField}.remoteToken: Expected a left-padded EVM address`)
+          }
+          const remoteAddress = `0x${remoteToken.slice(-40)}`.toLowerCase()
+          const recognizedRemote = remoteAddress === '0x000000000000000000000000000000000000eeee' ||
+            Object.values(USDC_ADDRESSES).some(address => address.toLowerCase() === remoteAddress)
+          if (!recognizedRemote) {
+            throw new Error(`${mappingField}.remoteToken: Remote accounting token not recognized`)
+          }
+          const localIsNative = localToken.toLowerCase() === '0x000000000000000000000000000000000000eeee'
+          const remoteIsNative = remoteAddress === '0x000000000000000000000000000000000000eeee'
+          if (localIsNative !== remoteIsNative) {
+            throw new Error(`${mappingField}: Token mapping must preserve the accounting-token family`)
+          }
+          return { localToken, minGas: mapping.minGas, remoteToken }
+        }),
+      }
+    }),
     salt: config.salt as `0x${string}`,
   }
 }
@@ -337,9 +418,18 @@ export function encodeLaunchProjectFor(params: {
   const validatedOwner = validateUserAddress(owner, 'owner')
 
   // Use the shared formatting functions with address validation
-  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId)
   const formattedTerminals = formatTerminalConfigurations(terminalConfigurations, chainId)
-  const formattedSuckerConfig = formatSuckerDeploymentConfiguration(suckerDeploymentConfiguration, 'suckerDeploymentConfiguration')
+  const acceptedTokens = new Set(formattedTerminals.flatMap(terminal =>
+    terminal.accountingContextsToAccept.map(context => context.token.toLowerCase())
+  ))
+  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId, acceptedTokens)
+  const formattedSuckerConfig = formatSuckerDeploymentConfiguration(
+    suckerDeploymentConfiguration,
+    'suckerDeploymentConfiguration',
+    chainId,
+  )
+
+  if (!isIpfsUri(projectUri)) throw new Error('Project metadata URI must be a pinned IPFS CID')
 
   return encodeFunctionData({
     abi: JB_OMNICHAIN_DEPLOYER_ABI,
@@ -369,7 +459,7 @@ export function buildLaunchProjectTransaction(params: {
   terminalConfigurations: JBTerminalConfig[]
   memo: string
   suckerDeploymentConfiguration: JBSuckerDeploymentConfig
-  creationFeeWei?: string
+  creationFeeWei: string
 }): {
   chainId: number
   to: `0x${string}`
@@ -382,7 +472,7 @@ export function buildLaunchProjectTransaction(params: {
     chainId: params.chainId,
     to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
     data,
-    value: params.creationFeeWei || '0x0',
+    value: requireCreationFee(params.creationFeeWei, params.chainId),
   }
 }
 
@@ -423,7 +513,7 @@ export function buildOmnichainLaunchTransactions(params: {
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs
   /** V6 creation fee (wei) per chain; must equal JBProjects.creationFee() on each chain. */
-  creationFeesWei?: Record<number, string>
+  creationFeesWei: Record<number, string>
 }): Array<{
   chainId: number
   to: `0x${string}`
@@ -509,19 +599,11 @@ export function buildOmnichainLaunchTransactions(params: {
       terminalConfigurations,  // Use per-chain terminal configs
       suckerDeploymentConfiguration: suckerConfig,
       chainId,
-      creationFeeWei: params.creationFeesWei?.[chainId],
+      creationFeeWei: requireCreationFee(params.creationFeesWei[chainId], chainId),
     })
   })
 
   return transactions
-}
-
-// Launch rulesets config for launchRulesetsFor (721 variant)
-export interface JBLaunchRulesetsConfig {
-  projectId: number
-  rulesetConfigurations: JBRulesetConfig[]
-  terminalConfigurations: JBTerminalConfig[]
-  memo: string
 }
 
 /**
@@ -529,25 +611,185 @@ export interface JBLaunchRulesetsConfig {
  * Validates terminal addresses against known Juicebox terminals to prevent hallucinated addresses.
  */
 function formatTerminalConfigurations(terminalConfigurations: JBTerminalConfig[], chainId: number) {
-  return terminalConfigurations.map((terminal, idx) => ({
-    terminal: validateTerminalAddress(terminal.terminal, chainId, `terminalConfigurations[${idx}].terminal`),
-    accountingContextsToAccept: terminal.accountingContextsToAccept.map((ctx, ctxIdx) => ({
-      token: validateTokenAddress(ctx.token, `terminalConfigurations[${idx}].accountingContextsToAccept[${ctxIdx}].token`),
-      decimals: ctx.decimals,
-      currency: ctx.currency,
-    })),
-  }))
+  const seen = new Set<string>()
+  const acceptedTokens = new Set<string>()
+  if (terminalConfigurations.length === 0) throw new Error('At least one terminal is required')
+  const formatted = terminalConfigurations.map((terminal, idx) => {
+    const field = `terminalConfigurations[${idx}]`
+    const address = validateTerminalAddress(terminal.terminal, chainId, `${field}.terminal`)
+    const normalized = address.toLowerCase()
+    if (seen.has(normalized)) throw new Error(`${field}.terminal: Duplicate terminal`)
+    seen.add(normalized)
+
+    if (normalized === JB_ROUTER_TERMINAL_REGISTRY.toLowerCase()) {
+      if (terminal.accountingContextsToAccept.length !== 0) {
+        throw new Error(`${field}: Router terminal registry must not define accounting contexts`)
+      }
+      return { terminal: address, accountingContextsToAccept: [] }
+    }
+    if (terminal.accountingContextsToAccept.length === 0) {
+      throw new Error(`${field}: JBMultiTerminal requires at least one accounting context`)
+    }
+
+    return {
+      terminal: address,
+      accountingContextsToAccept: terminal.accountingContextsToAccept.map((ctx, ctxIdx) => {
+        const contextField = `${field}.accountingContextsToAccept[${ctxIdx}]`
+        const token = validateTokenAddress(ctx.token, `${contextField}.token`)
+        const expectedDecimals = requireRecognizedAccountingToken(token, chainId, `${contextField}.token`)
+        const expectedCurrency = tokenCurrencyId(token)
+        if (acceptedTokens.has(token.toLowerCase())) {
+          throw new Error(`${contextField}.token: Duplicate accounting token`)
+        }
+        acceptedTokens.add(token.toLowerCase())
+        if (ctx.decimals !== expectedDecimals) {
+          throw new Error(`${contextField}.decimals: Expected ${expectedDecimals} for ${token}`)
+        }
+        if (ctx.currency !== expectedCurrency) {
+          throw new Error(`${contextField}.currency: Expected ${expectedCurrency} for ${token}`)
+        }
+        return { token, decimals: ctx.decimals, currency: ctx.currency }
+      }),
+    }
+  })
+  if (acceptedTokens.size === 0) {
+    throw new Error('At least one recognized accounting token is required')
+  }
+  return formatted
 }
 
 /**
  * Helper to format ruleset configurations consistently across functions.
  * Validates all addresses to prevent hallucinated values.
  */
-function formatRulesetConfigurations(rulesetConfigurations: JBRulesetConfig[], chainId: number) {
-  return rulesetConfigurations.map((ruleset, rulesetIdx) => ({
+function formatRulesetConfigurations(
+  rulesetConfigurations: JBRulesetConfig[],
+  chainId: number,
+  acceptedTokens?: Set<string>,
+) {
+  if (rulesetConfigurations.length === 0) throw new Error('At least one ruleset is required')
+  return rulesetConfigurations.map((ruleset, rulesetIdx) => {
+    const prefix = `rulesetConfigurations[${rulesetIdx}]`
+    const requireInteger = (value: number, field: string, min: number, max: number) => {
+      if (!Number.isSafeInteger(value) || value < min || value > max) {
+        throw new Error(`${field}: Value must be an integer between ${min} and ${max}`)
+      }
+    }
+    requireInteger(ruleset.mustStartAtOrAfter, `${prefix}.mustStartAtOrAfter`, 0, 2 ** 48 - 1)
+    requireInteger(ruleset.duration, `${prefix}.duration`, 0, 2 ** 32 - 1)
+    requireInteger(ruleset.weightCutPercent, `${prefix}.weightCutPercent`, 0, 1_000_000_000)
+    requireInteger(ruleset.metadata.reservedPercent, `${prefix}.metadata.reservedPercent`, 0, 10_000)
+    requireInteger(ruleset.metadata.cashOutTaxRate, `${prefix}.metadata.cashOutTaxRate`, 0, 10_000)
+    requireInteger(ruleset.metadata.baseCurrency, `${prefix}.metadata.baseCurrency`, 1, 2 ** 32 - 1)
+    const weight = BigInt(ruleset.weight)
+    if (weight < 0n || weight >= 1n << 112n) throw new Error(`${prefix}.weight: Value exceeds uint112`)
+
+    requireRecognizedApprovalHook(ruleset.approvalHook)
+    requireRecognizedNewProjectDataHook(ruleset.metadata.dataHook)
+    if (
+      (ruleset.metadata.useDataHookForPay || ruleset.metadata.useDataHookForCashOut) &&
+      ruleset.metadata.dataHook.toLowerCase() === ZERO_ADDRESS.toLowerCase()
+    ) {
+      throw new Error(`${prefix}.metadata.dataHook: Enabled hook is missing`)
+    }
+
+    const splitGroupIds = new Set<string>()
+    const splitGroups = ruleset.splitGroups.map((group, groupIdx) => {
+      const groupField = `${prefix}.splitGroups[${groupIdx}]`
+      const groupId = BigInt(group.groupId)
+      if (splitGroupIds.has(groupId.toString())) throw new Error(`${groupField}: Duplicate split group`)
+      splitGroupIds.add(groupId.toString())
+      if (groupId !== 1n) {
+        const token = `0x${groupId.toString(16).padStart(40, '0')}`.toLowerCase()
+        requireRecognizedAccountingToken(token as `0x${string}`, chainId, `${groupField}.groupId`)
+        if (acceptedTokens && !acceptedTokens.has(token)) {
+          throw new Error(`${groupField}.groupId: Payout group token is not accepted by the terminal`)
+        }
+      }
+      if (group.splits.length === 0) throw new Error(`${groupField}: Split group is empty`)
+
+      let totalPercent = 0
+      const splits = group.splits.map((split, splitIdx) => {
+        const splitField = `${groupField}.splits[${splitIdx}]`
+        requireInteger(split.percent, `${splitField}.percent`, 1, 1_000_000_000)
+        totalPercent += split.percent
+        const projectId = BigInt(split.projectId)
+        if (projectId < 0n || projectId >= 1n << 64n) {
+          throw new Error(`${splitField}.projectId: Value exceeds uint64`)
+        }
+        requireInteger(split.lockedUntil, `${splitField}.lockedUntil`, 0, 2 ** 48 - 1)
+        const beneficiary = validateUserAddress(split.beneficiary, `${splitField}.beneficiary`)
+        const hook = validateHookAddress(split.hook, `${splitField}.hook`)
+        requireRecognizedSplitHook(hook)
+        if (
+          projectId === 0n &&
+          beneficiary.toLowerCase() === ZERO_ADDRESS.toLowerCase() &&
+          hook.toLowerCase() === ZERO_ADDRESS.toLowerCase()
+        ) {
+          throw new Error(`${splitField}: Split has no explicit recipient`)
+        }
+        return {
+          percent: split.percent,
+          projectId,
+          beneficiary,
+          preferAddToBalance: split.preferAddToBalance,
+          lockedUntil: split.lockedUntil,
+          hook,
+        }
+      })
+      if (totalPercent > 1_000_000_000) throw new Error(`${groupField}: Splits exceed 100%`)
+      return { groupId, splits }
+    })
+
+    const fundTokens = new Set<string>()
+    const fundAccessLimitGroups = ruleset.fundAccessLimitGroups.map((group, groupIdx) => {
+      const groupField = `${prefix}.fundAccessLimitGroups[${groupIdx}]`
+      if (group.terminal.toLowerCase() !== JB_CONTRACTS.JBMultiTerminal.toLowerCase()) {
+        throw new Error(`Fund access terminal not recognized: ${group.terminal}`)
+      }
+      const terminal = validateTerminalAddress(group.terminal, chainId, `${groupField}.terminal`)
+      const token = validateTokenAddress(group.token, `${groupField}.token`)
+      requireRecognizedAccountingToken(token, chainId, `${groupField}.token`)
+      if (acceptedTokens && !acceptedTokens.has(token.toLowerCase())) {
+        throw new Error(`${groupField}.token: Fund access token is not accepted by the terminal`)
+      }
+      if (fundTokens.has(token.toLowerCase())) throw new Error(`${groupField}.token: Duplicate fund access token`)
+      fundTokens.add(token.toLowerCase())
+      if (group.payoutLimits.length === 0 && group.surplusAllowances.length === 0) {
+        throw new Error(`${groupField}: Empty fund access group`)
+      }
+      const expectedCurrency = tokenCurrencyId(token)
+      const formatLimits = (
+        limits: Array<{ amount: string; currency: number }>,
+        kind: 'payoutLimits' | 'surplusAllowances',
+      ) => {
+        const currencies = new Set<number>()
+        return limits.map((limit, limitIdx) => {
+          const limitField = `${groupField}.${kind}[${limitIdx}]`
+          const amount = BigInt(limit.amount)
+          if (amount <= 0n || amount >= 1n << 224n) {
+            throw new Error(`${limitField}.amount: Amount must be a positive uint224`)
+          }
+          if (limit.currency !== expectedCurrency) {
+            throw new Error(`${limitField}.currency: Currency conversion is not supported in this flow`)
+          }
+          if (currencies.has(limit.currency)) throw new Error(`${limitField}.currency: Duplicate currency`)
+          currencies.add(limit.currency)
+          return { amount, currency: limit.currency }
+        })
+      }
+      return {
+        terminal,
+        token,
+        payoutLimits: formatLimits(group.payoutLimits, 'payoutLimits'),
+        surplusAllowances: formatLimits(group.surplusAllowances, 'surplusAllowances'),
+      }
+    })
+
+    return {
     mustStartAtOrAfter: ruleset.mustStartAtOrAfter,
     duration: ruleset.duration,
-    weight: BigInt(ruleset.weight),
+    weight,
     weightCutPercent: ruleset.weightCutPercent,
     approvalHook: validateHookAddress(ruleset.approvalHook, `rulesetConfigurations[${rulesetIdx}].approvalHook`),
     metadata: {
@@ -571,30 +813,10 @@ function formatRulesetConfigurations(rulesetConfigurations: JBRulesetConfig[], c
       dataHook: validateHookAddress(ruleset.metadata.dataHook, `rulesetConfigurations[${rulesetIdx}].metadata.dataHook`),
       metadata: ruleset.metadata.metadata,
     },
-    splitGroups: ruleset.splitGroups.map((group, groupIdx) => ({
-      groupId: BigInt(group.groupId),
-      splits: group.splits.map((split, splitIdx) => ({
-        percent: split.percent,
-        projectId: BigInt(split.projectId),
-        beneficiary: validateUserAddress(split.beneficiary, `rulesetConfigurations[${rulesetIdx}].splitGroups[${groupIdx}].splits[${splitIdx}].beneficiary`),
-        preferAddToBalance: split.preferAddToBalance,
-        lockedUntil: split.lockedUntil,
-        hook: validateHookAddress(split.hook, `rulesetConfigurations[${rulesetIdx}].splitGroups[${groupIdx}].splits[${splitIdx}].hook`),
-      })),
-    })),
-    fundAccessLimitGroups: ruleset.fundAccessLimitGroups.map((group, groupIdx) => ({
-      terminal: validateTerminalAddress(group.terminal, chainId, `rulesetConfigurations[${rulesetIdx}].fundAccessLimitGroups[${groupIdx}].terminal`),
-      token: validateTokenAddress(group.token, `rulesetConfigurations[${rulesetIdx}].fundAccessLimitGroups[${groupIdx}].token`),
-      payoutLimits: group.payoutLimits.map(limit => ({
-        amount: BigInt(limit.amount),
-        currency: limit.currency,
-      })),
-      surplusAllowances: group.surplusAllowances.map(allowance => ({
-        amount: BigInt(allowance.amount),
-        currency: allowance.currency,
-      })),
-    })),
-  }))
+    splitGroups,
+    fundAccessLimitGroups,
+    }
+  })
 }
 
 /**
@@ -602,12 +824,13 @@ function formatRulesetConfigurations(rulesetConfigurations: JBRulesetConfig[], c
  * splitPercent + splits).
  */
 function formatTierConfig(tier: JB721TierConfig) {
+  for (const split of tier.splits ?? []) requireRecognizedSplitHook(split.hook || ZERO_ADDRESS)
   return {
     price: BigInt(tier.price),
     initialSupply: tier.initialSupply,
     votingUnits: tier.votingUnits,
     reserveFrequency: tier.reserveFrequency,
-    reserveBeneficiary: tier.reserveBeneficiary as `0x${string}`,
+    reserveBeneficiary: validateUserAddress(tier.reserveBeneficiary, 'tier.reserveBeneficiary'),
     encodedIpfsUri: tier.encodedIPFSUri as `0x${string}`,
     category: tier.category,
     discountPercent: tier.discountPercent,
@@ -624,10 +847,10 @@ function formatTierConfig(tier: JB721TierConfig) {
     splits: (tier.splits ?? []).map(s => ({
       percent: s.percent,
       projectId: BigInt(s.projectId),
-      beneficiary: s.beneficiary as `0x${string}`,
+      beneficiary: validateUserAddress(s.beneficiary, 'tier.splits[].beneficiary'),
       preferAddToBalance: s.preferAddToBalance,
       lockedUntil: s.lockedUntil,
-      hook: (s.hook || ZERO_ADDRESS) as `0x${string}`,
+      hook: validateHookAddress(s.hook || ZERO_ADDRESS, 'tier.splits[].hook'),
     })),
   }
 }
@@ -635,12 +858,137 @@ function formatTierConfig(tier: JB721TierConfig) {
 /**
  * Helper to format 721 tiers hook configuration (V6 JBDeploy721TiersHookConfig).
  */
-function formatDeployTiersHookConfig(config: JBDeployTiersHookConfig) {
+function validateTiersHookConfiguration(config: JBDeployTiersHookConfig, chainId: number): void {
+  if (!config.name.trim() || !config.symbol.trim()) {
+    throw new Error('Tier collection name and symbol are required')
+  }
+  if (!isIpfsUri(config.contractUri)) {
+    throw new Error('Tier collection URI must be a pinned IPFS URI')
+  }
+  if (config.tiersConfig.tiers.length === 0) {
+    throw new Error('An unused tiers hook is not allowed')
+  }
+
+  const currency = config.tiersConfig.currency
+  const decimals = config.tiersConfig.decimals
+  const canonicalUsdc = USDC_ADDRESSES[chainId as SupportedChainId]
+  const recognizedPricing = (currency === 1 && decimals === 18) ||
+    (currency === 2 && decimals === 6) ||
+    (currency === 61166 && decimals === 18) ||
+    (!!canonicalUsdc && currency === tokenCurrencyId(canonicalUsdc) && decimals === 6)
+  if (!recognizedPricing) throw new Error('Tier pricing context is not recognized')
+
+  let previousCategory = -1
+  let defaultReserveBeneficiary = ZERO_ADDRESS.toLowerCase()
+  config.tiersConfig.tiers.forEach((tier, index) => {
+    const price = BigInt(tier.price)
+    if (price < 0n || price > (1n << 104n) - 1n) {
+      throw new Error(`Tier ${index + 1} has an invalid price`)
+    }
+    if (!Number.isInteger(tier.initialSupply) || tier.initialSupply <= 0 || tier.initialSupply > 999_999_999) {
+      throw new Error(`Tier ${index + 1} has an invalid supply`)
+    }
+    if (!Number.isInteger(tier.votingUnits) || tier.votingUnits < 0 || tier.votingUnits > 0xffff_ffff) {
+      throw new Error(`Tier ${index + 1} has invalid voting units`)
+    }
+    if (!Number.isInteger(tier.reserveFrequency) || tier.reserveFrequency < 0 || tier.reserveFrequency > 0xffff) {
+      throw new Error(`Tier ${index + 1} has an invalid reserve frequency`)
+    }
+    if (tier.initialSupply === 1 && tier.reserveFrequency > 0) {
+      throw new Error(`Tier ${index + 1} has a deadlocked reserve configuration`)
+    }
+    const reserveBeneficiary = validateUserAddress(
+      tier.reserveBeneficiary,
+      `tiers[${index}].reserveBeneficiary`,
+    ).toLowerCase()
+    if (tier.reserveFrequency === 0 && (
+      reserveBeneficiary !== ZERO_ADDRESS.toLowerCase() || tier.useReserveBeneficiaryAsDefault
+    )) {
+      throw new Error(`Tier ${index + 1} has an irrelevant reserve beneficiary`)
+    }
+    if (
+      tier.reserveFrequency > 0 &&
+      reserveBeneficiary === ZERO_ADDRESS.toLowerCase() &&
+      defaultReserveBeneficiary === ZERO_ADDRESS.toLowerCase()
+    ) {
+      throw new Error(`Tier ${index + 1} has no reserve beneficiary`)
+    }
+    if (tier.reserveFrequency > 0 && tier.useReserveBeneficiaryAsDefault) {
+      if (reserveBeneficiary === ZERO_ADDRESS.toLowerCase()) {
+        throw new Error(`Tier ${index + 1} cannot set an empty default reserve beneficiary`)
+      }
+      defaultReserveBeneficiary = reserveBeneficiary
+    }
+    if (config.flags.noNewTiersWithReserves && tier.reserveFrequency > 0) {
+      throw new Error(`Tier ${index + 1} uses reserves disabled by the collection`)
+    }
+    if (
+      config.flags.noNewTiersWithVotes &&
+      ((tier.useVotingUnits && tier.votingUnits !== 0) || (!tier.useVotingUnits && price !== 0n))
+    ) {
+      throw new Error(`Tier ${index + 1} uses voting units disabled by the collection`)
+    }
+    if (config.flags.noNewTiersWithOwnerMinting && tier.allowOwnerMint) {
+      throw new Error(`Tier ${index + 1} enables owner minting disabled by the collection`)
+    }
+    if (!Number.isInteger(tier.discountPercent) || tier.discountPercent < 0 || tier.discountPercent > 200) {
+      throw new Error(`Tier ${index + 1} has an invalid discount`)
+    }
+    if (!/^0x[0-9a-fA-F]{64}$/.test(tier.encodedIPFSUri) || BigInt(tier.encodedIPFSUri) === 0n) {
+      throw new Error(`Tier ${index + 1} has no pinned metadata`)
+    }
+    if (!Number.isInteger(tier.category) || tier.category < previousCategory || tier.category > 0xff_ffff) {
+      throw new Error('Tiers must be sorted by a valid category')
+    }
+    previousCategory = tier.category
+
+    const splitPercent = tier.splitPercent ?? 0
+    const splits = tier.splits ?? []
+    if (!Number.isInteger(splitPercent) || splitPercent < 0 || splitPercent > 1_000_000_000) {
+      throw new Error(`Tier ${index + 1} has an invalid split percentage`)
+    }
+    if ((splitPercent === 0) !== (splits.length === 0)) {
+      throw new Error(`Tier ${index + 1} has an inconsistent split configuration`)
+    }
+    const totalSplitPercent = splits.reduce((total, split) => {
+      if (!Number.isInteger(split.percent) || split.percent <= 0 || split.percent > 1_000_000_000) {
+        throw new Error(`Tier ${index + 1} has an invalid recipient percentage`)
+      }
+      const projectId = BigInt(split.projectId)
+      if (projectId < 0n || projectId >= 1n << 64n) {
+        throw new Error(`Tier ${index + 1} has an invalid split project`)
+      }
+      if (!Number.isSafeInteger(split.lockedUntil) || split.lockedUntil < 0 || split.lockedUntil > 2 ** 48 - 1) {
+        throw new Error(`Tier ${index + 1} has an invalid split lock time`)
+      }
+      const beneficiary = validateUserAddress(split.beneficiary, `tiers[${index}].splits[].beneficiary`)
+      const hook = validateHookAddress(split.hook || ZERO_ADDRESS, `tiers[${index}].splits[].hook`)
+      requireRecognizedSplitHook(hook)
+      if (
+        projectId === 0n &&
+        beneficiary.toLowerCase() === ZERO_ADDRESS.toLowerCase() &&
+        hook.toLowerCase() === ZERO_ADDRESS.toLowerCase()
+      ) {
+        throw new Error(`Tier ${index + 1} has a split without an explicit recipient`)
+      }
+      return total + split.percent
+    }, 0)
+    if (totalSplitPercent > 1_000_000_000) {
+      throw new Error(`Tier ${index + 1} splits exceed 100%`)
+    }
+  })
+}
+
+function formatDeployTiersHookConfig(config: JBDeployTiersHookConfig, chainId: number) {
+  validateTiersHookConfiguration(config, chainId)
+  if (config.tokenUriResolver.toLowerCase() !== ZERO_ADDRESS.toLowerCase()) {
+    throw new Error(`Token URI resolver not recognized: ${config.tokenUriResolver}`)
+  }
   return {
     name: config.name,
     symbol: config.symbol,
     baseUri: config.baseUri,
-    tokenUriResolver: config.tokenUriResolver as `0x${string}`,
+    tokenUriResolver: ZERO_ADDRESS,
     contractUri: config.contractUri,
     tiersConfig: {
       tiers: config.tiersConfig.tiers.map(formatTierConfig),
@@ -660,9 +1008,13 @@ function formatDeployTiersHookConfig(config: JBDeployTiersHookConfig) {
 /**
  * Helper to format the V6 JBOmnichain721Config wrapper struct.
  */
-function formatDeploy721Config(config: JBDeployTiersHookConfig, salt: `0x${string}`) {
+function formatDeploy721Config(
+  config: JBDeployTiersHookConfig,
+  salt: `0x${string}`,
+  chainId: number,
+) {
   return {
-    deployTiersHookConfig: formatDeployTiersHookConfig(config),
+    deployTiersHookConfig: formatDeployTiersHookConfig(config, chainId),
     useDataHookForCashOut: config.useDataHookForCashOut ?? false,
     salt,
   }
@@ -946,9 +1298,18 @@ export function encodeLaunch721ProjectFor(params: {
   const validatedOwner = validateUserAddress(owner, 'owner')
 
   // Reuse the shared formatting helpers (identical FULL metadata as the non-721 encoder)
-  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId)
   const formattedTerminals = formatTerminalConfigurations(terminalConfigurations, chainId)
-  const formattedSuckerConfig = formatSuckerDeploymentConfiguration(suckerDeploymentConfiguration, 'suckerDeploymentConfiguration')
+  const acceptedTokens = new Set(formattedTerminals.flatMap(terminal =>
+    terminal.accountingContextsToAccept.map(context => context.token.toLowerCase())
+  ))
+  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId, acceptedTokens)
+  const formattedSuckerConfig = formatSuckerDeploymentConfiguration(
+    suckerDeploymentConfiguration,
+    'suckerDeploymentConfiguration',
+    chainId,
+  )
+
+  if (!isIpfsUri(projectUri)) throw new Error('Project metadata URI must be a pinned IPFS CID')
 
   return encodeFunctionData({
     abi: JB_OMNICHAIN_DEPLOYER_721_ABI,
@@ -956,7 +1317,7 @@ export function encodeLaunch721ProjectFor(params: {
     args: [
       validatedOwner,
       projectUri,
-      formatDeploy721Config(deployTiersHookConfig, salt),
+      formatDeploy721Config(deployTiersHookConfig, salt, chainId),
       formattedRulesets,
       formattedTerminals,
       memo,
@@ -982,7 +1343,7 @@ export function buildLaunch721ProjectTransaction(params: {
   terminalConfigurations: JBTerminalConfig[]
   memo: string
   suckerDeploymentConfiguration: JBSuckerDeploymentConfig
-  creationFeeWei?: string
+  creationFeeWei: string
 }): {
   chainId: number
   to: `0x${string}`
@@ -995,7 +1356,7 @@ export function buildLaunch721ProjectTransaction(params: {
     chainId: params.chainId,
     to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
     data,
-    value: params.creationFeeWei || '0x0',
+    value: requireCreationFee(params.creationFeeWei, params.chainId),
   }
 }
 
@@ -1024,7 +1385,7 @@ export function buildOmnichainLaunch721Transactions(params: {
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs and tiers
   /** V6 creation fee (wei) per chain; must equal JBProjects.creationFee() on each chain. */
-  creationFeesWei?: Record<number, string>
+  creationFeesWei: Record<number, string>
 }): Array<{
   chainId: number
   to: `0x${string}`
@@ -1121,285 +1482,9 @@ export function buildOmnichainLaunch721Transactions(params: {
       terminalConfigurations,  // Use per-chain terminal configs
       memo: params.memo,
       suckerDeploymentConfiguration: suckerConfig,
-      creationFeeWei: params.creationFeesWei?.[chainId],
+      creationFeeWei: requireCreationFee(params.creationFeesWei[chainId], chainId),
     })
   })
-}
-
-/**
- * Encode the 721 launchRulesetsFor overload for JBOmnichainDeployer (V6).
- * Launches rulesets with a 721 tiers hook for an existing project.
- */
-export function encodeLaunch721RulesetsFor(params: {
-  chainId: number
-  projectId: number | bigint
-  deployTiersHookConfig: JBDeployTiersHookConfig
-  launchRulesetsConfig: JBLaunchRulesetsConfig
-  projectUri?: string
-  salt?: `0x${string}`
-}): `0x${string}` {
-  const {
-    chainId,
-    projectId,
-    deployTiersHookConfig,
-    launchRulesetsConfig,
-    projectUri = '',
-    salt = ZERO_BYTES32,
-  } = params
-
-  return encodeFunctionData({
-    abi: JB_OMNICHAIN_DEPLOYER_ABI,
-    functionName: 'launchRulesetsFor',
-    args: [
-      BigInt(projectId),
-      projectUri,
-      formatDeploy721Config(deployTiersHookConfig, salt),
-      formatRulesetConfigurations(launchRulesetsConfig.rulesetConfigurations, chainId),
-      formatTerminalConfigurations(launchRulesetsConfig.terminalConfigurations, chainId),
-      launchRulesetsConfig.memo,
-    ],
-  })
-}
-
-/**
- * Build transaction data for launching 721 rulesets via JBOmnichainDeployer.
- */
-export function buildLaunch721RulesetsTransaction(params: {
-  chainId: number
-  projectId: number | bigint
-  deployTiersHookConfig: JBDeployTiersHookConfig
-  launchRulesetsConfig: JBLaunchRulesetsConfig
-  projectUri?: string
-  salt?: `0x${string}`
-}): {
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-} {
-  const data = encodeLaunch721RulesetsFor(params)
-
-  return {
-    chainId: params.chainId,
-    to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
-    data,
-    value: '0x0',
-  }
-}
-
-/**
- * Build transactions for launching 721 rulesets on multiple chains.
- *
- * For ERC20-based projects (e.g., USDC), pass chainConfigs with per-chain
- * terminal configurations to ensure correct token addresses on each chain.
- *
- * For LIMITED SUPPLY TIERS: Use chainConfigs with per-chain `tiers` to deploy
- * limited tiers only on the primary chain while deploying unlimited tiers on all chains.
- * This ensures "50 available" means exactly 50 total, not 50 per chain.
- */
-export function buildOmnichainLaunch721RulesetsTransactions(params: {
-  chainIds: number[]
-  projectId: number | bigint
-  deployTiersHookConfig: JBDeployTiersHookConfig
-  launchRulesetsConfig: JBLaunchRulesetsConfig
-  projectUri?: string
-  salt?: `0x${string}`
-  chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs and tiers
-}): Array<{
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-}> {
-  const { chainConfigs = [] } = params
-
-  // Build a map of chainId -> chain configuration from chainConfigs
-  const chainConfigMap = new Map<number, ChainConfigOverride>()
-  for (const cfg of chainConfigs) {
-    chainConfigMap.set(cfg.chainId, cfg)
-  }
-
-  return params.chainIds.map(chainId => {
-    // Get per-chain terminal configurations (use override if available)
-    const chainConfig = chainConfigMap.get(chainId)
-    const terminalConfigurations = chainConfig?.terminalConfigurations ?? params.launchRulesetsConfig.terminalConfigurations
-
-    // Get per-chain tier configurations (use override if available)
-    // This enables limited supply tiers to be deployed only on primary chain
-    const tiers = chainConfig?.tiers ?? params.deployTiersHookConfig.tiersConfig.tiers
-    const deployTiersHookConfig: JBDeployTiersHookConfig = {
-      ...params.deployTiersHookConfig,
-      tiersConfig: {
-        ...params.deployTiersHookConfig.tiersConfig,
-        tiers,
-      },
-    }
-
-    return buildLaunch721RulesetsTransaction({
-      ...params,
-      chainId,
-      deployTiersHookConfig,
-      launchRulesetsConfig: {
-        ...params.launchRulesetsConfig,
-        terminalConfigurations,  // Use per-chain terminal configs
-      },
-    })
-  })
-}
-
-/**
- * Encode queueRulesetsOf calldata for JBOmnichainDeployer (V6).
- * Queues new rulesets for an existing project (without 721 tiers hook).
- */
-export function encodeQueueRulesetsOf(params: {
-  chainId: number
-  projectId: number | bigint
-  rulesetConfigurations: JBRulesetConfig[]
-  memo: string
-}): `0x${string}` {
-  const {
-    chainId,
-    projectId,
-    rulesetConfigurations,
-    memo,
-  } = params
-
-  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId)
-
-  return encodeFunctionData({
-    abi: JB_OMNICHAIN_DEPLOYER_ABI,
-    functionName: 'queueRulesetsOf',
-    args: [
-      BigInt(projectId),
-      formattedRulesets,
-      memo,
-    ],
-  })
-}
-
-/**
- * Build transaction data for queueing rulesets via JBOmnichainDeployer.
- */
-export function buildQueueRulesetsTransaction(params: {
-  chainId: number
-  projectId: number | bigint
-  rulesetConfigurations: JBRulesetConfig[]
-  memo: string
-}): {
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-} {
-  const data = encodeQueueRulesetsOf(params)
-
-  return {
-    chainId: params.chainId,
-    to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
-    data,
-    value: '0x0',
-  }
-}
-
-/**
- * Build transactions for queueing rulesets on multiple chains.
- */
-export function buildOmnichainQueueRulesetsTransactions(params: {
-  chainIds: number[]
-  projectId: number | bigint
-  rulesetConfigurations: JBRulesetConfig[]
-  memo: string
-}): Array<{
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-}> {
-  return params.chainIds.map(chainId =>
-    buildQueueRulesetsTransaction({
-      ...params,
-      chainId,
-    })
-  )
-}
-
-/**
- * Encode the 721 queueRulesetsOf overload for JBOmnichainDeployer (V6).
- * Queues new rulesets with a 721 tiers hook for an existing project.
- */
-export function encodeQueue721RulesetsOf(params: {
-  chainId: number
-  projectId: number | bigint
-  deployTiersHookConfig: JBDeployTiersHookConfig
-  queueRulesetsConfig: JBQueueRulesetsConfig
-  salt?: `0x${string}`
-}): `0x${string}` {
-  const {
-    chainId,
-    projectId,
-    deployTiersHookConfig,
-    queueRulesetsConfig,
-    salt = ZERO_BYTES32,
-  } = params
-
-  return encodeFunctionData({
-    abi: JB_OMNICHAIN_DEPLOYER_ABI,
-    functionName: 'queueRulesetsOf',
-    args: [
-      BigInt(projectId),
-      formatDeploy721Config(deployTiersHookConfig, salt),
-      formatRulesetConfigurations(queueRulesetsConfig.rulesetConfigurations, chainId),
-      queueRulesetsConfig.memo,
-    ],
-  })
-}
-
-/**
- * Build transaction data for queueing 721 rulesets via JBOmnichainDeployer.
- */
-export function buildQueue721RulesetsTransaction(params: {
-  chainId: number
-  projectId: number | bigint
-  deployTiersHookConfig: JBDeployTiersHookConfig
-  queueRulesetsConfig: JBQueueRulesetsConfig
-  salt?: `0x${string}`
-}): {
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-} {
-  const data = encodeQueue721RulesetsOf(params)
-
-  return {
-    chainId: params.chainId,
-    to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
-    data,
-    value: '0x0',
-  }
-}
-
-/**
- * Build transactions for queueing 721 rulesets on multiple chains.
- */
-export function buildOmnichainQueue721RulesetsTransactions(params: {
-  chainIds: number[]
-  projectId: number | bigint
-  deployTiersHookConfig: JBDeployTiersHookConfig
-  queueRulesetsConfig: JBQueueRulesetsConfig
-  salt?: `0x${string}`
-}): Array<{
-  chainId: number
-  to: `0x${string}`
-  data: `0x${string}`
-  value: string
-}> {
-  return params.chainIds.map(chainId =>
-    buildQueue721RulesetsTransaction({
-      ...params,
-      chainId,
-    })
-  )
 }
 
 // ============================================================================
@@ -1426,8 +1511,8 @@ export function encodeSetUriOf(params: {
 /**
  * Build transaction data for setting project URI via JBController.
  *
- * The controller address should be derived from JBDirectory.controllerOf(projectId)
- * (projects can set a custom controller, though most use the canonical JBController).
+ * The controller address must be derived from JBDirectory.controllerOf(projectId)
+ * and must match the controller implementation this client recognizes.
  */
 export function buildSetUriTransaction(params: {
   chainId: number
@@ -1440,6 +1525,12 @@ export function buildSetUriTransaction(params: {
   data: `0x${string}`
   value: string
 } {
+  if (!/^ipfs:\/\/(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,120})$/.test(params.uri)) {
+    throw new Error('Project metadata URI must be a valid IPFS CID')
+  }
+  if (params.controller.toLowerCase() !== JB_CONTRACTS.JBController.toLowerCase()) {
+    throw new Error(`Controller not recognized: ${params.controller}`)
+  }
   const data = encodeSetUriOf(params)
 
   return {

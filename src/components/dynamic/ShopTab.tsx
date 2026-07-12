@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useThemeStore } from '../../stores'
 import { fetchProjectNFTTiers, getProjectDataHook, hasTokenUriResolver, type ResolvedNFTTier } from '../../services/nft'
-import { fetchEthPrice } from '../../services/bendystraw'
+import { fetchEthPrice, fetchProject } from '../../services/bendystraw'
 import { rulesetKeys, getShopStaleTime } from '../../hooks/useRulesetCache'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import NFTTierCard from './NFTTierCard'
@@ -18,16 +18,13 @@ interface ShopTabProps {
   chainId: string
   isOwner?: boolean
   connectedChains?: Array<{ chainId: number; projectId: number }>
+  onManageTiers?: () => void
 }
 
-export default function ShopTab({ projectId, chainId, isOwner, connectedChains }: ShopTabProps) {
+export default function ShopTab({ projectId, chainId, isOwner, connectedChains, onManageTiers }: ShopTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const queryClient = useQueryClient()
-
   const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all')
-  // Cache for on-chain metadata (productName, categoryName) by tierId
-  const [tierMetadata, setTierMetadata] = useState<Record<number, TierMetadata>>({})
   // Category names extracted from on-chain metadata (category number -> name)
   const [categoryNames, setCategoryNames] = useState<Record<number, string>>({})
   // Checkout quantities from ProjectCard (synced via event)
@@ -38,9 +35,12 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
   // 721 tiers and their remaining supply are strictly per-chain, so the shop
   // shows one chain's inventory at a time. Build the list of chains this project
   // lives on, defaulting to just the primary chain when there are no peers.
-  const availableChains = connectedChains && connectedChains.length > 0
-    ? connectedChains
-    : [{ chainId: chainIdNum, projectId: parseInt(projectId) }]
+  const availableChains = useMemo(
+    () => connectedChains && connectedChains.length > 0
+      ? connectedChains
+      : [{ chainId: chainIdNum, projectId: parseInt(projectId) }],
+    [chainIdNum, connectedChains, projectId],
+  )
 
   // Which chain's inventory the user is viewing (defaults to the primary chain).
   const [selectedChainId, setSelectedChainId] = useState<number>(chainIdNum)
@@ -54,69 +54,41 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
 
   // Fetch tiers with React Query (30 minute stale time). The query key includes
   // the selected chain + project so inventory caches per chain.
-  const { data: shopData, isLoading: loading, isFetching, refetch } = useQuery({
+  const { data: shopData, error: shopError, isLoading: loading, isFetching, refetch } = useQuery({
     queryKey: rulesetKeys.shop(selectedChainIdNum, parseInt(selectedProjectId)),
     queryFn: async () => {
-      const [tiersData, price, hook] = await Promise.all([
+      const [tiersData, price, hook, project] = await Promise.all([
         fetchProjectNFTTiers(selectedProjectId, selectedChainIdNum),
         fetchEthPrice(),
         getProjectDataHook(selectedProjectId, selectedChainIdNum),
+        fetchProject(selectedProjectId, selectedChainIdNum),
       ])
       // Check if hook has tokenUriResolver (if hook exists)
       const hasResolver = hook ? await hasTokenUriResolver(hook, selectedChainIdNum) : false
-      return { tiers: tiersData, ethPrice: price, hookAddress: hook, hasTokenUriResolver: hasResolver }
+      return {
+        tiers: tiersData,
+        ethPrice: price,
+        hookAddress: hook,
+        hasTokenUriResolver: hasResolver,
+        storedCategoryNames: project.metadata?.storeCategories || project.metadata?.['721Categories'] || {},
+      }
     },
     staleTime: getShopStaleTime(),
   })
 
-  const tiers = shopData?.tiers ?? []
+  const tiers = useMemo(() => shopData?.tiers ?? [], [shopData?.tiers])
   const ethPrice = shopData?.ethPrice
   const hookAddress = shopData?.hookAddress ?? null
   const hookHasTokenUriResolver = shopData?.hasTokenUriResolver ?? false
+  const storedCategoryNames = useMemo(
+    () => shopData?.storedCategoryNames ?? {},
+    [shopData?.storedCategoryNames],
+  )
 
   // Handle refresh button click
   const handleRefresh = useCallback(() => {
     refetch()
   }, [refetch])
-
-  // Handle "Sell something" button click - trigger chat flow
-  const handleSellSomething = useCallback(() => {
-    const message = `Help me add a new NFT tier to project ${selectedProjectId} on chain ${selectedChainIdNum}. I want to sell something new.`
-    window.dispatchEvent(new CustomEvent('juice:send-message', {
-      detail: { message, newChat: true }
-    }))
-  }, [selectedProjectId, selectedChainIdNum])
-
-  // Handle tier metadata edit - trigger chat flow
-  const handleEditMetadata = useCallback((tierId: number) => {
-    const tier = tiers.find(t => t.tierId === tierId)
-    const tierName = tier?.name || `Tier ${tierId}`
-    const message = `Help me update the metadata for NFT tier "${tierName}" (ID: ${tierId}) in project ${selectedProjectId} on chain ${selectedChainIdNum}. I want to change its name, description, or image.`
-    window.dispatchEvent(new CustomEvent('juice:send-message', {
-      detail: { message, newChat: true }
-    }))
-  }, [selectedProjectId, selectedChainIdNum, tiers])
-
-  // Handle tier discount change - trigger chat flow
-  const handleSetDiscount = useCallback((tierId: number, currentDiscount: number) => {
-    const tier = tiers.find(t => t.tierId === tierId)
-    const tierName = tier?.name || `Tier ${tierId}`
-    const discountText = currentDiscount > 0 ? ` (currently ${currentDiscount}% off)` : ''
-    const message = `Help me set a discount for NFT tier "${tierName}" (ID: ${tierId})${discountText} in project ${selectedProjectId} on chain ${selectedChainIdNum}.`
-    window.dispatchEvent(new CustomEvent('juice:send-message', {
-      detail: { message, newChat: true }
-    }))
-  }, [selectedProjectId, selectedChainIdNum, tiers])
-
-  // Handle tier removal - trigger chat flow
-  const handleRemoveTier = useCallback((tierId: number) => {
-    const tier = tiers.find(t => t.tierId === tierId)
-    const tierName = tier?.name || `Tier ${tierId}`
-    const message = `Help me remove NFT tier "${tierName}" (ID: ${tierId}) from project ${selectedProjectId} on chain ${selectedChainIdNum}. I want to delete this tier from the shop.`
-    window.dispatchEvent(new CustomEvent('juice:send-message', {
-      detail: { message, newChat: true }
-    }))
-  }, [selectedProjectId, selectedChainIdNum, tiers])
 
   // Listen for checkout quantity updates from ProjectCard
   useEffect(() => {
@@ -160,10 +132,6 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
 
   // Handle metadata loaded from NFTTierCard (extracts category names)
   const handleTierMetadataLoaded = useCallback((tierId: number, metadata: TierMetadata) => {
-    setTierMetadata(prev => ({
-      ...prev,
-      [tierId]: metadata,
-    }))
     // Extract category name from any tier that has it (including category 0)
     if (metadata.categoryName) {
       const tier = tiers.find(t => t.tierId === tierId)
@@ -179,8 +147,9 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
 
   // Get category display name (from on-chain metadata or fallback)
   const getCategoryName = useCallback((cat: number) => {
-    return categoryNames[cat] || `Category ${cat}`
-  }, [categoryNames])
+    const stored = storedCategoryNames[String(cat)]
+    return categoryNames[cat] || (typeof stored === 'string' && stored.trim() ? stored : `Category ${cat}`)
+  }, [categoryNames, storedCategoryNames])
 
   // Per-chain inventory selector. 721 tiers/supply are strictly per-chain, so
   // this switches which chain's shop is shown (never an aggregate). Rendered in
@@ -259,12 +228,36 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
     )
   }
 
+  if (shopError) {
+    const message = shopError instanceof Error ? shopError.message : 'Shop contract configuration could not be verified'
+    return (
+      <div>
+        {chainSelector}
+        <div className={`border p-4 text-sm ${
+          isDark
+            ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+            : 'border-amber-300 bg-amber-50 text-amber-800'
+        }`}>
+          {message}. Shop actions are unavailable.
+        </div>
+      </div>
+    )
+  }
+
   if (tiers.length === 0) {
     return (
       <div>
         {chainSelector}
         <div className={`text-center py-12 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
           <p className="text-lg font-medium">Nothing for sale yet</p>
+          {isOwner && onManageTiers && (
+            <button
+              onClick={onManageTiers}
+              className="mt-4 px-3 py-2 text-sm font-medium bg-green-500 text-black hover:bg-green-600 transition-colors"
+            >
+              Manage tiers
+            </button>
+          )}
         </div>
       </div>
     )
@@ -274,13 +267,12 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
     <div className="relative">
       {/* Top right controls */}
       <div className="absolute -top-1 right-0 flex items-center gap-2">
-        {/* Sell something button - owners only */}
-        {isOwner && (
+        {isOwner && onManageTiers && (
           <button
-            onClick={handleSellSomething}
+            onClick={onManageTiers}
             className="px-2 py-1 text-[10px] font-medium bg-green-500/20 text-green-500 hover:bg-green-500/30 transition-colors rounded"
           >
-            + Sell something
+            Manage tiers
           </button>
         )}
         {/* Refresh button */}
@@ -361,7 +353,7 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                       tier={tier}
                       projectId={selectedProjectId}
                       chainId={selectedChainIdNum}
-                      ethPrice={ethPrice}
+                      ethPrice={ethPrice ?? undefined}
                       isOwner={isOwner}
                       hookAddress={hookAddress}
                       addToCheckoutMode
@@ -369,9 +361,6 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                       connectedChains={connectedChains}
                       checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
                       hasTokenUriResolver={hookHasTokenUriResolver}
-                      onEditMetadata={isOwner ? handleEditMetadata : undefined}
-                      onSetDiscount={isOwner ? handleSetDiscount : undefined}
-                      onRemoveTier={isOwner ? handleRemoveTier : undefined}
                     />
                   </div>
                 ))}
@@ -392,7 +381,7 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                         tier={tier}
                         projectId={selectedProjectId}
                         chainId={selectedChainIdNum}
-                        ethPrice={ethPrice}
+                        ethPrice={ethPrice ?? undefined}
                         isOwner={isOwner}
                         hookAddress={hookAddress}
                         addToCheckoutMode
@@ -400,9 +389,6 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                         connectedChains={connectedChains}
                         checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
                         hasTokenUriResolver={hookHasTokenUriResolver}
-                        onEditMetadata={isOwner ? handleEditMetadata : undefined}
-                        onSetDiscount={isOwner ? handleSetDiscount : undefined}
-                        onRemoveTier={isOwner ? handleRemoveTier : undefined}
                       />
                     </div>
                   ))}
@@ -420,7 +406,7 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                 tier={tier}
                 projectId={selectedProjectId}
                 chainId={selectedChainIdNum}
-                ethPrice={ethPrice}
+                ethPrice={ethPrice ?? undefined}
                 isOwner={isOwner}
                 hookAddress={hookAddress}
                 addToCheckoutMode
@@ -428,9 +414,6 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains }
                 connectedChains={connectedChains}
                 checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
                 hasTokenUriResolver={hookHasTokenUriResolver}
-                onEditMetadata={isOwner ? handleEditMetadata : undefined}
-                onSetDiscount={isOwner ? handleSetDiscount : undefined}
-                onRemoveTier={isOwner ? handleRemoveTier : undefined}
               />
             </div>
           ))}

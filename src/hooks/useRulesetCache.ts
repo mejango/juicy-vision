@@ -134,14 +134,32 @@ export interface SplitData {
 }
 
 export interface FundAccessLimits {
+  terminal?: string
+  token?: string
+  tokenDecimals?: number
+  balance?: string
   payoutLimits: Array<{ amount: string; currency: number }>
-  surplusAllowances: Array<{ amount: string; currency: number }>
+  surplusAllowances: Array<{
+    amount: string
+    currency: number
+    usedAmount?: string
+    currentSurplus?: string
+  }>
 }
 
 export interface SplitsData {
   payoutSplits: SplitData[]
   reservedSplits: SplitData[]
   fundAccessLimits: FundAccessLimits | null
+  splitGroups?: Array<{ groupId: string; splits: SplitData[] }>
+  fundAccessLimitGroups?: FundAccessLimits[]
+  accountingContexts?: Array<{
+    terminal: string
+    token: string
+    tokenDecimals: number
+    currency: number
+  }>
+  configurationComplete?: boolean
 }
 
 // ============================================================================

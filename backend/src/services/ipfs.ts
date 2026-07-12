@@ -9,7 +9,7 @@
  * Uses IPFS HTTP API (Pinata, web3.storage, or local node)
  */
 
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
 
 // ============================================================================
@@ -17,11 +17,60 @@ import { getConfig } from '../utils/config.ts';
 // ============================================================================
 
 const DEFAULT_TIMEOUT_MS = 15000; // 15 seconds for IPFS operations
+const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
+
+function decodeBase32Cid(cid: string): Uint8Array {
+  const normalized = cid.trim().toLowerCase();
+  if (!normalized.startsWith('b')) throw new Error('CIDv1 must use base32 multibase');
+  const output: number[] = [];
+  let bits = 0;
+  let buffer = 0;
+  for (const char of normalized.slice(1).replace(/=+$/, '')) {
+    const index = BASE32_ALPHABET.indexOf(char);
+    if (index < 0) throw new Error(`Invalid base32 character: ${char}`);
+    buffer = (buffer << 5) | index;
+    bits += 5;
+    if (bits >= 8) {
+      output.push((buffer >> (bits - 8)) & 0xff);
+      bits -= 8;
+      buffer &= bits === 0 ? 0 : (1 << bits) - 1;
+    }
+  }
+  return new Uint8Array(output);
+}
+
+function readCidVarint(bytes: Uint8Array, offset: number): { value: number; offset: number } {
+  let value = 0;
+  let shift = 0;
+  for (let index = offset; index < bytes.length; index++) {
+    const byte = bytes[index];
+    value += (byte & 0x7f) * (2 ** shift);
+    if ((byte & 0x80) === 0) return { value, offset: index + 1 };
+    shift += 7;
+    if (shift > 49) throw new Error('CID varint is too large');
+  }
+  throw new Error('CID varint is truncated');
+}
+
+export function assertDagPbCid(cid: string): void {
+  if (/^Qm[1-9A-HJ-NP-Za-km-z]{44}$/.test(cid)) return;
+  const bytes = decodeBase32Cid(cid);
+  const version = readCidVarint(bytes, 0);
+  const codec = readCidVarint(bytes, version.offset);
+  const multihashCode = readCidVarint(bytes, codec.offset);
+  const multihashLength = readCidVarint(bytes, multihashCode.offset);
+  if (
+    version.value !== 1 || codec.value !== 0x70 || multihashCode.value !== 0x12 ||
+    multihashLength.value !== 32 || multihashLength.offset + multihashLength.value !== bytes.length
+  ) {
+    throw new Error('Pinned metadata CID is not a DAG-PB sha2-256 file');
+  }
+}
 
 async function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
-  timeoutMs: number = DEFAULT_TIMEOUT_MS
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -134,6 +183,7 @@ class IpfsClient {
     }
 
     const result = await response.json();
+    assertDagPbCid(result.IpfsHash);
     return {
       cid: result.IpfsHash,
       size: result.PinSize,
@@ -209,7 +259,7 @@ class IpfsClient {
 
 let ipfsClient: IpfsClient | null = null;
 
-function getIpfsClient(): IpfsClient {
+export function getIpfsClient(): IpfsClient {
   if (!ipfsClient) {
     const config = getConfig();
     ipfsClient = new IpfsClient({
@@ -257,7 +307,7 @@ export async function archiveChat(chatId: string): Promise<string> {
     `SELECT member_address, role, joined_at, left_at
      FROM multi_chat_members WHERE chat_id = $1
      ORDER BY joined_at ASC`,
-    [chatId]
+    [chatId],
   );
 
   // Fetch messages (non-deleted)
@@ -274,7 +324,7 @@ export async function archiveChat(chatId: string): Promise<string> {
      FROM multi_chat_messages
      WHERE chat_id = $1 AND deleted_at IS NULL
      ORDER BY created_at ASC`,
-    [chatId]
+    [chatId],
   );
 
   // Build archive object
@@ -320,7 +370,7 @@ export async function archiveChat(chatId: string): Promise<string> {
   // Update database with new CID
   await execute(
     `UPDATE multi_chats SET ipfs_cid = $1, last_archived_at = NOW() WHERE id = $2`,
-    [result.cid, chatId]
+    [result.cid, chatId],
   );
 
   console.log(`[IPFS] Archived chat ${chatId} to CID: ${result.cid}`);
@@ -331,7 +381,7 @@ export async function archiveChat(chatId: string): Promise<string> {
 /**
  * Fetch archived chat from IPFS
  */
-export async function fetchArchivedChat(cid: string): Promise<ArchivedChat> {
+export function fetchArchivedChat(cid: string): Promise<ArchivedChat> {
   const client = getIpfsClient();
   return client.get<ArchivedChat>(cid);
 }
@@ -342,7 +392,7 @@ export async function fetchArchivedChat(cid: string): Promise<ArchivedChat> {
 export async function getLatestArchiveCid(chatId: string): Promise<string | null> {
   const result = await queryOne<{ ipfs_cid: string | null }>(
     'SELECT ipfs_cid FROM multi_chats WHERE id = $1',
-    [chatId]
+    [chatId],
   );
   return result?.ipfs_cid ?? null;
 }
@@ -352,7 +402,7 @@ export async function getLatestArchiveCid(chatId: string): Promise<string | null
  */
 export async function archiveMessage(
   chatId: string,
-  messageId: string
+  messageId: string,
 ): Promise<string> {
   const message = await queryOne<{
     id: string;
@@ -364,8 +414,8 @@ export async function archiveMessage(
     created_at: Date;
   }>(
     `SELECT id, sender_address, role, content, is_encrypted, reply_to_id, created_at
-     FROM multi_chat_messages WHERE id = $1`,
-    [messageId]
+     FROM multi_chat_messages WHERE id = $1 AND chat_id = $2`,
+    [messageId, chatId],
   );
 
   if (!message) {
@@ -387,8 +437,8 @@ export async function archiveMessage(
 
   // Update message with CID
   await execute(
-    'UPDATE multi_chat_messages SET ipfs_cid = $1 WHERE id = $2',
-    [result.cid, messageId]
+    'UPDATE multi_chat_messages SET ipfs_cid = $1 WHERE id = $2 AND chat_id = $3',
+    [result.cid, messageId, chatId],
   );
 
   return result.cid;
@@ -426,7 +476,7 @@ export async function getArchiveHistory(cid: string): Promise<ArchivedChat[]> {
  */
 export async function cleanupOldArchives(
   chatId: string,
-  keepCount: number = 5
+  keepCount: number = 5,
 ): Promise<number> {
   const latestCid = await getLatestArchiveCid(chatId);
   if (!latestCid) return 0;
@@ -468,7 +518,7 @@ export async function cleanupOldArchives(
 export async function pinFileToIpfs(
   base64Data: string,
   fileName: string,
-  mimeType: string
+  mimeType: string,
 ): Promise<string> {
   const client = getIpfsClient();
 
@@ -499,7 +549,7 @@ export async function archiveStaleChats(hoursThreshold: number = 24): Promise<nu
         OR last_archived_at < NOW() - INTERVAL '${hoursThreshold} hours'
      ORDER BY last_archived_at ASC NULLS FIRST
      LIMIT 10`,
-    []
+    [],
   );
 
   let archived = 0;

@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
+import { formatUnits } from 'viem'
 import {
   PieChart,
   Pie,
@@ -6,17 +7,16 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  type DefaultLegendContentProps,
+  type TooltipContentProps,
 } from 'recharts'
 import { useThemeStore } from '../../../stores'
 import {
   fetchMultiChainParticipants,
-  fetchProject,
-  fetchProjectSuckerGroupId,
   fetchConnectedChains,
 } from '../../../services/bendystraw'
 import { resolveEnsNames, truncateAddress } from '../../../utils/ens'
 import { formatPercentage, PIE_COLORS, CHAIN_NAMES } from './utils'
-import ChainToggleBar from './ChainToggleBar'
 
 interface HoldersChartProps {
   projectId: string
@@ -34,6 +34,15 @@ interface ChartDataPoint {
   [key: string]: string | number | number[] | null
 }
 
+function formatProjectTokenBalance(balance: bigint): string {
+  if (balance > 0n && balance < 1_000_000_000_000n) return '<0.000001'
+
+  const [whole, fraction = ''] = formatUnits(balance, 18).split('.')
+  const visibleFraction = fraction.slice(0, whole === '0' ? 6 : 4).replace(/0+$/, '')
+  const formattedWhole = BigInt(whole).toLocaleString('en-US')
+  return visibleFraction ? `${formattedWhole}.${visibleFraction}` : formattedWhole
+}
+
 export default function HoldersChart({
   projectId,
   chainId = '1',
@@ -45,11 +54,7 @@ export default function HoldersChart({
   const [data, setData] = useState<ChartDataPoint[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [projectName, setProjectName] = useState<string>('')
   const [totalHolders, setTotalHolders] = useState<number>(0)
-  const [connectedChains, setConnectedChains] = useState<number[]>([])
-  const [selectedChains, setSelectedChains] = useState<Set<number> | 'all'>('all')
-  const [showBreakdown, setShowBreakdown] = useState(false)
   const [showAllMembers, setShowAllMembers] = useState(false)
 
   useEffect(() => {
@@ -58,50 +63,21 @@ export default function HoldersChart({
       setError(null)
 
       try {
-        // Fetch project info and connected chains in parallel
-        const [project, chains] = await Promise.all([
-          fetchProject(projectId, parseInt(chainId)),
-          fetchConnectedChains(projectId, parseInt(chainId)),
-        ])
+        const chains = await fetchConnectedChains(projectId, parseInt(chainId))
 
-        if (project?.metadata) {
-          const metadata = typeof project.metadata === 'string'
-            ? JSON.parse(project.metadata)
-            : project.metadata
-          setProjectName(metadata?.name || '')
-        }
-
-        // Extract unique chain IDs from connected chains
-        const chainIds = chains.length > 0
-          ? [...new Set(chains.map(c => c.chainId))]
-          : [parseInt(chainId)]
-        setConnectedChains(chainIds)
-
-        // Build the connected chains array for multi-chain fetch
-        // If we have connected chains from suckerGroup, use those; otherwise use current chain
         const connectedChainsArray = chains.length > 0
           ? chains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))
           : [{ chainId: parseInt(chainId), projectId: parseInt(projectId) }]
 
-        // Fetch the suckerGroupId for accurate total supply calculation
-        const suckerGroupId = await fetchProjectSuckerGroupId(projectId, parseInt(chainId))
-        console.log('[HoldersChart] suckerGroupId:', suckerGroupId, 'connectedChains:', connectedChainsArray.length)
-
-        // Fetch participants from all connected chains and aggregate them
-        const { participants, totalSupply } = await fetchMultiChainParticipants(
+        const { participants } = await fetchMultiChainParticipants(
           connectedChainsArray,
           limit,
-          suckerGroupId || undefined
         )
-        console.log('[HoldersChart] participants:', participants.length, 'totalSupply:', totalSupply.toString())
-        if (participants.length > 0) {
-          console.log('[HoldersChart] top participant:', participants[0])
-        }
 
         setTotalHolders(participants.length)
 
         if (participants.length === 0) {
-          setError('No members found')
+          setError('No members yet')
           return
         }
 
@@ -116,7 +92,7 @@ export default function HoldersChart({
           address: p.address,
           ensName: ensNames[i],
           value: p.percentage,
-          balance: (Number(p.balance) / 1e18).toFixed(2),
+          balance: formatProjectTokenBalance(p.balance),
           chains: p.chains,
         }))
 
@@ -144,74 +120,8 @@ export default function HoldersChart({
     loadData()
   }, [projectId, chainId, limit])
 
-  // Filter data by selected chains
-  const filteredData = useMemo(() => {
-    if (selectedChains === 'all') {
-      return data
-    }
-
-    // Filter holders who have tokens on at least one selected chain
-    const filtered = data.filter(d => {
-      // Keep "Others" slice when filtering
-      if (d.address === '') return true
-      // Check if holder has tokens on any selected chain
-      return d.chains.some(c => (selectedChains as Set<number>).has(c))
-    })
-
-    // Recalculate percentages for filtered data
-    const holdersWithBalances = filtered.filter(d => d.address !== '')
-    const totalBalance = holdersWithBalances.reduce((sum, d) => sum + parseFloat(d.balance), 0)
-
-    if (totalBalance === 0) return filtered
-
-    const recalculated = holdersWithBalances.map(d => ({
-      ...d,
-      value: (parseFloat(d.balance) / totalBalance) * 100,
-    }))
-
-    // Recalculate Others
-    const totalPercentage = recalculated.reduce((sum, d) => sum + d.value, 0)
-    if (totalPercentage < 99.9) {
-      recalculated.push({
-        name: 'Others',
-        address: '',
-        ensName: null,
-        value: 100 - totalPercentage,
-        balance: '...',
-        chains: [],
-      })
-    }
-
-    return recalculated
-  }, [data, selectedChains])
-
-  const handleChainToggle = (chainId: number) => {
-    if (selectedChains === 'all') {
-      // Switch from "all" to just this chain
-      setSelectedChains(new Set([chainId]))
-    } else {
-      const newSelected = new Set(selectedChains)
-      if (newSelected.has(chainId)) {
-        newSelected.delete(chainId)
-        // If none selected, go back to "all"
-        if (newSelected.size === 0) {
-          setSelectedChains('all')
-        } else {
-          setSelectedChains(newSelected)
-        }
-      } else {
-        newSelected.add(chainId)
-        setSelectedChains(newSelected)
-      }
-    }
-  }
-
-  const handleSelectAll = () => {
-    setSelectedChains('all')
-  }
-
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
     if (!active || !payload?.length) return null
 
     const item = payload[0].payload as ChartDataPoint
@@ -255,13 +165,13 @@ export default function HoldersChart({
   }
 
   // Custom legend
-  const renderLegend = (props: any) => {
+  const renderLegend = (props: DefaultLegendContentProps) => {
     const { payload } = props
     if (!payload) return null
 
     return (
       <div className="flex flex-wrap gap-x-3 gap-y-1.5 justify-center mt-4">
-        {payload.slice(0, 5).map((entry: any, index: number) => (
+        {payload.slice(0, 5).map((entry, index) => (
           <div key={index} className="flex items-center gap-1.5 text-xs">
             <span
               className="w-2.5 h-2.5"
@@ -296,38 +206,10 @@ export default function HoldersChart({
             </div>
             {totalHolders > 0 && (
               <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                Top {Math.min(limit, totalHolders)} by ownership
+                Showing {totalHolders} by ownership
               </span>
             )}
           </div>
-          {connectedChains.length > 1 && (
-            <div>
-              <button
-                onClick={() => setShowBreakdown(!showBreakdown)}
-                className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
-              >
-                <span>Breakdown</span>
-                <svg
-                  className={`w-3 h-3 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {showBreakdown && (
-                <div className="mt-2">
-                  <ChainToggleBar
-                    availableChains={connectedChains}
-                    selectedChains={selectedChains}
-                    onToggle={handleChainToggle}
-                    onSelectAll={handleSelectAll}
-                  />
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Chart */}
@@ -342,7 +224,7 @@ export default function HoldersChart({
             <div className={`h-[300px] flex items-center justify-center text-red-400`}>
               {error}
             </div>
-          ) : filteredData.length === 0 ? (
+          ) : data.length === 0 ? (
             <div className={`h-[300px] flex items-center justify-center ${
               isDark ? 'text-gray-500' : 'text-gray-400'
             }`}>
@@ -353,7 +235,7 @@ export default function HoldersChart({
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={filteredData}
+                    data={data}
                     cx="50%"
                     cy="42%"
                     innerRadius="40%"
@@ -363,14 +245,14 @@ export default function HoldersChart({
                     nameKey="name"
                     isAnimationActive={false}
                   >
-                    {filteredData.map((_, index) => (
+                    {data.map((_, index) => (
                       <Cell
                         key={`cell-${index}`}
                         fill={PIE_COLORS[index % PIE_COLORS.length]}
                       />
                     ))}
                   </Pie>
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={CustomTooltip} />
                   <Legend content={renderLegend} />
                 </PieChart>
               </ResponsiveContainer>
@@ -379,10 +261,10 @@ export default function HoldersChart({
         </div>
 
         {/* Members List */}
-        {!loading && !error && filteredData.length > 0 && (
+        {!loading && !error && data.length > 0 && (
           <div className={`px-4 pb-4 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
             <div className="pt-3 space-y-2">
-              {filteredData
+              {data
                 .filter(d => d.address !== '') // Exclude "Others"
                 .slice(0, showAllMembers ? undefined : 5)
                 .map((member, index) => (
@@ -403,7 +285,7 @@ export default function HoldersChart({
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
                       <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        {parseFloat(member.balance).toLocaleString()} tokens
+                        {member.balance} tokens
                       </span>
                       <span className={`text-xs font-medium w-12 text-right ${isDark ? 'text-white' : 'text-gray-900'}`}>
                         {formatPercentage(member.value)}
@@ -412,7 +294,7 @@ export default function HoldersChart({
                   </div>
                 ))}
             </div>
-            {filteredData.filter(d => d.address !== '').length > 5 && (
+            {data.filter(d => d.address !== '').length > 5 && (
               <button
                 onClick={() => setShowAllMembers(!showAllMembers)}
                 className={`w-full mt-2 py-1.5 text-xs transition-colors ${
@@ -421,7 +303,7 @@ export default function HoldersChart({
               >
                 {showAllMembers
                   ? 'Show less'
-                  : `View ${filteredData.filter(d => d.address !== '').length - 5} more`
+                  : `View ${data.filter(d => d.address !== '').length - 5} more`
                 }
               </button>
             )}

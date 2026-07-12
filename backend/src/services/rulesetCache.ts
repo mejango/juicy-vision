@@ -10,86 +10,95 @@
  * - Splits: 2 minute TTL - mutable within ruleset limits
  */
 
-import { execute, query, queryOne } from '../db/index.ts'
+import { execute, query, queryOne } from '../db/index.ts';
 
 // TTL constants in milliseconds
-// Current/queued rulesets are immutable once created - we cache them forever
-// and rely on cycle watcher to invalidate when a new cycle starts
-const QUEUED_RULESET_TTL_MS = 5 * 60 * 1000    // 5 minutes (to detect newly queued)
-const SPLITS_TTL_MS = 2 * 60 * 1000            // 2 minutes
-const SHOP_TTL_MS = 30 * 60 * 1000             // 30 minutes (tier data is stable)
+const CURRENT_RULESET_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const QUEUED_RULESET_TTL_MS = 5 * 60 * 1000; // 5 minutes (to detect newly queued)
+const SPLITS_TTL_MS = 2 * 60 * 1000; // 2 minutes
+const SHOP_TTL_MS = 30 * 60 * 1000; // 30 minutes (tier data is stable)
 
-export type RulesetStatus = 'historical' | 'current' | 'queued'
+export type RulesetStatus = 'historical' | 'current' | 'queued';
 
 export interface CachedRuleset {
-  id: string
-  chainId: number
-  projectId: number
-  rulesetId: string
-  cycleNumber: number
-  rulesetData: RulesetData
-  status: RulesetStatus
-  fetchedAt: Date
-  expiresAt: Date | null
+  id: string;
+  chainId: number;
+  projectId: number;
+  rulesetId: string;
+  cycleNumber: number;
+  rulesetData: RulesetData;
+  status: RulesetStatus;
+  fetchedAt: Date;
+  expiresAt: Date | null;
 }
 
 export interface RulesetData {
-  cycleNumber: number
-  id: string
-  start: number
-  duration: number
-  weight: string
-  weightCutPercent: number
-  basedOnId?: string
-  metadata?: RulesetMetadata
+  cycleNumber: number;
+  id: string;
+  start: number;
+  duration: number;
+  weight: string;
+  weightCutPercent: number;
+  approvalHook?: string;
+  basedOnId?: string;
+  metadata?: RulesetMetadata;
 }
 
 export interface RulesetMetadata {
-  reservedPercent: number
-  cashOutTaxRate: number
-  baseCurrency: number
-  pausePay: boolean
-  pauseCreditTransfers: boolean
-  allowOwnerMinting: boolean
-  allowSetCustomToken: boolean
-  allowTerminalMigration: boolean
-  allowSetTerminals: boolean
-  allowSetController: boolean
-  allowAddAccountingContext: boolean
-  allowAddPriceFeed: boolean
-  ownerMustSendPayouts: boolean
-  holdFees: boolean
-  scopeCashOutsToLocalBalances: boolean
-  useDataHookForPay: boolean
-  useDataHookForCashOut: boolean
-  dataHook: string
-  metadata: number
+  reservedPercent: number;
+  cashOutTaxRate: number;
+  baseCurrency: number;
+  pausePay: boolean;
+  pauseCreditTransfers: boolean;
+  allowOwnerMinting: boolean;
+  allowSetCustomToken: boolean;
+  allowTerminalMigration: boolean;
+  allowSetTerminals: boolean;
+  allowSetController: boolean;
+  allowAddAccountingContext: boolean;
+  allowAddPriceFeed: boolean;
+  ownerMustSendPayouts: boolean;
+  holdFees: boolean;
+  scopeCashOutsToLocalBalances: boolean;
+  useDataHookForPay: boolean;
+  useDataHookForCashOut: boolean;
+  dataHook: string;
+  metadata: number;
 }
 
 export interface CachedSplits {
-  id: string
-  chainId: number
-  projectId: number
-  rulesetId: string
-  payoutSplits: SplitData[]
-  reservedSplits: SplitData[]
-  fundAccessLimits: FundAccessLimits | null
-  fetchedAt: Date
-  expiresAt: Date
+  id: string;
+  chainId: number;
+  projectId: number;
+  rulesetId: string;
+  payoutSplits: SplitData[];
+  reservedSplits: SplitData[];
+  fundAccessLimits: FundAccessLimits | null;
+  fetchedAt: Date;
+  expiresAt: Date;
 }
 
 export interface SplitData {
-  percent: number
-  projectId: number
-  beneficiary: string
-  preferAddToBalance: boolean
-  lockedUntil: number
-  hook: string
+  percent: number;
+  projectId: number;
+  beneficiary: string;
+  preferAddToBalance: boolean;
+  lockedUntil: number;
+  hook: string;
 }
 
 export interface FundAccessLimits {
-  payoutLimits: Array<{ amount: string; currency: number }>
-  surplusAllowances: Array<{ amount: string; currency: number }>
+  terminal?: string;
+  token?: string;
+  tokenDecimals?: number;
+  balance?: string;
+  payoutLimits: Array<{ amount: string; currency: number }>;
+  surplusAllowances: Array<{
+    amount: string;
+    currency: number;
+    usedAmount?: string;
+    currentSurplus?: string;
+  }>;
 }
 
 // ============================================================================
@@ -102,27 +111,27 @@ export interface FundAccessLimits {
 export async function getCachedRuleset(
   chainId: number,
   projectId: number,
-  rulesetId: string
+  rulesetId: string,
 ): Promise<CachedRuleset | null> {
   const result = await queryOne<{
-    id: string
-    chain_id: number
-    project_id: number
-    ruleset_id: string
-    cycle_number: number
-    ruleset_data: RulesetData
-    status: RulesetStatus
-    fetched_at: Date
-    expires_at: Date | null
+    id: string;
+    chain_id: number;
+    project_id: number;
+    ruleset_id: string;
+    cycle_number: number;
+    ruleset_data: RulesetData;
+    status: RulesetStatus;
+    fetched_at: Date;
+    expires_at: Date | null;
   }>(
     `SELECT id, chain_id, project_id, ruleset_id, cycle_number, ruleset_data, status, fetched_at, expires_at
      FROM ruleset_cache
      WHERE chain_id = $1 AND project_id = $2 AND ruleset_id = $3
        AND (expires_at IS NULL OR expires_at > NOW())`,
-    [chainId, projectId, rulesetId]
-  )
+    [chainId, projectId, rulesetId],
+  );
 
-  if (!result) return null
+  if (!result) return null;
 
   return {
     id: result.id,
@@ -134,37 +143,38 @@ export async function getCachedRuleset(
     status: result.status,
     fetchedAt: result.fetched_at,
     expiresAt: result.expires_at,
-  }
+  };
 }
 
 /**
  * Get the cached current ruleset for a project
- * Current rulesets are cached forever (immutable once created)
+ * Current rulesets use a short TTL so cycle changes are visible without a watcher.
  */
 export async function getCachedCurrentRuleset(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<CachedRuleset | null> {
   const result = await queryOne<{
-    id: string
-    chain_id: number
-    project_id: number
-    ruleset_id: string
-    cycle_number: number
-    ruleset_data: RulesetData
-    status: RulesetStatus
-    fetched_at: Date
-    expires_at: Date | null
+    id: string;
+    chain_id: number;
+    project_id: number;
+    ruleset_id: string;
+    cycle_number: number;
+    ruleset_data: RulesetData;
+    status: RulesetStatus;
+    fetched_at: Date;
+    expires_at: Date | null;
   }>(
     `SELECT id, chain_id, project_id, ruleset_id, cycle_number, ruleset_data, status, fetched_at, expires_at
      FROM ruleset_cache
      WHERE chain_id = $1 AND project_id = $2 AND status = 'current'
+       AND fetched_at > NOW() - INTERVAL '5 minutes'
      ORDER BY fetched_at DESC
      LIMIT 1`,
-    [chainId, projectId]
-  )
+    [chainId, projectId],
+  );
 
-  if (!result) return null
+  if (!result) return null;
 
   return {
     id: result.id,
@@ -176,7 +186,7 @@ export async function getCachedCurrentRuleset(
     status: result.status,
     fetchedAt: result.fetched_at,
     expiresAt: result.expires_at,
-  }
+  };
 }
 
 /**
@@ -184,18 +194,18 @@ export async function getCachedCurrentRuleset(
  */
 export async function getCachedQueuedRuleset(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<CachedRuleset | null> {
   const result = await queryOne<{
-    id: string
-    chain_id: number
-    project_id: number
-    ruleset_id: string
-    cycle_number: number
-    ruleset_data: RulesetData
-    status: RulesetStatus
-    fetched_at: Date
-    expires_at: Date | null
+    id: string;
+    chain_id: number;
+    project_id: number;
+    ruleset_id: string;
+    cycle_number: number;
+    ruleset_data: RulesetData;
+    status: RulesetStatus;
+    fetched_at: Date;
+    expires_at: Date | null;
   }>(
     `SELECT id, chain_id, project_id, ruleset_id, cycle_number, ruleset_data, status, fetched_at, expires_at
      FROM ruleset_cache
@@ -203,10 +213,10 @@ export async function getCachedQueuedRuleset(
        AND expires_at > NOW()
      ORDER BY fetched_at DESC
      LIMIT 1`,
-    [chainId, projectId]
-  )
+    [chainId, projectId],
+  );
 
-  if (!result) return null
+  if (!result) return null;
 
   return {
     id: result.id,
@@ -218,7 +228,7 @@ export async function getCachedQueuedRuleset(
     status: result.status,
     fetchedAt: result.fetched_at,
     expiresAt: result.expires_at,
-  }
+  };
 }
 
 /**
@@ -226,25 +236,25 @@ export async function getCachedQueuedRuleset(
  */
 export async function getCachedRulesetHistory(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<CachedRuleset[]> {
   const results = await query<{
-    id: string
-    chain_id: number
-    project_id: number
-    ruleset_id: string
-    cycle_number: number
-    ruleset_data: RulesetData
-    status: RulesetStatus
-    fetched_at: Date
-    expires_at: Date | null
+    id: string;
+    chain_id: number;
+    project_id: number;
+    ruleset_id: string;
+    cycle_number: number;
+    ruleset_data: RulesetData;
+    status: RulesetStatus;
+    fetched_at: Date;
+    expires_at: Date | null;
   }>(
     `SELECT id, chain_id, project_id, ruleset_id, cycle_number, ruleset_data, status, fetched_at, expires_at
      FROM ruleset_cache
      WHERE chain_id = $1 AND project_id = $2 AND status = 'historical'
      ORDER BY cycle_number ASC`,
-    [chainId, projectId]
-  )
+    [chainId, projectId],
+  );
 
   return results.map((r) => ({
     id: r.id,
@@ -256,13 +266,12 @@ export async function getCachedRulesetHistory(
     status: r.status,
     fetchedAt: r.fetched_at,
     expiresAt: r.expires_at,
-  }))
+  }));
 }
 
 /**
  * Cache a ruleset with appropriate TTL based on status
- * Note: Current rulesets are cached forever (immutable once created)
- * and invalidated via cycle watcher when a new cycle starts
+ * Current and queued entries expire so live chain configuration wins.
  */
 export async function cacheRuleset(
   chainId: number,
@@ -270,17 +279,18 @@ export async function cacheRuleset(
   rulesetId: string,
   cycleNumber: number,
   rulesetData: RulesetData,
-  status: RulesetStatus
+  status: RulesetStatus,
 ): Promise<void> {
   // Calculate expires_at based on status
-  // Current and historical rulesets are immutable - cache forever
-  // Queued rulesets need short TTL to detect newly queued ones
-  let expiresAt: Date | null = null
+  // Historical rulesets are immutable. Current and queued entries need a TTL.
+  let expiresAt: Date | null = null;
 
-  if (status === 'queued') {
-    expiresAt = new Date(Date.now() + QUEUED_RULESET_TTL_MS)
+  if (status === 'current') {
+    expiresAt = new Date(Date.now() + CURRENT_RULESET_TTL_MS);
+  } else if (status === 'queued') {
+    expiresAt = new Date(Date.now() + QUEUED_RULESET_TTL_MS);
   }
-  // Current and historical rulesets have expires_at = NULL (never expire)
+  // Historical rulesets have expires_at = NULL.
 
   await execute(
     `INSERT INTO ruleset_cache (chain_id, project_id, ruleset_id, cycle_number, ruleset_data, status, expires_at)
@@ -292,8 +302,8 @@ export async function cacheRuleset(
        status = EXCLUDED.status,
        fetched_at = NOW(),
        expires_at = EXCLUDED.expires_at`,
-    [chainId, projectId, rulesetId, cycleNumber, JSON.stringify(rulesetData), status, expiresAt]
-  )
+    [chainId, projectId, rulesetId, cycleNumber, JSON.stringify(rulesetData), status, expiresAt],
+  );
 }
 
 /**
@@ -302,32 +312,34 @@ export async function cacheRuleset(
 export async function cacheRulesetHistory(
   chainId: number,
   projectId: number,
-  rulesets: Array<{ rulesetId: string; cycleNumber: number; rulesetData: RulesetData }>
+  rulesets: Array<{ rulesetId: string; cycleNumber: number; rulesetData: RulesetData }>,
 ): Promise<void> {
-  if (rulesets.length === 0) return
+  if (rulesets.length === 0) return;
 
   // Build batch insert with ON CONFLICT
-  const values: unknown[] = []
-  const placeholders: string[] = []
+  const values: unknown[] = [];
+  const placeholders: string[] = [];
 
   for (let i = 0; i < rulesets.length; i++) {
-    const base = i * 5
-    placeholders.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, 'historical', NULL)`)
+    const base = i * 5;
+    placeholders.push(
+      `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, 'historical', NULL)`,
+    );
     values.push(
       chainId,
       projectId,
       rulesets[i].rulesetId,
       rulesets[i].cycleNumber,
-      JSON.stringify(rulesets[i].rulesetData)
-    )
+      JSON.stringify(rulesets[i].rulesetData),
+    );
   }
 
   await execute(
     `INSERT INTO ruleset_cache (chain_id, project_id, ruleset_id, cycle_number, ruleset_data, status, expires_at)
      VALUES ${placeholders.join(', ')}
      ON CONFLICT (chain_id, project_id, ruleset_id) DO NOTHING`,
-    values
-  )
+    values,
+  );
 }
 
 /**
@@ -337,17 +349,17 @@ export async function updateRulesetStatus(
   chainId: number,
   projectId: number,
   rulesetId: string,
-  newStatus: RulesetStatus
+  newStatus: RulesetStatus,
 ): Promise<void> {
   // Both current and historical are cached forever, only queued has TTL
-  const expiresAt = newStatus === 'queued' ? new Date(Date.now() + QUEUED_RULESET_TTL_MS) : null
+  const expiresAt = newStatus === 'queued' ? new Date(Date.now() + QUEUED_RULESET_TTL_MS) : null;
 
   await execute(
     `UPDATE ruleset_cache
      SET status = $1, expires_at = $2, fetched_at = NOW()
      WHERE chain_id = $3 AND project_id = $4 AND ruleset_id = $5`,
-    [newStatus, expiresAt, chainId, projectId, rulesetId]
-  )
+    [newStatus, expiresAt, chainId, projectId, rulesetId],
+  );
 }
 
 /**
@@ -356,13 +368,13 @@ export async function updateRulesetStatus(
  */
 export async function invalidateCurrentRuleset(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<void> {
   await execute(
     `DELETE FROM ruleset_cache
      WHERE chain_id = $1 AND project_id = $2 AND status = 'current'`,
-    [chainId, projectId]
-  )
+    [chainId, projectId],
+  );
 }
 
 /**
@@ -371,13 +383,13 @@ export async function invalidateCurrentRuleset(
  */
 export async function invalidateQueuedRuleset(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<void> {
   await execute(
     `DELETE FROM ruleset_cache
      WHERE chain_id = $1 AND project_id = $2 AND status = 'queued'`,
-    [chainId, projectId]
-  )
+    [chainId, projectId],
+  );
 }
 
 // ============================================================================
@@ -390,27 +402,27 @@ export async function invalidateQueuedRuleset(
 export async function getCachedSplits(
   chainId: number,
   projectId: number,
-  rulesetId: string
+  rulesetId: string,
 ): Promise<CachedSplits | null> {
   const result = await queryOne<{
-    id: string
-    chain_id: number
-    project_id: number
-    ruleset_id: string
-    payout_splits: SplitData[]
-    reserved_splits: SplitData[]
-    fund_access_limits: FundAccessLimits | null
-    fetched_at: Date
-    expires_at: Date
+    id: string;
+    chain_id: number;
+    project_id: number;
+    ruleset_id: string;
+    payout_splits: SplitData[];
+    reserved_splits: SplitData[];
+    fund_access_limits: FundAccessLimits | null;
+    fetched_at: Date;
+    expires_at: Date;
   }>(
     `SELECT id, chain_id, project_id, ruleset_id, payout_splits, reserved_splits, fund_access_limits, fetched_at, expires_at
      FROM splits_cache
      WHERE chain_id = $1 AND project_id = $2 AND ruleset_id = $3
        AND expires_at > NOW()`,
-    [chainId, projectId, rulesetId]
-  )
+    [chainId, projectId, rulesetId],
+  );
 
-  if (!result) return null
+  if (!result) return null;
 
   return {
     id: result.id,
@@ -422,7 +434,7 @@ export async function getCachedSplits(
     fundAccessLimits: result.fund_access_limits,
     fetchedAt: result.fetched_at,
     expiresAt: result.expires_at,
-  }
+  };
 }
 
 /**
@@ -434,9 +446,9 @@ export async function cacheSplits(
   rulesetId: string,
   payoutSplits: SplitData[],
   reservedSplits: SplitData[],
-  fundAccessLimits: FundAccessLimits | null
+  fundAccessLimits: FundAccessLimits | null,
 ): Promise<void> {
-  const expiresAt = new Date(Date.now() + SPLITS_TTL_MS)
+  const expiresAt = new Date(Date.now() + SPLITS_TTL_MS);
 
   await execute(
     `INSERT INTO splits_cache (chain_id, project_id, ruleset_id, payout_splits, reserved_splits, fund_access_limits, expires_at)
@@ -448,8 +460,16 @@ export async function cacheSplits(
        fund_access_limits = EXCLUDED.fund_access_limits,
        fetched_at = NOW(),
        expires_at = EXCLUDED.expires_at`,
-    [chainId, projectId, rulesetId, JSON.stringify(payoutSplits), JSON.stringify(reservedSplits), fundAccessLimits ? JSON.stringify(fundAccessLimits) : null, expiresAt]
-  )
+    [
+      chainId,
+      projectId,
+      rulesetId,
+      JSON.stringify(payoutSplits),
+      JSON.stringify(reservedSplits),
+      fundAccessLimits ? JSON.stringify(fundAccessLimits) : null,
+      expiresAt,
+    ],
+  );
 }
 
 /**
@@ -459,13 +479,13 @@ export async function cacheSplits(
 export async function invalidateSplits(
   chainId: number,
   projectId: number,
-  rulesetId: string
+  rulesetId: string,
 ): Promise<void> {
   await execute(
     `DELETE FROM splits_cache
      WHERE chain_id = $1 AND project_id = $2 AND ruleset_id = $3`,
-    [chainId, projectId, rulesetId]
-  )
+    [chainId, projectId, rulesetId],
+  );
 }
 
 /**
@@ -473,13 +493,13 @@ export async function invalidateSplits(
  */
 export async function invalidateProjectSplits(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<void> {
   await execute(
     `DELETE FROM splits_cache
      WHERE chain_id = $1 AND project_id = $2`,
-    [chainId, projectId]
-  )
+    [chainId, projectId],
+  );
 }
 
 // ============================================================================
@@ -487,30 +507,30 @@ export async function invalidateProjectSplits(
 // ============================================================================
 
 export interface ShopTier {
-  tierId: number
-  name: string
-  description?: string
-  imageUri?: string
-  price: string
-  currency: number
-  initialSupply: number
-  remainingSupply: number
-  reservedRate: number
-  votingUnits: string
-  category: number
-  allowOwnerMint: boolean
-  transfersPausable: boolean
-  metadata?: Record<string, unknown>
+  tierId: number;
+  name: string;
+  description?: string;
+  imageUri?: string;
+  price: string;
+  currency: number;
+  initialSupply: number;
+  remainingSupply: number;
+  reservedRate: number;
+  votingUnits: string;
+  category: number;
+  allowOwnerMint: boolean;
+  transfersPausable: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CachedShop {
-  id: string
-  chainId: number
-  projectId: number
-  hookAddress: string
-  tiers: ShopTier[]
-  fetchedAt: Date
-  expiresAt: Date
+  id: string;
+  chainId: number;
+  projectId: number;
+  hookAddress: string;
+  tiers: ShopTier[];
+  fetchedAt: Date;
+  expiresAt: Date;
 }
 
 /**
@@ -518,25 +538,25 @@ export interface CachedShop {
  */
 export async function getCachedShop(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<CachedShop | null> {
   const result = await queryOne<{
-    id: string
-    chain_id: number
-    project_id: number
-    hook_address: string
-    tiers: ShopTier[]
-    fetched_at: Date
-    expires_at: Date
+    id: string;
+    chain_id: number;
+    project_id: number;
+    hook_address: string;
+    tiers: ShopTier[];
+    fetched_at: Date;
+    expires_at: Date;
   }>(
     `SELECT id, chain_id, project_id, hook_address, tiers, fetched_at, expires_at
      FROM shop_cache
      WHERE chain_id = $1 AND project_id = $2
        AND expires_at > NOW()`,
-    [chainId, projectId]
-  )
+    [chainId, projectId],
+  );
 
-  if (!result) return null
+  if (!result) return null;
 
   return {
     id: result.id,
@@ -546,7 +566,7 @@ export async function getCachedShop(
     tiers: result.tiers,
     fetchedAt: result.fetched_at,
     expiresAt: result.expires_at,
-  }
+  };
 }
 
 /**
@@ -556,9 +576,9 @@ export async function cacheShop(
   chainId: number,
   projectId: number,
   hookAddress: string,
-  tiers: ShopTier[]
+  tiers: ShopTier[],
 ): Promise<void> {
-  const expiresAt = new Date(Date.now() + SHOP_TTL_MS)
+  const expiresAt = new Date(Date.now() + SHOP_TTL_MS);
 
   await execute(
     `INSERT INTO shop_cache (chain_id, project_id, hook_address, tiers, expires_at)
@@ -569,8 +589,8 @@ export async function cacheShop(
        tiers = EXCLUDED.tiers,
        fetched_at = NOW(),
        expires_at = EXCLUDED.expires_at`,
-    [chainId, projectId, hookAddress, JSON.stringify(tiers), expiresAt]
-  )
+    [chainId, projectId, hookAddress, JSON.stringify(tiers), expiresAt],
+  );
 }
 
 /**
@@ -579,13 +599,13 @@ export async function cacheShop(
  */
 export async function invalidateShop(
   chainId: number,
-  projectId: number
+  projectId: number,
 ): Promise<void> {
   await execute(
     `DELETE FROM shop_cache
      WHERE chain_id = $1 AND project_id = $2`,
-    [chainId, projectId]
-  )
+    [chainId, projectId],
+  );
 }
 
 // ============================================================================
@@ -596,53 +616,55 @@ export async function invalidateShop(
  * Delete all expired cache entries
  * Should be run periodically (e.g., every 5 minutes)
  */
-export async function cleanupExpiredCache(): Promise<{ rulesets: number; splits: number; shop: number }> {
+export async function cleanupExpiredCache(): Promise<
+  { rulesets: number; splits: number; shop: number }
+> {
   const rulesetsDeleted = await execute(
     `DELETE FROM ruleset_cache
-     WHERE expires_at IS NOT NULL AND expires_at < NOW()`
-  )
+     WHERE expires_at IS NOT NULL AND expires_at < NOW()`,
+  );
 
   const splitsDeleted = await execute(
     `DELETE FROM splits_cache
-     WHERE expires_at < NOW()`
-  )
+     WHERE expires_at < NOW()`,
+  );
 
   const shopDeleted = await execute(
     `DELETE FROM shop_cache
-     WHERE expires_at < NOW()`
-  )
+     WHERE expires_at < NOW()`,
+  );
 
   return {
     rulesets: rulesetsDeleted,
     splits: splitsDeleted,
     shop: shopDeleted,
-  }
+  };
 }
 
 /**
  * Get cache stats for monitoring
  */
 export async function getCacheStats(): Promise<{
-  totalRulesets: number
-  historicalRulesets: number
-  currentRulesets: number
-  queuedRulesets: number
-  totalSplits: number
-  totalShop: number
-  expiredRulesets: number
-  expiredSplits: number
-  expiredShop: number
+  totalRulesets: number;
+  historicalRulesets: number;
+  currentRulesets: number;
+  queuedRulesets: number;
+  totalSplits: number;
+  totalShop: number;
+  expiredRulesets: number;
+  expiredSplits: number;
+  expiredShop: number;
 }> {
   const stats = await queryOne<{
-    total_rulesets: string
-    historical_rulesets: string
-    current_rulesets: string
-    queued_rulesets: string
-    total_splits: string
-    total_shop: string
-    expired_rulesets: string
-    expired_splits: string
-    expired_shop: string
+    total_rulesets: string;
+    historical_rulesets: string;
+    current_rulesets: string;
+    queued_rulesets: string;
+    total_splits: string;
+    total_shop: string;
+    expired_rulesets: string;
+    expired_splits: string;
+    expired_shop: string;
   }>(
     `SELECT
        (SELECT COUNT(*) FROM ruleset_cache) as total_rulesets,
@@ -653,8 +675,8 @@ export async function getCacheStats(): Promise<{
        (SELECT COUNT(*) FROM shop_cache) as total_shop,
        (SELECT COUNT(*) FROM ruleset_cache WHERE expires_at IS NOT NULL AND expires_at < NOW()) as expired_rulesets,
        (SELECT COUNT(*) FROM splits_cache WHERE expires_at < NOW()) as expired_splits,
-       (SELECT COUNT(*) FROM shop_cache WHERE expires_at < NOW()) as expired_shop`
-  )
+       (SELECT COUNT(*) FROM shop_cache WHERE expires_at < NOW()) as expired_shop`,
+  );
 
   if (!stats) {
     return {
@@ -667,7 +689,7 @@ export async function getCacheStats(): Promise<{
       expiredRulesets: 0,
       expiredSplits: 0,
       expiredShop: 0,
-    }
+    };
   }
 
   return {
@@ -680,5 +702,5 @@ export async function getCacheStats(): Promise<{
     expiredRulesets: parseInt(stats.expired_rulesets, 10),
     expiredSplits: parseInt(stats.expired_splits, 10),
     expiredShop: parseInt(stats.expired_shop, 10),
-  }
+  };
 }

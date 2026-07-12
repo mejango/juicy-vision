@@ -1,17 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
-import { formatEther } from 'viem'
+import { formatUnits } from 'viem'
 import { useThemeStore } from '../../stores'
 import { useSendPayoutsFormState } from '../../hooks/useComponentState'
 import {
   fetchProject,
   fetchDistributablePayout,
-  fetchConnectedChains,
+  fetchProjectAccountingContexts,
   fetchProjectSplits,
   fetchProjectWithRuleset,
   type Project,
   type DistributablePayout,
-  type ConnectedChain,
   type JBSplitData,
   type FundAccessLimits,
 } from '../../services/bendystraw'
@@ -19,6 +18,12 @@ import { resolveIpfsUri } from '../../utils/ipfs'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { SendPayoutsModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
+import { ProjectSplitRoute } from './ProjectSplitRoute'
+import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
+import { useManagedWallet } from '../../hooks'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface SendPayoutsFormProps {
   projectId: string
@@ -36,25 +41,27 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string
 
 // Per-chain payout data
 interface ChainPayoutData {
+  optionKey: string
   chainId: number
   projectId: number
   distributablePayout: DistributablePayout | null
   payoutSplits: JBSplitData[]
   fundAccessLimits: FundAccessLimits | null
   balance: string
-  baseCurrency: number // 1 = ETH, 2 = USD
+  tokenSymbol: 'ETH' | 'USDC'
+  configurationError?: string
 }
 
 // Inline chain selector component
 function InlineChainSelector({
   chainData,
-  selectedChainId,
+  selectedOptionKey,
   onSelect,
   isDark,
 }: {
   chainData: ChainPayoutData[]
-  selectedChainId: number | null
-  onSelect: (chainId: number) => void
+  selectedOptionKey: string | null
+  onSelect: (optionKey: string) => void
   isDark: boolean
 }) {
   if (chainData.length <= 1) return null
@@ -63,11 +70,11 @@ function InlineChainSelector({
     <div className="flex items-center gap-1 flex-wrap">
       {chainData.map(cd => {
         const chain = CHAIN_INFO[cd.chainId] || { name: `Chain ${cd.chainId}`, shortName: String(cd.chainId), color: '#888888' }
-        const isSelected = selectedChainId === cd.chainId
+        const isSelected = selectedOptionKey === cd.optionKey
         return (
           <button
-            key={cd.chainId}
-            onClick={() => onSelect(cd.chainId)}
+            key={cd.optionKey}
+            onClick={() => onSelect(cd.optionKey)}
             className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors ${
               isSelected
                 ? isDark
@@ -82,7 +89,7 @@ function InlineChainSelector({
               className="w-1.5 h-1.5 rounded-full"
               style={{ backgroundColor: chain.color }}
             />
-            {chain.shortName}
+            {chain.shortName} {cd.tokenSymbol}
           </button>
         )
       })}
@@ -103,17 +110,21 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
   const isDark = theme === 'dark'
 
   const { isConnected } = useAccount()
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected
 
   // Check if form should be locked due to active/completed transaction
-  const isLocked = persistedState?.status && persistedState.status !== 'pending'
+  const isLocked = persistedState?.status === 'in_progress' || persistedState?.status === 'completed'
 
   // Restore state from persisted data on load
   useEffect(() => {
     if (persistedState && persistedState.status !== 'pending') {
       if (persistedState.amount) setAmount(persistedState.amount)
-      if (persistedState.selectedChainId) setSelectedChainId(persistedState.selectedChainId)
+      if (persistedState.selectedChainId && persistedState.accountingToken) {
+        setSelectedOptionKey(`${persistedState.selectedChainId}:${persistedState.accountingToken.toLowerCase()}`)
+      }
     }
-  }, [persistedState?.status])
+  }, [persistedState])
 
   // Transaction callbacks for persistence
   const handleConfirmed = useCallback((txHash: string) => {
@@ -121,6 +132,14 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
       status: 'completed',
       txHash,
       confirmedAt: new Date().toISOString(),
+    })
+  }, [updatePersistedState])
+
+  const handleSubmitted = useCallback((txHash: string) => {
+    updatePersistedState({
+      status: 'in_progress',
+      txHash,
+      submittedAt: new Date().toISOString(),
     })
   }, [updatePersistedState])
 
@@ -137,16 +156,17 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
 
   // Omnichain state
   const [chainPayoutData, setChainPayoutData] = useState<ChainPayoutData[]>([])
-  const [selectedChainId, setSelectedChainId] = useState<number>(parseInt(chainId))
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
+  const [selectedOptionKey, setSelectedOptionKey] = useState<string>('')
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
 
   const isOmnichain = chainPayoutData.length > 1
 
   // Get active chain data
-  const activeChainData = chainPayoutData.find(cd => cd.chainId === selectedChainId) || chainPayoutData[0]
+  const activeChainData = chainPayoutData.find(cd => cd.optionKey === selectedOptionKey) || chainPayoutData[0]
+  const selectedChainId = activeChainData?.chainId ?? parseInt(chainId)
   const chainInfo = CHAIN_INFO[selectedChainId] || CHAIN_INFO[1]
-  const baseCurrency = activeChainData?.baseCurrency || 1
-  const currencyLabel = baseCurrency === 2 ? 'USDC' : 'ETH'
+  const currencyLabel = activeChainData?.tokenSymbol || 'units'
 
   // Fetch project data and distributable payout for all chains
   useEffect(() => {
@@ -156,70 +176,101 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
         const primaryChainId = parseInt(chainId)
 
         // Fetch project and connected chains
-        const [projectData, connectedChains] = await Promise.all([
+        const [projectData, chainResolution] = await Promise.all([
           fetchProject(projectId, primaryChainId),
-          fetchConnectedChains(projectId, primaryChainId),
+          resolveProjectChains(projectId, primaryChainId),
         ])
         setProject(projectData)
-
-        // Determine chains to fetch
-        const chainsToFetch: ConnectedChain[] = connectedChains.length > 0
-          ? connectedChains
-          : [{ chainId: primaryChainId, projectId: parseInt(projectId) }]
+        setChainMappingAvailable(chainResolution.mappingAvailable)
 
         // Fetch payout data from all chains in parallel
-        const chainDataPromises = chainsToFetch.map(async (chain): Promise<ChainPayoutData> => {
+        const chainDataPromises = chainResolution.chains.map(async (chain): Promise<ChainPayoutData[]> => {
           try {
-            // Fetch the ruleset first so the payout query can use the project's
-            // accounting currency (a USDC project's limit lives under USDC, not ETH).
-            const chainProject = await fetchProjectWithRuleset(String(chain.projectId), chain.chainId)
-            const payoutData = await fetchDistributablePayout(
-              String(chain.projectId),
-              chain.chainId,
-              chainProject?.currentRuleset?.baseCurrency ?? 1
-            )
+            const [chainProject, accountingContexts] = await Promise.all([
+              fetchProjectWithRuleset(String(chain.projectId), chain.chainId),
+              fetchProjectAccountingContexts(String(chain.projectId), chain.chainId),
+            ])
+            if (accountingContexts.length === 0) throw new Error('No recognized accounting context')
 
-            // Fetch splits if we have a ruleset
-            let payoutSplits: JBSplitData[] = []
-            let fundAccessLimits: FundAccessLimits | null = null
+            let splitGroups: Awaited<ReturnType<typeof fetchProjectSplits>>['splitGroups'] = []
+            let payoutGroups: FundAccessLimits[] = []
             if (chainProject?.currentRuleset?.id) {
               const splitsData = await fetchProjectSplits(
                 String(chain.projectId),
                 chain.chainId,
                 chainProject.currentRuleset.id
               )
-              payoutSplits = splitsData.payoutSplits
-              fundAccessLimits = splitsData.fundAccessLimits || null
+              if (!splitsData.configurationComplete) {
+                throw new Error('Payout configuration could not be verified')
+              }
+              payoutGroups = (splitsData.fundAccessLimitGroups || [])
+                .filter(group => group.payoutLimits.length > 0)
+              if (payoutGroups.some(group => group.payoutLimits.length > 1)) {
+                throw new Error('Multiple payout denominations for one token are not supported')
+              }
+              splitGroups = splitsData.splitGroups || []
             }
 
-            return {
-              chainId: chain.chainId,
-              projectId: chain.projectId,
-              distributablePayout: payoutData,
-              payoutSplits,
-              fundAccessLimits,
-              balance: chainProject?.balance || '0',
-              baseCurrency: chainProject?.currentRuleset?.baseCurrency || 1,
-            }
+            return await Promise.all(accountingContexts.map(async context => {
+              const fundAccessLimits = payoutGroups.find(
+                group => group.token.toLowerCase() === context.token.toLowerCase(),
+              ) || null
+              const payoutSplits = splitGroups?.find(
+                group => group.groupId === BigInt(context.token).toString(),
+              )?.splits || []
+              assertSimpleStoredSplitGroups([{ splits: payoutSplits }], {
+                kind: 'payout',
+                sourceProjectId: chain.projectId,
+              })
+              const configuredPayoutCurrency = fundAccessLimits?.payoutLimits[0]?.currency
+              if (configuredPayoutCurrency !== undefined && configuredPayoutCurrency !== context.currency) {
+                throw new Error('Payout currency conversion is not supported in this view')
+              }
+              const payoutData = configuredPayoutCurrency === undefined ? null : await fetchDistributablePayout(
+                  String(chain.projectId),
+                  chain.chainId,
+                  configuredPayoutCurrency,
+                  context.token,
+                  context.decimals,
+                )
+
+              return {
+                optionKey: `${chain.chainId}:${context.token.toLowerCase()}`,
+                chainId: chain.chainId,
+                projectId: chain.projectId,
+                distributablePayout: payoutData,
+                payoutSplits,
+                fundAccessLimits,
+                balance: context.balance.toString(),
+                tokenSymbol: context.symbol,
+              } satisfies ChainPayoutData
+            }))
           } catch (err) {
             console.error(`Failed to fetch payout data for chain ${chain.chainId}:`, err)
-            return {
+            return [{
+              optionKey: `${chain.chainId}:error`,
               chainId: chain.chainId,
               projectId: chain.projectId,
               distributablePayout: null,
               payoutSplits: [],
               fundAccessLimits: null,
               balance: '0',
-              baseCurrency: 1,
-            }
+              tokenSymbol: 'ETH',
+              configurationError: err instanceof Error ? err.message : 'Payout configuration unavailable',
+            }]
           }
         })
 
-        const allChainData = await Promise.all(chainDataPromises)
+        const allChainData = (await Promise.all(chainDataPromises)).flat()
         setChainPayoutData(allChainData)
 
-        // Set initial selected chain
-        setSelectedChainId(primaryChainId)
+        setSelectedOptionKey(previous => {
+          if (allChainData.some(data => data.optionKey === previous)) return previous
+          return allChainData.find(data => data.chainId === primaryChainId && data.distributablePayout)?.optionKey
+            || allChainData.find(data => data.distributablePayout)?.optionKey
+            || allChainData[0]?.optionKey
+            || ''
+        })
 
         // Resolve ENS names for split beneficiaries
         const allBeneficiaries = new Set<string>()
@@ -256,7 +307,10 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
   const availableBalance = (() => {
     if (activeChainData?.distributablePayout) {
       try {
-        return parseFloat(formatEther(activeChainData.distributablePayout.available))
+        return parseFloat(formatUnits(
+          activeChainData.distributablePayout.available,
+          activeChainData.distributablePayout.decimals,
+        ))
       } catch {
         return 0
       }
@@ -265,14 +319,16 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
   })()
 
   // Check if payouts are disabled
-  const payoutsDisabled = activeChainData?.distributablePayout
+  const payoutsDisabled = activeChainData?.configurationError
+    ? true
+    : activeChainData?.distributablePayout
     ? activeChainData.distributablePayout.limit === 0n
     : true
 
-  // Calculate fee and net payout
+  // The fee is applied per recipient and some recognized destinations are
+  // fee-free, so only the maximum possible fee is knowable here.
   const amountNum = parseFloat(amount) || 0
-  const protocolFee = amountNum * 0.025
-  const netPayout = amountNum - protocolFee
+  const maximumProtocolFee = amountNum * 0.025
 
   // Get payout limit info
   const payoutLimit = activeChainData?.distributablePayout?.limit || 0n
@@ -280,18 +336,22 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
   const isUnlimited = payoutLimit > BigInt('1000000000000000000000000000000')
 
   const handleSendPayouts = () => {
-    if (!amount || parseFloat(amount) <= 0 || isLocked) return
+    if (
+      !amount || parseFloat(amount) <= 0 || parseFloat(amount) > availableBalance ||
+      isLocked || !activeChainData?.distributablePayout || !activeChainData.fundAccessLimits
+    ) return
 
-    if (!isConnected) {
+    if (!hasActiveWallet) {
       openWalletPanel()
       return
     }
 
-    // Persist in_progress state
+    // Save reviewed inputs without claiming a transaction exists yet.
     updatePersistedState({
-      status: 'in_progress',
+      status: 'pending',
       amount,
       selectedChainId,
+      accountingToken: activeChainData.distributablePayout.token,
       submittedAt: new Date().toISOString(),
     })
 
@@ -318,10 +378,11 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
       <div className={`max-w-md border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
       }`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
         {/* Header */}
         <div className="flex items-center gap-3 mb-3">
           {logoUrl ? (
-            <img src={logoUrl} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" />
+            <IpfsImage uri={project?.logoUri} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" fallback={<div className="w-14 h-14 bg-juice-orange/20" />} />
           ) : (
             <div className="w-14 h-14 bg-juice-orange/20 flex items-center justify-center">
               <span className="text-2xl">📤</span>
@@ -331,7 +392,7 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
             <h3 className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
               Distribute Payouts
             </h3>
-            <ProjectLink chainSlug={chainInfo.slug} projectId={projectId} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
+            <ProjectLink chainSlug={chainInfo.slug} projectId={String(activeChainData?.projectId ?? projectId)} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
               {project?.name || `Project #${projectId}`}
             </ProjectLink>
           </div>
@@ -341,12 +402,12 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
         {isOmnichain && (
           <div className="mb-3">
             <div className={`text-xs mb-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Select chain:
+              Select chain and treasury:
             </div>
             <InlineChainSelector
               chainData={chainPayoutData}
-              selectedChainId={selectedChainId}
-              onSelect={setSelectedChainId}
+              selectedOptionKey={selectedOptionKey}
+              onSelect={setSelectedOptionKey}
               isDark={isDark}
             />
           </div>
@@ -365,7 +426,7 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
                 ? 'None'
                 : isUnlimited
                   ? 'Unlimited'
-                  : `${parseFloat(formatEther(payoutLimit)).toFixed(4)} ${currencyLabel}`
+                  : `${parseFloat(formatUnits(payoutLimit, activeChainData?.distributablePayout?.decimals || 18)).toFixed(4)} ${currencyLabel}`
               }
             </span>
           </div>
@@ -376,7 +437,7 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
                   Used this cycle
                 </span>
                 <span className="text-xs font-mono">
-                  {parseFloat(formatEther(usedPayout)).toFixed(4)} {currencyLabel}
+                  {parseFloat(formatUnits(usedPayout, activeChainData?.distributablePayout?.decimals || 18)).toFixed(4)} {currencyLabel}
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -423,18 +484,19 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
                   const displayName = splitEnsNames[beneficiaryKey] || truncateAddress(split.beneficiary)
                   const isProject = split.projectId > 0
 
-                  // Calculate estimated amount if we have an amount entered
-                  const estimatedAmount = amountNum > 0
-                    ? (netPayout * percent / 100).toFixed(4)
-                    : null
-
                   return (
                     <div key={idx} className={`flex items-center justify-between p-2 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
                       <div className="flex items-center gap-2">
                         {isProject ? (
-                          <span className="text-xs px-1.5 py-0.5 bg-purple-500/20 text-purple-400">
-                            Project #{split.projectId}
-                          </span>
+                          <ProjectSplitRoute
+                            projectId={split.projectId}
+                            chainId={activeChainData.chainId}
+                            beneficiary={split.beneficiary}
+                            kind="payout"
+                            preferAddToBalance={split.preferAddToBalance}
+                            hook={split.hook}
+                            isDark={isDark}
+                          />
                         ) : (
                           <span className="font-mono text-xs text-juice-orange">
                             {displayName}
@@ -442,12 +504,10 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        {estimatedAmount && (
-                          <span className={`font-mono text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {estimatedAmount} {currencyLabel}
-                          </span>
-                        )}
                         <span className="font-mono text-xs text-emerald-400">{percent.toFixed(2)}%</span>
+                        {split.lockedUntil > Math.floor(Date.now() / 1000) && (
+                          <span className="text-[10px] text-amber-500">Locked</span>
+                        )}
                       </div>
                     </div>
                   )
@@ -457,20 +517,12 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
                   const totalPercent = activeChainData.payoutSplits.reduce((sum, s) => sum + (s.percent / 1e9) * 100, 0)
                   const remainder = 100 - totalPercent
                   if (remainder > 0.01) {
-                    const estimatedAmount = amountNum > 0
-                      ? (netPayout * remainder / 100).toFixed(4)
-                      : null
                     return (
                       <div className={`flex items-center justify-between p-2 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
                         <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                           Project treasury
                         </span>
                         <div className="flex items-center gap-2">
-                          {estimatedAmount && (
-                            <span className={`font-mono text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {estimatedAmount} {currencyLabel}
-                            </span>
-                          )}
                           <span className="font-mono text-xs text-emerald-400">{remainder.toFixed(2)}%</span>
                         </div>
                       </div>
@@ -519,9 +571,9 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
             </div>
             <button
               onClick={handleSendPayouts}
-              disabled={!amount || parseFloat(amount) <= 0 || payoutsDisabled || isLocked}
+              disabled={!amount || parseFloat(amount) <= 0 || parseFloat(amount) > availableBalance || payoutsDisabled || isLocked}
               className={`px-5 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
-                !amount || parseFloat(amount) <= 0 || payoutsDisabled || isLocked
+                !amount || parseFloat(amount) <= 0 || parseFloat(amount) > availableBalance || payoutsDisabled || isLocked
                   ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                   : 'bg-juice-orange hover:bg-juice-orange/90 text-black'
               }`}
@@ -623,32 +675,41 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
           {/* Fee preview */}
           {amountNum > 0 && (
             <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Net to splits: <span className="font-mono">{netPayout.toFixed(4)} {currencyLabel}</span>
-              <span className={isDark ? 'text-gray-500' : 'text-gray-400'}> (2.5% fee)</span>
+              Maximum protocol fee:{' '}
+              <span className="font-mono">{maximumProtocolFee.toFixed(4)} {currencyLabel}</span>
+              <span className={isDark ? 'text-gray-500' : 'text-gray-400'}> (fee-eligible recipients only)</span>
             </div>
           )}
         </div>
 
         {/* Info */}
         <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          {payoutsDisabled
+          {activeChainData?.configurationError
+            ? activeChainData.configurationError
+            : payoutsDisabled
             ? 'No payout limit is configured for this ruleset. Payouts are not available.'
-            : 'Distribute treasury funds to the payout split recipients. A 2.5% protocol fee applies.'}
+            : 'Distribute treasury funds to the current payout recipients. A fee of up to 2.5% applies to fee-eligible destinations.'}
         </p>
       </div>
 
       {/* Modal */}
-      <SendPayoutsModal
+      {activeChainData?.distributablePayout && activeChainData.fundAccessLimits && (
+        <SendPayoutsModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        projectId={projectId}
+        projectId={String(activeChainData.projectId)}
         projectName={project?.name}
         chainId={selectedChainId}
         amount={amount}
-        baseCurrency={baseCurrency}
+        payoutCurrency={activeChainData.distributablePayout.currency}
+        payoutTokenAddress={activeChainData.distributablePayout.token as `0x${string}`}
+        payoutTokenDecimals={activeChainData.fundAccessLimits.tokenDecimals}
+        splits={activeChainData.payoutSplits}
+        onSubmitted={handleSubmitted}
         onConfirmed={handleConfirmed}
         onError={handleError}
-      />
+        />
+      )}
     </div>
   )
 }

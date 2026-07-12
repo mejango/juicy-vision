@@ -1,19 +1,28 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { encodeFunctionData, type Chain, createPublicClient, http, type Address } from 'viem'
-import { mainnet, optimism, base, arbitrum } from 'viem/chains'
+import { encodeFunctionData, createPublicClient, http, isAddress, type Address } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainQueueRuleset } from '../../hooks/relayr'
 import { type JBRulesetConfig } from '../../services/relayr'
-import ChainPaymentSelector from './ChainPaymentSelector'
+import { fetchProjectSplits } from '../../services/bendystraw'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyQueueRulesetParams } from '../../utils/transactionVerification'
-import { getProjectController } from '../../utils/paymentTerminal'
-import { RPC_ENDPOINTS } from '../../constants'
+import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import { RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
+import {
+  assertRulesetConfigurationTrusted,
+  resolveRulesetQueueRoute,
+} from '../../utils/projectTrust'
+import {
+  assertPreservedSplitGroups,
+  assertRulesetConfigurationSafe,
+} from '../../utils/rulesetSafety'
+import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 
 // ABI for queueRulesetsOf
 const CONTROLLER_QUEUE_RULESETS_ABI = [
@@ -108,13 +117,6 @@ const CONTROLLER_QUEUE_RULESETS_ABI = [
   },
 ] as const
 
-const CHAINS: Record<number, Chain> = {
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
-}
-
 const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
   1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
   10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
@@ -132,6 +134,8 @@ const EXPLORER_URLS: Record<number, string> = {
 interface ChainRulesetData {
   chainId: number
   projectId: number
+  currentRulesetId: string
+  expectedQueueTarget: Address
 }
 
 interface QueueRulesetModalProps {
@@ -139,7 +143,7 @@ interface QueueRulesetModalProps {
   onClose: () => void
   projectName?: string
   chainRulesetData: ChainRulesetData[]
-  rulesetConfig: JBRulesetConfig
+  rulesetConfigsByChain: Record<number, JBRulesetConfig>
   synchronizedStartTime: number
   memo: string
   // Transaction status callbacks for persistence
@@ -162,7 +166,7 @@ export default function QueueRulesetModal({
   onClose,
   projectName,
   chainRulesetData,
-  rulesetConfig,
+  rulesetConfigsByChain,
   synchronizedStartTime,
   memo,
   onConfirmed,
@@ -174,12 +178,18 @@ export default function QueueRulesetModal({
   const { data: walletClient } = useWalletClient()
   const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
-  const { totalEth } = useWalletBalances()
+  const { totalEth, perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Managed mode support
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
+  const reviewedActiveAddress = isManagedMode ? managedAddress : address
+  const { assertCurrentAccount } = useReviewedTransactionAccount(
+    isOpen,
+    reviewedActiveAddress,
+    isManagedMode ? 'managed' : 'self_custody',
+  )
 
   // State for legacy mode (single chain at a time)
   const [chainStates, setChainStates] = useState<ChainTxState[]>([])
@@ -187,13 +197,13 @@ export default function QueueRulesetModal({
   const [isStarted, setIsStarted] = useState(false)
   const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
 
-  // Controller addresses fetched from JBDirectory (per chain)
-  const [controllerAddresses, setControllerAddresses] = useState<Record<number, Address>>({})
+  // Queue targets are resolved from the live controller and current data-hook route.
+  const [queueTargets, setQueueTargets] = useState<Record<number, Address>>({})
   const [controllersLoading, setControllersLoading] = useState(false)
   const [controllerError, setControllerError] = useState<string | null>(null)
 
   // Relayr omnichain mode
-  const [useOmnichain, setUseOmnichain] = useState(true) // Default to omnichain for multi-chain
+  const [useOmnichain, setUseOmnichain] = useState(false)
   const {
     queue,
     bundleState,
@@ -201,7 +211,6 @@ export default function QueueRulesetModal({
     isComplete: omnichainComplete,
     hasError: omnichainError,
     reset: resetOmnichain,
-    setPaymentChain,
   } = useOmnichainQueueRuleset({
     onSuccess: (bundleId, txHashes) => {
       console.log('Omnichain queue completed:', bundleId, txHashes)
@@ -211,22 +220,36 @@ export default function QueueRulesetModal({
     },
   })
 
-  const hasGasBalance = totalEth >= 0.001
+  const hasGasBalance = isManagedMode || (balancesAvailable && (useOmnichain
+    ? perChain.some(balance => balance.eth > 0n)
+    : chainRulesetData.every(chainData =>
+        (perChain.find(balance => balance.chainId === chainData.chainId)?.eth ?? 0n) > 0n
+      )))
   const isOmnichain = chainRulesetData.length > 1
   const startDate = new Date(synchronizedStartTime * 1000)
+  const primaryRulesetConfig = rulesetConfigsByChain[chainRulesetData[0]?.chainId]
 
   // Verify transaction parameters
   const verificationResult = useMemo(() => {
-    return verifyQueueRulesetParams({
-      projectId: BigInt(chainRulesetData[0]?.projectId || 0),
-      rulesetConfigurations: [rulesetConfig],
+    const results = chainRulesetData.map(chainData => verifyQueueRulesetParams({
+      projectId: chainData.projectId,
+      rulesetConfigurations: rulesetConfigsByChain[chainData.chainId]
+        ? [rulesetConfigsByChain[chainData.chainId]]
+        : [],
       memo,
-    })
-  }, [chainRulesetData, rulesetConfig, memo])
+    }))
+    return {
+      isValid: results.every(result => result.isValid),
+      doubts: results.flatMap(result => result.doubts),
+      warnings: results.flatMap(result => result.warnings),
+      verifiedParams: results[0]?.verifiedParams || {},
+    }
+  }, [chainRulesetData, rulesetConfigsByChain, memo])
 
   const hasWarnings = verificationResult.doubts.length > 0
-  const allControllersLoaded = chainRulesetData.every(cd => controllerAddresses[cd.chainId])
-  const canProceed = hasGasBalance && (!hasWarnings || warningsAcknowledged) && allControllersLoaded && !controllersLoading && !controllerError
+  const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
+  const allQueueTargetsLoaded = chainRulesetData.every(cd => queueTargets[cd.chainId])
+  const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && allQueueTargetsLoaded && !controllersLoading && !controllerError
 
   // Derive chain states from bundle state when in omnichain mode
   const effectiveChainStates = useOmnichain && bundleState.bundleId
@@ -287,50 +310,56 @@ export default function QueueRulesetModal({
       setIsStarted(false)
       setWarningsAcknowledged(false)
       resetOmnichain()
-      // Default to omnichain for multi-chain scenarios
-      setUseOmnichain(isOmnichain)
+      setUseOmnichain(isManagedMode && isOmnichain)
     }
-  }, [isOpen, chainRulesetData, isOmnichain, resetOmnichain])
+  }, [isOpen, chainRulesetData, isManagedMode, isOmnichain, resetOmnichain])
 
-  // Fetch controllers from JBDirectory for all chains
+  // Resolve the live queue route for all chains.
   useEffect(() => {
     if (!isOpen || chainRulesetData.length === 0) {
-      setControllerAddresses({})
+      setQueueTargets({})
       setControllerError(null)
       return
     }
 
-    const fetchControllers = async () => {
+    const fetchQueueTargets = async () => {
       setControllersLoading(true)
       setControllerError(null)
       const addresses: Record<number, Address> = {}
 
       try {
         for (const cd of chainRulesetData) {
-          const chain = CHAINS[cd.chainId]
-          if (!chain) continue
+          const chain = VIEM_CHAINS[cd.chainId as SupportedChainId]
+          if (!chain) throw new Error(`Unsupported chain ${cd.chainId}`)
 
           const rpcUrl = RPC_ENDPOINTS[cd.chainId]?.[0]
-          if (!rpcUrl) continue
+          if (!rpcUrl) throw new Error(`No RPC endpoint for chain ${cd.chainId}`)
 
           const publicClient = createPublicClient({
             chain,
             transport: http(rpcUrl),
           })
 
-          const controller = await getProjectController(publicClient, BigInt(cd.projectId))
-          addresses[cd.chainId] = controller
+          const route = await resolveRulesetQueueRoute({
+            client: publicClient,
+            projectId: BigInt(cd.projectId),
+            expectedRulesetId: BigInt(cd.currentRulesetId),
+          })
+          if (route.target.toLowerCase() !== cd.expectedQueueTarget.toLowerCase()) {
+            throw new Error(`The project queue route changed on chain ${cd.chainId}`)
+          }
+          addresses[cd.chainId] = route.target
         }
-        setControllerAddresses(addresses)
+        setQueueTargets(addresses)
       } catch (err) {
-        console.error('Failed to fetch controllers:', err)
-        setControllerError('Failed to fetch project controllers from JBDirectory')
+        console.error('Failed to resolve ruleset queue targets:', err)
+        setControllerError(err instanceof Error ? err.message : 'Failed to resolve the project ruleset queue route')
       } finally {
         setControllersLoading(false)
       }
     }
 
-    fetchControllers()
+    fetchQueueTargets()
   }, [isOpen, chainRulesetData])
 
   const updateChainState = useCallback((chainId: number, update: Partial<ChainTxState>) => {
@@ -344,7 +373,9 @@ export default function QueueRulesetModal({
   }, [])
 
   // Convert ruleset config to contract format
-  const buildRulesetArgs = useCallback(() => {
+  const buildRulesetArgs = useCallback((chainId: number) => {
+    const rulesetConfig = rulesetConfigsByChain[chainId]
+    if (!rulesetConfig) throw new Error(`Ruleset configuration missing for chain ${chainId}`)
     return [{
       mustStartAtOrAfter: rulesetConfig.mustStartAtOrAfter,
       duration: rulesetConfig.duration,
@@ -396,7 +427,54 @@ export default function QueueRulesetModal({
         })),
       })),
     }]
-  }, [rulesetConfig])
+  }, [rulesetConfigsByChain])
+
+  const validateFreshChainConfiguration = useCallback(async (chainData: ChainRulesetData) => {
+    const chain = VIEM_CHAINS[chainData.chainId as SupportedChainId]
+    const rpcUrl = RPC_ENDPOINTS[chainData.chainId]?.[0]
+    if (!chain || !rpcUrl) throw new Error(`Unsupported chain ${chainData.chainId}`)
+    const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+    const route = await resolveRulesetQueueRoute({
+      client: publicClient,
+      projectId: BigInt(chainData.projectId),
+      expectedRulesetId: BigInt(chainData.currentRulesetId),
+    })
+    if (route.target.toLowerCase() !== chainData.expectedQueueTarget.toLowerCase()) {
+      throw new Error(`The project queue route changed on chain ${chainData.chainId}`)
+    }
+    const config = rulesetConfigsByChain[chainData.chainId]
+    if (!config) throw new Error(`Ruleset configuration missing for chain ${chainData.chainId}`)
+    if (
+      config.metadata.dataHook.toLowerCase() !== route.dataHook.toLowerCase() ||
+      config.metadata.useDataHookForPay !== route.useDataHookForPay ||
+      config.metadata.useDataHookForCashOut !== route.useDataHookForCashOut
+    ) {
+      throw new Error(`The project hook route changed on chain ${chainData.chainId}`)
+    }
+    const freshConfiguration = await fetchProjectSplits(
+      String(chainData.projectId),
+      chainData.chainId,
+      chainData.currentRulesetId,
+    )
+    if (!freshConfiguration.configurationComplete) {
+      throw new Error(`Could not verify the latest split configuration on chain ${chainData.chainId}`)
+    }
+    assertRulesetConfigurationSafe(
+      chainData.chainId,
+      config,
+      freshConfiguration.accountingContexts || [],
+    )
+    assertPreservedSplitGroups(config.splitGroups, freshConfiguration.splitGroups || [])
+    await assertRulesetConfigurationTrusted({
+      client: publicClient,
+      projectId: BigInt(chainData.projectId),
+      rulesetId: BigInt(chainData.currentRulesetId),
+      approvalHook: config.approvalHook,
+      dataHook: route.dataHook,
+      splitGroups: config.splitGroups,
+    })
+    return route.target
+  }, [rulesetConfigsByChain])
 
   // Queue ruleset on a single chain (legacy mode)
   const queueOnChain = useCallback(async (chainData: ChainRulesetData) => {
@@ -410,28 +488,16 @@ export default function QueueRulesetModal({
       }
     }
 
-    const chain = CHAINS[chainData.chainId]
+    const chain = VIEM_CHAINS[chainData.chainId as SupportedChainId]
     if (!chain) {
       throw new Error(`Unsupported chain: ${chainData.chainId}`)
     }
 
-    const controllerAddress = controllerAddresses[chainData.chainId]
-    if (!controllerAddress) {
-      throw new Error(`Controller not found for chain: ${chainData.chainId}`)
-    }
-
-    updateChainState(chainData.chainId, { status: 'signing' })
-
     try {
-      const txId = addTransaction({
-        type: 'deploy',
-        projectId: String(chainData.projectId),
-        chainId: chainData.chainId,
-        amount: '0',
-        status: 'pending',
-      })
+      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      const queueTarget = await validateFreshChainConfiguration(chainData)
 
-      const rulesetArgs = buildRulesetArgs()
+      const rulesetArgs = buildRulesetArgs(chainData.chainId)
 
       const callData = encodeFunctionData({
         abi: CONTROLLER_QUEUE_RULESETS_ABI,
@@ -443,23 +509,57 @@ export default function QueueRulesetModal({
         ],
       })
 
-      updateChainState(chainData.chainId, { status: 'submitted' })
+      const activeAddress = (isManagedMode ? managedAddress : address) as Address | undefined
+      if (!activeAddress || !isAddress(activeAddress)) throw new Error('Active wallet address is invalid')
+      await simulateTransaction({
+        chainId: chainData.chainId,
+        account: activeAddress,
+        to: queueTarget,
+        data: callData,
+      })
+
+      const txId = addTransaction({
+        type: 'deploy',
+        projectId: String(chainData.projectId),
+        chainId: chainData.chainId,
+        amount: '0',
+        status: 'pending',
+      })
 
       let hash: string
 
       if (isManagedMode) {
-        hash = await executeManagedTransaction(chainData.chainId, controllerAddress, callData, '0')
+        assertCurrentAccount()
+        updateChainState(chainData.chainId, { status: 'submitted' })
+        hash = await executeManagedTransaction(chainData.chainId, queueTarget, callData, '0')
       } else {
+        updateChainState(chainData.chainId, { status: 'signing' })
         await switchChainAsync({ chainId: chainData.chainId })
+        if (await walletClient!.getChainId() !== chainData.chainId) {
+          throw new Error(`Wallet did not switch to chain ${chainData.chainId}`)
+        }
+        const finalQueueTarget = await validateFreshChainConfiguration(chainData)
+        if (finalQueueTarget.toLowerCase() !== queueTarget.toLowerCase()) {
+          throw new Error(`The project queue route changed on chain ${chainData.chainId}`)
+        }
+        await simulateTransaction({
+          chainId: chainData.chainId,
+          account: activeAddress,
+          to: finalQueueTarget,
+          data: callData,
+        })
+        assertCurrentAccount(walletClient!.account?.address)
         hash = await walletClient!.sendTransaction({
-          to: controllerAddress,
+          to: finalQueueTarget,
           data: callData,
           value: 0n,
         })
+        updateChainState(chainData.chainId, { status: 'submitted', txHash: hash })
       }
 
-      updateChainState(chainData.chainId, { status: 'confirmed', txHash: hash })
       updateTransaction(txId, { hash, status: 'submitted' })
+      if (!isManagedMode) await waitForSuccessfulTransaction(chainData.chainId, hash as `0x${string}`)
+      updateChainState(chainData.chainId, { status: 'confirmed', txHash: hash })
 
       return hash
     } catch (err) {
@@ -467,30 +567,53 @@ export default function QueueRulesetModal({
       updateChainState(chainData.chainId, { status: 'failed', error: errorMessage })
       throw err
     }
-  }, [walletClient, address, memo, buildRulesetArgs, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress, controllerAddresses])
+  }, [walletClient, address, memo, buildRulesetArgs, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress, validateFreshChainConfiguration, assertCurrentAccount])
 
   // Start the queuing process
   const handleStart = useCallback(async () => {
     const activeAddress = isManagedMode ? managedAddress : address
     if (!activeAddress || chainRulesetData.length === 0) return
 
-    setIsStarted(true)
+    try {
+      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'The reviewed account could not be verified'
+      setControllerError(message)
+      onError?.(message)
+      return
+    }
 
     if (useOmnichain && isOmnichain) {
-      // Use Relayr omnichain execution
-      const projectIds: Record<number, number> = {}
-      chainRulesetData.forEach(cd => {
-        projectIds[cd.chainId] = cd.projectId
-      })
-
-      await queue({
-        chainIds: chainRulesetData.map(cd => cd.chainId),
-        projectIds,
-        rulesetConfigurations: [rulesetConfig],
-        memo,
-        mustStartAtOrAfter: synchronizedStartTime,
-      })
+      try {
+        const freshQueueTargets = Object.fromEntries(await Promise.all(
+          chainRulesetData.map(async chainData => [
+            chainData.chainId,
+            await validateFreshChainConfiguration(chainData),
+          ] as const),
+        ))
+        setIsStarted(true)
+        const projectIds: Record<number, number> = {}
+        chainRulesetData.forEach(cd => {
+          projectIds[cd.chainId] = cd.projectId
+        })
+        assertCurrentAccount()
+        await queue({
+          chainIds: chainRulesetData.map(cd => cd.chainId),
+          projectIds,
+          rulesetConfigurationsByChain: Object.fromEntries(
+            chainRulesetData.map(cd => [cd.chainId, [rulesetConfigsByChain[cd.chainId]]])
+          ),
+          queueTargets: freshQueueTargets,
+          memo,
+          mustStartAtOrAfter: synchronizedStartTime,
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Ruleset configuration could not be verified'
+        setControllerError(message)
+        onError?.(message)
+      }
     } else {
+      setIsStarted(true)
       // Legacy: process chains sequentially
       for (let i = 0; i < chainRulesetData.length; i++) {
         setCurrentChainIndex(i)
@@ -502,7 +625,7 @@ export default function QueueRulesetModal({
       }
       setCurrentChainIndex(-1)
     }
-  }, [walletClient, address, chainRulesetData, queueOnChain, isManagedMode, managedAddress, useOmnichain, isOmnichain, queue, rulesetConfig, memo, synchronizedStartTime])
+  }, [walletClient, address, chainRulesetData, queueOnChain, isManagedMode, managedAddress, useOmnichain, isOmnichain, queue, rulesetConfigsByChain, memo, synchronizedStartTime, validateFreshChainConfiguration, onError, assertCurrentAccount])
 
   const handleClose = useCallback(() => {
     resetOmnichain()
@@ -510,8 +633,6 @@ export default function QueueRulesetModal({
   }, [resetOmnichain, onClose])
 
   if (!isOpen) return null
-
-  const showOmnichainSelector = isOmnichain && !isStarted && !isManagedMode
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -584,37 +705,6 @@ export default function QueueRulesetModal({
               </div>
             )}
           </div>
-
-          {/* Omnichain mode toggle (for multi-chain) */}
-          {showOmnichainSelector && (
-            <div className={`p-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useOmnichain}
-                  onChange={(e) => setUseOmnichain(e.target.checked)}
-                  className="w-4 h-4 rounded"
-                />
-                <div>
-                  <div className={`text-sm font-medium ${isDark ? 'text-juice-cyan' : 'text-cyan-700'}`}>
-                    Use Relayr for single-signature execution
-                  </div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Pay gas on one chain, execute on all {chainRulesetData.length} chains
-                  </div>
-                </div>
-              </label>
-            </div>
-          )}
-
-          {/* Payment chain selector (for omnichain mode with payment options) */}
-          {useOmnichain && bundleState.paymentOptions.length > 0 && !isStarted && (
-            <ChainPaymentSelector
-              paymentOptions={bundleState.paymentOptions}
-              selectedChainId={bundleState.selectedPaymentChain}
-              onSelect={setPaymentChain}
-            />
-          )}
 
           {/* Chain Status */}
           <div className="space-y-2">
@@ -711,20 +801,14 @@ export default function QueueRulesetModal({
           {!isStarted && (
             <>
               {/* Gas balance check */}
-              <div className={`flex justify-between items-center text-sm ${
-                isDark ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                <span>Your ETH balance (for gas)</span>
-                <span className={`font-mono ${!hasGasBalance ? 'text-red-400' : ''}`}>
-                  {formatEthBalance(totalEth)} ETH
-                </span>
-              </div>
-
-              {!hasGasBalance && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                  Insufficient ETH for gas fees
-                </div>
-              )}
+              <GasBalanceStatus
+                balance={totalEth}
+                hasGasBalance={hasGasBalance}
+                loading={balancesLoading}
+                available={balancesAvailable}
+                managed={isManagedMode}
+                isDark={isDark}
+              />
 
               {controllersLoading && (
                 <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-600'}`}>
@@ -759,10 +843,10 @@ export default function QueueRulesetModal({
                   projectName,
                   effectiveDate: startDate.toLocaleString(),
                   changes: [
-                    { field: 'Duration', to: rulesetConfig.duration ? `${rulesetConfig.duration / 86400} days` : 'Ongoing' },
-                    { field: 'Token issuance', to: `${rulesetConfig.weight} tokens/ETH` },
-                    { field: 'Reserved rate', to: `${(rulesetConfig.metadata.reservedPercent / 100).toFixed(1)}%` },
-                    { field: 'Cash out tax', to: `${(rulesetConfig.metadata.cashOutTaxRate / 100).toFixed(1)}%` },
+                    { field: 'Duration', to: primaryRulesetConfig?.duration ? `${primaryRulesetConfig.duration / 86400} days` : 'Ongoing' },
+                    { field: 'Token issuance', to: `${primaryRulesetConfig?.weight || '0'} tokens/unit` },
+                    { field: 'Reserved rate', to: `${((primaryRulesetConfig?.metadata.reservedPercent || 0) / 100).toFixed(1)}%` },
+                    { field: 'Cash-out curve rate', to: `${((primaryRulesetConfig?.metadata.cashOutTaxRate || 0) / 100).toFixed(1)}%` },
                   ],
                 }}
                 isDark={isDark}
@@ -780,8 +864,8 @@ export default function QueueRulesetModal({
 
               {/* Technical Details */}
               <TechnicalDetails
-                contract="JB_CONTROLLER"
-                contractAddress={controllerAddresses[chainRulesetData[0]?.chainId] || '0x...'}
+                contract="Verified ruleset queue target"
+                contractAddress={queueTargets[chainRulesetData[0]?.chainId] || '0x...'}
                 functionName="queueRulesetsOf"
                 chainId={chainRulesetData[0]?.chainId || 1}
                 projectId={chainRulesetData[0]?.projectId?.toString()}

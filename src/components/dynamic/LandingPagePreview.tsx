@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { fetchProject, fetchSuckerGroupBalance, type Project, type SuckerGroupBalance } from '../../services/bendystraw'
-import { resolveIpfsUri, fetchIpfsMetadata, pinFile, type IpfsProjectMetadata } from '../../utils/ipfs'
+import { ipfsGatewayUrls, pinFile, type IpfsProjectMetadata } from '../../utils/ipfs'
+import { CHAINS, MAINNET_CHAINS } from '../../constants'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 // Import dynamic components that can be composed
 import ProjectCard from './ProjectCard'
 import ActivityFeed from './ActivityFeed'
 import NFTGallery from './NFTGallery'
-import { JUICEBOX_MONEY_V6_LIVE } from './ProjectLink'
 
 interface LandingPagePreviewProps {
   projectId: string
@@ -80,10 +81,7 @@ export default function LandingPagePreview({
         setProject(projectData)
         setBalance(balanceData)
 
-        if (projectData?.metadataUri) {
-          const meta = await fetchIpfsMetadata(projectData.metadataUri)
-          setMetadata(meta)
-        }
+        setMetadata((projectData.metadata as IpfsProjectMetadata | undefined) ?? null)
       } catch (err) {
         console.error('Failed to load project for landing page:', err)
       } finally {
@@ -152,8 +150,6 @@ export default function LandingPagePreview({
 
   const displayTitle = title || project?.name || 'Project'
   const displaySubtitle = subtitle || metadata?.tagline || metadata?.projectTagline || ''
-  const logoUrl = project ? resolveIpfsUri(project.logoUri) : null
-
   if (loading) {
     return (
       <div className="w-full max-w-4xl">
@@ -276,15 +272,13 @@ export default function LandingPagePreview({
               layoutType === 'full' ? 'h-64' : 'h-48'
             }`}>
               {/* Background */}
-              <div className={`absolute inset-0 ${
-                isDark ? 'bg-gradient-to-br from-juice-orange/20 to-purple-500/20' : 'bg-gradient-to-br from-juice-orange/10 to-purple-500/10'
-              }`} />
+              <div className={`absolute inset-0 ${isDark ? 'bg-juice-orange/10' : 'bg-orange-50'}`} />
 
               {/* Content */}
               <div className="relative z-10 h-full flex flex-col items-center justify-center p-6 text-center">
-                {logoUrl && (
-                  <img
-                    src={logoUrl}
+                {project?.logoUri && (
+                  <IpfsImage
+                    uri={project.logoUri}
                     alt={displayTitle}
                     className="w-20 h-20 object-cover mb-4"
                   />
@@ -383,15 +377,49 @@ function generateStaticHtml(
 ): string {
   // Fallback to default components if undefined
   const safeComponents = components || DEFAULT_COMPONENTS.hero
-  const title = project?.name || 'Project'
-  const subtitle = metadata?.tagline || metadata?.projectTagline || ''
-  const logoUrl = project?.logoUri ? resolveIpfsUri(project.logoUri) : null
+  const escapeHtml = (value: string) => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+  const safeHttpsUrl = (value: string | null): string | null => {
+    if (!value) return null
+    try {
+      const parsed = new URL(value)
+      return parsed.protocol === 'https:' ? parsed.toString() : null
+    } catch {
+      return null
+    }
+  }
+
+  const title = escapeHtml(project?.name || 'Project')
+  const subtitle = escapeHtml(metadata?.tagline || metadata?.projectTagline || '')
+  const description = metadata?.description ? escapeHtml(metadata.description) : ''
+  const logoUrls = project?.logoUri
+    ? ipfsGatewayUrls(project.logoUri).map(safeHttpsUrl).filter((url): url is string => Boolean(url))
+    : []
+  const escapedLogoUrl = logoUrls[0] ? escapeHtml(logoUrls[0]) : null
+  const escapedLogoSources = escapeHtml(JSON.stringify(logoUrls))
+  const chain = project ? (CHAINS[project.chainId] || MAINNET_CHAINS[project.chainId]) : null
+  const supportUrl = project && chain && Number.isSafeInteger(project.projectId) && project.projectId > 0
+    ? `https://juicy.bot/${chain.slug}:${project.projectId}`
+    : null
+  const formatRawAmount = (raw: string, decimals: number): string => {
+    const padded = raw.padStart(decimals + 1, '0')
+    const whole = padded.slice(0, -decimals) || '0'
+    const fraction = padded.slice(-decimals).slice(0, 4).padEnd(4, '0')
+    return `${whole}.${fraction}`
+  }
 
   // Format balance
-  const balanceStr = balance?.totalBalance
-    ? (parseFloat(balance.totalBalance) / Math.pow(10, balance.decimals || 18)).toFixed(4)
-    : '0'
-  const currency = balance?.currency === 2 ? 'USDC' : 'ETH'
+  const balanceAvailable = !!balance && balance.balanceAvailable !== false && /^\d+$/.test(balance.totalBalance)
+  const balanceStr = balanceAvailable
+    ? formatRawAmount(balance.totalBalance, balance.decimals)
+    : 'Unavailable'
+  const currency = balanceAvailable ? (balance.currency === 2 ? 'USDC' : 'ETH') : ''
+  const paymentsAvailable = !!balance && balance.paymentsAvailable !== false
+  const payments = paymentsAvailable ? balance.totalPaymentsCount.toLocaleString('en-US') : 'Unavailable'
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -408,7 +436,7 @@ function generateStaticHtml(
       min-height: 100vh;
     }
     .hero {
-      background: linear-gradient(135deg, ${isDark ? 'rgba(255,153,0,0.2)' : 'rgba(255,153,0,0.1)'}, ${isDark ? 'rgba(139,92,246,0.2)' : 'rgba(139,92,246,0.1)'});
+      background: ${isDark ? '#21170b' : '#fff7e8'};
       padding: 4rem 2rem;
       text-center;
       display: flex;
@@ -456,7 +484,7 @@ function generateStaticHtml(
 <body>
   ${safeComponents.includes('hero-banner') ? `
   <div class="hero">
-    ${logoUrl ? `<img src="${logoUrl}" alt="${title}" class="logo">` : ''}
+    ${escapedLogoUrl ? `<img src="${escapedLogoUrl}" data-sources="${escapedLogoSources}" data-source-index="0" onerror="const sources=JSON.parse(this.dataset.sources);const next=Number(this.dataset.sourceIndex)+1;if(next<sources.length){this.dataset.sourceIndex=String(next);this.src=sources[next]}else{this.hidden=true}" alt="${title}" class="logo">` : ''}
     <h1>${title}</h1>
     ${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}
   </div>
@@ -466,29 +494,29 @@ function generateStaticHtml(
     ${safeComponents.includes('project-card') ? `
     <div class="stats">
       <div class="stat">
-        <div class="stat-value">${balanceStr} ${currency}</div>
+        <div class="stat-value">${balanceStr}${currency ? ` ${currency}` : ''}</div>
         <div class="stat-label">Balance</div>
       </div>
       <div class="stat">
-        <div class="stat-value">${project?.paymentsCount || 0}</div>
+        <div class="stat-value">${payments}</div>
         <div class="stat-label">Payments</div>
       </div>
     </div>
-    <a ${JUICEBOX_MONEY_V6_LIVE ? `href="https://juicebox.money/v6/p/${project?.projectId}" target="_blank" ` : ''}class="pay-btn">
+    ${supportUrl ? `<a href="${supportUrl}" target="_blank" rel="noopener noreferrer" class="pay-btn">
       Support This Project
-    </a>
+    </a>` : ''}
     ` : ''}
 
-    ${metadata?.description ? `
+    ${description ? `
     <div style="margin-top: 2rem;">
       <h2 style="margin-bottom: 1rem;">About</h2>
-      <p style="color: ${isDark ? '#a0a0a0' : '#666'}; line-height: 1.6;">${metadata.description}</p>
+      <p style="color: ${isDark ? '#a0a0a0' : '#666'}; line-height: 1.6; white-space: pre-wrap;">${description}</p>
     </div>
     ` : ''}
   </div>
 
   <div class="footer">
-    Built with <a href="https://juicy.bot" target="_blank">Juicy</a>
+    Built with <a href="https://juicy.bot" target="_blank" rel="noopener noreferrer">Juicy</a>
   </div>
 </body>
 </html>`

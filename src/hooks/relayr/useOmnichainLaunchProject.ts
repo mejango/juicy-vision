@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAccount, useConfig, useSignTypedData } from 'wagmi'
-import { encodeFunctionData, getContract, type Address, type Hex } from 'viem'
+import { encodeFunctionData, getContract, isAddress, type Address, type Hex } from 'viem'
 import { useManagedWallet, createManagedRelayrBundle } from '../useManagedWallet'
+import { assertTransactionAccountUnchanged } from '../useReviewedTransactionAccount'
 import {
-  createBalanceBundle,
-  buildOmnichainLaunchProjectTransactions,
-  getBundleStatus,
-  type JBLaunchProjectRequest,
+  createReviewedForwarderBundle,
   type JBRulesetConfig,
   type JBTerminalConfig,
   type JBSuckerDeploymentConfig,
@@ -27,6 +25,8 @@ import {
   ERC2771_FORWARDER_ABI,
   FORWARD_REQUEST_TYPES,
 } from '../../constants/abis'
+import { JB_OMNICHAIN_DEPLOYER } from '../../constants'
+import { getSafetyPublicClient } from '../../utils/transactionSafety'
 
 // Relayr app ID for sponsored bundles
 const RELAYR_APP_ID = import.meta.env.VITE_RELAYR_APP_ID || 'juicy-vision'
@@ -112,15 +112,6 @@ function loadDeploymentResult(deploymentKey: string | undefined): PersistedDeplo
   }
 }
 
-function clearDeploymentResult(deploymentKey: string | undefined): void {
-  try {
-    localStorage.removeItem(getResultKey(deploymentKey))
-    localStorage.removeItem(getInProgressKey(deploymentKey))
-  } catch {
-    // Ignore
-  }
-}
-
 function saveInProgressDeployment(data: PersistedInProgressDeployment, deploymentKey: string | undefined): void {
   try {
     localStorage.setItem(getInProgressKey(deploymentKey), JSON.stringify(data))
@@ -181,6 +172,10 @@ export function useOmnichainLaunchProject(
 
   // Wagmi hooks for ERC-2771 signing
   const { address: connectedAddress } = useAccount()
+  const latestManagedAddress = useRef(managedAddress)
+  const latestConnectedAddress = useRef(connectedAddress)
+  latestManagedAddress.current = managedAddress
+  latestConnectedAddress.current = connectedAddress
   const config = useConfig()
   const { signTypedDataAsync } = useSignTypedData()
 
@@ -188,8 +183,6 @@ export function useOmnichainLaunchProject(
   const [isSigning, setIsSigning] = useState(false)
   const [signingChainId, setSigningChainId] = useState<number | null>(null)
 
-  // Track predicted project IDs from launch response
-  const [predictedProjectIds, setPredictedProjectIds] = useState<Record<number, number>>({})
   const [confirmedProjectIds, setConfirmedProjectIds] = useState<Record<number, number>>({})
 
   // Track persisted completed state (survives page reload) - scoped by deploymentKey
@@ -197,11 +190,6 @@ export function useOmnichainLaunchProject(
 
   // Track in-progress deployment that needs to be resumed (survives component remount)
   const [resumedInProgress, setResumedInProgress] = useState<PersistedInProgressDeployment | null>(() => loadInProgressDeployment(deploymentKey))
-
-  // Track whether launch() was called in this session - prevents false "isComplete" from stale localStorage
-  // IMPORTANT: This must be state (not ref) so React batches it with setPersistedResult(null)
-  // Otherwise there's a race condition where the ref is true but persistedResult hasn't cleared yet
-  const [hasLaunchedInSession, setHasLaunchedInSession] = useState(false)
 
   // Bundle state management
   const bundle = useRelayrBundle() as ReturnType<typeof useRelayrBundle> & {
@@ -221,6 +209,12 @@ export function useOmnichainLaunchProject(
 
   // Restore in-progress deployment on mount (if component was unmounted during launch)
   const hasResumedRef = useRef(false)
+  useEffect(() => {
+    setPersistedResult(loadDeploymentResult(deploymentKey))
+    setResumedInProgress(loadInProgressDeployment(deploymentKey))
+    hasResumedRef.current = false
+  }, [deploymentKey])
+
   useEffect(() => {
     if (resumedInProgress && !hasResumedRef.current && bundleState.status === 'idle') {
       hasResumedRef.current = true
@@ -273,18 +267,17 @@ export function useOmnichainLaunchProject(
       console.log('[useOmnichainLaunchProject] Built txHashes:', txHashes)
 
       // Extract actual project IDs from transaction receipts
-      // This is more reliable than predictions, especially for omnichain deployments
+      // Only receipt-decoded IDs are safe to expose as project identifiers.
       getProjectIdsFromReceipts(txHashes).then(extractedIds => {
-        const finalIds = Object.keys(extractedIds).length > 0 ? extractedIds : predictedProjectIds
         if (Object.keys(extractedIds).length > 0) {
           console.log('Extracted project IDs from receipts:', extractedIds)
         }
-        setConfirmedProjectIds(finalIds)
+        setConfirmedProjectIds(extractedIds)
 
         // Persist to localStorage so it survives page reload
         const persistedData: PersistedDeploymentResult = {
           bundleId: bundleState.bundleId!,
-          projectIds: finalIds,
+          projectIds: extractedIds,
           txHashes,
           timestamp: Date.now(),
           chatId,
@@ -297,13 +290,12 @@ export function useOmnichainLaunchProject(
         onSuccessRef.current?.(bundleState.bundleId!, txHashes)
       }).catch(err => {
         console.error('Failed to extract project IDs:', err)
-        const finalIds = predictedProjectIds
-        setConfirmedProjectIds(finalIds)
+        setConfirmedProjectIds({})
 
-        // Still persist even if extraction failed
+        // Preserve confirmed transaction hashes, but never invent project IDs.
         const persistedData: PersistedDeploymentResult = {
           bundleId: bundleState.bundleId!,
-          projectIds: finalIds,
+          projectIds: {},
           txHashes,
           timestamp: Date.now(),
           chatId,
@@ -319,7 +311,7 @@ export function useOmnichainLaunchProject(
     if (bundleState.status === 'idle') {
       hasProcessedCompletionRef.current = false
     }
-  }, [bundleState.status, bundleState.bundleId, bundleState.chainStates, predictedProjectIds])
+  }, [bundleState.status, bundleState.bundleId, bundleState.chainStates, chatId, deploymentKey])
 
   // Call onError when failed
   useEffect(() => {
@@ -346,109 +338,111 @@ export function useOmnichainLaunchProject(
       deployTiersHookConfig,
     } = params
 
-    // Clear any persisted state from previous deployments (for this deployment key)
-    clearDeploymentResult(deploymentKey)
-    setPersistedResult(null)
-
     // Determine if we should use managed mode
     // Managed mode is used when: in managed mode AND not forced to self-custody
     const useServerSigning = isManagedMode && !forceSelfCustody
 
     // For managed mode, use managed wallet as owner if not specified
     const projectOwner = owner || (useServerSigning ? managedAddress : undefined)
-    if (!projectOwner) {
+    if (!projectOwner || !isAddress(projectOwner)) {
       bundle._setError('No owner address specified')
       return
     }
-
-    // Mark launch initiated AND clear persisted result in same batch (prevents race condition)
-    setHasLaunchedInSession(true)
-    bundle._setCreating()
+    const signingOwner = useServerSigning ? managedAddress : connectedAddress
+    if (!signingOwner || projectOwner.toLowerCase() !== signingOwner.toLowerCase()) {
+      bundle._setError('Project owner must match the active signing account')
+      return
+    }
+    const assertSigningOwnerUnchanged = () => assertTransactionAccountUnchanged(
+      signingOwner,
+      useServerSigning ? latestManagedAddress.current : latestConnectedAddress.current,
+    )
+    if (chainIds.length === 0 || new Set(chainIds).size !== chainIds.length) {
+      bundle._setError('Launch chains must be a non-empty unique list')
+      return
+    }
+    if (persistedResult) {
+      bundle._setError('This project launch is already confirmed')
+      return
+    }
+    if (resumedInProgress) {
+      bundle._setError('This project launch is already in progress')
+      return
+    }
 
     try {
-      let transactions: Array<{ chain: number; target: string; data: string; value: string }>
-      let predictedIds: Record<number, number> = {}
+      const predictedIds: Record<number, number> = {}
 
-      // For multi-chain deployments, ALWAYS use JBOmnichainDeployer with auto-generated suckers.
-      // This ensures cross-chain token bridging is set up correctly.
-      // For single-chain, we can use either path (no suckers needed).
-      // 721 launches ALWAYS go local via JBOmnichainDeployer (both single- and multi-chain):
-      // the backend single-chain path has no 721 support.
-      const useOmnichainDeployer = chainIds.length > 1 || !!suckerDeploymentConfiguration || !!deployTiersHookConfig
+      // Every launch uses the same validated JBOmnichainDeployer encoder. For
+      // one chain it emits an empty sucker configuration; for multiple chains
+      // it derives the appropriate atomic sucker configuration.
+      const creationFeesWei: Record<number, string> = {}
+      await Promise.all(chainIds.map(async chainId => {
+        creationFeesWei[chainId] = (await fetchProjectCreationFee(chainId)).toString()
+      }))
 
-      if (useOmnichainDeployer) {
-        // V6: launchProjectFor is payable and requires msg.value to equal
-        // JBProjects.creationFee() exactly - fetch it per chain before encoding.
-        const creationFeesWei: Record<number, string> = {}
-        await Promise.all(chainIds.map(async chainId => {
-          creationFeesWei[chainId] = (await fetchProjectCreationFee(chainId)).toString()
-        }))
+      const txs = deployTiersHookConfig
+        ? buildOmnichainLaunch721Transactions({
+            chainIds,
+            owner: projectOwner as `0x${string}`,
+            projectUri,
+            deployTiersHookConfig,
+            rulesetConfigurations,
+            terminalConfigurations,
+            memo,
+            suckerDeploymentConfiguration,
+            chainConfigs,
+            creationFeesWei,
+          })
+        : buildOmnichainLaunchTransactions({
+            chainIds,
+            owner: projectOwner as `0x${string}`,
+            projectUri,
+            rulesetConfigurations,
+            terminalConfigurations,
+            memo,
+            suckerDeploymentConfiguration,
+            chainConfigs,
+            creationFeesWei,
+          })
 
-        // Use JBOmnichainDeployer.launchProjectFor() - encode calldata locally.
-        // This creates projects (with 721 tiers when requested) AND deploys suckers atomically.
-        // Both builders auto-generate per-chain sucker configs and apply per-chain
-        // terminal configuration overrides.
-        const txs = deployTiersHookConfig
-          ? buildOmnichainLaunch721Transactions({
-              chainIds,
-              owner: projectOwner as `0x${string}`,
-              projectUri,
-              deployTiersHookConfig,
-              rulesetConfigurations,
-              terminalConfigurations,
-              memo,
-              suckerDeploymentConfiguration, // Optional - will be auto-generated if not provided
-              chainConfigs, // Per-chain overrides for terminal configs and tiers
-              creationFeesWei,
-            })
-          : buildOmnichainLaunchTransactions({
-              chainIds,
-              owner: projectOwner as `0x${string}`,
-              projectUri,
-              rulesetConfigurations,
-              terminalConfigurations,
-              memo,
-              suckerDeploymentConfiguration, // Optional - will be auto-generated if not provided
-              chainConfigs, // Per-chain overrides for terminal configs
-              creationFeesWei,
-            })
+      const transactions = txs.map(tx => ({
+        chain: tx.chainId,
+        target: tx.to,
+        data: tx.data,
+        value: tx.value,
+      }))
+      chainIds.forEach(chainId => {
+        predictedIds[chainId] = 0
+      })
 
-        transactions = txs.map(tx => ({
-          chain: tx.chainId,
-          target: tx.to,
-          data: tx.data,
-          value: tx.value,
-        }))
-
-        // Project IDs will be determined after transactions confirm
-        // For now, use placeholder - they'll be extracted from events
-        chainIds.forEach(chainId => {
-          predictedIds[chainId] = 0 // Will be updated from tx receipt
-        })
-      } else {
-        // Single-chain deployment - use API endpoint (JBController.launchProjectFor)
-        const launchRequest: JBLaunchProjectRequest = {
-          chainIds,
-          owner: projectOwner,
-          projectUri,
-          rulesetConfigurations,
-          terminalConfigurations,
-          memo,
-        }
-
-        const launchResponse = await buildOmnichainLaunchProjectTransactions(launchRequest)
-        predictedIds = launchResponse.predictedProjectIds
-
-        transactions = launchResponse.transactions.map(tx => ({
-          chain: tx.txData.chainId,
-          target: tx.txData.to,
-          data: tx.txData.data,
-          value: tx.txData.value,
-        }))
+      if (
+        transactions.length !== chainIds.length ||
+        new Set(transactions.map(transaction => transaction.chain)).size !== chainIds.length
+      ) {
+        throw new Error('The launch transaction set does not match the reviewed chains')
       }
+      await Promise.all(transactions.map(async transaction => {
+        if (!chainIds.includes(transaction.chain)) {
+          throw new Error(`Unexpected project launch chain: ${transaction.chain}`)
+        }
+        if (transaction.target.toLowerCase() !== JB_OMNICHAIN_DEPLOYER.toLowerCase()) {
+          throw new Error(`Project deployer not recognized: ${transaction.target}`)
+        }
+        if (BigInt(transaction.value) !== BigInt(creationFeesWei[transaction.chain])) {
+          throw new Error(`Project creation fee changed on chain ${transaction.chain}`)
+        }
+        await getSafetyPublicClient(transaction.chain).call({
+          account: projectOwner as Address,
+          to: JB_OMNICHAIN_DEPLOYER,
+          data: transaction.data as Hex,
+          value: BigInt(transaction.value),
+        })
+      }))
 
+      assertSigningOwnerUnchanged()
       // Store predicted project IDs
-      setPredictedProjectIds(predictedIds)
+      bundle._setCreating()
 
       let bundleId: string
 
@@ -469,10 +463,13 @@ export function useOmnichainLaunchProject(
         }))
 
         // For launches, don't pass smartAccountAddress - the owner is in the calldata
+        assertSigningOwnerUnchanged()
         const result = await createManagedRelayrBundle(
           serverTransactions,
-          projectOwner
+          projectOwner,
           // No smart account routing for launches - project doesn't exist yet
+          undefined,
+          deploymentKey,
         )
         bundleId = result.bundleId
 
@@ -527,7 +524,9 @@ export function useOmnichainLaunchProject(
             message: messageData,
           }
 
+          assertSigningOwnerUnchanged()
           const signature = await signTypedDataAsync(typedData)
+          assertSigningOwnerUnchanged()
           console.log(`Signature obtained for chain ${tx.chain}`)
 
           // Encode the execute() call with the signed request
@@ -555,9 +554,29 @@ export function useOmnichainLaunchProject(
 
         setIsSigning(false)
         setSigningChainId(null)
-        console.log('=== ERC-2771 SIGNING COMPLETE ===')
 
-        // Debug: Log the exact request being sent to Relayr
+        await Promise.all(transactions.map(async transaction => {
+          const freshFee = await fetchProjectCreationFee(transaction.chain)
+          if (freshFee !== BigInt(transaction.value)) {
+            throw new Error(`Project creation fee changed on chain ${transaction.chain}`)
+          }
+          const publicClient = getSafetyPublicClient(transaction.chain)
+          await publicClient.call({
+            account: projectOwner as Address,
+            to: JB_OMNICHAIN_DEPLOYER,
+            data: transaction.data as Hex,
+            value: BigInt(transaction.value),
+          })
+          const wrapped = wrappedTransactions.find(candidate => candidate.chain === transaction.chain)
+          if (!wrapped) throw new Error(`Missing signed launch transaction for chain ${transaction.chain}`)
+          await publicClient.call({
+            account: projectOwner as Address,
+            to: ERC2771_FORWARDER_ADDRESS,
+            data: wrapped.data as Hex,
+            value: BigInt(wrapped.value),
+          })
+        }))
+
         const bundleRequest = {
           app_id: RELAYR_APP_ID,
           transactions: wrappedTransactions.map(tx => ({
@@ -566,21 +585,10 @@ export function useOmnichainLaunchProject(
           perform_simulation: true,
           virtual_nonce_mode: 'Disabled' as const,
         }
-        console.log('=== RELAYR BUNDLE REQUEST ===')
-        console.log('Full request:', JSON.stringify(bundleRequest, null, 2))
-        console.log('Chain IDs:', chainIds)
-        console.log('Predicted Project IDs:', predictedIds)
-        console.log('Transactions (via TrustedForwarder):')
-        wrappedTransactions.forEach((tx, i) => {
-          console.log(`  [${i}] Chain ${tx.chain}:`)
-          console.log(`      Target: ${tx.target} (TrustedForwarder)`)
-          console.log(`      Value: ${tx.value}`)
-          console.log(`      Data: ${tx.data.slice(0, 66)}...`)
-        })
-        console.log('=============================')
 
         // Create balance-sponsored bundle (admin pays gas)
-        const bundleResponse = await createBalanceBundle(bundleRequest)
+        assertSigningOwnerUnchanged()
+        const bundleResponse = await createReviewedForwarderBundle(bundleRequest)
         bundleId = bundleResponse.bundle_uuid
       }
 
@@ -609,20 +617,16 @@ export function useOmnichainLaunchProject(
       bundle._setError(errorMessage)
       onErrorRef.current?.(err instanceof Error ? err : new Error(errorMessage))
     }
-  }, [isManagedMode, managedAddress, bundle, config, signTypedDataAsync])
+  }, [isManagedMode, managedAddress, connectedAddress, bundle, config, signTypedDataAsync, persistedResult, resumedInProgress, deploymentKey])
 
   const reset = useCallback(() => {
     resetBundle()
-    setPredictedProjectIds({})
     setConfirmedProjectIds({})
     setIsSigning(false)
     setSigningChainId(null)
-    // Clear persisted state for this deployment key
-    clearDeploymentResult(deploymentKey)
-    setPersistedResult(null)
-    setResumedInProgress(null)
+    setPersistedResult(loadDeploymentResult(deploymentKey))
+    setResumedInProgress(loadInProgressDeployment(deploymentKey))
     hasResumedRef.current = false
-    setHasLaunchedInSession(false)
   }, [resetBundle, deploymentKey])
 
   // Consider launching if bundle is processing OR if we're resuming an in-progress deployment
@@ -636,19 +640,13 @@ export function useOmnichainLaunchProject(
       return persistedResult.projectIds
     }
     // Otherwise use current session's data
-    return {
-      ...predictedProjectIds,
-      ...confirmedProjectIds,
-    }
-  }, [predictedProjectIds, confirmedProjectIds, persistedResult, bundleState.status])
+    return confirmedProjectIds
+  }, [confirmedProjectIds, persistedResult, bundleState.status])
 
-  // Consider complete if:
-  // 1. Bundle actually completed in this session, OR
-  // 2. We have persisted result AND (launched in this session OR resumed an in-progress deployment)
-  // This prevents stale localStorage data from triggering "isComplete" on fresh transaction previews
-  // NOTE: hasLaunchedInSession is state (not ref) so React batches it with setPersistedResult(null)
+  // A completed result is scoped by deploymentKey. Treat it as authoritative
+  // after reload so the same reviewed launch cannot be submitted twice.
   const isComplete = bundleState.status === 'completed' ||
-    (bundleState.status === 'idle' && persistedResult !== null && (hasLaunchedInSession || hasResumedRef.current))
+    (bundleState.status === 'idle' && persistedResult !== null)
 
   // Get tx hashes from persisted state if available
   const persistedTxHashes = persistedResult?.txHashes ?? null

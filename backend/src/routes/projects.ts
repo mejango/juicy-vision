@@ -3,13 +3,15 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import {
   createProject,
+  getProjectById,
+  getProjectChains,
+  getProjectsByUser,
   updateProject,
   updateProjectChain,
-  getProjectById,
-  getProjectsByUser,
-  getProjectChains,
 } from '../services/projectCreation.ts';
 import { optionalAuth, requireAuth } from '../middleware/auth.ts';
+import { getIpfsClient } from '../services/ipfs.ts';
+import { rateLimitByUser } from '../services/rateLimit.ts';
 
 const projectsRouter = new Hono();
 
@@ -39,9 +41,34 @@ const UpdateProjectChainSchema = z.object({
   suckerStatus: z.enum(['pending', 'processing', 'confirmed', 'failed']).optional(),
 });
 
+const PinMetadataSchema = z.object({
+  metadata: z.record(z.string(), z.unknown()),
+  name: z.string().min(1).max(255),
+}).refine((value) => JSON.stringify(value.metadata).length <= 50_000, {
+  message: 'Metadata is too large',
+});
+
 // =============================================================================
 // Routes
 // =============================================================================
+
+// POST /projects/pin-metadata - Pin reviewed project or tier metadata.
+projectsRouter.post(
+  '/pin-metadata',
+  optionalAuth,
+  rateLimitByUser('toolPinToIpfs'),
+  zValidator('json', PinMetadataSchema),
+  async (c) => {
+    try {
+      const { metadata, name } = c.req.valid('json');
+      const result = await getIpfsClient().pinJson(metadata, name);
+      return c.json({ success: true, data: { uri: `ipfs://${result.cid}` } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to pin metadata';
+      return c.json({ success: false, error: message }, 502);
+    }
+  },
+);
 
 // POST /projects - Create a new project record
 projectsRouter.post(
@@ -71,7 +98,7 @@ projectsRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to create project';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // PATCH /projects/:id - Update project record
@@ -102,7 +129,7 @@ projectsRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to update project';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // PATCH /projects/:id/chains/:chainId - Update chain-specific status
@@ -137,7 +164,7 @@ projectsRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to update project chain';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /projects/:id - Get a specific project with chain details
@@ -166,7 +193,7 @@ projectsRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to get project';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /projects - Get authenticated user's projects
@@ -194,7 +221,7 @@ projectsRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to get projects';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /projects/:id/status - Get creation status for a project
@@ -213,15 +240,15 @@ projectsRouter.get(
       const chains = await getProjectChains(id);
 
       // Compute overall status from chain statuses
-      const allConfirmed = chains.every(ch => ch.status === 'confirmed');
-      const anyFailed = chains.some(ch => ch.status === 'failed');
-      const anyProcessing = chains.some(ch => ch.status === 'processing');
+      const allConfirmed = chains.every((ch) => ch.status === 'confirmed');
+      const anyFailed = chains.some((ch) => ch.status === 'failed');
+      const anyProcessing = chains.some((ch) => ch.status === 'processing');
 
       let computedStatus = project.creationStatus;
       if (allConfirmed && chains.length > 0) {
         computedStatus = 'completed';
       } else if (anyFailed && !anyProcessing) {
-        computedStatus = chains.some(ch => ch.status === 'confirmed') ? 'partial' : 'failed';
+        computedStatus = chains.some((ch) => ch.status === 'confirmed') ? 'partial' : 'failed';
       } else if (anyProcessing) {
         computedStatus = 'processing';
       }
@@ -233,7 +260,7 @@ projectsRouter.get(
           projectName: project.projectName,
           projectType: project.projectType,
           creationStatus: computedStatus,
-          chains: chains.map(ch => ({
+          chains: chains.map((ch) => ({
             chainId: ch.chainId,
             projectId: ch.projectId,
             status: ch.status,
@@ -247,7 +274,7 @@ projectsRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to get project status';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 export { projectsRouter };

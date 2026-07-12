@@ -7,18 +7,80 @@ stale/incorrect protocol state.
 
 ## Audit Checklist
 
-- [ ] Inventory every read model, write action, chain/address source, and AI tool
-- [ ] Cross-check transaction encoders and preconditions against v6 interfaces
-- [ ] Cross-check indexed fields and derived values against Bendystraw schemas
-- [ ] Compare user-facing project/payment/cash-out/owner flows with `website/`
-- [ ] Fix correctness and safety issues with focused regression coverage
-- [ ] Run frontend and backend type checks/tests plus a production build
-- [ ] Exercise critical user journeys in a real browser at desktop and mobile sizes
-- [ ] Record findings, fixes, verification, and any residual risks below
+- [x] Inventory every read model, write action, chain/address source, and AI tool
+- [x] Cross-check transaction encoders and preconditions against v6 interfaces
+- [x] Cross-check indexed fields and derived values against Bendystraw schemas
+- [x] Compare user-facing project/payment/cash-out/owner flows with `website/`
+- [x] Fix correctness and safety issues with focused regression coverage
+- [x] Run frontend and backend type checks/tests plus a production build
+- [x] Exercise critical user journeys in a real browser at desktop and mobile sizes
+- [x] Record findings, fixes, verification, and any residual risks below
 
 ## Review
 
-_In progress._
+Completed the protocol-truth audit and the recovered maintainability pass.
+
+### Correctness and safety
+
+- Centralized v6 contract, currency, token, and sucker-deployer policy in shared
+  chain/address registries used by both frontend and backend.
+- Added runtime trust checks for projects, terminals, controllers, hooks, split
+  routes, managed-wallet calldata, ERC-20 approvals, rulesets, tiers, revnets,
+  and omnichain mappings, with focused regression tests.
+- Preserved exact accounting semantics for native currency and chain-specific
+  USDC, contract-quoted cash-outs, payout limits, ruleset timing, tier metadata,
+  and per-chain project IDs.
+- Fixed message archival scoping so an ID must belong to the supplied chat, and
+  removed the spoofable Cloud Scheduler header as a cron authentication path.
+- Added database integrity/idempotency migrations for terminal wallets and
+  Relayr bundles.
+
+### Maintainability and efficiency
+
+- Removed duplicate frontend/backend address-registry implementations and
+  replaced backend/frontend copies with thin shared-module exports.
+- Removed dead components, hooks, imports, state, and an unnecessary project
+  fetch; extracted reusable IPFS-media and project-link helpers.
+- Restored unconditional React hook ordering in `TransactionPreview` and removed
+  its lint quarantine.
+- Cached viem read clients and lazy-loaded route-level pages. The main production
+  entry chunk fell from about 2.34 MB to 1.29 MB while preserving all routes.
+- Changed frontend production files lint with zero warnings; full-project lint
+  debt fell from 332 to 200 warnings, with zero errors.
+
+### Verification (2026-07-11)
+
+- Frontend: ESLint passed; `tsc -b` passed; 1,379 unit tests passed with 6
+  skipped; production build passed.
+- Backend/shared changed files: Deno format and lint passed; `deno check main.ts`
+  passed; 290 tests (1,018 steps) passed with 129 environment-dependent tests
+  ignored and zero failures.
+- Browser: exact payment-review/cancel journey passed in Chromium at 1440×900
+  and 390×844; cancellation produced no wallet call.
+
+### Residual risks
+
+- The repository still has 200 non-gating frontend lint warnings in untouched
+  legacy/test code and a 1.29 MB main chunk that merits further splitting.
+- Ignored backend tests and the browser journey do not submit live-chain
+  transactions; RPC, indexer, bundler, wallet, and contract integrations still
+  need normal staging smoke tests before release.
+- Browserslist data is stale according to the build warning; dependency metadata
+  can be refreshed separately without coupling it to this audit.
+
+## Recovery and Maintainability Pass (2026-07-11)
+
+- [x] Recover the interrupted worktree and verification artifacts without
+  overwriting in-progress changes
+- [x] Re-run frontend lint, unit tests, type checking, and production build
+- [x] Re-run backend formatting, lint, type checking, and unit tests
+- [x] Review changed production code for duplicated policy, oversized modules,
+  unclear trust boundaries, dead exports, avoidable network work, and unsafe
+  failure handling
+- [x] Refactor high-value findings without reducing supported flows or safety
+  coverage
+- [x] Run focused regressions and critical desktop/mobile browser journeys
+- [x] Record completed audit coverage, verification, and residual risks below
 
 ---
 

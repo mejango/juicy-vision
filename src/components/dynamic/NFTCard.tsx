@@ -63,6 +63,8 @@ export default function NFTCard({
           name: metadata?.name || tierData.name,
           description: metadata?.description,
           imageUri: metadata?.image || metadata?.imageUri,
+          animationUrl: metadata?.animation_url || metadata?.animationUrl,
+          mediaType: metadata?.mediaType,
           metadata: metadata || undefined,
         })
       } catch (err) {

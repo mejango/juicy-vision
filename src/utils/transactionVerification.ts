@@ -2,14 +2,16 @@
 // Validates transaction parameters against contract ABIs before display
 
 import {
-  type PayParams,
-  type CashOutParams,
-  type SendPayoutsParams,
-  type UseAllowanceParams,
-  type DeployERC20Params,
   NATIVE_TOKEN,
 } from '../constants/abis'
-import { ALL_CHAIN_IDS } from '../constants'
+import { ALL_CHAIN_IDS, JB_ROUTER_TERMINAL_REGISTRY } from '../constants'
+import { recognizedTerminalType } from './paymentTerminal'
+import {
+  requireRecognizedApprovalHook,
+  requireRecognizedNewProjectDataHook,
+} from './projectTrust'
+import { isUsdcAddress } from './technicalDetails'
+import { isIpfsUri } from './ipfs'
 
 // Types
 export interface TransactionDoubt {
@@ -28,233 +30,9 @@ export interface VerificationResult {
 
 // Constants
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
-const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')
 const MAX_REASONABLE_ETH = BigInt('1000000000000000000000') // 1000 ETH
 const MAX_REASONABLE_TOKENS = BigInt('1000000000000000000000000000') // 1 billion tokens
 const MIN_REASONABLE_AMOUNT = BigInt('1000000000000') // 0.000001 ETH (1e12 wei)
-
-// ============================================================================
-// ADDRESS AUTO-CORRECTION
-// ============================================================================
-// AI models sometimes "hallucinate" addresses by dropping characters.
-// This utility detects malformed addresses that are close to known canonical
-// addresses and auto-corrects them before validation.
-//
-// Example hallucination:
-//   Wrong:   0xe0427f250fdb0379c88e884ee4570521208cbc  (missing 'e9')
-//   Correct: 0xe0427f250fdb0379c8e98e884ee4570521208cbc
-// ============================================================================
-
-// Known canonical addresses that AI might hallucinate
-// These are Juicebox V6 addresses (same on all chains)
-const KNOWN_ADDRESSES: Record<string, string> = {
-  // Terminals
-  '0x130f5dd2bd8805443cf41755253d778a75a67f53': 'JBMultiTerminal',
-  '0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7': 'JBRouterTerminal',
-  '0xe0427f250fdb0379c8e98e884ee4570521208cbc': 'JBRouterTerminalRegistry',
-  // Core contracts
-  '0x3fcec3572e84b624477bcff4e2cf1f7deab648f1': 'JBController',
-  '0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba': 'JBRulesets',
-  '0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9': 'JBTokens',
-  '0x6017d1fba9dc279bfa0b03fd931c22e242ab3691': 'JBProjects',
-  '0x5aff29060e023e6fb87be5596652b33c65af535b': 'JBDirectory',
-  '0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3': 'JBSplits',
-  '0xc93360158f187fc8fc8f1062a1b31d06f185dbab': 'JBFundAccessLimits',
-  // Deployers
-  '0xb853758a70a6b4216c09f1d071ea2344aba0a34f': 'JBOmnichainDeployer',
-  '0xb552eb94284f94b833837d4b2cbb237128415d4e': 'REVDeployer',
-}
-
-// Compute Levenshtein edit distance between two strings
-function levenshteinDistance(a: string, b: string): number {
-  const matrix: number[][] = []
-
-  for (let i = 0; i <= b.length; i++) {
-    matrix[i] = [i]
-  }
-  for (let j = 0; j <= a.length; j++) {
-    matrix[0][j] = j
-  }
-
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b[i - 1] === a[j - 1]) {
-        matrix[i][j] = matrix[i - 1][j - 1]
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1,     // insertion
-          matrix[i - 1][j] + 1      // deletion
-        )
-      }
-    }
-  }
-
-  return matrix[b.length][a.length]
-}
-
-// Find the closest known address to a potentially hallucinated address
-function findClosestKnownAddress(address: string): { address: string; name: string; distance: number } | null {
-  if (!address || !address.startsWith('0x')) return null
-
-  const normalizedInput = address.toLowerCase()
-  let bestMatch: { address: string; name: string; distance: number } | null = null
-
-  for (const [knownAddr, name] of Object.entries(KNOWN_ADDRESSES)) {
-    const distance = levenshteinDistance(normalizedInput, knownAddr.toLowerCase())
-
-    // Only consider matches with small edit distance (1-3 character differences)
-    // This catches AI dropping characters but avoids false matches
-    if (distance > 0 && distance <= 3) {
-      if (!bestMatch || distance < bestMatch.distance) {
-        bestMatch = { address: knownAddr, name, distance }
-      }
-    }
-  }
-
-  return bestMatch
-}
-
-/**
- * Auto-correct a potentially hallucinated address to its canonical form.
- * Returns the corrected address if a close match is found, otherwise returns the original.
- *
- * @param address - The address to check and potentially correct
- * @returns Object with corrected address and whether a correction was made
- */
-export function autoCorrectAddress(address: string): {
-  address: string
-  wasCorrected: boolean
-  originalAddress?: string
-  matchedContract?: string
-} {
-  if (!address) return { address, wasCorrected: false }
-
-  // If already valid and exact match to known address, no correction needed
-  const normalized = address.toLowerCase()
-  if (KNOWN_ADDRESSES[normalized]) {
-    return { address, wasCorrected: false }
-  }
-
-  // If valid address format, no correction needed
-  if (isValidAddress(address)) {
-    return { address, wasCorrected: false }
-  }
-
-  // Address is malformed - try to find a close match
-  const match = findClosestKnownAddress(address)
-  if (match) {
-    console.log(`[autoCorrectAddress] Corrected hallucinated address:`)
-    console.log(`  Original: ${address} (${address.length} chars)`)
-    console.log(`  Corrected: ${match.address} (${match.address.length} chars)`)
-    console.log(`  Contract: ${match.name}, Edit distance: ${match.distance}`)
-    return {
-      address: match.address,
-      wasCorrected: true,
-      originalAddress: address,
-      matchedContract: match.name,
-    }
-  }
-
-  // No close match found, return original
-  return { address, wasCorrected: false }
-}
-
-/**
- * Auto-correct all addresses in terminal configurations.
- * Mutates the input object in place and returns correction info.
- */
-export function autoCorrectTerminalConfigurations(
-  terminalConfigurations: Array<{ terminal?: string; accountingContextsToAccept?: Array<{ token?: string }> }>
-): Array<{ field: string; original: string; corrected: string; contract: string }> {
-  const corrections: Array<{ field: string; original: string; corrected: string; contract: string }> = []
-
-  terminalConfigurations.forEach((tc, idx) => {
-    // Check terminal address
-    if (tc.terminal) {
-      const result = autoCorrectAddress(tc.terminal)
-      if (result.wasCorrected) {
-        corrections.push({
-          field: `terminalConfigurations[${idx}].terminal`,
-          original: result.originalAddress!,
-          corrected: result.address,
-          contract: result.matchedContract!,
-        })
-        tc.terminal = result.address
-      }
-    }
-
-    // Check token addresses in accounting contexts
-    tc.accountingContextsToAccept?.forEach((ctx, ctxIdx) => {
-      if (ctx.token) {
-        const result = autoCorrectAddress(ctx.token)
-        if (result.wasCorrected) {
-          corrections.push({
-            field: `terminalConfigurations[${idx}].accountingContextsToAccept[${ctxIdx}].token`,
-            original: result.originalAddress!,
-            corrected: result.address,
-            contract: result.matchedContract!,
-          })
-          ctx.token = result.address
-        }
-      }
-    })
-  })
-
-  return corrections
-}
-
-/**
- * Auto-correct addresses in chain configs (per-chain terminal overrides).
- */
-export function autoCorrectChainConfigs(
-  chainConfigs: Array<{
-    chainId: number | string
-    overrides?: {
-      terminalConfigurations?: Array<{ terminal?: string; accountingContextsToAccept?: Array<{ token?: string }> }>
-    }
-  }>
-): Array<{ field: string; original: string; corrected: string; contract: string }> {
-  const corrections: Array<{ field: string; original: string; corrected: string; contract: string }> = []
-
-  chainConfigs.forEach((cfg, cfgIdx) => {
-    if (cfg.overrides?.terminalConfigurations) {
-      cfg.overrides.terminalConfigurations.forEach((tc, idx) => {
-        // Check terminal address
-        if (tc.terminal) {
-          const result = autoCorrectAddress(tc.terminal)
-          if (result.wasCorrected) {
-            corrections.push({
-              field: `chainConfigs[${cfgIdx}].terminalConfigurations[${idx}].terminal`,
-              original: result.originalAddress!,
-              corrected: result.address,
-              contract: result.matchedContract!,
-            })
-            tc.terminal = result.address
-          }
-        }
-
-        // Check token addresses
-        tc.accountingContextsToAccept?.forEach((ctx, ctxIdx) => {
-          if (ctx.token) {
-            const result = autoCorrectAddress(ctx.token)
-            if (result.wasCorrected) {
-              corrections.push({
-                field: `chainConfigs[${cfgIdx}].terminalConfigurations[${idx}].accountingContextsToAccept[${ctxIdx}].token`,
-                original: result.originalAddress!,
-                corrected: result.address,
-                contract: result.matchedContract!,
-              })
-              ctx.token = result.address
-            }
-          }
-        })
-      })
-    }
-  })
-
-  return corrections
-}
 
 // Validation helpers
 function isValidAddress(address: string): boolean {
@@ -269,9 +47,288 @@ function isNativeToken(address: string): boolean {
   return address.toLowerCase() === NATIVE_TOKEN.toLowerCase()
 }
 
+function isRecognizedAccountingToken(address: string): boolean {
+  return isNativeToken(address) || isUsdcAddress(address)
+}
+
+function accountingCurrencyOf(address: string): bigint {
+  return BigInt(address) & 0xffff_ffffn
+}
+
+function validateLaunchTerminalConfigurations(
+  terminalConfigs: Array<{
+    terminal?: string
+    accountingContextsToAccept?: Array<{ token?: string; decimals?: number; currency?: number }>
+  }>,
+  prefix: string,
+  doubts: TransactionDoubt[],
+): void {
+  const seen = new Set<string>()
+  terminalConfigs.forEach((config, terminalIndex) => {
+    const field = `${prefix}[${terminalIndex}]`
+    if (!config.terminal || !isValidAddress(config.terminal)) {
+      doubts.push({ severity: 'critical', field: `${field}.terminal`, message: 'Invalid terminal address' })
+      return
+    }
+    const normalized = config.terminal.toLowerCase()
+    const terminalType = recognizedTerminalType(config.terminal as `0x${string}`)
+    const isRegistry = normalized === JB_ROUTER_TERMINAL_REGISTRY.toLowerCase()
+    if (!terminalType || (terminalType === 'router' && !isRegistry)) {
+      doubts.push({
+        severity: 'critical',
+        field: `${field}.terminal`,
+        message: terminalType === 'router'
+          ? 'Configure the recognized router registry, not a router implementation'
+          : `Terminal not recognized: ${config.terminal}`,
+      })
+      return
+    }
+    if (seen.has(normalized)) {
+      doubts.push({ severity: 'critical', field: `${field}.terminal`, message: 'Duplicate terminal configuration' })
+    }
+    seen.add(normalized)
+
+    const contexts = config.accountingContextsToAccept ?? []
+    if (isRegistry) {
+      if (contexts.length > 0) {
+        doubts.push({
+          severity: 'critical',
+          field: `${field}.accountingContextsToAccept`,
+          message: 'The router registry must not define accounting contexts',
+        })
+      }
+      return
+    }
+    if (contexts.length === 0) {
+      doubts.push({
+        severity: 'critical',
+        field: `${field}.accountingContextsToAccept`,
+        message: 'JBMultiTerminal requires at least one accounting context',
+      })
+    }
+    contexts.forEach((context, contextIndex) => {
+      const contextField = `${field}.accountingContextsToAccept[${contextIndex}]`
+      if (!context.token || !isValidAddress(context.token)) {
+        doubts.push({ severity: 'critical', field: `${contextField}.token`, message: 'Invalid accounting token address' })
+        return
+      }
+      if (!isNativeToken(context.token) && !isUsdcAddress(context.token)) {
+        doubts.push({
+          severity: 'critical',
+          field: `${contextField}.token`,
+          message: `Accounting token not recognized: ${context.token}`,
+        })
+        return
+      }
+      const expectedDecimals = isNativeToken(context.token) ? 18 : 6
+      const expectedCurrency = Number(BigInt(context.token) & 0xffffffffn)
+      if (context.decimals !== expectedDecimals) {
+        doubts.push({
+          severity: 'critical',
+          field: `${contextField}.decimals`,
+          message: `Expected ${expectedDecimals} decimals for this accounting token`,
+        })
+      }
+      if (context.currency !== expectedCurrency) {
+        doubts.push({
+          severity: 'critical',
+          field: `${contextField}.currency`,
+          message: `Expected currency ${expectedCurrency} for ${context.token}`,
+        })
+      }
+    })
+  })
+}
+
 function isBigIntOverflow(value: bigint, maxBits: number = 256): boolean {
   const maxValue = BigInt(2) ** BigInt(maxBits) - BigInt(1)
   return value > maxValue
+}
+
+function parseBigIntParam(
+  value: bigint | string | number,
+  field: string,
+  doubts: TransactionDoubt[],
+): bigint {
+  try {
+    return BigInt(value)
+  } catch {
+    doubts.push({
+      severity: 'critical',
+      field,
+      message: `${field} must be an integer`,
+    })
+    return 0n
+  }
+}
+
+function validateUnsigned(
+  value: bigint,
+  field: string,
+  doubts: TransactionDoubt[],
+  maxBits: number = 256,
+): void {
+  if (value < 0n) {
+    doubts.push({ severity: 'critical', field, message: `${field} cannot be negative` })
+  } else if (isBigIntOverflow(value, maxBits)) {
+    doubts.push({ severity: 'critical', field, message: `${field} exceeds uint${maxBits}` })
+  }
+}
+
+interface ValidatableRulesetConfig {
+  mustStartAtOrAfter?: number
+  duration?: number
+  weight?: bigint | string | number
+  weightCutPercent?: number
+  approvalHook?: string
+  metadata?: {
+    reservedPercent?: number
+    cashOutTaxRate?: number
+    baseCurrency?: number
+    dataHook?: string
+  }
+  splitGroups?: Array<{
+    groupId?: bigint | string | number
+    splits?: Array<{
+      percent?: number
+      projectId?: bigint | string | number
+      beneficiary?: string
+      lockedUntil?: number
+      hook?: string
+    }>
+  }>
+  fundAccessLimitGroups?: Array<{
+    terminal?: string
+    token?: string
+    payoutLimits?: Array<{ amount?: bigint | string | number; currency?: number }>
+    surplusAllowances?: Array<{ amount?: bigint | string | number; currency?: number }>
+  }>
+}
+
+function validateIntegerRange(
+  value: number | undefined,
+  field: string,
+  min: number,
+  max: number,
+  doubts: TransactionDoubt[],
+): void {
+  if (value === undefined) return
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    doubts.push({
+      severity: 'critical',
+      field,
+      message: `${field} must be an integer between ${min} and ${max}`,
+    })
+  }
+}
+
+function validateRulesetConfig(
+  config: ValidatableRulesetConfig,
+  index: number,
+  doubts: TransactionDoubt[],
+): void {
+  const prefix = `rulesetConfigurations[${index}]`
+  validateIntegerRange(config.mustStartAtOrAfter, `${prefix}.mustStartAtOrAfter`, 0, 2 ** 48 - 1, doubts)
+  validateIntegerRange(config.duration, `${prefix}.duration`, 0, 2 ** 32 - 1, doubts)
+  validateIntegerRange(config.weightCutPercent, `${prefix}.weightCutPercent`, 0, 1_000_000_000, doubts)
+  validateIntegerRange(config.metadata?.reservedPercent, `${prefix}.metadata.reservedPercent`, 0, 10_000, doubts)
+  validateIntegerRange(config.metadata?.cashOutTaxRate, `${prefix}.metadata.cashOutTaxRate`, 0, 10_000, doubts)
+  validateIntegerRange(config.metadata?.baseCurrency, `${prefix}.metadata.baseCurrency`, 1, 2 ** 32 - 1, doubts)
+
+  if (config.weight !== undefined) {
+    const weight = parseBigIntParam(config.weight, `${prefix}.weight`, doubts)
+    if (weight < 0n) {
+      doubts.push({ severity: 'critical', field: `${prefix}.weight`, message: 'Weight cannot be negative' })
+    } else if (isBigIntOverflow(weight, 112)) {
+      doubts.push({
+        severity: 'critical',
+        field: `${prefix}.weight`,
+        message: 'Weight exceeds maximum value',
+        technicalNote: 'Weight must fit in uint112',
+      })
+    }
+  }
+  if (config.approvalHook && !isValidAddress(config.approvalHook)) {
+    doubts.push({ severity: 'critical', field: `${prefix}.approvalHook`, message: 'Invalid approval hook address' })
+  } else if (config.approvalHook) {
+    try {
+      requireRecognizedApprovalHook(config.approvalHook)
+    } catch (err) {
+      doubts.push({
+        severity: 'critical',
+        field: `${prefix}.approvalHook`,
+        message: err instanceof Error ? err.message : 'Rule-change hook not recognized',
+      })
+    }
+  }
+  if (config.metadata?.dataHook && !isValidAddress(config.metadata.dataHook)) {
+    doubts.push({ severity: 'critical', field: `${prefix}.metadata.dataHook`, message: 'Invalid data hook address' })
+  }
+
+  config.splitGroups?.forEach((group, groupIndex) => {
+    if (group.groupId !== undefined) {
+      const groupId = parseBigIntParam(group.groupId, `${prefix}.splitGroups[${groupIndex}].groupId`, doubts)
+      validateUnsigned(groupId, `${prefix}.splitGroups[${groupIndex}].groupId`, doubts)
+    }
+    let totalPercent = 0
+    group.splits?.forEach((split, splitIndex) => {
+      const splitPrefix = `${prefix}.splitGroups[${groupIndex}].splits[${splitIndex}]`
+      validateIntegerRange(split.percent, `${splitPrefix}.percent`, 0, 1_000_000_000, doubts)
+      totalPercent += split.percent || 0
+      if (split.projectId !== undefined) {
+        const splitProjectId = parseBigIntParam(split.projectId, `${splitPrefix}.projectId`, doubts)
+        validateUnsigned(splitProjectId, `${splitPrefix}.projectId`, doubts, 64)
+      }
+      if (split.beneficiary && !isValidAddress(split.beneficiary)) {
+        doubts.push({ severity: 'critical', field: `${splitPrefix}.beneficiary`, message: 'Invalid split beneficiary address' })
+      }
+      if (split.hook && !isValidAddress(split.hook)) {
+        doubts.push({ severity: 'critical', field: `${splitPrefix}.hook`, message: 'Invalid split hook address' })
+      }
+      // Clone provenance requires JBAddressRegistry reads. The transaction
+      // preflight performs that live check and blocks every unrecognized hook;
+      // this synchronous shape validator must not issue a premature warning.
+      validateIntegerRange(split.lockedUntil, `${splitPrefix}.lockedUntil`, 0, 2 ** 48 - 1, doubts)
+    })
+    if (totalPercent > 1_000_000_000) {
+      doubts.push({
+        severity: 'critical',
+        field: `${prefix}.splitGroups[${groupIndex}].splits`,
+        message: 'Split percentages exceed 100%',
+      })
+    }
+  })
+
+  config.fundAccessLimitGroups?.forEach((group, groupIndex) => {
+    const groupPrefix = `${prefix}.fundAccessLimitGroups[${groupIndex}]`
+    if (!group.terminal || !isValidAddress(group.terminal)) {
+      doubts.push({ severity: 'critical', field: `${groupPrefix}.terminal`, message: 'Invalid fund access terminal address' })
+    } else if (recognizedTerminalType(group.terminal as `0x${string}`) !== 'multi') {
+      doubts.push({
+        severity: 'critical',
+        field: `${groupPrefix}.terminal`,
+        message: `Fund access terminal not recognized: ${group.terminal}`,
+      })
+    }
+    if (!group.token || !isValidAddress(group.token)) {
+      doubts.push({ severity: 'critical', field: `${groupPrefix}.token`, message: 'Invalid fund access token address' })
+    }
+    const validateLimits = (
+      limits: Array<{ amount?: bigint | string | number; currency?: number }> | undefined,
+      kind: string,
+    ) => limits?.forEach((limit, limitIndex) => {
+      const limitPrefix = `${groupPrefix}.${kind}[${limitIndex}]`
+      if (limit.amount === undefined) {
+        doubts.push({ severity: 'critical', field: `${limitPrefix}.amount`, message: 'Fund access amount is required' })
+      } else {
+        const amount = parseBigIntParam(limit.amount, `${limitPrefix}.amount`, doubts)
+        validateUnsigned(amount, `${limitPrefix}.amount`, doubts, 224)
+      }
+      validateIntegerRange(limit.currency, `${limitPrefix}.currency`, 1, 2 ** 32 - 1, doubts)
+    })
+    validateLimits(group.payoutLimits, 'payoutLimits')
+    validateLimits(group.surplusAllowances, 'surplusAllowances')
+  })
 }
 
 function formatEthAmount(wei: bigint): string {
@@ -303,9 +360,11 @@ export function verifyPayParams(params: {
   const warnings: string[] = []
 
   // Normalize values
-  const projectId = BigInt(params.projectId)
-  const amount = BigInt(params.amount)
-  const minReturnedTokens = BigInt(params.minReturnedTokens)
+  const projectId = parseBigIntParam(params.projectId, 'projectId', doubts)
+  const amount = parseBigIntParam(params.amount, 'amount', doubts)
+  const minReturnedTokens = parseBigIntParam(params.minReturnedTokens, 'minReturnedTokens', doubts)
+  validateUnsigned(amount, 'amount', doubts)
+  validateUnsigned(minReturnedTokens, 'minReturnedTokens', doubts)
 
   // Validate project ID
   if (projectId <= 0n) {
@@ -324,6 +383,12 @@ export function verifyPayParams(params: {
       field: 'token',
       message: 'Invalid token address format',
       technicalNote: `Token address "${params.token}" is not a valid Ethereum address`,
+    })
+  } else if (!isRecognizedAccountingToken(params.token)) {
+    doubts.push({
+      severity: 'critical',
+      field: 'token',
+      message: `Payment token not recognized: ${params.token}`,
     })
   }
 
@@ -347,7 +412,7 @@ export function verifyPayParams(params: {
   // Validate amount
   if (amount === 0n) {
     doubts.push({
-      severity: 'warning',
+      severity: 'critical',
       field: 'amount',
       message: 'Payment amount is zero',
       technicalNote: 'Zero payments may fail or have no effect',
@@ -370,6 +435,15 @@ export function verifyPayParams(params: {
       field: 'amount',
       message: 'Amount exceeds maximum value',
       technicalNote: 'Value exceeds uint256 maximum',
+    })
+  }
+
+  if (amount > 0n && minReturnedTokens === 0n) {
+    doubts.push({
+      severity: 'critical',
+      field: 'minReturnedTokens',
+      message: 'Payment minimum token return must be greater than zero',
+      technicalNote: 'A zero minimum provides no protection against an adverse quote change',
     })
   }
 
@@ -405,9 +479,11 @@ export function verifyCashOutParams(params: {
   const warnings: string[] = []
 
   // Normalize values
-  const projectId = BigInt(params.projectId)
-  const cashOutCount = BigInt(params.cashOutCount)
-  const minTokensReclaimed = BigInt(params.minTokensReclaimed)
+  const projectId = parseBigIntParam(params.projectId, 'projectId', doubts)
+  const cashOutCount = parseBigIntParam(params.cashOutCount, 'cashOutCount', doubts)
+  const minTokensReclaimed = parseBigIntParam(params.minTokensReclaimed, 'minTokensReclaimed', doubts)
+  validateUnsigned(cashOutCount, 'cashOutCount', doubts)
+  validateUnsigned(minTokensReclaimed, 'minTokensReclaimed', doubts)
 
   // Validate holder address
   if (!isValidAddress(params.holder)) {
@@ -416,6 +492,8 @@ export function verifyCashOutParams(params: {
       field: 'holder',
       message: 'Invalid holder address format',
     })
+  } else if (isZeroAddress(params.holder)) {
+    doubts.push({ severity: 'critical', field: 'holder', message: 'Holder is zero address' })
   }
 
   // Validate project ID
@@ -442,11 +520,22 @@ export function verifyCashOutParams(params: {
       technicalNote: 'Funds would be sent to the burn address',
     })
   }
+  if (
+    isValidAddress(params.holder) &&
+    isValidAddress(params.beneficiary) &&
+    params.holder.toLowerCase() !== params.beneficiary.toLowerCase()
+  ) {
+    doubts.push({
+      severity: 'critical',
+      field: 'beneficiary',
+      message: 'Cash out beneficiary must be the token holder',
+    })
+  }
 
   // Validate cash out count
   if (cashOutCount === 0n) {
     doubts.push({
-      severity: 'warning',
+      severity: 'critical',
       field: 'cashOutCount',
       message: 'Cash out amount is zero',
     })
@@ -465,6 +554,26 @@ export function verifyCashOutParams(params: {
       severity: 'critical',
       field: 'tokenToReclaim',
       message: 'Invalid token address',
+    })
+  } else if (!isRecognizedAccountingToken(params.tokenToReclaim)) {
+    doubts.push({
+      severity: 'critical',
+      field: 'tokenToReclaim',
+      message: `Cash out token not recognized: ${params.tokenToReclaim}`,
+    })
+  }
+  if (cashOutCount > 0n && minTokensReclaimed === 0n) {
+    doubts.push({
+      severity: 'critical',
+      field: 'minTokensReclaimed',
+      message: 'Cash out minimum return must be greater than zero',
+    })
+  }
+  if (params.metadata && params.metadata !== '0x') {
+    doubts.push({
+      severity: 'critical',
+      field: 'metadata',
+      message: 'Cash out metadata is not supported in this flow',
     })
   }
 
@@ -498,10 +607,13 @@ export function verifySendPayoutsParams(params: {
   const warnings: string[] = []
 
   // Normalize values
-  const projectId = BigInt(params.projectId)
-  const amount = BigInt(params.amount)
-  const currency = BigInt(params.currency)
-  const minTokensPaidOut = BigInt(params.minTokensPaidOut)
+  const projectId = parseBigIntParam(params.projectId, 'projectId', doubts)
+  const amount = parseBigIntParam(params.amount, 'amount', doubts)
+  const currency = parseBigIntParam(params.currency, 'currency', doubts)
+  const minTokensPaidOut = parseBigIntParam(params.minTokensPaidOut, 'minTokensPaidOut', doubts)
+  validateUnsigned(amount, 'amount', doubts)
+  validateUnsigned(currency, 'currency', doubts, 32)
+  validateUnsigned(minTokensPaidOut, 'minTokensPaidOut', doubts)
 
   // Validate project ID
   if (projectId <= 0n) {
@@ -519,12 +631,24 @@ export function verifySendPayoutsParams(params: {
       field: 'token',
       message: 'Invalid token address format',
     })
+  } else if (!isRecognizedAccountingToken(params.token)) {
+    doubts.push({
+      severity: 'critical',
+      field: 'token',
+      message: `Payout token not recognized: ${params.token}`,
+    })
+  } else if (currency !== accountingCurrencyOf(params.token)) {
+    doubts.push({
+      severity: 'critical',
+      field: 'currency',
+      message: 'Payout currency must match the selected accounting token',
+    })
   }
 
   // Validate amount
   if (amount === 0n) {
     doubts.push({
-      severity: 'warning',
+      severity: 'critical',
       field: 'amount',
       message: 'Payout amount is zero',
     })
@@ -536,10 +660,12 @@ export function verifySendPayoutsParams(params: {
       technicalNote: 'Please verify recipient addresses are correct',
     })
   }
-
-  // Validate currency (1 = ETH, 2 = USD)
-  if (currency !== 1n && currency !== 2n) {
-    warnings.push(`Unusual currency code: ${currency}`)
+  if (amount > 0n && minTokensPaidOut !== amount) {
+    doubts.push({
+      severity: 'critical',
+      field: 'minTokensPaidOut',
+      message: 'Payout minimum must protect the full selected amount',
+    })
   }
 
   const verifiedParams: Record<string, unknown> = {
@@ -573,9 +699,13 @@ export function verifyUseAllowanceParams(params: {
   const warnings: string[] = []
 
   // Normalize values
-  const projectId = BigInt(params.projectId)
-  const amount = BigInt(params.amount)
-  const currency = BigInt(params.currency)
+  const projectId = parseBigIntParam(params.projectId, 'projectId', doubts)
+  const amount = parseBigIntParam(params.amount, 'amount', doubts)
+  const currency = parseBigIntParam(params.currency, 'currency', doubts)
+  const minTokensPaidOut = parseBigIntParam(params.minTokensPaidOut, 'minTokensPaidOut', doubts)
+  validateUnsigned(amount, 'amount', doubts)
+  validateUnsigned(currency, 'currency', doubts, 32)
+  validateUnsigned(minTokensPaidOut, 'minTokensPaidOut', doubts)
 
   // Validate project ID
   if (projectId <= 0n) {
@@ -592,6 +722,18 @@ export function verifyUseAllowanceParams(params: {
       severity: 'critical',
       field: 'token',
       message: 'Invalid token address format',
+    })
+  } else if (!isRecognizedAccountingToken(params.token)) {
+    doubts.push({
+      severity: 'critical',
+      field: 'token',
+      message: `Surplus allowance token not recognized: ${params.token}`,
+    })
+  } else if (currency !== accountingCurrencyOf(params.token)) {
+    doubts.push({
+      severity: 'critical',
+      field: 'currency',
+      message: 'Surplus allowance currency must match the selected accounting token',
     })
   }
 
@@ -618,12 +760,25 @@ export function verifyUseAllowanceParams(params: {
       field: 'feeBeneficiary',
       message: 'Invalid fee beneficiary address',
     })
+  } else if (isZeroAddress(params.feeBeneficiary)) {
+    doubts.push({ severity: 'critical', field: 'feeBeneficiary', message: 'Fee beneficiary is zero address' })
+  }
+  if (
+    isValidAddress(params.beneficiary) &&
+    isValidAddress(params.feeBeneficiary) &&
+    params.beneficiary.toLowerCase() !== params.feeBeneficiary.toLowerCase()
+  ) {
+    doubts.push({
+      severity: 'critical',
+      field: 'feeBeneficiary',
+      message: 'Allowance fee beneficiary must match the withdrawal beneficiary',
+    })
   }
 
   // Validate amount
   if (amount === 0n) {
     doubts.push({
-      severity: 'warning',
+      severity: 'critical',
       field: 'amount',
       message: 'Withdrawal amount is zero',
     })
@@ -635,13 +790,23 @@ export function verifyUseAllowanceParams(params: {
       technicalNote: 'Please verify this amount is correct',
     })
   }
+  if (amount > 0n) {
+    const requiredMinimum = amount - (amount / 40n)
+    if (minTokensPaidOut < requiredMinimum || minTokensPaidOut > amount) {
+      doubts.push({
+        severity: 'critical',
+        field: 'minTokensPaidOut',
+        message: 'Surplus allowance minimum return is not safe',
+      })
+    }
+  }
 
   const verifiedParams: Record<string, unknown> = {
     projectId: projectId.toString(),
     token: params.token,
     amount: amount.toString(),
     currency: currency.toString(),
-    minTokensPaidOut: BigInt(params.minTokensPaidOut).toString(),
+    minTokensPaidOut: minTokensPaidOut.toString(),
     beneficiary: params.beneficiary,
     feeBeneficiary: params.feeBeneficiary,
     memo: params.memo,
@@ -666,7 +831,7 @@ export function verifyDeployERC20Params(params: {
   const warnings: string[] = []
 
   // Normalize values
-  const projectId = BigInt(params.projectId)
+  const projectId = parseBigIntParam(params.projectId, 'projectId', doubts)
 
   // Validate project ID
   if (projectId <= 0n) {
@@ -717,24 +882,14 @@ export function verifyDeployERC20Params(params: {
 // Queue ruleset verification
 export function verifyQueueRulesetParams(params: {
   projectId: bigint | string | number
-  rulesetConfigurations: Array<{
-    mustStartAtOrAfter?: number
-    duration?: number
-    weight?: bigint | string | number
-    weightCutPercent?: number
-    metadata?: {
-      reservedPercent?: number
-      cashOutTaxRate?: number
-      baseCurrency?: number
-    }
-  }>
+  rulesetConfigurations: ValidatableRulesetConfig[]
   memo: string
 }): VerificationResult {
   const doubts: TransactionDoubt[] = []
   const warnings: string[] = []
 
   // Normalize values
-  const projectId = BigInt(params.projectId)
+  const projectId = parseBigIntParam(params.projectId, 'projectId', doubts)
 
   // Validate project ID
   if (projectId <= 0n) {
@@ -755,6 +910,8 @@ export function verifyQueueRulesetParams(params: {
   }
 
   params.rulesetConfigurations?.forEach((config, index) => {
+    validateRulesetConfig(config, index, doubts)
+
     // Check for extremely high reserved percent (>50%)
     if (config.metadata?.reservedPercent && config.metadata.reservedPercent > 5000) {
       doubts.push({
@@ -765,22 +922,9 @@ export function verifyQueueRulesetParams(params: {
       })
     }
 
-    // Check for cash out disabled (100% tax)
+    // 10000 is a disabled sentinel, not a flat 100% fee.
     if (config.metadata?.cashOutTaxRate === 10000) {
-      warnings.push(`Ruleset ${index + 1}: Cash outs are disabled (100% tax)`)
-    }
-
-    // Check weight overflow (max is 2^88)
-    if (config.weight) {
-      const weight = BigInt(config.weight)
-      if (isBigIntOverflow(weight, 112)) {
-        doubts.push({
-          severity: 'critical',
-          field: `rulesetConfigurations[${index}].weight`,
-          message: 'Weight exceeds maximum value',
-          technicalNote: 'Weight must fit in uint112',
-        })
-      }
+      warnings.push(`Ruleset ${index + 1}: Cash outs are disabled (curve rate sentinel 10000)`)
     }
 
     // Check for past start time
@@ -843,17 +987,32 @@ export function verifyLaunchProjectParams(params: {
 
   // Validate project URI
   if (!params.projectUri || params.projectUri.trim().length === 0) {
-    warnings.push('No project metadata URI provided')
-  } else if (!params.projectUri.startsWith('ipfs://')) {
-    warnings.push('Project URI is not an IPFS link')
+    doubts.push({
+      severity: 'critical',
+      field: 'projectUri',
+      message: 'Project metadata URI is required',
+    })
+  } else if (!isIpfsUri(params.projectUri)) {
+    doubts.push({
+      severity: 'critical',
+      field: 'projectUri',
+      message: 'Project metadata must use an IPFS URI',
+    })
   }
 
   // Validate chain IDs
   const supportedChains = ALL_CHAIN_IDS
+  if (!params.chainIds || params.chainIds.length === 0) {
+    doubts.push({
+      severity: 'critical',
+      field: 'chainIds',
+      message: 'At least one destination chain is required',
+    })
+  }
   params.chainIds?.forEach(chainId => {
     if (!supportedChains.includes(chainId)) {
       doubts.push({
-        severity: 'warning',
+        severity: 'critical',
         field: 'chainIds',
         message: `Unsupported chain ID: ${chainId}`,
       })
@@ -864,7 +1023,7 @@ export function verifyLaunchProjectParams(params: {
   const uniqueChains = new Set(params.chainIds)
   if (uniqueChains.size !== params.chainIds?.length) {
     doubts.push({
-      severity: 'warning',
+      severity: 'critical',
       field: 'chainIds',
       message: 'Duplicate chain IDs detected',
     })
@@ -881,10 +1040,22 @@ export function verifyLaunchProjectParams(params: {
     // Validate addresses within ruleset configurations
     type FundAccessLimitGroup = { terminal?: string; token?: string }
     type SplitGroup = { splits?: Array<{ beneficiary?: string }> }
-    type RulesetConfig = { fundAccessLimitGroups?: FundAccessLimitGroup[]; splitGroups?: SplitGroup[] }
+    type RulesetConfig = ValidatableRulesetConfig & { fundAccessLimitGroups?: FundAccessLimitGroup[]; splitGroups?: SplitGroup[] }
 
     const rulesetConfigs = params.rulesetConfigurations as RulesetConfig[]
     rulesetConfigs.forEach((rc, rcIdx) => {
+      validateRulesetConfig(rc, rcIdx, doubts)
+      if (rc.metadata?.dataHook && isValidAddress(rc.metadata.dataHook)) {
+        try {
+          requireRecognizedNewProjectDataHook(rc.metadata.dataHook)
+        } catch (err) {
+          doubts.push({
+            severity: 'critical',
+            field: `rulesetConfigurations[${rcIdx}].metadata.dataHook`,
+            message: err instanceof Error ? err.message : 'Data hook not recognized',
+          })
+        }
+      }
       // Validate fund access limit groups
       rc.fundAccessLimitGroups?.forEach((fg, fgIdx) => {
         if (fg.terminal && !isValidAddress(fg.terminal)) {
@@ -929,45 +1100,11 @@ export function verifyLaunchProjectParams(params: {
       message: 'At least one terminal configuration is required',
     })
   } else {
-    // Validate each terminal configuration
-    const terminalConfigs = params.terminalConfigurations as Array<{ terminal?: string; accountingContextsToAccept?: unknown[] }>
-    terminalConfigs.forEach((tc, idx) => {
-      // Validate terminal address format
-      if (tc.terminal && !isValidAddress(tc.terminal)) {
-        doubts.push({
-          severity: 'critical',
-          field: `terminalConfigurations[${idx}].terminal`,
-          message: `Invalid terminal address: "${tc.terminal}"`,
-          technicalNote: 'Terminal address must be a valid 40-character hex address (42 with 0x prefix)',
-        })
-      }
-
-      // Validate token addresses in accounting contexts
-      if (tc.accountingContextsToAccept) {
-        const contexts = tc.accountingContextsToAccept as Array<{ token?: string }>
-        contexts.forEach((ctx, ctxIdx) => {
-          if (ctx.token && !isValidAddress(ctx.token)) {
-            doubts.push({
-              severity: 'critical',
-              field: `terminalConfigurations[${idx}].accountingContextsToAccept[${ctxIdx}].token`,
-              message: `Invalid token address: "${ctx.token}"`,
-              technicalNote: 'Token address must be a valid 40-character hex address (42 with 0x prefix)',
-            })
-          }
-        })
-      }
-    })
-
-    // Check for terminals with empty accounting contexts
-    const emptyContextTerminals = terminalConfigs.filter(
-      tc => !tc.accountingContextsToAccept || tc.accountingContextsToAccept.length === 0
+    validateLaunchTerminalConfigurations(
+      params.terminalConfigurations as Parameters<typeof validateLaunchTerminalConfigurations>[0],
+      'terminalConfigurations',
+      doubts,
     )
-    if (emptyContextTerminals.length > 0) {
-      warnings.push(
-        `${emptyContextTerminals.length} terminal(s) have empty accountingContextsToAccept - ` +
-        `this may cause simulation failures if the terminal requires accounting contexts`
-      )
-    }
   }
 
   // Validate chainConfigs (per-chain terminal overrides)
@@ -978,32 +1115,11 @@ export function verifyLaunchProjectParams(params: {
       // Validate terminal configurations in the override
       const overrideTerminals = chainConfig.overrides?.terminalConfigurations as Array<{ terminal?: string; accountingContextsToAccept?: unknown[] }> | undefined
       if (overrideTerminals) {
-        overrideTerminals.forEach((tc, tcIdx) => {
-          // Validate terminal address format
-          if (tc.terminal && !isValidAddress(tc.terminal)) {
-            doubts.push({
-              severity: 'critical',
-              field: `chainConfigs[${ccIdx}] (${chainLabel}).terminalConfigurations[${tcIdx}].terminal`,
-              message: `Invalid terminal address on ${chainLabel}: "${tc.terminal}"`,
-              technicalNote: 'Terminal address must be a valid 40-character hex address (42 with 0x prefix). This appears to be a hallucinated or corrupted address.',
-            })
-          }
-
-          // Validate token addresses in accounting contexts
-          if (tc.accountingContextsToAccept) {
-            const contexts = tc.accountingContextsToAccept as Array<{ token?: string }>
-            contexts.forEach((ctx, ctxIdx) => {
-              if (ctx.token && !isValidAddress(ctx.token)) {
-                doubts.push({
-                  severity: 'critical',
-                  field: `chainConfigs[${ccIdx}] (${chainLabel}).terminalConfigurations[${tcIdx}].accountingContextsToAccept[${ctxIdx}].token`,
-                  message: `Invalid token address on ${chainLabel}: "${ctx.token}"`,
-                  technicalNote: 'Token address must be a valid 40-character hex address (42 with 0x prefix)',
-                })
-              }
-            })
-          }
-        })
+        validateLaunchTerminalConfigurations(
+          overrideTerminals as Parameters<typeof validateLaunchTerminalConfigurations>[0],
+          `chainConfigs[${ccIdx}] (${chainLabel}).terminalConfigurations`,
+          doubts,
+        )
       }
     })
   }
@@ -1028,7 +1144,9 @@ export function verifyLaunchProjectParams(params: {
 // Deploy revnet verification
 export function verifyDeployRevnetParams(params: {
   name: string
+  ticker?: string
   tagline?: string
+  projectUri?: string
   splitOperator: string
   chainIds: number[]
   stageConfigurations: Array<{
@@ -1052,6 +1170,22 @@ export function verifyDeployRevnetParams(params: {
     })
   }
 
+  if (!params.ticker || !/^[A-Za-z0-9]{1,11}$/.test(params.ticker)) {
+    doubts.push({
+      severity: 'critical',
+      field: 'ticker',
+      message: 'Ticker must be 1-11 letters or numbers',
+    })
+  }
+
+  if (!params.projectUri || !isIpfsUri(params.projectUri)) {
+    doubts.push({
+      severity: 'critical',
+      field: 'projectUri',
+      message: 'Revnet metadata must be pinned to IPFS',
+    })
+  }
+
   // Validate split operator
   if (!isValidAddress(params.splitOperator)) {
     doubts.push({
@@ -1069,10 +1203,17 @@ export function verifyDeployRevnetParams(params: {
 
   // Validate chain IDs
   const supportedChains = ALL_CHAIN_IDS
+  if (!params.chainIds || params.chainIds.length === 0) {
+    doubts.push({ severity: 'critical', field: 'chainIds', message: 'At least one chain is required' })
+  }
+  const uniqueChainIds = new Set(params.chainIds)
+  if (uniqueChainIds.size !== params.chainIds.length) {
+    doubts.push({ severity: 'critical', field: 'chainIds', message: 'Duplicate chain IDs detected' })
+  }
   params.chainIds?.forEach(chainId => {
     if (!supportedChains.includes(chainId)) {
       doubts.push({
-        severity: 'warning',
+        severity: 'critical',
         field: 'chainIds',
         message: `Unsupported chain ID: ${chainId}`,
       })
@@ -1088,7 +1229,35 @@ export function verifyDeployRevnetParams(params: {
     })
   }
 
+  let previousStageStart = -1
   params.stageConfigurations?.forEach((stage, index) => {
+    validateIntegerRange(stage.startsAtOrAfter, `stageConfigurations[${index}].startsAtOrAfter`, 0, Number.MAX_SAFE_INTEGER, doubts)
+    if (stage.startsAtOrAfter !== undefined && index > 0 && stage.startsAtOrAfter <= previousStageStart) {
+      doubts.push({
+        severity: 'critical',
+        field: `stageConfigurations[${index}].startsAtOrAfter`,
+        message: `Stage ${index + 1} must start after stage ${index}`,
+      })
+    }
+    if (stage.startsAtOrAfter !== undefined) previousStageStart = stage.startsAtOrAfter
+
+    validateIntegerRange(stage.splitPercent, `stageConfigurations[${index}].splitPercent`, 0, 10_000, doubts)
+    const initialIssuance = parseBigIntParam(
+      stage.initialIssuance ?? 0,
+      `stageConfigurations[${index}].initialIssuance`,
+      doubts,
+    )
+    if (initialIssuance <= 0n || initialIssuance > (1n << 112n) - 1n) {
+      doubts.push({
+        severity: 'critical',
+        field: `stageConfigurations[${index}].initialIssuance`,
+        message: `Stage ${index + 1} issuance must fit uint112 and be greater than zero`,
+      })
+    }
+    validateIntegerRange(stage.issuanceCutFrequency, `stageConfigurations[${index}].issuanceCutFrequency`, 86_400, 2 ** 32 - 1, doubts)
+    validateIntegerRange(stage.issuanceCutPercent, `stageConfigurations[${index}].issuanceCutPercent`, 0, 1_000_000_000, doubts)
+    validateIntegerRange(stage.cashOutTaxRate, `stageConfigurations[${index}].cashOutTaxRate`, 0, 9_999, doubts)
+
     // High split percent warning (>50%) - V6 splitPercent is out of 10,000
     if (stage.splitPercent && stage.splitPercent > 5000) {
       doubts.push({
@@ -1108,15 +1277,13 @@ export function verifyDeployRevnetParams(params: {
       })
     }
 
-    // Cash out disabled warning
-    if (stage.cashOutTaxRate === 10000) {
-      warnings.push(`Stage ${index + 1}: Cash outs are disabled (100% tax)`)
-    }
   })
 
   const verifiedParams: Record<string, unknown> = {
     name: params.name,
+    ticker: params.ticker,
     tagline: params.tagline,
+    projectUri: params.projectUri,
     splitOperator: params.splitOperator,
     chainIds: params.chainIds,
     stageConfigurations: params.stageConfigurations,
@@ -1146,7 +1313,7 @@ export function verifySendReservedTokensParams(params: {
   const warnings: string[] = []
 
   // Normalize values
-  const projectId = BigInt(params.projectId)
+  const projectId = parseBigIntParam(params.projectId, 'projectId', doubts)
 
   // Validate project ID
   if (projectId <= 0n) {
@@ -1159,7 +1326,8 @@ export function verifySendReservedTokensParams(params: {
 
   // Check if there are pending reserved tokens
   if (params.pendingReservedTokens !== undefined) {
-    const pending = BigInt(params.pendingReservedTokens)
+    const pending = parseBigIntParam(params.pendingReservedTokens, 'pendingReservedTokens', doubts)
+    validateUnsigned(pending, 'pendingReservedTokens', doubts)
     if (pending === 0n) {
       doubts.push({
         severity: 'warning',

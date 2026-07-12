@@ -1,17 +1,36 @@
 import { useSettingsStore } from '../../stores'
 import type { JBDeployTiersHookConfig } from '../omnichainDeployer'
-import { RELAYR_API_KEY } from '../../config/environment'
+import { RELAYR_APP_ID } from '../../config/environment'
+import { decodeFunctionData, isAddress, zeroAddress, type Hex } from 'viem'
 import {
-  encodePayTransaction,
-  encodeCashOutTransaction,
-  encodeSendPayoutsTransaction,
+  JB_CONTRACTS,
+  JB_OMNICHAIN_DEPLOYER,
+  USDC_ADDRESSES,
+  VIEM_CHAINS,
+  type SupportedChainId,
+} from '../../constants'
+import {
+  ERC2771_FORWARDER_ABI,
+  ERC2771_FORWARDER_ADDRESS,
+  JB_CONTROLLER_ABI,
+  JB_OMNICHAIN_DEPLOYER_ABI,
+} from '../../constants/abis'
+import {
   encodeQueueRulesetTransaction,
   encodeDeployERC20Transaction,
   encodeSendReservesTransaction,
   encodeLaunchProjectTransaction,
   encodeDeployRevnetTransaction,
-  encodeDeploySuckersTransaction,
 } from './encoder'
+import {
+  createSalt,
+  NATIVE_TOKEN,
+  parseSuckerDeployerConfig,
+  shouldConfigureSuckers,
+} from '../../utils/suckerConfig'
+import { requireNonzeroBytes32 } from '../../utils/erc20Safety'
+import { getProjectController } from '../../utils/paymentTerminal'
+import { getSafetyPublicClient } from '../../utils/transactionSafety'
 
 export interface QuoteRequest {
   fromChainId: number
@@ -58,8 +77,7 @@ function getEndpoint(): string {
 }
 
 function getApiKey(): string {
-  // Settings store overrides env variable (allows user customization)
-  return useSettingsStore.getState().relayrApiKey || RELAYR_API_KEY
+  return useSettingsStore.getState().relayrApiKey
 }
 
 async function fetchApi<T>(
@@ -113,35 +131,6 @@ export async function getSupportedTokens(chainId: number): Promise<string[]> {
   return response.tokens
 }
 
-// Juicebox-specific transaction types
-
-export interface JBPayRequest {
-  chainId: number
-  projectId: number
-  amount: string // in wei
-  beneficiary: string
-  minReturnedTokens: string
-  memo: string
-  metadata?: string
-}
-
-export interface JBCashOutRequest {
-  chainId: number
-  projectId: number
-  tokenAmount: string
-  beneficiary: string
-  minReclaimedTokens: string
-  metadata?: string
-}
-
-export interface JBSendPayoutsRequest {
-  chainId: number
-  projectId: number
-  amount: string
-  currency: number // 1 = ETH
-  minTokensPaidOut: string
-}
-
 export interface JBTransactionData {
   to: string
   data: string
@@ -153,22 +142,6 @@ export interface JBTransactionResponse {
   txData: JBTransactionData
   estimatedGas: string
   description: string
-}
-
-// Build transaction data for JBMultiTerminal.pay()
-// Encoded client-side using viem (no API call needed)
-export function buildPayTransaction(request: JBPayRequest): JBTransactionResponse {
-  return encodePayTransaction(request)
-}
-
-// Build transaction data for JBMultiTerminal.cashOutTokensOf()
-export function buildCashOutTransaction(request: JBCashOutRequest): JBTransactionResponse {
-  return encodeCashOutTransaction(request)
-}
-
-// Build transaction data for JBMultiTerminal.sendPayoutsOf()
-export function buildSendPayoutsTransaction(request: JBSendPayoutsRequest): JBTransactionResponse {
-  return encodeSendPayoutsTransaction(request)
 }
 
 // Submit a signed transaction
@@ -225,15 +198,11 @@ export interface BalanceUsageRecord {
  * Create a gas-sponsored bundle via organization balance.
  * Users don't need native tokens - organization pays from pooled balance.
  */
-export async function createBalanceBundle(request: BalanceBundleRequest): Promise<BalanceBundleResponse> {
+async function createBalanceBundle(request: BalanceBundleRequest): Promise<BalanceBundleResponse> {
   const endpoint = getEndpoint()
   const apiKey = getApiKey()
   const url = `${endpoint}/v1/bundle/balance`
   const body = JSON.stringify(request)
-
-  console.log('=== RELAYR API CALL ===')
-  console.log('URL:', url)
-  console.log('Body:', body)
 
   const response = await fetch(url, {
     method: 'POST',
@@ -245,20 +214,11 @@ export async function createBalanceBundle(request: BalanceBundleRequest): Promis
   })
 
   const responseText = await response.text()
-  console.log('Response status:', response.status)
-  console.log('Response body:', responseText)
-  console.log('=======================')
 
   if (!response.ok) {
     let error: { message?: string; reason?: string; error?: string; details?: unknown } = { message: 'Request failed' }
     try {
       error = JSON.parse(responseText)
-      // Log full error details for debugging
-      console.error('=== RELAYR ERROR DETAILS ===')
-      console.error('Full error object:', JSON.stringify(error, null, 2))
-      if (error.reason) console.error('Revert reason:', error.reason)
-      if (error.details) console.error('Error details:', JSON.stringify(error.details, null, 2))
-      console.error('============================')
     } catch {
       // Keep default error
     }
@@ -266,6 +226,93 @@ export async function createBalanceBundle(request: BalanceBundleRequest): Promis
   }
 
   return JSON.parse(responseText)
+}
+
+/** Submit only the two reviewed self-custody forwarder operations used by Juicy Vision. */
+export async function createReviewedForwarderBundle(
+  request: BalanceBundleRequest,
+): Promise<BalanceBundleResponse> {
+  if (request.app_id !== RELAYR_APP_ID) throw new Error('Relayr app is not recognized')
+  if (request.perform_simulation === false) throw new Error('Relayr simulation is required')
+  if (request.virtual_nonce_mode !== 'Disabled') {
+    throw new Error('Relayr nonce mode is not recognized')
+  }
+  if (request.transactions.length === 0 || request.transactions.length > 8) {
+    throw new Error('Relayr bundle must contain 1-8 reviewed transactions')
+  }
+  const chains = new Set<number>()
+  let signer: string | null = null
+  const now = BigInt(Math.floor(Date.now() / 1000))
+
+  for (const transaction of request.transactions) {
+    if (chains.has(transaction.chain)) throw new Error('Only one reviewed transaction per chain is allowed')
+    chains.add(transaction.chain)
+    if (!VIEM_CHAINS[transaction.chain as SupportedChainId]) {
+      throw new Error(`Unsupported Relayr chain: ${transaction.chain}`)
+    }
+    if (transaction.target.toLowerCase() !== ERC2771_FORWARDER_ADDRESS.toLowerCase()) {
+      throw new Error(`Forwarder not recognized: ${transaction.target}`)
+    }
+    if (!transaction.data) throw new Error('Signed forwarder calldata is required')
+    const decoded = decodeFunctionData({
+      abi: ERC2771_FORWARDER_ABI,
+      data: transaction.data as Hex,
+    })
+    if (decoded.functionName !== 'execute' || !decoded.args) {
+      throw new Error('Forwarder operation is not recognized')
+    }
+    const forwarded = decoded.args[0]
+    if (!isAddress(forwarded.from) || forwarded.from.toLowerCase() === zeroAddress) {
+      throw new Error('Forwarder signer is invalid')
+    }
+    if (signer && forwarded.from.toLowerCase() !== signer) {
+      throw new Error('Every forwarded transaction must use the same signer')
+    }
+    signer = forwarded.from.toLowerCase()
+    const outerValue = BigInt(transaction.value || '0')
+    if (outerValue < 0n || forwarded.value !== outerValue) {
+      throw new Error('Forwarder value does not match the reviewed transaction')
+    }
+    if (forwarded.gas <= 0n || forwarded.gas > 5_000_000n) {
+      throw new Error('Forwarder gas limit is not recognized')
+    }
+    if (BigInt(forwarded.deadline) <= now) throw new Error('Forwarder signature expired')
+    if (!/^0x[0-9a-fA-F]+$/.test(forwarded.signature) || forwarded.signature === '0x') {
+      throw new Error('Forwarder signature is missing')
+    }
+
+    const target = forwarded.to.toLowerCase()
+    if (target === JB_OMNICHAIN_DEPLOYER.toLowerCase()) {
+      const inner = decodeFunctionData({
+        abi: JB_OMNICHAIN_DEPLOYER_ABI,
+        data: forwarded.data,
+      })
+      if (inner.functionName !== 'launchProjectFor') {
+        throw new Error('Forwarded deployment operation is not recognized')
+      }
+    } else if (target === JB_CONTRACTS.JBController.toLowerCase()) {
+      if (forwarded.value !== 0n) throw new Error('Metadata updates cannot send native currency')
+      const inner = decodeFunctionData({ abi: JB_CONTROLLER_ABI, data: forwarded.data })
+      if (inner.functionName !== 'setUriOf' || !inner.args) {
+        throw new Error('Forwarded controller operation is not recognized')
+      }
+      const projectId = inner.args[0]
+      if (typeof projectId !== 'bigint' || projectId < 1n) {
+        throw new Error('Metadata project ID is invalid')
+      }
+      const liveController = await getProjectController(
+        getSafetyPublicClient(transaction.chain),
+        projectId,
+      )
+      if (liveController.toLowerCase() !== target) {
+        throw new Error(`The project controller changed on chain ${transaction.chain}`)
+      }
+    } else {
+      throw new Error(`Forwarded contract not recognized: ${forwarded.to}`)
+    }
+  }
+
+  return createBalanceBundle(request)
 }
 
 /**
@@ -292,47 +339,6 @@ export async function getBalanceUsage(
 }
 
 /**
- * Helper to create a sponsored Juicebox pay transaction.
- * Wraps buildPayTransaction + createBalanceBundle for zero-gas UX.
- */
-export async function sponsoredPay(
-  appId: string,
-  request: JBPayRequest
-): Promise<{ bundleId: string; txId: string }> {
-  const txResponse = await buildPayTransaction(request)
-  const bundle = await createBalanceBundle({
-    app_id: appId,
-    transactions: [{
-      chain: txResponse.txData.chainId,
-      target: txResponse.txData.to,
-      data: txResponse.txData.data,
-      value: txResponse.txData.value,
-    }],
-  })
-  return { bundleId: bundle.bundle_uuid, txId: bundle.tx_uuids[0] }
-}
-
-/**
- * Helper to create a sponsored Juicebox cash out transaction.
- */
-export async function sponsoredCashOut(
-  appId: string,
-  request: JBCashOutRequest
-): Promise<{ bundleId: string; txId: string }> {
-  const txResponse = await buildCashOutTransaction(request)
-  const bundle = await createBalanceBundle({
-    app_id: appId,
-    transactions: [{
-      chain: txResponse.txData.chainId,
-      target: txResponse.txData.to,
-      data: txResponse.txData.data,
-      value: txResponse.txData.value,
-    }],
-  })
-  return { bundleId: bundle.bundle_uuid, txId: bundle.tx_uuids[0] }
-}
-
-/**
  * Helper to execute omnichain ruleset queue with gas sponsorship.
  * All chains in the bundle are sponsored from the same balance.
  */
@@ -343,7 +349,7 @@ export async function sponsoredOmnichainQueue(
   const omnichainResponse = await buildOmnichainQueueRulesetTransactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: omnichainResponse.transactions.map((tx, index) => ({
+    transactions: omnichainResponse.transactions.map((tx) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
@@ -585,13 +591,14 @@ export async function createPrepaidOmnichainQueue(
 }
 
 // ============================================================================
-// Omnichain Distributions (Payouts + Reserved Tokens)
+// Omnichain Reserved Token Distributions
 // ============================================================================
 
 export interface JBOmnichainDistributeRequest {
   chainIds: number[]
   projectIds: Record<number, number>  // chainId -> projectId mapping
-  type: 'payouts' | 'reserves'
+  type: 'reserves'
+  controllerAddresses?: Record<number, string>
 }
 
 export interface JBOmnichainDistributeResponse {
@@ -605,7 +612,8 @@ export interface JBOmnichainDistributeResponse {
 
 /**
  * Build omnichain distribution transactions.
- * Works for both sendPayoutsOf (payouts) and sendReservedTokensToSplitsOf (reserves).
+ * Builds sendReservedTokensToSplitsOf calls. Payouts are chain-specific and
+ * require an exact token, amount, currency, terminal, and recipient review.
  * Encoded client-side using viem (no API call needed)
  */
 export function buildOmnichainDistributeTransactions(
@@ -617,30 +625,16 @@ export function buildOmnichainDistributeTransactions(
       throw new Error(`No project ID found for chain ${chainId}`)
     }
 
-    if (request.type === 'reserves') {
-      // sendReservedTokensToSplitsOf only needs projectId
-      const txResponse = encodeSendReservesTransaction(chainId, projectId)
-      return {
-        chainId,
-        projectId,
-        txData: txResponse.txData,
-        estimatedGas: txResponse.estimatedGas,
-      }
-    } else {
-      // sendPayoutsOf needs amount/currency - for now use max uint to trigger full payout
-      const txResponse = encodeSendPayoutsTransaction({
-        chainId,
-        projectId,
-        amount: '0', // 0 = distribute full payout limit
-        currency: 1, // ETH
-        minTokensPaidOut: '0',
-      })
-      return {
-        chainId,
-        projectId,
-        txData: txResponse.txData,
-        estimatedGas: txResponse.estimatedGas,
-      }
+    const controllerAddress = request.controllerAddresses?.[chainId]
+    if (!controllerAddress) {
+      throw new Error(`Controller address missing for chain ${chainId}`)
+    }
+    const txResponse = encodeSendReservesTransaction(chainId, projectId, controllerAddress)
+    return {
+      chainId,
+      projectId,
+      txData: txResponse.txData,
+      estimatedGas: txResponse.estimatedGas,
     }
   })
 
@@ -676,7 +670,7 @@ export async function sponsoredOmnichainDistribute(
   const distributeResponse = await buildOmnichainDistributeTransactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: distributeResponse.transactions.map((tx, index) => ({
+    transactions: distributeResponse.transactions.map((tx) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
@@ -694,7 +688,7 @@ export async function sponsoredOmnichainDistribute(
 
 export interface JBRulesetMetadataConfig {
   reservedPercent: number         // 0-10000 (10000 = 100%)
-  cashOutTaxRate: number          // 0-10000 (0 = full refund, 10000 = disabled)
+  cashOutTaxRate: number          // 0-10000 (0 = proportional baseline, 10000 = disabled)
   baseCurrency: number            // 1 = ETH, 2 = USD
   pausePay: boolean
   pauseCreditTransfers: boolean
@@ -756,6 +750,7 @@ export interface JBRulesetConfig {
 export interface JBQueueRulesetRequest {
   chainId: number
   projectId: number
+  queueTarget: string
   rulesetConfigurations: JBRulesetConfig[]
   memo: string
 }
@@ -763,7 +758,9 @@ export interface JBQueueRulesetRequest {
 export interface JBOmnichainQueueRequest {
   chainIds: number[]               // All chains to queue on
   projectIds: Record<number, number>  // chainId -> projectId mapping
-  rulesetConfigurations: JBRulesetConfig[]
+  rulesetConfigurations?: JBRulesetConfig[]
+  rulesetConfigurationsByChain?: Record<number, JBRulesetConfig[]>
+  queueTargets?: Record<number, string>
   memo: string
   mustStartAtOrAfter?: number      // Optional override, otherwise calculated
 }
@@ -786,7 +783,7 @@ export function calculateSynchronizedStartTime(): number {
   return fiveMinutesFromNow
 }
 
-// Build transaction data for JBController.queueRulesetsOf()
+// Build transaction data for the live recognized ruleset queue route.
 // Encoded client-side using viem (no API call needed)
 export function buildQueueRulesetTransaction(request: JBQueueRulesetRequest): JBTransactionResponse {
   return encodeQueueRulesetTransaction(request)
@@ -804,6 +801,7 @@ export interface JBOmnichainDeployERC20Request {
   tokenName: string
   tokenSymbol: string
   salt: string                         // bytes32 - SAME salt for all chains
+  controllerAddresses?: Record<number, string>
 }
 
 export interface JBOmnichainDeployERC20Response {
@@ -829,13 +827,18 @@ export function buildOmnichainDeployERC20Transactions(
     if (!projectId) {
       throw new Error(`No project ID found for chain ${chainId}`)
     }
+    const controllerAddress = request.controllerAddresses?.[chainId]
+    if (!controllerAddress) {
+      throw new Error(`Controller address missing for chain ${chainId}`)
+    }
 
     const txResponse = encodeDeployERC20Transaction(
       chainId,
       projectId,
       request.tokenName,
       request.tokenSymbol,
-      request.salt
+      request.salt,
+      controllerAddress,
     )
 
     return {
@@ -887,7 +890,7 @@ export async function sponsoredOmnichainDeployERC20(
   const deployResponse = await buildOmnichainDeployERC20Transactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: deployResponse.transactions.map((tx, index) => ({
+    transactions: deployResponse.transactions.map((tx) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
@@ -923,8 +926,6 @@ export interface JBSuckerTokenMapping {
   localToken: string                    // Token address on local chain (0xEEEe... for native)
   minGas: number                        // Minimum gas for bridge operation (uint32)
   remoteToken: string                   // Token on remote chain (address or bytes32; padded at encode time)
-  /** @deprecated Removed in Juicebox V6 - ignored. */
-  minBridgeAmount?: string
 }
 
 // Sucker deployer configuration for a specific bridge type
@@ -948,6 +949,8 @@ export interface JBLaunchProjectRequest {
   terminalConfigurations: JBTerminalConfig[]
   memo: string
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig  // Optional: deploy suckers atomically
+  /** Exact JBProjects.creationFee() for each destination chain. */
+  creationFeesWei: Record<number, string>
 }
 
 export interface JBLaunchProjectResponse {
@@ -968,7 +971,14 @@ export function buildOmnichainLaunchProjectTransactions(
   request: JBLaunchProjectRequest
 ): JBLaunchProjectResponse {
   const transactions = request.chainIds.map(chainId => {
-    const txResponse = encodeLaunchProjectTransaction(chainId, request)
+    const creationFeeWei = request.creationFeesWei[chainId]
+    if (creationFeeWei === undefined) {
+      throw new Error(`Project creation fee was not verified on chain ${chainId}`)
+    }
+    const txResponse = encodeLaunchProjectTransaction(chainId, {
+      ...request,
+      creationFeeWei,
+    })
     return {
       chainId,
       txData: txResponse.txData,
@@ -979,8 +989,8 @@ export function buildOmnichainLaunchProjectTransactions(
   // Predicted project IDs would need on-chain query - return placeholders
   // Actual IDs come from transaction receipts
   const predictedProjectIds: Record<number, number> = {}
-  request.chainIds.forEach((chainId, index) => {
-    predictedProjectIds[chainId] = index + 1 // Placeholder
+  request.chainIds.forEach(chainId => {
+    predictedProjectIds[chainId] = 0 // Unknown until the LaunchProject receipt is decoded
   })
 
   return {
@@ -1000,7 +1010,7 @@ export async function sponsoredOmnichainLaunchProject(
   const launchResponse = await buildOmnichainLaunchProjectTransactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: launchResponse.transactions.map((tx, index) => ({
+    transactions: launchResponse.transactions.map((tx) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
@@ -1023,7 +1033,7 @@ export async function sponsoredOmnichainLaunchProject(
 
 export interface REVStageConfig {
   startsAtOrAfter: number               // Unix timestamp
-  splitPercent: number                  // To operator (0-1000000000, 1B = 100%)
+  splitPercent: number                  // To operator (0-10000, 10000 = 100%)
   initialIssuance: string               // Tokens per currency unit (as string for bigint)
   issuanceCutFrequency: number          // V6 (was issuanceDecayFrequency): seconds between cuts
   issuanceCutPercent: number            // V6 (was issuanceDecayPercent): cut amount (0-1000000000)
@@ -1039,8 +1049,6 @@ export interface REVSuckerDeploymentConfig {
       localToken: string                // Token on this chain
       remoteToken: string               // Token on remote chain (address or bytes32)
       minGas: number                    // Minimum gas for bridge
-      /** @deprecated Removed in Juicebox V6 - ignored. */
-      minBridgeAmount?: string
     }>
   }>
   salt: string                          // bytes32 for deterministic addresses
@@ -1059,19 +1067,20 @@ export interface JBDeployRevnetRequest {
   splitOperator: string                 // Address that receives operator split
   description: {
     name: string
-    ticker?: string                     // ERC-20 symbol for the revnet token
+    ticker: string                      // ERC-20 symbol for the revnet token
     tagline: string
+    uri: string                         // Pinned project metadata URI
     salt: string                        // bytes32 for CREATE2
   }
   terminalConfigurations?: JBTerminalConfig[]  // Default terminal configs (ETH if not specified)
   chainConfigs?: REVChainConfigOverride[]      // Per-chain overrides for ERC20 tokens
+  /** Include cross-chain suckers in the atomic deployFor call. */
+  configureSuckers?: boolean
   suckerDeploymentConfiguration?: REVSuckerDeploymentConfig
-  initialTokenReceivers?: Array<{
-    beneficiary: string
-    count: number                       // Number of tokens to mint
-  }>
   /** When set, deploys a 721 tiers hook (NFT shop) atomically via the 6-arg deployFor. */
   deployTiersHookConfig?: JBDeployTiersHookConfig
+  /** Exact JBProjects.creationFee() for each destination chain. */
+  creationFeesWei: Record<number, string>
 }
 
 export interface JBDeployRevnetResponse {
@@ -1082,6 +1091,38 @@ export interface JBDeployRevnetResponse {
   }>
   predictedProjectIds: Record<number, number>  // chainId -> predicted project ID
   predictedTokenAddress: string                // Same on all chains via CREATE2
+}
+
+function deriveRevnetBaseCurrency(
+  chainId: number,
+  terminalConfigurations: JBTerminalConfig[],
+): 1 | 2 {
+  if (terminalConfigurations.length !== 1) {
+    throw new Error('This revnet flow supports exactly one recognized accounting terminal')
+  }
+  const terminal = terminalConfigurations[0]
+  if (terminal.terminal.toLowerCase() !== JB_CONTRACTS.JBMultiTerminal.toLowerCase()) {
+    throw new Error(`Terminal not recognized for revnet accounting: ${terminal.terminal}`)
+  }
+  if (terminal.accountingContextsToAccept.length !== 1) {
+    throw new Error('This revnet flow supports exactly one recognized accounting token')
+  }
+  const context = terminal.accountingContextsToAccept[0]
+  const normalizedToken = context.token.toLowerCase()
+  const isNative = normalizedToken === NATIVE_TOKEN.toLowerCase()
+  const usdc = USDC_ADDRESSES[chainId as SupportedChainId]
+  const isUsdc = !!usdc && normalizedToken === usdc.toLowerCase()
+  if (!isNative && !isUsdc) {
+    throw new Error(`Accounting token not recognized on chain ${chainId}: ${context.token}`)
+  }
+  const expectedDecimals = isNative ? 18 : 6
+  const expectedCurrency = Number(BigInt(context.token) & 0xffffffffn)
+  if (context.decimals !== expectedDecimals || context.currency !== expectedCurrency) {
+    throw new Error(
+      `Accounting context does not match ${context.token}: expected ${expectedDecimals} decimals and currency ${expectedCurrency}`,
+    )
+  }
+  return isNative ? 1 : 2
 }
 
 /**
@@ -1099,34 +1140,56 @@ export interface JBDeployRevnetResponse {
 export function buildOmnichainDeployRevnetTransactions(
   request: JBDeployRevnetRequest
 ): JBDeployRevnetResponse {
-  // Import sucker config utilities dynamically to avoid circular deps
-  const { parseSuckerDeployerConfig, createSalt, shouldConfigureSuckers } =
-    require('../../utils/suckerConfig')
-
   // Default terminal configuration for ETH (V6 JBMultiTerminal; native currency = uint32(uint160(0xEEEe)))
   const defaultTerminalConfig: JBTerminalConfig[] = request.terminalConfigurations || [{
-    terminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53', // JBMultiTerminal (V6)
+    terminal: JB_CONTRACTS.JBMultiTerminal,
     accountingContextsToAccept: [{
-      token: '0x000000000000000000000000000000000000EEEe', // Native ETH
+      token: NATIVE_TOKEN,
       decimals: 18,
       currency: 61166, // NATIVE_TOKEN_CURRENCY = uint32(uint160(NATIVE_TOKEN))
     }],
   }]
 
   const { chainIds, chainConfigs = [] } = request
+  if (chainIds.length === 0 || new Set(chainIds).size !== chainIds.length) {
+    throw new Error('Deployment chains must be a non-empty unique list')
+  }
 
   // Generate a shared salt for all chains (ensures deterministic sucker addresses)
-  const sharedSalt = request.suckerDeploymentConfiguration?.salt || createSalt()
+  const sharedSalt = request.suckerDeploymentConfiguration
+    ? requireNonzeroBytes32(request.suckerDeploymentConfiguration.salt, 'Revnet bridge salt')
+    : createSalt()
 
   // Build a map of chainId -> terminal configurations from chainConfigs
   const chainConfigMap = new Map<number, REVChainConfigOverride>()
   for (const cfg of chainConfigs) {
+    if (!chainIds.includes(cfg.chainId)) {
+      throw new Error(`Revnet configuration includes an unrelated chain: ${cfg.chainId}`)
+    }
+    if (chainConfigMap.has(cfg.chainId)) {
+      throw new Error(`Duplicate revnet chain configuration: ${cfg.chainId}`)
+    }
     chainConfigMap.set(cfg.chainId, cfg)
+  }
+
+  const accountingByChain = new Map<number, {
+    contexts: JBTerminalConfig['accountingContextsToAccept']
+    baseCurrency: 1 | 2
+  }>()
+  for (const chainId of chainIds) {
+    const terminalConfigurations = chainConfigMap.get(chainId)?.terminalConfigurations ?? defaultTerminalConfig
+    accountingByChain.set(chainId, {
+      contexts: terminalConfigurations.flatMap(config => config.accountingContextsToAccept),
+      baseCurrency: deriveRevnetBaseCurrency(chainId, terminalConfigurations),
+    })
+  }
+  if (new Set([...accountingByChain.values()].map(config => config.baseCurrency)).size !== 1) {
+    throw new Error('Every revnet chain must use the same recognized base currency')
   }
 
   // Extract per-chain token addresses from terminal configurations for sucker config
   // This enables proper ERC20 bridging (e.g., USDC on each chain)
-  const tokenAddresses: Record<number, string> = {}
+  const tokenAddresses: Record<number, `0x${string}`> = {}
   for (const chainId of chainIds) {
     const chainConfig = chainConfigMap.get(chainId)
     const terminalConfigs = chainConfig?.terminalConfigurations ?? defaultTerminalConfig
@@ -1135,7 +1198,7 @@ export function buildOmnichainDeployRevnetTransactions(
       for (const ctx of terminal.accountingContextsToAccept) {
         // Skip native token (0xEEEe...) - we want ERC20 tokens
         if (ctx.token && ctx.token.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
-          tokenAddresses[chainId] = ctx.token
+          tokenAddresses[chainId] = ctx.token as `0x${string}`
           break
         }
       }
@@ -1143,12 +1206,14 @@ export function buildOmnichainDeployRevnetTransactions(
     }
   }
 
-  const transactions = request.chainIds.map((chainId, index) => {
-    const revnetId = index + 1 // Placeholder - actual ID from chain state
+  const transactions = request.chainIds.map((chainId) => {
+    // REVDeployer uses revnetId 0 to allocate a new revnet. Non-zero IDs refer
+    // to an existing revnet and must never be guessed client-side.
+    const revnetId = 0
 
     // Get per-chain terminal configurations (use override if available)
-    const chainConfig = chainConfigMap.get(chainId)
-    const terminalConfigurations = chainConfig?.terminalConfigurations ?? defaultTerminalConfig
+    const accounting = accountingByChain.get(chainId)
+    if (!accounting) throw new Error(`Missing revnet accounting configuration for chain ${chainId}`)
 
     // Generate per-chain sucker configuration
     // Each chain needs deployers for the OTHER chains in the deployment
@@ -1160,7 +1225,7 @@ export function buildOmnichainDeployRevnetTransactions(
     if (hasProvidedConfig) {
       // Use provided config (for custom configurations)
       suckerConfig = request.suckerDeploymentConfiguration
-    } else if (shouldConfigureSuckers(chainIds)) {
+    } else if (request.configureSuckers && shouldConfigureSuckers(chainIds)) {
       // Auto-generate sucker config for this chain connecting to other chains
       // Pass token addresses for ERC20-based projects
       const hasTokenAddresses = Object.keys(tokenAddresses).length > 0
@@ -1185,13 +1250,16 @@ export function buildOmnichainDeployRevnetTransactions(
 
     // V6 REVDeployer.deployFor takes accounting contexts directly (it wires the
     // canonical multi terminal + router terminal registry itself).
-    const accountingContexts = terminalConfigurations.flatMap(tc => tc.accountingContextsToAccept)
-
     const txResponse = encodeDeployRevnetTransaction(
       chainId,
       revnetId,
-      { ...request, suckerDeploymentConfiguration: suckerConfig },
-      accountingContexts
+      {
+        ...request,
+        suckerDeploymentConfiguration: suckerConfig,
+        creationFeeWei: request.creationFeesWei[chainId],
+      },
+      accounting.contexts,
+      accounting.baseCurrency,
     )
 
     return {
@@ -1226,7 +1294,7 @@ export async function sponsoredOmnichainDeployRevnet(
   const deployResponse = await buildOmnichainDeployRevnetTransactions(request)
   const bundle = await createBalanceBundle({
     app_id: appId,
-    transactions: deployResponse.transactions.map((tx, index) => ({
+    transactions: deployResponse.transactions.map((tx) => ({
       chain: tx.txData.chainId,
       target: tx.txData.to,
       data: tx.txData.data,
@@ -1242,171 +1310,12 @@ export async function sponsoredOmnichainDeployRevnet(
   }
 }
 
-// ============================================================================
-// Omnichain Sucker Deployment
-// ============================================================================
-// Deploy suckers to link projects across chains after creation.
-// Enables token bridging between the same project on different chains.
-
-export interface SuckerTokenMapping {
-  localToken: string                    // Token address on this chain
-  remoteToken: string                   // Token on remote chain (address or bytes32)
-  minGas: number                        // Minimum gas for bridge operation
-  /** @deprecated Removed in Juicebox V6 - ignored. */
-  minBridgeAmount?: string
-}
-
-export interface JBDeploySuckersRequest {
-  chainIds: number[]
-  projectIds: Record<number, number>    // chainId -> projectId mapping
-  salt: string                          // bytes32 for deterministic addresses
-  tokenMappings: SuckerTokenMapping[]
-  deployerOverrides?: Record<number, string>  // chainId -> deployer address override
-}
-
-export interface JBDeploySuckersResponse {
-  transactions: Array<{
-    chainId: number
-    projectId: number
-    txData: JBTransactionData
-    estimatedGas: string
-  }>
-  suckerAddresses: Record<number, string>  // chainId -> predicted sucker address
-  suckerGroupId: string                    // Shared ID linking all suckers
-}
-
-/**
- * Build omnichain sucker deployment transactions.
- * Creates suckers on each chain to enable cross-chain token bridging.
- * Encoded client-side using viem (no API call needed)
- *
- * IMPORTANT: Each chain needs DIFFERENT sucker deployer configurations
- * connecting to the OTHER chains. Sucker deployers are organized by chain PAIR,
- * not per-chain (e.g., ETH↔OP deployer handles both directions).
- */
-export function buildOmnichainDeploySuckersTransactions(
-  request: JBDeploySuckersRequest
-): JBDeploySuckersResponse {
-  // Import sucker config utilities dynamically to avoid circular deps
-  const { parseSuckerDeployerConfig, shouldConfigureSuckers } =
-    require('../../utils/suckerConfig')
-
-  // Build per-chain token addresses from tokenMappings (use local token for the chain)
-  const tokenAddresses: Record<number, string> = {}
-  if (request.tokenMappings.length > 0) {
-    const localToken = request.tokenMappings[0].localToken
-    // If it's not native token, apply it to all chains (simplified assumption)
-    if (localToken.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
-      request.chainIds.forEach(chainId => {
-        tokenAddresses[chainId] = localToken
-      })
-    }
-  }
-
-  const transactions = request.chainIds.map(chainId => {
-    const projectId = request.projectIds[chainId]
-    if (!projectId) {
-      throw new Error(`No project ID found for chain ${chainId}`)
-    }
-
-    let configurations: Array<{ deployer: string; mappings: SuckerTokenMapping[] }>
-
-    // Check if deployer overrides are provided (manual configuration)
-    if (request.deployerOverrides && Object.keys(request.deployerOverrides).length > 0) {
-      // Use provided deployer with original token mappings
-      const deployer = request.deployerOverrides[chainId] || request.deployerOverrides[request.chainIds[0]]
-      configurations = [{
-        deployer,
-        mappings: request.tokenMappings,
-      }]
-    } else if (shouldConfigureSuckers(request.chainIds)) {
-      // Auto-generate per-chain sucker config with correct deployers for each chain pair
-      const hasTokenAddresses = Object.keys(tokenAddresses).length > 0
-      const generatedConfig = parseSuckerDeployerConfig(chainId, request.chainIds, {
-        salt: request.salt,
-        tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
-      })
-      configurations = generatedConfig.deployerConfigurations.map((dc: { deployer: string; mappings: Array<{ localToken: string; minGas: number; remoteToken: string; minBridgeAmount: bigint }> }) => ({
-        deployer: dc.deployer,
-        mappings: dc.mappings.map((m: { localToken: string; minGas: number; remoteToken: string; minBridgeAmount: bigint }) => ({
-          localToken: m.localToken,
-          minGas: m.minGas,
-          remoteToken: m.remoteToken,
-          minBridgeAmount: m.minBridgeAmount.toString(),
-        })),
-      }))
-    } else {
-      // Single chain - no sucker deployment needed
-      configurations = []
-    }
-
-    const txResponse = encodeDeploySuckersTransaction(
-      chainId,
-      projectId,
-      request.salt,
-      configurations
-    )
-
-    return {
-      chainId,
-      projectId,
-      txData: txResponse.txData,
-      estimatedGas: txResponse.estimatedGas,
-    }
-  })
-
-  // Sucker addresses would come from CREATE2 prediction - return placeholders
-  const suckerAddresses: Record<number, string> = {}
-  request.chainIds.forEach(chainId => {
-    suckerAddresses[chainId] = '0x0000000000000000000000000000000000000000' // Placeholder
-  })
-
-  return {
-    transactions,
-    suckerAddresses,
-    suckerGroupId: request.salt, // Salt serves as group identifier
-  }
-}
-
-/**
- * Create a sponsored bundle for omnichain sucker deployment.
- * Admin pays gas for all users via balance bundle.
- */
-export async function sponsoredOmnichainDeploySuckers(
-  appId: string,
-  request: JBDeploySuckersRequest
-): Promise<{ bundleId: string; txIds: string[]; suckerAddresses: Record<number, string>; suckerGroupId: string }> {
-  const deployResponse = await buildOmnichainDeploySuckersTransactions(request)
-  const bundle = await createBalanceBundle({
-    app_id: appId,
-    transactions: deployResponse.transactions.map((tx, index) => ({
-      chain: tx.txData.chainId,
-      target: tx.txData.to,
-      data: tx.txData.data,
-      value: tx.txData.value,
-    })),
-    virtual_nonce_mode: 'Disabled',
-  })
-  return {
-    bundleId: bundle.bundle_uuid,
-    txIds: bundle.tx_uuids,
-    suckerAddresses: deployResponse.suckerAddresses,
-    suckerGroupId: deployResponse.suckerGroupId,
-  }
-}
-
 // Build omnichain queue ruleset transactions with synchronized start time
 export async function buildOmnichainQueueRulesetTransactions(
   request: JBOmnichainQueueRequest
 ): Promise<JBOmnichainQueueResponse> {
   // Calculate synchronized start time if not provided
   const synchronizedStartTime = request.mustStartAtOrAfter ?? calculateSynchronizedStartTime()
-
-  // Apply synchronized start time to all ruleset configurations
-  const synchronizedConfigs = request.rulesetConfigurations.map(config => ({
-    ...config,
-    mustStartAtOrAfter: synchronizedStartTime,
-  }))
 
   // Build transactions for each chain
   const transactionPromises = request.chainIds.map(async chainId => {
@@ -1415,9 +1324,23 @@ export async function buildOmnichainQueueRulesetTransactions(
       throw new Error(`No project ID found for chain ${chainId}`)
     }
 
+    const chainConfigs = request.rulesetConfigurationsByChain?.[chainId] ?? request.rulesetConfigurations
+    if (!chainConfigs?.length) {
+      throw new Error(`No ruleset configuration found for chain ${chainId}`)
+    }
+    const synchronizedConfigs = chainConfigs.map(config => ({
+      ...config,
+      mustStartAtOrAfter: synchronizedStartTime,
+    }))
+
+    const queueTarget = request.queueTargets?.[chainId]
+    if (!queueTarget) {
+      throw new Error(`Ruleset queue target missing for chain ${chainId}`)
+    }
     const response = await buildQueueRulesetTransaction({
       chainId,
       projectId,
+      queueTarget,
       rulesetConfigurations: synchronizedConfigs,
       memo: request.memo,
     })

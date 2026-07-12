@@ -129,16 +129,16 @@ export function isUsdcAddress(address: string): boolean {
 
 // USDC currency codes by chain (derived from token addresses in the protocol)
 export const USDC_CURRENCIES: Record<string, number> = {
-  // Testnet (from AI outputs)
-  '11155111': 909516616,   // Sepolia
-  '11155420': 3530704773,  // OP Sepolia
-  '84532': 3169378579,     // Base Sepolia
-  '421614': 1156540465,    // Arb Sepolia
-  // Mainnet (same pattern - using Ethereum mainnet USDC currency)
-  '1': 909516616,          // Ethereum mainnet
-  '10': 3530704773,        // Optimism (approximation)
-  '8453': 3169378579,      // Base (approximation)
-  '42161': 1156540465,     // Arbitrum (approximation)
+  // JB token-keyed currencies are uint32(uint160(token)). Keep these derived
+  // from the canonical USDC address on each chain, never from an AI response.
+  '11155111': 932999736,  // 0x...379c7238
+  '11155420': 3559993559, // 0x...d43130d7
+  '84532': 2403192702,    // 0x...8f3dcf7e
+  '421614': 3460737613,   // 0x...ce46aa4d
+  '1': 906423112,         // 0x...3606eb48
+  '10': 3499622277,       // 0x...d097ff85
+  '8453': 3181390099,     // 0x...bda02913
+  '42161': 646862897,     // 0x...268e5831
 }
 
 // Check if a currency code is USDC (varies by chain)
@@ -148,7 +148,8 @@ export function isUsdcCurrency(currency: number): boolean {
 
 // Get the label for a currency code
 export function getCurrencyLabel(currency: number): string | null {
-  if (currency === 61166) return 'ETH'
+  if (currency === 1 || currency === 61166) return 'ETH'
+  if (currency === 2) return 'USD'
   if (isUsdcCurrency(currency)) return 'USDC'
   return null
 }
@@ -191,21 +192,13 @@ export function formatSimpleValue(value: unknown, key?: string, chainId?: string
   }
 
   // Currency field (JBAccountingContext uses uint32 currency codes)
-  // Currency codes are derived from token addresses but we hardcode known values
+  // Currency codes are derived from token addresses.
   if (keyLower === 'currency' && numValue !== null) {
     // ETH native token currency is constant
     if (numValue === 61166) {
       return `${numValue} (ETH)`
     }
-    // Known USDC currency codes by chain (varies per chain!)
-    const usdcCurrencies = [
-      909516616,   // Ethereum mainnet / Sepolia
-      3530704773,  // OP Sepolia
-      3169378579,  // Base Sepolia
-      1156540465,  // Arb Sepolia
-      // Add mainnet values if different
-    ]
-    if (usdcCurrencies.includes(numValue)) {
+    if (isUsdcCurrency(numValue)) {
       return `${numValue} (USDC, chain-specific)`
     }
     return String(numValue)
@@ -266,7 +259,7 @@ export function formatSimpleValue(value: unknown, key?: string, chainId?: string
 
   if (keyLower.includes('cashouttaxrate') && numValue !== null) {
     const pct = (numValue / 100).toFixed(0)
-    if (numValue === 0) return '0% (full refunds)'
+    if (numValue === 0) return '0% (proportional baseline)'
     if (numValue === 10000) return '100% (disabled)'
     return `${pct}%`
   }
@@ -353,7 +346,7 @@ export function getParamTooltip(name: string): string | undefined {
     weight: 'Tokens minted per unit of base currency (e.g., 1000000 = 1M tokens per dollar)',
     weightCutPercent: 'How much issuance decreases each cycle (0 = no cut, 1000000000 = 100% cut)',
     reservedPercent: 'Percentage of minted tokens reserved (0-10000, where 10000 = 100%)',
-    cashOutTaxRate: 'Bonding curve tax on cash outs (0 = full refund, 10000 = disabled)',
+    cashOutTaxRate: 'Cash-out curve rate (0 = proportional baseline, 10000 = disabled)',
     baseCurrency: '1 = ETH, 2 = USD - determines how token issuance is calculated',
     duration: 'Ruleset duration in seconds (0 = no automatic cycling)',
     pausePay: 'If true, payments are disabled',

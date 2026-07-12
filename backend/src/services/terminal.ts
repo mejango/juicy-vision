@@ -9,11 +9,26 @@
  *       → Tokens issued to consumer's smart account
  */
 
-import { query, queryOne, execute, transaction } from '../db/index.ts';
+import { execute, query, queryOne, transaction } from '../db/index.ts';
 import { logger } from '../utils/logger.ts';
-import { spendJuice } from './juice.ts';
-import { randomBytes, createHash } from 'node:crypto';
+import { getEthUsdRate, spendJuice } from './juice.ts';
+import { fetchPrimaryTerminal, getPublicClient } from './chainReader.ts';
+import {
+  type Address,
+  decodeEventLog,
+  decodeFunctionData,
+  type Hex,
+  isAddressEqual,
+  zeroAddress,
+} from 'viem';
+import { createHash, randomBytes } from 'node:crypto';
+import {
+  CANONICAL_USDC_BY_CHAIN,
+  CONTRACTS,
+  NATIVE_TOKEN as SHARED_NATIVE_TOKEN,
+} from '@shared/chains.ts';
 import { broadcastSessionStatus } from './terminalWs.ts';
+import { requireRecognizedProjectPayConfiguration } from './projectTrust.ts';
 
 // Session expiry time in minutes
 const SESSION_EXPIRY_MINUTES = 10;
@@ -103,7 +118,7 @@ function generateApiKey(): { key: string; hash: string; prefix: string } {
  * Returns the device info AND the API key (only shown once)
  */
 export async function registerDevice(
-  params: CreateDeviceParams
+  params: CreateDeviceParams,
 ): Promise<{ device: TerminalDevice; apiKey: string }> {
   const { key, hash, prefix } = generateApiKey();
   const chainId = params.chainId ?? 42161; // Default to Arbitrum
@@ -135,7 +150,7 @@ export async function registerDevice(
       acceptedTokens,
       hash,
       prefix,
-    ]
+    ],
   );
 
   if (!row) {
@@ -174,7 +189,7 @@ export async function getDevice(deviceId: string): Promise<TerminalDevice | null
     `SELECT id, merchant_id, name, project_id, chain_id, accepted_tokens,
             api_key_prefix, is_active, last_seen_at, created_at
      FROM terminal_devices WHERE id = $1`,
-    [deviceId]
+    [deviceId],
   );
 
   return row ? mapDeviceRow(row) : null;
@@ -201,7 +216,7 @@ export async function getMerchantDevices(merchantId: string): Promise<TerminalDe
      FROM terminal_devices
      WHERE merchant_id = $1
      ORDER BY created_at DESC`,
-    [merchantId]
+    [merchantId],
   );
 
   return rows.map(mapDeviceRow);
@@ -230,7 +245,7 @@ export async function authenticateDevice(apiKey: string): Promise<TerminalDevice
      WHERE api_key_hash = $1 AND is_active = TRUE
      RETURNING id, merchant_id, name, project_id, chain_id, accepted_tokens,
                api_key_prefix, is_active, last_seen_at, created_at`,
-    [hash]
+    [hash],
   );
 
   return row ? mapDeviceRow(row) : null;
@@ -248,7 +263,7 @@ export async function updateDevice(
     chainId?: number;
     acceptedTokens?: string[];
     isActive?: boolean;
-  }
+  },
 ): Promise<TerminalDevice | null> {
   const setClauses: string[] = [];
   const values: unknown[] = [];
@@ -298,7 +313,7 @@ export async function updateDevice(
      WHERE id = $${paramIndex++} AND merchant_id = $${paramIndex}
      RETURNING id, merchant_id, name, project_id, chain_id, accepted_tokens,
                api_key_prefix, is_active, last_seen_at, created_at`,
-    values
+    values,
   );
 
   return row ? mapDeviceRow(row) : null;
@@ -309,7 +324,7 @@ export async function updateDevice(
  */
 export async function regenerateApiKey(
   deviceId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<string | null> {
   const { key, hash, prefix } = generateApiKey();
 
@@ -317,7 +332,7 @@ export async function regenerateApiKey(
     `UPDATE terminal_devices
      SET api_key_hash = $1, api_key_prefix = $2, updated_at = NOW()
      WHERE id = $3 AND merchant_id = $4`,
-    [hash, prefix, deviceId, merchantId]
+    [hash, prefix, deviceId, merchantId],
   );
 
   if (count === 0) {
@@ -333,12 +348,12 @@ export async function regenerateApiKey(
  */
 export async function deleteDevice(
   deviceId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<boolean> {
   const count = await execute(
     `DELETE FROM terminal_devices
      WHERE id = $1 AND merchant_id = $2`,
-    [deviceId, merchantId]
+    [deviceId, merchantId],
   );
 
   if (count > 0) {
@@ -356,8 +371,25 @@ export async function deleteDevice(
  * Create a new payment session
  */
 export async function createSession(
-  params: CreateSessionParams
+  params: CreateSessionParams,
 ): Promise<PaymentSession> {
+  const device = await getDevice(params.deviceId);
+  if (!device || !device.isActive) throw new Error('Terminal device is not active');
+
+  const requestedSymbol = (params.tokenSymbol || (params.token ? '' : 'ETH')).toUpperCase();
+  if (requestedSymbol !== 'ETH' && requestedSymbol !== 'USDC') {
+    throw new Error('Wallet terminal sessions support ETH or canonical USDC only');
+  }
+
+  const tokenAddress = resolveWalletToken(device.chainId, params.token, requestedSymbol);
+  const accepted = device.acceptedTokens.map((value) => value.toLowerCase());
+  if (
+    !accepted.includes(requestedSymbol.toLowerCase()) &&
+    !accepted.includes(tokenAddress.toLowerCase())
+  ) {
+    throw new Error(`${requestedSymbol} is not enabled for this terminal`);
+  }
+
   const expiresAt = new Date();
   expiresAt.setMinutes(expiresAt.getMinutes() + SESSION_EXPIRY_MINUTES);
 
@@ -384,10 +416,10 @@ export async function createSession(
     [
       params.deviceId,
       params.amountUsd,
-      params.token || null,
-      params.tokenSymbol || 'ETH',
+      requestedSymbol === 'ETH' ? null : tokenAddress,
+      requestedSymbol,
       expiresAt,
-    ]
+    ],
   );
 
   if (!row) {
@@ -432,7 +464,7 @@ export async function getSession(sessionId: string): Promise<PaymentSession | nu
  * Get session with merchant/project details
  */
 export async function getSessionWithDetails(
-  sessionId: string
+  sessionId: string,
 ): Promise<PaymentSessionWithDetails | null> {
   const row = await queryOne<{
     id: string;
@@ -463,7 +495,7 @@ export async function getSessionWithDetails(
      JOIN terminal_devices td ON td.id = ps.device_id
      JOIN users u ON u.id = td.merchant_id
      WHERE ps.id = $1`,
-    [sessionId]
+    [sessionId],
   );
 
   if (!row) return null;
@@ -482,7 +514,7 @@ export async function getSessionWithDetails(
  */
 export async function getDeviceSessions(
   deviceId: string,
-  limit = 50
+  limit = 50,
 ): Promise<PaymentSession[]> {
   const rows = await query<{
     id: string;
@@ -504,7 +536,7 @@ export async function getDeviceSessions(
      WHERE device_id = $1
      ORDER BY created_at DESC
      LIMIT $2`,
-    [deviceId, limit]
+    [deviceId, limit],
   );
 
   return rows.map(mapSessionRow);
@@ -516,7 +548,7 @@ export async function getDeviceSessions(
 export async function getMerchantSessions(
   merchantId: string,
   limit = 100,
-  status?: string
+  status?: string,
 ): Promise<PaymentSessionWithDetails[]> {
   let sql = `
     SELECT ps.*,
@@ -581,7 +613,7 @@ export async function updateSessionStatus(
     txHash?: string;
     tokensIssued?: string;
     juiceSpendId?: string;
-  }
+  },
 ): Promise<PaymentSession | null> {
   const setClauses = ['status = $2'];
   const values: unknown[] = [sessionId, status];
@@ -632,7 +664,7 @@ export async function updateSessionStatus(
      SET ${setClauses.join(', ')}, updated_at = NOW()
      WHERE id = $1
      RETURNING *`,
-    values
+    values,
   );
 
   if (row) {
@@ -652,13 +684,13 @@ export async function updateSessionStatus(
  */
 export async function cancelSession(
   sessionId: string,
-  deviceId: string
+  deviceId: string,
 ): Promise<boolean> {
   const count = await execute(
     `UPDATE payment_sessions
      SET status = 'cancelled', updated_at = NOW()
      WHERE id = $1 AND device_id = $2 AND status = 'pending'`,
-    [sessionId, deviceId]
+    [sessionId, deviceId],
   );
 
   if (count > 0) {
@@ -677,7 +709,7 @@ export async function expireSessions(): Promise<number> {
   const count = await execute(
     `UPDATE payment_sessions
      SET status = 'expired', updated_at = NOW()
-     WHERE status = 'pending' AND expires_at <= NOW()`
+     WHERE status = 'pending' AND expires_at <= NOW()`,
   );
 
   if (count > 0) {
@@ -695,7 +727,7 @@ export async function expireSessions(): Promise<number> {
  * Pay a session with Juice credits
  */
 export async function payWithJuice(
-  params: PayWithJuiceParams
+  params: PayWithJuiceParams,
 ): Promise<PaymentSession> {
   return await transaction(async (client) => {
     // Get session with device details
@@ -714,7 +746,7 @@ export async function payWithJuice(
        JOIN terminal_devices td ON td.id = ps.device_id
        WHERE ps.id = $1
        FOR UPDATE`,
-      [params.sessionId]
+      [params.sessionId],
     );
 
     const session = sessions[0];
@@ -737,7 +769,7 @@ export async function payWithJuice(
       `UPDATE payment_sessions
        SET status = 'paying', consumer_id = $1, payment_method = 'juice', updated_at = NOW()
        WHERE id = $2`,
-      [params.consumerId, params.sessionId]
+      [params.consumerId, params.sessionId],
     );
 
     // Execute the Juice spend (this deducts from balance and queues for execution)
@@ -757,7 +789,7 @@ export async function payWithJuice(
         `UPDATE payment_sessions
          SET status = 'pending', consumer_id = NULL, payment_method = NULL, updated_at = NOW()
          WHERE id = $1`,
-        [params.sessionId]
+        [params.sessionId],
       );
       throw error;
     }
@@ -784,7 +816,7 @@ export async function payWithJuice(
        SET juice_spend_id = $1, updated_at = NOW()
        WHERE id = $2
        RETURNING *`,
-      [spendId, params.sessionId]
+      [spendId, params.sessionId],
     );
 
     logger.info('Payment session paid with Juice', {
@@ -804,7 +836,7 @@ export async function payWithJuice(
 export async function completeSessionFromSpend(
   spendId: string,
   txHash: string,
-  tokensIssued: string
+  tokensIssued: string,
 ): Promise<PaymentSession | null> {
   const row = await queryOne<{
     id: string;
@@ -826,7 +858,7 @@ export async function completeSessionFromSpend(
      SET status = 'completed', tx_hash = $1, tokens_issued = $2, completed_at = NOW(), updated_at = NOW()
      WHERE juice_spend_id = $3 AND status = 'paying'
      RETURNING *`,
-    [txHash, tokensIssued, spendId]
+    [txHash, tokensIssued, spendId],
   );
 
   if (row) {
@@ -845,7 +877,7 @@ export async function completeSessionFromSpend(
  */
 export async function failSessionFromSpend(
   spendId: string,
-  errorMessage: string
+  errorMessage: string,
 ): Promise<PaymentSession | null> {
   const row = await queryOne<{
     id: string;
@@ -867,7 +899,7 @@ export async function failSessionFromSpend(
      SET status = 'failed', updated_at = NOW()
      WHERE juice_spend_id = $1 AND status = 'paying'
      RETURNING *`,
-    [spendId]
+    [spendId],
   );
 
   if (row) {
@@ -917,7 +949,7 @@ export async function getMerchantStats(merchantId: string): Promise<{
     FROM payment_sessions ps
     JOIN terminal_devices td ON td.id = ps.device_id
     WHERE td.merchant_id = $1`,
-    [merchantId]
+    [merchantId],
   );
 
   return {
@@ -936,37 +968,154 @@ export async function getMerchantStats(merchantId: string): Promise<{
 // ============================================================================
 
 // JBMultiTerminal contract addresses (CREATE2 - same on all chains)
-const JB_MULTI_TERMINAL = '0x130f5dd2bd8805443cf41755253d778a75a67f53';
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe';
+const NATIVE_TOKEN = SHARED_NATIVE_TOKEN;
+const USDC_ADDRESSES = CANONICAL_USDC_BY_CHAIN as Record<number, Address>;
+
+const TERMINAL_PAY_ABI = [{
+  name: 'pay',
+  type: 'function',
+  stateMutability: 'payable',
+  inputs: [
+    { name: 'projectId', type: 'uint256' },
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'beneficiary', type: 'address' },
+    { name: 'minReturnedTokens', type: 'uint256' },
+    { name: 'memo', type: 'string' },
+    { name: 'metadata', type: 'bytes' },
+  ],
+  outputs: [{ name: 'beneficiaryTokenCount', type: 'uint256' }],
+}] as const;
+
+const RECOGNIZED_MULTI_TERMINAL = CONTRACTS.JBMultiTerminal as Address;
+const TERMINAL_PAY_EVENT_ABI = [{
+  name: 'Pay',
+  type: 'event',
+  inputs: [
+    { name: 'rulesetId', type: 'uint256', indexed: true },
+    { name: 'rulesetCycleNumber', type: 'uint256', indexed: true },
+    { name: 'projectId', type: 'uint256', indexed: true },
+    { name: 'payer', type: 'address', indexed: false },
+    { name: 'beneficiary', type: 'address', indexed: false },
+    { name: 'amount', type: 'uint256', indexed: false },
+    { name: 'newlyIssuedTokenCount', type: 'uint256', indexed: false },
+    { name: 'memo', type: 'string', indexed: false },
+    { name: 'metadata', type: 'bytes', indexed: false },
+    { name: 'caller', type: 'address', indexed: false },
+  ],
+}] as const;
+
+function resolveWalletToken(
+  chainId: number,
+  token: string | null | undefined,
+  symbol: string,
+): Address {
+  if (symbol === 'ETH') {
+    if (token && token.toLowerCase() !== NATIVE_TOKEN.toLowerCase()) {
+      throw new Error('ETH sessions must use the Juicebox native-token address');
+    }
+    return NATIVE_TOKEN;
+  }
+
+  const canonicalUsdc = USDC_ADDRESSES[chainId];
+  if (!canonicalUsdc) throw new Error(`USDC is not supported on chain ${chainId}`);
+  if (token && token.toLowerCase() !== canonicalUsdc.toLowerCase()) {
+    throw new Error('The requested token is not canonical USDC on this chain');
+  }
+  return canonicalUsdc;
+}
+
+function quoteTokenAmount(amountUsd: number, token: Address, ethUsdRate?: number): bigint {
+  const usdMicros = BigInt(Math.round(amountUsd * 1_000_000));
+  if (token.toLowerCase() !== NATIVE_TOKEN.toLowerCase()) return usdMicros;
+  if (!ethUsdRate) throw new Error('An ETH/USD rate is required for native payments');
+  const priceMicros = BigInt(Math.round(ethUsdRate * 1_000_000));
+  return (usdMicros * 10n ** 18n + priceMicros - 1n) / priceMicros;
+}
 
 /**
  * Get payment parameters for wallet payment
  * Returns the terminal address and encoded calldata for JBMultiTerminal.pay()
  */
 export async function getWalletPaymentParams(
-  sessionId: string
-): Promise<{
-  terminalAddress: string;
-  chainId: number;
-  projectId: number;
-  amountUsd: number;
-  tokenAddress: string;
-  tokenSymbol: string;
-  merchantName: string;
-} | null> {
+  sessionId: string,
+): Promise<
+  {
+    terminalAddress: string;
+    chainId: number;
+    projectId: number;
+    amountUsd: number;
+    tokenAddress: string;
+    tokenSymbol: string;
+    merchantName: string;
+    paymentAmount: string;
+    paymentMemo: string;
+    quoteExpiresAt: string;
+  } | null
+> {
   const session = await getSessionWithDetails(sessionId);
   if (!session) return null;
   if (session.status !== 'pending') return null;
   if (new Date(session.expiresAt) < new Date()) return null;
 
+  const tokenAddress = resolveWalletToken(
+    session.chainId,
+    session.token,
+    session.tokenSymbol.toUpperCase(),
+  );
+  const terminalAddress = await fetchPrimaryTerminal(
+    session.chainId,
+    session.projectId,
+    tokenAddress,
+  );
+  if (terminalAddress.toLowerCase() === zeroAddress) return null;
+  if (terminalAddress.toLowerCase() !== RECOGNIZED_MULTI_TERMINAL.toLowerCase()) {
+    throw new Error('Wallet checkout is unavailable because this project uses a routing terminal');
+  }
+  await requireRecognizedProjectPayConfiguration({
+    client: getPublicClient(session.chainId),
+    projectId: BigInt(session.projectId),
+  });
+
+  const ethUsdRate = tokenAddress.toLowerCase() === NATIVE_TOKEN.toLowerCase()
+    ? await getEthUsdRate()
+    : undefined;
+  const paymentAmount = quoteTokenAmount(session.amountUsd, tokenAddress, ethUsdRate);
+  const quoteExpiresAt = new Date(Math.min(
+    Date.now() + 60_000,
+    new Date(session.expiresAt).getTime(),
+  ));
+  const paymentMemo = `PayTerm ${session.id}`;
+
+  const updated = await execute(
+    `UPDATE payment_sessions
+     SET quoted_token_amount = $1, quoted_terminal_address = $2,
+         quoted_token_address = $3, quoted_project_id = $4,
+         quoted_chain_id = $5, quote_expires_at = $6, updated_at = NOW()
+     WHERE id = $7 AND status = 'pending' AND expires_at > NOW()`,
+    [
+      paymentAmount.toString(),
+      terminalAddress,
+      tokenAddress,
+      session.projectId,
+      session.chainId,
+      quoteExpiresAt,
+      sessionId,
+    ],
+  );
+  if (updated !== 1) return null;
+
   return {
-    terminalAddress: JB_MULTI_TERMINAL,
+    terminalAddress,
     chainId: session.chainId,
     projectId: session.projectId,
     amountUsd: session.amountUsd,
-    tokenAddress: session.token || NATIVE_TOKEN,
-    tokenSymbol: session.tokenSymbol || 'ETH',
+    tokenAddress,
+    tokenSymbol: session.tokenSymbol,
     merchantName: session.merchantName,
+    paymentAmount: paymentAmount.toString(),
+    paymentMemo,
+    quoteExpiresAt: quoteExpiresAt.toISOString(),
   };
 }
 
@@ -975,7 +1124,7 @@ export async function getWalletPaymentParams(
  */
 export async function startWalletPayment(
   sessionId: string,
-  payerAddress: string
+  payerAddress: string,
 ): Promise<PaymentSession | null> {
   const row = await queryOne<{
     id: string;
@@ -994,10 +1143,13 @@ export async function startWalletPayment(
     created_at: string;
   }>(
     `UPDATE payment_sessions
-     SET status = 'paying', payment_method = 'wallet', updated_at = NOW()
+     SET status = 'paying', payment_method = 'wallet', payer_address = $2, updated_at = NOW()
      WHERE id = $1 AND status = 'pending' AND expires_at > NOW()
+       AND quote_expires_at > NOW() AND quoted_token_amount IS NOT NULL
+       AND quoted_terminal_address IS NOT NULL AND quoted_token_address IS NOT NULL
+       AND quoted_project_id IS NOT NULL AND quoted_chain_id IS NOT NULL
      RETURNING *`,
-    [sessionId]
+    [sessionId, payerAddress],
   );
 
   if (row) {
@@ -1015,8 +1167,147 @@ export async function startWalletPayment(
 export async function confirmWalletPayment(
   sessionId: string,
   txHash: string,
-  tokensIssued?: string
+  _tokensIssued?: string,
 ): Promise<PaymentSession | null> {
+  const verification = await queryOne<{
+    status: string;
+    payment_method: string | null;
+    payer_address: string | null;
+    tx_hash: string | null;
+    quoted_token_amount: string | null;
+    quoted_terminal_address: string | null;
+    quoted_token_address: string | null;
+    quoted_project_id: string | null;
+    quoted_chain_id: number | null;
+  }>(
+    `SELECT status, payment_method, payer_address, tx_hash,
+            quoted_token_amount, quoted_terminal_address,
+            quoted_token_address, quoted_project_id, quoted_chain_id
+     FROM payment_sessions
+     WHERE id = $1`,
+    [sessionId],
+  );
+  if (
+    !verification ||
+    verification.status !== 'paying' ||
+    verification.payment_method !== 'wallet' ||
+    !verification.payer_address ||
+    !verification.quoted_token_amount ||
+    !verification.quoted_terminal_address ||
+    !verification.quoted_token_address ||
+    !verification.quoted_project_id ||
+    verification.quoted_chain_id === null
+  ) {
+    return null;
+  }
+
+  const tokenAddress = verification.quoted_token_address as Address;
+  const terminalAddress = verification.quoted_terminal_address as Address;
+  const projectId = BigInt(verification.quoted_project_id);
+  const chainId = verification.quoted_chain_id;
+  if (terminalAddress.toLowerCase() !== RECOGNIZED_MULTI_TERMINAL.toLowerCase()) {
+    throw new Error(`Terminal not recognized for wallet checkout: ${terminalAddress}`);
+  }
+  resolveWalletToken(
+    chainId,
+    tokenAddress,
+    tokenAddress.toLowerCase() === NATIVE_TOKEN.toLowerCase() ? 'ETH' : 'USDC',
+  );
+  const client = getPublicClient(chainId);
+  const hash = txHash as Hex;
+  const chainTransaction = await client.getTransaction({ hash });
+  if (!chainTransaction.to || !isAddressEqual(chainTransaction.to, terminalAddress)) {
+    throw new Error('Wallet transaction targeted the wrong terminal');
+  }
+  if (!isAddressEqual(chainTransaction.from, verification.payer_address as Address)) {
+    throw new Error('Wallet transaction was sent by a different payer');
+  }
+
+  const decoded = decodeFunctionData({ abi: TERMINAL_PAY_ABI, data: chainTransaction.input });
+  if (decoded.functionName !== 'pay' || !decoded.args) {
+    throw new Error('Wallet transaction is not a terminal payment');
+  }
+  const [
+    paidProjectId,
+    paidToken,
+    paidAmount,
+    paidBeneficiary,
+    paidMinimum,
+    paidMemo,
+    paidMetadata,
+  ] = decoded.args;
+  if (paidProjectId !== projectId) throw new Error('Wallet transaction paid the wrong project');
+  if (!isAddressEqual(paidToken, tokenAddress)) {
+    throw new Error('Wallet transaction used the wrong token');
+  }
+  if (paidAmount !== BigInt(verification.quoted_token_amount)) {
+    throw new Error('Wallet transaction used the wrong amount');
+  }
+  if (!isAddressEqual(paidBeneficiary, verification.payer_address as Address)) {
+    throw new Error('Wallet transaction sends project tokens to the wrong beneficiary');
+  }
+  if (paidMinimum <= 0n) throw new Error('Wallet transaction has no minimum project-token return');
+  if (paidMemo !== `PayTerm ${sessionId}`) {
+    throw new Error('Wallet transaction does not match this payment session');
+  }
+  if (paidMetadata !== '0x') {
+    throw new Error('Wallet transaction contains unexpected payment metadata');
+  }
+
+  const isNative = tokenAddress.toLowerCase() === NATIVE_TOKEN.toLowerCase();
+  if (
+    (isNative && chainTransaction.value !== paidAmount) ||
+    (!isNative && chainTransaction.value !== 0n)
+  ) {
+    throw new Error('Wallet transaction sent an incorrect native value');
+  }
+
+  const bound = await queryOne<{ id: string }>(
+    `UPDATE payment_sessions
+     SET tx_hash = COALESCE(tx_hash, $1), updated_at = NOW()
+     WHERE id = $2 AND status = 'paying' AND payment_method = 'wallet'
+       AND (tx_hash IS NULL OR LOWER(tx_hash) = LOWER($1))
+       AND NOT EXISTS (
+         SELECT 1 FROM payment_sessions used
+         WHERE LOWER(used.tx_hash) = LOWER($1) AND used.id <> $2
+       )
+     RETURNING id`,
+    [txHash, sessionId],
+  );
+  if (!bound) return null;
+
+  const receipt = await client.getTransactionReceipt({ hash });
+  if (receipt.status !== 'success') throw new Error('Wallet transaction reverted');
+
+  let issuedTokens: bigint | null = null;
+  for (const log of receipt.logs) {
+    if (!isAddressEqual(log.address, RECOGNIZED_MULTI_TERMINAL)) continue;
+    try {
+      const event = decodeEventLog({
+        abi: TERMINAL_PAY_EVENT_ABI,
+        data: log.data,
+        topics: log.topics,
+      });
+      if (
+        event.eventName === 'Pay' &&
+        event.args.projectId === paidProjectId &&
+        isAddressEqual(event.args.payer, verification.payer_address as Address) &&
+        isAddressEqual(event.args.beneficiary, paidBeneficiary) &&
+        event.args.amount === paidAmount &&
+        event.args.memo === paidMemo &&
+        event.args.metadata === paidMetadata
+      ) {
+        issuedTokens = event.args.newlyIssuedTokenCount;
+        break;
+      }
+    } catch {
+      // Ignore unrelated logs.
+    }
+  }
+  if (issuedTokens === null || issuedTokens < paidMinimum || issuedTokens <= 0n) {
+    throw new Error('Wallet transaction did not issue the protected project-token minimum');
+  }
+
   const row = await queryOne<{
     id: string;
     device_id: string;
@@ -1034,28 +1325,63 @@ export async function confirmWalletPayment(
     created_at: string;
   }>(
     `UPDATE payment_sessions
-     SET status = 'completed', tx_hash = $1, tokens_issued = $2, completed_at = NOW(), updated_at = NOW()
+     SET status = 'completed', tokens_issued = $2, completed_at = NOW(), updated_at = NOW()
      WHERE id = $3 AND status = 'paying' AND payment_method = 'wallet'
+       AND LOWER(tx_hash) = LOWER($1)
      RETURNING *`,
-    [txHash, tokensIssued || null, sessionId]
+    [txHash, issuedTokens.toString(), sessionId],
   );
 
   if (row) {
-    logger.info('Wallet payment confirmed', { sessionId, txHash, tokensIssued });
+    logger.info('Wallet payment confirmed', { sessionId, txHash });
     // Broadcast completion to connected WebSocket clients
-    broadcastSessionStatus(sessionId, 'completed', { txHash, tokensIssued });
+    broadcastSessionStatus(sessionId, 'completed', { txHash });
   }
 
   return row ? mapSessionRow(row) : null;
 }
 
 /**
- * Mark a wallet payment as failed
+ * Release a wallet attempt without claiming that an uncertain on-chain payment
+ * failed. A submitted transaction can only be released after a proven revert.
  */
-export async function failWalletPayment(
+export async function resetWalletPayment(
   sessionId: string,
-  errorMessage?: string
+  payerAddress: string,
+  txHash?: string,
+  errorMessage?: string,
 ): Promise<PaymentSession | null> {
+  if (txHash) {
+    const attempt = await queryOne<{
+      payer_address: string | null;
+      tx_hash: string | null;
+      quoted_chain_id: number | null;
+    }>(
+      `SELECT payer_address, tx_hash, quoted_chain_id
+       FROM payment_sessions
+       WHERE id = $1 AND status = 'paying' AND payment_method = 'wallet'`,
+      [sessionId],
+    );
+    if (
+      !attempt?.payer_address ||
+      attempt.payer_address.toLowerCase() !== payerAddress.toLowerCase() ||
+      (attempt.tx_hash !== null && attempt.tx_hash.toLowerCase() !== txHash.toLowerCase()) ||
+      attempt.quoted_chain_id === null
+    ) return null;
+
+    const client = getPublicClient(attempt.quoted_chain_id);
+    const [receipt, chainTransaction] = await Promise.all([
+      client.getTransactionReceipt({ hash: txHash as Hex }),
+      client.getTransaction({ hash: txHash as Hex }),
+    ]);
+    if (
+      receipt.status !== 'reverted' ||
+      !isAddressEqual(chainTransaction.from, payerAddress as Address)
+    ) {
+      throw new Error('Only a proven reverted transaction can be reset');
+    }
+  }
+
   const row = await queryOne<{
     id: string;
     device_id: string;
@@ -1073,16 +1399,24 @@ export async function failWalletPayment(
     created_at: string;
   }>(
     `UPDATE payment_sessions
-     SET status = 'failed', updated_at = NOW()
+     SET status = 'pending', payment_method = NULL, payer_address = NULL,
+         tx_hash = NULL, tokens_issued = NULL,
+         quoted_token_amount = NULL, quoted_terminal_address = NULL,
+         quoted_token_address = NULL, quoted_project_id = NULL,
+         quoted_chain_id = NULL, quote_expires_at = NULL, updated_at = NOW()
      WHERE id = $1 AND status = 'paying' AND payment_method = 'wallet'
+       AND LOWER(payer_address) = LOWER($2)
+       AND (
+         ($3::VARCHAR IS NULL AND tx_hash IS NULL) OR
+         ($3::VARCHAR IS NOT NULL AND (tx_hash IS NULL OR LOWER(tx_hash) = LOWER($3)))
+       )
      RETURNING *`,
-    [sessionId]
+    [sessionId, payerAddress, txHash ?? null],
   );
 
   if (row) {
-    logger.info('Wallet payment failed', { sessionId, errorMessage });
-    // Broadcast failure to connected WebSocket clients
-    broadcastSessionStatus(sessionId, 'failed', { error: errorMessage });
+    logger.info('Wallet payment attempt reset', { sessionId, txHash, errorMessage });
+    broadcastSessionStatus(sessionId, 'pending');
   }
 
   return row ? mapSessionRow(row) : null;

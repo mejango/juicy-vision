@@ -109,14 +109,14 @@ describe('TransactionWarning', () => {
   })
 
   describe('checkbox and acknowledgment', () => {
-    it('shows risk acknowledgment text for critical doubts', () => {
+    it('does not offer an acknowledgment override for critical doubts', () => {
       const doubts: TransactionDoubt[] = [
         { severity: 'critical', message: 'Critical issue' },
       ]
       render(<TransactionWarning {...defaultProps} doubts={doubts} />)
-      expect(
-        screen.getByText('I understand the risks and want to proceed anyway')
-      ).toBeInTheDocument()
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /proceed/i })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Go Back' })).toBeInTheDocument()
     })
 
     it('shows review acknowledgment text for warning-only doubts', () => {
@@ -154,32 +154,32 @@ describe('TransactionWarning', () => {
   })
 
   describe('button behavior', () => {
-    it('shows Cancel and Proceed Anyway buttons', () => {
+    it('shows Cancel and Proceed buttons for warning-only doubts', () => {
       const doubts: TransactionDoubt[] = [
         { severity: 'warning', message: 'Warning' },
       ]
       render(<TransactionWarning {...defaultProps} doubts={doubts} />)
       expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Proceed Anyway' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Proceed' })).toBeInTheDocument()
     })
 
-    it('Proceed Anyway button is disabled by default', () => {
+    it('Proceed button is disabled by default', () => {
       const doubts: TransactionDoubt[] = [
         { severity: 'warning', message: 'Warning' },
       ]
       render(<TransactionWarning {...defaultProps} doubts={doubts} />)
-      const proceedButton = screen.getByRole('button', { name: 'Proceed Anyway' })
+      const proceedButton = screen.getByRole('button', { name: 'Proceed' })
       expect(proceedButton).toBeDisabled()
     })
 
-    it('Proceed Anyway button is enabled after checkbox is checked', async () => {
+    it('Proceed button is enabled after checkbox is checked', async () => {
       const doubts: TransactionDoubt[] = [
         { severity: 'warning', message: 'Warning' },
       ]
       render(<TransactionWarning {...defaultProps} doubts={doubts} />)
 
       const checkbox = screen.getByRole('checkbox')
-      const proceedButton = screen.getByRole('button', { name: 'Proceed Anyway' })
+      const proceedButton = screen.getByRole('button', { name: 'Proceed' })
 
       expect(proceedButton).toBeDisabled()
 
@@ -200,7 +200,7 @@ describe('TransactionWarning', () => {
       expect(onCancel).toHaveBeenCalledTimes(1)
     })
 
-    it('Proceed Anyway button calls onConfirm when enabled and clicked', async () => {
+    it('Proceed button calls onConfirm when enabled and clicked', async () => {
       const onConfirm = vi.fn()
       const doubts: TransactionDoubt[] = [
         { severity: 'warning', message: 'Warning' },
@@ -208,7 +208,7 @@ describe('TransactionWarning', () => {
       render(<TransactionWarning {...defaultProps} doubts={doubts} onConfirm={onConfirm} />)
 
       const checkbox = screen.getByRole('checkbox')
-      const proceedButton = screen.getByRole('button', { name: 'Proceed Anyway' })
+      const proceedButton = screen.getByRole('button', { name: 'Proceed' })
 
       await user.click(checkbox)
       await user.click(proceedButton)
@@ -216,14 +216,14 @@ describe('TransactionWarning', () => {
       expect(onConfirm).toHaveBeenCalledTimes(1)
     })
 
-    it('Proceed Anyway button does not call onConfirm when disabled', async () => {
+    it('Proceed button does not call onConfirm when disabled', async () => {
       const onConfirm = vi.fn()
       const doubts: TransactionDoubt[] = [
         { severity: 'warning', message: 'Warning' },
       ]
       render(<TransactionWarning {...defaultProps} doubts={doubts} onConfirm={onConfirm} />)
 
-      const proceedButton = screen.getByRole('button', { name: 'Proceed Anyway' })
+      const proceedButton = screen.getByRole('button', { name: 'Proceed' })
 
       // Try to click disabled button
       await user.click(proceedButton)

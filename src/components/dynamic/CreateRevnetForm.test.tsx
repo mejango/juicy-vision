@@ -32,6 +32,10 @@ vi.mock('../../services/relayr', () => ({
   calculateSynchronizedStartTime: vi.fn(() => Math.floor(Date.now() / 1000) + 300),
 }))
 
+vi.mock('../../services/ipfsPinning', () => ({
+  pinMetadata: vi.fn().mockResolvedValue('ipfs://QmRevnetMetadata'),
+}))
+
 // Mock DeployRevnetModal
 vi.mock('../payment', () => ({
   DeployRevnetModal: vi.fn(({ isOpen, onClose, name, chainIds, stageConfigurations, autoDeploySuckers }) =>
@@ -56,7 +60,16 @@ describe('CreateRevnetForm', () => {
 
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
-    useAuthStore.setState({ mode: 'self_custody' })
+    useAuthStore.setState({
+      mode: 'managed',
+      token: 'test-token',
+      user: {
+        id: 'test-user',
+        email: 'test@juicy.vision',
+        privacyMode: 'open_book',
+        hasCustodialWallet: true,
+      },
+    })
     localStorage.clear()
     vi.clearAllMocks()
 
@@ -70,16 +83,17 @@ describe('CreateRevnetForm', () => {
     it('renders the form with header', () => {
       render(<CreateRevnetForm />)
 
-      expect(screen.getByText('Deploy Revnet')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Deploy Revnet' })).toBeInTheDocument()
     })
 
-    it('renders chain selection with all chains selected by default', () => {
+    it('renders every chain option with a single-chain default', () => {
       render(<CreateRevnetForm />)
 
       expect(screen.getByText(ETH_LABEL)).toBeInTheDocument()
       expect(screen.getByText(OP_LABEL)).toBeInTheDocument()
       expect(screen.getByText(BASE_LABEL)).toBeInTheDocument()
       expect(screen.getByText(ARB_LABEL)).toBeInTheDocument()
+      expect(screen.getByText(/on 1 chain/)).toBeInTheDocument()
     })
 
     it('renders revnet info fields', () => {
@@ -100,7 +114,7 @@ describe('CreateRevnetForm', () => {
       render(<CreateRevnetForm />)
 
       expect(screen.getByText('Gas Sponsored')).toBeInTheDocument()
-      expect(screen.getByText(/Revnet deployment is free/)).toBeInTheDocument()
+      expect(screen.getByText(/exact protocol creation fee is shown before deployment/i)).toBeInTheDocument()
     })
 
     it('renders deploy button disabled initially', () => {
@@ -119,22 +133,24 @@ describe('CreateRevnetForm', () => {
   })
 
   describe('form validation', () => {
-    it('enables deploy button when name is filled', async () => {
+    it('enables deploy button when name and ticker are filled', async () => {
       render(<CreateRevnetForm />)
 
       const nameInput = screen.getByPlaceholderText('My Revnet')
       await user.type(nameInput, 'Test Revnet')
+      await user.type(screen.getByPlaceholderText('TOKEN'), 'TEST')
 
       const button = screen.getByRole('button', { name: /Deploy Revnet/i })
       expect(button).not.toBeDisabled()
     })
 
     it('disables deploy button when no chains selected', async () => {
-      render(<CreateRevnetForm />)
+      render(<CreateRevnetForm defaultChainIds={ALL_CHAIN_IDS} />)
 
       // Fill name
       const nameInput = screen.getByPlaceholderText('My Revnet')
       await user.type(nameInput, 'Test Revnet')
+      await user.type(screen.getByPlaceholderText('TOKEN'), 'TEST')
 
       // Deselect all chains
       const ethButton = screen.getByText(ETH_LABEL)
@@ -154,7 +170,7 @@ describe('CreateRevnetForm', () => {
 
   describe('chain selection', () => {
     it('toggles chain selection on click', async () => {
-      render(<CreateRevnetForm />)
+      render(<CreateRevnetForm defaultChainIds={[ALL_CHAIN_IDS[0]]} />)
 
       const ethButton = screen.getByText(ETH_LABEL)
 
@@ -173,19 +189,14 @@ describe('CreateRevnetForm', () => {
     })
 
     it('shows synchronized start time when multiple chains selected', () => {
-      render(<CreateRevnetForm />)
+      render(<CreateRevnetForm defaultChainIds={ALL_CHAIN_IDS} />)
 
       expect(screen.getByText('Synchronized Start Time')).toBeInTheDocument()
       expect(screen.getByText('All chains activate at the same time')).toBeInTheDocument()
     })
 
     it('hides synchronized start time for single chain', async () => {
-      render(<CreateRevnetForm />)
-
-      // Deselect all but one chain
-      await user.click(screen.getByText(OP_LABEL))
-      await user.click(screen.getByText(BASE_LABEL))
-      await user.click(screen.getByText(ARB_LABEL))
+      render(<CreateRevnetForm defaultChainIds={[ALL_CHAIN_IDS[0]]} />)
 
       expect(screen.queryByText('Synchronized Start Time')).not.toBeInTheDocument()
     })
@@ -251,6 +262,7 @@ describe('CreateRevnetForm', () => {
 
       const nameInput = screen.getByPlaceholderText('My Revnet')
       await user.type(nameInput, 'My Test Revnet')
+      await user.type(screen.getByPlaceholderText('TOKEN'), 'TEST')
 
       const deployButton = screen.getByRole('button', { name: /Deploy Revnet/i })
       await user.click(deployButton)
@@ -269,6 +281,7 @@ describe('CreateRevnetForm', () => {
 
       const nameInput = screen.getByPlaceholderText('My Revnet')
       await user.type(nameInput, 'Test')
+      await user.type(screen.getByPlaceholderText('TOKEN'), 'TEST')
 
       const deployButton = screen.getByRole('button', { name: /Deploy Revnet/i })
       await user.click(deployButton)
@@ -281,6 +294,7 @@ describe('CreateRevnetForm', () => {
 
       const nameInput = screen.getByPlaceholderText('My Revnet')
       await user.type(nameInput, 'Test')
+      await user.type(screen.getByPlaceholderText('TOKEN'), 'TEST')
 
       const deployButton = screen.getByRole('button', { name: /Deploy Revnet/i })
       await user.click(deployButton)
@@ -297,6 +311,7 @@ describe('CreateRevnetForm', () => {
 
       const nameInput = screen.getByPlaceholderText('My Revnet')
       await user.type(nameInput, 'Test')
+      await user.type(screen.getByPlaceholderText('TOKEN'), 'TEST')
 
       const deployButton = screen.getByRole('button', { name: /Deploy Revnet/i })
       await user.click(deployButton)
@@ -305,7 +320,7 @@ describe('CreateRevnetForm', () => {
     })
 
     it('shows chain count on button for multi-chain', () => {
-      render(<CreateRevnetForm />)
+      render(<CreateRevnetForm defaultChainIds={ALL_CHAIN_IDS} />)
 
       const button = screen.getByRole('button', { name: /Deploy Revnet on 4 Chains/i })
       expect(button).toBeInTheDocument()
@@ -331,22 +346,14 @@ describe('CreateRevnetForm', () => {
   })
 
   describe('default props', () => {
-    it('uses default operator from defaultOperator prop', async () => {
-      const { DeployRevnetModal } = await import('../payment')
-      const mockedModal = DeployRevnetModal as Mock
+    it('does not expose an editable operator address', () => {
+      render(<CreateRevnetForm />)
 
-      render(<CreateRevnetForm defaultOperator="0xcustom1234567890123456789012345678901234" />)
-
-      const nameInput = screen.getByPlaceholderText('My Revnet')
-      await user.type(nameInput, 'Test')
-
-      await user.click(screen.getByRole('button', { name: /Deploy Revnet/i }))
-
-      expect(mockedModal).toHaveBeenCalled()
+      expect(document.querySelector('input[placeholder*="0x"]')).not.toBeInTheDocument()
     })
 
     it('uses default chain IDs from prop', () => {
-      render(<CreateRevnetForm defaultChainIds={[1, 10]} />)
+      render(<CreateRevnetForm defaultChainIds={ALL_CHAIN_IDS.slice(0, 2)} />)
 
       // Should only show 2 chains as selected - button text shows plural form
       const button = screen.getByRole('button', { name: /Deploy Revnet on 2 Chains/i })
@@ -373,14 +380,10 @@ describe('CreateRevnetForm', () => {
       expect(taglineInput.value).toBe('This is a test tagline')
     })
 
-    it('updates split operator field', async () => {
+    it('does not render a split operator input', () => {
       render(<CreateRevnetForm />)
 
-      const operatorInput = document.querySelector('input[placeholder*="0x"]') as HTMLInputElement
-      if (operatorInput) {
-        await user.type(operatorInput, '0xnewoperator')
-        expect(operatorInput.value).toBe('0xnewoperator')
-      }
+      expect(document.querySelector('input[placeholder*="0x"]')).not.toBeInTheDocument()
     })
 
     it('toggles auto-deploy suckers checkbox', async () => {
@@ -398,26 +401,22 @@ describe('CreateRevnetForm', () => {
   })
 
   describe('wallet connection handling', () => {
-    it('opens wallet panel when not connected', async () => {
-      mockedUseAccount.mockReturnValue({
-        address: undefined,
-        isConnected: false,
-      })
-
+    it('opens managed sign-in before revnet deployment', async () => {
+      useAuthStore.setState({ mode: 'self_custody', token: null, user: null })
       const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
 
-      // Provide default operator to make form valid despite no wallet
-      render(<CreateRevnetForm defaultOperator="0x1234567890123456789012345678901234567890" />)
+      render(<CreateRevnetForm />)
 
       const nameInput = screen.getByPlaceholderText('My Revnet')
       await user.type(nameInput, 'Test')
+      await user.type(screen.getByPlaceholderText('TOKEN'), 'TEST')
 
-      const button = screen.getByRole('button', { name: /Deploy Revnet/i })
+      const button = screen.getByRole('button', { name: /Sign in to deploy/i })
       await user.click(button)
 
       expect(dispatchSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: 'juice:open-wallet-panel',
+          type: 'juice:open-auth-modal',
         })
       )
 
@@ -435,7 +434,7 @@ describe('CreateRevnetForm', () => {
       expect(screen.getByText('Issuance Rate')).toBeInTheDocument()
       expect(screen.getByText('Decay Every (days)')).toBeInTheDocument()
       expect(screen.getByText('Decay (%)')).toBeInTheDocument()
-      expect(screen.getByText('Exit Tax (%)')).toBeInTheDocument()
+      expect(screen.getByText('Cash-out curve rate (%)')).toBeInTheDocument()
     })
 
     it('shows "Days after prev" label for non-first stages', async () => {

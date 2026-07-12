@@ -12,6 +12,7 @@ vi.mock('../../services/bendystraw', () => ({
 // Mock IPFS utility
 vi.mock('../../utils/ipfs', () => ({
   resolveIpfsUri: (uri: string) => uri ? `https://ipfs.io/ipfs/${uri}` : null,
+  ipfsGatewayUrls: (uri: string) => uri ? [`https://ipfs.io/ipfs/${uri}`] : [],
 }))
 
 const mockProjects = [

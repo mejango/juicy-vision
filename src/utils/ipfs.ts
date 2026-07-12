@@ -1,7 +1,10 @@
 // IPFS gateway resolution and pinning utilities
 
-// Use ipfs.io gateway for reads (better CORS support)
-const IPFS_GATEWAY = 'https://ipfs.io/ipfs/'
+const IPFS_PATH_GATEWAYS = [
+  'https://gateway.pinata.cloud/ipfs/',
+  'https://dweb.link/ipfs/',
+  'https://ipfs.io/ipfs/',
+] as const
 const PINATA_API_URL = 'https://api.pinata.cloud'
 
 /**
@@ -105,26 +108,19 @@ export interface IpfsProjectMetadata {
 
 // Fetch and parse project metadata from IPFS
 export async function fetchIpfsMetadata(metadataUri: string): Promise<IpfsProjectMetadata | null> {
-  const url = resolveIpfsUri(metadataUri)
-  if (!url) return null
-
-  try {
-    const response = await fetch(url)
-    if (!response.ok) return null
-    const data = await response.json()
-    return data as IpfsProjectMetadata
-  } catch {
-    return null
-  }
+  return fetchIpfsJson<IpfsProjectMetadata>(metadataUri)
 }
 
-// Check if string is an IPFS URI (ipfs://...)
-export function isIpfsUri(uri: string): boolean {
-  return uri?.startsWith('ipfs://')
+// Accept pinned CIDv0/CIDv1 URIs. Paths are optional for read-only metadata
+// references, while transaction forms can require the CID root explicitly.
+export function isIpfsUri(uri: string, allowPath = true): boolean {
+  const suffix = allowPath ? '(?:/[^\\s]*)?' : ''
+  return new RegExp(`^ipfs://(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,120})${suffix}$`).test(uri)
 }
 
 // Base58 alphabet (Bitcoin/IPFS style)
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
 
 /**
  * Decode base58 string to bytes
@@ -187,6 +183,101 @@ function base58Encode(bytes: Uint8Array): string {
   return result
 }
 
+function base32Decode(value: string): Uint8Array {
+  const normalized = value.trim().toLowerCase()
+  if (!normalized.startsWith('b')) throw new Error('Only base32 CIDv1 values are supported')
+  const input = normalized.slice(1).replace(/=+$/, '')
+  const output: number[] = []
+  let bits = 0
+  let buffer = 0
+  for (const char of input) {
+    const index = BASE32_ALPHABET.indexOf(char)
+    if (index < 0) throw new Error(`Invalid base32 character: ${char}`)
+    buffer = (buffer << 5) | index
+    bits += 5
+    if (bits >= 8) {
+      output.push((buffer >> (bits - 8)) & 0xff)
+      bits -= 8
+      buffer &= bits === 0 ? 0 : (1 << bits) - 1
+    }
+  }
+  return new Uint8Array(output)
+}
+
+function base32Encode(bytes: Uint8Array): string {
+  let result = ''
+  let bits = 0
+  let buffer = 0
+  for (const byte of bytes) {
+    buffer = (buffer << 8) | byte
+    bits += 8
+    while (bits >= 5) {
+      result += BASE32_ALPHABET[(buffer >>> (bits - 5)) & 31]
+      bits -= 5
+      buffer &= bits === 0 ? 0 : (1 << bits) - 1
+    }
+  }
+  if (bits > 0) result += BASE32_ALPHABET[(buffer << (5 - bits)) & 31]
+  return result
+}
+
+function readVarint(bytes: Uint8Array, offset: number): { value: number; offset: number } {
+  let value = 0
+  let shift = 0
+  for (let index = offset; index < bytes.length; index++) {
+    const byte = bytes[index]
+    value += (byte & 0x7f) * (2 ** shift)
+    if ((byte & 0x80) === 0) return { value, offset: index + 1 }
+    shift += 7
+    if (shift > 49) throw new Error('CID varint is too large')
+  }
+  throw new Error('CID varint is truncated')
+}
+
+function cidV1Parts(cid: string): { codec: number; digest: Uint8Array } {
+  const raw = base32Decode(cid)
+  const version = readVarint(raw, 0)
+  if (version.value !== 1) throw new Error(`Unsupported CID version: ${version.value}`)
+  const codec = readVarint(raw, version.offset)
+  const multihashCode = readVarint(raw, codec.offset)
+  const multihashLength = readVarint(raw, multihashCode.offset)
+  if (multihashCode.value !== 0x12 || multihashLength.value !== 32) {
+    throw new Error('Only 32-byte sha2-256 IPFS hashes are supported')
+  }
+  if (multihashLength.offset + multihashLength.value !== raw.length) {
+    throw new Error('CIDv1 multihash length is invalid')
+  }
+  return {
+    codec: codec.value,
+    digest: raw.slice(multihashLength.offset),
+  }
+}
+
+function ipfsLocation(uri: string): { cid: string; path: string } | null {
+  let value = uri.trim()
+  if (!value) return null
+  if (value.startsWith('ipfs://')) {
+    value = value.slice(7)
+  } else if (/^https?:\/\//i.test(value)) {
+    try {
+      const parsed = new URL(value)
+      const pathMatch = parsed.pathname.match(/^\/ipfs\/([^/]+)(\/.*)?$/i)
+      if (pathMatch) return { cid: pathMatch[1], path: (pathMatch[2] || '').replace(/^\//, '') }
+      const subdomain = parsed.hostname.split('.')[0]
+      if (/^(Qm|b[a-z2-7])/i.test(subdomain)) {
+        return { cid: subdomain, path: parsed.pathname.replace(/^\//, '') }
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+  const slash = value.indexOf('/')
+  return slash === -1
+    ? { cid: value, path: '' }
+    : { cid: value.slice(0, slash), path: value.slice(slash + 1) }
+}
+
 /**
  * Encode an IPFS CID to a hex bytes32 for on-chain storage
  *
@@ -199,40 +290,30 @@ function base58Encode(bytes: Uint8Array): string {
  */
 export function encodeIpfsUri(cid: string | undefined | null): string | null {
   if (!cid) return null
+  const location = ipfsLocation(cid)
+  if (!location) throw new Error('Metadata URI is not an IPFS CID')
+  if (location.path) throw new Error('Tier metadata must use an IPFS root CID without a path')
 
-  // Extract CID if it's an ipfs:// URI
-  let cleanCid = cid
-  if (cid.startsWith('ipfs://')) {
-    cleanCid = cid.slice(7) // Remove 'ipfs://'
-  }
-
-  // Should be a CIDv0 starting with Qm
-  if (!cleanCid.startsWith('Qm')) {
-    return null
-  }
-
-  try {
-    // Decode base58 to get the multihash bytes
-    const decoded = base58Decode(cleanCid)
-
-    // CIDv0 multihash: 0x12 (sha2-256) + 0x20 (32 bytes) + 32-byte hash
-    // We need to skip the first 2 bytes (0x1220) and get the 32-byte hash
-    if (decoded.length !== 34) {
-      return null
+  let digest: Uint8Array
+  if (location.cid.startsWith('Qm')) {
+    const decoded = base58Decode(location.cid)
+    if (decoded.length !== 34 || decoded[0] !== 0x12 || decoded[1] !== 0x20) {
+      throw new Error('CIDv0 must use a 32-byte sha2-256 multihash')
     }
-
-    // Extract the 32-byte hash (skip first 2 bytes)
-    const hash = decoded.slice(2)
-
-    // Convert to hex
-    const hex = Array.from(hash)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('')
-
-    return `0x${hex}`
-  } catch {
-    return null
+    digest = decoded.slice(2)
+  } else if (location.cid.toLowerCase().startsWith('b')) {
+    const parts = cidV1Parts(location.cid)
+    if (parts.codec !== 0x70) {
+      throw new Error(
+        'Raw CIDv1 metadata cannot be stored in the 721 bytes32 URI slot; pin it as DAG-PB first',
+      )
+    }
+    digest = parts.digest
+  } else {
+    throw new Error('Only CIDv0 or base32 CIDv1 metadata is supported')
   }
+
+  return `0x${Array.from(digest).map(byte => byte.toString(16).padStart(2, '0')).join('')}`
 }
 
 /**
@@ -245,6 +326,12 @@ export function encodeIpfsUri(cid: string | undefined | null): string | null {
  * @returns IPFS URI (ipfs://Qm...) or null if invalid
  */
 export function decodeEncodedIPFSUri(encodedUri: string | undefined | null): string | null {
+  return decodeEncodedIPFSUriCandidates(encodedUri)?.[0] ?? null
+}
+
+export function decodeEncodedIPFSUriCandidates(
+  encodedUri: string | undefined | null,
+): [string, string] | null {
   if (!encodedUri) return null
 
   // Remove 0x prefix if present
@@ -276,34 +363,18 @@ export function decodeEncodedIPFSUri(encodedUri: string | undefined | null): str
   // CIDv0 should start with Qm
   if (!cid.startsWith('Qm')) return null
 
-  return `ipfs://${cid}`
+  const rawCidV1 = `b${base32Encode(new Uint8Array([0x01, 0x55, ...bytes]))}`
+  return [`ipfs://${cid}`, `ipfs://${rawCidV1}`]
 }
 
 // Extract CID from IPFS URI
 export function cidFromIpfsUri(uri: string): string | null {
-  if (!isIpfsUri(uri)) return null
-  return uri.replace('ipfs://', '')
+  return ipfsLocation(uri)?.cid ?? null
 }
 
 // Check if URL is a legacy Pinata URL that needs migration
 function isLegacyPinataUrl(url: string): boolean {
   return url?.includes('jbx.mypinata.cloud')
-}
-
-// Extract CID from various URL formats
-function extractCid(url: string): string | null {
-  // ipfs://CID
-  if (isIpfsUri(url)) {
-    return cidFromIpfsUri(url)
-  }
-
-  // https://gateway.../ipfs/CID or https://gateway.../ipfs/CID/...
-  const ipfsMatch = url.match(/\/ipfs\/([a-zA-Z0-9]+)/)
-  if (ipfsMatch) {
-    return ipfsMatch[1]
-  }
-
-  return null
 }
 
 // Convert any logo URI to a working HTTP URL
@@ -316,14 +387,12 @@ export function resolveIpfsUri(uri: string | undefined | null): string | null {
   }
 
   // IPFS URI or legacy URL - extract CID and use gateway
-  const cid = extractCid(uri)
-  if (cid) {
-    return `${IPFS_GATEWAY}${cid}`
-  }
+  const urls = ipfsGatewayUrls(uri)
+  if (urls.length > 0) return urls[0]
 
   // If it starts with Qm or baf, it might be a raw CID
   if (uri.match(/^(Qm[a-zA-Z0-9]{44}|baf[a-zA-Z0-9]+)$/)) {
-    return `${IPFS_GATEWAY}${uri}`
+    return `${IPFS_PATH_GATEWAYS[0]}${uri}`
   }
 
   // Fallback - return as-is if it's a URL
@@ -331,6 +400,31 @@ export function resolveIpfsUri(uri: string | undefined | null): string | null {
     return uri
   }
 
+  return null
+}
+
+export function ipfsGatewayUrls(uri: string | undefined | null): string[] {
+  if (!uri) return []
+  const location = ipfsLocation(uri)
+  if (!location) return /^https?:\/\//i.test(uri) ? [uri] : []
+  const suffix = location.path ? `/${location.path}` : ''
+  const urls = IPFS_PATH_GATEWAYS.map(gateway => `${gateway}${location.cid}${suffix}`)
+  if (location.cid.toLowerCase().startsWith('b')) {
+    urls.splice(1, 0, `https://${location.cid}.eth.sucks${suffix}`)
+  }
+  return [...new Set(urls)]
+}
+
+export async function fetchIpfsJson<T>(uri: string): Promise<T | null> {
+  for (const url of ipfsGatewayUrls(uri)) {
+    try {
+      const response = await fetch(url)
+      if (!response.ok) continue
+      return await response.json() as T
+    } catch {
+      // Try the next immutable gateway candidate.
+    }
+  }
   return null
 }
 
@@ -389,6 +483,7 @@ export async function pinJson(
   }
 
   const result = (await response.json()) as PinataResponse
+  encodeIpfsUri(result.IpfsHash)
   return result.IpfsHash
 }
 
@@ -517,7 +612,6 @@ async function fetchImageAsDataUri(url: string): Promise<string | null> {
     if (!response.ok) return null
 
     const blob = await response.blob()
-    const mimeType = blob.type || 'image/png'
 
     return new Promise((resolve) => {
       const reader = new FileReader()

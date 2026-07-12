@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
-import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
-import { fetchProject, fetchConnectedChains, fetchIssuanceRate, fetchSuckerGroupBalance, fetchOwnersCount, fetchEthPrice, fetchProjectTokenSymbol, fetchProjectWithRuleset, type Project, type ConnectedChain, type IssuanceRate, type SuckerGroupBalance } from '../../services/bendystraw'
-import { resolveIpfsUri, fetchIpfsMetadata, type IpfsProjectMetadata } from '../../utils/ipfs'
-import { getProjectDataHook, fetchResolvedNFTTiers, fetchHookFlags, resolveTierUri, type ResolvedNFTTier, type JB721HookFlags } from '../../services/nft'
+import { createPublicClient, http, formatEther, formatUnits, parseUnits, erc20Abi } from 'viem'
+import { fetchProject, fetchSuckerGroupBalance, fetchOwnersCount, fetchEthPrice, fetchProjectTokenSymbol, fetchProjectWithRuleset, fetchProjectAccountingContexts, type Project, type ConnectedChain, type SuckerGroupBalance } from '../../services/bendystraw'
+import type { IpfsProjectMetadata } from '../../utils/ipfs'
+import { getProjectDataHook, fetchResolvedNFTTiers, fetchHookFlags, getEffectiveTierPrice, resolveTierUri, type ResolvedNFTTier, type JB721HookFlags } from '../../services/nft'
 import { inlineSvgImages } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore, type PaymentStage, type TransactionStatus } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, CHAINS, type SupportedChainId } from '../../constants'
@@ -12,28 +12,39 @@ import { isUsdcCurrency } from '../../utils/technicalDetails'
 import { useJuiceBalance } from '../../hooks/useJuiceBalance'
 import { useWalletBalances } from '../../hooks/useWalletBalances'
 import { useManagedWallet } from '../../hooks'
-import { useProjectCardPaymentState, type ProjectCardPaymentState } from '../../hooks/useComponentState'
+import { useProjectCardPaymentState } from '../../hooks/useComponentState'
 import BuyJuiceModal from '../juice/BuyJuiceModal'
 import { ProjectLink } from './ProjectLink'
-
-// Parse HTML/markdown description to clean text with line breaks
-function parseDescription(html: string): string[] {
-  // Replace <p> tags with newlines, strip other HTML
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>\s*<p>/gi, '\n\n')
-    .replace(/<p>/gi, '')
-    .replace(/<\/p>/gi, '')
-    .replace(/<[^>]+>/g, '')
-    .split(/\n\n+/)
-    .map(p => p.trim())
-    .filter(p => p.length > 0)
-}
+import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
+import { assertCurrentProjectPayConfigurationTrusted } from '../../utils/projectTrust'
+import { calculatePayerTokenCount } from '../../utils/rulesetMath'
+import { resolveProjectChains } from '../../utils/projectChains'
+import { ChainMappingWarning } from './ChainMappingWarning'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 // Metadata extracted from on-chain resolver
 interface OnChainTierMetadata {
   productName?: string
   categoryName?: string
+}
+
+function isEthTierCurrency(currency: number): boolean {
+  return currency === 1 || currency === 61166
+}
+
+function isUsdTierCurrency(currency: number): boolean {
+  return currency === 2 || isUsdcCurrency(currency)
+}
+
+function isSupportedTierCurrency(currency: number): boolean {
+  return isEthTierCurrency(currency) || isUsdTierCurrency(currency)
+}
+
+function formatTierPrice(tier: ResolvedNFTTier): string {
+  const amount = formatUnits(getEffectiveTierPrice(tier), tier.pricingDecimals)
+  if (isUsdTierCurrency(tier.currency)) return `$${amount}`
+  if (isEthTierCurrency(tier.currency)) return `${amount} ETH`
+  return 'Pricing unavailable'
 }
 
 // Small component for tier preview images with on-chain fallback
@@ -56,12 +67,18 @@ function TierPreviewImage({
   const spinnerSize = size === 'large' ? 'w-6 h-6' : size === 'small' ? 'w-2.5 h-2.5' : 'w-3 h-3'
   const [onChainImage, setOnChainImage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [ipfsUnavailable, setIpfsUnavailable] = useState(false)
 
-  const ipfsImageUrl = resolveIpfsUri(tier.imageUri)
+  const hasIpfsImage = Boolean(tier.imageUri) && !ipfsUnavailable
+
+  useEffect(() => {
+    setIpfsUnavailable(false)
+    setOnChainImage(null)
+  }, [tier.imageUri])
 
   // Lazy load on-chain SVG if no IPFS image
   useEffect(() => {
-    if (ipfsImageUrl || onChainImage || loading || !hookAddress) return
+    if (hasIpfsImage || onChainImage || loading || !hookAddress) return
 
     setLoading(true)
     resolveTierUri(hookAddress, tier.tierId, chainId)
@@ -92,9 +109,7 @@ function TierPreviewImage({
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [ipfsImageUrl, onChainImage, loading, hookAddress, tier.tierId, chainId, onMetadataLoaded])
-
-  const imageUrl = ipfsImageUrl || onChainImage
+  }, [hasIpfsImage, onChainImage, loading, hookAddress, tier.tierId, chainId, onMetadataLoaded])
 
   if (loading) {
     return (
@@ -104,8 +119,19 @@ function TierPreviewImage({
     )
   }
 
-  if (imageUrl) {
-    return <img src={imageUrl} alt="" className={`${sizeClass} object-contain bg-white`} />
+  if (hasIpfsImage && tier.imageUri) {
+    return (
+      <IpfsImage
+        uri={tier.imageUri}
+        alt=""
+        className={`${sizeClass} object-contain bg-white`}
+        onError={() => setIpfsUnavailable(true)}
+      />
+    )
+  }
+
+  if (onChainImage) {
+    return <IpfsImage uri={onChainImage} alt="" className={`${sizeClass} object-contain bg-white`} />
   }
 
   return (
@@ -136,38 +162,44 @@ const CHAIN_INFO: Record<string, { name: string; slug: string }> = {
   '421614': { name: 'Arb Sepolia', slug: 'arbsepolia' },
 }
 
-// All chains as fallback when no sucker data available
-const ALL_MAINNET_CHAINS: Array<{ chainId: number; projectId: number }> = [
-  { chainId: 1, projectId: 0 },  // projectId 0 means use the prop value
-  { chainId: 10, projectId: 0 },
-  { chainId: 8453, projectId: 0 },
-  { chainId: 42161, projectId: 0 },
-]
+interface IssuancePreview {
+  weight: bigint
+  paymentDecimals: number
+  reservedPercent: number
+}
 
-const ALL_TESTNET_CHAINS: Array<{ chainId: number; projectId: number }> = [
-  { chainId: 11155111, projectId: 0 },  // Sepolia
-  { chainId: 11155420, projectId: 0 },  // OP Sepolia
-  { chainId: 84532, projectId: 0 },     // Base Sepolia
-  { chainId: 421614, projectId: 0 },    // Arb Sepolia
-]
-
-// Testnet chain IDs for detection
-const TESTNET_CHAIN_IDS = [11155111, 11155420, 84532, 421614]
-
-const TOKENS = [
-  { symbol: 'ETH', name: 'Ether' },
-  { symbol: 'USDC', name: 'USD Coin' },
-  { symbol: 'PAY_CREDITS', name: 'Pay Credits' },
-]
+function formatExactTokenEstimate(value: bigint, maximumFractionDigits = 2): string {
+  const tokenScale = 10n ** 18n
+  const displayScale = 10n ** BigInt(maximumFractionDigits)
+  const rounded = (value * displayScale + tokenScale / 2n) / tokenScale
+  const whole = rounded / displayScale
+  const fraction = (rounded % displayScale)
+    .toString()
+    .padStart(maximumFractionDigits, '0')
+    .replace(/0+$/, '')
+  return `${whole.toLocaleString('en-US')}${fraction ? `.${fraction}` : ''}`
+}
 
 export type PaymentToken = 'ETH' | 'USDC' | 'PAY_CREDITS'
+
+interface PaymentTokenOption {
+  symbol: PaymentToken
+  name: string
+  decimals: number
+  currency: number
+  route: 'direct' | 'routed' | 'credits'
+}
+
+const ONCHAIN_PAYMENT_CANDIDATES = [
+  { symbol: 'ETH' as const, name: 'Ether', decimals: 18 },
+  { symbol: 'USDC' as const, name: 'USD Coin', decimals: 6 },
+]
 
 // Stage labels for payment progress
 const STAGE_LABELS: Record<PaymentStage, string> = {
   checking: 'Checking wallet...',
   switching: 'Switching network...',
   approving: 'Approve USDC in wallet...',
-  signing: 'Sign permit in wallet...',
   submitting: 'Confirm transaction...',
   confirming: 'Waiting for confirmation...',
   queueing: 'Queuing payment...',
@@ -339,8 +371,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const amountInputRef = useRef<HTMLInputElement>(null)
   // Connected chains with their project IDs (may differ per chain)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   // Current issuance rate for token calculation
-  const [issuanceRate, setIssuanceRate] = useState<IssuanceRate | null>(null)
+  const [issuancePreview, setIssuancePreview] = useState<IssuancePreview | null>(null)
   // Full metadata from IPFS (has complete description)
   const [fullMetadata, setFullMetadata] = useState<IpfsProjectMetadata | null>(null)
   // Sucker group balance (total + per-chain breakdown)
@@ -348,15 +381,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   // ETH price in USD
   const [ethPrice, setEthPrice] = useState<number | null>(null)
   const [ethPriceLoading, setEthPriceLoading] = useState(true)
-  const [ethPriceError, setEthPriceError] = useState(false)
   // Owners count (unique token holders with balance > 0)
   const [ownersCount, setOwnersCount] = useState<number | null>(null)
   // Tooltip hover states
   const [showBalanceTooltip, setShowBalanceTooltip] = useState(false)
   const [showPaymentsTooltip, setShowPaymentsTooltip] = useState(false)
-  // Pay us feature
-  const [payUs, setPayUs] = useState(true)
-  const [juicyIssuanceRate, setJuicyIssuanceRate] = useState<IssuanceRate | null>(null)
   // Wallet balance state
   const [walletEthBalance, setWalletEthBalance] = useState<bigint | null>(null)
   const [walletUsdcBalance, setWalletUsdcBalance] = useState<bigint | null>(null)
@@ -369,16 +398,16 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [nftTiers, setNftTiers] = useState<ResolvedNFTTier[]>([])
   const [nftHookAddress, setNftHookAddress] = useState<`0x${string}` | null>(null)
   const [nftHookFlags, setNftHookFlags] = useState<JB721HookFlags | null>(null)
+  const [nftSafetyError, setNftSafetyError] = useState<string | null>(null)
+  const [paymentSafetyError, setPaymentSafetyError] = useState<string | null>(null)
+  const [paymentSafetyLoading, setPaymentSafetyLoading] = useState(true)
+  const [paymentTokenOptions, setPaymentTokenOptions] = useState<PaymentTokenOption[]>([])
   // Track quantity for each selected tier: { tierId: quantity }
   const [tierQuantities, setTierQuantities] = useState<Record<number, number>>({})
   // Derived: array of tier IDs (each ID repeated by quantity) for payment encoding
   const selectedTierIds = Object.entries(tierQuantities).flatMap(([id, qty]) =>
     Array(qty).fill(Number(id))
   )
-  // Backward compatibility - first selected tier ID (for single-tier operations)
-  const selectedTierId = selectedTierIds.length > 0 ? selectedTierIds[0] : null
-  const setSelectedTierId = (id: number | null) => setTierQuantities(id ? { [id]: 1 } : {})
-  const [showAllTiers, setShowAllTiers] = useState(false)
   // Cache for on-chain metadata (productName, categoryName) by tierId
   const [tierMetadata, setTierMetadata] = useState<Record<number, OnChainTierMetadata>>({})
 
@@ -403,7 +432,12 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const { balance: juiceBalance, refetch: refetchJuiceBalance } = useJuiceBalance()
 
   // Cross-chain wallet balances for zero-state detection
-  const { totalEth: crossChainEth, totalUsdc: crossChainUsdc, loading: crossChainLoading } = useWalletBalances()
+  const {
+    totalEth: crossChainEth,
+    totalUsdc: crossChainUsdc,
+    loading: crossChainLoading,
+    available: crossChainBalancesAvailable,
+  } = useWalletBalances()
 
   // Managed wallet for deposit address
   const { address: managedAddress } = useManagedWallet()
@@ -417,18 +451,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
   }
 
-  // $JUICY project ID (using NANA as placeholder until real deployment)
-  // TODO(v6): update project ID once $JUICY is redeployed on V6
-  const JUICY_PROJECT_ID = 1
-  const JUICY_FEE_PERCENT = 2.5
-  // Fallback issuance rate for NANA (~1M tokens per ETH) when rate can't be fetched
-  const NANA_FALLBACK_RATE = 1000000
-
-  // Use connected chains if available, otherwise fall back to all chains
-  // Detect if this is a testnet project based on initial chainId
-  const isTestnet = TESTNET_CHAIN_IDS.includes(parseInt(initialChainId))
-  const fallbackChains = isTestnet ? ALL_TESTNET_CHAINS : ALL_MAINNET_CHAINS
-  const availableChains = connectedChains.length > 0 ? connectedChains : fallbackChains
+  const availableChains = connectedChains.length > 0
+    ? connectedChains
+    : [{ chainId: parseInt(initialChainId), projectId: parseInt(projectId) }]
 
   // Get the current project ID for the selected chain (may differ from initial projectId)
   const chainData = availableChains.find(c => c.chainId === parseInt(selectedChainId))
@@ -440,15 +465,21 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   // Fetch connected chains on mount
   useEffect(() => {
     async function loadConnectedChains() {
-      const chains = await fetchConnectedChains(projectId, parseInt(initialChainId))
-      setConnectedChains(chains)
+      try {
+        const resolution = await resolveProjectChains(projectId, parseInt(initialChainId))
+        setConnectedChains(resolution.chains)
+        setChainMappingAvailable(resolution.mappingAvailable)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Project chain is invalid')
+      }
     }
     loadConnectedChains()
   }, [projectId, initialChainId])
 
-  // Restore form state from persisted payment (for chat users who join later)
+  // Restore only payments which are still pending review or failed. Confirmed
+  // payments clear their inputs so an old cart cannot be submitted twice.
   useEffect(() => {
-    if (persistedPayment && persistedPayment.status !== 'pending') {
+    if (persistedPayment && persistedPayment.status !== 'pending' && persistedPayment.status !== 'completed') {
       // Restore form values from persisted state
       if (persistedPayment.amount) setAmount(persistedPayment.amount)
       if (persistedPayment.token) setSelectedToken(persistedPayment.token)
@@ -465,45 +496,37 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         setTierQuantities({ [persistedPayment.selectedTierId]: 1 })
       }
     }
-  }, [persistedPayment?.status]) // Only run when status changes (initial load or update)
-
-  // Fetch $JUICY issuance rate when chain changes
-  // Try selected chain first, fall back to mainnet if no data
-  useEffect(() => {
-    async function loadJuicyRate() {
-      const chainId = parseInt(selectedChainId)
-      // Try selected chain first
-      let rate = await fetchIssuanceRate(String(JUICY_PROJECT_ID), chainId).catch(() => null)
-      // If no rate found and not already on mainnet, try mainnet as fallback
-      if (!rate && chainId !== 1) {
-        rate = await fetchIssuanceRate(String(JUICY_PROJECT_ID), 1).catch(() => null)
-      }
-      setJuicyIssuanceRate(rate)
-    }
-    loadJuicyRate()
-  }, [selectedChainId])
+  }, [persistedPayment])
 
   // Fetch NFT tiers when chain changes
   useEffect(() => {
     async function loadNFTTiers() {
-      const hookAddr = await getProjectDataHook(currentProjectId, parseInt(selectedChainId))
-      if (hookAddr) {
-        setNftHookAddress(hookAddr)
-        const [tiers, flags] = await Promise.all([
-          fetchResolvedNFTTiers(hookAddr, parseInt(selectedChainId)),
-          fetchHookFlags(hookAddr, parseInt(selectedChainId)),
-        ])
-        // Only show available tiers sorted by price
-        setNftTiers(tiers.filter(t => t.remainingSupply > 0).sort((a, b) =>
-          Number(a.price - b.price)
-        ))
-        setNftHookFlags(flags)
-      } else {
+      setNftSafetyError(null)
+      try {
+        const hookAddr = await getProjectDataHook(currentProjectId, parseInt(selectedChainId))
+        if (hookAddr) {
+          setNftHookAddress(hookAddr)
+          const [tiers, flags] = await Promise.all([
+            fetchResolvedNFTTiers(hookAddr, parseInt(selectedChainId)),
+            fetchHookFlags(hookAddr, parseInt(selectedChainId)),
+          ])
+          setNftTiers(tiers.filter(t => t.remainingSupply > 0).sort((a, b) =>
+            a.price < b.price ? -1 : a.price > b.price ? 1 : 0
+          ))
+          setNftHookFlags(flags)
+        } else {
+          setNftTiers([])
+          setNftHookAddress(null)
+          setNftHookFlags(null)
+        }
+      } catch (err) {
         setNftTiers([])
         setNftHookAddress(null)
         setNftHookFlags(null)
+        setNftSafetyError(err instanceof Error ? err.message : 'Project hook configuration not recognized')
+      } finally {
+        setTierQuantities({})
       }
-      setTierQuantities({}) // Reset selection on chain change
     }
     loadNFTTiers()
   }, [currentProjectId, selectedChainId])
@@ -511,25 +534,23 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   // Fetch ETH price on mount
   useEffect(() => {
     setEthPriceLoading(true)
-    setEthPriceError(false)
     fetchEthPrice()
       .then((price) => {
         setEthPrice(price)
-        setEthPriceError(price === null)
       })
       .catch(() => {
         setEthPrice(null)
-        setEthPriceError(true)
       })
       .finally(() => setEthPriceLoading(false))
   }, [])
 
   // Fetch project data and issuance rate when chain changes
+  const hasLoadedProjectRef = useRef(false)
   useEffect(() => {
     async function load() {
       try {
         // Only show loading skeleton on initial load, not when switching chains
-        if (!project) {
+        if (!hasLoadedProjectRef.current) {
           setLoading(true)
         }
         const chainIdNum = parseInt(selectedChainId)
@@ -545,66 +566,32 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         setOwnersCount(owners)
         setProjectTokenSymbol(tokenSymbol)
 
-        // Fetch issuance rate for current chain (tokens are issued on the chain where payment happens)
-        // First try from recent pay events, then fall back to ruleset weight
-        let rate = await fetchIssuanceRate(currentProjectId, chainIdNum)
-
-        // If no rate from pay events, calculate from ruleset weight
-        if (!rate || rate.tokensPerEth === 0) {
-          const projectRuleset = await fetchProjectWithRuleset(currentProjectId, chainIdNum)
-          if (projectRuleset?.currentRuleset?.weight) {
-            // Weight is tokens (18 decimals) per unit of base currency
-            // For USDC projects (6 decimals), we need to account for decimal difference
-            const weight = BigInt(projectRuleset.currentRuleset.weight)
-            const decimals = groupBalance.decimals ?? 18
-            // tokensPerWei = weight / 1e18 gives tokens per 1 unit of currency
-            // For USDC (6 decimals): multiply by 1e12 to get tokens per USDC-wei
-            const decimalAdjustment = decimals === 6 ? 1e12 : 1
-            const tokensPerWei = (Number(weight) / 1e18) * decimalAdjustment
-            rate = { tokensPerEth: tokensPerWei, basedOnPayments: 0 }
+        // Show an issuance estimate only when the current on-chain ruleset is
+        // the complete pricing formula: no pay hook and no currency conversion.
+        // Historical payment averages can become stale at a ruleset boundary.
+        let preview: IssuancePreview | null = null
+        const projectRuleset = await fetchProjectWithRuleset(currentProjectId, chainIdNum)
+        const currentRuleset = projectRuleset?.currentRuleset
+        if (
+          currentRuleset?.weight &&
+          !currentRuleset.useDataHookForPay &&
+          currentRuleset.baseCurrency === groupBalance.currency
+        ) {
+          const weight = BigInt(currentRuleset.weight)
+          const decimals = groupBalance.decimals ?? 18
+          const reservedPercent = currentRuleset.reservedPercent
+          if (Number.isSafeInteger(reservedPercent) && reservedPercent >= 0 && reservedPercent <= 10_000) {
+            preview = { weight, paymentDecimals: decimals, reservedPercent }
           }
         }
-        setIssuanceRate(rate)
+        setIssuancePreview(preview)
 
-        // Fetch full metadata from IPFS if metadataUri available
-        if (data.metadataUri) {
-          const ipfsMetadata = await fetchIpfsMetadata(data.metadataUri)
-          setFullMetadata(ipfsMetadata)
-        }
+        setFullMetadata((data.metadata as IpfsProjectMetadata | undefined) ?? null)
       } catch (err) {
-        // If project not found (not indexed yet), show a placeholder card
-        // with known info - newly created projects take ~1 minute to index
         const errorMsg = err instanceof Error ? err.message : 'Failed to load project'
-        if (errorMsg.includes('not found') || errorMsg.includes('404')) {
-          // Create a placeholder project with known info
-          setProject({
-            id: currentProjectId,
-            projectId: parseInt(currentProjectId),
-            chainId: parseInt(selectedChainId),
-            version: 6,
-            name: `Project #${currentProjectId}`,
-            handle: undefined,
-            owner: '',
-            createdAt: Math.floor(Date.now() / 1000),
-            balance: '0',
-            volume: '0',
-            paymentsCount: 0,
-          })
-          setSuckerBalance({
-            totalBalance: '0',
-            totalVolume: '0',
-            totalVolumeUsd: '0',
-            currency: 1,
-            decimals: 18,
-            totalPaymentsCount: 0,
-            projectBalances: [],
-          })
-          setOwnersCount(0)
-          setError(null) // Clear error - we're showing placeholder
-        } else {
-          setError(errorMsg)
-        }
+        setError(errorMsg)
       } finally {
+        hasLoadedProjectRef.current = true
         setLoading(false)
       }
     }
@@ -616,12 +603,12 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     if (!address) {
       setWalletEthBalance(null)
       setWalletUsdcBalance(null)
-      return
+      return null
     }
 
     const chainIdNum = parseInt(selectedChainId)
     const chain = VIEM_CHAINS[chainIdNum as SupportedChainId]
-    if (!chain) return
+    if (!chain) return null
 
     setBalanceLoading(true)
     try {
@@ -639,8 +626,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
       // Fetch USDC balance
       const usdcAddress = USDC_ADDRESSES[chainIdNum as SupportedChainId]
+      let usdcBalance: bigint | null = null
       if (usdcAddress) {
-        const usdcBalance = await publicClient.readContract({
+        usdcBalance = await publicClient.readContract({
           address: usdcAddress,
           abi: erc20Abi,
           functionName: 'balanceOf',
@@ -648,8 +636,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         })
         setWalletUsdcBalance(usdcBalance)
       }
+      return { eth: ethBalance, usdc: usdcBalance }
     } catch (err) {
       console.error('Failed to fetch wallet balances:', err)
+      return null
     } finally {
       setBalanceLoading(false)
     }
@@ -658,6 +648,88 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   useEffect(() => {
     fetchWalletBalances()
   }, [fetchWalletBalances])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadPaymentRoutes() {
+      setPaymentSafetyLoading(true)
+      setPaymentSafetyError(null)
+      setPaymentTokenOptions([])
+      try {
+        const chainIdNum = parseInt(selectedChainId)
+        const chain = VIEM_CHAINS[chainIdNum as SupportedChainId]
+        const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
+        if (!chain || !rpcUrl) throw new Error('Unsupported payment chain')
+        const client = createPublicClient({ chain, transport: http(rpcUrl) })
+        const accountingContexts = await fetchProjectAccountingContexts(currentProjectId, chainIdNum)
+        await assertCurrentProjectPayConfigurationTrusted({
+          client,
+          projectId: BigInt(currentProjectId),
+        })
+
+        const routes = await Promise.all(ONCHAIN_PAYMENT_CANDIDATES.map(async candidate => {
+          const tokenAddress = getPaymentTokenAddress(candidate.symbol, chainIdNum)
+          try {
+            const terminal = await getPaymentTerminal(
+              client,
+              chainIdNum,
+              BigInt(currentProjectId),
+              tokenAddress,
+              'pay',
+            )
+            const directContext = accountingContexts.find(context => context.symbol === candidate.symbol)
+            if (terminal.type === 'multi' && !directContext) {
+              throw new Error(`${candidate.symbol} is not a live accounting context`)
+            }
+            return {
+              symbol: candidate.symbol,
+              name: candidate.name,
+              decimals: directContext?.decimals ?? candidate.decimals,
+              currency: directContext?.currency ?? Number(BigInt(tokenAddress) & 0xffff_ffffn),
+              route: terminal.type === 'multi' ? 'direct' as const : 'routed' as const,
+            }
+          } catch (err) {
+            if (err instanceof Error && err.message === 'This project does not accept the selected payment token') {
+              return null
+            }
+            throw err
+          }
+        }))
+        const verified = routes.filter((route): route is NonNullable<typeof route> => route !== null)
+        if (verified.length === 0) throw new Error('This project has no recognized payment route')
+
+        const nativeRoute = verified.find(route => route.symbol === 'ETH')
+        const options: PaymentTokenOption[] = [
+          ...verified,
+          ...(nativeRoute ? [{
+            symbol: 'PAY_CREDITS' as const,
+            name: 'Pay Credits',
+            decimals: nativeRoute.decimals,
+            currency: nativeRoute.currency,
+            route: 'credits' as const,
+          }] : []),
+        ]
+        if (!cancelled) {
+          setPaymentTokenOptions(options)
+          setSelectedToken(current => options.some(option => option.symbol === current)
+            ? current
+            : options[0].symbol)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPaymentSafetyError(err instanceof Error ? err.message : 'Payment route not recognized')
+        }
+      } finally {
+        if (!cancelled) setPaymentSafetyLoading(false)
+      }
+    }
+
+    loadPaymentRoutes()
+    return () => {
+      cancelled = true
+    }
+  }, [currentProjectId, selectedChainId])
 
   // Smart token default: select token with highest USD value
   useEffect(() => {
@@ -672,11 +744,15 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     const payCreditsUsd = juiceBalance?.balance ?? 0
 
     // Find the token with the highest USD value
-    const balances: Array<{ token: PaymentToken; usd: number }> = [
+    const balances = ([
       { token: 'ETH', usd: ethBalanceUsd },
       { token: 'USDC', usd: usdcBalanceUsd },
       { token: 'PAY_CREDITS', usd: payCreditsUsd },
-    ]
+    ] satisfies Array<{ token: PaymentToken; usd: number }>).filter(
+      balance => paymentTokenOptions.some(option => option.symbol === balance.token),
+    )
+
+    if (balances.length === 0) return
 
     const best = balances.reduce((a, b) => (b.usd > a.usd ? b : a))
 
@@ -684,110 +760,64 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     if (best.usd > 0) {
       setSelectedToken(best.token)
     }
-  // Only run once when all balances are loaded
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!balanceLoading && !ethPriceLoading && ethPrice !== null])
+  }, [balanceLoading, ethPriceLoading, ethPrice, walletEthBalance, walletUsdcBalance, juiceBalance, paymentTokenOptions])
 
-  // Check if cross-currency conversion is needed (requires ETH price)
-  const projectCurrency = suckerBalance?.currency ?? 1 // 1=ETH, 2=USD
-  const needsCrossConversion = (projectCurrency === 2 && selectedToken === 'ETH') ||
-                               (projectCurrency === 1 && selectedToken === 'USDC')
-  const crossConversionBlocked = needsCrossConversion && !ethPrice && !ethPriceLoading
-
-  // Calculate expected tokens based on amount and issuance rate
-  // issuanceRate.tokensPerEth is calculated from recent pay events:
-  // - For ETH projects: tokens per ETH-wei (18 decimals)
-  // - For USDC projects: tokens per USDC-wei (6 decimals)
+  // Mirror JBTerminalStore token issuance and JBController's reserved split with
+  // integer math. Cross-currency and data-hook payments require a live quote.
   const expectedTokens = useMemo(() => {
-    if (!issuanceRate || !amount || parseFloat(amount) <= 0) {
-      return null
-    }
+    if (!issuancePreview || !amount) return null
 
     try {
-      const amountFloat = parseFloat(amount)
-      const projectCurrency = suckerBalance?.currency ?? 1 // 1=ETH, 2=USD
+      const projectCurrency = suckerBalance?.currency
+      if (projectCurrency !== 1 && projectCurrency !== 2) return null
+      if (selectedToken === 'PAY_CREDITS') return null
+      if (
+        (projectCurrency === 1 && selectedToken !== 'ETH') ||
+        (projectCurrency === 2 && selectedToken !== 'USDC')
+      ) return null
 
-      // Convert payment amount to the project's native currency wei
-      let paymentInProjectWei: number
-
-      if (projectCurrency === 2) {
-        // Project accepts USDC (6 decimals)
-        if (selectedToken === 'USDC') {
-          // Paying USDC to USDC project - direct conversion
-          paymentInProjectWei = amountFloat * 1e6
-        } else {
-          // Paying ETH to USDC project - convert ETH to USD
-          paymentInProjectWei = ethPrice ? amountFloat * ethPrice * 1e6 : 0
-        }
-      } else {
-        // Project accepts ETH (18 decimals)
-        if (selectedToken === 'ETH') {
-          // Paying ETH to ETH project - direct conversion
-          paymentInProjectWei = amountFloat * 1e18
-        } else {
-          // Paying USDC to ETH project - convert USD to ETH
-          paymentInProjectWei = ethPrice ? (amountFloat / ethPrice) * 1e18 : 0
-        }
-      }
-
-      // tokensPerWei from pay events (tokens in 18 decimals / payment in project decimals)
-      const tokensWei = paymentInProjectWei * issuanceRate.tokensPerEth
-      const tokens = tokensWei / 1e18 // Convert to display units
-
-      if (tokens < 0.01) return null
-
-      return tokens
+      const paymentAmount = parseUnits(amount, issuancePreview.paymentDecimals)
+      if (paymentAmount <= 0n) return null
+      const payerTokenCount = calculatePayerTokenCount(
+        paymentAmount,
+        issuancePreview.paymentDecimals,
+        issuancePreview.weight,
+        issuancePreview.reservedPercent,
+      )
+      if (payerTokenCount === 0n) return null
+      return formatExactTokenEstimate(payerTokenCount)
     } catch {
       return null
     }
-  }, [amount, issuanceRate, selectedToken, ethPrice, suckerBalance?.currency])
-
-  // Calculate fee and totals for Pay us feature
-  const amountNum = parseFloat(amount) || 0
-  const feeAmount = payUs ? amountNum * (JUICY_FEE_PERCENT / 100) : 0
-  const totalAmount = amountNum + feeAmount
-
-  // Calculate $JUICY tokens from fee (convert to ETH equivalent if USDC)
-  const estimatedJuicyTokens = useMemo(() => {
-    if (!payUs || feeAmount <= 0) return 0
-    // Use fetched rate or fallback to NANA_FALLBACK_RATE
-    const rate = juicyIssuanceRate?.tokensPerEth || NANA_FALLBACK_RATE
-    let feeEthEquivalent = feeAmount
-    if (selectedToken === 'USDC' || selectedToken === 'PAY_CREDITS') {
-      // Convert USD to ETH equivalent
-      feeEthEquivalent = ethPrice ? feeAmount / ethPrice : feeAmount / 2500 // fallback ~$2500/ETH
-    }
-    return feeEthEquivalent * rate
-  }, [payUs, juicyIssuanceRate, feeAmount, selectedToken, ethPrice])
+  }, [amount, issuancePreview, selectedToken, suckerBalance?.currency])
 
   // Check if form should be locked due to active/completed payment
   const isPaymentLocked = persistedPayment?.status && persistedPayment.status !== 'pending'
 
   // Check if user has sufficient balance for the payment
-  const checkSufficientBalance = useCallback(() => {
-    if (balanceLoading) return { sufficient: false, reason: 'loading' }
+  const checkSufficientBalance = useCallback((fresh?: { eth: bigint; usdc: bigint | null } | null) => {
+    if (balanceLoading && !fresh) return { sufficient: false, reason: 'loading' }
 
     const paymentAmount = parseFloat(amount) || 0
-    const total = paymentAmount + feeAmount
+    const total = paymentAmount
 
-    // Minimum ETH needed for gas (rough estimate)
-    const minGasEth = 0.001
-    const ethBalanceNum = walletEthBalance ? parseFloat(formatEther(walletEthBalance)) : 0
+    const eth = fresh?.eth ?? walletEthBalance
+    const usdc = fresh?.usdc ?? walletUsdcBalance
+    const ethBalanceNum = eth ? parseFloat(formatEther(eth)) : 0
 
     if (selectedToken === 'ETH') {
-      // Need ETH for both payment and gas
-      const totalEthNeeded = total + minGasEth
-      if (ethBalanceNum < totalEthNeeded) {
-        return { sufficient: false, reason: 'insufficient_eth', needed: totalEthNeeded, have: ethBalanceNum }
+      // Leave some ETH for the wallet's exact gas estimate without imposing a guessed threshold.
+      if (ethBalanceNum <= total) {
+        return { sufficient: false, reason: 'insufficient_eth', needed: total, have: ethBalanceNum }
       }
     } else if (selectedToken === 'USDC') {
       // Need USDC for payment and ETH for gas
-      const usdcBalanceNum = walletUsdcBalance ? Number(walletUsdcBalance) / 1e6 : 0
+      const usdcBalanceNum = usdc ? Number(usdc) / 1e6 : 0
       if (usdcBalanceNum < total) {
         return { sufficient: false, reason: 'insufficient_usdc', needed: total, have: usdcBalanceNum }
       }
-      if (ethBalanceNum < minGasEth) {
-        return { sufficient: false, reason: 'insufficient_gas', needed: minGasEth, have: ethBalanceNum }
+      if (ethBalanceNum <= 0) {
+        return { sufficient: false, reason: 'insufficient_gas', needed: 0, have: ethBalanceNum }
       }
     } else if (selectedToken === 'PAY_CREDITS') {
       // Need Pay Credits balance
@@ -798,17 +828,22 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     }
 
     return { sufficient: true }
-  }, [amount, feeAmount, selectedToken, walletEthBalance, walletUsdcBalance, balanceLoading, juiceBalance])
+  }, [amount, selectedToken, walletEthBalance, walletUsdcBalance, balanceLoading, juiceBalance])
 
   // Handle NFT tier selection - increments quantity on click
   const handleTierSelect = useCallback((tier: ResolvedNFTTier) => {
+    if (!isSupportedTierCurrency(tier.currency)) return
+
+    const requiredToken = isEthTierCurrency(tier.currency) ? 'ETH' : 'USDC'
+    if (!paymentTokenOptions.some(option => option.symbol === requiredToken)) return
+
     // Auto-switch payment token based on tier currency
     // ETH-denominated tiers (currency=1) → ETH
-    // USD-denominated tiers (currency=2) → PAY_CREDITS (USD)
-    if (tier.currency === 1) {
+    // USD-denominated tiers → canonical USDC on the selected chain.
+    if (isEthTierCurrency(tier.currency)) {
       setSelectedToken('ETH')
-    } else if (tier.currency === 2) {
-      setSelectedToken('PAY_CREDITS')
+    } else {
+      setSelectedToken('USDC')
     }
 
     setTierQuantities(prev => {
@@ -819,23 +854,14 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       // Calculate total price from all selected tiers and quantities
       const totalPrice = Object.entries(newQuantities).reduce((sum, [id, qty]) => {
         const t = nftTiers.find(t => t.tierId === Number(id))
-        return sum + (t ? parseFloat(formatEther(t.price)) * qty : 0)
-      }, 0)
+        return sum + (t ? getEffectiveTierPrice(t) * BigInt(qty) : 0n)
+      }, 0n)
 
-      // Use the tier's currency to determine amount format
-      if (tier.currency === 1) {
-        setAmount(totalPrice.toFixed(6).replace(/\.?0+$/, ''))
-      } else if (tier.currency === 2) {
-        setAmount(totalPrice.toFixed(2))
-      } else if (selectedToken === 'ETH') {
-        setAmount(totalPrice.toFixed(6).replace(/\.?0+$/, ''))
-      } else if (ethPrice) {
-        setAmount((totalPrice * ethPrice).toFixed(2))
-      }
+      setAmount(formatUnits(totalPrice, tier.pricingDecimals))
 
       return newQuantities
     })
-  }, [nftTiers, selectedToken, ethPrice])
+  }, [nftTiers, paymentTokenOptions])
 
   // Adjust tier quantity (for +/- buttons)
   const adjustTierQuantity = useCallback((tierId: number, delta: number) => {
@@ -855,20 +881,16 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       // Recalculate total price
       const totalPrice = Object.entries(newQuantities).reduce((sum, [id, qty]) => {
         const t = nftTiers.find(t => t.tierId === Number(id))
-        return sum + (t ? parseFloat(formatEther(t.price)) * qty : 0)
-      }, 0)
+        return sum + (t ? getEffectiveTierPrice(t) * BigInt(qty) : 0n)
+      }, 0n)
 
-      if (totalPrice === 0) {
+      if (totalPrice === 0n) {
         setAmount('')
       } else {
-        // Use the tier's currency for formatting
         const tier = nftTiers.find(t => t.tierId === tierId)
-        if (tier?.currency === 1) {
-          setAmount(totalPrice.toFixed(6).replace(/\.?0+$/, ''))
-        } else if (tier?.currency === 2) {
-          setAmount(totalPrice.toFixed(2))
-        } else {
-          setAmount(totalPrice.toFixed(6).replace(/\.?0+$/, ''))
+        if (tier && isSupportedTierCurrency(tier.currency)) {
+          setSelectedToken(isEthTierCurrency(tier.currency) ? 'ETH' : 'USDC')
+          setAmount(formatUnits(totalPrice, tier.pricingDecimals))
         }
       }
 
@@ -937,27 +959,28 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     return () => window.removeEventListener('juice:adjust-checkout-quantity', handleAdjustQuantity as EventListener)
   }, [nftTiers, adjustTierQuantity])
 
-  // Handle payment status updates
-  // Keep form values and payment status visible after submission (similar to project deployment)
-  // This allows all chat users to see the transaction details
+  // Handle payment status updates. Inputs remain frozen through submission and
+  // are cleared only after an onchain receipt confirms success.
   useEffect(() => {
     if (activePayment?.status === 'confirmed') {
-      // Payment confirmed - keep showing form values and status
       setPaying(false)
-      // Persist completed state for all chat users
+      setAmount('')
+      setMemo('')
+      setTierQuantities({})
       updatePersistedPayment({
         status: 'completed',
+        amount: '',
+        memo: '',
+        selectedTierIds: [],
+        selectedTierId: null,
         txHash: activePayment.hash,
         confirmedAt: new Date().toISOString(),
       })
     } else if (activePayment?.status === 'queued') {
-      // Pay Credits payment queued - keep showing form values and status
       setPaying(false)
       refetchJuiceBalance()
-      // Persist completed state for all chat users
       updatePersistedPayment({
-        status: 'completed',
-        confirmedAt: new Date().toISOString(),
+        status: 'in_progress',
       })
     } else if (activePayment?.status === 'submitted') {
       // Payment submitted but not yet confirmed - keep form values visible
@@ -1058,19 +1081,42 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     if (currency === 2) {
       return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     }
-    // Currency is ETH (1), convert to USD
-    if (!ethPrice) return null
-    const usd = value * ethPrice
-    return usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    if (currency === 1) {
+      if (!ethPrice) return null
+      const usd = value * ethPrice
+      return usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+    return null
   }
 
+  const balanceAvailable = !!suckerBalance && suckerBalance.balanceAvailable !== false
+  const paymentsAvailable = !!suckerBalance && suckerBalance.paymentsAvailable !== false
+  const displayedBalance = suckerBalance?.totalBalance ?? project.balance
+  const balanceScope = suckerBalance?.dataScope === 'project' ? ' on this chain' : ' balance'
+
   // Calculate total balance USD value using currency/decimals from suckerBalance
-  const totalBalanceUsd = suckerBalance?.totalBalance
-    ? formatUsd(suckerBalance.totalBalance, suckerBalance.currency, suckerBalance.decimals)
+  const totalBalanceUsd = balanceAvailable
+    ? formatUsd(displayedBalance, suckerBalance.currency, suckerBalance.decimals)
     : null
 
   const handlePay = async (event?: React.MouseEvent<HTMLButtonElement>) => {
+    if (nftSafetyError || paymentSafetyError || paymentSafetyLoading) return
     if (!amount || parseFloat(amount) <= 0) return
+    const tierSelections = Object.entries(tierQuantities).map(([tierId, quantity]) => {
+      const tier = nftTiers.find(candidate => candidate.tierId === Number(tierId))
+      return {
+        tierId: Number(tierId),
+        quantity,
+        name: tier ? getTierDisplayName(tier) : `Tier ${tierId}`,
+      }
+    })
+
+    // Wallet connection comes before optional balance heuristics. A missing
+    // account must open the wallet flow, not be misclassified as a zero balance.
+    if (selectedToken !== 'PAY_CREDITS' && !isConnected) {
+      openWalletPanel()
+      return
+    }
 
     // Zero-state check: if user has no funds anywhere, show funding options
     const hasPayCredits = (juiceBalance?.balance ?? 0) > 0
@@ -1078,7 +1124,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     const hasUsdc = crossChainUsdc > 0n
     const hasAnyFunds = hasPayCredits || hasEth || hasUsdc
 
-    if (!hasAnyFunds && !crossChainLoading) {
+    if (!hasAnyFunds && !crossChainLoading && crossChainBalancesAvailable) {
       // Show funding options popover
       if (event?.currentTarget) {
         const rect = event.currentTarget.getBoundingClientRect()
@@ -1138,28 +1184,18 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           amount,
           token: selectedToken,
           memo,
-          payUs,
-          feeAmount: feeAmount.toString(),
-          juicyProjectId: JUICY_PROJECT_ID,
-          totalAmount: totalAmount.toString(),
           tierIds: selectedTierIds,
+          tierSelections,
           hookAddress: nftHookAddress,
-          preventOverspending: nftHookFlags?.preventOverspending ?? false,
-          tierPrices: selectedTierIds.map(id => nftTiers.find(t => t.tierId === id)?.price?.toString()).filter(Boolean),
         }
       }))
       return
     }
 
-    // Step 1: Check if wallet is connected (for ETH/USDC)
-    if (!isConnected) {
-      openWalletPanel()
-      return
-    }
-
-    // Step 2: Refresh balances and check if sufficient
-    await fetchWalletBalances()
-    const balanceCheck = checkSufficientBalance()
+    // Refresh balances and check if sufficient.
+    const freshBalances = await fetchWalletBalances()
+    if (!freshBalances) return
+    const balanceCheck = checkSufficientBalance(freshBalances)
 
     if (!balanceCheck.sufficient) {
       if (balanceCheck.reason === 'loading') {
@@ -1205,21 +1241,13 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         amount,
         token: selectedToken,
         memo,
-        // Include fee info for batched transaction
-        payUs,
-        feeAmount: feeAmount.toString(),
-        juicyProjectId: JUICY_PROJECT_ID,
-        totalAmount: totalAmount.toString(),
         tierIds: selectedTierIds,
+        tierSelections,
         hookAddress: nftHookAddress,
-        preventOverspending: nftHookFlags?.preventOverspending ?? false,
-        tierPrices: selectedTierIds.map(id => nftTiers.find(t => t.tierId === id)?.price?.toString()).filter(Boolean),
       }
     }))
     // Don't clear form here - wait for transaction result
   }
-
-  const logoUrl = resolveIpfsUri(project.logoUri)
 
   // Embedded mode: render sticky header + scrollable content for sidebar layout
   if (embedded) {
@@ -1227,6 +1255,27 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       <>
         {/* Single scrollable container */}
         <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          {!chainMappingAvailable && (
+            <div className="mx-4 mt-3"><ChainMappingWarning isDark={isDark} /></div>
+          )}
+          {nftSafetyError && (
+            <div className={`mx-4 mt-3 border p-3 text-xs ${
+              isDark
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                : 'border-amber-300 bg-amber-50 text-amber-800'
+            }`}>
+              {nftSafetyError}. Payments are unavailable until this project uses a recognized hook configuration.
+            </div>
+          )}
+          {paymentSafetyError && (
+            <div className={`mx-4 mt-3 border p-3 text-xs ${
+              isDark
+                ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                : 'border-red-300 bg-red-50 text-red-800'
+            }`}>
+              {paymentSafetyError}. Payments are blocked until the live project route is recognized.
+            </div>
+          )}
           {/* NFT Shop - scrolls away */}
           {nftTiers.length > 0 && (
             <div className={`px-4 pt-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}>
@@ -1238,16 +1287,25 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   const quantity = tierQuantities[tier.tierId] || 0
                   const isSelected = quantity > 0
                   const exceedsSupply = quantity > tier.remainingSupply
+                  const currencyRecognized = isSupportedTierCurrency(tier.currency)
+                  const tierToken = isEthTierCurrency(tier.currency) ? 'ETH' : 'USDC'
+                  const currencySupported = currencyRecognized &&
+                    paymentTokenOptions.some(option => option.symbol === tierToken)
                   return (
                     <div
                       key={tier.tierId}
+                      title={currencySupported
+                        ? undefined
+                        : currencyRecognized
+                          ? `This project does not accept ${tierToken}`
+                          : `Pricing currency not recognized: ${tier.currency}`}
                       className={`relative flex-shrink-0 w-24 border transition-colors ${
                         isSelected
                           ? exceedsSupply ? 'border-orange-500 bg-orange-500/10' : 'border-green-500 bg-green-500/10'
                           : isDark ? 'border-white/10 hover:border-juice-orange' : 'border-gray-200 hover:border-juice-orange'
-                      } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      } ${isPaymentLocked || !currencySupported ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                       onClick={() => {
-                        if (isPaymentLocked) return
+                        if (isPaymentLocked || !currencySupported) return
                         handleTierSelect(tier)
                         window.dispatchEvent(new CustomEvent('juice:open-shop', { detail: { tierId: tier.tierId } }))
                       }}
@@ -1275,7 +1333,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                           {getTierDisplayName(tier)}
                         </div>
                         <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {(tier.currency === 2 || isUsdcCurrency(tier.currency)) ? `$${(Number(tier.price) / 1e6).toFixed(2)}` : `${formatEther(tier.price)} ETH`}
+                          {formatTierPrice(tier)}
                         </div>
                       </div>
                       {/* Quantity controls when selected */}
@@ -1358,7 +1416,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                         isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
                       } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
-                      <span>{selectedToken === 'PAY_CREDITS' ? 'USD' : selectedToken}</span>
+                      <span>{selectedToken === 'PAY_CREDITS' ? 'Credits' : selectedToken}</span>
                       <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
@@ -1367,7 +1425,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
                         isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
                       }`}>
-                        {TOKENS.map(token => (
+                        {paymentTokenOptions.map(token => (
                           <button
                             key={token.symbol}
                             onClick={() => {
@@ -1381,7 +1439,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                             }`}
                           >
                             <span className="flex justify-between items-center gap-2">
-                              <span>{token.symbol === 'PAY_CREDITS' ? 'USD' : token.symbol}</span>
+                              <span>{token.symbol === 'PAY_CREDITS' ? 'Credits' : token.symbol}</span>
                               {token.symbol === 'PAY_CREDITS' && juiceBalance && (
                                 <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                                   ${juiceBalance.balance.toFixed(2)}
@@ -1399,14 +1457,14 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               <div className="relative">
                 <button
                   onClick={(e) => handlePay(e)}
-                  disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
+                  disabled={!!nftSafetyError || !!paymentSafetyError || paymentSafetyLoading || paying || !amount || parseFloat(amount) <= 0 || (persistedPayment?.status && persistedPayment.status !== 'pending')}
                   className={`px-4 py-2 text-sm font-medium transition-colors border border-transparent ${
-                    paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
+                    nftSafetyError || paymentSafetyError || paymentSafetyLoading || paying || !amount || parseFloat(amount) <= 0 || (persistedPayment?.status && persistedPayment.status !== 'pending')
                       ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                       : 'bg-green-500 hover:bg-green-600 text-black'
                   }`}
                 >
-                  {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
+                  {paymentSafetyLoading ? 'Checking...' : paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
                 </button>
                 {/* Chain selector - only show for ETH/USDC, positioned absolutely */}
                 {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
@@ -1471,27 +1529,17 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             {/* Token preview - always show */}
             {expectedTokens !== null ? (
               <div className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>You get:</span>
-                <span> ~{(amountNum > 0 ? expectedTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} </span>
+                <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Current rules estimate:</span>
+                <span> {expectedTokens} </span>
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent('juice:switch-tab', { detail: { tab: 'tokens' } }))}
                   className={`font-medium hover:underline ${isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'}`}
                 >
                   {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}
                 </button>
-                {payUs && (
-                  <span> + {(amountNum > 0 ? estimatedJuicyTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} </span>
-                )}
-                {payUs && (
-                  <a
-                    href="/eth:1#tokens"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`font-medium hover:underline ${isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'}`}
-                  >
-                    JUICY
-                  </a>
-                )}
+                <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Exact minimum checked before signing.
+                </span>
                 {Object.keys(tierQuantities).length > 0 && (
                   <div className="mt-1">
                     {Object.entries(tierQuantities).map(([tierId, qty]) => {
@@ -1526,28 +1574,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
             />
 
-            {/* Join Juicy checkbox - with padding below */}
-            <div className="mt-2 pb-10">
-              <label className={`group relative flex items-center gap-2 cursor-pointer ${
-                isDark ? 'text-gray-300' : 'text-gray-600'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={payUs}
-                  onChange={(e) => setPayUs(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-gray-300 text-juice-orange focus:ring-juice-orange"
-                />
-                <span className="text-sm">
-                  Pay for Juicy ({JUICY_FEE_PERCENT}%)
-                </span>
-                {/* Hover tooltip */}
-                <div className={`absolute left-0 bottom-full mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap ${
-                  isDark ? 'bg-juice-dark border border-white/20 text-gray-300' : 'bg-white border border-gray-200 text-gray-600 shadow-sm'
-                }`}>
-                  Join and help keep Juicy up and growing faster
-                </div>
-              </label>
-            </div>
+            <div className="pb-10" />
 
             {/* Payment progress indicator */}
             {(activePayment || (persistedPayment && persistedPayment.status !== 'pending')) && (
@@ -1562,17 +1589,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               />
             )}
 
-            {/* Cross-currency warning */}
-            {crossConversionBlocked && (
-              <div className={`mt-2 p-2 text-sm ${isDark ? 'bg-yellow-500/10' : 'bg-yellow-50'}`}>
-                <div className={`flex items-center gap-2 ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <span>ETH price unavailable — pay with {projectCurrency === 2 ? 'USDC' : 'ETH'} instead</span>
-                </div>
-              </div>
-            )}
             </div>
           </div>
 
@@ -1645,7 +1661,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   <div className="flex items-center justify-between">
                     <div>
                       <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Credit Card</div>
-                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>3% fee · 3 day delay</div>
+                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>5% markup · available after verification</div>
                     </div>
                     <svg className={`w-4 h-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -1656,7 +1672,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   <div className="flex items-center justify-between mb-2">
                     <div>
                       <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>ETH or USDC</div>
-                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Free · Instant</div>
+                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Network fees and confirmation time vary</div>
                     </div>
                   </div>
                   {managedAddress ? (
@@ -1711,8 +1727,17 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       <div className={`max-w-md border p-4 ${isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'}`}>
       {/* Header */}
       <div className="flex items-center gap-3 mb-2">
-        {logoUrl ? (
-          <img src={logoUrl} alt={project.name} className="w-14 h-14 object-cover" />
+        {project.logoUri ? (
+          <IpfsImage
+            uri={project.logoUri}
+            alt={project.name}
+            className="w-14 h-14 object-cover"
+            fallback={(
+              <div className="w-14 h-14 bg-juice-orange/20 flex items-center justify-center">
+                <span className="text-juice-orange font-bold text-xl">{project.name.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
+          />
         ) : (
           <div className="w-14 h-14 bg-juice-orange/20 flex items-center justify-center">
             <span className="text-juice-orange font-bold text-xl">{project.name.charAt(0).toUpperCase()}</span>
@@ -1744,12 +1769,16 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           onClick={() => setShowBalanceTooltip(prev => !prev)}
         >
           <span className={`font-mono cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {totalBalanceUsd ? `$${totalBalanceUsd}` : `${formatBalance(suckerBalance?.totalBalance || project.balance, suckerBalance?.decimals || 18)} ${suckerBalance?.currency === 2 ? 'USDC' : 'ETH'}`}
+            {!balanceAvailable
+              ? 'Unavailable'
+              : totalBalanceUsd
+                ? `$${totalBalanceUsd}`
+                : `${formatBalance(displayedBalance, suckerBalance.decimals)} ${suckerBalance.currency === 2 ? 'USDC' : 'ETH'}`}
           </span>
-          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}> balance</span>
+          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{balanceScope}</span>
 
           {/* Per-chain breakdown tooltip */}
-          {showBalanceTooltip && suckerBalance && suckerBalance.projectBalances.length > 0 && (
+          {showBalanceTooltip && balanceAvailable && suckerBalance.projectBalances.length > 0 && (
             <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-20 min-w-[180px] text-xs ${
               isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
             }`}>
@@ -1779,7 +1808,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           )}
         </div>
         <div>
-          <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>{ownersCount ?? 0}</span>
+          <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>{ownersCount ?? 'Unavailable'}</span>
           <span className={isDark ? 'text-gray-400' : 'text-gray-500'}> owner{ownersCount !== 1 ? 's' : ''}</span>
         </div>
         <div
@@ -1787,11 +1816,13 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           onMouseEnter={() => setShowPaymentsTooltip(true)}
           onMouseLeave={() => setShowPaymentsTooltip(false)}
         >
-          <span className={`font-mono cursor-help ${isDark ? 'text-white' : 'text-gray-900'}`}>{suckerBalance?.totalPaymentsCount ?? 0}</span>
-          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}> payment{suckerBalance?.totalPaymentsCount !== 1 ? 's' : ''}</span>
+          <span className={`font-mono cursor-help ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            {paymentsAvailable ? suckerBalance.totalPaymentsCount : 'Unavailable'}
+          </span>
+          <span className={isDark ? 'text-gray-400' : 'text-gray-500'}> payment{!paymentsAvailable || suckerBalance.totalPaymentsCount !== 1 ? 's' : ''}</span>
 
           {/* Per-chain payments breakdown tooltip */}
-          {showPaymentsTooltip && suckerBalance && suckerBalance.projectBalances.length > 0 && (
+          {showPaymentsTooltip && paymentsAvailable && suckerBalance.projectBalances.length > 0 && (
             <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-20 min-w-[140px] text-xs ${
               isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
             }`}>
@@ -1822,6 +1853,25 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
       {/* Pay form */}
       <div className={`mb-3 px-3 pb-3 ${nftTiers.length > 0 ? 'pt-3' : 'pt-4'} ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+        {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
+        {nftSafetyError && (
+          <div className={`mb-3 border p-3 text-xs ${
+            isDark
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+              : 'border-amber-300 bg-amber-50 text-amber-800'
+          }`}>
+            {nftSafetyError}. Payments are unavailable until this project uses a recognized hook configuration.
+          </div>
+        )}
+        {paymentSafetyError && (
+          <div className={`mb-3 border p-3 text-xs ${
+            isDark
+              ? 'border-red-500/40 bg-red-500/10 text-red-300'
+              : 'border-red-300 bg-red-50 text-red-800'
+          }`}>
+            {paymentSafetyError}. Payments are blocked until the live project route is recognized.
+          </div>
+        )}
         {/* NFT Tier selector - horizontal carousel */}
         {nftTiers.length > 0 && (
           <div className="mb-3">
@@ -1833,16 +1883,25 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 const quantity = tierQuantities[tier.tierId] || 0
                 const isSelected = quantity > 0
                 const exceedsSupply = quantity > tier.remainingSupply
+                const currencyRecognized = isSupportedTierCurrency(tier.currency)
+                const tierToken = isEthTierCurrency(tier.currency) ? 'ETH' : 'USDC'
+                const currencySupported = currencyRecognized &&
+                  paymentTokenOptions.some(option => option.symbol === tierToken)
                 return (
                   <div
                     key={tier.tierId}
+                    title={currencySupported
+                      ? undefined
+                      : currencyRecognized
+                        ? `This project does not accept ${tierToken}`
+                        : `Pricing currency not recognized: ${tier.currency}`}
                     className={`relative flex-shrink-0 w-24 border transition-colors ${
                       isSelected
                         ? exceedsSupply ? 'border-orange-500 bg-orange-500/10' : 'border-green-500 bg-green-500/10'
                         : isDark ? 'border-white/10 hover:border-juice-orange' : 'border-gray-200 hover:border-juice-orange'
-                    } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                    } ${isPaymentLocked || !currencySupported ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                     onClick={() => {
-                      if (isPaymentLocked) return
+                      if (isPaymentLocked || !currencySupported) return
                       handleTierSelect(tier)
                       window.dispatchEvent(new CustomEvent('juice:open-shop', { detail: { tierId: tier.tierId } }))
                     }}
@@ -1870,7 +1929,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                         {getTierDisplayName(tier)}
                       </div>
                       <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {(tier.currency === 2 || isUsdcCurrency(tier.currency)) ? `$${(Number(tier.price) / 1e6).toFixed(2)}` : `${formatEther(tier.price)} ETH`}
+                        {formatTierPrice(tier)}
                       </div>
                     </div>
                     {/* Quantity controls when selected */}
@@ -1954,7 +2013,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'
                   } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
-                  <span>{selectedToken === 'PAY_CREDITS' ? 'USD' : selectedToken}</span>
+                  <span>{selectedToken === 'PAY_CREDITS' ? 'Credits' : selectedToken}</span>
                   <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -1963,7 +2022,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   <div className={`absolute top-full left-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${
                     isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
                   }`}>
-                    {TOKENS.map(token => (
+                    {paymentTokenOptions.map(token => (
                       <button
                         key={token.symbol}
                         onClick={() => {
@@ -1977,7 +2036,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                         }`}
                       >
                         <span className="flex justify-between items-center gap-2">
-                          <span>{token.symbol === 'PAY_CREDITS' ? 'USD' : token.symbol}</span>
+                          <span>{token.symbol === 'PAY_CREDITS' ? 'Credits' : token.symbol}</span>
                           {token.symbol === 'PAY_CREDITS' && juiceBalance && (
                             <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                               ${juiceBalance.balance.toFixed(2)}
@@ -1996,14 +2055,14 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           <div className="relative">
             <button
               onClick={(e) => handlePay(e)}
-              disabled={paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')}
+              disabled={!!nftSafetyError || !!paymentSafetyError || paymentSafetyLoading || paying || !amount || parseFloat(amount) <= 0 || (persistedPayment?.status && persistedPayment.status !== 'pending')}
               className={`px-4 py-2 text-sm font-medium transition-colors border border-transparent ${
-                paying || !amount || parseFloat(amount) <= 0 || crossConversionBlocked || (persistedPayment?.status && persistedPayment.status !== 'pending')
+                nftSafetyError || paymentSafetyError || paymentSafetyLoading || paying || !amount || parseFloat(amount) <= 0 || (persistedPayment?.status && persistedPayment.status !== 'pending')
                   ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                   : 'bg-green-500 hover:bg-green-600 text-black'
               }`}
             >
-              {paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
+              {paymentSafetyLoading ? 'Checking...' : paying ? '...' : persistedPayment?.status === 'completed' ? 'Paid' : persistedPayment?.status === 'in_progress' ? 'Pending...' : 'Pay'}
             </button>
             {/* Chain selector - only show for ETH/USDC, positioned absolutely */}
             {(selectedToken === 'ETH' || selectedToken === 'USDC') && (
@@ -2074,45 +2133,22 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           />
         )}
 
-        {/* Cross-currency warning when ETH price unavailable */}
-        {crossConversionBlocked && (
-          <div className={`mt-2 p-2 text-sm ${
-            isDark ? 'bg-yellow-500/10' : 'bg-yellow-50'
-          }`}>
-            <div className={`flex items-center gap-2 ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <span>ETH price unavailable — pay with {projectCurrency === 2 ? 'USDC' : 'ETH'} instead</span>
-            </div>
-          </div>
-        )}
 
 
         {/* Token preview - always show */}
         {expectedTokens !== null ? (
           <div className={`mt-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>You get:</span>
-            <span> ~{(amountNum > 0 ? expectedTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} </span>
+            <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>Current rules estimate:</span>
+            <span> {expectedTokens} </span>
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('juice:switch-tab', { detail: { tab: 'tokens' } }))}
               className={`font-medium hover:underline ${isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'}`}
             >
               {projectTokenSymbol || project.name.split(' ')[0].toUpperCase().slice(0, 6)}
             </button>
-            {payUs && (
-              <span> + {(amountNum > 0 ? estimatedJuicyTokens : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} </span>
-            )}
-            {payUs && (
-              <a
-                href="/eth:1#tokens"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`font-medium hover:underline ${isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'}`}
-              >
-                JUICY
-              </a>
-            )}
+            <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              Exact minimum checked before signing.
+            </span>
             {Object.keys(tierQuantities).length > 0 && (
               <div className="mt-1">
                 {Object.entries(tierQuantities).map(([tierId, qty]) => {
@@ -2147,29 +2183,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           } ${isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''}`}
         />
 
-      </div>
-
-      {/* Pay Juicy checkbox */}
-      <div className="mt-2">
-        <label className={`group relative flex items-center gap-2 cursor-pointer ${
-          isDark ? 'text-gray-300' : 'text-gray-600'
-        }`}>
-          <input
-            type="checkbox"
-            checked={payUs}
-            onChange={(e) => setPayUs(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-gray-300 text-juice-orange focus:ring-juice-orange"
-          />
-          <span className="text-sm">
-            Pay for Juicy ({JUICY_FEE_PERCENT}%)
-          </span>
-          {/* Hover tooltip */}
-          <div className={`absolute left-0 bottom-full mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap ${
-            isDark ? 'bg-juice-dark border border-white/20 text-gray-300' : 'bg-white border border-gray-200 text-gray-600 shadow-sm'
-          }`}>
-            Join and help keep Juicy up and growing faster
-          </div>
-        </label>
       </div>
 
       </div>
@@ -2242,7 +2255,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       Credit Card
                     </div>
                     <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      3% fee · 3 day delay
+                      5% markup · available after verification
                     </div>
                   </div>
                   <svg className={`w-4 h-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2263,7 +2276,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       ETH or USDC
                     </div>
                     <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Free · Instant
+                      Network fees and confirmation time vary
                     </div>
                   </div>
                 </div>

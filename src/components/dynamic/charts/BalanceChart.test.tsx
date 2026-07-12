@@ -65,6 +65,7 @@ describe('BalanceChart', () => {
     vi.mocked(bendystraw.fetchConnectedChains).mockResolvedValue([])
     vi.mocked(bendystraw.fetchProjectMoments).mockResolvedValue([])
     vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue({
+      totalBalance: '5000000000000000000',
       currency: 1,
       decimals: 18,
     } as any)

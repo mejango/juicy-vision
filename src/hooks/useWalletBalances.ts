@@ -14,6 +14,7 @@ export interface WalletBalances {
     usdc: bigint
   }[]
   loading: boolean
+  available: boolean
 }
 
 export function useWalletBalances(overrideAddress?: string): WalletBalances {
@@ -23,12 +24,14 @@ export function useWalletBalances(overrideAddress?: string): WalletBalances {
   const [totalUsdc, setTotalUsdc] = useState<bigint>(0n)
   const [perChain, setPerChain] = useState<WalletBalances['perChain']>([])
   const [loading, setLoading] = useState(false)
+  const [available, setAvailable] = useState(false)
 
   const fetchBalances = useCallback(async () => {
     if (!address) {
       setTotalEth(0n)
       setTotalUsdc(0n)
       setPerChain([])
+      setAvailable(false)
       return
     }
 
@@ -52,7 +55,7 @@ export function useWalletBalances(overrideAddress?: string): WalletBalances {
               abi: erc20Abi,
               functionName: 'balanceOf',
               args: [address as `0x${string}`],
-            }).catch(() => 0n),
+            }),
           ])
 
           return {
@@ -69,8 +72,13 @@ export function useWalletBalances(overrideAddress?: string): WalletBalances {
       setPerChain(results)
       setTotalEth(ethSum)
       setTotalUsdc(usdcSum)
+      setAvailable(true)
     } catch (err) {
       console.error('Failed to fetch wallet balances:', err)
+      setPerChain([])
+      setTotalEth(0n)
+      setTotalUsdc(0n)
+      setAvailable(false)
     } finally {
       setLoading(false)
     }
@@ -80,7 +88,7 @@ export function useWalletBalances(overrideAddress?: string): WalletBalances {
     fetchBalances()
   }, [fetchBalances])
 
-  return { totalEth, totalUsdc, perChain, loading }
+  return { totalEth, totalUsdc, perChain, loading, available }
 }
 
 export function formatEthBalance(wei: bigint): string {

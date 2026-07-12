@@ -1,12 +1,11 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, ClipboardEvent, DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAccount, useDisconnect, useSignMessage, useChainId } from 'wagmi'
+import { useAccount, useSignMessage, useChainId } from 'wagmi'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
-import { hasValidWalletSession, clearWalletSession, signInWithWallet, getWalletSession } from '../../services/siwe'
-import { getPasskeyWallet, clearPasskeyWallet } from '../../services/passkeyWallet'
+import { hasValidWalletSession, signInWithWallet, getWalletSession } from '../../services/siwe'
+import { getPasskeyWallet } from '../../services/passkeyWallet'
 import { getSessionId } from '../../services/session'
-import { getEmojiFromAddress } from './ParticipantAvatars'
 import { JuicyIdPopover, type JuicyIdentity, type AnchorPosition } from './WalletInfo'
 import type { Attachment } from '../../stores'
 
@@ -58,15 +57,14 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { t } = useTranslation()
   const { theme, toggleTheme } = useThemeStore()
-  const { token: authToken, _hasHydrated, isAuthenticated, user: authUser } = useAuthStore()
+  const { token: authToken, _hasHydrated, isAuthenticated } = useAuthStore()
   const { address, isConnected } = useAccount()
   const { ensName } = useEnsNameResolved(address)
-  const { disconnect } = useDisconnect()
   const { signMessageAsync } = useSignMessage()
   const chainId = useChainId()
   const [signing, setSigning] = useState(false)
   const [signedIn, setSignedIn] = useState(() => hasValidWalletSession())
-  const { totalEth, totalUsdc, loading: balancesLoading } = useWalletBalances()
+  const { totalEth, totalUsdc, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Get effective passkey/session address - from passkeyWallet state OR from SIWE session OR from managed auth
   // This handles cases where passkeyWallet state is null but user has valid session
@@ -76,7 +74,12 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   const hasAnyAuth = !!(passkeyWallet || walletSession || isManagedAuth)
 
   // Fetch balances for passkey wallet address
-  const { totalEth: passkeyEth, totalUsdc: passkeyUsdc, loading: passkeyBalancesLoading } = useWalletBalances(effectivePasskeyAddress)
+  const {
+    totalEth: passkeyEth,
+    totalUsdc: passkeyUsdc,
+    loading: passkeyBalancesLoading,
+    available: passkeyBalancesAvailable,
+  } = useWalletBalances(effectivePasskeyAddress)
 
   // Juicy ID state
   const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
@@ -125,7 +128,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   }, [])
 
   // Get display identity: Juicy ID > ENS > null (no emoji fallback)
-  const getDisplayIdentity = (addr: string | undefined) => {
+  const getDisplayIdentity = () => {
     if (identity) return identity.formatted
     if (ensName) return ensName
     return null // Don't show emoji - will show "Set your Juicy ID" prompt instead
@@ -413,7 +416,9 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       // Explicitly clear draft cache on send
       try {
         localStorage.removeItem(draftKey)
-      } catch {}
+      } catch {
+        // Draft persistence is best-effort in restricted browser contexts.
+      }
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto'
       }
@@ -612,8 +617,8 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                   ) : (
                     <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50" title="Not signed in" />
                   )}
-                  {getDisplayIdentity(address) ? (
-                    <>Connected as {getDisplayIdentity(address)}</>
+                  {getDisplayIdentity() ? (
+                    <>Connected as {getDisplayIdentity()}</>
                   ) : (
                     <>Connected</>
                   )}
@@ -653,6 +658,9 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                     · {formatUsdcBalance(totalUsdc)} USDC · {formatEthBalance(totalEth)} ETH
                   </span>
                 )}
+                {!balancesLoading && !balancesAvailable && (
+                  <span className="ml-2 opacity-60">· Balance unavailable</span>
+                )}
               </>
             ) : hasAnyAuth ? (
               <>
@@ -667,8 +675,8 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                   }`}
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Passkey wallet" />
-                  {getDisplayIdentity(effectivePasskeyAddress) ? (
-                    <>Connected as {getDisplayIdentity(effectivePasskeyAddress)}</>
+                  {getDisplayIdentity() ? (
+                    <>Connected as {getDisplayIdentity()}</>
                   ) : (
                     <>Connected</>
                   )}
@@ -693,6 +701,9 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                   <span className="ml-2">
                     · {formatUsdcBalance(passkeyUsdc)} USDC · {formatEthBalance(passkeyEth)} ETH
                   </span>
+                )}
+                {!passkeyBalancesLoading && !passkeyBalancesAvailable && (
+                  <span className="ml-2 opacity-60">· Balance unavailable</span>
                 )}
               </>
             ) : (

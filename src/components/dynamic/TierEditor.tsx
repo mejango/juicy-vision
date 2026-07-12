@@ -1,12 +1,15 @@
 import { useState, useCallback } from 'react'
-import { parseEther, formatEther } from 'viem'
+import { formatUnits, parseUnits } from 'viem'
 import { useThemeStore } from '../../stores'
 import type { JB721TierConfigInput } from '../../services/tiersHook'
 import type { JB721HookFlags, TierPermissions } from '../../services/nft'
 import { validateTierChange } from '../../services/nft'
-import { encodeIpfsUri, pinJson, pinFile } from '../../utils/ipfs'
+import { encodeIpfsUri, pinFile } from '../../utils/ipfs'
+import { pinMetadata } from '../../services/ipfsPinning'
+import { buildTierMetadata, type StoredTierMetadata } from '../../utils/tierMetadata'
 import { ZERO_ADDRESS } from '../../constants'
 import GenerateImageButton from '../ui/GenerateImageButton'
+import { IpfsImage } from '../ui/IpfsMedia'
 
 interface TierEditorProps {
   /** Tier data for editing, undefined for new tier */
@@ -15,6 +18,9 @@ interface TierEditorProps {
     name?: string
     description?: string
     imageUri?: string
+    animationUrl?: string
+    mediaType?: string
+    categoryName?: string
     discountPercent?: number
     permissions?: TierPermissions
   }
@@ -28,25 +34,26 @@ interface TierEditorProps {
   pinataJwt?: string
   /** Currency label (ETH or USDC) */
   currencyLabel?: string
+  /** Decimals used by the hook's pricing context. */
+  pricingDecimals?: number
 }
 
-/** Metadata that will be pinned to IPFS */
-export interface TierMetadata {
-  name: string
-  description?: string
-  image?: string
-}
+/** Metadata that will be pinned to IPFS. */
+export type TierMetadata = StoredTierMetadata
 
 interface TierFormState {
   name: string
   description: string
   imageUri: string
+  animationUrl: string
+  mediaType: string
   price: string
   initialSupply: string
   votingUnits: string
   reserveFrequency: string
   reserveBeneficiary: string
   category: string
+  categoryName: string
   discountPercent: string
   allowOwnerMint: boolean
   transfersPausable: boolean
@@ -61,6 +68,7 @@ export default function TierEditor({
   onCancel,
   pinataJwt,
   currencyLabel = 'ETH',
+  pricingDecimals = 18,
 }: TierEditorProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
@@ -72,13 +80,18 @@ export default function TierEditor({
     name: existingTier?.name || '',
     description: existingTier?.description || '',
     imageUri: existingTier?.imageUri || '',
-    price: existingTier?.price ? formatEther(BigInt(existingTier.price)) : '0.01',
+    animationUrl: existingTier?.animationUrl || '',
+    mediaType: existingTier?.mediaType || '',
+    price: existingTier?.price ? formatUnits(BigInt(existingTier.price), pricingDecimals) : '0.01',
     initialSupply: existingTier?.initialSupply?.toString() || '100',
     votingUnits: existingTier?.votingUnits?.toString() || '0',
     reserveFrequency: existingTier?.reserveFrequency?.toString() || '0',
     reserveBeneficiary: existingTier?.reserveBeneficiary || ZERO_ADDRESS,
     category: existingTier?.category?.toString() || '0',
-    discountPercent: existingTier?.discountPercent?.toString() || '0',
+    categoryName: existingTier?.categoryName || '',
+    discountPercent: existingTier?.discountPercent
+      ? (existingTier.discountPercent / 2).toString()
+      : '0',
     allowOwnerMint: existingTier?.allowOwnerMint || false,
     transfersPausable: existingTier?.transfersPausable || false,
     cannotBeRemoved: existingTier?.cannotBeRemoved || false,
@@ -132,13 +145,33 @@ export default function TierEditor({
       return
     }
 
-    const price = parseEther(formState.price || '0')
+    let price: bigint
+    try {
+      price = parseUnits(formState.price || '0', pricingDecimals)
+    } catch {
+      setValidationError(`Price must use at most ${pricingDecimals} decimal places`)
+      return
+    }
     const initialSupply = parseInt(formState.initialSupply) || 0
     const votingUnits = parseInt(formState.votingUnits) || 0
     const reserveFrequency = parseInt(formState.reserveFrequency) || 0
+    const discountPercent = Number(formState.discountPercent)
+    const category = Number(formState.category)
 
     if (initialSupply <= 0) {
       setValidationError('Supply must be greater than 0')
+      return
+    }
+    if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+      setValidationError('Discount must be between 0% and 100%')
+      return
+    }
+    if (!Number.isSafeInteger(category) || category < 0 || category > 0xff_ffff) {
+      setValidationError('Category must be an integer between 0 and 16777215')
+      return
+    }
+    if (formState.categoryName.trim().length > 80) {
+      setValidationError('Category name must be 80 characters or fewer')
       return
     }
 
@@ -150,10 +183,11 @@ export default function TierEditor({
       reserveFrequency,
       reserveBeneficiary: (formState.reserveBeneficiary || ZERO_ADDRESS) as string,
       encodedIPFSUri: '0x0000000000000000000000000000000000000000000000000000000000000000', // Will be set after pinning
-      category: parseInt(formState.category) || 0,
-      discountPercent: parseInt(formState.discountPercent) || 0,
+      category,
+      discountPercent: Math.round(discountPercent * 2),
       allowOwnerMint: formState.allowOwnerMint,
-      useReserveBeneficiaryAsDefault: !!formState.reserveBeneficiary && formState.reserveBeneficiary !== ZERO_ADDRESS,
+      // An adjustment must not replace the default used by existing tiers.
+      useReserveBeneficiaryAsDefault: false,
       transfersPausable: formState.transfersPausable,
       useVotingUnits: votingUnits > 0,
       cannotBeRemoved: formState.cannotBeRemoved,
@@ -172,20 +206,19 @@ export default function TierEditor({
 
     try {
       // Build metadata
-      const metadata: TierMetadata = {
-        name: formState.name.trim(),
-        description: formState.description.trim() || undefined,
-        image: formState.imageUri || undefined,
-      }
+      const metadata = buildTierMetadata({
+        name: formState.name,
+        description: formState.description,
+        image: formState.imageUri,
+        animationUrl: formState.animationUrl,
+        mediaType: formState.mediaType,
+        categoryName: formState.categoryName,
+      })
 
-      // If we have Pinata JWT, pin the metadata
-      if (pinataJwt) {
-        const metadataCid = await pinJson(metadata, pinataJwt, `tier-metadata-${metadata.name}`)
-        const encodedUri = encodeIpfsUri(metadataCid)
-        if (encodedUri) {
-          tierConfig.encodedIPFSUri = encodedUri
-        }
-      }
+      const metadataUri = await pinMetadata(metadata, `tier-metadata-${metadata.name}`)
+      const encodedUri = encodeIpfsUri(metadataUri)
+      if (!encodedUri) throw new Error('Pinned tier metadata could not be encoded')
+      tierConfig.encodedIPFSUri = encodedUri
 
       onSave(tierConfig, metadata)
     } catch (err) {
@@ -194,7 +227,7 @@ export default function TierEditor({
     } finally {
       setSaving(false)
     }
-  }, [formState, hookFlags, existingTier, pinataJwt, onSave])
+  }, [formState, hookFlags, existingTier, onSave, pricingDecimals])
 
   return (
     <div className={`border ${isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'}`}>
@@ -251,10 +284,8 @@ export default function TierEditor({
           <div className="flex gap-3">
             {formState.imageUri && (
               <div className={`w-16 h-16 flex-shrink-0 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
-                <img
-                  src={formState.imageUri.startsWith('ipfs://')
-                    ? `https://gateway.pinata.cloud/ipfs/${formState.imageUri.slice(7)}`
-                    : formState.imageUri}
+                <IpfsImage
+                  uri={formState.imageUri}
                   alt="Tier preview"
                   className="w-full h-full object-cover"
                 />
@@ -300,6 +331,41 @@ export default function TierEditor({
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Audio or video URL
+            </label>
+            <input
+              type="text"
+              value={formState.animationUrl}
+              onChange={(e) => updateField('animationUrl', e.target.value)}
+              placeholder="ipfs://... or https://..."
+              className={`w-full px-3 py-2 text-sm outline-none ${
+                isDark
+                  ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-500'
+                  : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
+              }`}
+            />
+          </div>
+          <div>
+            <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Media type
+            </label>
+            <input
+              type="text"
+              value={formState.mediaType}
+              onChange={(e) => updateField('mediaType', e.target.value)}
+              placeholder="video/mp4 or audio/mpeg"
+              className={`w-full px-3 py-2 text-sm outline-none ${
+                isDark
+                  ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-500'
+                  : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
+              }`}
+            />
           </div>
         </div>
 
@@ -365,6 +431,17 @@ export default function TierEditor({
           <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             Group tiers by category for filtering
           </span>
+          <input
+            type="text"
+            value={formState.categoryName}
+            onChange={(e) => updateField('categoryName', e.target.value)}
+            placeholder="Category name (optional)"
+            className={`mt-2 w-full px-3 py-2 text-sm outline-none ${
+              isDark
+                ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-500'
+                : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
+            }`}
+          />
         </div>
 
         {/* Advanced Toggle */}
