@@ -26,7 +26,7 @@ function unescapeAttrValue(value: string): string {
     .replace(/\\\\/g, '\\')
 }
 // Types that support progressive streaming (render partial content as it arrives)
-const STREAMABLE_COMPONENT_TYPES = ['options-picker', 'transaction-preview']
+const STREAMABLE_COMPONENT_TYPES = ['options-picker']
 
 // Detect partial component tag that's still being streamed
 // Note: We can't use [^>]* because JSON attribute values may contain > characters
@@ -88,14 +88,6 @@ function parsePartialComponent(partialTag: string): ParsedComponent | null {
     if (groupsMatch) {
       // We have a partial groups array - include it for progressive parsing
       props.groups = groupsMatch[1]
-    }
-  } else if (type === 'transaction-preview') {
-    // Look for parameters=' and capture as much valid content as possible
-    const paramsMatch = partialTag.match(/parameters='(\{[\s\S]*)$/)
-    if (paramsMatch) {
-      // We have a partial parameters object - mark it as truncated
-      props.parameters = paramsMatch[1]
-      props._isTruncated = 'true'
     }
   }
 

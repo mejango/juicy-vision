@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { formatUnits, type Chain, createPublicClient, http } from 'viem'
-import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import {
   encodeAdjustTiers,
+  encodeSetDiscountPercentsOf,
+  type JB721DiscountPercentConfig,
   type JB721TierConfigInput,
 } from '../../services/tiersHook'
 import {
@@ -16,31 +17,12 @@ import {
   type JB721HookFlags,
 } from '../../services/nft'
 import TechnicalDetails from '../shared/TechnicalDetails'
-import { RPC_ENDPOINTS } from '../../constants'
+import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, EXPLORER_URLS, RPC_ENDPOINTS } from '../../constants'
 import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
 import { isUsdcCurrency } from '../../utils/technicalDetails'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 
-const CHAINS: Record<number, Chain> = {
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
-}
-
-const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
-}
-
-const EXPLORER_URLS: Record<number, string> = {
-  1: 'https://etherscan.io/tx/',
-  10: 'https://optimistic.etherscan.io/tx/',
-  8453: 'https://basescan.org/tx/',
-  42161: 'https://arbiscan.io/tx/',
-}
+const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
 interface TierMetadata {
   name: string
@@ -60,6 +42,7 @@ interface ChainHookData {
 interface PendingChanges {
   tiersToAdd: Array<{ config: JB721TierConfigInput; metadata: TierMetadata }>
   tierIdsToRemove: number[]
+  discountPercents: JB721DiscountPercentConfig[]
 }
 
 interface ManageTiersModalProps {
@@ -135,7 +118,9 @@ export default function ManageTiersModal({
   const changeSummary = useMemo(() => {
     const adds = pendingChanges.tiersToAdd.length
     const removes = pendingChanges.tierIdsToRemove.length
-    return { adds, removes, total: adds + removes }
+    const discounts = pendingChanges.discountPercents.length
+    const transactionsPerChain = Number(adds + removes > 0) + Number(discounts > 0)
+    return { adds, removes, discounts, total: adds + removes + discounts, transactionsPerChain }
   }, [pendingChanges])
   const pricingLabel = pricingCurrency === 2 || isUsdcCurrency(pricingCurrency) ? 'USD' : 'ETH'
 
@@ -183,8 +168,8 @@ export default function ManageTiersModal({
     )
   }, [])
 
-  // Execute adjustTiers on a single chain
-  const adjustTiersOnChain = useCallback(async (chainState: ChainTxState) => {
+  // Execute the reviewed tier operations on a single chain.
+  const updateTiersOnChain = useCallback(async (chainState: ChainTxState) => {
     if (isManagedMode) {
       if (!managedAddress) {
         throw new Error('Managed wallet not available')
@@ -217,48 +202,28 @@ export default function ManageTiersModal({
         }
         return requireRecognized721Hook(publicClient, currentHook, BigInt(chainState.projectId))
       }
-      const verifiedHook = await resolveFreshHook()
-      const data = encodeAdjustTiers({
-        tiersToAdd: pendingChanges.tiersToAdd.map(t => t.config),
-        tierIdsToRemove: pendingChanges.tierIdsToRemove,
-      })
       const activeAddress = (isManagedMode ? managedAddress : address) as `0x${string}`
-      await simulateTransaction({
-        chainId: chainState.chainId,
-        account: activeAddress,
-        to: verifiedHook,
-        data,
-        value: 0n,
-      })
+      const operations: `0x${string}`[] = []
+      if (pendingChanges.tiersToAdd.length > 0 || pendingChanges.tierIdsToRemove.length > 0) {
+        operations.push(encodeAdjustTiers({
+          tiersToAdd: pendingChanges.tiersToAdd.map(t => t.config),
+          tierIdsToRemove: pendingChanges.tierIdsToRemove,
+        }))
+      }
+      if (pendingChanges.discountPercents.length > 0) {
+        operations.push(encodeSetDiscountPercentsOf({ configs: pendingChanges.discountPercents }))
+      }
 
-      const txId = addTransaction({
-        type: 'deploy',
-        projectId: String(chainState.projectId),
-        chainId: chainState.chainId,
-        amount: '0',
-        status: 'pending',
-      })
-      updateChainState(chainState.chainId, { status: 'authorizing' })
-
-      let hash: string
-
-      if (isManagedMode) {
-        assertCurrentAccount()
-        hash = await executeManagedTransaction(
-          chainState.chainId,
-          verifiedHook,
-          data,
-          '0x0'
-        )
-      } else {
+      if (!isManagedMode) {
         await switchChainAsync({ chainId: chainState.chainId })
         if (await walletClient!.getChainId() !== chainState.chainId) {
           throw new Error(`Wallet did not switch to chain ${chainState.chainId}`)
         }
+      }
+
+      let hash = ''
+      for (const data of operations) {
         const finalHook = await resolveFreshHook()
-        if (finalHook.toLowerCase() !== verifiedHook.toLowerCase()) {
-          throw new Error('The project NFT hook changed. Close this review and load the latest collection.')
-        }
         await simulateTransaction({
           chainId: chainState.chainId,
           account: activeAddress,
@@ -266,18 +231,29 @@ export default function ManageTiersModal({
           data,
           value: 0n,
         })
-        assertCurrentAccount(walletClient!.account?.address)
-        hash = await walletClient!.sendTransaction({
-          to: finalHook,
-          data,
-          value: 0n,
+
+        const txId = addTransaction({
+          type: 'deploy',
+          projectId: String(chainState.projectId),
+          chainId: chainState.chainId,
+          amount: '0',
+          status: 'pending',
         })
+        updateChainState(chainState.chainId, { status: 'authorizing' })
+
+        if (isManagedMode) {
+          assertCurrentAccount()
+          hash = await executeManagedTransaction(chainState.chainId, finalHook, data, '0x0')
+        } else {
+          assertCurrentAccount(walletClient!.account?.address)
+          hash = await walletClient!.sendTransaction({ to: finalHook, data, value: 0n })
+        }
         updateChainState(chainState.chainId, { status: 'submitted', txHash: hash })
         await waitForSuccessfulTransaction(chainState.chainId, hash as `0x${string}`)
+        updateTransaction(txId, { hash, status: 'confirmed' })
       }
 
       updateChainState(chainState.chainId, { status: 'confirmed', txHash: hash })
-      updateTransaction(txId, { hash, status: 'confirmed' })
 
       return hash
     } catch (err) {
@@ -308,20 +284,17 @@ export default function ManageTiersModal({
     for (let i = 0; i < chainStates.length; i++) {
       setCurrentChainIndex(i)
       try {
-        await adjustTiersOnChain(chainStates[i])
+        await updateTiersOnChain(chainStates[i])
       } catch (err) {
         console.error(`Adjust tiers failed on chain ${chainStates[i].chainId}:`, err)
       }
     }
     setCurrentChainIndex(-1)
-  }, [address, chainStates, adjustTiersOnChain, isManagedMode, managedAddress, validChainData, walletClient, assertCurrentAccount, onError])
+  }, [address, chainStates, updateTiersOnChain, isManagedMode, managedAddress, validChainData, walletClient, assertCurrentAccount, onError])
 
   const handleClose = useCallback(() => {
-    if (allSucceeded && onComplete) {
-      onComplete()
-    }
     onClose()
-  }, [allSucceeded, onComplete, onClose])
+  }, [onClose])
 
   if (!isOpen) return null
 
@@ -412,6 +385,21 @@ export default function ManageTiersModal({
                 </div>
                 <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   Tier IDs: {pendingChanges.tierIdsToRemove.join(', ')}
+                </div>
+              </div>
+            )}
+
+            {pendingChanges.discountPercents.length > 0 && (
+              <div className="mb-3">
+                <div className={`text-sm font-medium mb-1 ${isDark ? 'text-cyan-300' : 'text-cyan-700'}`}>
+                  {pendingChanges.discountPercents.length} discount change{
+                    pendingChanges.discountPercents.length === 1 ? '' : 's'
+                  }
+                </div>
+                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {pendingChanges.discountPercents.map(update => (
+                    `#${update.tierId}: ${update.discountPercent / 2}%`
+                  )).join(' · ')}
                 </div>
               </div>
             )}
@@ -526,7 +514,15 @@ export default function ManageTiersModal({
 
               {isOmnichain && (
                 <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
-                  You will need to sign {chainStates.length} transactions, one for each chain.
+                  You will need to confirm {
+                    chainStates.length * changeSummary.transactionsPerChain
+                  } transactions across {chainStates.length} chains.
+                </div>
+              )}
+
+              {!isOmnichain && changeSummary.transactionsPerChain > 1 && (
+                <div className={`p-3 text-sm ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>
+                  Adding or removing tiers and changing discounts use separate contract calls. You will confirm 2 transactions.
                 </div>
               )}
 
@@ -535,12 +531,17 @@ export default function ManageTiersModal({
                 <TechnicalDetails
                   contract="JB721_TIERS_HOOK"
                   contractAddress={chainStates[0].hookAddress}
-                  functionName="adjustTiers"
+                  functionName={changeSummary.transactionsPerChain > 1
+                    ? 'adjustTiers + setDiscountPercentsOf'
+                    : pendingChanges.discountPercents.length > 0
+                      ? 'setDiscountPercentsOf'
+                      : 'adjustTiers'}
                   chainId={chainStates[0].chainId}
                   projectId={chainStates[0].projectId.toString()}
                   parameters={{
                     tiersToAdd: pendingChanges.tiersToAdd.length,
                     tierIdsToRemove: pendingChanges.tierIdsToRemove,
+                    discountPercents: pendingChanges.discountPercents,
                   }}
                   isDark={isDark}
                   allChains={isOmnichain ? chainStates.map(cs => ({

@@ -1,4 +1,4 @@
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 
 // =============================================================================
 // Types
@@ -120,7 +120,7 @@ export async function createTransaction(params: CreateTransactionParams): Promis
       tokenAddress?.toLowerCase() || null,
       amount,
       projectId || null,
-    ]
+    ],
   );
 
   return toTransaction(result[0]);
@@ -135,7 +135,7 @@ export interface UpdateTransactionParams {
 
 export async function updateTransaction(
   id: string,
-  params: UpdateTransactionParams
+  params: UpdateTransactionParams,
 ): Promise<Transaction | null> {
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -178,7 +178,7 @@ export async function updateTransaction(
      SET ${updates.join(', ')}
      WHERE id = $${paramIndex}
      RETURNING *`,
-    values
+    values,
   );
 
   return result[0] ? toTransaction(result[0]) : null;
@@ -187,7 +187,7 @@ export async function updateTransaction(
 export async function getTransactionById(id: string): Promise<Transaction | null> {
   const row = await queryOne<DbTransaction>(
     'SELECT * FROM transactions WHERE id = $1',
-    [id]
+    [id],
   );
 
   return row ? toTransaction(row) : null;
@@ -196,7 +196,7 @@ export async function getTransactionById(id: string): Promise<Transaction | null
 export async function getTransactionByHash(txHash: string): Promise<Transaction | null> {
   const row = await queryOne<DbTransaction>(
     'SELECT * FROM transactions WHERE tx_hash = $1',
-    [txHash.toLowerCase()]
+    [txHash.toLowerCase()],
   );
 
   return row ? toTransaction(row) : null;
@@ -204,14 +204,14 @@ export async function getTransactionByHash(txHash: string): Promise<Transaction 
 
 export async function getTransactionsBySession(
   sessionId: string,
-  limit = 50
+  limit = 50,
 ): Promise<Transaction[]> {
   const rows = await query<DbTransaction>(
     `SELECT * FROM transactions
-     WHERE session_id = $1
+     WHERE session_id = $1 AND user_id IS NULL
      ORDER BY created_at DESC
      LIMIT $2`,
-    [sessionId, limit]
+    [sessionId, limit],
   );
 
   return rows.map(toTransaction);
@@ -220,14 +220,14 @@ export async function getTransactionsBySession(
 export async function getTransactionsByUser(
   userId: string,
   limit = 50,
-  offset = 0
+  offset = 0,
 ): Promise<Transaction[]> {
   const rows = await query<DbTransaction>(
     `SELECT * FROM transactions
      WHERE user_id = $1
      ORDER BY created_at DESC
      LIMIT $2 OFFSET $3`,
-    [userId, limit, offset]
+    [userId, limit, offset],
   );
 
   return rows.map(toTransaction);
@@ -236,7 +236,7 @@ export async function getTransactionsByUser(
 export async function getTransactionsByProject(
   projectId: string,
   chainId?: number,
-  limit = 50
+  limit = 50,
 ): Promise<Transaction[]> {
   let sql = `SELECT * FROM transactions WHERE project_id = $1`;
   const params: unknown[] = [projectId];
@@ -259,7 +259,7 @@ export async function getPendingTransactions(limit = 100): Promise<Transaction[]
      WHERE status IN ('pending', 'submitted')
      ORDER BY created_at ASC
      LIMIT $1`,
-    [limit]
+    [limit],
   );
 
   return rows.map(toTransaction);
@@ -273,6 +273,6 @@ export async function cleanupOldTransactions(daysOld = 90): Promise<number> {
   return await execute(
     `DELETE FROM transactions
      WHERE created_at < NOW() - INTERVAL '${daysOld} days'
-     AND status IN ('confirmed', 'failed', 'cancelled')`
+     AND status IN ('confirmed', 'failed', 'cancelled')`,
   );
 }

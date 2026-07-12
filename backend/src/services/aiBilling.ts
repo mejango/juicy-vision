@@ -17,7 +17,6 @@
 import { query, queryOne, transaction } from '../db/index.ts';
 import {
   type Address,
-  decodeEventLog,
   decodeFunctionData,
   encodeFunctionData,
   formatUnits,
@@ -25,7 +24,8 @@ import {
   parseUnits,
 } from 'viem';
 import { arbitrum, base, mainnet, optimism } from 'viem/chains';
-import { CONTRACTS, NATIVE_TOKEN as SHARED_NATIVE_TOKEN } from '@shared/chains.ts';
+import { NATIVE_TOKEN as SHARED_NATIVE_TOKEN } from '@shared/chains.ts';
+import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '@shared/terminalPreview.ts';
 import { getConfig } from '../utils/config.ts';
 import { type ClaudeModel, MODEL_COSTS } from './claude.ts';
 import { fetchPrimaryTerminal, getPublicClient } from './chainReader.ts';
@@ -34,6 +34,7 @@ import {
   requireRecognizedProjectPayConfiguration,
   requireRecognizedRuntimeHook,
 } from './projectTrust.ts';
+import { verifyProtectedPaymentReceipt } from './paymentReceipt.ts';
 
 // ============================================================================
 // Constants
@@ -49,8 +50,6 @@ export const SUPPORTED_CHAINS = {
 
 // Native token address (constant across all chains)
 export const NATIVE_TOKEN = SHARED_NATIVE_TOKEN;
-const RECOGNIZED_MULTI_TERMINAL = CONTRACTS.JBMultiTerminal as Address;
-
 const PAY_ABI = [{
   name: 'pay',
   type: 'function',
@@ -65,65 +64,6 @@ const PAY_ABI = [{
     { name: 'metadata', type: 'bytes' },
   ],
   outputs: [{ name: '', type: 'uint256' }],
-}] as const;
-
-const PREVIEW_PAY_ABI = [{
-  name: 'previewPayFor',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [
-    { name: 'projectId', type: 'uint256' },
-    { name: 'token', type: 'address' },
-    { name: 'amount', type: 'uint256' },
-    { name: 'beneficiary', type: 'address' },
-    { name: 'metadata', type: 'bytes' },
-  ],
-  outputs: [
-    {
-      name: 'ruleset',
-      type: 'tuple',
-      components: [
-        { name: 'cycleNumber', type: 'uint256' },
-        { name: 'id', type: 'uint256' },
-        { name: 'basedOnId', type: 'uint256' },
-        { name: 'start', type: 'uint256' },
-        { name: 'duration', type: 'uint256' },
-        { name: 'weight', type: 'uint256' },
-        { name: 'weightCutPercent', type: 'uint256' },
-        { name: 'approvalHook', type: 'address' },
-        { name: 'metadata', type: 'uint256' },
-      ],
-    },
-    { name: 'beneficiaryTokenCount', type: 'uint256' },
-    { name: 'reservedTokenCount', type: 'uint256' },
-    {
-      name: 'hookSpecifications',
-      type: 'tuple[]',
-      components: [
-        { name: 'hook', type: 'address' },
-        { name: 'noop', type: 'bool' },
-        { name: 'amount', type: 'uint256' },
-        { name: 'metadata', type: 'bytes' },
-      ],
-    },
-  ],
-}] as const;
-
-const PAY_EVENT_ABI = [{
-  name: 'Pay',
-  type: 'event',
-  inputs: [
-    { name: 'rulesetId', type: 'uint256', indexed: true },
-    { name: 'rulesetCycleNumber', type: 'uint256', indexed: true },
-    { name: 'projectId', type: 'uint256', indexed: true },
-    { name: 'payer', type: 'address', indexed: false },
-    { name: 'beneficiary', type: 'address', indexed: false },
-    { name: 'amount', type: 'uint256', indexed: false },
-    { name: 'newlyIssuedTokenCount', type: 'uint256', indexed: false },
-    { name: 'memo', type: 'string', indexed: false },
-    { name: 'metadata', type: 'bytes', indexed: false },
-    { name: 'caller', type: 'address', indexed: false },
-  ],
 }] as const;
 
 // Pricing tiers (in ETH)
@@ -290,7 +230,7 @@ export async function encodePayCalldata(payment: SqueezePaymentData): Promise<{
   const preview = await client.readContract({
     account: payment.beneficiary,
     address: discoveredTerminal,
-    abi: PREVIEW_PAY_ABI,
+    abi: TERMINAL_PREVIEW_PAY_ABI,
     functionName: 'previewPayFor',
     args: [
       BigInt(payment.projectId),
@@ -310,9 +250,15 @@ export async function encodePayCalldata(payment: SqueezePaymentData): Promise<{
       });
     }
   }
-  if (preview[1] <= 0n) throw new Error('The payment quote returns no project tokens');
-  const quotedMinimum = (preview[1] * 99n) / 100n;
-  const minReturnedTokens = quotedMinimum > 0n ? quotedMinimum : 1n;
+  const previewOutcome = resolvePayPreviewOutcome({
+    beneficiaryTokenCount: preview[1],
+    reservedTokenCount: preview[2],
+    hookSpecifications: preview[3],
+  });
+  if (previewOutcome.beneficiaryTokenCount <= 0n) {
+    throw new Error('The payment quote returns no project tokens');
+  }
+  const minReturnedTokens = previewOutcome.minReturnedTokens;
   const data = encodeFunctionData({
     abi: PAY_ABI,
     functionName: 'pay',
@@ -392,34 +338,17 @@ export async function confirmPayment(confirmation: PaymentConfirmation): Promise
     throw new Error('Payment does not match this AI billing request');
   }
 
-  let verifiedAmount: bigint | null = null;
-  let verifiedTokens: bigint | null = null;
-  for (const log of receipt.logs) {
-    if (!isAddressEqual(log.address, RECOGNIZED_MULTI_TERMINAL)) continue;
-    try {
-      const event = decodeEventLog({ abi: PAY_EVENT_ABI, data: log.data, topics: log.topics });
-      if (
-        event.eventName === 'Pay' &&
-        event.args.projectId === BigInt(configuredProjectId) &&
-        isAddressEqual(event.args.payer, confirmation.payerAddress as Address) &&
-        isAddressEqual(event.args.beneficiary, confirmation.payerAddress as Address) &&
-        event.args.memo === memo &&
-        event.args.metadata === metadata
-      ) {
-        verifiedAmount = event.args.amount;
-        verifiedTokens = event.args.newlyIssuedTokenCount;
-        break;
-      }
-    } catch {
-      // Ignore unrelated terminal logs.
-    }
-  }
-  if (verifiedAmount === null || verifiedAmount !== confirmation.amountWei) {
-    throw new Error('Confirmed transaction did not emit the expected payment');
-  }
-  if (verifiedTokens === null || verifiedTokens < minReturnedTokens || verifiedTokens <= 0n) {
-    throw new Error('Confirmed payment did not issue the protected project-token minimum');
-  }
+  verifyProtectedPaymentReceipt({
+    logs: receipt.logs,
+    entrypoint: terminal,
+    projectId: BigInt(configuredProjectId),
+    payer: confirmation.payerAddress as Address,
+    beneficiary: confirmation.payerAddress as Address,
+    amount: confirmation.amountWei,
+    memo,
+    metadata,
+    minimum: minReturnedTokens,
+  });
 
   await transaction(async (client) => {
     // Check if payment already processed

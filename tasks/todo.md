@@ -68,9 +68,10 @@ Completed the protocol-truth audit and the recovered maintainability pass.
 - The 1.29 MB main chunk still merits further splitting, but the remaining shared
   chat/wallet boundary would add loading and dependency complexity; this pass
   intentionally stops at the existing route-level split.
-- Ignored backend tests and the browser journey do not submit live-chain
-  transactions; RPC, indexer, bundler, wallet, and contract integrations still
-  need normal staging smoke tests before release.
+- The follow-up parity pass now submits native pay, cash-out, and Add to Balance
+  staging transactions and runs live native/USDC-router/NFT previews. USDC,
+  AMM, NFT-payment, feeless, bundler, and managed-wallet submissions still need
+  fixtures with the required funds and on-chain route state.
 - Browserslist data is stale according to the build warning; dependency metadata
   can be refreshed separately without coupling it to this audit.
 
@@ -95,6 +96,49 @@ Completed the protocol-truth audit and the recovered maintainability pass.
 - [x] Remove simple unused test bindings without weakening assertions
 - [x] Leave debt that requires new abstractions or behavior changes documented
 - [x] Re-run frontend gates and push the follow-up cleanup
+
+## Common-User Journey Parity Pass (2026-07-12)
+
+- [x] Use the same route-aware `previewPayFor` sequence for Project pay, Pay
+  Credits settlement, PayTerm wallet confirmation, and AI billing
+- [x] Interpret issuance and buyback-hook pay previews through one shared module,
+  with exact issuance floors and AMM-only slippage
+- [x] Use the same hook-aware `previewCashOutFrom` sequence as the complete
+  project journey, including terminal fees, fee-free surplus, feeless
+  beneficiaries, Revnet hooks, buyback metadata, and locked re-previews
+- [x] Cover issuance/AMM, native/USDC-router, NFT metadata, zero/nonzero-tax fee
+  variants, Revnet hooks, and changed/locked previews with parity fixtures
+- [x] Replace spoofable transaction-history CRUD ownership with authenticated
+  user or validated anonymous-session ownership and expose personal history
+- [x] Remove the generic transaction execution shell and align chat prompts and
+  interactions with the dedicated reviewed forms
+- [x] Add managed native pay and native/USDC Add to Balance journeys
+- [x] Add staged tier discounts to the existing owner tier-management journey
+- [x] Replace transaction-modal mainnet-only chain maps with the shared,
+  environment-aware chain registry
+- [x] Exercise live Sepolia native issuance, Revnet treasury cash-out, and Add to
+  Balance transactions; verify exact previews, simulation, receipts, burns, and
+  resulting balances
+- [x] Exercise read-only live fixtures for Sepolia native and USDC/router pay,
+  hook-aware cash-out, and Base Sepolia NFT metadata/current configuration
+- [ ] Submit USDC/router, buyback-AMM, NFT, and feeless cash-out transactions when
+  staging has the required token/gas/permissioned fixture state. The configured
+  signer currently has Sepolia ETH only; no deployed V6 project currently
+  selects an AMM route, and feeless status is protocol-admin controlled.
+
+### Live staging evidence
+
+- Native issuance pay, Sepolia project 7:
+  `0x2cddb897b73caa8c52f3fc8e3ef41d195fc668880b7d412400cd420bb997902b`
+  (15,500,000,000,000,000 tokens previewed and issued exactly)
+- Revnet treasury cash-out, Sepolia project 7:
+  `0x26bb21524904cbc665e7b61918aa08bba5df491dea70012cd2d2bf03fb6b0e7a`
+  (274,124,126,250 wei reclaimed against a 271,382,884,987 wei floor)
+- Native Add to Balance, Sepolia project 7:
+  `0x98638fc4d6e1d6075cde860bee84744b0e5a6a4912d694211538c4d292439c49`
+  (1,000,000,000,000 wei credited exactly)
+- `RUN_CHAIN_INTEGRATION=true` now verifies the current Base Sepolia project 9
+  NFT fixture plus Sepolia native, USDC/router, and cash-out route previews.
 
 ---
 

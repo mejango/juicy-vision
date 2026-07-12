@@ -39,26 +39,25 @@ describe('messageParser', () => {
       })
 
       it('handles multi-line component tags with JSON parameters', () => {
-        const content = `I'll create a project. <component type="transaction-preview" action="launchProject" parameters='{
-  "projectUri": "ipfs://test",
-  "memo": "Test project"
-}' explanation="Launch project" />
+        const content = `Choose a route. <component type="options-picker" groups='[
+  {"id": "route", "label": "Route", "options": [{"value": "direct", "label": "Direct"}]}
+]' submitLabel="Continue" />
 
-This will create your project.`
+Then continue.`
 
         const result = parseMessageContent(content)
 
         expect(result.segments).toHaveLength(3)
         expect(result.segments[0].type).toBe('text')
         expect(result.segments[1].type).toBe('component')
-        expect((result.segments[1] as { type: 'component'; component: { type: string } }).component.type).toBe('transaction-preview')
+        expect((result.segments[1] as { type: 'component'; component: { type: string } }).component.type).toBe('options-picker')
         expect(result.segments[2].type).toBe('text')
       })
     })
 
     describe('streaming partial tags', () => {
       it('detects partial juice-component tag during streaming', () => {
-        const content = 'Creating project... <juice-component type="transaction-preview" action="launchProject" parameters=\'{ "projectUri": "ipfs://test'
+        const content = 'Choose one... <juice-component type="options-picker" groups=\'[{"id":"route"'
         const result = parseMessageContent(content)
 
         // Should show the text and a streaming component
@@ -69,7 +68,7 @@ This will create your project.`
       })
 
       it('detects partial <component> tag during streaming', () => {
-        const content = 'Creating project... <component type="transaction-preview" action="launchProject" parameters=\'{ "projectUri": "ipfs://test'
+        const content = 'Choose one... <component type="options-picker" groups=\'[{"id":"route"'
         const result = parseMessageContent(content)
 
         // Should show the text and a streaming component
@@ -82,13 +81,13 @@ This will create your project.`
 
     describe('single quoted JSON attributes', () => {
       it('parses single-quoted JSON with nested objects', () => {
-        const content = `<juice-component type="transaction-preview" action="launchProject" parameters='{"rulesetConfigurations": [{"mustStartAtOrAfter": 0}]}' />`
+        const content = `<juice-component type="options-picker" groups='[{"id":"route","options":[{"value":"direct"}]}]' />`
         const result = parseMessageContent(content)
 
         expect(result.segments).toHaveLength(1)
         expect(result.segments[0].type).toBe('component')
         const component = (result.segments[0] as { type: 'component'; component: { props: Record<string, string> } }).component
-        expect(component.props.parameters).toBe('{"rulesetConfigurations": [{"mustStartAtOrAfter": 0}]}')
+        expect(component.props.groups).toBe('[{"id":"route","options":[{"value":"direct"}]}]')
       })
     })
   })

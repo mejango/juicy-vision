@@ -6,6 +6,11 @@ import {
   NATIVE_TOKEN as SHARED_NATIVE_TOKEN,
   SUCKER_DEPLOYERS,
 } from '@shared/chains.ts';
+import {
+  resolveCashOutPreviewOutcome,
+  resolvePayPreviewOutcome,
+  TERMINAL_PREVIEW_ABI,
+} from '@shared/terminalPreview.ts';
 import { JB_OMNICHAIN_DEPLOYER_ABI } from '../../../src/constants/abis/jbOmnichainDeployer.ts';
 import { REV_DEPLOYER_ABI } from '../../../src/constants/abis/revDeployer.ts';
 import {
@@ -56,6 +61,7 @@ const RECOGNIZED_SUCKER_DEPLOYERS = new Set(
 
 const SELECTORS = {
   pay: '0xfef43257',
+  addToBalance: '0x9e6eec05',
   cashOut: '0x13da8317',
   sendPayouts: '0xcfaf5839',
   useAllowance: '0x748e821c',
@@ -65,6 +71,7 @@ const SELECTORS = {
   setSplitGroups: '0x8a36dffd',
   setUri: '0x702a3977',
   adjustTiers: '0x437aa91a',
+  setTierDiscounts: '0xcf7f4936',
   launchProject: '0x670d99be',
   launchProjectWithTiers: '0x2d993173',
   deployRevnet: '0x54ca091d',
@@ -122,64 +129,28 @@ const PROJECTS_ABI = [{
   outputs: [{ name: '', type: 'uint256' }],
 }] as const;
 
-const RULESET_PREVIEW_COMPONENTS = [
-  { name: 'cycleNumber', type: 'uint48' },
-  { name: 'id', type: 'uint48' },
-  { name: 'basedOnId', type: 'uint48' },
-  { name: 'start', type: 'uint48' },
-  { name: 'duration', type: 'uint32' },
-  { name: 'weight', type: 'uint112' },
-  { name: 'weightCutPercent', type: 'uint32' },
-  { name: 'approvalHook', type: 'address' },
-  { name: 'metadata', type: 'uint256' },
-] as const;
+const FEELESS_ADDRESSES_ABI = [{
+  name: 'isFeelessFor',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [
+    { name: 'addr', type: 'address' },
+    { name: 'projectId', type: 'uint256' },
+    { name: 'caller', type: 'address' },
+  ],
+  outputs: [{ name: '', type: 'bool' }],
+}] as const;
 
-const RUNTIME_HOOK_COMPONENTS = [
-  { name: 'hook', type: 'address' },
-  { name: 'noop', type: 'bool' },
-  { name: 'amount', type: 'uint256' },
-  { name: 'metadata', type: 'bytes' },
-] as const;
-
-const TERMINAL_PREVIEW_ABI = [
-  {
-    name: 'previewPayFor',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'beneficiary', type: 'address' },
-      { name: 'metadata', type: 'bytes' },
-    ],
-    outputs: [
-      { name: 'ruleset', type: 'tuple', components: RULESET_PREVIEW_COMPONENTS },
-      { name: 'beneficiaryTokenCount', type: 'uint256' },
-      { name: 'reservedTokenCount', type: 'uint256' },
-      { name: 'hookSpecifications', type: 'tuple[]', components: RUNTIME_HOOK_COMPONENTS },
-    ],
-  },
-  {
-    name: 'previewCashOutFrom',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'holder', type: 'address' },
-      { name: 'projectId', type: 'uint256' },
-      { name: 'cashOutCount', type: 'uint256' },
-      { name: 'tokenToReclaim', type: 'address' },
-      { name: 'beneficiary', type: 'address' },
-      { name: 'metadata', type: 'bytes' },
-    ],
-    outputs: [
-      { name: 'ruleset', type: 'tuple', components: RULESET_PREVIEW_COMPONENTS },
-      { name: 'reclaimAmount', type: 'uint256' },
-      { name: 'cashOutTaxRate', type: 'uint256' },
-      { name: 'hookSpecifications', type: 'tuple[]', components: RUNTIME_HOOK_COMPONENTS },
-    ],
-  },
-] as const;
+const FEE_FREE_SURPLUS_ABI = [{
+  name: 'feeFreeSurplusOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [
+    { name: 'projectId', type: 'uint256' },
+    { name: 'token', type: 'address' },
+  ],
+  outputs: [{ name: '', type: 'uint256' }],
+}] as const;
 
 const TIERS_HOOK_ABI = [
   {
@@ -196,7 +167,52 @@ const TIERS_HOOK_ABI = [
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  {
+    name: 'STORE',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
 ] as const;
+
+const TIER_COMPONENTS = [
+  { name: 'id', type: 'uint32' },
+  { name: 'price', type: 'uint104' },
+  { name: 'remainingSupply', type: 'uint32' },
+  { name: 'initialSupply', type: 'uint32' },
+  { name: 'votingUnits', type: 'uint104' },
+  { name: 'reserveFrequency', type: 'uint16' },
+  { name: 'reserveBeneficiary', type: 'address' },
+  { name: 'encodedIpfsUri', type: 'bytes32' },
+  { name: 'category', type: 'uint24' },
+  { name: 'discountPercent', type: 'uint8' },
+  {
+    name: 'flags',
+    type: 'tuple',
+    components: [
+      { name: 'allowOwnerMint', type: 'bool' },
+      { name: 'transfersPausable', type: 'bool' },
+      { name: 'cantBeRemoved', type: 'bool' },
+      { name: 'cantIncreaseDiscountPercent', type: 'bool' },
+      { name: 'cantBuyWithCredits', type: 'bool' },
+    ],
+  },
+  { name: 'splitPercent', type: 'uint32' },
+  { name: 'resolvedUri', type: 'string' },
+] as const;
+
+const TIERS_STORE_ABI = [{
+  name: 'tierOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [
+    { name: 'hook', type: 'address' },
+    { name: 'id', type: 'uint256' },
+    { name: 'includeResolvedUri', type: 'bool' },
+  ],
+  outputs: [{ name: 'tier', type: 'tuple', components: TIER_COMPONENTS }],
+}] as const;
 
 const CONTROLLER_RESERVED_BALANCE_ABI = [{
   name: 'pendingReservedTokenBalanceOf',
@@ -406,6 +422,11 @@ interface ManagedTierConfiguration {
   };
   splitPercent: Numeric;
   splits: readonly ManagedSplit[];
+}
+
+interface ManagedTierDiscount {
+  tierId: Numeric;
+  discountPercent: Numeric;
 }
 
 interface ManagedTiersHookConfiguration {
@@ -933,6 +954,27 @@ function requireSafeTierAdjustments(
   });
 }
 
+function requireSafeTierDiscounts(configs: readonly ManagedTierDiscount[]): void {
+  if (configs.length === 0) throw new Error('At least one tier discount is required');
+  if (configs.length > 100) throw new Error('At most 100 tier discounts can be changed at once');
+
+  const tierIds = new Set<string>();
+  for (const config of configs) {
+    const tierId = asBigInt(config.tierId);
+    const discountPercent = asBigInt(config.discountPercent);
+    if (tierId <= 0n || tierId > 0xffff_ffffn) {
+      throw new Error(`Invalid tier ID: ${tierId}`);
+    }
+    if (discountPercent < 0n || discountPercent > 200n) {
+      throw new Error(`Invalid discount for tier ${tierId}`);
+    }
+    if (tierIds.has(tierId.toString())) {
+      throw new Error(`Duplicate discount for tier ${tierId}`);
+    }
+    tierIds.add(tierId.toString());
+  }
+}
+
 interface ManagedRevnetConfiguration {
   description: { name: string; ticker: string; uri: string; salt: Hex };
   baseCurrency: Numeric;
@@ -1384,6 +1426,42 @@ async function requireCurrentTiersHook(
   });
 }
 
+async function requireCurrentTierDiscounts(
+  chainId: number,
+  hook: Address,
+  configs: readonly ManagedTierDiscount[],
+): Promise<void> {
+  const client = getPublicClient(chainId);
+  const store = await client.readContract({
+    address: hook,
+    abi: TIERS_HOOK_ABI,
+    functionName: 'STORE',
+  });
+  if (store.toLowerCase() !== CONTRACTS.JB721TiersHookStore.toLowerCase()) {
+    throw new Error(`721 tiers store not recognized: ${store}`);
+  }
+
+  const tiers = await Promise.all(configs.map((config) =>
+    client.readContract({
+      address: store,
+      abi: TIERS_STORE_ABI,
+      functionName: 'tierOf',
+      args: [hook, asBigInt(config.tierId), false],
+    })
+  ));
+  tiers.forEach((tier, index) => {
+    const config = configs[index];
+    const tierId = asBigInt(config.tierId);
+    if (BigInt(tier.id) !== tierId) throw new Error(`Tier ${tierId} is not live`);
+    if (
+      tier.flags.cantIncreaseDiscountPercent &&
+      asBigInt(config.discountPercent) > BigInt(tier.discountPercent)
+    ) {
+      throw new Error(`Tier ${tierId} has permanently locked discount increases`);
+    }
+  });
+}
+
 function splitFingerprint(split: ManagedSplit): string {
   return [
     asBigInt(split.percent),
@@ -1517,6 +1595,9 @@ export async function assertManagedTransactionAllowed(params: {
     if (amount <= 0n) throw new Error('Payment amount must be greater than zero');
     requireRecognizedAccountingToken(params.chainId, token);
     const nativePayment = token.toLowerCase() === NATIVE_TOKEN;
+    if (!nativePayment) {
+      throw new Error('Managed onchain payments currently support the native token only');
+    }
     if ((nativePayment && params.value !== amount) || (!nativePayment && params.value !== 0n)) {
       throw new Error('Payment value does not match the selected token amount');
     }
@@ -1554,12 +1635,49 @@ export async function assertManagedTransactionAllowed(params: {
         });
       }
     }
-    if (preview[1] <= 0n) throw new Error('The payment quote returns no project tokens');
-    const quotedMinimum = (preview[1] * 99n) / 100n;
-    const requiredMinimum = quotedMinimum > 0n ? quotedMinimum : 1n;
-    if (minReturnedTokens < requiredMinimum || minReturnedTokens > preview[1]) {
+    const previewOutcome = resolvePayPreviewOutcome({
+      beneficiaryTokenCount: preview[1],
+      reservedTokenCount: preview[2],
+      hookSpecifications: preview[3],
+    });
+    if (previewOutcome.beneficiaryTokenCount <= 0n) {
+      throw new Error('The payment quote returns no project tokens');
+    }
+    if (
+      minReturnedTokens < previewOutcome.minReturnedTokens ||
+      minReturnedTokens > previewOutcome.beneficiaryTokenCount
+    ) {
       throw new Error('Minimum project tokens returned is not safe');
     }
+    return;
+  }
+
+  if (selector === SELECTORS.addToBalance) {
+    const [projectId, token, amount, shouldReturnHeldFees, , metadata] = decodeAbiParameters([
+      { type: 'uint256' },
+      { type: 'address' },
+      { type: 'uint256' },
+      { type: 'bool' },
+      { type: 'string' },
+      { type: 'bytes' },
+    ], encodedArgs);
+    if (amount <= 0n) throw new Error('Balance contribution must be greater than zero');
+    requireRecognizedAccountingToken(params.chainId, token);
+    if (token.toLowerCase() !== NATIVE_TOKEN) {
+      throw new Error('Managed balance contributions currently support the native token only');
+    }
+    if (params.value !== amount) throw new Error('Balance contribution value is incorrect');
+    if (shouldReturnHeldFees) {
+      throw new Error('Returning held fees is not supported in this contribution flow');
+    }
+    if (metadata !== '0x') throw new Error('Balance contribution metadata is not supported');
+    await requireTerminalTarget({
+      ...params,
+      projectId,
+      token,
+      operation: 'accounting',
+      target: params.to,
+    });
     return;
   }
 
@@ -1576,7 +1694,6 @@ export async function assertManagedTransactionAllowed(params: {
         { type: 'bytes' },
       ], encodedArgs);
     if (cashOutCount <= 0n) throw new Error('Cash out amount must be greater than zero');
-    if (metadata !== '0x') throw new Error('Cash out metadata is not supported in this flow');
     if (
       params.expectedAccount &&
       (holder.toLowerCase() !== params.expectedAccount.toLowerCase() ||
@@ -1597,14 +1714,27 @@ export async function assertManagedTransactionAllowed(params: {
       projectId,
     });
     const client = getPublicClient(params.chainId);
-    const preview = await client.readContract({
-      account: params.expectedAccount ?? holder,
-      address: params.to,
-      abi: TERMINAL_PREVIEW_ABI,
-      functionName: 'previewCashOutFrom',
-      args: [holder, projectId, cashOutCount, token, beneficiary, metadata],
-    });
-    if (preview[1] <= 0n) throw new Error('No funds are currently reclaimable');
+    const [preview, feeFreeSurplus, beneficiaryIsFeeless] = await Promise.all([
+      client.readContract({
+        account: params.expectedAccount ?? holder,
+        address: params.to,
+        abi: TERMINAL_PREVIEW_ABI,
+        functionName: 'previewCashOutFrom',
+        args: [holder, projectId, cashOutCount, token, beneficiary, metadata],
+      }),
+      client.readContract({
+        address: params.to,
+        abi: FEE_FREE_SURPLUS_ABI,
+        functionName: 'feeFreeSurplusOf',
+        args: [projectId, token],
+      }),
+      client.readContract({
+        address: CONTRACTS.JBFeelessAddresses as Address,
+        abi: FEELESS_ADDRESSES_ABI,
+        functionName: 'isFeelessFor',
+        args: [beneficiary, projectId, params.expectedAccount ?? holder],
+      }),
+    ]);
     for (const specification of preview[3]) {
       if (!specification.noop) {
         await requireRecognizedRuntimeHook({
@@ -1615,9 +1745,23 @@ export async function assertManagedTransactionAllowed(params: {
         });
       }
     }
-    const quotedMinimum = (preview[1] * 39n) / 40n;
-    const requiredMinimum = quotedMinimum > 0n ? quotedMinimum : 1n;
-    if (minTokensReclaimed < requiredMinimum || minTokensReclaimed > preview[1]) {
+    const previewOutcome = resolveCashOutPreviewOutcome({
+      reclaimAmount: preview[1],
+      cashOutTaxRate: preview[2],
+      hookSpecifications: preview[3],
+      beneficiaryIsFeeless,
+      feeFreeSurplus,
+    });
+    if (previewOutcome.expectedReturn <= 0n || previewOutcome.minimumReturn <= 0n) {
+      throw new Error('No funds are currently reclaimable');
+    }
+    if (metadata.toLowerCase() !== previewOutcome.metadata.toLowerCase()) {
+      throw new Error('Cash out route metadata is not the current protected quote');
+    }
+    if (
+      minTokensReclaimed !== previewOutcome.terminalMinimum ||
+      (previewOutcome.route === 'treasury' && minTokensReclaimed > previewOutcome.expectedReturn)
+    ) {
       throw new Error('Minimum cash out return is not safe');
     }
     return;
@@ -1927,6 +2071,22 @@ export async function assertManagedTransactionAllowed(params: {
     ], encodedArgs);
     requireSafeTierAdjustments(tiersToAdd, tierIdsToRemove);
     await requireCurrentTiersHook(params.chainId, params.to);
+    return;
+  }
+
+  if (selector === SELECTORS.setTierDiscounts) {
+    requireZeroValue(params.value);
+    const [configs] = decodeAbiParameters([{
+      name: 'configs',
+      type: 'tuple[]',
+      components: [
+        { name: 'tierId', type: 'uint32' },
+        { name: 'discountPercent', type: 'uint16' },
+      ],
+    }], encodedArgs);
+    requireSafeTierDiscounts(configs);
+    await requireCurrentTiersHook(params.chainId, params.to);
+    await requireCurrentTierDiscounts(params.chainId, params.to, configs);
     return;
   }
 

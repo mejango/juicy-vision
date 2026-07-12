@@ -1,18 +1,40 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useTransactionExecutor } from './useTransactionExecutor'
+import { getPaymentTerminal } from '../utils'
+import { useAuthStore } from '../stores'
+import { useManagedWallet } from './useManagedWallet'
 
 // Mock stores
 const mockUpdateTransaction = vi.fn()
 const mockAuthToken = 'test-auth-token'
 
-vi.mock('../stores', () => ({
-  useTransactionStore: vi.fn(() => ({
-    updateTransaction: mockUpdateTransaction,
+vi.mock('../stores', () => {
+  const useAuthStore = Object.assign(
+    vi.fn(() => ({ token: mockAuthToken })),
+    {
+      getState: vi.fn(() => ({
+        token: mockAuthToken,
+        mode: 'self_custody',
+        isAuthenticated: () => true,
+      })),
+    },
+  )
+  return {
+    useTransactionStore: vi.fn(() => ({
+      updateTransaction: mockUpdateTransaction,
+    })),
+    useAuthStore,
+  }
+})
+
+const mockExecuteManagedTransaction = vi.fn()
+vi.mock('./useManagedWallet', () => ({
+  useManagedWallet: vi.fn(() => ({
+    address: null,
+    isManagedMode: false,
   })),
-  useAuthStore: vi.fn(() => ({
-    token: mockAuthToken,
-  })),
+  executeManagedTransaction: (...args: unknown[]) => mockExecuteManagedTransaction(...args),
 }))
 
 // Mock wagmi
@@ -153,6 +175,21 @@ describe('useTransactionExecutor', () => {
     window.addEventListener('juice:payment-review-request', autoApproveReview)
     mockPreviewedTokens = 1000n
     mockUsdcBalance = 1_000_000_000n
+    vi.mocked(useAuthStore).mockReturnValue({ token: mockAuthToken } as never)
+    vi.mocked(useAuthStore.getState).mockReturnValue({
+      token: mockAuthToken,
+      mode: 'self_custody',
+      isAuthenticated: () => true,
+    } as never)
+    vi.mocked(useManagedWallet).mockReturnValue({
+      address: null,
+      isManagedMode: false,
+    } as ReturnType<typeof useManagedWallet>)
+    mockExecuteManagedTransaction.mockResolvedValue('0xmanagedtxhash')
+    vi.mocked(getPaymentTerminal).mockResolvedValue({
+      address: '0x130f5dd2bd8805443cf41755253d778a75a67f53',
+      type: 'multi',
+    })
 
     // Setup default mock behaviors
     mockGetWalletClient.mockResolvedValue({
@@ -424,6 +461,82 @@ describe('useTransactionExecutor', () => {
       expect(mockSendTransaction).not.toHaveBeenCalled()
       expect(mockCreateTransactionRecord).not.toHaveBeenCalled()
     })
+
+    it('locks the reviewed preview and refuses a changed quote', async () => {
+      window.removeEventListener('juice:payment-review-request', autoApproveReview)
+      const changeQuoteAfterReview = (event: Event) => {
+        mockPreviewedTokens = 999n
+        ;(event as CustomEvent<{ respond: (approved: boolean) => void }>).detail.respond(true)
+      }
+      window.addEventListener('juice:payment-review-request', changeQuoteAfterReview)
+      renderHook(() => useTransactionExecutor())
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('juice:pay-project', {
+          detail: {
+            txId: 'tx-quote-changed',
+            projectId: '456',
+            chainId: 42161,
+            amount: '0.1',
+            token: 'ETH',
+          },
+        }))
+      })
+
+      await waitFor(() => expect(mockUpdateTransaction).toHaveBeenCalledWith(
+        'tx-quote-changed',
+        expect.objectContaining({ status: 'failed', error: 'The payment quote changed. Review the payment again.' }),
+      ))
+      expect(mockSendTransaction).not.toHaveBeenCalled()
+      window.removeEventListener('juice:payment-review-request', changeQuoteAfterReview)
+    })
+
+    it('executes a reviewed native payment through the managed wallet', async () => {
+      const managedAccount = '0x4444444444444444444444444444444444444444'
+      vi.mocked(useManagedWallet).mockReturnValue({
+        address: managedAccount,
+        isManagedMode: true,
+      } as ReturnType<typeof useManagedWallet>)
+      vi.mocked(useAuthStore.getState).mockReturnValue({
+        token: mockAuthToken,
+        mode: 'managed',
+        isAuthenticated: () => true,
+      } as never)
+      window.removeEventListener('juice:payment-review-request', autoApproveReview)
+      let reviewedAccount = ''
+      const captureReview = (event: Event) => {
+        const request = (event as CustomEvent<{
+          review: { account: string }
+          respond: (approved: boolean) => void
+        }>).detail
+        reviewedAccount = request.review.account
+        request.respond(true)
+      }
+      window.addEventListener('juice:payment-review-request', captureReview)
+      renderHook(() => useTransactionExecutor())
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('juice:pay-project', {
+          detail: {
+            txId: 'tx-managed-native',
+            projectId: '456',
+            chainId: 42161,
+            amount: '0.1',
+            token: 'ETH',
+          },
+        }))
+      })
+
+      await waitFor(() => expect(mockExecuteManagedTransaction).toHaveBeenCalledWith(
+        42161,
+        '0x130f5dd2bd8805443cf41755253d778a75a67f53',
+        expect.any(String),
+        '100000000000000000',
+      ))
+      expect(reviewedAccount).toBe(managedAccount)
+      expect(mockSendTransaction).not.toHaveBeenCalled()
+      window.removeEventListener('juice:payment-review-request', captureReview)
+    })
   })
 
   describe('USDC payment', () => {
@@ -510,10 +623,58 @@ describe('useTransactionExecutor', () => {
       expect(mockSendTransaction).not.toHaveBeenCalled()
       expect(mockCreateTransactionRecord).not.toHaveBeenCalled()
     })
+
+    it('uses the reviewed router route for USDC when that is the live terminal', async () => {
+      vi.mocked(getPaymentTerminal).mockResolvedValue({
+        address: '0x7777777777777777777777777777777777777777',
+        type: 'router',
+      })
+      window.removeEventListener('juice:payment-review-request', autoApproveReview)
+      let reviewedRoute = ''
+      const captureReview = (event: Event) => {
+        const request = (event as CustomEvent<{
+          review: { route: string; tokenSymbol: string }
+          respond: (approved: boolean) => void
+        }>).detail
+        reviewedRoute = `${request.review.route}:${request.review.tokenSymbol}`
+        request.respond(true)
+      }
+      window.addEventListener('juice:payment-review-request', captureReview)
+      renderHook(() => useTransactionExecutor())
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('juice:pay-project', {
+          detail: {
+            txId: 'tx-router-usdc',
+            projectId: '456',
+            chainId: 42161,
+            amount: '25',
+            token: 'USDC',
+          },
+        }))
+      })
+
+      await waitFor(() => expect(mockSendTransaction).toHaveBeenCalled())
+      expect(reviewedRoute).toBe('routed payment:USDC')
+      window.removeEventListener('juice:payment-review-request', captureReview)
+    })
   })
 
   describe('NFT tier minting', () => {
-    it('includes NFT metadata when tier is selected', async () => {
+    it('includes the verified NFT selection and metadata in the exact review', async () => {
+      window.removeEventListener('juice:payment-review-request', autoApproveReview)
+      let reviewedMetadata = '0x'
+      let reviewedNfts: Array<{ tierId: number }> = []
+      const captureReview = (event: Event) => {
+        const request = (event as CustomEvent<{
+          review: { metadata: string; nfts: Array<{ tierId: number }> }
+          respond: (approved: boolean) => void
+        }>).detail
+        reviewedMetadata = request.review.metadata
+        reviewedNfts = request.review.nfts
+        request.respond(true)
+      }
+      window.addEventListener('juice:payment-review-request', captureReview)
       renderHook(() => useTransactionExecutor())
 
       await act(async () => {
@@ -537,6 +698,9 @@ describe('useTransactionExecutor', () => {
       await waitFor(() => {
         expect(mockSendTransaction).toHaveBeenCalled()
       })
+      expect(reviewedMetadata).not.toBe('0x')
+      expect(reviewedNfts).toEqual([expect.objectContaining({ tierId: 1 })])
+      window.removeEventListener('juice:payment-review-request', captureReview)
     })
 
     it('uses exact tier price when preventOverspending is enabled', async () => {
@@ -617,6 +781,41 @@ describe('useTransactionExecutor', () => {
         }))
       })
       expect(mockSendTransaction).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Add to Balance', () => {
+    it('uses a dedicated native contribution review and call', async () => {
+      window.removeEventListener('juice:payment-review-request', autoApproveReview)
+      let reviewedAction = ''
+      const captureReview = (event: Event) => {
+        const request = (event as CustomEvent<{
+          review: { action?: string; expectedProjectTokens: string }
+          respond: (approved: boolean) => void
+        }>).detail
+        reviewedAction = `${request.review.action}:${request.review.expectedProjectTokens}`
+        request.respond(true)
+      }
+      window.addEventListener('juice:payment-review-request', captureReview)
+      renderHook(() => useTransactionExecutor())
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('juice:pay-project', {
+          detail: {
+            txId: 'tx-add-balance',
+            projectId: '456',
+            chainId: 42161,
+            amount: '0.1',
+            token: 'ETH',
+            action: 'addToBalance',
+            memo: 'Treasury contribution',
+          },
+        }))
+      })
+
+      await waitFor(() => expect(mockSendTransaction).toHaveBeenCalled())
+      expect(reviewedAction).toBe('addToBalance:0')
+      window.removeEventListener('juice:payment-review-request', captureReview)
     })
   })
 

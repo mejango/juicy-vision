@@ -474,6 +474,7 @@ export function verifyCashOutParams(params: {
   minTokensReclaimed: bigint | string
   beneficiary: string
   metadata?: string
+  buybackRoute?: boolean
 }): VerificationResult {
   const doubts: TransactionDoubt[] = []
   const warnings: string[] = []
@@ -562,14 +563,14 @@ export function verifyCashOutParams(params: {
       message: `Cash out token not recognized: ${params.tokenToReclaim}`,
     })
   }
-  if (cashOutCount > 0n && minTokensReclaimed === 0n) {
+  if (cashOutCount > 0n && minTokensReclaimed === 0n && !params.buybackRoute) {
     doubts.push({
       severity: 'critical',
       field: 'minTokensReclaimed',
       message: 'Cash out minimum return must be greater than zero',
     })
   }
-  if (params.metadata && params.metadata !== '0x') {
+  if (params.metadata && params.metadata !== '0x' && !params.buybackRoute) {
     doubts.push({
       severity: 'critical',
       field: 'metadata',

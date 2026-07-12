@@ -1,11 +1,11 @@
 /**
  * Component State Service
  *
- * Manages persistent state for dynamic message components (transaction-preview, etc.).
+ * Manages persistent state for dynamic message components.
  * State is stored per-message and propagates to all chat participants.
  */
 
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 
 // ============================================================================
 // Types
@@ -14,15 +14,6 @@ import { query, queryOne, execute } from '../db/index.ts';
 export interface ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
   [key: string]: unknown; // Component-specific fields
-}
-
-export interface TransactionPreviewState extends ComponentState {
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  projectIds?: Record<number, number>; // chainId -> projectId
-  txHashes?: Record<number, string>;   // chainId -> txHash
-  bundleId?: string;
-  completedAt?: string; // ISO timestamp
-  error?: string;
 }
 
 interface DbComponentState {
@@ -42,11 +33,11 @@ interface DbComponentState {
  */
 export async function getComponentState<T extends ComponentState = ComponentState>(
   messageId: string,
-  componentKey: string
+  componentKey: string,
 ): Promise<T | null> {
   const result = await queryOne<DbComponentState>(
     'SELECT state FROM message_component_states WHERE message_id = $1 AND component_key = $2',
-    [messageId, componentKey]
+    [messageId, componentKey],
   );
 
   return result ? (result.state as T) : null;
@@ -56,11 +47,11 @@ export async function getComponentState<T extends ComponentState = ComponentStat
  * Get all component states for a message
  */
 export async function getMessageComponentStates(
-  messageId: string
+  messageId: string,
 ): Promise<Record<string, ComponentState>> {
   const results = await query<DbComponentState>(
     'SELECT component_key, state FROM message_component_states WHERE message_id = $1',
-    [messageId]
+    [messageId],
   );
 
   const states: Record<string, ComponentState> = {};
@@ -76,7 +67,7 @@ export async function getMessageComponentStates(
 export async function setComponentState<T extends ComponentState>(
   messageId: string,
   componentKey: string,
-  state: T
+  state: T,
 ): Promise<T> {
   await execute(
     `INSERT INTO message_component_states (message_id, component_key, state, updated_at)
@@ -84,7 +75,7 @@ export async function setComponentState<T extends ComponentState>(
      ON CONFLICT (message_id, component_key) DO UPDATE SET
        state = $3::jsonb,
        updated_at = NOW()`,
-    [messageId, componentKey, JSON.stringify(state)]
+    [messageId, componentKey, JSON.stringify(state)],
   );
 
   return state;
@@ -96,7 +87,7 @@ export async function setComponentState<T extends ComponentState>(
 export async function updateComponentState<T extends ComponentState>(
   messageId: string,
   componentKey: string,
-  updates: Partial<T>
+  updates: Partial<T>,
 ): Promise<T> {
   // Get existing state
   const existing = await getComponentState<T>(messageId, componentKey);
@@ -110,11 +101,11 @@ export async function updateComponentState<T extends ComponentState>(
  */
 export async function deleteComponentState(
   messageId: string,
-  componentKey: string
+  componentKey: string,
 ): Promise<void> {
   await execute(
     'DELETE FROM message_component_states WHERE message_id = $1 AND component_key = $2',
-    [messageId, componentKey]
+    [messageId, componentKey],
   );
 }
 
@@ -122,7 +113,7 @@ export async function deleteComponentState(
  * Batch get component states for multiple messages (efficient for loading chat history)
  */
 export async function batchGetComponentStates(
-  messageIds: string[]
+  messageIds: string[],
 ): Promise<Map<string, Record<string, ComponentState>>> {
   if (messageIds.length === 0) return new Map();
 
@@ -130,7 +121,7 @@ export async function batchGetComponentStates(
     `SELECT message_id, component_key, state
      FROM message_component_states
      WHERE message_id = ANY($1)`,
-    [messageIds]
+    [messageIds],
   );
 
   const statesByMessage = new Map<string, Record<string, ComponentState>>();

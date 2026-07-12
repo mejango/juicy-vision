@@ -14,6 +14,7 @@ export type TransactionStatus = 'pending' | 'submitted' | 'confirmed' | 'failed'
 
 export type TransactionType =
   | 'pay'
+  | 'addToBalance'
   | 'cashout'
   | 'deploy'
   | 'sendPayouts'

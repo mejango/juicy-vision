@@ -13,18 +13,6 @@ export interface ComponentState {
   [key: string]: unknown
 }
 
-export interface TransactionPreviewState extends ComponentState {
-  status: 'pending' | 'in_progress' | 'completed' | 'failed'
-  projectIds?: Record<number, number>
-  txHashes?: Record<number, string>
-  bundleId?: string
-  completedAt?: string
-  error?: string
-  // Track which follow-up messages have been sent (survives reload)
-  hasShownLoadingMessage?: boolean
-  hasShownProjectCard?: boolean
-}
-
 interface UseComponentStateOptions<T extends ComponentState> {
   messageId: string | undefined
   componentKey: string
@@ -152,19 +140,6 @@ export function useComponentState<T extends ComponentState = ComponentState>(
     setState,
     updateState,
   }
-}
-
-/**
- * Hook specifically for transaction-preview component state
- */
-export function useTransactionPreviewState(
-  messageId: string | undefined
-): UseComponentStateReturn<TransactionPreviewState> {
-  return useComponentState<TransactionPreviewState>({
-    messageId,
-    componentKey: 'transaction-preview',
-    initialState: { status: 'pending' },
-  })
 }
 
 /**

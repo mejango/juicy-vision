@@ -20,6 +20,21 @@ const PAY_ABI = [{
   outputs: [{ name: '', type: 'uint256' }],
 }] as const;
 
+const ADD_TO_BALANCE_ABI = [{
+  name: 'addToBalanceOf',
+  type: 'function',
+  stateMutability: 'payable',
+  inputs: [
+    { name: 'projectId', type: 'uint256' },
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'shouldReturnHeldFees', type: 'bool' },
+    { name: 'memo', type: 'string' },
+    { name: 'metadata', type: 'bytes' },
+  ],
+  outputs: [],
+}] as const;
+
 const USE_ALLOWANCE_ABI = [{
   name: 'useAllowanceOf',
   type: 'function',
@@ -92,17 +107,26 @@ const SET_SPLIT_GROUPS_ABI = [{
 }] as const;
 
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000eeee' as Address;
+const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48' as Address;
 const ACCOUNT = '0x1234567890123456789012345678901234567890' as Address;
 const UNKNOWN_CONTRACT = '0x9999999999999999999999999999999999999999' as Address;
 const OTHER_ACCOUNT = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as Address;
 const REV_DEPLOYER = '0xb552eb94284f94b833837d4b2cbb237128415d4e' as Address;
 const NONZERO_SALT = `0x${'0'.repeat(63)}1` as const;
 
-function payData(amount: bigint) {
+function payData(amount: bigint, token: Address = NATIVE_TOKEN) {
   return encodeFunctionData({
     abi: PAY_ABI,
     functionName: 'pay',
-    args: [1n, NATIVE_TOKEN, amount, ACCOUNT, 0n, '', '0x'],
+    args: [1n, token, amount, ACCOUNT, 0n, '', '0x'],
+  });
+}
+
+function addToBalanceData(amount: bigint, metadata: `0x${string}` = '0x') {
+  return encodeFunctionData({
+    abi: ADD_TO_BALANCE_ABI,
+    functionName: 'addToBalanceOf',
+    args: [1n, NATIVE_TOKEN, amount, false, '', metadata],
   });
 }
 
@@ -213,6 +237,49 @@ Deno.test('managed transaction policy blocks zero-value pay calls before RPC loo
       }),
     Error,
     'Payment amount must be greater than zero',
+  );
+});
+
+Deno.test('managed transaction policy limits onchain pay to the native token', async () => {
+  await assertRejects(
+    () =>
+      assertManagedTransactionAllowed({
+        chainId: 1,
+        to: UNKNOWN_CONTRACT,
+        data: payData(1_000_000n, USDC),
+        value: 0n,
+        expectedAccount: ACCOUNT,
+      }),
+    Error,
+    'native token only',
+  );
+});
+
+Deno.test('managed transaction policy binds Add to Balance amount to native value', async () => {
+  await assertRejects(
+    () =>
+      assertManagedTransactionAllowed({
+        chainId: 1,
+        to: UNKNOWN_CONTRACT,
+        data: addToBalanceData(2n),
+        value: 1n,
+      }),
+    Error,
+    'Balance contribution value is incorrect',
+  );
+});
+
+Deno.test('managed transaction policy rejects metadata on Add to Balance', async () => {
+  await assertRejects(
+    () =>
+      assertManagedTransactionAllowed({
+        chainId: 1,
+        to: UNKNOWN_CONTRACT,
+        data: addToBalanceData(1n, '0x1234'),
+        value: 1n,
+      }),
+    Error,
+    'Balance contribution metadata is not supported',
   );
 });
 
@@ -412,5 +479,46 @@ Deno.test('managed transaction policy blocks collection-wide reserve changes bef
       }),
     Error,
     'collection-wide reserve beneficiary',
+  );
+});
+
+Deno.test('managed transaction policy rejects out-of-range tier discounts before hook lookup', async () => {
+  const data = encodeFunctionData({
+    abi: JB_721_TIERS_HOOK_ABI,
+    functionName: 'setDiscountPercentsOf',
+    args: [[{ tierId: 1, discountPercent: 201 }]],
+  });
+  await assertRejects(
+    () =>
+      assertManagedTransactionAllowed({
+        chainId: 1,
+        to: UNKNOWN_CONTRACT,
+        data,
+        value: 0n,
+      }),
+    Error,
+    'Invalid discount for tier 1',
+  );
+});
+
+Deno.test('managed transaction policy rejects duplicate tier discounts before hook lookup', async () => {
+  const data = encodeFunctionData({
+    abi: JB_721_TIERS_HOOK_ABI,
+    functionName: 'setDiscountPercentsOf',
+    args: [[
+      { tierId: 1, discountPercent: 20 },
+      { tierId: 1, discountPercent: 10 },
+    ]],
+  });
+  await assertRejects(
+    () =>
+      assertManagedTransactionAllowed({
+        chainId: 1,
+        to: UNKNOWN_CONTRACT,
+        data,
+        value: 0n,
+      }),
+    Error,
+    'Duplicate discount for tier 1',
   );
 });

@@ -212,6 +212,28 @@ describe('transactionVerification', () => {
       const result = verifyCashOutParams({ ...validParams, tokenToReclaim: INVALID_ADDRESS })
       expect(result.isValid).toBe(false)
     })
+
+    it('accepts a recognized buyback route with its minimum in hook metadata', () => {
+      const result = verifyCashOutParams({
+        ...validParams,
+        minTokensReclaimed: 0n,
+        metadata: '0x1234',
+        buybackRoute: true,
+      })
+      expect(result.isValid).toBe(true)
+    })
+
+    it('rejects buyback-shaped calldata unless the live preview selected that route', () => {
+      const result = verifyCashOutParams({
+        ...validParams,
+        minTokensReclaimed: 0n,
+        metadata: '0x1234',
+      })
+      expect(result.isValid).toBe(false)
+      expect(result.doubts.map(doubt => doubt.field)).toEqual(
+        expect.arrayContaining(['minTokensReclaimed', 'metadata']),
+      )
+    })
   })
 
   describe('verifySendPayoutsParams', () => {

@@ -918,7 +918,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     // Check if message has any interactive components
     const hasInteractiveComponent = parsed.segments.some(seg =>
       seg.type === 'component' &&
-      ['options-picker', 'transaction-preview', 'project-card', 'pay-modal',
+      ['options-picker', 'project-card', 'pay-modal',
        'nft-gallery', 'storefront', 'holdings-grid'].includes(seg.component?.type || '')
     )
 

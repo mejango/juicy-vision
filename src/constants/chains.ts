@@ -8,64 +8,46 @@ import { IS_TESTNET, CHAIN_IDS } from '../config/environment'
 
 // Viem chain configurations for RPC calls
 export const VIEM_CHAINS = IS_TESTNET
-  ? {
+  ? ({
       [CHAIN_IDS.ethereum]: sepolia,
       [CHAIN_IDS.optimism]: optimismSepolia,
       [CHAIN_IDS.base]: baseSepolia,
       [CHAIN_IDS.arbitrum]: arbitrumSepolia,
-    } as const
-  : {
+    } as const)
+  : ({
       [CHAIN_IDS.ethereum]: mainnet,
       [CHAIN_IDS.optimism]: optimism,
       [CHAIN_IDS.base]: base,
       [CHAIN_IDS.arbitrum]: arbitrum,
-    } as const
+    } as const)
+
+// Transaction components also run in tests and can display records created in
+// either environment. Keep one canonical lookup for all deployed V6 chains;
+// RPC and wallet configuration still decide which environment is executable.
+export const ALL_VIEM_CHAINS = {
+  [mainnet.id]: mainnet,
+  [optimism.id]: optimism,
+  [base.id]: base,
+  [arbitrum.id]: arbitrum,
+  [sepolia.id]: sepolia,
+  [optimismSepolia.id]: optimismSepolia,
+  [baseSepolia.id]: baseSepolia,
+  [arbitrumSepolia.id]: arbitrumSepolia,
+} as const
 
 // RPC endpoints for each chain (public endpoints - users can configure custom RPCs in settings)
 export const RPC_ENDPOINTS: Record<number, string[]> = IS_TESTNET
   ? {
-      [CHAIN_IDS.ethereum]: [
-        'https://rpc.sepolia.org',
-        'https://sepolia.drpc.org',
-        'https://rpc.ankr.com/eth_sepolia',
-      ],
-      [CHAIN_IDS.optimism]: [
-        'https://sepolia.optimism.io',
-        'https://optimism-sepolia.drpc.org',
-        'https://rpc.ankr.com/optimism_sepolia',
-      ],
-      [CHAIN_IDS.base]: [
-        'https://sepolia.base.org',
-        'https://base-sepolia.drpc.org',
-        'https://rpc.ankr.com/base_sepolia',
-      ],
-      [CHAIN_IDS.arbitrum]: [
-        'https://sepolia-rollup.arbitrum.io/rpc',
-        'https://arbitrum-sepolia.drpc.org',
-        'https://rpc.ankr.com/arbitrum_sepolia',
-      ],
+      [CHAIN_IDS.ethereum]: ['https://sepolia.drpc.org', 'https://ethereum-sepolia-rpc.publicnode.com', 'https://rpc.ankr.com/eth_sepolia'],
+      [CHAIN_IDS.optimism]: ['https://sepolia.optimism.io', 'https://optimism-sepolia.drpc.org', 'https://rpc.ankr.com/optimism_sepolia'],
+      [CHAIN_IDS.base]: ['https://sepolia.base.org', 'https://base-sepolia.drpc.org', 'https://rpc.ankr.com/base_sepolia'],
+      [CHAIN_IDS.arbitrum]: ['https://sepolia-rollup.arbitrum.io/rpc', 'https://arbitrum-sepolia.drpc.org', 'https://rpc.ankr.com/arbitrum_sepolia'],
     }
   : {
-      [CHAIN_IDS.ethereum]: [
-        'https://ethereum.publicnode.com',
-        'https://eth.drpc.org',
-        'https://rpc.ankr.com/eth',
-      ],
-      [CHAIN_IDS.optimism]: [
-        'https://optimism.publicnode.com',
-        'https://mainnet.optimism.io',
-        'https://rpc.ankr.com/optimism',
-      ],
-      [CHAIN_IDS.base]: [
-        'https://base.publicnode.com',
-        'https://mainnet.base.org',
-        'https://rpc.ankr.com/base',
-      ],
-      [CHAIN_IDS.arbitrum]: [
-        'https://arbitrum-one.publicnode.com',
-        'https://arb1.arbitrum.io/rpc',
-        'https://rpc.ankr.com/arbitrum',
-      ],
+      [CHAIN_IDS.ethereum]: ['https://ethereum.publicnode.com', 'https://eth.drpc.org', 'https://rpc.ankr.com/eth'],
+      [CHAIN_IDS.optimism]: ['https://optimism.publicnode.com', 'https://mainnet.optimism.io', 'https://rpc.ankr.com/optimism'],
+      [CHAIN_IDS.base]: ['https://base.publicnode.com', 'https://mainnet.base.org', 'https://rpc.ankr.com/base'],
+      [CHAIN_IDS.arbitrum]: ['https://arbitrum-one.publicnode.com', 'https://arb1.arbitrum.io/rpc', 'https://rpc.ankr.com/arbitrum'],
     }
 
 export type SupportedChainId = (typeof CHAIN_IDS)[keyof typeof CHAIN_IDS]
@@ -88,26 +70,10 @@ export const MAINNET_VIEM_CHAINS = {
 
 // Mainnet RPC endpoints (always available for on-chain reads of mainnet data in staging)
 export const MAINNET_RPC_ENDPOINTS: Record<number, string[]> = {
-  [MAINNET_CHAIN_IDS.ethereum]: [
-    'https://ethereum.publicnode.com',
-    'https://eth.drpc.org',
-    'https://rpc.ankr.com/eth',
-  ],
-  [MAINNET_CHAIN_IDS.optimism]: [
-    'https://optimism.publicnode.com',
-    'https://mainnet.optimism.io',
-    'https://rpc.ankr.com/optimism',
-  ],
-  [MAINNET_CHAIN_IDS.base]: [
-    'https://base.publicnode.com',
-    'https://mainnet.base.org',
-    'https://rpc.ankr.com/base',
-  ],
-  [MAINNET_CHAIN_IDS.arbitrum]: [
-    'https://arbitrum-one.publicnode.com',
-    'https://arb1.arbitrum.io/rpc',
-    'https://rpc.ankr.com/arbitrum',
-  ],
+  [MAINNET_CHAIN_IDS.ethereum]: ['https://ethereum.publicnode.com', 'https://eth.drpc.org', 'https://rpc.ankr.com/eth'],
+  [MAINNET_CHAIN_IDS.optimism]: ['https://optimism.publicnode.com', 'https://mainnet.optimism.io', 'https://rpc.ankr.com/optimism'],
+  [MAINNET_CHAIN_IDS.base]: ['https://base.publicnode.com', 'https://mainnet.base.org', 'https://rpc.ankr.com/base'],
+  [MAINNET_CHAIN_IDS.arbitrum]: ['https://arbitrum-one.publicnode.com', 'https://arb1.arbitrum.io/rpc', 'https://rpc.ankr.com/arbitrum'],
 }
 
 // USDC contract addresses per chain
@@ -116,7 +82,7 @@ export const USDC_ADDRESSES: Record<SupportedChainId, `0x${string}`> = IS_TESTNE
   ? {
       [CHAIN_IDS.ethereum]: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia USDC
       [CHAIN_IDS.optimism]: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // OP Sepolia USDC
-      [CHAIN_IDS.base]: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',    // Base Sepolia USDC
+      [CHAIN_IDS.base]: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia USDC
       [CHAIN_IDS.arbitrum]: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', // Arb Sepolia USDC
     }
   : {
@@ -226,9 +192,9 @@ export const SUCKER_DEPLOYERS = {
 // Map chains to their preferred native-bridge sucker deployer (for L1<->L2 pairs).
 // L2<->L2 pairs use the CCIP deployers in utils/suckerConfig.ts.
 export const CHAIN_SUCKER_DEPLOYER: Record<SupportedChainId, `0x${string}`> = {
-  [CHAIN_IDS.ethereum]: SUCKER_DEPLOYERS.OPSuckerDeployer,  // Ethereum - hub, supports all
-  [CHAIN_IDS.optimism]: SUCKER_DEPLOYERS.OPSuckerDeployer,  // Optimism - OP Stack
-  [CHAIN_IDS.base]: SUCKER_DEPLOYERS.BaseSuckerDeployer,    // Base - OP Stack
+  [CHAIN_IDS.ethereum]: SUCKER_DEPLOYERS.OPSuckerDeployer, // Ethereum - hub, supports all
+  [CHAIN_IDS.optimism]: SUCKER_DEPLOYERS.OPSuckerDeployer, // Optimism - OP Stack
+  [CHAIN_IDS.base]: SUCKER_DEPLOYERS.BaseSuckerDeployer, // Base - OP Stack
   [CHAIN_IDS.arbitrum]: SUCKER_DEPLOYERS.ARBSuckerDeployer, // Arbitrum - Arbitrum Gateway
 }
 

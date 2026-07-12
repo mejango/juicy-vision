@@ -27,10 +27,8 @@ vi.mock('./TransactionStatus', () => ({
   ),
 }))
 
-vi.mock('./TransactionPreview', () => ({
-  default: ({ action, contract }: { action: string; contract: string }) => (
-    <div data-testid="transaction-preview">TransactionPreview: {action} on {contract}</div>
-  ),
+vi.mock('./TransactionHistory', () => ({
+  default: () => <div data-testid="transaction-history">TransactionHistory</div>,
 }))
 
 vi.mock('./CashOutForm', () => ({
@@ -271,24 +269,18 @@ describe('ComponentRegistry', () => {
     })
   })
 
-  describe('transaction-preview component', () => {
-    it('renders TransactionPreview with props', async () => {
+  describe('transaction-history component', () => {
+    it('renders personal transaction history', async () => {
       const component: ParsedComponent = {
-        type: 'transaction-preview',
-        props: {
-          action: 'pay',
-          contract: 'JBController',
-          chainId: '1',
-          projectId: '1',
-        },
-        raw: '<juice-component type="transaction-preview" action="pay" />',
+        type: 'transaction-history',
+        props: {},
+        raw: '<juice-component type="transaction-history" />',
       }
 
       render(<ComponentRegistry component={component} />)
 
       await waitFor(() => {
-        expect(screen.getByTestId('transaction-preview')).toBeInTheDocument()
-        expect(screen.getByText(/pay/)).toBeInTheDocument()
+        expect(screen.getByTestId('transaction-history')).toBeInTheDocument()
       })
     })
   })

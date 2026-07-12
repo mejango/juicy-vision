@@ -19,6 +19,7 @@ import {
   requireRecognizedRuntimeHook,
 } from '../../utils/projectTrust'
 import { requestPaymentReview, type PaymentReview } from '../../utils/paymentReview'
+import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../../utils/terminalPreview'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
@@ -37,48 +38,6 @@ const TERMINAL_PAY_ABI = [{
     { name: 'metadata', type: 'bytes' },
   ],
   outputs: [{ name: 'beneficiaryTokenCount', type: 'uint256' }],
-}] as const
-
-const TERMINAL_PREVIEW_PAY_ABI = [{
-  name: 'previewPayFor',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [
-    { name: 'projectId', type: 'uint256' },
-    { name: 'token', type: 'address' },
-    { name: 'amount', type: 'uint256' },
-    { name: 'beneficiary', type: 'address' },
-    { name: 'metadata', type: 'bytes' },
-  ],
-  outputs: [
-    {
-      name: 'ruleset',
-      type: 'tuple',
-      components: [
-        { name: 'cycleNumber', type: 'uint256' },
-        { name: 'id', type: 'uint256' },
-        { name: 'basedOnId', type: 'uint256' },
-        { name: 'start', type: 'uint256' },
-        { name: 'duration', type: 'uint256' },
-        { name: 'weight', type: 'uint256' },
-        { name: 'weightCutPercent', type: 'uint256' },
-        { name: 'approvalHook', type: 'address' },
-        { name: 'metadata', type: 'uint256' },
-      ],
-    },
-    { name: 'beneficiaryTokenCount', type: 'uint256' },
-    { name: 'reservedTokenCount', type: 'uint256' },
-    {
-      name: 'hookSpecifications',
-      type: 'tuple[]',
-      components: [
-        { name: 'hook', type: 'address' },
-        { name: 'noop', type: 'bool' },
-        { name: 'amount', type: 'uint256' },
-        { name: 'metadata', type: 'bytes' },
-      ],
-    },
-  ],
 }] as const
 
 // Payment session types
@@ -429,9 +388,15 @@ export default function PaymentPage() {
       }
 
       const reviewed = await fetchTrustedPreview()
-      if (reviewed.preview[1] <= 0n) throw new Error('The payment quote returns no project tokens')
-      const quotedMinimum = (reviewed.preview[1] * 99n) / 100n
-      const minReturnedTokens = quotedMinimum > 0n ? quotedMinimum : 1n
+      const reviewedOutcome = resolvePayPreviewOutcome({
+        beneficiaryTokenCount: reviewed.preview[1],
+        reservedTokenCount: reviewed.preview[2],
+        hookSpecifications: reviewed.preview[3],
+      })
+      if (reviewedOutcome.beneficiaryTokenCount <= 0n) {
+        throw new Error('The payment quote returns no project tokens')
+      }
+      const minReturnedTokens = reviewedOutcome.minReturnedTokens
 
       let reviewedAllowance = 0n
       const nativeBalance = await publicClient.getBalance({ address: walletAddress })
@@ -479,6 +444,7 @@ export default function PaymentPage() {
         projectId: String(projectId),
         terminal,
         route: reviewed.route === 'router' ? 'routed payment' : 'direct terminal payment',
+        outcomeRoute: reviewedOutcome.route,
         tokenSymbol: isNativeToken ? 'ETH' : 'USDC',
         tokenAddress: paymentToken,
         amount: formatUnits(amount, isNativeToken ? 18 : 6),
@@ -487,7 +453,7 @@ export default function PaymentPage() {
         beneficiary: walletAddress,
         memo: paymentMemo,
         rulesetId: reviewed.preview[0].id.toString(),
-        expectedProjectTokens: reviewed.preview[1].toString(),
+        expectedProjectTokens: reviewedOutcome.beneficiaryTokenCount.toString(),
         minimumProjectTokens: minReturnedTokens.toString(),
         metadata: '0x',
         callData: payData,

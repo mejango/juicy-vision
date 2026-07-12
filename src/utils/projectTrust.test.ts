@@ -6,6 +6,7 @@ import {
   JB_BUYBACK_HOOK,
   JB_BUYBACK_HOOK_REGISTRY,
   JB_OMNICHAIN_DEPLOYER,
+  REV_DEPLOYER,
   REV_OWNER,
 } from '../constants'
 import {
@@ -191,5 +192,33 @@ describe('current project operation safety', () => {
 
     await expect(assertCurrentProjectPayConfigurationTrusted({ client, projectId: PROJECT_ID }))
       .resolves.toBe(RULESET_ID)
+  })
+
+  it.each([
+    ['pay', assertCurrentProjectPayConfigurationTrusted],
+    ['cash out', assertCurrentProjectCashOutConfigurationTrusted],
+  ])('accepts a live Revnet owner hook for %s previews', async (_operation, assertTrusted) => {
+    const client = mockClient((functionName) => {
+      if (functionName === 'controllerOf') return JB_CONTRACTS.JBController
+      if (functionName === 'currentRulesetOf') return currentRuleset(REV_OWNER, true, true)
+      if (functionName === 'ownerOf') return REV_OWNER
+      if (functionName === 'deployer') return REV_DEPLOYER
+      throw new Error(`Unexpected read: ${functionName}`)
+    })
+
+    await expect(assertTrusted({ client, projectId: PROJECT_ID })).resolves.toBe(RULESET_ID)
+  })
+
+  it('rejects a spoofed Revnet owner hook', async () => {
+    const client = mockClient((functionName) => {
+      if (functionName === 'controllerOf') return JB_CONTRACTS.JBController
+      if (functionName === 'currentRulesetOf') return currentRuleset(REV_OWNER, true, true)
+      if (functionName === 'ownerOf') return UNKNOWN
+      if (functionName === 'deployer') return REV_DEPLOYER
+      throw new Error(`Unexpected read: ${functionName}`)
+    })
+
+    await expect(assertCurrentProjectPayConfigurationTrusted({ client, projectId: PROJECT_ID }))
+      .rejects.toThrow(`Data hook not recognized: ${REV_OWNER}`)
   })
 })

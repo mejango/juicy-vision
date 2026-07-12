@@ -2,12 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { encodeFunctionData, keccak256, toBytes, createPublicClient, http, type Chain, type Address } from 'viem'
-import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainDeployERC20 } from '../../hooks/relayr'
-import { RPC_ENDPOINTS } from '../../constants'
+import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, EXPLORER_URLS, RPC_ENDPOINTS } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
@@ -32,26 +31,7 @@ const CONTROLLER_DEPLOY_ERC20_ABI = [
   },
 ] as const
 
-const CHAINS: Record<number, Chain> = {
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
-}
-
-const CHAIN_NAMES: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  8453: 'Base',
-  42161: 'Arbitrum',
-}
-
-const EXPLORER_URLS: Record<number, string> = {
-  1: 'https://etherscan.io/tx/',
-  10: 'https://optimistic.etherscan.io/tx/',
-  8453: 'https://basescan.org/tx/',
-  42161: 'https://arbiscan.io/tx/',
-}
+const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
 interface ChainProjectData {
   chainId: number
@@ -136,7 +116,7 @@ export default function DeployERC20Modal({
     },
   })
 
-  const chainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`
+  const chainName = CHAIN_INFO[chainId]?.name || `Chain ${chainId}`
   const hasGasBalance = isManagedMode || (balancesAvailable && (useAllChains
     ? perChain.some(balance => balance.eth > 0n)
     : (perChain.find(balance => balance.chainId === chainId)?.eth ?? 0n) > 0n))
@@ -598,7 +578,7 @@ export default function DeployERC20Modal({
                 isDark={isDark}
                 allChains={useAllChains && allChainProjects ? allChainProjects.map(cp => ({
                   chainId: cp.chainId,
-                  chainName: CHAIN_NAMES[cp.chainId] || `Chain ${cp.chainId}`,
+                  chainName: CHAIN_INFO[cp.chainId]?.name || `Chain ${cp.chainId}`,
                   projectId: typeof cp.projectId === 'string' ? parseInt(cp.projectId) : cp.projectId,
                 })) : undefined}
               />

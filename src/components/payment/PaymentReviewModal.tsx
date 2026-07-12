@@ -45,6 +45,7 @@ export default function PaymentReviewModal() {
 
   if (!request) return null
   const review = request.review
+  const addsToBalance = review.action === 'addToBalance'
   const expectedTokens = formatUnits(BigInt(review.expectedProjectTokens), 18)
   const minimumTokens = formatUnits(BigInt(review.minimumProjectTokens), 18)
 
@@ -60,7 +61,9 @@ export default function PaymentReviewModal() {
         isDark ? 'border-white/15 bg-juice-dark text-white' : 'border-gray-200 bg-white text-gray-900'
       }`}>
         <div className={`border-b px-5 py-4 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-          <h2 id="payment-review-title" className="text-base font-semibold">Review payment</h2>
+          <h2 id="payment-review-title" className="text-base font-semibold">
+            {addsToBalance ? 'Review balance contribution' : 'Review payment'}
+          </h2>
           <p className={`mt-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             Project #{review.projectId} · {review.chainName}
           </p>
@@ -74,24 +77,33 @@ export default function PaymentReviewModal() {
             </div>
             <div className="mt-2 flex items-baseline justify-between gap-3 text-xs">
               <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Route</span>
-              <span>{review.route}</span>
+              <span>{review.route}{review.outcomeRoute ? ` · ${review.outcomeRoute}` : ''}</span>
             </div>
             <div className="mt-2 flex items-baseline justify-between gap-3 text-xs">
               <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Account</span>
               <span className="font-mono">{shortAddress(review.account)}</span>
             </div>
-            <div className="mt-2 flex items-baseline justify-between gap-3 text-xs">
-              <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Beneficiary</span>
-              <span className="font-mono">{shortAddress(review.beneficiary)}</span>
-            </div>
-            <div className="mt-2 flex items-baseline justify-between gap-3 text-xs">
-              <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Quoted project tokens</span>
-              <span className="font-mono">{expectedTokens}</span>
-            </div>
-            <div className="mt-2 flex items-baseline justify-between gap-3 text-xs">
-              <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Minimum received</span>
-              <span className="font-mono">{minimumTokens}</span>
-            </div>
+            {!addsToBalance && (
+              <>
+                <div className="mt-2 flex items-baseline justify-between gap-3 text-xs">
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Beneficiary</span>
+                  <span className="font-mono">{shortAddress(review.beneficiary)}</span>
+                </div>
+                <div className="mt-2 flex items-baseline justify-between gap-3 text-xs">
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Quoted project tokens</span>
+                  <span className="font-mono">{expectedTokens}</span>
+                </div>
+                <div className="mt-2 flex items-baseline justify-between gap-3 text-xs">
+                  <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Minimum received</span>
+                  <span className="font-mono">{minimumTokens}</span>
+                </div>
+              </>
+            )}
+            {addsToBalance && (
+              <p className={`mt-3 text-xs ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                Adds funds to the project treasury without issuing project tokens.
+              </p>
+            )}
           </div>
 
           {review.nfts.length > 0 && (
@@ -119,15 +131,19 @@ export default function PaymentReviewModal() {
           <TechnicalDetails
             contract={review.route === 'routed payment' ? 'JB_ROUTER_TERMINAL' : 'JB_MULTI_TERMINAL'}
             contractAddress={review.terminal}
-            functionName="pay"
+            functionName={addsToBalance ? 'addToBalanceOf' : 'pay'}
             chainId={review.chainId}
             chainName={review.chainName}
             projectId={review.projectId}
             parameters={{
               token: review.tokenAddress,
               amount: review.amountRaw,
-              beneficiary: review.beneficiary,
-              minReturnedTokens: review.minimumProjectTokens,
+              ...(addsToBalance
+                ? { shouldReturnHeldFees: false }
+                : {
+                    beneficiary: review.beneficiary,
+                    minReturnedTokens: review.minimumProjectTokens,
+                  }),
               memo: review.memo,
               metadata: review.metadata,
               value: review.valueRaw,

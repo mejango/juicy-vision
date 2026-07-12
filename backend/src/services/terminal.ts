@@ -13,14 +13,7 @@ import { execute, query, queryOne, transaction } from '../db/index.ts';
 import { logger } from '../utils/logger.ts';
 import { getEthUsdRate, spendJuice } from './juice.ts';
 import { fetchPrimaryTerminal, getPublicClient } from './chainReader.ts';
-import {
-  type Address,
-  decodeEventLog,
-  decodeFunctionData,
-  type Hex,
-  isAddressEqual,
-  zeroAddress,
-} from 'viem';
+import { type Address, decodeFunctionData, type Hex, isAddressEqual, zeroAddress } from 'viem';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   CANONICAL_USDC_BY_CHAIN,
@@ -29,6 +22,7 @@ import {
 } from '@shared/chains.ts';
 import { broadcastSessionStatus } from './terminalWs.ts';
 import { requireRecognizedProjectPayConfiguration } from './projectTrust.ts';
+import { verifyProtectedPaymentReceipt } from './paymentReceipt.ts';
 
 // Session expiry time in minutes
 const SESSION_EXPIRY_MINUTES = 10;
@@ -988,23 +982,6 @@ const TERMINAL_PAY_ABI = [{
 }] as const;
 
 const RECOGNIZED_MULTI_TERMINAL = CONTRACTS.JBMultiTerminal as Address;
-const TERMINAL_PAY_EVENT_ABI = [{
-  name: 'Pay',
-  type: 'event',
-  inputs: [
-    { name: 'rulesetId', type: 'uint256', indexed: true },
-    { name: 'rulesetCycleNumber', type: 'uint256', indexed: true },
-    { name: 'projectId', type: 'uint256', indexed: true },
-    { name: 'payer', type: 'address', indexed: false },
-    { name: 'beneficiary', type: 'address', indexed: false },
-    { name: 'amount', type: 'uint256', indexed: false },
-    { name: 'newlyIssuedTokenCount', type: 'uint256', indexed: false },
-    { name: 'memo', type: 'string', indexed: false },
-    { name: 'metadata', type: 'bytes', indexed: false },
-    { name: 'caller', type: 'address', indexed: false },
-  ],
-}] as const;
-
 function resolveWalletToken(
   chainId: number,
   token: string | null | undefined,
@@ -1279,34 +1256,17 @@ export async function confirmWalletPayment(
   const receipt = await client.getTransactionReceipt({ hash });
   if (receipt.status !== 'success') throw new Error('Wallet transaction reverted');
 
-  let issuedTokens: bigint | null = null;
-  for (const log of receipt.logs) {
-    if (!isAddressEqual(log.address, RECOGNIZED_MULTI_TERMINAL)) continue;
-    try {
-      const event = decodeEventLog({
-        abi: TERMINAL_PAY_EVENT_ABI,
-        data: log.data,
-        topics: log.topics,
-      });
-      if (
-        event.eventName === 'Pay' &&
-        event.args.projectId === paidProjectId &&
-        isAddressEqual(event.args.payer, verification.payer_address as Address) &&
-        isAddressEqual(event.args.beneficiary, paidBeneficiary) &&
-        event.args.amount === paidAmount &&
-        event.args.memo === paidMemo &&
-        event.args.metadata === paidMetadata
-      ) {
-        issuedTokens = event.args.newlyIssuedTokenCount;
-        break;
-      }
-    } catch {
-      // Ignore unrelated logs.
-    }
-  }
-  if (issuedTokens === null || issuedTokens < paidMinimum || issuedTokens <= 0n) {
-    throw new Error('Wallet transaction did not issue the protected project-token minimum');
-  }
+  const issuedTokens = verifyProtectedPaymentReceipt({
+    logs: receipt.logs,
+    entrypoint: terminalAddress,
+    projectId: paidProjectId,
+    payer: verification.payer_address as Address,
+    beneficiary: paidBeneficiary,
+    amount: paidAmount,
+    memo: paidMemo,
+    metadata: paidMetadata,
+    minimum: paidMinimum,
+  });
 
   const row = await queryOne<{
     id: string;

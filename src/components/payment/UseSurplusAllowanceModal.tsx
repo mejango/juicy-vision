@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { parseUnits, encodeFunctionData, createPublicClient, http, type Chain, type Address } from 'viem'
-import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import {
+  ALL_VIEM_CHAINS,
+  CHAINS as CHAIN_INFO,
+  EXPLORER_URLS,
   NATIVE_TOKEN,
   RPC_ENDPOINTS,
   USDC_ADDRESSES,
@@ -40,26 +42,7 @@ const TERMINAL_USE_ALLOWANCE_ABI = [
   },
 ] as const
 
-const CHAINS: Record<number, Chain> = {
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
-}
-
-const CHAIN_NAMES: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  8453: 'Base',
-  42161: 'Arbitrum',
-}
-
-const EXPLORER_URLS: Record<number, string> = {
-  1: 'https://etherscan.io/tx/',
-  10: 'https://optimistic.etherscan.io/tx/',
-  8453: 'https://basescan.org/tx/',
-  42161: 'https://arbiscan.io/tx/',
-}
+const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
 interface UseSurplusAllowanceModalProps {
   isOpen: boolean
@@ -119,7 +102,7 @@ export default function UseSurplusAllowanceModal({
     activeAddress,
     isManagedMode ? 'managed' : 'self_custody',
   )
-  const chainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`
+  const chainName = CHAIN_INFO[chainId]?.name || `Chain ${chainId}`
   const withdrawToken = allowanceTokenAddress
   const canonicalUsdc = USDC_ADDRESSES[chainId as SupportedChainId]
   const currencyLabel = withdrawToken.toLowerCase() === NATIVE_TOKEN.toLowerCase()

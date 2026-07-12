@@ -238,7 +238,7 @@ Fails? Do not show an execution button. State the unavailable or unsupported
 configuration plainly without suggesting a fallback contract.
 
 Use only the dedicated guarded form for the requested operation. Never emit raw
-calldata, target addresses, or a generic transaction-preview for an
+calldata, target addresses, or a generic raw-transaction component for an
 existing-project write.
 
 **NEVER mention in explanation:**
@@ -250,9 +250,6 @@ existing-project write.
 **Good explanation:** "Launch your bike repair fundraiser with a $5 tune-up reward."
 **Bad explanation:** "Deploy these parameters to this contract on four chains."
 
-### action-button
-
-**REMOVED - NEVER USE.** The transaction-preview component has a built-in action button. NEVER output a separate action-button component.
 `;
 
 export const TRANSACTION_CORE_TOKEN_ESTIMATE = 400;

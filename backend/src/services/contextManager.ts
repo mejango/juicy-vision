@@ -847,7 +847,7 @@ ${chainTable}
 
 **DO NOT use mainnet chain IDs (1, 10, 8453, 42161).**
 
-**Primary chainId for transaction-preview:** ${getPrimaryChainId(true)} (Sepolia)
+**Primary chainId for new forms:** ${getPrimaryChainId(true)} (Sepolia)
 
 For new projects, default to one low-cost testnet chain. Use only chains the user explicitly selects in the create flow. Never infer all four chains from the environment or a primary chain ID; a multi-chain launch must enumerate exactly the reviewed destinations.
 

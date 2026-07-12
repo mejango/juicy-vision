@@ -291,7 +291,7 @@ export default function MessageBubble({
                 } else {
                   return (
                     <div key={index} className="my-3">
-                      <ComponentRegistry component={segment.component} chatId={chatId} messageId={message.id} userResponse={userResponse} messageIsStreaming={message.isStreaming} />
+                      <ComponentRegistry component={segment.component} chatId={chatId} messageId={message.id} userResponse={userResponse} />
                     </div>
                   )
                 }
@@ -424,7 +424,7 @@ export default function MessageBubble({
             } else {
               return (
                 <div key={index} className="my-3">
-                  <ComponentRegistry component={segment.component} chatId={chatId} messageId={message.id} userResponse={userResponse} messageIsStreaming={message.isStreaming} />
+                  <ComponentRegistry component={segment.component} chatId={chatId} messageId={message.id} userResponse={userResponse} />
                 </div>
               )
             }

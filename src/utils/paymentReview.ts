@@ -3,6 +3,7 @@ import type { Address, Hex } from 'viem'
 export const PAYMENT_REVIEW_EVENT = 'juice:payment-review-request'
 
 export interface PaymentReview {
+  action?: 'pay' | 'addToBalance'
   txId: string
   account: Address
   chainId: number
@@ -10,6 +11,7 @@ export interface PaymentReview {
   projectId: string
   terminal: Address
   route: 'direct terminal payment' | 'routed payment'
+  outcomeRoute?: 'issuance' | 'amm'
   tokenSymbol: 'ETH' | 'USDC'
   tokenAddress: Address
   amount: string

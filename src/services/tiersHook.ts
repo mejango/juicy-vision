@@ -45,6 +45,33 @@ export interface JB721DiscountPercentConfig {
   discountPercent: number
 }
 
+function assertSafeDiscountPercents(configs: JB721DiscountPercentConfig[]): void {
+  if (configs.length === 0) {
+    throw new Error('At least one tier discount is required')
+  }
+  if (configs.length > 100) {
+    throw new Error('At most 100 tier discounts can be changed at once')
+  }
+
+  const tierIds = new Set<number>()
+  for (const config of configs) {
+    if (!Number.isInteger(config.tierId) || config.tierId <= 0 || config.tierId > 0xffffffff) {
+      throw new Error(`Invalid tier ID: ${config.tierId}`)
+    }
+    if (
+      !Number.isInteger(config.discountPercent) ||
+      config.discountPercent < 0 ||
+      config.discountPercent > 200
+    ) {
+      throw new Error(`Invalid discount for tier ${config.tierId}`)
+    }
+    if (tierIds.has(config.tierId)) {
+      throw new Error(`Duplicate discount for tier ${config.tierId}`)
+    }
+    tierIds.add(config.tierId)
+  }
+}
+
 // Config for minting to beneficiaries
 export interface JB721MintConfig {
   tierId: number
@@ -151,21 +178,17 @@ export function encodeSetMetadata(params: {
 
 /**
  * Encode a single-tier discount update for JB721TiersHook.
- * V6 removed setDiscountPercentOf - this encodes setDiscountPercentsOf with one entry.
+ * Use the batch surface for one entry so single and multi-tier updates share one path.
  */
 export function encodeSetDiscountPercentOf(params: {
   tierId: number | bigint
   discountPercent: number | bigint
 }): `0x${string}` {
-  return encodeFunctionData({
-    abi: JB_721_TIERS_HOOK_ABI,
-    functionName: 'setDiscountPercentsOf',
-    args: [
-      [{
-        tierId: Number(params.tierId),
-        discountPercent: Number(params.discountPercent),
-      }],
-    ],
+  return encodeSetDiscountPercentsOf({
+    configs: [{
+      tierId: Number(params.tierId),
+      discountPercent: Number(params.discountPercent),
+    }],
   })
 }
 
@@ -176,6 +199,8 @@ export function encodeSetDiscountPercentOf(params: {
 export function encodeSetDiscountPercentsOf(params: {
   configs: JB721DiscountPercentConfig[]
 }): `0x${string}` {
+  assertSafeDiscountPercents(params.configs)
+
   return encodeFunctionData({
     abi: JB_721_TIERS_HOOK_ABI,
     functionName: 'setDiscountPercentsOf',

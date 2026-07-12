@@ -3,7 +3,6 @@ import { ParsedComponent } from '../../utils/messageParser'
 import ErrorBoundary, { ComponentErrorFallback } from '../ui/ErrorBoundary'
 import ComponentShimmer from './ComponentShimmer'
 import OptionsPickerShimmer from './OptionsPickerShimmer'
-import TransactionPreviewShimmer from './TransactionPreviewShimmer'
 
 // =============================================================================
 // Lazy-loaded Components
@@ -12,7 +11,7 @@ import TransactionPreviewShimmer from './TransactionPreviewShimmer'
 const ProjectCard = lazy(() => import('./ProjectCard'))
 const NoteCard = lazy(() => import('./NoteCard'))
 const TransactionStatus = lazy(() => import('./TransactionStatus'))
-const TransactionPreview = lazy(() => import('./TransactionPreview'))
+const TransactionHistory = lazy(() => import('./TransactionHistory'))
 const CashOutForm = lazy(() => import('./CashOutForm'))
 const SendPayoutsForm = lazy(() => import('./SendPayoutsForm'))
 const SendReservedTokensForm = lazy(() => import('./SendReservedTokensForm'))
@@ -119,22 +118,10 @@ const COMPONENT_REGISTRY: Record<string, ComponentConfig> = {
     component: TransactionStatus,
     mapProps: (p) => ({ txId: p.txId }),
   },
-  'transaction-preview': {
-    component: TransactionPreview,
-    mapProps: (p) => ({
-      action: p.action,
-      contract: p.contract,
-      chainId: p.chainId,
-      projectId: p.projectId,
-      parameters: p.parameters,
-      explanation: p.explanation,
-      chainConfigs: p.chainConfigs,
-      _isTruncated: p._isTruncated,
-    }),
+  'transaction-history': {
+    component: TransactionHistory,
+    mapProps: () => ({}),
   },
-  // action-button is REMOVED - transaction-preview has a built-in button
-  // Keeping the comment here to prevent re-adding it
-
   // Charts
   'price-chart': {
     component: PriceChart,
@@ -259,7 +246,6 @@ interface ComponentRegistryProps {
   chatId?: string
   messageId?: string
   userResponse?: string // The user's response to this component (if submitted)
-  messageIsStreaming?: boolean // Whether the parent message is still being streamed
 }
 
 function LazyWrapper({
@@ -554,8 +540,8 @@ function renderOptionsPicker(
   )
 }
 
-export default function ComponentRegistry({ component, chatId, messageId, userResponse, messageIsStreaming }: ComponentRegistryProps) {
-  const { type, props, isStreaming: componentIsStreaming } = component
+export default function ComponentRegistry({ component, chatId, messageId, userResponse }: ComponentRegistryProps) {
+  const { type, props } = component
 
   // Handle loading state
   if (type === '_loading') {
@@ -564,15 +550,12 @@ export default function ComponentRegistry({ component, chatId, messageId, userRe
     if (loadingType === 'options-picker') {
       return <OptionsPickerShimmer />
     }
-    if (loadingType === 'transaction-preview') {
-      return <TransactionPreviewShimmer />
-    }
     return <ComponentShimmer />
   }
 
   // Handle special case: options-picker needs custom parsing logic
   if (type === 'options-picker') {
-    return renderOptionsPicker(props, componentIsStreaming, chatId, messageId, userResponse)
+    return renderOptionsPicker(props, component.isStreaming, chatId, messageId, userResponse)
   }
 
   // Look up component in registry
@@ -589,18 +572,9 @@ export default function ComponentRegistry({ component, chatId, messageId, userRe
   const Component = config.component
   const mappedProps = config.mapProps ? config.mapProps(props) : props
 
-  // Pass isStreaming, messageId, and chatId to components that support it (e.g., transaction-preview)
-  // Use messageIsStreaming (from parent message) for the most accurate streaming status
-  // This handles cases where the component was parsed as streaming but the message has since stopped
-  // (e.g., due to 502 errors or network interruptions)
-  // IMPORTANT: chatId is required to isolate deployment state between different chats
-  const propsWithStreaming = type === 'transaction-preview'
-    ? { ...mappedProps, _isStreaming: messageIsStreaming ?? componentIsStreaming, messageId, chatId }
-    : mappedProps
-
   return (
     <LazyWrapper type={type} fallback={config.fallback}>
-      <Component {...propsWithStreaming} />
+      <Component {...mappedProps} />
     </LazyWrapper>
   )
 }

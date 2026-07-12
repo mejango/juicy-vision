@@ -18,7 +18,10 @@ import {
   type JB721HookFlags,
 } from '../../services/nft'
 import { isUsdcCurrency } from '../../utils/technicalDetails'
-import type { JB721TierConfigInput } from '../../services/tiersHook'
+import type {
+  JB721DiscountPercentConfig,
+  JB721TierConfigInput,
+} from '../../services/tiersHook'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import TierPermissionsAlert from './TierPermissionsAlert'
 import TierEditor, { type TierMetadata } from './TierEditor'
@@ -46,6 +49,7 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string
 interface PendingChanges {
   tiersToAdd: Array<{ config: JB721TierConfigInput; metadata: TierMetadata }>
   tierIdsToRemove: number[]
+  discountPercents: JB721DiscountPercentConfig[]
 }
 
 // Per-chain hook data
@@ -89,7 +93,10 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
   const [pendingChanges, setPendingChanges] = useState<PendingChanges>({
     tiersToAdd: [],
     tierIdsToRemove: [],
+    discountPercents: [],
   })
+  const [discountDrafts, setDiscountDrafts] = useState<Record<number, string>>({})
+  const [discountErrors, setDiscountErrors] = useState<Record<number, string>>({})
 
   // Modal state
   const [showModal, setShowModal] = useState(false)
@@ -115,7 +122,8 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
   // Check if there are any pending changes
   const hasPendingChanges =
     pendingChanges.tiersToAdd.length > 0 ||
-    pendingChanges.tierIdsToRemove.length > 0
+    pendingChanges.tierIdsToRemove.length > 0 ||
+    pendingChanges.discountPercents.length > 0
 
   // Dispatch event to open wallet panel
   const openWalletPanel = () => {
@@ -236,6 +244,16 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
     })
   )
 
+  const incompatibleDiscount = selectedChains.find(chainData =>
+    pendingChanges.discountPercents.some(update => {
+      const tier = chainData.tiers.find(candidate => candidate.tierId === update.tierId)
+      return !tier || (
+        tier.permissions.cannotIncreaseDiscountPercent &&
+        update.discountPercent > (tier.discountPercent ?? 0)
+      )
+    })
+  )
+
   // Add new tier
   const handleAddTier = useCallback((config: JB721TierConfigInput, metadata: TierMetadata) => {
     setPendingChanges(prev => ({
@@ -265,9 +283,53 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
       setPendingChanges(prev => ({
         ...prev,
         tierIdsToRemove: [...prev.tierIdsToRemove, tierId],
+        discountPercents: prev.discountPercents.filter(update => update.tierId !== tierId),
       }))
     }
   }, [currentTiers, pendingChanges.tierIdsToRemove])
+
+  const handleStageDiscount = useCallback((tier: NFTTierWithPermissions) => {
+    const rawValue = discountDrafts[tier.tierId] ?? String((tier.discountPercent ?? 0) / 2)
+    const humanPercent = Number(rawValue)
+    const discountPercent = humanPercent * 2
+    if (
+      !Number.isFinite(humanPercent) ||
+      humanPercent < 0 ||
+      humanPercent > 100 ||
+      !Number.isInteger(discountPercent)
+    ) {
+      setDiscountErrors(prev => ({
+        ...prev,
+        [tier.tierId]: 'Use a discount from 0% to 100% in 0.5% steps.',
+      }))
+      return
+    }
+    if (
+      tier.permissions.cannotIncreaseDiscountPercent &&
+      discountPercent > (tier.discountPercent ?? 0)
+    ) {
+      setDiscountErrors(prev => ({
+        ...prev,
+        [tier.tierId]: 'This tier has permanently locked discount increases.',
+      }))
+      return
+    }
+
+    setDiscountErrors(prev => {
+      const next = { ...prev }
+      delete next[tier.tierId]
+      return next
+    })
+    setPendingChanges(prev => ({
+      ...prev,
+      discountPercents: discountPercent === (tier.discountPercent ?? 0)
+        ? prev.discountPercents.filter(update => update.tierId !== tier.tierId)
+        : [
+            ...prev.discountPercents.filter(update => update.tierId !== tier.tierId),
+            { tierId: tier.tierId, discountPercent },
+          ],
+    }))
+  }, [discountDrafts])
 
   // Undo pending add
   const handleUndoAdd = useCallback((index: number) => {
@@ -279,7 +341,14 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
 
   // Handle submit
   const handleSubmit = useCallback(() => {
-    if (!hasPendingChanges || isLocked || incompatibleRemoval || pricingMismatch || !pricingRecognized) return
+    if (
+      !hasPendingChanges ||
+      isLocked ||
+      incompatibleRemoval ||
+      incompatibleDiscount ||
+      pricingMismatch ||
+      !pricingRecognized
+    ) return
 
     if (!hasActiveWallet) {
       openWalletPanel()
@@ -287,14 +356,25 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
     }
 
     setShowModal(true)
-  }, [hasPendingChanges, hasActiveWallet, isLocked, incompatibleRemoval, pricingMismatch, pricingRecognized])
+  }, [
+    hasPendingChanges,
+    hasActiveWallet,
+    isLocked,
+    incompatibleRemoval,
+    incompatibleDiscount,
+    pricingMismatch,
+    pricingRecognized,
+  ])
 
   // Reset after successful transaction
   const handleTransactionComplete = useCallback((txHash?: string) => {
     setPendingChanges({
       tiersToAdd: [],
       tierIdsToRemove: [],
+      discountPercents: [],
     })
+    setDiscountDrafts({})
+    setDiscountErrors({})
     setShowModal(false)
     // Update persisted state
     if (txHash) {
@@ -429,6 +509,9 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
           <div className="space-y-2 mb-4">
             {currentTiers.map((tier) => {
               const isPendingRemoval = pendingChanges.tierIdsToRemove.includes(tier.tierId)
+              const pendingDiscount = pendingChanges.discountPercents.find(
+                update => update.tierId === tier.tierId
+              )
               const imageUrl = resolveIpfsUri(tier.imageUri)
 
               return (
@@ -464,10 +547,52 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
                     <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                       {formatUnits(getEffectiveTierPrice(tier), tier.pricingDecimals)} {tier.currency === 2 || isUsdcCurrency(tier.currency) ? 'USD' : 'ETH'} · {tier.remainingSupply}/{tier.initialSupply} left
                     </div>
+                    <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      Current discount: {((tier.discountPercent ?? 0) / 2).toLocaleString()}%
+                      {tier.permissions.cannotIncreaseDiscountPercent && ' · increases locked'}
+                    </div>
                   </div>
 
                   {/* Actions */}
-                  <div className="flex gap-2">
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-1">
+                      <label className="sr-only" htmlFor={`tier-discount-${tier.tierId}`}>
+                        Discount for tier {tier.tierId}
+                      </label>
+                      <input
+                        id={`tier-discount-${tier.tierId}`}
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        disabled={isPendingRemoval || isLocked}
+                        value={discountDrafts[tier.tierId] ?? String(
+                          (pendingDiscount?.discountPercent ?? tier.discountPercent ?? 0) / 2
+                        )}
+                        onChange={(event) => setDiscountDrafts(prev => ({
+                          ...prev,
+                          [tier.tierId]: event.target.value,
+                        }))}
+                        className={`w-16 border px-2 py-1 text-right text-xs ${
+                          isDark
+                            ? 'border-white/20 bg-black/20 text-white'
+                            : 'border-gray-300 bg-white text-gray-900'
+                        } disabled:cursor-not-allowed disabled:opacity-50`}
+                      />
+                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>%</span>
+                      <button
+                        type="button"
+                        onClick={() => handleStageDiscount(tier)}
+                        disabled={isPendingRemoval || isLocked}
+                        className={`px-2 py-1 text-xs font-medium ${
+                          pendingDiscount
+                            ? isDark ? 'text-green-400' : 'text-green-700'
+                            : isDark ? 'text-juice-cyan' : 'text-cyan-700'
+                        } disabled:cursor-not-allowed disabled:text-gray-500`}
+                      >
+                        {pendingDiscount ? 'Staged' : 'Set'}
+                      </button>
+                    </div>
                     {isPendingRemoval ? (
                       <button
                         onClick={() => handleRemoveTier(tier.tierId)}
@@ -493,6 +618,11 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
                       >
                         Remove
                       </button>
+                    )}
+                    {discountErrors[tier.tierId] && (
+                      <span className="max-w-44 text-right text-[10px] text-red-400">
+                        {discountErrors[tier.tierId]}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -554,6 +684,16 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
               isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'
             }`}>
               {pendingChanges.tierIdsToRemove.length} tier{pendingChanges.tierIdsToRemove.length !== 1 ? 's' : ''} will be removed
+            </div>
+          )}
+
+          {pendingChanges.discountPercents.length > 0 && (
+            <div className={`mb-4 p-3 text-sm ${
+              isDark ? 'bg-cyan-500/10 text-cyan-300' : 'bg-cyan-50 text-cyan-700'
+            }`}>
+              {pendingChanges.discountPercents.length} discount change{
+                pendingChanges.discountPercents.length === 1 ? '' : 's'
+              } staged
             </div>
           )}
 
@@ -666,12 +806,22 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
                     A selected chain does not have every removable tier in the same unlocked state.
                   </div>
                 )}
+                {incompatibleDiscount && (
+                  <div className={`mb-3 p-3 text-xs ${isDark ? 'bg-red-500/10 text-red-300' : 'bg-red-50 text-red-700'}`}>
+                    A selected chain is missing a tier or has permanently locked this discount increase.
+                  </div>
+                )}
                 <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   {pendingChanges.tiersToAdd.length > 0 && (
                     <span className="text-green-500">+{pendingChanges.tiersToAdd.length} add </span>
                   )}
                   {pendingChanges.tierIdsToRemove.length > 0 && (
                     <span className="text-red-500">-{pendingChanges.tierIdsToRemove.length} remove</span>
+                  )}
+                  {pendingChanges.discountPercents.length > 0 && (
+                    <span className="ml-2 text-cyan-500">
+                      {pendingChanges.discountPercents.length} discount
+                    </span>
                   )}
                   {selectedChains.length > 1 && (
                     <span className="ml-2">on {selectedChains.length} chains</span>
@@ -680,9 +830,9 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
 
                 <button
                   onClick={handleSubmit}
-                  disabled={selectedChains.length === 0 || isLocked || !!incompatibleRemoval || pricingMismatch || !pricingRecognized}
+                  disabled={selectedChains.length === 0 || isLocked || !!incompatibleRemoval || !!incompatibleDiscount || pricingMismatch || !pricingRecognized}
                   className={`w-full py-3 text-sm font-bold transition-colors ${
-                    selectedChains.length === 0 || isLocked || incompatibleRemoval || pricingMismatch || !pricingRecognized
+                    selectedChains.length === 0 || isLocked || incompatibleRemoval || incompatibleDiscount || pricingMismatch || !pricingRecognized
                       ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                       : 'bg-juice-orange hover:bg-juice-orange/90 text-black'
                   }`}

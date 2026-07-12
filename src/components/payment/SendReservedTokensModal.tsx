@@ -2,12 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { encodeFunctionData, createPublicClient, http, type Chain, type Address, zeroAddress } from 'viem'
-import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainDistribute } from '../../hooks/relayr'
-import { CHAINS as CHAIN_INFO, RPC_ENDPOINTS } from '../../constants'
+import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, RPC_ENDPOINTS } from '../../constants'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { ProjectSplitRoute } from '../dynamic/ProjectSplitRoute'
@@ -35,12 +34,7 @@ const CONTROLLER_SEND_RESERVED_ABI = [
 ] as const
 
 // viem chain objects for wallet operations
-const CHAINS: Record<number, Chain> = {
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
-}
+const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
 interface ChainProjectData {
   chainId: number

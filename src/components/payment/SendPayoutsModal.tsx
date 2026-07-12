@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { parseUnits, encodeFunctionData, createPublicClient, http, type Chain, type Address } from 'viem'
-import { mainnet, optimism, base, arbitrum } from 'viem/chains'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import {
+  ALL_VIEM_CHAINS,
   CHAINS as CHAIN_INFO,
   NATIVE_TOKEN,
   RPC_ENDPOINTS,
@@ -45,12 +45,7 @@ const TERMINAL_SEND_PAYOUTS_ABI = [
 ] as const
 
 // viem chain objects for wallet operations
-const CHAINS: Record<number, Chain> = {
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
-}
+const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
 interface SendPayoutsModalProps {
   isOpen: boolean

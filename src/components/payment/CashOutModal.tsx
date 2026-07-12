@@ -1,23 +1,47 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http, type Hex, type Address, type Chain } from 'viem'
-import { mainnet, optimism, base, arbitrum } from 'viem/chains'
+import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http, type Hex, type Address, type Chain, type PublicClient } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { GasBalanceStatus } from './GasBalanceStatus'
-import { CHAINS as CHAIN_INFO, MAINNET_CHAINS, RPC_ENDPOINTS } from '../../constants'
+import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, JB_CONTRACTS, MAINNET_CHAINS, RPC_ENDPOINTS } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyCashOutParams } from '../../utils/transactionVerification'
 import { getPaymentTerminal } from '../../utils/paymentTerminal'
 import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
-import {
-  assertCurrentProjectCashOutConfigurationTrusted,
-  requireRecognizedRuntimeHook,
-} from '../../utils/projectTrust'
+import { assertCurrentProjectCashOutConfigurationTrusted, requireRecognizedRuntimeHook } from '../../utils/projectTrust'
+import { resolveCashOutPreviewOutcome, TERMINAL_PREVIEW_CASH_OUT_ABI, type CashOutPreviewOutcome } from '../../utils/terminalPreview'
+
+const FEELESS_ADDRESSES_ABI = [
+  {
+    name: 'isFeelessFor',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'addr', type: 'address' },
+      { name: 'projectId', type: 'uint256' },
+      { name: 'caller', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const
+
+const FEE_FREE_SURPLUS_ABI = [
+  {
+    name: 'feeFreeSurplusOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'token', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const
 
 const TERMINAL_CASH_OUT_ABI = [
   {
@@ -35,60 +59,75 @@ const TERMINAL_CASH_OUT_ABI = [
     ],
     outputs: [{ name: 'reclaimAmount', type: 'uint256' }],
   },
-  // JBMultiTerminal.previewCashOutFrom — the contract's exact reclaim preview
-  // (hook-aware, net of any data-hook fee, BEFORE the 2.5% protocol fee). Used to
-  // set the slippage floor from contract truth rather than a client estimate, and
-  // to surface the on-chain cash out tax rate for the fee note.
-  {
-    name: 'previewCashOutFrom',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'holder', type: 'address' },
-      { name: 'projectId', type: 'uint256' },
-      { name: 'cashOutCount', type: 'uint256' },
-      { name: 'tokenToReclaim', type: 'address' },
-      { name: 'beneficiary', type: 'address' },
-      { name: 'metadata', type: 'bytes' },
-    ],
-    outputs: [
-      {
-        name: 'ruleset',
-        type: 'tuple',
-        components: [
-          { name: 'cycleNumber', type: 'uint256' },
-          { name: 'id', type: 'uint256' },
-          { name: 'basedOnId', type: 'uint256' },
-          { name: 'start', type: 'uint256' },
-          { name: 'duration', type: 'uint256' },
-          { name: 'weight', type: 'uint256' },
-          { name: 'weightCutPercent', type: 'uint256' },
-          { name: 'approvalHook', type: 'address' },
-          { name: 'metadata', type: 'uint256' },
-        ],
-      },
-      { name: 'reclaimAmount', type: 'uint256' },
-      { name: 'cashOutTaxRate', type: 'uint256' },
-      {
-        name: 'hookSpecifications',
-        type: 'tuple[]',
-        components: [
-          { name: 'hook', type: 'address' },
-          { name: 'noop', type: 'bool' },
-          { name: 'amount', type: 'uint256' },
-          { name: 'metadata', type: 'bytes' },
-        ],
-      },
-    ],
-  },
+  ...TERMINAL_PREVIEW_CASH_OUT_ABI,
 ] as const
 
 // viem chain objects for wallet operations
-const CHAINS: Record<number, Chain> = {
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
+const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
+
+async function readCashOutPreviewOutcome(params: { client: PublicClient; terminal: Address; holder: Address; projectId: bigint; cashOutCount: bigint; reclaimToken: Address }) {
+  const readPreview = (metadata: Hex) =>
+    params.client.readContract({
+      address: params.terminal,
+      abi: TERMINAL_CASH_OUT_ABI,
+      functionName: 'previewCashOutFrom',
+      args: [params.holder, params.projectId, params.cashOutCount, params.reclaimToken, params.holder, metadata],
+    })
+  const [initialPreview, feeFreeSurplus, beneficiaryIsFeeless] = await Promise.all([
+    readPreview('0x'),
+    params.client.readContract({
+      address: params.terminal,
+      abi: FEE_FREE_SURPLUS_ABI,
+      functionName: 'feeFreeSurplusOf',
+      args: [params.projectId, params.reclaimToken],
+    }),
+    params.client.readContract({
+      address: JB_CONTRACTS.JBFeelessAddresses,
+      abi: FEELESS_ADDRESSES_ABI,
+      functionName: 'isFeelessFor',
+      args: [params.holder, params.projectId, params.holder],
+    }),
+  ])
+  const validateHooks = async (preview: typeof initialPreview) => {
+    for (const specification of preview[3]) {
+      if (!specification.noop) {
+        await requireRecognizedRuntimeHook({
+          client: params.client,
+          projectId: params.projectId,
+          rulesetId: preview[0].id,
+          hook: specification.hook,
+        })
+      }
+    }
+  }
+  const resolve = (preview: typeof initialPreview) =>
+    resolveCashOutPreviewOutcome({
+      reclaimAmount: preview[1],
+      cashOutTaxRate: preview[2],
+      hookSpecifications: preview[3],
+      beneficiaryIsFeeless,
+      feeFreeSurplus,
+    })
+
+  await validateHooks(initialPreview)
+  let preview = initialPreview
+  let outcome = resolve(initialPreview)
+  if (outcome.route === 'amm') {
+    const quotedOutcome = outcome
+    preview = await readPreview(outcome.metadata)
+    await validateHooks(preview)
+    const lockedOutcome = resolve(preview)
+    if (lockedOutcome.route !== 'amm' || lockedOutcome.minimumReturn !== quotedOutcome.minimumReturn || lockedOutcome.metadata.toLowerCase() !== quotedOutcome.metadata.toLowerCase()) {
+      throw new Error('The buyback cash out route changed')
+    }
+    // Keep the raw market quote for display while using the second preview to
+    // prove that the exact metadata/floor remains executable.
+    outcome = quotedOutcome
+  }
+  if (outcome.expectedReturn <= 0n || outcome.minimumReturn <= 0n) {
+    throw new Error('No funds are currently reclaimable for this cash out')
+  }
+  return { preview, outcome }
 }
 
 interface CashOutModalProps {
@@ -150,11 +189,11 @@ export default function CashOutModal({
   const [terminalLoading, setTerminalLoading] = useState(false)
   // Slippage floor + fee info sourced from the contract's previewCashOutFrom.
   // A cash out is never submitted without a positive, current preview.
-  const [minReclaimed, setMinReclaimed] = useState<bigint>(0n)
-  const [previewReclaim, setPreviewReclaim] = useState<bigint | null>(null)
+  const [previewOutcome, setPreviewOutcome] = useState<CashOutPreviewOutcome | null>(null)
   const [previewTaxRate, setPreviewTaxRate] = useState<number | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const [previewRevision, setPreviewRevision] = useState(0)
 
   const chainInfo = CHAIN_INFO[chainId] || MAINNET_CHAINS[chainId] || MAINNET_CHAINS[1]
   const chainName = chainInfo.name
@@ -167,23 +206,18 @@ export default function CashOutModal({
     }
   }, [tokenAmount])
   const tokenNum = cashOutCount !== null ? Number(formatUnits(cashOutCount, 18)) : 0
-  const chainGasBalance = perChain.find(balance => balance.chainId === chainId)?.eth ?? 0n
+  const chainGasBalance = perChain.find((balance) => balance.chainId === chainId)?.eth ?? 0n
   const hasGasBalance = isManagedMode || (balancesAvailable && chainGasBalance > 0n)
 
-  // previewCashOutFrom reports the gross reclaim. Depending on the current fee-
-  // free state and beneficiary, execution can deduct up to the standard 2.5% fee.
-  const previewReclaimFloat = previewReclaim != null ? Number(formatUnits(previewReclaim, reclaimTokenDecimals)) : null
-  const minimumReturnFloat = minReclaimed > 0n ? Number(formatUnits(minReclaimed, reclaimTokenDecimals)) : null
-  const grossReturn = previewReclaimFloat
+  const minReclaimed = previewOutcome?.terminalMinimum ?? 0n
+  const previewReturnFloat = previewOutcome ? Number(formatUnits(previewOutcome.expectedReturn, reclaimTokenDecimals)) : null
+  const minimumReturnFloat = previewOutcome && previewOutcome.minimumReturn > 0n ? Number(formatUnits(previewOutcome.minimumReturn, reclaimTokenDecimals)) : null
+  const displayedReturn = previewReturnFloat
   const returnDecimals = currencySymbol === 'USDC' ? 2 : 4
 
   // Verify transaction parameters
   const activeAddress = isManagedMode ? managedAddress : address
-  const { assertCurrentAccount } = useReviewedTransactionAccount(
-    isOpen,
-    activeAddress,
-    isManagedMode ? 'managed' : 'self_custody',
-  )
+  const { assertCurrentAccount } = useReviewedTransactionAccount(isOpen, activeAddress, isManagedMode ? 'managed' : 'self_custody')
   const verificationResult = useMemo(() => {
     const holderAddress = activeAddress || '0x0000000000000000000000000000000000000000'
     return verifyCashOutParams({
@@ -193,13 +227,14 @@ export default function CashOutModal({
       tokenToReclaim: reclaimToken,
       minTokensReclaimed: minReclaimed,
       beneficiary: holderAddress,
-      metadata: '0x' as Hex,
+      metadata: previewOutcome?.metadata ?? ('0x' as Hex),
+      buybackRoute: previewOutcome?.route === 'amm',
     })
-  }, [activeAddress, projectId, cashOutCount, reclaimToken, minReclaimed])
+  }, [activeAddress, projectId, cashOutCount, reclaimToken, minReclaimed, previewOutcome])
 
   const hasWarnings = verificationResult.doubts.length > 0
-  const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
-  const hasSafePreview = cashOutCount !== null && previewReclaim !== null && previewReclaim > 0n && minReclaimed > 0n && !previewError
+  const hasCriticalDoubts = verificationResult.doubts.some((d) => d.severity === 'critical')
+  const hasSafePreview = cashOutCount !== null && !!previewOutcome && previewOutcome.expectedReturn > 0n && previewOutcome.minimumReturn > 0n && !previewError
   const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && hasSafePreview && !previewLoading && !!terminalAddress && !terminalLoading
 
   // Reset state when modal opens
@@ -210,8 +245,7 @@ export default function CashOutModal({
       setError(null)
       setWarningsAcknowledged(false)
       setTerminalAddress(null)
-      setMinReclaimed(0n)
-      setPreviewReclaim(null)
+      setPreviewOutcome(null)
       setPreviewTaxRate(null)
       setPreviewError(null)
     }
@@ -270,13 +304,11 @@ export default function CashOutModal({
     fetchTerminal()
   }, [isOpen, projectId, chainId, reclaimToken, expectedTerminal])
 
-  // Read the contract's exact reclaim preview to set the slippage floor and to
-  // surface the on-chain cash out tax rate. The preview is hook-aware and in the
-  // reclaim token's decimals, so 97.5% covers the maximum stated protocol fee.
+  // Read the exact hook-aware outcome, including beneficiary-specific protocol
+  // fees and the buyback route metadata used by website's complete journey.
   useEffect(() => {
     if (!isOpen || !terminalAddress || !activeAddress || cashOutCount === null) {
-      setMinReclaimed(0n)
-      setPreviewReclaim(null)
+      setPreviewOutcome(null)
       setPreviewTaxRate(null)
       setPreviewError(null)
       setPreviewLoading(false)
@@ -291,49 +323,27 @@ export default function CashOutModal({
         const chain = CHAINS[chainId]
         if (!chain) return
         const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
-        const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+        const publicClient = createPublicClient({
+          chain,
+          transport: http(rpcUrl),
+        })
 
-        const result = await publicClient.readContract({
-          address: terminalAddress,
-          abi: TERMINAL_CASH_OUT_ABI,
-          functionName: 'previewCashOutFrom',
-          args: [
-            activeAddress as Address,
-            BigInt(projectId),
-            cashOutCount,
-            reclaimToken,
-            activeAddress as Address,
-            '0x' as Hex,
-          ],
+        const result = await readCashOutPreviewOutcome({
+          client: publicClient,
+          terminal: terminalAddress,
+          holder: activeAddress as Address,
+          projectId: BigInt(projectId),
+          cashOutCount,
+          reclaimToken,
         })
         if (cancelled) return
-
-        const reclaim = result[1] as bigint
-        const taxRate = Number(result[2])
-        for (const specification of result[3]) {
-          if (!specification.noop) {
-            await requireRecognizedRuntimeHook({
-              client: publicClient,
-              projectId: BigInt(projectId),
-              rulesetId: result[0].id,
-              hook: specification.hook,
-            })
-          }
-        }
-        setPreviewReclaim(reclaim)
-        setPreviewTaxRate(taxRate)
-        // Do not allow extra client-side slippage beyond the stated 2.5% fee ceiling.
-        const quotedMinimum = (reclaim * 39n) / 40n
-        setMinReclaimed(reclaim > 0n ? (quotedMinimum > 0n ? quotedMinimum : 1n) : 0n)
-        if (reclaim <= 0n) setPreviewError('No funds are currently reclaimable for this cash out')
+        setPreviewOutcome(result.outcome)
+        setPreviewTaxRate(Number(result.preview[2]))
       } catch (err) {
         if (cancelled) return
-        setMinReclaimed(0n)
-        setPreviewReclaim(null)
+        setPreviewOutcome(null)
         setPreviewTaxRate(null)
-        setPreviewError(err instanceof Error
-          ? err.message
-          : 'Cash out preview is unavailable. No transaction will be sent.')
+        setPreviewError(err instanceof Error ? err.message : 'Cash out preview is unavailable. No transaction will be sent.')
       } finally {
         if (!cancelled) setPreviewLoading(false)
       }
@@ -343,7 +353,7 @@ export default function CashOutModal({
     return () => {
       cancelled = true
     }
-  }, [isOpen, terminalAddress, activeAddress, cashOutCount, chainId, projectId, reclaimToken])
+  }, [isOpen, terminalAddress, activeAddress, cashOutCount, chainId, projectId, reclaimToken, previewRevision])
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
@@ -382,15 +392,12 @@ export default function CashOutModal({
       if (cashOutCount === null) throw new Error('Enter a valid token amount')
       const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
       if (!rpcUrl) throw new Error(`No RPC endpoint for chain ${chainId}`)
-      const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(rpcUrl),
+      })
       const prepareCashOut = async () => {
-        const freshTerminal = await getPaymentTerminal(
-          publicClient,
-          chainId,
-          BigInt(projectId),
-          reclaimToken,
-          'accounting',
-        )
+        const freshTerminal = await getPaymentTerminal(publicClient, chainId, BigInt(projectId), reclaimToken, 'accounting')
         if (freshTerminal.address.toLowerCase() !== terminalAddress.toLowerCase()) {
           throw new Error('The project accounting terminal changed. Close this review and try again.')
         }
@@ -399,37 +406,18 @@ export default function CashOutModal({
           projectId: BigInt(projectId),
         })
 
-        const preview = await publicClient.readContract({
-          address: freshTerminal.address,
-          abi: TERMINAL_CASH_OUT_ABI,
-          functionName: 'previewCashOutFrom',
-          args: [holder, BigInt(projectId), cashOutCount, reclaimToken, holder, '0x' as Hex],
+        const reviewed = await readCashOutPreviewOutcome({
+          client: publicClient,
+          terminal: freshTerminal.address,
+          holder,
+          projectId: BigInt(projectId),
+          cashOutCount,
+          reclaimToken,
         })
-        if (preview[1] <= 0n) throw new Error('No funds are currently reclaimable')
-        for (const specification of preview[3]) {
-          if (!specification.noop) {
-            await requireRecognizedRuntimeHook({
-              client: publicClient,
-              projectId: BigInt(projectId),
-              rulesetId: preview[0].id,
-              hook: specification.hook,
-            })
-          }
-        }
-        const quotedMinimum = (preview[1] * 39n) / 40n
-        const minimum = quotedMinimum > 0n ? quotedMinimum : 1n
         const data = encodeFunctionData({
           abi: TERMINAL_CASH_OUT_ABI,
           functionName: 'cashOutTokensOf',
-          args: [
-            holder,
-            BigInt(projectId),
-            cashOutCount,
-            reclaimToken,
-            minimum,
-            holder,
-            '0x' as Hex,
-          ],
+          args: [holder, BigInt(projectId), cashOutCount, reclaimToken, reviewed.outcome.terminalMinimum, holder, reviewed.outcome.metadata],
         })
         await simulateTransaction({
           chainId,
@@ -437,9 +425,33 @@ export default function CashOutModal({
           to: freshTerminal.address,
           data,
         })
-        return { target: freshTerminal.address, data, quotedAmount: preview[1] }
+        return {
+          target: freshTerminal.address,
+          data,
+          outcome: reviewed.outcome,
+          quoteFingerprint: [
+            reviewed.preview[0].id.toString(),
+            reviewed.outcome.route,
+            reviewed.outcome.expectedReturn.toString(),
+            reviewed.outcome.minimumReturn.toString(),
+            reviewed.outcome.metadata.toLowerCase(),
+            ...reviewed.preview[3].map((specification) => [specification.hook.toLowerCase(), specification.noop, specification.amount.toString(), specification.metadata.toLowerCase()].join(':')),
+          ].join('|'),
+        }
       }
       const prepared = await prepareCashOut()
+      if (
+        !previewOutcome ||
+        prepared.outcome.route !== previewOutcome.route ||
+        prepared.outcome.expectedReturn !== previewOutcome.expectedReturn ||
+        prepared.outcome.minimumReturn !== previewOutcome.minimumReturn ||
+        prepared.outcome.metadata.toLowerCase() !== previewOutcome.metadata.toLowerCase()
+      ) {
+        setPreviewOutcome(prepared.outcome)
+        setPreviewError('The cash out quote changed. Refreshing the review…')
+        setPreviewRevision((revision) => revision + 1)
+        return
+      }
 
       const txId = addTransaction({
         type: 'cashout',
@@ -460,14 +472,11 @@ export default function CashOutModal({
         // Execute via wallet for self-custody mode
         setStatus('signing')
         await switchChainAsync({ chainId })
-        if (await walletClient!.getChainId() !== chainId) {
+        if ((await walletClient!.getChainId()) !== chainId) {
           throw new Error(`Wallet did not switch to chain ${chainId}`)
         }
         const finalPrepared = await prepareCashOut()
-        if (
-          finalPrepared.target.toLowerCase() !== prepared.target.toLowerCase() ||
-          finalPrepared.quotedAmount !== prepared.quotedAmount
-        ) {
+        if (finalPrepared.target.toLowerCase() !== prepared.target.toLowerCase() || finalPrepared.quoteFingerprint !== prepared.quoteFingerprint) {
           throw new Error('The cash out quote changed. Close this review and try again.')
         }
         assertCurrentAccount(walletClient!.account?.address)
@@ -490,48 +499,47 @@ export default function CashOutModal({
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
     }
-  }, [walletClient, address, chainId, projectId, tokenAmount, cashOutCount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, terminalAddress, reclaimToken, onSubmitted, assertCurrentAccount])
+  }, [
+    walletClient,
+    address,
+    chainId,
+    projectId,
+    tokenAmount,
+    cashOutCount,
+    addTransaction,
+    updateTransaction,
+    switchChainAsync,
+    isManagedMode,
+    managedAddress,
+    terminalAddress,
+    reclaimToken,
+    onSubmitted,
+    assertCurrentAccount,
+    previewOutcome,
+  ])
 
   if (!isOpen) return null
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={status === 'preview' || status === 'confirmed' || status === 'failed' ? onClose : undefined}
-      />
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={status === 'preview' || status === 'confirmed' || status === 'failed' ? onClose : undefined} />
 
       {/* Modal */}
-      <div className={`relative w-full max-w-md border ${
-        isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
-      }`}>
+      <div className={`relative w-full max-w-md border ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
         {/* Header */}
-        <div className={`px-5 py-4 border-b flex items-center justify-between ${
-          isDark ? 'border-white/10' : 'border-gray-100'
-        }`}>
+        <div className={`px-5 py-4 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 flex items-center justify-center text-xl ${
-              isDark ? 'bg-juice-cyan/20' : 'bg-cyan-100'
-            }`}>
-              🔄
-            </div>
+            <div className={`w-10 h-10 flex items-center justify-center text-xl ${isDark ? 'bg-juice-cyan/20' : 'bg-cyan-100'}`}>🔄</div>
             <div>
               <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {status === 'confirmed' ? 'Cash Out Complete' : status === 'failed' ? 'Cash Out Failed' : 'Confirm Cash Out'}
               </h2>
-              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {chainName}
-              </p>
+              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{chainName}</p>
             </div>
           </div>
           {(status === 'preview' || status === 'confirmed' || status === 'failed') && (
-            <button
-              onClick={onClose}
-              className={`p-2 transition-colors ${
-                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-            >
+            <button onClick={onClose} className={`p-2 transition-colors ${isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -546,12 +554,8 @@ export default function CashOutModal({
             <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
               <div className="animate-spin w-5 h-5 border-2 border-juice-cyan border-t-transparent rounded-full" />
               <div>
-                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Waiting for signature...
-                </p>
-                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Check your wallet
-                </p>
+                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Waiting for signature...</p>
+                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Check your wallet</p>
               </div>
             </div>
           )}
@@ -560,12 +564,8 @@ export default function CashOutModal({
             <div className={`p-4 flex items-center gap-3 ${isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'}`}>
               <div className="animate-spin w-5 h-5 border-2 border-juice-cyan border-t-transparent rounded-full" />
               <div>
-                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Transaction pending...
-                </p>
-                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Confirming on {chainName}
-                </p>
+                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Transaction pending...</p>
+                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Confirming on {chainName}</p>
               </div>
             </div>
           )}
@@ -578,16 +578,9 @@ export default function CashOutModal({
                 </svg>
               </div>
               <div>
-                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Cash out successful
-                </p>
+                <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Cash out successful</p>
                 {txHash && (
-                  <a
-                    href={`${chainInfo.explorerTx}${txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-juice-cyan hover:underline"
-                  >
+                  <a href={`${chainInfo.explorerTx}${txHash}`} target="_blank" rel="noopener noreferrer" className="text-sm text-juice-cyan hover:underline">
                     View on explorer →
                   </a>
                 )}
@@ -597,12 +590,8 @@ export default function CashOutModal({
 
           {status === 'failed' && error && (
             <div className={`p-4 ${isDark ? 'bg-red-500/10' : 'bg-red-50'}`}>
-              <p className={`font-medium ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-                Transaction failed
-              </p>
-              <p className={`text-sm mt-1 ${isDark ? 'text-red-400/70' : 'text-red-500'}`}>
-                {error}
-              </p>
+              <p className={`font-medium ${isDark ? 'text-red-400' : 'text-red-600'}`}>Transaction failed</p>
+              <p className={`text-sm mt-1 ${isDark ? 'text-red-400/70' : 'text-red-500'}`}>{error}</p>
             </div>
           )}
 
@@ -611,12 +600,8 @@ export default function CashOutModal({
             <>
               {/* Project */}
               <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  Cashing out from
-                </div>
-                <div className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {projectName || `Project #${projectId}`}
-                </div>
+                <div className={`text-xs uppercase tracking-wide mb-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Cashing out from</div>
+                <div className={`font-semibold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>{projectName || `Project #${projectId}`}</div>
               </div>
 
               {/* Amount breakdown */}
@@ -630,24 +615,16 @@ export default function CashOutModal({
 
                 {(previewTaxRate ?? cashOutTaxRate) > 0 && (
                   <div className="flex justify-between items-center">
-                    <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                      Cash-out curve rate
-                    </span>
-                    <span className={`font-mono ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                      {((previewTaxRate ?? cashOutTaxRate) / 100).toFixed(2).replace(/\.?0+$/, '') || '0'}%
-                    </span>
+                    <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Cash-out curve rate</span>
+                    <span className={`font-mono ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>{((previewTaxRate ?? cashOutTaxRate) / 100).toFixed(2).replace(/\.?0+$/, '') || '0'}%</span>
                   </div>
                 )}
 
-                {grossReturn != null && grossReturn > 0 && (
-                  <div className={`flex justify-between items-center pt-2 border-t ${
-                    isDark ? 'border-white/10' : 'border-gray-200'
-                  }`}>
-                    <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      Current preview
-                    </span>
+                {displayedReturn != null && displayedReturn > 0 && (
+                  <div className={`flex justify-between items-center pt-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                    <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{previewOutcome?.route === 'amm' ? 'Buyback pool preview' : 'You receive'}</span>
                     <span className={`font-mono font-bold text-lg ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                      {grossReturn.toFixed(returnDecimals)} {currencySymbol}
+                      {displayedReturn.toFixed(returnDecimals)} {currencySymbol}
                     </span>
                   </div>
                 )}
@@ -661,21 +638,18 @@ export default function CashOutModal({
                 )}
               </div>
 
-              {grossReturn != null && grossReturn > 0 && (
+              {displayedReturn != null && displayedReturn > 0 && (
                 <div className={`p-3 text-xs ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                  The preview is before any protocol fee. A fee of up to 2.5% may apply; the transaction reverts if the final return is below the minimum shown.
+                  {previewOutcome?.route === 'amm'
+                    ? 'The recognized buyback hook routes this cash out through its pool because it beats the treasury return. Its on-chain metadata enforces the minimum shown.'
+                    : `This is the exact preview after the current protocol fee${
+                        previewOutcome?.treasuryProtocolFee ? ` (${formatUnits(previewOutcome.treasuryProtocolFee, reclaimTokenDecimals)} ${currencySymbol})` : ''
+                      }. The transaction reverts below the minimum shown.`}
                 </div>
               )}
 
               {/* Gas balance check */}
-              <GasBalanceStatus
-                balance={chainGasBalance}
-                hasGasBalance={hasGasBalance}
-                loading={balancesLoading}
-                available={balancesAvailable}
-                managed={isManagedMode}
-                isDark={isDark}
-              />
+              <GasBalanceStatus balance={chainGasBalance} hasGasBalance={hasGasBalance} loading={balancesLoading} available={balancesAvailable} managed={isManagedMode} isDark={isDark} />
 
               <div className={`p-3 text-sm ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
                 Your tokens will be burned. The return comes from the live terminal quote for the active cash-out curve and hooks.
@@ -689,12 +663,8 @@ export default function CashOutModal({
                   projectName,
                   tokens: tokenNum.toString(),
                   tokensFormatted: `${tokenNum.toLocaleString()} ${tokenSymbol}`,
-                  previewReturnFormatted: grossReturn != null
-                    ? `${grossReturn.toFixed(returnDecimals)} ${currencySymbol}`
-                    : undefined,
-                  minimumReturnFormatted: minimumReturnFloat != null
-                    ? `${minimumReturnFloat.toFixed(returnDecimals)} ${currencySymbol}`
-                    : undefined,
+                  previewReturnFormatted: displayedReturn != null ? `${displayedReturn.toFixed(returnDecimals)} ${currencySymbol}` : undefined,
+                  minimumReturnFormatted: minimumReturnFloat != null ? `${minimumReturnFloat.toFixed(returnDecimals)} ${currencySymbol}` : undefined,
                   taxRate: previewTaxRate ?? cashOutTaxRate,
                   currency: currencySymbol,
                 }}
@@ -702,14 +672,7 @@ export default function CashOutModal({
               />
 
               {/* Transaction Warning */}
-              {hasWarnings && (
-                <TransactionWarning
-                  doubts={verificationResult.doubts}
-                  onConfirm={() => setWarningsAcknowledged(true)}
-                  onCancel={onClose}
-                  isDark={isDark}
-                />
-              )}
+              {hasWarnings && <TransactionWarning doubts={verificationResult.doubts} onConfirm={() => setWarningsAcknowledged(true)} onCancel={onClose} isDark={isDark} />}
 
               {/* Terminal loading indicator */}
               {terminalLoading && (
@@ -726,11 +689,7 @@ export default function CashOutModal({
                 </div>
               )}
 
-              {previewError && !previewLoading && (
-                <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-700'}`}>
-                  {previewError}
-                </div>
-              )}
+              {previewError && !previewLoading && <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-700'}`}>{previewError}</div>}
 
               {/* Technical Details */}
               <TechnicalDetails
@@ -767,11 +726,7 @@ export default function CashOutModal({
             <div className="flex gap-3">
               <button
                 onClick={onClose}
-                className={`flex-1 py-3 font-medium border-2 transition-colors ${
-                  isDark
-                    ? 'border-white/20 text-white hover:bg-white/10'
-                    : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`flex-1 py-3 font-medium border-2 transition-colors ${isDark ? 'border-white/20 text-white hover:bg-white/10' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
               >
                 Cancel
               </button>
@@ -785,17 +740,10 @@ export default function CashOutModal({
             </div>
           )}
 
-          {(status === 'signing' || status === 'pending') && (
-            <div className={`text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Do not close this window
-            </div>
-          )}
+          {(status === 'signing' || status === 'pending') && <div className={`text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Do not close this window</div>}
 
           {(status === 'confirmed' || status === 'failed') && (
-            <button
-              onClick={onClose}
-              className="w-full py-3 font-medium bg-juice-cyan text-black hover:bg-juice-cyan/90 transition-colors"
-            >
+            <button onClick={onClose} className="w-full py-3 font-medium bg-juice-cyan text-black hover:bg-juice-cyan/90 transition-colors">
               Done
             </button>
           )}

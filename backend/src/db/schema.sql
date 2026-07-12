@@ -1756,7 +1756,7 @@ CREATE TABLE public.training_runs (
 CREATE TABLE public.transactions (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     user_id uuid,
-    session_id uuid,
+    session_id character varying(100),
     tx_hash character varying(66),
     chain_id integer NOT NULL,
     from_address character varying(42) NOT NULL,
@@ -4527,14 +4527,6 @@ ALTER TABLE ONLY public.smart_account_withdrawals
 
 
 --
--- Name: transactions transactions_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.transactions
-    ADD CONSTRAINT transactions_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.chat_sessions(id) ON DELETE SET NULL;
-
-
---
 -- Name: transactions transactions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4579,4 +4571,3 @@ ALTER TABLE ONLY public.user_smart_accounts
 --
 
 \unrestrict huNyVdCN4Lapq3QR6Qb4BvhVQWuWL46OuA6LcdOdYLLaEzzlFeQm2bPyDcHfu5F
-

@@ -15,7 +15,6 @@ import {
   type Chain,
   createPublicClient,
   createWalletClient,
-  decodeEventLog,
   decodeFunctionData,
   encodeFunctionData,
   formatEther,
@@ -26,11 +25,13 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { arbitrum, base, mainnet, optimism } from 'viem/chains';
 import { CONTRACTS, NATIVE_TOKEN as SHARED_NATIVE_TOKEN } from '@shared/chains.ts';
+import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '@shared/terminalPreview.ts';
 import { fetchPrimaryTerminal, getPublicClient } from './chainReader.ts';
 import {
   requireRecognizedProjectPayConfiguration,
   requireRecognizedRuntimeHook,
 } from './projectTrust.ts';
+import { verifyProtectedPaymentReceipt } from './paymentReceipt.ts';
 
 // Maximum retries before marking as failed
 const MAX_RETRIES = 5;
@@ -72,65 +73,6 @@ const RECOGNIZED_PAYMENT_ENTRYPOINTS = new Set([
   CONTRACTS.JBRouterTerminal.toLowerCase(),
   CONTRACTS.JBRouterTerminalRegistry.toLowerCase(),
 ]);
-
-const TERMINAL_PREVIEW_PAY_ABI = [{
-  name: 'previewPayFor',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [
-    { name: 'projectId', type: 'uint256' },
-    { name: 'token', type: 'address' },
-    { name: 'amount', type: 'uint256' },
-    { name: 'beneficiary', type: 'address' },
-    { name: 'metadata', type: 'bytes' },
-  ],
-  outputs: [
-    {
-      name: 'ruleset',
-      type: 'tuple',
-      components: [
-        { name: 'cycleNumber', type: 'uint256' },
-        { name: 'id', type: 'uint256' },
-        { name: 'basedOnId', type: 'uint256' },
-        { name: 'start', type: 'uint256' },
-        { name: 'duration', type: 'uint256' },
-        { name: 'weight', type: 'uint256' },
-        { name: 'weightCutPercent', type: 'uint256' },
-        { name: 'approvalHook', type: 'address' },
-        { name: 'metadata', type: 'uint256' },
-      ],
-    },
-    { name: 'beneficiaryTokenCount', type: 'uint256' },
-    { name: 'reservedTokenCount', type: 'uint256' },
-    {
-      name: 'hookSpecifications',
-      type: 'tuple[]',
-      components: [
-        { name: 'hook', type: 'address' },
-        { name: 'noop', type: 'bool' },
-        { name: 'amount', type: 'uint256' },
-        { name: 'metadata', type: 'bytes' },
-      ],
-    },
-  ],
-}] as const;
-
-const PAY_EVENT_ABI = [{
-  name: 'Pay',
-  type: 'event',
-  inputs: [
-    { name: 'rulesetId', type: 'uint256', indexed: true },
-    { name: 'rulesetCycleNumber', type: 'uint256', indexed: true },
-    { name: 'projectId', type: 'uint256', indexed: true },
-    { name: 'payer', type: 'address', indexed: false },
-    { name: 'beneficiary', type: 'address', indexed: false },
-    { name: 'amount', type: 'uint256', indexed: false },
-    { name: 'newlyIssuedTokenCount', type: 'uint256', indexed: false },
-    { name: 'memo', type: 'string', indexed: false },
-    { name: 'metadata', type: 'bytes', indexed: false },
-    { name: 'caller', type: 'address', indexed: false },
-  ],
-}] as const;
 
 // Chainlink ETH/USD price feed (mainnet)
 const CHAINLINK_ETH_USD = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419' as const;
@@ -264,9 +206,15 @@ export async function executeJuiceProjectPayment(params: {
     }
   }
 
-  if (preview[1] <= 0n) throw new Error('The payment quote returns no project tokens');
-  const quotedMinimum = (preview[1] * 99n) / 100n;
-  const minReturnedTokens = quotedMinimum > 0n ? quotedMinimum : 1n;
+  const previewOutcome = resolvePayPreviewOutcome({
+    beneficiaryTokenCount: preview[1],
+    reservedTokenCount: preview[2],
+    hookSpecifications: preview[3],
+  });
+  if (previewOutcome.beneficiaryTokenCount <= 0n) {
+    throw new Error('The payment quote returns no project tokens');
+  }
+  const minReturnedTokens = previewOutcome.minReturnedTokens;
   const data = encodeFunctionData({
     abi: TERMINAL_ABI,
     functionName: 'pay',
@@ -345,32 +293,17 @@ export async function verifyJuiceProjectPayment(params: {
     throw new Error('Project payment does not match the reviewed request');
   }
 
-  for (const log of receipt.logs) {
-    if (!isAddressEqual(log.address, RECOGNIZED_MULTI_TERMINAL)) continue;
-    try {
-      const decoded = decodeEventLog({
-        abi: PAY_EVENT_ABI,
-        data: log.data,
-        topics: log.topics,
-      });
-      if (
-        decoded.eventName === 'Pay' &&
-        decoded.args.projectId === BigInt(params.projectId) &&
-        isAddressEqual(decoded.args.payer, params.payer) &&
-        isAddressEqual(decoded.args.beneficiary, params.beneficiary) &&
-        decoded.args.amount === params.amountWei &&
-        decoded.args.memo === params.memo &&
-        decoded.args.metadata === '0x' &&
-        decoded.args.newlyIssuedTokenCount >= minimum &&
-        decoded.args.newlyIssuedTokenCount > 0n
-      ) {
-        return decoded.args.newlyIssuedTokenCount;
-      }
-    } catch {
-      // Ignore unrelated logs.
-    }
-  }
-  throw new Error('Confirmed payment did not emit the expected Pay event');
+  return verifyProtectedPaymentReceipt({
+    logs: receipt.logs,
+    entrypoint: chainTransaction.to,
+    projectId: BigInt(params.projectId),
+    payer: params.payer,
+    beneficiary: params.beneficiary,
+    amount: params.amountWei,
+    memo: params.memo,
+    metadata: '0x',
+    minimum,
+  });
 }
 
 // ============================================================================
