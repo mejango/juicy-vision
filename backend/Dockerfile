@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y \
     docker.io \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /app/backend
 
 # Cache dependencies first
 COPY backend/deno.json .
@@ -14,10 +14,10 @@ RUN deno cache --reload npm:hono@4 npm:zod@3 npm:jose@5 npm:viem@2 npm:@anthropi
 
 # Copy source
 COPY backend/ .
-COPY shared/ /shared/
-
-# Update import map for container paths
-RUN sed -i 's|"@shared/": "../shared/"|"@shared/": "/shared/"|' deno.json
+COPY shared/ /app/shared/
+# Keep the repository-relative ABI imports used by transactionPolicy intact.
+# These generated ABIs are the protocol source of truth shared with the frontend.
+COPY src/constants/abis/jbOmnichainDeployer.ts src/constants/abis/revDeployer.ts /app/src/constants/abis/
 
 # Cache main entry
 RUN deno cache main.ts

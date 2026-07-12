@@ -1,6 +1,7 @@
 {
   "name": "juicy-vision-backend",
   "version": "0.1.0",
+  "exports": "./main.ts",
   "tasks": {
     "dev": "deno run --watch --env-file=.env --allow-net --allow-env --allow-read main.ts",
     "start": "deno run --env-file=.env --allow-net --allow-env --allow-read main.ts",
