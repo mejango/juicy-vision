@@ -1,8 +1,11 @@
-import { assertRejects } from 'std/assert/mod.ts';
+import { assertEquals, assertRejects } from 'std/assert/mod.ts';
 import { type Address, encodeFunctionData } from 'viem';
 import { JB_721_TIERS_HOOK_ABI } from '../../../src/constants/abis/jb721TiersHook.ts';
 import { REV_DEPLOYER_ABI } from '../../../src/constants/abis/revDeployer.ts';
-import { assertManagedTransactionAllowed } from './transactionPolicy.ts';
+import {
+  assertManagedTransactionAllowed,
+  protectedManagedFundAccessMinimum,
+} from './transactionPolicy.ts';
 
 const PAY_ABI = [{
   name: 'pay',
@@ -130,7 +133,12 @@ function addToBalanceData(amount: bigint, metadata: `0x${string}` = '0x') {
   });
 }
 
-function allowanceData(beneficiary: Address, feeBeneficiary: Address = beneficiary) {
+function allowanceData(
+  beneficiary: Address,
+  feeBeneficiary: Address = beneficiary,
+  currency = BigInt(NATIVE_TOKEN) & 0xffff_ffffn,
+  minimum?: bigint,
+) {
   const amount = 1_000_000_000_000_000_000n;
   return encodeFunctionData({
     abi: USE_ALLOWANCE_ABI,
@@ -139,8 +147,8 @@ function allowanceData(beneficiary: Address, feeBeneficiary: Address = beneficia
       1n,
       NATIVE_TOKEN,
       amount,
-      BigInt(NATIVE_TOKEN) & 0xffff_ffffn,
-      amount - (amount / 40n),
+      currency,
+      minimum ?? amount - (amount / 40n),
       beneficiary,
       feeBeneficiary,
       '',
@@ -318,6 +326,43 @@ Deno.test('managed transaction policy blocks allowance calls to unknown contract
         chainId: 1,
         to: UNKNOWN_CONTRACT,
         data: allowanceData(ACCOUNT),
+        value: 0n,
+        expectedAccount: ACCOUNT,
+      }),
+    Error,
+    'Terminal not recognized',
+  );
+});
+
+Deno.test('managed transaction policy keeps exact and cross-currency minimum math distinct', () => {
+  const nativeCurrency = BigInt(NATIVE_TOKEN) & 0xffff_ffffn;
+  assertEquals(protectedManagedFundAccessMinimum(10_000n, nativeCurrency, nativeCurrency), 10_000n);
+  assertEquals(protectedManagedFundAccessMinimum(10_000n, 2n, nativeCurrency), 9_900n);
+  assertEquals(protectedManagedFundAccessMinimum(1n, 1n, nativeCurrency), 1n);
+});
+
+Deno.test('managed transaction policy rejects a zero simulated minimum before RPC lookup', async () => {
+  await assertRejects(
+    () =>
+      assertManagedTransactionAllowed({
+        chainId: 1,
+        to: UNKNOWN_CONTRACT,
+        data: allowanceData(ACCOUNT, ACCOUNT, 2n, 0n),
+        value: 0n,
+        expectedAccount: ACCOUNT,
+      }),
+    Error,
+    'Minimum tokens paid out must be nonzero',
+  );
+});
+
+Deno.test('managed transaction policy does not normalize a USD limit into the native currency ID', async () => {
+  await assertRejects(
+    () =>
+      assertManagedTransactionAllowed({
+        chainId: 1,
+        to: UNKNOWN_CONTRACT,
+        data: allowanceData(ACCOUNT, ACCOUNT, 2n, 1n),
         value: 0n,
         expectedAccount: ACCOUNT,
       }),

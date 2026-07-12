@@ -7,6 +7,7 @@ import {
   SUCKER_DEPLOYERS,
 } from '@shared/chains.ts';
 import {
+  quotedOutputFloor,
   resolveCashOutPreviewOutcome,
   resolvePayPreviewOutcome,
   TERMINAL_PREVIEW_ABI,
@@ -35,6 +36,14 @@ const ROOTS = {
   directory: CONTRACTS.JBDirectory as Address,
   projects: CONTRACTS.JBProjects as Address,
 };
+
+export function protectedManagedFundAccessMinimum(
+  quotedAmount: bigint,
+  configuredCurrency: bigint,
+  accountingCurrency: bigint,
+): bigint {
+  return configuredCurrency === accountingCurrency ? quotedAmount : quotedOutputFloor(quotedAmount);
+}
 
 const RECOGNIZED = {
   controller: CONTRACTS.JBController as Address,
@@ -151,6 +160,62 @@ const FEE_FREE_SURPLUS_ABI = [{
   ],
   outputs: [{ name: '', type: 'uint256' }],
 }] as const;
+
+const MANAGED_FUND_ACCESS_ABI = [
+  {
+    name: 'sendPayoutsOf',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'currency', type: 'uint256' },
+      { name: 'minTokensPaidOut', type: 'uint256' },
+    ],
+    outputs: [{ name: 'amountPaidOut', type: 'uint256' }],
+  },
+  {
+    name: 'useAllowanceOf',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'currency', type: 'uint256' },
+      { name: 'minTokensPaidOut', type: 'uint256' },
+      { name: 'beneficiary', type: 'address' },
+      { name: 'feeBeneficiary', type: 'address' },
+      { name: 'memo', type: 'string' },
+    ],
+    outputs: [{ name: 'netAmountPaidOut', type: 'uint256' }],
+  },
+  {
+    name: 'JBMultiTerminal_UnderMin',
+    type: 'error',
+    inputs: [
+      { name: 'value', type: 'uint256' },
+      { name: 'min', type: 'uint256' },
+    ],
+  },
+  {
+    name: 'JBTerminalStore_InadequateControllerAllowance',
+    type: 'error',
+    inputs: [
+      { name: 'amount', type: 'uint256' },
+      { name: 'allowance', type: 'uint256' },
+    ],
+  },
+  {
+    name: 'JBTerminalStore_InadequateTerminalStoreBalance',
+    type: 'error',
+    inputs: [
+      { name: 'amount', type: 'uint256' },
+      { name: 'balance', type: 'uint256' },
+    ],
+  },
+] as const;
 
 const TIERS_HOOK_ABI = [
   {
@@ -1234,7 +1299,7 @@ async function requireTerminalTarget(params: {
   token: Address;
   target: Address;
   operation: 'pay' | 'accounting';
-}): Promise<void> {
+}): Promise<{ decimals: number; currency: bigint } | void> {
   requirePositiveProjectId(params.projectId);
   const recognized = params.operation === 'pay'
     ? [
@@ -1273,14 +1338,15 @@ async function requireTerminalTarget(params: {
     if (matching.length !== 1) {
       throw new Error('The selected token is not a unique live accounting context');
     }
-    const isNative = params.token.toLowerCase() === NATIVE_TOKEN;
+    const decimals = Number(matching[0].decimals);
+    const currency = BigInt(matching[0].currency);
     if (
-      Number(matching[0].decimals) !== (isNative ? 18 : 6) ||
-      BigInt(matching[0].currency) !== tokenCurrency(params.token)
+      !Number.isInteger(decimals) || decimals < 0 || decimals > 77 || currency < 0n ||
+      currency > 0xffff_ffffn
     ) {
       throw new Error(`Accounting context not recognized: ${params.token}`);
     }
-    return;
+    return { decimals, currency };
   }
 
   const terminal = await client.readContract({
@@ -1302,6 +1368,8 @@ async function requireCurrentFundAccessConfiguration(params: {
   terminal: Address;
   token: Address;
   currency: bigint;
+  accountingCurrency: bigint;
+  accountingDecimals: number;
   kind: 'payout' | 'allowance';
 }): Promise<void> {
   if (params.projectId > BigInt(Number.MAX_SAFE_INTEGER)) {
@@ -1323,12 +1391,21 @@ async function requireCurrentFundAccessConfiguration(params: {
   if (contexts.length !== 1) {
     throw new Error('The selected accounting context is no longer uniquely configured');
   }
-  const expectedDecimals = params.token.toLowerCase() === NATIVE_TOKEN ? 18 : 6;
   if (
-    contexts[0].tokenDecimals !== expectedDecimals ||
-    BigInt(contexts[0].currency) !== tokenCurrency(params.token)
+    !Number.isInteger(contexts[0].tokenDecimals) ||
+    contexts[0].tokenDecimals < 0 ||
+    contexts[0].tokenDecimals > 77 ||
+    !Number.isInteger(contexts[0].currency) ||
+    contexts[0].currency < 0 ||
+    contexts[0].currency > 0xffff_ffff
   ) {
     throw new Error('The selected accounting context is not recognized');
+  }
+  if (
+    BigInt(contexts[0].currency) !== params.accountingCurrency ||
+    contexts[0].tokenDecimals !== params.accountingDecimals
+  ) {
+    throw new Error('The selected accounting context changed during transaction preparation');
   }
 
   const groups = configuration.fundAccessLimitGroups.filter((group) =>
@@ -1339,7 +1416,7 @@ async function requireCurrentFundAccessConfiguration(params: {
     throw new Error('The selected fund access configuration is no longer unique');
   }
   const limits = params.kind === 'payout' ? groups[0].payoutLimits : groups[0].surplusAllowances;
-  if (limits.length !== 1 || BigInt(limits[0].currency) !== params.currency) {
+  if (limits.filter((limit) => BigInt(limit.currency) === params.currency).length !== 1) {
     throw new Error(`The selected ${params.kind} limit is no longer uniquely configured`);
   }
 
@@ -1781,21 +1858,21 @@ export async function assertManagedTransactionAllowed(params: {
       encodedArgs,
     );
     if (amount <= 0n) throw new Error('Transaction amount must be greater than zero');
-    requireRecognizedAccountingToken(params.chainId, token);
-    if (currency !== tokenCurrency(token)) {
-      throw new Error('Accounting-currency conversion is not supported');
-    }
-    const requiredMinimum = selector === SELECTORS.sendPayouts ? amount : amount - (amount / 40n);
-    if (minTokensPaidOut < requiredMinimum || minTokensPaidOut > amount) {
-      throw new Error('Minimum tokens paid out is not safe');
-    }
+    if (minTokensPaidOut <= 0n) throw new Error('Minimum tokens paid out must be nonzero');
+
+    let beneficiary: Address | undefined;
+    let feeBeneficiary: Address | undefined;
+    let memo = '';
     if (selector === SELECTORS.useAllowance) {
-      const [, , , , , beneficiary, feeBeneficiary, memo] = decodeAbiParameters([
+      const decoded = decodeAbiParameters([
         ...commonParameters,
         { type: 'address' },
         { type: 'address' },
         { type: 'string' },
       ], encodedArgs);
+      beneficiary = decoded[5];
+      feeBeneficiary = decoded[6];
+      memo = decoded[7];
       if (
         params.expectedAccount &&
         (beneficiary.toLowerCase() !== params.expectedAccount.toLowerCase() ||
@@ -1805,21 +1882,59 @@ export async function assertManagedTransactionAllowed(params: {
       }
       if (memo !== '') throw new Error('Allowance memos are not supported in this flow');
     }
-    await requireTerminalTarget({
+    const context = await requireTerminalTarget({
       ...params,
       projectId,
       token,
       operation: 'accounting',
       target: params.to,
     });
+    if (!context) throw new Error('Accounting context is unavailable');
     await requireCurrentFundAccessConfiguration({
       chainId: params.chainId,
       projectId,
       terminal: params.to,
       token,
       currency,
+      accountingCurrency: context.currency,
+      accountingDecimals: context.decimals,
       kind: selector === SELECTORS.sendPayouts ? 'payout' : 'allowance',
     });
+    const client = getPublicClient(params.chainId);
+    const account = params.expectedAccount ?? zeroAddress;
+    const quotedAmount = selector === SELECTORS.sendPayouts
+      ? (await client.simulateContract({
+        account,
+        address: params.to,
+        abi: MANAGED_FUND_ACCESS_ABI,
+        functionName: 'sendPayoutsOf',
+        args: [projectId, token, amount, currency, 0n],
+      })).result
+      : (await client.simulateContract({
+        account,
+        address: params.to,
+        abi: MANAGED_FUND_ACCESS_ABI,
+        functionName: 'useAllowanceOf',
+        args: [
+          projectId,
+          token,
+          amount,
+          currency,
+          0n,
+          beneficiary!,
+          feeBeneficiary!,
+          memo,
+        ],
+      })).result;
+    if (quotedAmount <= 0n) throw new Error('Fund access simulation returned zero tokens');
+    const requiredMinimum = protectedManagedFundAccessMinimum(
+      quotedAmount,
+      currency,
+      context.currency,
+    );
+    if (minTokensPaidOut < requiredMinimum || minTokensPaidOut > quotedAmount) {
+      throw new Error('Minimum tokens paid out is not protected by the current live simulation');
+    }
     return;
   }
 

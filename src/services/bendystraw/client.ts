@@ -1,7 +1,7 @@
 import { GraphQLClient, RequestDocument, Variables } from 'graphql-request'
 import { createPublicClient, http, isAddress } from 'viem'
 import { useSettingsStore, useDebugStore } from '../../stores'
-import { VIEM_CHAINS, ZERO_ADDRESS, REV_OWNER, JB_CONTRACTS, JB_ROUTER_TERMINAL, JB_ROUTER_TERMINAL_REGISTRY, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
+import { VIEM_CHAINS, ZERO_ADDRESS, REV_OWNER, JB_CONTRACTS, JB_ROUTER_TERMINAL, JB_ROUTER_TERMINAL_REGISTRY, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, NATIVE_TOKEN, type SupportedChainId } from '../../constants'
 import { fetchIpfsMetadata } from '../../utils/ipfs'
 import { IS_TESTNET } from '../../config/environment'
 import { createCache, CACHE_DURATIONS, bendystrawCircuit } from '../../utils'
@@ -1700,182 +1700,6 @@ export async function arePaymentsEnabled(
   return { enabled: true }
 }
 
-// Distributable payout info
-export interface DistributablePayout {
-  available: bigint       // Amount available to distribute now
-  limit: bigint          // Total payout limit for this ruleset
-  used: bigint           // Amount already distributed this ruleset
-  currency: number       // Token-keyed accounting currency (uint32(uint160(token)))
-  token: string
-  decimals: number
-}
-
-// ABI for JBFundAccessLimits
-const JB_FUND_ACCESS_LIMITS_ABI = [
-  {
-    name: 'payoutLimitOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'rulesetId', type: 'uint256' },
-      { name: 'terminal', type: 'address' },
-      { name: 'token', type: 'address' },
-      { name: 'currency', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-] as const
-
-const JB_TERMINAL_STORE_PAYOUT_ABI = [{
-  name: 'usedPayoutLimitOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'terminal', type: 'address' },
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'rulesetCycleNumber', type: 'uint256' },
-      { name: 'currency', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'balanceOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'terminal', type: 'address' },
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-    ],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-] as const
-
-// Native token address constant (ETH)
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as `0x${string}`
-
-// JBCurrencyAmount.amount is uint224; max uint224 represents "unlimited".
-const MAX_UINT224 = (1n << 224n) - 1n
-
-// Fetch the distributable payout amount for a project
-// This is the payout limit minus what's already been distributed this ruleset
-// Returns available amount based on fund access limits, NOT the total balance
-export async function fetchDistributablePayout(
-  projectId: string,
-  chainId: number,
-  accountingCurrency: number,
-  accountingToken: `0x${string}`,
-  accountingTokenDecimals: number,
-): Promise<DistributablePayout | null> {
-  const publicClient = getPublicClient(chainId)
-  if (!publicClient) throw new Error(`Payout configuration unavailable on unsupported chain ${chainId}`)
-
-  try {
-    // Resolve the project's controller (V6 single contract set)
-    const contracts = await getContractsForProject(projectId, chainId)
-
-    // Get current ruleset from JBRulesets
-    const ruleset = await publicClient.readContract({
-      address: contracts.JBRulesets,
-      abi: JB_RULESETS_ABI,
-      functionName: 'currentOf',
-      args: [BigInt(projectId)],
-    })
-
-    if (!ruleset.id) {
-      return { available: 0n, limit: 0n, used: 0n, currency: accountingCurrency, token: accountingToken, decimals: accountingTokenDecimals }
-    }
-
-    // The currency selects the denomination, but every limit amount uses the
-    // accounting token's fixed-point decimals (JBMultiTerminal/IJBTerminal).
-    const limitToken = accountingToken
-    const limitCurrency = BigInt(accountingCurrency)
-    const tokenCurrency = Number(BigInt(limitToken) & 0xffffffffn)
-    const limitDecimals = accountingTokenDecimals
-
-    const terminal = (await getPaymentTerminal(
-      publicClient,
-      chainId,
-      BigInt(projectId),
-      limitToken,
-      'accounting',
-    )).address
-    const terminalStore = await publicClient.readContract({
-      address: terminal,
-      abi: JB_TERMINAL_STORE_ABI,
-      functionName: 'STORE',
-    })
-
-    const payoutLimit = await publicClient.readContract({
-      address: contracts.JBFundAccessLimits,
-      abi: JB_FUND_ACCESS_LIMITS_ABI,
-      functionName: 'payoutLimitOf',
-      args: [BigInt(projectId), BigInt(ruleset.id), terminal, limitToken, limitCurrency],
-    })
-
-    const usedPayoutLimit = await publicClient.readContract({
-      address: terminalStore,
-      abi: JB_TERMINAL_STORE_PAYOUT_ABI,
-      functionName: 'usedPayoutLimitOf',
-      args: [terminal, BigInt(projectId), limitToken, BigInt(ruleset.cycleNumber), limitCurrency],
-    })
-
-    const tokenBalance = await publicClient.readContract({
-      address: terminalStore,
-      abi: JB_TERMINAL_STORE_PAYOUT_ABI,
-      functionName: 'balanceOf',
-      args: [terminal, BigInt(projectId), limitToken],
-    })
-
-    // This user-facing flow supports only the canonical native token and USDC,
-    // and only when the limit is denominated directly in that token. A price
-    // feed or an unfamiliar token needs a specialized UI which can quote it
-    // exactly; never approximate it here.
-    const canonicalUsdc = USDC_ADDRESSES[chainId as SupportedChainId]
-    const isRecognizedToken = limitToken.toLowerCase() === NATIVE_TOKEN.toLowerCase() ||
-      (!!canonicalUsdc && limitToken.toLowerCase() === canonicalUsdc.toLowerCase())
-    const isTokenKeyedPair = accountingCurrency === tokenCurrency
-    if (!isRecognizedToken) {
-      throw new Error(`Payout token not recognized: ${limitToken}`)
-    }
-    if (!isTokenKeyedPair) {
-      throw new Error('Payout currency conversion is not supported in this view')
-    }
-    const balanceInLimitCurrency = tokenBalance
-
-    // Handle different payout limit scenarios:
-    // - 0 means no payout limit is set (no payouts allowed)
-    // - max uint256 means unlimited
-    // - Any other value is the actual cap
-    let available: bigint
-
-    if (payoutLimit === 0n) {
-      // No payout limit configured = no payouts allowed
-      available = 0n
-    } else if (payoutLimit === MAX_UINT224) {
-      available = balanceInLimitCurrency
-    } else {
-      // Normal limit - return remaining allowance
-      const remainingLimit = payoutLimit > usedPayoutLimit ? payoutLimit - usedPayoutLimit : 0n
-      available = remainingLimit < balanceInLimitCurrency ? remainingLimit : balanceInLimitCurrency
-    }
-
-    return {
-      available,
-      limit: payoutLimit,
-      used: usedPayoutLimit,
-      currency: accountingCurrency,
-      token: limitToken,
-      decimals: limitDecimals,
-    }
-  } catch (err) {
-    console.error('Failed to fetch distributable payout:', err)
-    throw new Error(`Payout configuration unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
-  }
-}
-
 // Connected chain info for a project
 export interface ConnectedChain {
   chainId: number
@@ -3504,26 +3328,20 @@ export async function fetchProjectSplits(
     if (terminalContexts.length === 0) throw new Error('Project has no accounting context configured')
     const seenTokens = new Set<string>()
     for (const context of terminalContexts) {
-      if (!recognizedAccountingContext(context.token, chainId, context.tokenDecimals)) {
-        throw new Error(`Accounting token not recognized: ${context.token}`)
-      }
-      const expectedCurrency = Number(BigInt(context.token) & 0xffff_ffffn)
-      if (context.currency !== expectedCurrency) {
-        throw new Error(`Accounting currency not recognized for token: ${context.token}`)
+      if (
+        !isAddress(context.token) ||
+        !Number.isInteger(context.tokenDecimals) ||
+        context.tokenDecimals < 0 ||
+        context.tokenDecimals > 77 ||
+        !Number.isInteger(context.currency) ||
+        context.currency < 0 ||
+        context.currency > 0xffff_ffff
+      ) {
+        throw new Error(`Accounting context is invalid for token: ${context.token}`)
       }
       const token = context.token.toLowerCase()
       if (seenTokens.has(token)) throw new Error(`Duplicate accounting context for token: ${context.token}`)
       seenTokens.add(token)
-      const liveTerminal = await getPaymentTerminal(
-        publicClient,
-        chainId,
-        BigInt(projectId),
-        context.token,
-        'accounting',
-      )
-      if (liveTerminal.address.toLowerCase() !== context.terminal.toLowerCase()) {
-        throw new Error(`Accounting terminal changed for token: ${context.token}`)
-      }
     }
 
     const reservedResult = await publicClient.readContract({

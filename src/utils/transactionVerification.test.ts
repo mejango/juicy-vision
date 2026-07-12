@@ -242,6 +242,7 @@ describe('transactionVerification', () => {
       token: NATIVE_TOKEN,
       amount: 1000000000000000000n, // 1 ETH
       currency: NATIVE_CURRENCY,
+      accountingCurrency: NATIVE_CURRENCY,
       minTokensPaidOut: 1000000000000000000n,
     }
 
@@ -272,21 +273,23 @@ describe('transactionVerification', () => {
       )
     })
 
-    it('warns on large payout', () => {
+    it('keeps large payout amounts as exact bigint values', () => {
       const largeAmount = BigInt('2000000000000000000000') // 2000 ETH
       const result = verifySendPayoutsParams({ ...validParams, amount: largeAmount, minTokensPaidOut: largeAmount })
-      expect(result.doubts).toContainEqual(
-        expect.objectContaining({
-          severity: 'warning',
-          message: expect.stringContaining('Large payout amount'),
-        })
-      )
+      expect(result.isValid).toBe(true)
+      expect(result.verifiedParams.amount).toBe(largeAmount.toString())
     })
 
-    it('rejects a currency which does not match the accounting token', () => {
-      const result = verifySendPayoutsParams({ ...validParams, currency: 99n })
-      expect(result.isValid).toBe(false)
-      expect(result.doubts).toContainEqual(expect.objectContaining({ field: 'currency', severity: 'critical' }))
+    it('accepts an exact configured currency ID distinct from the accounting currency', () => {
+      const result = verifySendPayoutsParams({
+        ...validParams,
+        currency: 2n,
+        accountingCurrency: NATIVE_CURRENCY,
+        minTokensPaidOut: 1n,
+      })
+      expect(result.isValid).toBe(true)
+      expect(result.verifiedParams.currency).toBe('2')
+      expect(result.verifiedParams.accountingCurrency).toBe(NATIVE_CURRENCY.toString())
     })
 
     it('accepts the native token-keyed currency', () => {
@@ -294,9 +297,31 @@ describe('transactionVerification', () => {
       expect(result.isValid).toBe(true)
     })
 
-    it('rejects legacy base currency codes', () => {
-      expect(verifySendPayoutsParams({ ...validParams, currency: 1 }).isValid).toBe(false)
-      expect(verifySendPayoutsParams({ ...validParams, currency: 2 }).isValid).toBe(false)
+    it('does not conflate ETH ID 1, USD ID 2, and the native accounting currency', () => {
+      expect(verifySendPayoutsParams({
+        ...validParams,
+        currency: 1n,
+        accountingCurrency: NATIVE_CURRENCY,
+        minTokensPaidOut: 1n,
+      }).isValid).toBe(true)
+      expect(verifySendPayoutsParams({
+        ...validParams,
+        currency: 2n,
+        accountingCurrency: NATIVE_CURRENCY,
+        minTokensPaidOut: 1n,
+      }).isValid).toBe(true)
+      expect(verifySendPayoutsParams({
+        ...validParams,
+        currency: 1n,
+        accountingCurrency: 1n,
+        minTokensPaidOut: 1n,
+      }).isValid).toBe(false)
+    })
+
+    it('rejects a zero simulated minimum', () => {
+      const result = verifySendPayoutsParams({ ...validParams, minTokensPaidOut: 0n })
+      expect(result.isValid).toBe(false)
+      expect(result.doubts).toContainEqual(expect.objectContaining({ field: 'minTokensPaidOut', severity: 'critical' }))
     })
   })
 
@@ -306,6 +331,7 @@ describe('transactionVerification', () => {
       token: NATIVE_TOKEN,
       amount: 1000000000000000000n,
       currency: NATIVE_CURRENCY,
+      accountingCurrency: NATIVE_CURRENCY,
       minTokensPaidOut: 975000000000000000n,
       beneficiary: VALID_ADDRESS,
       feeBeneficiary: VALID_ADDRESS,
@@ -327,19 +353,25 @@ describe('transactionVerification', () => {
       expect(result.isValid).toBe(false)
     })
 
-    it('warns on large withdrawal', () => {
+    it('keeps large withdrawal amounts as exact bigint values', () => {
       const largeAmount = BigInt('2000000000000000000000')
       const result = verifyUseAllowanceParams({
         ...validParams,
         amount: largeAmount,
         minTokensPaidOut: largeAmount - (largeAmount / 40n),
       })
-      expect(result.doubts).toContainEqual(
-        expect.objectContaining({
-          severity: 'warning',
-          message: expect.stringContaining('Large withdrawal'),
-        })
-      )
+      expect(result.isValid).toBe(true)
+      expect(result.verifiedParams.amount).toBe(largeAmount.toString())
+    })
+
+    it('accepts a cross-currency live minimum and rejects zero', () => {
+      expect(verifyUseAllowanceParams({
+        ...validParams,
+        currency: 2n,
+        accountingCurrency: NATIVE_CURRENCY,
+        minTokensPaidOut: 1n,
+      }).isValid).toBe(true)
+      expect(verifyUseAllowanceParams({ ...validParams, minTokensPaidOut: 0n }).isValid).toBe(false)
     })
   })
 

@@ -1,95 +1,93 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount } from 'wagmi'
-import { formatUnits } from 'viem'
+import { useQueryClient } from '@tanstack/react-query'
 import { useThemeStore } from '../../stores'
 import { useSendPayoutsFormState } from '../../hooks/useComponentState'
+import { useManagedWallet } from '../../hooks'
 import {
   fetchProject,
-  fetchDistributablePayout,
-  fetchProjectAccountingContexts,
   fetchProjectSplits,
-  fetchProjectWithRuleset,
-  type Project,
-  type DistributablePayout,
   type JBSplitData,
-  type FundAccessLimits,
+  type Project,
 } from '../../services/bendystraw'
-import { resolveIpfsUri } from '../../utils/ipfs'
+import {
+  createFundAccessClient,
+  currencyLabel,
+  parseFundAccessAmount,
+  readFundAccessContexts,
+  type FundAccessContextSnapshot,
+} from '../../services/fundAccess'
+import { resolveProjectChains } from '../../utils/projectChains'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
+import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
 import { SendPayoutsModal } from '../payment'
+import { FundAccessAmountInput } from '../fundAccess/FundAccessAmountInput'
+import { FundAccessSummary } from '../fundAccess/FundAccessSummary'
 import { ProjectLink } from './ProjectLink'
 import { ProjectSplitRoute } from './ProjectSplitRoute'
-import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
-import { useManagedWallet } from '../../hooks'
-import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
 
 interface SendPayoutsFormProps {
   projectId: string
   chainId?: string
-  messageId?: string // For persisting state to server (visible to all chat users)
+  messageId?: string
 }
 
-// Chain info for display
 const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string; color: string }> = {
   1: { name: 'Ethereum', shortName: 'ETH', slug: 'eth', color: '#627EEA' },
   10: { name: 'Optimism', shortName: 'OP', slug: 'op', color: '#FF0420' },
   8453: { name: 'Base', shortName: 'BASE', slug: 'base', color: '#0052FF' },
   42161: { name: 'Arbitrum', shortName: 'ARB', slug: 'arb', color: '#28A0F0' },
+  11155111: { name: 'Sepolia', shortName: 'SEP', slug: 'sep', color: '#627EEA' },
+  11155420: { name: 'OP Sepolia', shortName: 'OP-SEP', slug: 'op-sep', color: '#FF0420' },
+  84532: { name: 'Base Sepolia', shortName: 'BASE-SEP', slug: 'base-sep', color: '#0052FF' },
+  421614: { name: 'Arbitrum Sepolia', shortName: 'ARB-SEP', slug: 'arb-sep', color: '#28A0F0' },
 }
 
-// Per-chain payout data
 interface ChainPayoutData {
   optionKey: string
   chainId: number
   projectId: number
-  distributablePayout: DistributablePayout | null
+  context: FundAccessContextSnapshot | null
   payoutSplits: JBSplitData[]
-  fundAccessLimits: FundAccessLimits | null
-  balance: string
-  tokenSymbol: 'ETH' | 'USDC'
   configurationError?: string
 }
 
-// Inline chain selector component
-function InlineChainSelector({
-  chainData,
-  selectedOptionKey,
+function ChainSelector({
+  options,
+  selected,
   onSelect,
   isDark,
 }: {
-  chainData: ChainPayoutData[]
-  selectedOptionKey: string | null
-  onSelect: (optionKey: string) => void
+  options: ChainPayoutData[]
+  selected: string
+  onSelect: (key: string) => void
   isDark: boolean
 }) {
-  if (chainData.length <= 1) return null
-
+  if (options.length <= 1) return null
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {chainData.map(cd => {
-        const chain = CHAIN_INFO[cd.chainId] || { name: `Chain ${cd.chainId}`, shortName: String(cd.chainId), color: '#888888' }
-        const isSelected = selectedOptionKey === cd.optionKey
+    <div className="flex min-w-0 flex-wrap gap-1" aria-label="Payout treasury">
+      {options.map(option => {
+        const chain = CHAIN_INFO[option.chainId] || {
+          name: `Chain ${option.chainId}`,
+          shortName: String(option.chainId),
+          slug: String(option.chainId),
+          color: '#888888',
+        }
+        const active = option.optionKey === selected
         return (
           <button
-            key={cd.optionKey}
-            onClick={() => onSelect(cd.optionKey)}
-            className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors ${
-              isSelected
-                ? isDark
-                  ? 'bg-white/20 text-white'
-                  : 'bg-gray-200 text-gray-900'
-                : isDark
-                  ? 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                  : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+            key={option.optionKey}
+            type="button"
+            onClick={() => onSelect(option.optionKey)}
+            className={`inline-flex min-w-0 items-center gap-1 px-2 py-1 text-[10px] ${active
+              ? isDark ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-900'
+              : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
             }`}
           >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: chain.color }}
-            />
-            {chain.shortName} {cd.tokenSymbol}
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: chain.color }} />
+            <span className="min-w-0 truncate">{chain.shortName} {option.context?.tokenSymbol || 'Unavailable'}</span>
           </button>
         )
       })}
@@ -98,616 +96,281 @@ function InlineChainSelector({
 }
 
 export default function SendPayoutsForm({ projectId, chainId = '1', messageId }: SendPayoutsFormProps) {
-  // Persistent state (visible to all chat users)
   const { state: persistedState, updateState: updatePersistedState } = useSendPayoutsFormState(messageId)
-
-  const [project, setProject] = useState<Project | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [amount, setAmount] = useState('')
-  const [showModal, setShowModal] = useState(false)
-  const [showSplits, setShowSplits] = useState(false)
+  const queryClient = useQueryClient()
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-
   const { isConnected } = useAccount()
   const { address: managedAddress, isManagedMode } = useManagedWallet()
   const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected
 
-  // Check if form should be locked due to active/completed transaction
-  const isLocked = persistedState?.status === 'in_progress' || persistedState?.status === 'completed'
+  const [project, setProject] = useState<Project | null>(null)
+  const [options, setOptions] = useState<ChainPayoutData[]>([])
+  const [selectedOptionKey, setSelectedOptionKey] = useState('')
+  const [selectedCurrency, setSelectedCurrency] = useState('')
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [amount, setAmount] = useState('')
+  const [showModal, setShowModal] = useState(false)
+  const [showSplits, setShowSplits] = useState(false)
+  const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
+  const [refreshRevision, setRefreshRevision] = useState(0)
 
-  // Restore state from persisted data on load
+  const active = options.find(option => option.optionKey === selectedOptionKey) || options[0]
+  const context = active?.context || null
+  const limits = context?.payoutLimits || []
+  const access = limits.find(limit => limit.currency.toString() === selectedCurrency) || limits[0] || null
+  const selectedChainId = active?.chainId ?? Number.parseInt(chainId, 10)
+  const chainInfo = CHAIN_INFO[selectedChainId] || CHAIN_INFO[1]
+  const transactionInProgress = persistedState?.status === 'in_progress'
+
+  const load = useCallback(async () => {
+    const primaryChainId = Number.parseInt(chainId, 10)
+    setLoading(true)
+    try {
+      const [projectData, chainResolution] = await Promise.all([
+        fetchProject(projectId, primaryChainId),
+        resolveProjectChains(projectId, primaryChainId),
+      ])
+      setProject(projectData)
+      setChainMappingAvailable(chainResolution.mappingAvailable)
+
+      const all = (await Promise.all(chainResolution.chains.map(async chain => {
+        try {
+          const client = createFundAccessClient(chain.chainId)
+          const contexts = await readFundAccessContexts(client, chain.chainId, BigInt(chain.projectId))
+          const configuration = await fetchProjectSplits(
+            String(chain.projectId),
+            chain.chainId,
+            contexts[0].rulesetId.toString(),
+          )
+          if (!configuration.configurationComplete) throw new Error('Payout configuration could not be verified')
+          return contexts.map(current => {
+            const payoutSplits = configuration.splitGroups?.find(
+              group => group.groupId === BigInt(current.token).toString(),
+            )?.splits || []
+            assertSimpleStoredSplitGroups([{ splits: payoutSplits }], {
+              kind: 'payout',
+              sourceProjectId: String(chain.projectId),
+            })
+            return {
+              optionKey: `${chain.chainId}:${current.token.toLowerCase()}`,
+              chainId: chain.chainId,
+              projectId: chain.projectId,
+              context: current,
+              payoutSplits,
+            } satisfies ChainPayoutData
+          })
+        } catch (error) {
+          return [{
+            optionKey: `${chain.chainId}:error`,
+            chainId: chain.chainId,
+            projectId: chain.projectId,
+            context: null,
+            payoutSplits: [],
+            configurationError: error instanceof Error ? error.message : 'Payout configuration unavailable',
+          } satisfies ChainPayoutData]
+        }
+      }))).flat()
+      setOptions(all)
+      setSelectedOptionKey(previous => {
+        if (all.some(option => option.optionKey === previous)) return previous
+        return all.find(option => option.chainId === primaryChainId && option.context?.payoutLimits.length)?.optionKey
+          || all.find(option => option.context?.payoutLimits.length)?.optionKey
+          || all[0]?.optionKey
+          || ''
+      })
+
+      const beneficiaries = new Set<string>()
+      all.forEach(option => option.payoutSplits.forEach(split => {
+        if (split.projectId === 0 && split.beneficiary) beneficiaries.add(split.beneficiary.toLowerCase())
+      }))
+      const resolved = await Promise.all([...beneficiaries].map(async address => ({
+        address,
+        ens: await resolveEnsName(address),
+      })))
+      setSplitEnsNames(Object.fromEntries(resolved.filter(item => item.ens).map(item => [item.address, item.ens!])))
+    } catch (error) {
+      console.error('Failed to load payout access:', error)
+      setOptions([])
+    } finally {
+      setLoading(false)
+    }
+  }, [chainId, projectId])
+
+  useEffect(() => { void load() }, [load, refreshRevision])
+
   useEffect(() => {
-    if (persistedState && persistedState.status !== 'pending') {
-      if (persistedState.amount) setAmount(persistedState.amount)
-      if (persistedState.selectedChainId && persistedState.accountingToken) {
-        setSelectedOptionKey(`${persistedState.selectedChainId}:${persistedState.accountingToken.toLowerCase()}`)
-      }
+    if (!context) {
+      setSelectedCurrency('')
+      return
+    }
+    setSelectedCurrency(previous => context.payoutLimits.some(limit => limit.currency.toString() === previous)
+      ? previous
+      : context.payoutLimits[0]?.currency.toString() || '')
+    setAmount('')
+  }, [active?.chainId, context])
+
+  useEffect(() => {
+    if (persistedState?.status === 'in_progress' && persistedState.amount) setAmount(persistedState.amount)
+    if (persistedState?.selectedChainId && persistedState.accountingToken) {
+      setSelectedOptionKey(`${persistedState.selectedChainId}:${persistedState.accountingToken.toLowerCase()}`)
     }
   }, [persistedState])
 
-  // Transaction callbacks for persistence
-  const handleConfirmed = useCallback((txHash: string) => {
+  const invalidate = useCallback((txHash: string) => {
+    setShowModal(false)
+    setAmount('')
     updatePersistedState({
       status: 'completed',
+      amount: '',
       txHash,
       confirmedAt: new Date().toISOString(),
     })
-  }, [updatePersistedState])
+    void queryClient.invalidateQueries({ queryKey: ['rulesets', selectedChainId, active?.projectId] })
+    window.dispatchEvent(new CustomEvent('juice:project-data-invalidated', {
+      detail: { chainId: selectedChainId, projectId: active?.projectId },
+    }))
+    setRefreshRevision(revision => revision + 1)
+  }, [active?.projectId, queryClient, selectedChainId, updatePersistedState])
 
-  const handleSubmitted = useCallback((txHash: string) => {
-    updatePersistedState({
-      status: 'in_progress',
-      txHash,
-      submittedAt: new Date().toISOString(),
-    })
-  }, [updatePersistedState])
+  const refreshAfterStaleReview = useCallback(() => {
+    setShowModal(false)
+    setRefreshRevision(revision => revision + 1)
+  }, [])
 
-  const handleError = useCallback((error: string) => {
-    updatePersistedState({
-      status: 'failed',
-      error,
-    })
-  }, [updatePersistedState])
-
-  const openWalletPanel = () => {
-    window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
-  }
-
-  // Omnichain state
-  const [chainPayoutData, setChainPayoutData] = useState<ChainPayoutData[]>([])
-  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
-  const [selectedOptionKey, setSelectedOptionKey] = useState<string>('')
-  const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
-
-  const isOmnichain = chainPayoutData.length > 1
-
-  // Get active chain data
-  const activeChainData = chainPayoutData.find(cd => cd.optionKey === selectedOptionKey) || chainPayoutData[0]
-  const selectedChainId = activeChainData?.chainId ?? parseInt(chainId)
-  const chainInfo = CHAIN_INFO[selectedChainId] || CHAIN_INFO[1]
-  const currencyLabel = activeChainData?.tokenSymbol || 'units'
-
-  // Fetch project data and distributable payout for all chains
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true)
-        const primaryChainId = parseInt(chainId)
-
-        // Fetch project and connected chains
-        const [projectData, chainResolution] = await Promise.all([
-          fetchProject(projectId, primaryChainId),
-          resolveProjectChains(projectId, primaryChainId),
-        ])
-        setProject(projectData)
-        setChainMappingAvailable(chainResolution.mappingAvailable)
-
-        // Fetch payout data from all chains in parallel
-        const chainDataPromises = chainResolution.chains.map(async (chain): Promise<ChainPayoutData[]> => {
-          try {
-            const [chainProject, accountingContexts] = await Promise.all([
-              fetchProjectWithRuleset(String(chain.projectId), chain.chainId),
-              fetchProjectAccountingContexts(String(chain.projectId), chain.chainId),
-            ])
-            if (accountingContexts.length === 0) throw new Error('No recognized accounting context')
-
-            let splitGroups: Awaited<ReturnType<typeof fetchProjectSplits>>['splitGroups'] = []
-            let payoutGroups: FundAccessLimits[] = []
-            if (chainProject?.currentRuleset?.id) {
-              const splitsData = await fetchProjectSplits(
-                String(chain.projectId),
-                chain.chainId,
-                chainProject.currentRuleset.id
-              )
-              if (!splitsData.configurationComplete) {
-                throw new Error('Payout configuration could not be verified')
-              }
-              payoutGroups = (splitsData.fundAccessLimitGroups || [])
-                .filter(group => group.payoutLimits.length > 0)
-              if (payoutGroups.some(group => group.payoutLimits.length > 1)) {
-                throw new Error('Multiple payout denominations for one token are not supported')
-              }
-              splitGroups = splitsData.splitGroups || []
-            }
-
-            return await Promise.all(accountingContexts.map(async context => {
-              const fundAccessLimits = payoutGroups.find(
-                group => group.token.toLowerCase() === context.token.toLowerCase(),
-              ) || null
-              const payoutSplits = splitGroups?.find(
-                group => group.groupId === BigInt(context.token).toString(),
-              )?.splits || []
-              assertSimpleStoredSplitGroups([{ splits: payoutSplits }], {
-                kind: 'payout',
-                sourceProjectId: chain.projectId,
-              })
-              const configuredPayoutCurrency = fundAccessLimits?.payoutLimits[0]?.currency
-              if (configuredPayoutCurrency !== undefined && configuredPayoutCurrency !== context.currency) {
-                throw new Error('Payout currency conversion is not supported in this view')
-              }
-              const payoutData = configuredPayoutCurrency === undefined ? null : await fetchDistributablePayout(
-                  String(chain.projectId),
-                  chain.chainId,
-                  configuredPayoutCurrency,
-                  context.token,
-                  context.decimals,
-                )
-
-              return {
-                optionKey: `${chain.chainId}:${context.token.toLowerCase()}`,
-                chainId: chain.chainId,
-                projectId: chain.projectId,
-                distributablePayout: payoutData,
-                payoutSplits,
-                fundAccessLimits,
-                balance: context.balance.toString(),
-                tokenSymbol: context.symbol,
-              } satisfies ChainPayoutData
-            }))
-          } catch (err) {
-            console.error(`Failed to fetch payout data for chain ${chain.chainId}:`, err)
-            return [{
-              optionKey: `${chain.chainId}:error`,
-              chainId: chain.chainId,
-              projectId: chain.projectId,
-              distributablePayout: null,
-              payoutSplits: [],
-              fundAccessLimits: null,
-              balance: '0',
-              tokenSymbol: 'ETH',
-              configurationError: err instanceof Error ? err.message : 'Payout configuration unavailable',
-            }]
-          }
-        })
-
-        const allChainData = (await Promise.all(chainDataPromises)).flat()
-        setChainPayoutData(allChainData)
-
-        setSelectedOptionKey(previous => {
-          if (allChainData.some(data => data.optionKey === previous)) return previous
-          return allChainData.find(data => data.chainId === primaryChainId && data.distributablePayout)?.optionKey
-            || allChainData.find(data => data.distributablePayout)?.optionKey
-            || allChainData[0]?.optionKey
-            || ''
-        })
-
-        // Resolve ENS names for split beneficiaries
-        const allBeneficiaries = new Set<string>()
-        allChainData.forEach(cd => {
-          cd.payoutSplits.forEach(split => {
-            if (split.beneficiary && split.projectId === 0) {
-              allBeneficiaries.add(split.beneficiary.toLowerCase())
-            }
-          })
-        })
-
-        const ensPromises = Array.from(allBeneficiaries).map(async addr => {
-          const ens = await resolveEnsName(addr)
-          return { addr, ens }
-        })
-
-        const ensResults = await Promise.all(ensPromises)
-        const ensMap: Record<string, string> = {}
-        ensResults.forEach(({ addr, ens }) => {
-          if (ens) ensMap[addr] = ens
-        })
-        setSplitEnsNames(ensMap)
-
-      } catch (err) {
-        console.error('Failed to load project:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [projectId, chainId])
-
-  // Available balance for payouts
-  const availableBalance = (() => {
-    if (activeChainData?.distributablePayout) {
-      try {
-        return parseFloat(formatUnits(
-          activeChainData.distributablePayout.available,
-          activeChainData.distributablePayout.decimals,
-        ))
-      } catch {
-        return 0
-      }
-    }
-    return 0
-  })()
-
-  // Check if payouts are disabled
-  const payoutsDisabled = activeChainData?.configurationError
-    ? true
-    : activeChainData?.distributablePayout
-    ? activeChainData.distributablePayout.limit === 0n
-    : true
-
-  // The fee is applied per recipient and some recognized destinations are
-  // fee-free, so only the maximum possible fee is knowable here.
-  const amountNum = parseFloat(amount) || 0
-  const maximumProtocolFee = amountNum * 0.025
-
-  // Get payout limit info
-  const payoutLimit = activeChainData?.distributablePayout?.limit || 0n
-  const usedPayout = activeChainData?.distributablePayout?.used || 0n
-  const isUnlimited = payoutLimit > BigInt('1000000000000000000000000000000')
-
-  const handleSendPayouts = () => {
-    if (
-      !amount || parseFloat(amount) <= 0 || parseFloat(amount) > availableBalance ||
-      isLocked || !activeChainData?.distributablePayout || !activeChainData.fundAccessLimits
-    ) return
-
+  const handleSubmit = () => {
+    if (!context || !access || transactionInProgress) return
+    const parsed = parseFundAccessAmount(amount, context.decimals)
+    if (parsed === null || parsed > access.available) return
     if (!hasActiveWallet) {
-      openWalletPanel()
+      window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
       return
     }
-
-    // Save reviewed inputs without claiming a transaction exists yet.
     updatePersistedState({
       status: 'pending',
       amount,
       selectedChainId,
-      accountingToken: activeChainData.distributablePayout.token,
-      submittedAt: new Date().toISOString(),
+      accountingToken: context.token,
     })
-
     setShowModal(true)
   }
 
+  const totalSplitPercent = useMemo(
+    () => (active?.payoutSplits || []).reduce((sum, split) => sum + BigInt(split.percent), 0n),
+    [active?.payoutSplits],
+  )
+
   if (loading) {
-    return (
-      <div className="w-full">
-        <div className={`max-w-md border p-4 animate-pulse ${
-          isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
-        }`}>
-          <div className="h-6 bg-white/10 w-3/4 mb-3" />
-          <div className="h-4 bg-white/10 w-1/2" />
-        </div>
-      </div>
-    )
+    return <div className={`w-full max-w-md animate-pulse border p-4 ${isDark ? 'border-gray-600 bg-juice-dark-lighter' : 'border-gray-300 bg-white'}`}>
+      <div className="mb-3 h-6 w-3/4 bg-white/10" />
+      <div className="h-4 w-1/2 bg-white/10" />
+    </div>
   }
 
-  const logoUrl = project?.logoUri ? resolveIpfsUri(project.logoUri) : null
-
   return (
-    <div className="w-full">
-      <div className={`max-w-md border p-4 ${
-        isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'
-      }`}>
+    <div className="w-full min-w-0">
+      <div className={`w-full max-w-md min-w-0 overflow-hidden border p-4 ${isDark ? 'border-gray-600 bg-juice-dark-lighter' : 'border-gray-300 bg-white'}`}>
         {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-3">
-          {logoUrl ? (
-            <IpfsImage uri={project?.logoUri} alt={project?.name || 'Project'} className="w-14 h-14 object-cover" fallback={<div className="w-14 h-14 bg-juice-orange/20" />} />
-          ) : (
-            <div className="w-14 h-14 bg-juice-orange/20 flex items-center justify-center">
-              <span className="text-2xl">📤</span>
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <h3 className={`font-semibold truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Distribute Payouts
-            </h3>
-            <ProjectLink chainSlug={chainInfo.slug} projectId={String(activeChainData?.projectId ?? projectId)} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
+        <div className="mb-3 flex min-w-0 items-center gap-3">
+          {project?.logoUri ? (
+            <IpfsImage uri={project.logoUri} alt={project.name || 'Project'} className="h-14 w-14 shrink-0 object-cover" fallback={<div className="h-14 w-14 shrink-0 bg-juice-orange/20" />} />
+          ) : <div className="flex h-14 w-14 shrink-0 items-center justify-center bg-juice-orange/20 text-2xl">📤</div>}
+          <div className="min-w-0 flex-1">
+            <h3 className={`truncate font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Distribute payouts</h3>
+            <ProjectLink chainSlug={chainInfo.slug} projectId={String(active?.projectId ?? projectId)} className={`block truncate text-xs hover:underline ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               {project?.name || `Project #${projectId}`}
             </ProjectLink>
           </div>
         </div>
 
-        {/* Chain Selector for omnichain */}
-        {isOmnichain && (
-          <div className="mb-3">
-            <div className={`text-xs mb-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Select chain and treasury:
-            </div>
-            <InlineChainSelector
-              chainData={chainPayoutData}
-              selectedOptionKey={selectedOptionKey}
-              onSelect={setSelectedOptionKey}
+        <ChainSelector options={options} selected={selectedOptionKey} onSelect={setSelectedOptionKey} isDark={isDark} />
+
+        {context && limits.length > 1 && (
+          <label className={`mt-3 block text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            Payout currency
+            <select
+              aria-label="Payout currency"
+              value={access?.currency.toString() || ''}
+              onChange={event => { setSelectedCurrency(event.target.value); setAmount('') }}
+              className={`mt-1 w-full min-w-0 border px-2 py-2 text-sm ${isDark ? 'border-white/10 bg-juice-dark text-white' : 'border-gray-200 bg-white text-gray-900'}`}
+            >
+              {limits.map(limit => <option key={limit.currency.toString()} value={limit.currency.toString()}>{currencyLabel(limit.currency, context)} ({limit.currency.toString()})</option>)}
+            </select>
+          </label>
+        )}
+
+        {context && access ? (
+          <div className="mt-3 space-y-3">
+            <FundAccessSummary kind="payout" context={context} access={access} isDark={isDark} />
+
+            {active.payoutSplits.length > 0 && (
+              <div className="min-w-0">
+                <button type="button" onClick={() => setShowSplits(value => !value)} className={`flex w-full items-center justify-between py-2 text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <span>Payout recipients ({active.payoutSplits.length})</span><span>{showSplits ? '▲' : '▼'}</span>
+                </button>
+                {showSplits && <div className={`space-y-1.5 border-t py-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                  {active.payoutSplits.map((split, index) => {
+                    const beneficiary = split.beneficiary.toLowerCase()
+                    const whole = (BigInt(split.percent) * 10_000n) / 1_000_000_000n
+                    const percent = `${whole / 100n}.${(whole % 100n).toString().padStart(2, '0')}%`
+                    return <div key={`${beneficiary}:${index}`} className={`flex min-w-0 items-center justify-between gap-2 p-2 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
+                      <div className="min-w-0 truncate">
+                        {split.projectId > 0 ? <ProjectSplitRoute projectId={split.projectId} chainId={active.chainId} beneficiary={split.beneficiary} kind="payout" preferAddToBalance={split.preferAddToBalance} hook={split.hook} isDark={isDark} />
+                          : <span className="font-mono text-xs text-juice-orange">{splitEnsNames[beneficiary] || truncateAddress(split.beneficiary)}</span>}
+                      </div>
+                      <span className="shrink-0 font-mono text-xs text-emerald-400">{percent}</span>
+                    </div>
+                  })}
+                  {totalSplitPercent < 1_000_000_000n && <div className={`flex justify-between p-2 text-xs ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                    <span>Project treasury</span>
+                    <span className="font-mono text-emerald-400">{((1_000_000_000n - totalSplitPercent) / 10_000_000n).toString()}%</span>
+                  </div>}
+                </div>}
+              </div>
+            )}
+
+            <FundAccessAmountInput
+              kind="payout"
+              context={context}
+              access={access}
+              amount={amount}
+              onAmountChange={setAmount}
+              onSubmit={handleSubmit}
+              disabled={transactionInProgress}
+              submitLabel={transactionInProgress ? 'Pending…' : 'Review'}
               isDark={isDark}
             />
           </div>
+        ) : (
+          <p className={`mt-3 break-words text-xs ${active?.configurationError ? 'text-red-500' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            {active?.configurationError || 'No payout limit is configured for this accounting token.'}
+          </p>
         )}
 
-        {/* Payout Limit Status */}
-        <div className={`p-3 mb-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-          <div className="flex justify-between items-center mb-2">
-            <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Payout Limit
-            </span>
-            <span className={`text-xs font-mono ${
-              payoutsDisabled ? 'text-amber-400' : isUnlimited ? 'text-emerald-400' : ''
-            }`}>
-              {payoutsDisabled
-                ? 'None'
-                : isUnlimited
-                  ? 'Unlimited'
-                  : `${parseFloat(formatUnits(payoutLimit, activeChainData?.distributablePayout?.decimals || 18)).toFixed(4)} ${currencyLabel}`
-              }
-            </span>
-          </div>
-          {!payoutsDisabled && !isUnlimited && (
-            <>
-              <div className="flex justify-between items-center mb-1">
-                <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Used this cycle
-                </span>
-                <span className="text-xs font-mono">
-                  {parseFloat(formatUnits(usedPayout, activeChainData?.distributablePayout?.decimals || 18)).toFixed(4)} {currencyLabel}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className={`text-xs font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                  Available to distribute
-                </span>
-                <span className={`text-xs font-mono font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                  {availableBalance.toFixed(4)} {currencyLabel}
-                </span>
-              </div>
-              {/* Progress bar */}
-              <div className={`mt-2 h-1.5 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}>
-                <div
-                  className="h-full bg-emerald-500 transition-all"
-                  style={{
-                    width: `${Math.min(100, Number(usedPayout) / Number(payoutLimit) * 100)}%`
-                  }}
-                />
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Splits Preview */}
-        {activeChainData && activeChainData.payoutSplits.length > 0 && (
-          <div className={`mb-3 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-            <button
-              onClick={() => setShowSplits(!showSplits)}
-              className={`w-full flex items-center justify-between py-2 text-xs ${
-                isDark ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <span className="font-medium">
-                Payout Recipients ({activeChainData.payoutSplits.length})
-              </span>
-              <span>{showSplits ? '▲' : '▼'}</span>
-            </button>
-
-            {showSplits && (
-              <div className={`space-y-1.5 py-2 ${isDark ? 'border-t border-white/10' : 'border-t border-gray-200'}`}>
-                {activeChainData.payoutSplits.map((split, idx) => {
-                  const percent = (split.percent / 1e9) * 100
-                  const beneficiaryKey = split.beneficiary.toLowerCase()
-                  const displayName = splitEnsNames[beneficiaryKey] || truncateAddress(split.beneficiary)
-                  const isProject = split.projectId > 0
-
-                  return (
-                    <div key={idx} className={`flex items-center justify-between p-2 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
-                      <div className="flex items-center gap-2">
-                        {isProject ? (
-                          <ProjectSplitRoute
-                            projectId={split.projectId}
-                            chainId={activeChainData.chainId}
-                            beneficiary={split.beneficiary}
-                            kind="payout"
-                            preferAddToBalance={split.preferAddToBalance}
-                            hook={split.hook}
-                            isDark={isDark}
-                          />
-                        ) : (
-                          <span className="font-mono text-xs text-juice-orange">
-                            {displayName}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-emerald-400">{percent.toFixed(2)}%</span>
-                        {split.lockedUntil > Math.floor(Date.now() / 1000) && (
-                          <span className="text-[10px] text-amber-500">Locked</span>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-                {/* Project treasury remainder */}
-                {(() => {
-                  const totalPercent = activeChainData.payoutSplits.reduce((sum, s) => sum + (s.percent / 1e9) * 100, 0)
-                  const remainder = 100 - totalPercent
-                  if (remainder > 0.01) {
-                    return (
-                      <div className={`flex items-center justify-between p-2 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
-                        <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          Project treasury
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-emerald-400">{remainder.toFixed(2)}%</span>
-                        </div>
-                      </div>
-                    )
-                  }
-                  return null
-                })()}
-              </div>
-            )}
-          </div>
+        {persistedState?.status === 'completed' && (
+          <p className={`mt-3 text-xs ${isDark ? 'text-green-400' : 'text-green-600'}`}>Payouts confirmed. Live balances have been refreshed.</p>
         )}
-
-        {/* Form */}
-        <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-          <div className="flex items-center justify-between mb-2">
-            <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Amount to distribute
-            </div>
-          </div>
-
-          {/* Amount input */}
-          <div className="flex gap-2">
-            <div className={`flex-1 flex items-center ${
-              isDark
-                ? 'bg-juice-dark border border-white/10'
-                : 'bg-white border border-gray-200'
-            }`}>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max={availableBalance}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.0"
-                disabled={payoutsDisabled || isLocked}
-                className={`flex-1 px-3 py-2 text-sm bg-transparent outline-none ${
-                  isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
-                } ${payoutsDisabled || isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-              />
-              <span className={`px-3 py-2 text-sm border-l ${
-                isDark ? 'border-white/10 text-gray-400' : 'border-gray-200 text-gray-500'
-              }`}>
-                {currencyLabel}
-              </span>
-            </div>
-            <button
-              onClick={handleSendPayouts}
-              disabled={!amount || parseFloat(amount) <= 0 || parseFloat(amount) > availableBalance || payoutsDisabled || isLocked}
-              className={`px-5 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
-                !amount || parseFloat(amount) <= 0 || parseFloat(amount) > availableBalance || payoutsDisabled || isLocked
-                  ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                  : 'bg-juice-orange hover:bg-juice-orange/90 text-black'
-              }`}
-            >
-              {persistedState?.status === 'completed' ? 'Sent' : persistedState?.status === 'in_progress' ? 'Pending...' : 'Send'}
-            </button>
-          </div>
-
-          {/* Transaction status indicator */}
-          {isLocked && (
-            <div className={`mt-2 p-2 text-sm ${
-              persistedState?.status === 'completed'
-                ? isDark ? 'bg-green-500/10' : 'bg-green-50'
-                : persistedState?.status === 'failed'
-                  ? isDark ? 'bg-red-500/10' : 'bg-red-50'
-                  : isDark ? 'bg-juice-cyan/10' : 'bg-cyan-50'
-            }`}>
-              <div className={`flex items-center gap-2 ${
-                persistedState?.status === 'completed'
-                  ? isDark ? 'text-green-400' : 'text-green-600'
-                  : persistedState?.status === 'failed'
-                    ? isDark ? 'text-red-400' : 'text-red-600'
-                    : isDark ? 'text-juice-cyan' : 'text-cyan-600'
-              }`}>
-                {persistedState?.status === 'completed' ? (
-                  <>
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span>Payouts sent successfully!</span>
-                  </>
-                ) : persistedState?.status === 'failed' ? (
-                  <>
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    <span>Transaction failed</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    <span>Transaction pending...</span>
-                  </>
-                )}
-              </div>
-              {persistedState?.txHash && (
-                <a
-                  href={`${CHAIN_INFO[selectedChainId]?.slug ? `https://${CHAIN_INFO[selectedChainId].slug === 'eth' ? '' : CHAIN_INFO[selectedChainId].slug + '.'}etherscan.io` : 'https://etherscan.io'}/tx/${persistedState.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
-                >
-                  View on explorer
-                </a>
-              )}
-              {persistedState?.error && (
-                <p className={`text-xs mt-1 ml-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {persistedState.error}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Quick amount options */}
-          {!payoutsDisabled && availableBalance > 0 && (
-            <div className="flex gap-2 mt-2">
-              {[0.25, 0.5, 0.75].map(fraction => {
-                const val = (availableBalance * fraction).toFixed(4)
-                return (
-                  <button
-                    key={fraction}
-                    onClick={() => setAmount(val)}
-                    className={`flex-1 px-2 py-1 text-xs transition-colors ${
-                      amount === val
-                        ? isDark ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-900'
-                        : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-500 hover:bg-gray-150'
-                    }`}
-                  >
-                    {Math.round(fraction * 100)}%
-                  </button>
-                )
-              })}
-              <button
-                onClick={() => setAmount(availableBalance.toFixed(4))}
-                className={`flex-1 px-2 py-1 text-xs transition-colors ${
-                  amount === availableBalance.toFixed(4)
-                    ? isDark ? 'bg-juice-orange/30 text-juice-orange' : 'bg-orange-100 text-orange-700'
-                    : isDark ? 'bg-juice-orange/10 text-juice-orange hover:bg-juice-orange/20' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'
-                }`}
-              >
-                max
-              </button>
-            </div>
-          )}
-
-          {/* Fee preview */}
-          {amountNum > 0 && (
-            <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Maximum protocol fee:{' '}
-              <span className="font-mono">{maximumProtocolFee.toFixed(4)} {currencyLabel}</span>
-              <span className={isDark ? 'text-gray-500' : 'text-gray-400'}> (fee-eligible recipients only)</span>
-            </div>
-          )}
-        </div>
-
-        {/* Info */}
-        <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          {activeChainData?.configurationError
-            ? activeChainData.configurationError
-            : payoutsDisabled
-            ? 'No payout limit is configured for this ruleset. Payouts are not available.'
-            : 'Distribute treasury funds to the current payout recipients. A fee of up to 2.5% applies to fee-eligible destinations.'}
-        </p>
+        {persistedState?.status === 'failed' && persistedState.error && (
+          <p className="mt-3 break-words text-xs text-red-500">{persistedState.error}</p>
+        )}
       </div>
 
-      {/* Modal */}
-      {activeChainData?.distributablePayout && activeChainData.fundAccessLimits && (
+      {context && access && (
         <SendPayoutsModal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        projectId={String(activeChainData.projectId)}
-        projectName={project?.name}
-        chainId={selectedChainId}
-        amount={amount}
-        payoutCurrency={activeChainData.distributablePayout.currency}
-        payoutTokenAddress={activeChainData.distributablePayout.token as `0x${string}`}
-        payoutTokenDecimals={activeChainData.fundAccessLimits.tokenDecimals}
-        splits={activeChainData.payoutSplits}
-        onSubmitted={handleSubmitted}
-        onConfirmed={handleConfirmed}
-        onError={handleError}
+          isOpen={showModal}
+          onClose={() => setShowModal(false)}
+          projectId={String(active.projectId)}
+          projectName={project?.name}
+          chainId={active.chainId}
+          amount={amount}
+          context={context}
+          access={access}
+          splits={active.payoutSplits}
+          onSubmitted={txHash => updatePersistedState({ status: 'in_progress', txHash, submittedAt: new Date().toISOString() })}
+          onConfirmed={invalidate}
+          onError={error => updatePersistedState({ status: 'failed', error })}
+          onRefresh={refreshAfterStaleReview}
         />
       )}
     </div>

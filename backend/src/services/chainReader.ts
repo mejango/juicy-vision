@@ -1107,13 +1107,15 @@ export async function fetchSplits(
   const seenTokens = new Set<string>();
   for (const context of terminalContexts) {
     const token = context.token.toLowerCase();
-    const isNative = token === NATIVE_TOKEN;
-    const isUsdc = token === CANONICAL_USDC[chainId];
-    if (!isNative && !isUsdc) throw new Error(`Accounting token not recognized: ${context.token}`);
-    const expectedDecimals = isNative ? 18 : 6;
-    const expectedCurrency = Number(BigInt(context.token) & 0xffff_ffffn);
-    if (context.tokenDecimals !== expectedDecimals || context.currency !== expectedCurrency) {
-      throw new Error(`Accounting context is not recognized for token: ${context.token}`);
+    if (
+      !Number.isInteger(context.tokenDecimals) ||
+      context.tokenDecimals < 0 ||
+      context.tokenDecimals > 77 ||
+      !Number.isInteger(context.currency) ||
+      context.currency < 0 ||
+      context.currency > 0xffff_ffff
+    ) {
+      throw new Error(`Accounting context is invalid for token: ${context.token}`);
     }
     if (seenTokens.has(token)) {
       throw new Error(`Duplicate accounting context for token: ${context.token}`);
@@ -1200,13 +1202,13 @@ export async function fetchSplits(
         args: [BigInt(projectId), rsId, context.terminal, context.token],
       }),
     ]);
-    if (payoutLimits.length > 1 || surplusAllowances.length > 1) {
-      throw new Error(`Fund access configuration is ambiguous for token: ${context.token}`);
-    }
-    for (const limit of [...payoutLimits, ...surplusAllowances]) {
-      if (Number(limit.currency) !== context.currency) {
-        throw new Error(`Fund access currency not recognized for token: ${context.token}`);
-      }
+    const payoutCurrencies = new Set(payoutLimits.map((limit) => String(limit.currency)));
+    const allowanceCurrencies = new Set(surplusAllowances.map((limit) => String(limit.currency)));
+    if (
+      payoutCurrencies.size !== payoutLimits.length ||
+      allowanceCurrencies.size !== surplusAllowances.length
+    ) {
+      throw new Error(`Fund access currencies are duplicated for token: ${context.token}`);
     }
     const allowancesWithUsage = await Promise.all(surplusAllowances.map(async (allowance) => ({
       amount: String(allowance.amount),

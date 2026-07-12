@@ -51,10 +51,6 @@ function isRecognizedAccountingToken(address: string): boolean {
   return isNativeToken(address) || isUsdcAddress(address)
 }
 
-function accountingCurrencyOf(address: string): bigint {
-  return BigInt(address) & 0xffff_ffffn
-}
-
 function validateLaunchTerminalConfigurations(
   terminalConfigs: Array<{
     terminal?: string
@@ -602,6 +598,7 @@ export function verifySendPayoutsParams(params: {
   token: string
   amount: bigint | string
   currency: bigint | string | number
+  accountingCurrency: bigint | string | number
   minTokensPaidOut: bigint | string
 }): VerificationResult {
   const doubts: TransactionDoubt[] = []
@@ -611,9 +608,11 @@ export function verifySendPayoutsParams(params: {
   const projectId = parseBigIntParam(params.projectId, 'projectId', doubts)
   const amount = parseBigIntParam(params.amount, 'amount', doubts)
   const currency = parseBigIntParam(params.currency, 'currency', doubts)
+  const accountingCurrency = parseBigIntParam(params.accountingCurrency, 'accountingCurrency', doubts)
   const minTokensPaidOut = parseBigIntParam(params.minTokensPaidOut, 'minTokensPaidOut', doubts)
   validateUnsigned(amount, 'amount', doubts)
   validateUnsigned(currency, 'currency', doubts, 32)
+  validateUnsigned(accountingCurrency, 'accountingCurrency', doubts, 32)
   validateUnsigned(minTokensPaidOut, 'minTokensPaidOut', doubts)
 
   // Validate project ID
@@ -632,18 +631,6 @@ export function verifySendPayoutsParams(params: {
       field: 'token',
       message: 'Invalid token address format',
     })
-  } else if (!isRecognizedAccountingToken(params.token)) {
-    doubts.push({
-      severity: 'critical',
-      field: 'token',
-      message: `Payout token not recognized: ${params.token}`,
-    })
-  } else if (currency !== accountingCurrencyOf(params.token)) {
-    doubts.push({
-      severity: 'critical',
-      field: 'currency',
-      message: 'Payout currency must match the selected accounting token',
-    })
   }
 
   // Validate amount
@@ -653,19 +640,21 @@ export function verifySendPayoutsParams(params: {
       field: 'amount',
       message: 'Payout amount is zero',
     })
-  } else if (amount > MAX_REASONABLE_ETH) {
-    doubts.push({
-      severity: 'warning',
-      field: 'amount',
-      message: `Large payout amount: ${formatEthAmount(amount)}`,
-      technicalNote: 'Please verify recipient addresses are correct',
-    })
   }
-  if (amount > 0n && minTokensPaidOut !== amount) {
+  if (amount > 0n && minTokensPaidOut <= 0n) {
     doubts.push({
       severity: 'critical',
       field: 'minTokensPaidOut',
-      message: 'Payout minimum must protect the full selected amount',
+      message: 'Payout minimum must be derived from a nonzero live simulation',
+    })
+  } else if (
+    amount > 0n && currency === accountingCurrency &&
+    minTokensPaidOut !== amount
+  ) {
+    doubts.push({
+      severity: 'critical',
+      field: 'minTokensPaidOut',
+      message: 'An exact-currency payout must protect the full selected amount',
     })
   }
 
@@ -674,6 +663,7 @@ export function verifySendPayoutsParams(params: {
     token: params.token,
     amount: amount.toString(),
     currency: currency.toString(),
+    accountingCurrency: accountingCurrency.toString(),
     minTokensPaidOut: minTokensPaidOut.toString(),
   }
 
@@ -691,6 +681,7 @@ export function verifyUseAllowanceParams(params: {
   token: string
   amount: bigint | string
   currency: bigint | string | number
+  accountingCurrency: bigint | string | number
   minTokensPaidOut: bigint | string
   beneficiary: string
   feeBeneficiary: string
@@ -703,9 +694,11 @@ export function verifyUseAllowanceParams(params: {
   const projectId = parseBigIntParam(params.projectId, 'projectId', doubts)
   const amount = parseBigIntParam(params.amount, 'amount', doubts)
   const currency = parseBigIntParam(params.currency, 'currency', doubts)
+  const accountingCurrency = parseBigIntParam(params.accountingCurrency, 'accountingCurrency', doubts)
   const minTokensPaidOut = parseBigIntParam(params.minTokensPaidOut, 'minTokensPaidOut', doubts)
   validateUnsigned(amount, 'amount', doubts)
   validateUnsigned(currency, 'currency', doubts, 32)
+  validateUnsigned(accountingCurrency, 'accountingCurrency', doubts, 32)
   validateUnsigned(minTokensPaidOut, 'minTokensPaidOut', doubts)
 
   // Validate project ID
@@ -723,18 +716,6 @@ export function verifyUseAllowanceParams(params: {
       severity: 'critical',
       field: 'token',
       message: 'Invalid token address format',
-    })
-  } else if (!isRecognizedAccountingToken(params.token)) {
-    doubts.push({
-      severity: 'critical',
-      field: 'token',
-      message: `Surplus allowance token not recognized: ${params.token}`,
-    })
-  } else if (currency !== accountingCurrencyOf(params.token)) {
-    doubts.push({
-      severity: 'critical',
-      field: 'currency',
-      message: 'Surplus allowance currency must match the selected accounting token',
     })
   }
 
@@ -783,23 +764,22 @@ export function verifyUseAllowanceParams(params: {
       field: 'amount',
       message: 'Withdrawal amount is zero',
     })
-  } else if (amount > MAX_REASONABLE_ETH) {
-    doubts.push({
-      severity: 'warning',
-      field: 'amount',
-      message: `Large withdrawal: ${formatEthAmount(amount)}`,
-      technicalNote: 'Please verify this amount is correct',
-    })
   }
-  if (amount > 0n) {
-    const requiredMinimum = amount - (amount / 40n)
-    if (minTokensPaidOut < requiredMinimum || minTokensPaidOut > amount) {
-      doubts.push({
-        severity: 'critical',
-        field: 'minTokensPaidOut',
-        message: 'Surplus allowance minimum return is not safe',
-      })
-    }
+  if (amount > 0n && minTokensPaidOut <= 0n) {
+    doubts.push({
+      severity: 'critical',
+      field: 'minTokensPaidOut',
+      message: 'Surplus allowance minimum must be derived from a nonzero live simulation',
+    })
+  } else if (
+    amount > 0n && currency === accountingCurrency &&
+    minTokensPaidOut > amount
+  ) {
+    doubts.push({
+      severity: 'critical',
+      field: 'minTokensPaidOut',
+      message: 'Surplus allowance minimum return is not safe',
+    })
   }
 
   const verifiedParams: Record<string, unknown> = {
@@ -807,6 +787,7 @@ export function verifyUseAllowanceParams(params: {
     token: params.token,
     amount: amount.toString(),
     currency: currency.toString(),
+    accountingCurrency: accountingCurrency.toString(),
     minTokensPaidOut: minTokensPaidOut.toString(),
     beneficiary: params.beneficiary,
     feeBeneficiary: params.feeBeneficiary,

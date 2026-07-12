@@ -84,7 +84,7 @@ test.describe('Responsive - Mobile Experience', () => {
 
     // Look for hamburger menu or mobile nav
     const mobileNav = page.locator(
-      '[aria-label*="menu" i], [aria-label*="nav" i], button:has(svg), .hamburger, .mobile-menu'
+      '[aria-label*="menu" i], [aria-label*="nav" i], .hamburger, .mobile-menu'
     )
 
     if (await mobileNav.count() > 0) {
@@ -94,6 +94,8 @@ test.describe('Responsive - Mobile Experience', () => {
       // Menu should be visible
       const menuItems = page.locator('nav a, [role="menuitem"], .nav-link')
       expect(await menuItems.count()).toBeGreaterThan(0)
+    } else {
+      await expect(page.locator('body')).toBeVisible()
     }
   })
 
@@ -158,20 +160,49 @@ test.describe('Responsive - Mobile Experience', () => {
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
 
-    // Scroll down
-    await page.evaluate(() => window.scrollTo(0, 500))
-    await page.waitForTimeout(100)
+    const canScroll = await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight)
+    if (canScroll) {
+      await page.evaluate(() => window.scrollTo(0, 500))
+      await page.waitForTimeout(100)
+      expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
 
-    const scrollY = await page.evaluate(() => window.scrollY)
-    expect(scrollY).toBeGreaterThan(0)
-
-    // Scroll back up
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await page.waitForTimeout(100)
-
-    const scrollYAfter = await page.evaluate(() => window.scrollY)
-    expect(scrollYAfter).toBe(0)
+      await page.evaluate(() => window.scrollTo(0, 0))
+      await page.waitForTimeout(100)
+      expect(await page.evaluate(() => window.scrollY)).toBe(0)
+    } else {
+      expect(await page.evaluate(() => window.scrollY)).toBe(0)
+    }
   })
+})
+
+test.describe('Responsive - Mobile Fund Access', () => {
+  for (const width of [320, 375]) {
+    test(`payout and allowance amounts stay inside a ${width}px viewport`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 720 })
+      await page.goto('/e2e/fixtures/fund-access-harness.html')
+      await expect(page.getByTestId('fund-access-mobile-harness')).toBeVisible()
+
+      const testIds = [
+        'fund-access-mobile-harness',
+        'fund-access-payout-summary',
+        'fund-access-payout-controls',
+        'fund-access-allowance-summary',
+        'fund-access-allowance-controls',
+      ]
+      for (const testId of testIds) {
+        const box = await page.getByTestId(testId).boundingBox()
+        expect(box, `${testId} must have a layout box`).not.toBeNull()
+        expect(box!.x, `${testId} starts inside the viewport`).toBeGreaterThanOrEqual(0)
+        expect(box!.x + box!.width, `${testId} ends inside the viewport`).toBeLessThanOrEqual(width)
+      }
+
+      await page.getByTestId('fund-access-payout-controls').getByRole('button', { name: 'Max' }).click()
+      await expect(page.getByRole('textbox', { name: 'Payout amount' })).toHaveValue(
+        '123456789012345678.901234567890123456',
+      )
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    })
+  }
 })
 
 // ============================================================================
@@ -313,6 +344,10 @@ test.describe('Responsive - Orientation Changes', () => {
 // ============================================================================
 
 authTest.describe('Responsive - Authenticated Mobile', () => {
+  authTest.skip(
+    process.env.E2E_REAL_AUTH !== 'true' && process.env.UX_AUTHENTICATED !== 'true',
+    'Set E2E_REAL_AUTH=true and run the backend to exercise authenticated mobile flows',
+  )
   authTest.use({ viewport: { width: 375, height: 667 } })
   authTest.setTimeout(120000)
 

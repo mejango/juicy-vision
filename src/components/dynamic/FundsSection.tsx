@@ -5,8 +5,6 @@ import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { getWalletSession, hasValidWalletSession } from '../../services/siwe'
 import {
-  fetchDistributablePayout,
-  fetchProjectAccountingContexts,
   fetchProjectWithRuleset,
   fetchProjectSplits,
   fetchProjectTokenSupply,
@@ -16,11 +14,16 @@ import {
   fetchUserTokenBalance,
   calculateCashOutValue,
   calculateFloorPrice,
-  type DistributablePayout,
   type JBSplitData,
-  type FundAccessLimits,
   type QueuedRulesetInfo,
 } from '../../services/bendystraw'
+import {
+  createFundAccessClient,
+  currencyLabel as fundAccessCurrencyLabel,
+  formatFundAccessAmount,
+  readFundAccessContexts,
+  type FundAccessContextSnapshot,
+} from '../../services/fundAccess'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
@@ -54,12 +57,11 @@ interface ChainFundsData {
   chainId: number
   projectId: number
   balance: string
-  distributablePayout: DistributablePayout | null
+  fundAccess: FundAccessContextSnapshot
   payoutSplits: JBSplitData[]
-  fundAccessLimits: FundAccessLimits | null
   accountingToken: string
-  accountingCurrency: number
-  accountingSymbol: 'ETH' | 'USDC'
+  accountingCurrency: bigint
+  accountingSymbol: string
   decimals: number
   // Cash out related data
   tokenSupply: string // Total token supply on this chain (raw totalSupplyOf, 18 decimals)
@@ -77,18 +79,21 @@ interface ChainFundsData {
 
 function formatBalance(value: string, decimals: number = 18): string {
   try {
-    const num = parseFloat(formatUnits(BigInt(value), decimals))
-    if (num === 0) return '0'
-    if (num < 0.001) return '<0.001'
-    return num.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    const raw = BigInt(value)
+    if (raw === 0n) return '0'
+    if (decimals >= 3 && raw < 10n ** BigInt(decimals - 3)) return '<0.001'
+    const [whole, fraction = ''] = formatUnits(raw, decimals).split('.')
+    const groupedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    const compactFraction = fraction.slice(0, 4).replace(/0+$/, '')
+    return compactFraction ? `${groupedWhole}.${compactFraction}` : groupedWhole
   } catch {
     return '0'
   }
 }
 
-function formatCurrency(value: string, decimals: number, symbol: 'ETH' | 'USDC'): string {
+function formatCurrency(value: string, decimals: number, symbol: string): string {
   const formatted = formatBalance(value, decimals)
-  return symbol === 'USDC' ? `${formatted} USDC` : `${formatted} ETH`
+  return `${formatted} ${symbol}`
 }
 
 // Selected-chain baseline calculator. Execution uses the terminal's fresh preview instead.
@@ -216,9 +221,9 @@ function PerChainBreakdown({
   defaultSymbol,
   isDark,
 }: {
-  projectBalances: Array<{ chainId: number; balance: string; symbol?: 'ETH' | 'USDC'; decimals?: number }>
+  projectBalances: Array<{ chainId: number; balance: string; symbol?: string; decimals?: number }>
   defaultDecimals: number
-  defaultSymbol: 'ETH' | 'USDC'
+  defaultSymbol: string
   isDark: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -441,7 +446,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
 
   const [loading, setLoading] = useState(true)
   const [chainFundsData, setChainFundsData] = useState<ChainFundsData[]>([])
-  const [selectedAccountingSymbol, setSelectedAccountingSymbol] = useState<'ETH' | 'USDC'>('ETH')
+  const [selectedAccountingSymbol, setSelectedAccountingSymbol] = useState('ETH')
   const [configurationError, setConfigurationError] = useState<string | null>(null)
   const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [upcomingRuleset, setUpcomingRuleset] = useState<QueuedRulesetInfo | null>(null)
@@ -451,6 +456,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   const [userTokenBalanceAvailable, setUserTokenBalanceAvailable] = useState(false)
   const [userTokenBalanceLoading, setUserTokenBalanceLoading] = useState(false)
   const [tokenSymbol, setTokenSymbol] = useState<string | null>(null)
+  const [projectDataRevision, setProjectDataRevision] = useState(0)
 
   const chainIdNum = parseInt(chainId)
 
@@ -463,6 +469,12 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   )
   const activeChainData = visibleChainFundsData.find(cd => cd.chainId === chainIdNum) || visibleChainFundsData[0]
   const currencySymbol = activeAccountingSymbol
+
+  useEffect(() => {
+    const refresh = () => setProjectDataRevision(revision => revision + 1)
+    window.addEventListener('juice:project-data-invalidated', refresh)
+    return () => window.removeEventListener('juice:project-data-invalidated', refresh)
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -481,7 +493,11 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               fetchProjectWithRuleset(String(chain.projectId), chain.chainId),
               fetchProjectTokenSupply(String(chain.projectId), chain.chainId),
               fetchPendingReservedTokens(String(chain.projectId), chain.chainId),
-              fetchProjectAccountingContexts(String(chain.projectId), chain.chainId),
+              readFundAccessContexts(
+                createFundAccessClient(chain.chainId),
+                chain.chainId,
+                BigInt(chain.projectId),
+              ),
             ])
             if (tokenSupply === null) throw new Error('Project token supply could not be verified')
             if (accountingContexts.length === 0) throw new Error('No recognized accounting context')
@@ -500,35 +516,21 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
             const supply = BigInt(tokenSupply)
             const cashOutSupply = supply + BigInt(pendingReserved)
 
-            const data = await Promise.all(accountingContexts.map(async context => {
-              const fundAccessLimits = splitsData?.fundAccessLimitGroups?.find(
-                group => group.token.toLowerCase() === context.token.toLowerCase(),
-              ) || null
+            const data = accountingContexts.map(context => {
               const payoutSplits = splitsData?.splitGroups?.find(
                 group => group.groupId === BigInt(context.token).toString(),
               )?.splits || []
-              const payoutData = isRevnet ? null : await fetchDistributablePayout(
-                String(chain.projectId),
-                chain.chainId,
-                context.currency,
-                context.token,
-                context.decimals,
-              )
-              const remainingPayout = payoutData?.available ?? 0n
-              const reclaimableSurplus = context.balance > remainingPayout
-                ? context.balance - remainingPayout
-                : 0n
+              const reclaimableSurplus = context.currentSurplus
 
               return {
                 chainId: chain.chainId,
                 projectId: chain.projectId,
                 balance: context.balance.toString(),
-                distributablePayout: payoutData,
+                fundAccess: context,
                 payoutSplits,
-                fundAccessLimits,
                 accountingToken: context.token,
-                accountingCurrency: context.currency,
-                accountingSymbol: context.symbol,
+                accountingCurrency: context.accountingCurrency,
+                accountingSymbol: context.tokenSymbol,
                 decimals: context.decimals,
                 tokenSupply,
                 cashOutTaxRate,
@@ -543,7 +545,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                 reclaimableSurplus: reclaimableSurplus.toString(),
                 cashOutSupply: cashOutSupply.toString(),
               } satisfies ChainFundsData
-            }))
+            })
             return { data }
           } catch (err) {
             console.error(`Failed to fetch funds data for chain ${chain.chainId}:`, err)
@@ -604,7 +606,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
       }
     }
     load()
-  }, [projectId, chainId, chainIdNum, isRevnet])
+  }, [projectId, chainId, chainIdNum, isRevnet, projectDataRevision])
 
   // Cash-out actions are chain-local, so never present an aggregate balance as spendable.
   useEffect(() => {
@@ -650,20 +652,21 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   ).toString()
   const decimals = activeChainData?.decimals || (currencySymbol === 'USDC' ? 6 : 18)
 
-  // Calculate available to pay out (sum across chains)
-  const totalAvailable = visibleChainFundsData.reduce((sum, cd) => {
-    if (cd.distributablePayout?.available) {
-      return sum + BigInt(cd.distributablePayout.available)
-    }
-    return sum
-  }, 0n)
+  const payoutAccess = visibleChainFundsData.flatMap(data => data.fundAccess.payoutLimits)
+  const availablePayoutRoutes = payoutAccess.filter(limit => limit.available > 0n)
+  const allPayoutsUseAccountingCurrency = visibleChainFundsData.every(data =>
+    data.fundAccess.payoutLimits.every(limit => limit.currency === data.accountingCurrency)
+  )
+  const totalAvailable = allPayoutsUseAccountingCurrency
+    ? payoutAccess.reduce((sum, limit) => sum + limit.available, 0n)
+    : 0n
 
-  // Calculate surplus = balance NET of the REMAINING (undistributed) payout limit.
-  // Mirrors the protocol's currentSurplusOf: funds still earmarked for payouts this
-  // cycle (totalAvailable = remaining limit) are not part of member-reclaimable surplus.
-  // (Subtracting `used` here would overstate surplus, since used funds have already
-  // left the terminal balance.)
-  const surplus = BigInt(totalBalance) > totalAvailable ? BigInt(totalBalance) - totalAvailable : 0n
+  // This is the protocol's live currentSurplusOf result per terminal/token,
+  // not a balance-minus-configuration estimate.
+  const surplus = visibleChainFundsData.reduce(
+    (sum, data) => sum + BigInt(data.reclaimableSurplus),
+    0n,
+  )
 
   if (loading) {
     return (
@@ -752,10 +755,12 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         ) : (
           <>
             <div className="flex items-center justify-between">
-              <div className={`text-sm font-mono ${totalAvailable > 0n ? (isDark ? 'text-white' : 'text-gray-900') : (isDark ? 'text-gray-500' : 'text-gray-400')}`}>
-                {formatCurrency(totalAvailable.toString(), decimals, currencySymbol)} available
+              <div className={`text-sm font-mono ${availablePayoutRoutes.length > 0 ? (isDark ? 'text-white' : 'text-gray-900') : (isDark ? 'text-gray-500' : 'text-gray-400')}`}>
+                {allPayoutsUseAccountingCurrency
+                  ? `${formatCurrency(totalAvailable.toString(), decimals, currencySymbol)} available`
+                  : `${availablePayoutRoutes.length} live currency route${availablePayoutRoutes.length === 1 ? '' : 's'} available`}
               </div>
-              {totalAvailable > 0n && !configurationError && (
+              {availablePayoutRoutes.length > 0 && !configurationError && (
                 <button
                   onClick={onSendPayouts}
                   className={`px-2 py-1 text-xs font-medium transition-colors border ${
@@ -768,7 +773,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                 </button>
               )}
             </div>
-            {totalAvailable === 0n && (
+            {availablePayoutRoutes.length === 0 && (
               <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 No payouts available this cycle. The payout limit has been fully distributed or is set to zero.
               </div>
@@ -976,13 +981,19 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
           )
         }
 
-        // For regular projects, show the surplus allowance from fundAccessLimits
-        const activeFundLimits = activeChainData?.fundAccessLimits
-        const surplusAllowance = activeFundLimits?.surplusAllowances?.[0]
-        const allowanceAmount = surplusAllowance ? BigInt(surplusAllowance.amount) : 0n
+        // Use the live, ruleset-ID-scoped allowance and protocol surplus snapshot.
+        const surplusAllowances = activeChainData?.fundAccess.surplusAllowances || []
+        const surplusAllowance = surplusAllowances[0]
+        const availableAllowanceRoutes = surplusAllowances.filter(allowance => allowance.available > 0n)
 
         // Only show if there's a surplus allowance configured
-        if (!surplusAllowance || allowanceAmount === 0n) return null
+        if (!surplusAllowance || surplusAllowance.configured === 0n) return null
+        const allowanceUnit = fundAccessCurrencyLabel(surplusAllowance.currency, activeChainData!.fundAccess)
+        const allowanceDisplay = surplusAllowance.unlimited
+          ? `Unlimited ${allowanceUnit}`
+          : surplusAllowances.length > 1
+            ? `${surplusAllowances.length} configured currencies`
+            : `${formatFundAccessAmount(surplusAllowance.remaining, activeChainData!.decimals)} ${allowanceUnit} remaining`
 
         return (
           <div className={`py-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
@@ -991,15 +1002,15 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
             </div>
             <div className="flex items-center justify-between">
               <div className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {formatBalance(allowanceAmount.toString(), decimals)} {currencySymbol}
+                {allowanceDisplay}
               </div>
-              {isOwner && surplus > 0n && (
+              {isOwner && availableAllowanceRoutes.length > 0 && (
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent('juice:use-surplus-allowance', {
                     detail: {
                       projectId,
                       chainId: chainIdNum,
-                      allowance: allowanceAmount.toString(),
+                      allowance: availableAllowanceRoutes[0].available.toString(),
                     }
                   }))}
                   className={`px-2 py-1 text-xs font-medium transition-colors border ${
@@ -1013,7 +1024,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               )}
             </div>
             <div className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              The project owner can withdraw up to this amount from surplus this cycle.
+              Available now is capped by both remaining allowance and protocol-calculated surplus.
             </div>
           </div>
         )
