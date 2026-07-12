@@ -9,12 +9,15 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      STORACHA_SECRET_KEY: ${{ secrets.W3_PRINCIPAL }}
+      STORACHA_PROOF: ${{ secrets.W3_PROOF }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - run: npm ci
@@ -25,8 +28,13 @@ jobs:
         run: npm run build
 
       - name: Deploy to IPFS
+        if: ${{ env.STORACHA_SECRET_KEY != '' && env.STORACHA_PROOF != '' }}
         uses: storacha/add-to-web3@v4
         with:
-          path: dist
-          secret_key: ${{ secrets.W3_PRINCIPAL }}
-          proof: ${{ secrets.W3_PROOF }}
+          path_to_add: dist
+          secret_key: ${{ env.STORACHA_SECRET_KEY }}
+          proof: ${{ env.STORACHA_PROOF }}
+
+      - name: Note optional IPFS deployment is not configured
+        if: ${{ env.STORACHA_SECRET_KEY == '' || env.STORACHA_PROOF == '' }}
+        run: echo "::notice::Skipping optional IPFS upload because W3_PRINCIPAL or W3_PROOF is not configured."
