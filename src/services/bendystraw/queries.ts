@@ -319,14 +319,16 @@ export const SUCKER_GROUP_BALANCE_QUERY = `
   }
 `
 
-// Query to get participants (token holders) with balance > 0 for owners count
-// Uses Bendystraw schema with projectId/chainId filters and limit/items format
+// Query project-token owners across one or more chains. Bendystraw's V6
+// participant resolver requires the versioned `chainId_in` shape used by
+// website/; its singular `chainId` filter currently fails at runtime.
 export const TOKEN_HOLDERS_QUERY = `
-  query TokenHolders($projectId: Int!, $chainId: Int!, $limit: Int) {
+  query TokenHolders($projectId: Int!, $chainIds: [Int!]!, $version: Int!, $limit: Int) {
     participants(
       where: {
         projectId: $projectId
-        chainId: $chainId
+        chainId_in: $chainIds
+        version: $version
         balance_gt: "0"
       }
       limit: $limit
@@ -345,13 +347,16 @@ export const TOKEN_HOLDERS_QUERY = `
 
 // Query to get participants across all chains via suckerGroupId
 export const SUCKER_GROUP_PARTICIPANTS_QUERY = `
-  query SuckerGroupParticipants($suckerGroupId: String!, $limit: Int) {
+  query SuckerGroupParticipants($suckerGroupId: String!, $version: Int!, $limit: Int) {
     participants(
       where: {
         suckerGroupId: $suckerGroupId
+        version: $version
         balance_gt: "0"
       }
       limit: $limit
+      orderBy: "balance"
+      orderDirection: "desc"
     ) {
       totalCount
       items {

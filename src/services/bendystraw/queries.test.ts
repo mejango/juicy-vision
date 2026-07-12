@@ -225,6 +225,13 @@ describe('GraphQL Query Structure', () => {
       expect(TOKEN_HOLDERS_QUERY).toContain('balance_gt: "0"')
     })
 
+    it('uses the working versioned multi-chain filter', () => {
+      expect(TOKEN_HOLDERS_QUERY).toContain('$chainIds: [Int!]!')
+      expect(TOKEN_HOLDERS_QUERY).toContain('chainId_in: $chainIds')
+      expect(TOKEN_HOLDERS_QUERY).toContain('version: $version')
+      expect(TOKEN_HOLDERS_QUERY).not.toMatch(/\bchainId:\s*\$chainId\b/)
+    })
+
     it('orders by balance descending', () => {
       expect(TOKEN_HOLDERS_QUERY).toContain('orderBy: "balance"')
       expect(TOKEN_HOLDERS_QUERY).toContain('orderDirection: "desc"')
@@ -243,6 +250,11 @@ describe('GraphQL Query Structure', () => {
 
     it('filters for balance > 0', () => {
       expect(SUCKER_GROUP_PARTICIPANTS_QUERY).toContain('balance_gt: "0"')
+    })
+
+    it('scopes participants to protocol version 6', () => {
+      expect(SUCKER_GROUP_PARTICIPANTS_QUERY).toContain('$version: Int!')
+      expect(SUCKER_GROUP_PARTICIPANTS_QUERY).toContain('version: $version')
     })
   })
 

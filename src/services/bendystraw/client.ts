@@ -2222,7 +2222,8 @@ export async function fetchOwnersCount(
         }
       }>(TOKEN_HOLDERS_QUERY, {
         projectId: parseInt(projectId),
-        chainId,
+        chainIds: [chainId],
+        version,
         limit: 1000,
       })
 
@@ -2257,7 +2258,8 @@ export async function fetchOwnersCount(
       }
     }>(SUCKER_GROUP_PARTICIPANTS_QUERY, {
       suckerGroupId,
-      limit: 10000,
+      version,
+      limit: 1000,
     })
 
     if (!data.participants?.items || !Number.isSafeInteger(data.participants.totalCount)) return null
@@ -3931,31 +3933,38 @@ export interface AggregatedParticipant {
   percentage: number
 }
 
-const PARTICIPANT_QUERY_LIMIT = 10_000
+// Bendystraw rejects participant limits above 1,000. This matches website/'s
+// defensive cap and is ample for a top-members view; the live total supply
+// still accounts for owners beyond the returned page as the "Others" slice.
+const PARTICIPANT_QUERY_LIMIT = 1_000
 
 function parseParticipantPage(
   page: {
     totalCount: number
     items: Array<{ address?: string; wallet?: string; chainId?: number; balance: string }>
   } | null | undefined,
-  expectedChainId?: number,
+  expectedChainIds?: number | ReadonlySet<number>,
 ): Array<{ address: string; chainId: number; balance: string }> {
   if (!page || !Number.isSafeInteger(page.totalCount) || page.totalCount < 0 || !Array.isArray(page.items)) {
     throw new Error('Member data is malformed')
   }
-  if (page.totalCount !== page.items.length) {
-    throw new Error('Member data is incomplete')
+  if (page.items.length > page.totalCount) {
+    throw new Error('Member data count is malformed')
   }
 
   const seen = new Set<string>()
   return page.items.map(item => {
     const address = item.address || item.wallet || ''
-    const chainId = item.chainId ?? expectedChainId
+    const fallbackChainId = typeof expectedChainIds === 'number' ? expectedChainIds : undefined
+    const chainId = item.chainId ?? fallbackChainId
     if (!isAddress(address) || !Number.isSafeInteger(chainId) || !chainId || chainId <= 0) {
       throw new Error('Member data contains an invalid account or chain')
     }
-    if (expectedChainId !== undefined && chainId !== expectedChainId) {
-      throw new Error(`Member data returned the wrong chain for chain ${expectedChainId}`)
+    const chainIsExpected = typeof expectedChainIds === 'number'
+      ? chainId === expectedChainIds
+      : expectedChainIds?.has(chainId) ?? true
+    if (!chainIsExpected) {
+      throw new Error(`Member data returned an unexpected chain ${chainId}`)
     }
     if (!isRawAmount(item.balance)) {
       throw new Error('Member data contains an invalid balance')
@@ -4021,6 +4030,7 @@ export async function fetchAggregatedParticipants(
           }
         }>(SUCKER_GROUP_PARTICIPANTS_QUERY, {
           suckerGroupId,
+          version: 6,
           limit: PARTICIPANT_QUERY_LIMIT,
         }),
         client.request<{
@@ -4046,7 +4056,8 @@ export async function fetchAggregatedParticipants(
           }
         }>(TOKEN_HOLDERS_QUERY, {
           projectId: parseInt(fallbackProjectId),
-          chainId: fallbackChainId,
+          chainIds: [fallbackChainId],
+          version: 6,
           limit: PARTICIPANT_QUERY_LIMIT,
         }),
         client.request<{
@@ -4069,9 +4080,9 @@ export async function fetchAggregatedParticipants(
   throw new Error('Member data unavailable: no verified project scope')
 }
 
-// Fetch participants from all connected chains and aggregate them
-// This is a more reliable approach than querying by suckerGroupId when the indexer
-// doesn't have cross-chain participant data indexed correctly
+// Fetch participants from all connected chains and aggregate them. Match the
+// versioned `chainId_in` query used by website/; Bendystraw's singular chainId
+// participant filter returns an internal error for otherwise valid V6 projects.
 export async function fetchMultiChainParticipants(
   connectedChains: Array<{ chainId: number; projectId: number }>,
   limit: number = 100,
@@ -4091,48 +4102,46 @@ export async function fetchMultiChainParticipants(
   }
 
   try {
-    const chainResults = await Promise.all(
-      connectedChains.map(async ({ chainId, projectId }) => {
-        const client = getClient(getNetworkOption(chainId))
-        const [participantsResult, projectResult] = await Promise.allSettled([
-          client.request<{
-            participants: {
-              totalCount: number
-              items: Array<{ address: string; chainId: number; balance: string }>
-            }
-          }>(TOKEN_HOLDERS_QUERY, {
-            projectId,
-            chainId,
-            limit: PARTICIPANT_QUERY_LIMIT,
-          }),
-          client.request<{
-            project: { tokenSupply?: string } | null
-          }>(PROJECT_QUERY, {
-            projectId,
-            chainId,
-            version: 6
-          })
-        ])
+    const chainsByProject = new Map<number, number[]>()
+    for (const { chainId, projectId } of connectedChains) {
+      const chainIds = chainsByProject.get(projectId) ?? []
+      chainIds.push(chainId)
+      chainsByProject.set(projectId, chainIds)
+    }
 
-        if (projectResult.status === 'rejected') throw projectResult.reason
-        const tokenSupply = projectResult.value.project?.tokenSupply
-        if (!isRawAmount(tokenSupply)) {
+    const [participantGroupsResult, suppliesResult] = await Promise.allSettled([
+      Promise.all([...chainsByProject.entries()].map(async ([projectId, chainIds]) => {
+        const client = getClient(getNetworkOption(chainIds[0]))
+        const data = await client.request<{
+          participants: {
+            totalCount: number
+            items: Array<{ address: string; chainId: number; balance: string }>
+          }
+        }>(TOKEN_HOLDERS_QUERY, {
+          projectId,
+          chainIds,
+          version: 6,
+          limit: PARTICIPANT_QUERY_LIMIT,
+        })
+        return parseParticipantPage(data.participants, new Set(chainIds))
+      })),
+      Promise.all(connectedChains.map(async ({ chainId, projectId }) => {
+        const supply = await fetchProjectTokenSupply(String(projectId), chainId)
+        if (!isRawAmount(supply)) {
           throw new Error(`Project token supply is unavailable on chain ${chainId}`)
         }
-        // Bendystraw can reject an empty participants query even when its
-        // project row correctly reports zero supply. Zero supply proves there
-        // are no members, so do not turn that indexer edge case into an error.
-        if (BigInt(tokenSupply) === 0n) return { items: [], tokenSupply: 0n }
-        if (participantsResult.status === 'rejected') throw participantsResult.reason
-        return {
-          items: parseParticipantPage(participantsResult.value.participants, chainId),
-          tokenSupply: BigInt(tokenSupply),
-        }
-      })
-    )
+        return BigInt(supply)
+      })),
+    ])
 
-    const totalSupply = chainResults.reduce((sum, result) => sum + result.tokenSupply, 0n)
-    const items = chainResults.flatMap(result => result.items)
+    if (suppliesResult.status === 'rejected') throw suppliesResult.reason
+    const supplies = suppliesResult.value
+    const totalSupply = supplies.reduce((sum, supply) => sum + supply, 0n)
+    // Zero live supply proves that no account currently owns project tokens.
+    // This also keeps an empty project usable if the indexer rejects its query.
+    if (totalSupply === 0n) return aggregateParticipants([], totalSupply, limit)
+    if (participantGroupsResult.status === 'rejected') throw participantGroupsResult.reason
+    const items = participantGroupsResult.value.flat()
     return aggregateParticipants(items, totalSupply, limit)
   } catch (err) {
     throw new Error(`Member data unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
