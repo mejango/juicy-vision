@@ -104,7 +104,7 @@ test.describe('Transaction & Payment Flows', () => {
       await page.goto('/')
 
       // App should load successfully
-      await expect(page.locator('.border-juice-orange')).toBeVisible()
+      await expect(page.locator('.border-juice-orange').first()).toBeVisible()
 
       // No chain-related error messages
       const chainError = page.locator('text=/unsupported chain|wrong network/i')
@@ -133,14 +133,14 @@ test.describe('Transaction & Payment Flows', () => {
   test.describe('App Stability', () => {
     test('survives rapid navigation', async ({ page }) => {
       await page.goto('/')
-      await expect(page.locator('.border-juice-orange')).toBeVisible()
+      await expect(page.locator('.border-juice-orange').first()).toBeVisible()
 
       // Navigate away and back
       await page.goto('/#/some-route')
       await page.goto('/')
 
       // App should still work
-      await expect(page.locator('.border-juice-orange')).toBeVisible()
+      await expect(page.locator('.border-juice-orange').first()).toBeVisible()
       await expect(page.locator('textarea').first()).toBeVisible()
     })
 
@@ -153,7 +153,7 @@ test.describe('Transaction & Payment Flows', () => {
       await page.reload()
 
       // App should recover
-      await expect(page.locator('.border-juice-orange')).toBeVisible()
+      await expect(page.locator('.border-juice-orange').first()).toBeVisible()
     })
   })
 })

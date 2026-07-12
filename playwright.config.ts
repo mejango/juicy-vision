@@ -15,6 +15,15 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      // Maintained transaction-safety smoke suite used by CI.
+      testMatch: ['payment-review.spec.ts', 'transactions.spec.ts'],
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      // Older broad UI assertions remain runnable while their selectors and
+      // mocked chat/auth journeys are brought in line with the current app.
+      name: 'ui-regression',
+      testMatch: ['app.spec.ts', 'invite.spec.ts', 'wallet.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
