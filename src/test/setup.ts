@@ -2,6 +2,11 @@ import '@testing-library/jest-dom'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
+// Unit fixtures use the deployed Sepolia contract set. Make that test
+// environment explicit so CI does not silently switch to mainnet constants
+// merely because the developer-only .env file is absent.
+vi.stubEnv('VITE_TESTNET_MODE', 'true')
+
 // Cleanup after each test
 afterEach(() => {
   cleanup()
