@@ -1780,7 +1780,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           </div>
 
           {/* Content below sticky with lighter background */}
-          <div className={isDark ? 'bg-[#222]' : 'bg-gray-50'}>
+          <div className={`flow-root ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}>
             <div className="px-4">
               {renderPayOutcomePreview()}
 
