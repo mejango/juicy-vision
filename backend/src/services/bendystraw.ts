@@ -13,11 +13,9 @@ import { getProjectOwner } from './chainReader.ts';
 // =============================================================================
 
 export interface Participant {
-  id: string;
   address: string;
   balance: string;
   volume: string;
-  stakedBalance: string;
   lastPaidTimestamp: number | null;
 }
 
@@ -74,7 +72,7 @@ export interface Project {
 // GraphQL Queries
 // =============================================================================
 
-const USER_PARTICIPANT_QUERY = `
+export const USER_PARTICIPANT_QUERY = `
   query UserParticipant($projectId: Int!, $chainId: Int!, $address: String!) {
     participants(
       where: {
@@ -87,11 +85,9 @@ const USER_PARTICIPANT_QUERY = `
     ) {
       totalCount
       items {
-        id
         address
         balance
         volume
-        stakedBalance
         lastPaidTimestamp
       }
     }

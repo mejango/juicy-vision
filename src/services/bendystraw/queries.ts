@@ -45,37 +45,7 @@ export const PROJECT_QUERY = `
 export const PROJECTS_BY_OWNER_QUERY = `
   query ProjectsByOwner($owner: String!, $limit: Int) {
     projects(
-      where: { owner: $owner }
-      limit: $limit
-      orderBy: "createdAt"
-      orderDirection: "desc"
-    ) {
-      items {
-        id
-        projectId
-        chainId
-        version
-        handle
-        name
-        logoUri
-        owner
-        deployer
-        volume
-        volumeUsd
-        balance
-        contributorsCount
-        paymentsCount
-        createdAt
-      }
-    }
-  }
-`
-
-// Query projects deployed by a specific address (deployer may differ from owner)
-export const PROJECTS_BY_DEPLOYER_QUERY = `
-  query ProjectsByDeployer($deployer: String!, $limit: Int) {
-    projects(
-      where: { deployer: $deployer }
+      where: { owner: $owner, version: 6 }
       limit: $limit
       orderBy: "createdAt"
       orderDirection: "desc"
@@ -104,6 +74,7 @@ export const PROJECTS_BY_DEPLOYER_QUERY = `
 export const PROJECTS_QUERY = `
   query Projects($limit: Int, $offset: Int, $orderBy: String, $orderDirection: String) {
     projects(
+      where: { version: 6 }
       limit: $limit
       offset: $offset
       orderBy: $orderBy
@@ -126,103 +97,6 @@ export const PROJECTS_QUERY = `
         trendingScore
         trendingVolume
         trendingPaymentsCount
-      }
-    }
-  }
-`
-
-// Uses Bendystraw schema with projectId/chainId filters and limit/items format
-export const PARTICIPANTS_QUERY = `
-  query Participants($projectId: Int!, $chainId: Int!, $limit: Int) {
-    participants(
-      where: { projectId: $projectId, chainId: $chainId, balance_gt: "0" }
-      limit: $limit
-      orderBy: "balance"
-      orderDirection: "desc"
-    ) {
-      totalCount
-      items {
-        address
-        chainId
-        balance
-      }
-    }
-  }
-`
-
-export const SEARCH_PROJECTS_QUERY = `
-  query SearchProjects($text: String!, $first: Int) {
-    projectSearch(text: $text, first: $first) {
-      id
-      projectId
-      chainId
-      handle
-      metadata {
-        name
-        description
-        logoUri
-      }
-      volume
-      balance
-    }
-  }
-`
-
-// Semantic search using OR conditions across name, description, tags, and tagline
-// This enables searching for projects by keywords that match any of these fields
-export const SEMANTIC_SEARCH_PROJECTS_QUERY = `
-  query SemanticSearchProjects($keyword: String!, $limit: Int) {
-    projects(
-      where: {
-        OR: [
-          { name_contains: $keyword },
-          { description_contains: $keyword },
-          { tags_has: $keyword },
-          { projectTagline_contains: $keyword }
-        ]
-      }
-      limit: $limit
-      orderBy: "volumeUsd"
-      orderDirection: "desc"
-    ) {
-      items {
-        id
-        projectId
-        chainId
-        version
-        handle
-        name
-        description
-        logoUri
-        tags
-        volume
-        volumeUsd
-        balance
-        contributorsCount
-        paymentsCount
-        createdAt
-      }
-    }
-  }
-`
-
-// Query to check a specific user's token balance for a project
-// Uses Bendystraw schema with projectId/chainId/address filters
-export const USER_PARTICIPANT_QUERY = `
-  query UserParticipant($projectId: Int!, $chainId: Int!, $address: String!) {
-    participants(
-      where: {
-        projectId: $projectId
-        chainId: $chainId
-        address: $address
-      }
-      limit: 1
-    ) {
-      totalCount
-      items {
-        address
-        chainId
-        balance
       }
     }
   }
@@ -543,11 +417,12 @@ export const PROJECT_MOMENTS_QUERY = `
 // Candidate Revnet operators come from indexed permission-holder events. The
 // current operator is verified against the live REVOwner contract before use.
 export const REVNET_OPERATOR_QUERY = `
-  query RevnetOperator($projectId: Int!, $chainId: Int!) {
+  query RevnetOperator($projectId: Int!, $chainId: Int!, $version: Int!) {
     permissionHolders(
       where: {
         projectId: $projectId
         chainId: $chainId
+        version: $version
         isRevnetOperator: true
       }
       limit: 10
@@ -558,6 +433,7 @@ export const REVNET_OPERATOR_QUERY = `
         account
         projectId
         chainId
+        version
         isRevnetOperator
         permissions
       }

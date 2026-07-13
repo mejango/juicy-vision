@@ -27,9 +27,6 @@ import {
   PROJECT_QUERY,
   PROJECTS_QUERY,
   PROJECTS_BY_OWNER_QUERY,
-  PARTICIPANTS_QUERY,
-  SEARCH_PROJECTS_QUERY,
-  SEMANTIC_SEARCH_PROJECTS_QUERY,
   ACTIVITY_EVENTS_QUERY,
   PROJECT_RULESET_QUERY,
   RECENT_PAY_EVENTS_QUERY,
@@ -291,13 +288,6 @@ export interface Project {
   // false, historical/indexed fields must not be presented as live values.
   indexedDataAvailable?: boolean
   configurationError?: string
-}
-
-export interface Participant {
-  address: string
-  wallet?: string // Legacy alias for address
-  chainId?: number
-  balance: string
 }
 
 function getClient(options?: { network?: 'mainnet' }): GraphQLClient {
@@ -731,54 +721,6 @@ export async function fetchProjects(options: {
     ...project,
     name: project.name || `Project #${project.projectId}`,
   }))
-}
-
-export async function fetchParticipants(
-  projectId: string,
-  chainId: number = 1,
-  limit: number = 50
-): Promise<Participant[]> {
-  const data = await safeRequest<{
-    participants: {
-      totalCount: number
-      items: Participant[]
-    }
-  }>(PARTICIPANTS_QUERY, { projectId: parseInt(projectId), chainId, limit }, getNetworkOption(chainId))
-
-  return data.participants?.items || []
-}
-
-export async function searchProjects(text: string, first: number = 10): Promise<Project[]> {
-  const data = await safeRequest<{ projectSearch: Array<Project & { metadata: ProjectMetadata }> }>(
-    SEARCH_PROJECTS_QUERY,
-    { text, first }
-  )
-
-  return data.projectSearch.map(project => ({
-    ...project,
-    name: project.metadata?.name || `Project #${project.projectId}`,
-    description: project.metadata?.description,
-    logoUri: project.metadata?.logoUri,
-  }))
-}
-
-// Semantic search that matches keyword across name, description, tags, and tagline
-// Uses OR conditions to find projects where ANY field contains the keyword
-export interface SemanticSearchProject extends Project {
-  tags?: string[]
-}
-
-export async function semanticSearchProjects(keyword: string, limit: number = 20): Promise<SemanticSearchProject[]> {
-  const data = await safeRequest<{
-    projects: {
-      items: Array<SemanticSearchProject>
-    }
-  }>(
-    SEMANTIC_SEARCH_PROJECTS_QUERY,
-    { keyword, limit }
-  )
-
-  return data.projects?.items || []
 }
 
 // Base properties shared by all activity events
@@ -2613,6 +2555,7 @@ export async function fetchRevnetOperator(
           operator: string
           projectId: number
           chainId: number
+          version: number
           isRevnetOperator: boolean
           permissions: unknown[]
         }>
@@ -2620,6 +2563,7 @@ export async function fetchRevnetOperator(
     }>(REVNET_OPERATOR_QUERY, {
       projectId: numericProjectId,
       chainId,
+      version: 6,
     })
 
     const page = data.permissionHolders
@@ -2631,6 +2575,7 @@ export async function fetchRevnetOperator(
       item?.isRevnetOperator === true
       && item.chainId === chainId
       && item.projectId === numericProjectId
+      && item.version === 6
       && Array.isArray(item.permissions)
       && item.permissions.length > 0
       && isAddress(item.operator)
@@ -3530,6 +3475,14 @@ export interface CashOutTaxSnapshot {
   suckerGroupId: string
 }
 
+interface IndexedCashOutTaxSnapshot {
+  cashOutTax?: unknown
+  start?: unknown
+  duration?: unknown
+  rulesetId?: unknown
+  suckerGroupId?: unknown
+}
+
 // Sucker group moment (balance/supply snapshot)
 export interface SuckerGroupMoment {
   timestamp: number
@@ -3589,13 +3542,32 @@ function isTransactionHash(value: unknown): value is string {
   return typeof value === 'string' && /^0x[0-9a-fA-F]{64}$/.test(value)
 }
 
-function validateCashOutTaxSnapshot(item: CashOutTaxSnapshot, suckerGroupId: string): CashOutTaxSnapshot {
-  if (!Number.isSafeInteger(item.cashOutTax) || item.cashOutTax < 0 || item.cashOutTax > 10_000
-    || !isSafeTimestamp(item.start) || !Number.isSafeInteger(item.duration) || item.duration < 0
+function safeIndexedInteger(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 ? value : null
+  }
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null
+  const exact = BigInt(value)
+  if (exact > BigInt(Number.MAX_SAFE_INTEGER)) return null
+  return Number(exact)
+}
+
+// Bendystraw serializes BigInt timestamp/duration fields as decimal strings.
+// Normalize those non-monetary integers once at the API boundary while keeping
+// ruleset IDs exact strings and rejecting values JavaScript cannot represent.
+export function normalizeCashOutTaxSnapshot(
+  item: IndexedCashOutTaxSnapshot,
+  suckerGroupId: string,
+): CashOutTaxSnapshot {
+  const cashOutTax = safeIndexedInteger(item.cashOutTax)
+  const start = safeIndexedInteger(item.start)
+  const duration = safeIndexedInteger(item.duration)
+  if (cashOutTax === null || cashOutTax > 10_000
+    || start === null || start <= 0 || duration === null
     || !isRawAmount(item.rulesetId) || item.suckerGroupId !== suckerGroupId) {
     throw new Error('Cash-out tax history contains malformed data')
   }
-  return item
+  return { cashOutTax, start, duration, rulesetId: item.rulesetId, suckerGroupId }
 }
 
 function validateSuckerGroupMoment(item: SuckerGroupMoment, suckerGroupId: string): SuckerGroupMoment {
@@ -3637,7 +3609,7 @@ export async function fetchCashOutTaxSnapshots(
 
   type CashOutTaxResponse = {
     cashOutTaxSnapshots: {
-      items: CashOutTaxSnapshot[]
+      items: IndexedCashOutTaxSnapshot[]
       pageInfo: { hasNextPage: boolean; endCursor: string }
     }
   }
@@ -3651,7 +3623,7 @@ export async function fetchCashOutTaxSnapshots(
       })
 
       if (!Array.isArray(data.cashOutTaxSnapshots?.items)) throw new Error('Cash-out tax history is malformed')
-      allSnapshots.push(...data.cashOutTaxSnapshots.items.map(item => validateCashOutTaxSnapshot(item, suckerGroupId)))
+      allSnapshots.push(...data.cashOutTaxSnapshots.items.map(item => normalizeCashOutTaxSnapshot(item, suckerGroupId)))
       cursor = nextHistoryCursor(data.cashOutTaxSnapshots.pageInfo, cursor)
     } while (cursor && allSnapshots.length < 5000) // Safety limit
 

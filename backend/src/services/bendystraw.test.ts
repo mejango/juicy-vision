@@ -4,7 +4,9 @@ import {
   bendystrawHostForChain,
   participantHasPaymentVolume,
   resolveProjectMetadataForDisplay,
+  USER_PARTICIPANT_QUERY,
 } from './bendystraw.ts';
+import { SUCKER_TRANSACTIONS_QUERY } from './omnichain.ts';
 
 Deno.test('Bendystraw endpoint follows the requested chain network', () => {
   assertEquals(bendystrawHostForChain(1), 'bendystraw.xyz');
@@ -109,4 +111,17 @@ Deno.test('participant payment gating distinguishes verified zero from unavailab
     Error,
     'payment volume is unavailable',
   );
+});
+
+Deno.test('supporter verification query uses only current participant fields', () => {
+  assertEquals(USER_PARTICIPANT_QUERY.includes('version: 6'), true);
+  assertEquals(USER_PARTICIPANT_QUERY.includes('\n        volume\n'), true);
+  assertEquals(USER_PARTICIPANT_QUERY.includes('\n        id\n'), false);
+  assertEquals(USER_PARTICIPANT_QUERY.includes('stakedBalance'), false);
+});
+
+Deno.test('bridge transaction query uses only current sucker transaction fields', () => {
+  assertEquals(SUCKER_TRANSACTIONS_QUERY.includes('version: 6'), true);
+  assertEquals(SUCKER_TRANSACTIONS_QUERY.includes('\n        id\n'), false);
+  assertEquals(SUCKER_TRANSACTIONS_QUERY.includes('projectTokenCount'), true);
 });

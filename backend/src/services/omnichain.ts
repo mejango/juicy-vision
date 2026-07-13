@@ -122,7 +122,6 @@ interface SuckerPair {
 }
 
 interface BridgeTransaction {
-  id: string;
   chainId: number;
   peerChainId: number;
   sucker: Address;
@@ -136,6 +135,32 @@ interface BridgeTransaction {
   root: string | null;
   createdAt: string;
 }
+
+export const SUCKER_TRANSACTIONS_QUERY = `
+  query SuckerTransactions($suckerGroupId: String!, $status: suckerTransactionStatus, $beneficiary: String) {
+    suckerTransactions(
+      where: { suckerGroupId: $suckerGroupId, status: $status, beneficiary: $beneficiary, version: 6 }
+      orderBy: "createdAt"
+      orderDirection: "desc"
+      limit: 100
+    ) {
+      items {
+        chainId
+        peerChainId
+        sucker
+        peer
+        beneficiary
+        projectTokenCount
+        terminalTokenAmount
+        token
+        status
+        index
+        root
+        createdAt
+      }
+    }
+  }
+`;
 
 interface CrossChainBalance {
   chainId: number;
@@ -671,37 +696,10 @@ export async function getBridgeTransactions(params: {
   status?: 'pending' | 'claimable' | 'claimed';
   beneficiary?: string;
 }): Promise<BridgeTransaction[]> {
-  const query = `
-    query SuckerTransactions($suckerGroupId: String!, $status: suckerTransactionStatus, $beneficiary: String) {
-      suckerTransactions(
-        where: { suckerGroupId: $suckerGroupId, status: $status, beneficiary: $beneficiary, version: 6 }
-        orderBy: "createdAt"
-        orderDirection: "desc"
-        limit: 100
-      ) {
-        items {
-          id
-          chainId
-          peerChainId
-          sucker
-          peer
-          beneficiary
-          projectTokenCount
-          terminalTokenAmount
-          token
-          status
-          index
-          root
-          createdAt
-        }
-      }
-    }
-  `;
-
   try {
     const data = await queryMainnetBendystraw<{
       suckerTransactions?: { items?: BridgeTransaction[] };
-    }>(query, {
+    }>(SUCKER_TRANSACTIONS_QUERY, {
       suckerGroupId: params.suckerGroupId,
       status: params.status,
       beneficiary: params.beneficiary,

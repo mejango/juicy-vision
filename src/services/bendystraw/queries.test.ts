@@ -2,10 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   PROJECT_QUERY,
   PROJECTS_QUERY,
-  PARTICIPANTS_QUERY,
-  SEARCH_PROJECTS_QUERY,
+  PROJECTS_BY_OWNER_QUERY,
   ACTIVITY_EVENTS_QUERY,
-  USER_PARTICIPANT_QUERY,
   PROJECT_RULESET_QUERY,
   RECENT_PAY_EVENTS_QUERY,
   CONNECTED_CHAINS_QUERY,
@@ -69,52 +67,16 @@ describe('GraphQL Query Structure', () => {
       expect(PROJECTS_QUERY).toContain('trendingVolume')
       expect(PROJECTS_QUERY).toContain('trendingPaymentsCount')
     })
-  })
 
-  describe('PARTICIPANTS_QUERY', () => {
-    it('is a valid GraphQL query string', () => {
-      expect(typeof PARTICIPANTS_QUERY).toBe('string')
-      expect(PARTICIPANTS_QUERY).toContain('query Participants')
-    })
-
-    it('accepts projectId, chainId, and limit variables', () => {
-      expect(PARTICIPANTS_QUERY).toContain('$projectId: Int!')
-      expect(PARTICIPANTS_QUERY).toContain('$chainId: Int!')
-      expect(PARTICIPANTS_QUERY).toContain('$limit: Int')
-    })
-
-    it('orders by balance descending', () => {
-      expect(PARTICIPANTS_QUERY).toContain('orderBy: "balance"')
-      expect(PARTICIPANTS_QUERY).toContain('orderDirection: "desc"')
-    })
-
-    it('requests participant fields', () => {
-      expect(PARTICIPANTS_QUERY).toContain('address')
-      expect(PARTICIPANTS_QUERY).toContain('balance')
-      expect(PARTICIPANTS_QUERY).toContain('chainId')
+    it('is scoped to V6 projects', () => {
+      expect(PROJECTS_QUERY).toContain('where: { version: 6 }')
     })
   })
 
-  describe('SEARCH_PROJECTS_QUERY', () => {
-    it('is a valid GraphQL query string', () => {
-      expect(typeof SEARCH_PROJECTS_QUERY).toBe('string')
-      expect(SEARCH_PROJECTS_QUERY).toContain('query SearchProjects')
-    })
-
-    it('accepts text and first variables', () => {
-      expect(SEARCH_PROJECTS_QUERY).toContain('$text: String!')
-      expect(SEARCH_PROJECTS_QUERY).toContain('$first: Int')
-    })
-
-    it('uses projectSearch field', () => {
-      expect(SEARCH_PROJECTS_QUERY).toContain('projectSearch')
-    })
-
-    it('requests metadata nested fields', () => {
-      expect(SEARCH_PROJECTS_QUERY).toContain('metadata')
-      expect(SEARCH_PROJECTS_QUERY).toContain('name')
-      expect(SEARCH_PROJECTS_QUERY).toContain('description')
-      expect(SEARCH_PROJECTS_QUERY).toContain('logoUri')
+  describe('PROJECTS_BY_OWNER_QUERY', () => {
+    it('is scoped to the owner and V6', () => {
+      expect(PROJECTS_BY_OWNER_QUERY).toContain('owner: $owner')
+      expect(PROJECTS_BY_OWNER_QUERY).toContain('version: 6')
     })
   })
 
@@ -148,23 +110,6 @@ describe('GraphQL Query Structure', () => {
       expect(ACTIVITY_EVENTS_QUERY).toContain('project')
       expect(ACTIVITY_EVENTS_QUERY).toContain('handle')
       expect(ACTIVITY_EVENTS_QUERY).toContain('logoUri')
-    })
-  })
-
-  describe('USER_PARTICIPANT_QUERY', () => {
-    it('is a valid GraphQL query string', () => {
-      expect(typeof USER_PARTICIPANT_QUERY).toBe('string')
-      expect(USER_PARTICIPANT_QUERY).toContain('query UserParticipant')
-    })
-
-    it('accepts projectId, chainId, and address variables', () => {
-      expect(USER_PARTICIPANT_QUERY).toContain('$projectId: Int!')
-      expect(USER_PARTICIPANT_QUERY).toContain('$chainId: Int!')
-      expect(USER_PARTICIPANT_QUERY).toContain('$address: String!')
-    })
-
-    it('limits to 1 result', () => {
-      expect(USER_PARTICIPANT_QUERY).toContain('limit: 1')
     })
   })
 
@@ -373,13 +318,15 @@ describe('GraphQL Query Structure', () => {
       expect(REVNET_OPERATOR_QUERY).toContain('query RevnetOperator')
     })
 
-    it('accepts projectId and chainId variables', () => {
+    it('accepts projectId, chainId, and version variables', () => {
       expect(REVNET_OPERATOR_QUERY).toContain('$projectId: Int!')
       expect(REVNET_OPERATOR_QUERY).toContain('$chainId: Int!')
+      expect(REVNET_OPERATOR_QUERY).toContain('$version: Int!')
     })
 
-    it('filters for isRevnetOperator true', () => {
+    it('filters for V6 Revnet operators', () => {
       expect(REVNET_OPERATOR_QUERY).toContain('isRevnetOperator: true')
+      expect(REVNET_OPERATOR_QUERY).toContain('version: $version')
     })
 
     it('requests permission holder details', () => {
@@ -407,8 +354,6 @@ describe('Query Consistency', () => {
 
   it('all queries use consistent Int types for filter variables', () => {
     const queriesWithIntParams = [
-      PARTICIPANTS_QUERY,
-      USER_PARTICIPANT_QUERY,
       RECENT_PAY_EVENTS_QUERY,
       TOKEN_HOLDERS_QUERY,
       PAY_EVENTS_HISTORY_QUERY,
