@@ -10,7 +10,7 @@ import { ALL_CHAIN_IDS, CHAINS } from '../../../constants'
 import { getSafetyPublicClient } from '../../../utils/transactionSafety'
 import type { AcceptKind, CreateFlowState, ProjectType, SuckerType } from './state'
 import { CHAIN_PAIRS, chainName, sanitizeState, saveDraft, stepsFor } from './state'
-import { IS_TESTNET, setNetworkMode } from '../../../config/environment'
+import NetworkModeSelect from '../../../components/common/NetworkModeSelect'
 import {
   EnsAddressInput, FieldBlock, Hint, InfoNote, InlineToggleLink, PinkNote, Select, StepHead, WarnNote, useIsDark,
 } from './controls'
@@ -140,11 +140,9 @@ function ChainBridgeBlock({ state, update }: StepProps) {
   const unc = uncoveredPairs(state)
 
   // "On [Mainnets ▾]" — the network is part of the sentence (website parity).
-  // Switching remaps the draft's chains to their pair twins, saves it, and
-  // reloads so every module-init constant re-resolves for the new mode; the
-  // wizard restores the remapped draft and re-verifies any custom token.
-  const switchNetwork = (mode: 'mainnet' | 'testnet') => {
-    if ((mode === 'testnet') === IS_TESTNET) return
+  // Before the mode switch reloads, remap the draft's chains to their pair
+  // twins and save it; the restored draft re-verifies any custom token.
+  const remapDraft = (mode: 'mainnet' | 'testnet') => {
     const draft = sanitizeState(state)
     draft.network = mode
     draft.chainIds = draft.chainIds.map((cid) => {
@@ -153,7 +151,6 @@ function ChainBridgeBlock({ state, update }: StepProps) {
     })
     if (draft.customToken.address) draft.customToken.status = 'idle'
     saveDraft(draft)
-    setNetworkMode(mode)
   }
 
   return (
@@ -161,16 +158,7 @@ function ChainBridgeBlock({ state, update }: StepProps) {
       <div className="flex items-baseline gap-1.5 mb-1.5">
         <span className={`block text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>On</span>
         {/* Inline, borderless — the website's paybox-mode look, part of the sentence */}
-        <select
-          value={IS_TESTNET ? 'testnet' : 'mainnet'}
-          onChange={(e) => switchNetwork(e.target.value as 'mainnet' | 'testnet')}
-          className={`select-caret bg-transparent border-none pl-0 pr-5 text-xs font-semibold cursor-pointer ${
-            isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-          }`}
-        >
-          <option value="mainnet">Mainnets</option>
-          <option value="testnet">Testnets</option>
-        </select>
+        <NetworkModeSelect beforeSwitch={remapDraft} />
       </div>
       <div className="flex flex-wrap gap-2">
         {ALL_CHAIN_IDS.map((id) => {
