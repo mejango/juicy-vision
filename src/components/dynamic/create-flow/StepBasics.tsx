@@ -3,8 +3,8 @@
  * (website/src/create-flow.js). Copy comes verbatim from the source flow.
  */
 
-import { useSettingsStore } from '../../../stores/settingsStore'
-import { pinFile } from '../../../utils/ipfs'
+
+import { pinFileToBackend } from '../../../services/ipfsPinning'
 import type { CreateFlowState } from './state'
 import { Collapse, FieldBlock, Hint, ImagePicker, Pill, StepHead, TextArea, TextInput } from './controls'
 
@@ -20,18 +20,14 @@ interface StepProps {
 
 export default function StepBasics({ state, update }: StepProps) {
   const d = state.details
-  const pinataJwt = useSettingsStore((s) => s.pinataJwt)
 
   // Standard image pin flow, matching the website's renderImagePicker: set busy
-  // while pinning, store the returned ipfs:// uri, revert on failure.
+  // while pinning, store the returned ipfs:// uri, revert on failure. Media pins
+  // through the backend like project metadata (no browser Pinata key).
   const pinImage = (file: File, apply: (s: CreateFlowState, uri: string, busy: boolean) => void, current: string) => {
-    if (!pinataJwt) {
-      alert('IPFS pinning isn’t available right now — you can add a logo later by editing the project.')
-      return
-    }
     update((s) => apply(s, current, true))
-    pinFile(file, pinataJwt, file.name)
-      .then((cid) => update((s) => apply(s, `ipfs://${cid}`, false)))
+    pinFileToBackend(file, file.name)
+      .then((uri) => update((s) => apply(s, uri, false)))
       .catch((e: unknown) => {
         alert('Could not upload: ' + (e instanceof Error ? e.message : String(e)))
         update((s) => apply(s, current, false))

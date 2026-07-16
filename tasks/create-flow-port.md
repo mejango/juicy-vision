@@ -89,8 +89,11 @@ Known 1:1 gaps — 1-3 CLOSED same day (follow-up commit):
    (rpid:/ppid:/pkpid:) and single-token payout amounts (num p:stage:idx).
 3. CLOSED: metadata.useDataHookForCashOut set with zero dataHook when the shop
    redeems (website parity); encoder permits it on the atomic-721 path.
-4. Media pinning uses the browser Pinata JWT (settings store, TierEditor precedent)
-   rather than the backend; metadata pinning uses the backend.
+4. CLOSED: media pins through the backend too — new POST /projects/pin-file
+   (multipart, 25MB cap, image/video/audio/pdf/text allow-list, same
+   optionalAuth + rate limit as pin-metadata) + pinFileToBackend() in
+   services/ipfsPinning; StepBasics/StepShop no longer read the browser
+   Pinata JWT.
 
 Follow-up commit also: stepper labels under dots (website layout); removed the
 scroll-position compact toggle entirely (compact = WelcomeLayout events only —

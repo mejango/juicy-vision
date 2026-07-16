@@ -7,8 +7,8 @@
  */
 
 import { useCallback, useState } from 'react'
-import { useSettingsStore } from '../../../stores/settingsStore'
-import { pinFile } from '../../../utils/ipfs'
+
+import { pinFileToBackend } from '../../../services/ipfsPinning'
 import { itemDraft, surplusTokenLabel, type CreateFlowState, type ItemState } from './state'
 import {
   AddLink, Collapse, CurrencySelect, EnsAddressInput, FieldBlock, Hint, IdleToggle, ImagePicker,
@@ -209,7 +209,6 @@ function ItemEditor({ state, nft, idx, update }: {
   idx: number
   update: (fn: (s: CreateFlowState) => void) => void
 }) {
-  const pinataJwt = useSettingsStore((s) => s.pinataJwt)
   const [mediaBusy, setMediaBusy] = useState(false)
   const [catAdding, setCatAdding] = useState(false)
   const [catName, setCatName] = useState('')
@@ -221,20 +220,17 @@ function ItemEditor({ state, nft, idx, update }: {
   const priceUnit = storeUnit(state)
   const hasPrice = parseFloat(nft.price) > 0
 
-  // Pins the chosen file immediately (any type) and stores imageUri + mediaType.
+  // Pins the chosen file immediately (any type) through the backend and stores
+  // imageUri + mediaType.
   const onPickMedia = (f: File) => {
-    if (!pinataJwt) {
-      alert('IPFS pinning isn’t available right now — you can add item media later by editing the project.')
-      return
-    }
     if (f.size > ITEM_MAX_MEDIA_BYTES) {
       alert('That file is ' + itemFileSize(f.size) + ' — over the ' + ITEM_MAX_MEDIA_MB + ' MB max.')
       return
     }
     setMediaBusy(true)
-    pinFile(f, pinataJwt, nft.name || f.name)
-      .then((cid) => {
-        upd((n) => { n.imageUri = `ipfs://${cid}`; n.mediaType = (f.type || '').toLowerCase() })
+    pinFileToBackend(f, nft.name || f.name)
+      .then((uri) => {
+        upd((n) => { n.imageUri = uri; n.mediaType = (f.type || '').toLowerCase() })
         setMediaBusy(false)
       })
       .catch((e: unknown) => {

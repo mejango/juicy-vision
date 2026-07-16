@@ -29,3 +29,28 @@ export async function pinMetadata(
   }
   return result.data.uri
 }
+
+/** Pin a media file (logo, cover image, item media) through the backend. */
+export async function pinFileToBackend(file: File, name: string): Promise<string> {
+  const token = useAuthStore.getState().token || getWalletSessionToken()
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('name', name)
+  const response = await fetch(`${API_BASE_URL}/projects/pin-file`, {
+    method: 'POST',
+    headers: {
+      'X-Session-ID': getSessionId(),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  })
+  const result = await response.json() as {
+    success: boolean
+    data?: { uri?: string }
+    error?: string
+  }
+  if (!response.ok || !result.success || !result.data?.uri || !isIpfsUri(result.data.uri, false)) {
+    throw new Error(result.error || 'Failed to pin file')
+  }
+  return result.data.uri
+}
