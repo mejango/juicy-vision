@@ -1445,7 +1445,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               <div
                 ref={dockRef}
                 data-dock="true"
-                className={`${bottomOnly ? 'max-h-full dock-overflow hide-scrollbar' : `absolute bottom-0 left-0 right-0 z-30 ${isMobile ? 'max-h-[45vh]' : 'max-h-[38vh]'} border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto hide-scrollbar ` + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
+                className={`[overflow-anchor:none] ${bottomOnly ? 'max-h-full dock-overflow hide-scrollbar' : `absolute bottom-0 left-0 right-0 z-30 ${isMobile ? 'max-h-[45vh]' : 'max-h-[38vh]'} border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto hide-scrollbar ` + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
               >
                 {/* Greeting - hidden when dock is pinned (compact mode) */}
                 <div className={`flex flex-col justify-end overflow-hidden ${dockScrollEnabled ? 'h-0 opacity-0' : `${isMobile ? 'h-[8vh]' : 'h-[6vh]'} opacity-100`}`}>
