@@ -16,8 +16,11 @@ export const CreateFlowTheme = createContext<{ isDark: boolean }>({ isDark: true
 export const useIsDark = () => useContext(CreateFlowTheme).isDark
 
 // Shared class helpers
+// No width here — callers pick their width (w-full default on TextInput/TextArea,
+// w-24 on NumberInput). Baking w-full in made caller overrides like w-20 lose to
+// stylesheet order, blowing inline rows out of their cards.
 export function inputClass(isDark: boolean): string {
-  return `w-full px-3 py-2 text-sm border outline-none transition-colors ${
+  return `px-3 py-2 text-sm border outline-none transition-colors ${
     isDark
       ? 'bg-white/5 border-white/15 text-white placeholder-gray-500 focus:border-teal-400'
       : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-teal-600'
@@ -114,7 +117,7 @@ export function TextInput(props: {
       disabled={props.disabled}
       onChange={(e) => props.onChange(e.target.value)}
       placeholder={props.placeholder}
-      className={`${inputClass(isDark)} ${props.mono ? 'font-mono' : ''} ${props.className || ''}`}
+      className={`${inputClass(isDark)} ${props.mono ? 'font-mono' : ''} ${props.className || 'w-full'}`}
     />
   )
 }
@@ -127,7 +130,7 @@ export function TextArea(props: { value: string; onChange: (v: string) => void; 
       onChange={(e) => props.onChange(e.target.value)}
       placeholder={props.placeholder}
       rows={props.rows ?? 2}
-      className={inputClass(isDark)}
+      className={`${inputClass(isDark)} w-full`}
     />
   )
 }

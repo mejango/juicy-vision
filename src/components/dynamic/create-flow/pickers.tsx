@@ -354,15 +354,6 @@ export function RecipientPicker(props: {
           options={[['address', 'Address'], ['project', 'Project'], ['hook', 'Hook']]}
         />
 
-        {rec.type === 'wallet' && (
-          <EnsAddressInput
-            className="flex-1 min-w-[200px]"
-            value={rec.address}
-            onChange={(v) => onChange({ address: v })}
-            onResolved={(addr) => onChange({ resolvedAddress: addr || undefined })}
-          />
-        )}
-
         {rec.type === 'project' && (
           <NumberInput
             value={rec.projectId || ''}
@@ -381,6 +372,17 @@ export function RecipientPicker(props: {
           fieldKey={pidKeyFor(props.perChainKey)}
           placeholder="ID"
         />
+      )}
+
+      {/* Address input sits on its own line under the type select (website layout) */}
+      {rec.type === 'wallet' && (
+        <div className="mt-1.5">
+          <EnsAddressInput
+            value={rec.address}
+            onChange={(v) => onChange({ address: v })}
+            onResolved={(addr) => onChange({ resolvedAddress: addr || undefined })}
+          />
+        </div>
       )}
 
       {rec.type === 'project' && (
