@@ -272,6 +272,97 @@ function pidKeyFor(perChainKey: string): string {
   return perChainKey.replace(/^(pk|p|r):/, (_, prefix: string) => `${prefix}pid:`)
 }
 
+/**
+ * ONE "Set per chain" for a fixed-amount payout row (website eff02f6): each
+ * chain's row carries the amount AND the recipient's chain-specific fields
+ * together (wallet address, or project id + token beneficiary) — two
+ * side-by-side per-field links read as clutter. Writes the same override keys
+ * the deploy build consumes (pamt/pkamt, p/pk, ppid/pkpid), all in addr.
+ */
+export function PerChainPayoutRowControl(props: {
+  state: CreateFlowState
+  update: (fn: (s: CreateFlowState) => void) => void
+  rec: RecipientRow
+  keys: { amt: string; addr: string; pid: string }
+  defaults: { amt: string; addr: string; pid: string }
+}) {
+  const isDark = useIsDark()
+  const allKeys = [props.keys.amt, props.keys.addr, props.keys.pid]
+  const hasOverrides = props.state.chainIds.some((cid) =>
+    allKeys.some((k) => !!props.state.perChain[cid]?.addr?.[k]))
+  const [open, setOpen] = useState(hasOverrides)
+  const pc = perChainOps(props.state, props.update)
+  if (props.state.chainIds.length < 2) return null
+  if (!open) {
+    return (
+      <div className="text-right">
+        <button
+          type="button"
+          title="Set a different amount and recipient on each chain"
+          onClick={() => setOpen(true)}
+          className="text-xs text-gray-500 hover:text-teal-400"
+        >
+          Set per chain
+        </button>
+      </div>
+    )
+  }
+  const wantsPid = props.rec.type === 'project' || props.rec.type === 'customhook'
+  const wantsAddr = props.rec.type === 'wallet' || !(props.rec.preferAddToBalance && props.rec.type === 'project')
+  return (
+    <div className={`mt-2 border p-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+      {props.state.chainIds.map((chainId) => (
+        <div key={chainId} className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <span className={`text-xs w-20 shrink-0 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            {CHAINS[chainId]?.shortName || chainId}
+          </span>
+          <NumberInput
+            value={pc.get(chainId, 'addr', props.keys.amt)}
+            onChange={(v) => pc.set(chainId, 'addr', props.keys.amt, v)}
+            placeholder={props.defaults.amt || '0.0'}
+            min={0} step="any"
+            className="w-24"
+          />
+          {wantsPid && (
+            <NumberInput
+              value={pc.get(chainId, 'addr', props.keys.pid)}
+              onChange={(v) => pc.set(chainId, 'addr', props.keys.pid, v)}
+              placeholder={props.defaults.pid || 'ID'}
+              min={1}
+              className="w-20"
+            />
+          )}
+          {wantsAddr && (
+            <div className="flex-1 min-w-[180px]">
+              <TextInput
+                value={pc.get(chainId, 'addr', props.keys.addr)}
+                onChange={(v) => pc.set(chainId, 'addr', props.keys.addr, v)}
+                placeholder={props.defaults.addr || '0x…'}
+                mono
+              />
+            </div>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => {
+          props.update((s) => {
+            s.chainIds.forEach((cid) => {
+              const bucket = s.perChain[cid]?.addr
+              if (bucket) allKeys.forEach((k) => { delete bucket[k] })
+            })
+          })
+          setOpen(false)
+        }}
+        className="text-xs text-gray-500 hover:text-teal-400"
+      >
+        Use same on all chains
+      </button>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Split lock row — only when the ruleset has a duration
 // ---------------------------------------------------------------------------
@@ -338,6 +429,8 @@ export function RecipientPicker(props: {
   state: CreateFlowState
   update: (fn: (s: CreateFlowState) => void) => void
   perChainKey: string
+  /** The row renders a combined per-chain control instead (fixed-amount payout rows). */
+  suppressPerChain?: boolean
 }) {
   const { rec, onChange, opts } = props
   const typeValue = rec.type === 'wallet' ? 'address' : rec.type === 'project' ? 'project' : 'hook'
@@ -371,7 +464,7 @@ export function RecipientPicker(props: {
         )}
       </div>
 
-      {(rec.type === 'project' || rec.type === 'customhook') && (
+      {(rec.type === 'project' || rec.type === 'customhook') && !props.suppressPerChain && (
         <PerChainNumControl
           state={props.state}
           update={props.update}
@@ -578,18 +671,27 @@ export function PayoutRow(props: {
           state={props.state}
           update={props.update}
           perChainKey={props.perChainKey}
+          suppressPerChain={props.mode === 'amount'}
         />
       </SplitRowShell>
       {props.mode === 'amount' && (
-        // Fixed amounts can differ per chain (each chain's terminal pays out of
-        // its own balance). Canonical keys: pamt:<stage>:<idx> / pkamt:<kind>:<idx>.
+        // ONE per-chain control for the whole row — amount + recipient fields
+        // together (website eff02f6). Percent rows keep the picker's own control.
         <div className="pl-14">
-          <PerChainNumControl
+          <PerChainPayoutRowControl
             state={props.state}
             update={props.update}
-            fieldKey={props.perChainKey.replace(/^(pk|p):/, (_, prefix: string) => `${prefix}amt:`)}
-            placeholder="amount"
-            linkLabel="Set amount per chain"
+            rec={props.rec}
+            keys={{
+              amt: props.perChainKey.replace(/^(pk|p):/, (_, prefix: string) => `${prefix}amt:`),
+              addr: props.perChainKey,
+              pid: pidKeyFor(props.perChainKey),
+            }}
+            defaults={{
+              amt: props.rec.amountEth || '',
+              addr: props.rec.resolvedAddress || props.rec.address || '',
+              pid: props.rec.projectId ? String(props.rec.projectId) : '',
+            }}
           />
         </div>
       )}
