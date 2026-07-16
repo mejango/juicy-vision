@@ -138,6 +138,7 @@ function ChainBridgeBlock({ state, update }: StepProps) {
   // Transient UI flag (the source's state._bridgeOpen) — lives outside draft state.
   const [bridgeOpen, setBridgeOpen] = useState(false)
   const unc = uncoveredPairs(state)
+  const usdcAcct = state.accepts[0] === 'usdc'
 
   // "On [Mainnets ▾]" — the network is part of the sentence (website parity).
   // Before the mode switch reloads, remap the draft's chains to their pair
@@ -209,7 +210,20 @@ function ChainBridgeBlock({ state, update }: StepProps) {
               </Hint>
             </>
           )}
-          {unc.length > 0 && (
+          {/* USDC moves over CCIP only (website 6b330c4): canonical USDC over an
+              OP-stack/Arbitrum native bridge locks funds in bridge escrow. */}
+          {usdcAcct && state.suckerType === 'native' && (
+            <WarnNote>
+              USDC moves between chains over CCIP only — native bridges can’t carry canonical USDC. Choose CCIP
+              (or Native and CCIP) to link these chains.
+            </WarnNote>
+          )}
+          {usdcAcct && state.suckerType === 'both' && (
+            <InfoNote>
+              USDC moves between chains over CCIP only, so this project links its chains with CCIP suckers.
+            </InfoNote>
+          )}
+          {unc.length > 0 && !(usdcAcct && state.suckerType === 'native') && (
             <WarnNote>
               {`${unc.length} chain pair${unc.length > 1 ? 's' : ''} can’t connect with native bridges (they only link Ethereum↔L2). Choose CCIP or Native and CCIP to link L2↔L2 pairs.`}
             </WarnNote>
