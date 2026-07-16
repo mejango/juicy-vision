@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http, type Hex, type Address, type Chain, type PublicClient } from 'viem'
+import { buildCashOutTx } from '@bananapus/nana-sdk-core/v6'
+import { type JBChainId } from '@bananapus/nana-sdk-core'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
@@ -43,25 +45,6 @@ const FEE_FREE_SURPLUS_ABI = [
   },
 ] as const
 
-const TERMINAL_CASH_OUT_ABI = [
-  {
-    name: 'cashOutTokensOf',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'holder', type: 'address' },
-      { name: 'projectId', type: 'uint256' },
-      { name: 'cashOutCount', type: 'uint256' },
-      { name: 'tokenToReclaim', type: 'address' },
-      { name: 'minTokensReclaimed', type: 'uint256' },
-      { name: 'beneficiary', type: 'address' },
-      { name: 'metadata', type: 'bytes' },
-    ],
-    outputs: [{ name: 'reclaimAmount', type: 'uint256' }],
-  },
-  ...TERMINAL_PREVIEW_CASH_OUT_ABI,
-] as const
-
 // viem chain objects for wallet operations
 const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
@@ -69,7 +52,7 @@ async function readCashOutPreviewOutcome(params: { client: PublicClient; termina
   const readPreview = (metadata: Hex) =>
     params.client.readContract({
       address: params.terminal,
-      abi: TERMINAL_CASH_OUT_ABI,
+      abi: TERMINAL_PREVIEW_CASH_OUT_ABI,
       functionName: 'previewCashOutFrom',
       args: [params.holder, params.projectId, params.cashOutCount, params.reclaimToken, params.holder, metadata],
     })
@@ -414,11 +397,18 @@ export default function CashOutModal({
           cashOutCount,
           reclaimToken,
         })
-        const data = encodeFunctionData({
-          abi: TERMINAL_CASH_OUT_ABI,
-          functionName: 'cashOutTokensOf',
-          args: [holder, BigInt(projectId), cashOutCount, reclaimToken, reviewed.outcome.terminalMinimum, holder, reviewed.outcome.metadata],
+        const cashOutTx = buildCashOutTx({
+          chainId: chainId as JBChainId,
+          terminal: freshTerminal.address,
+          holder,
+          projectId: BigInt(projectId),
+          cashOutCount,
+          tokenToReclaim: reclaimToken,
+          minTokensReclaimed: reviewed.outcome.terminalMinimum,
+          beneficiary: holder,
+          metadata: reviewed.outcome.metadata,
         })
+        const data = encodeFunctionData({ abi: cashOutTx.abi, functionName: cashOutTx.functionName, args: cashOutTx.args })
         await simulateTransaction({
           chainId,
           account: holder,

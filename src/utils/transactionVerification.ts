@@ -1,6 +1,7 @@
 // Transaction verification utilities
 // Validates transaction parameters against contract ABIs before display
 
+import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import {
   NATIVE_TOKEN,
 } from '../constants/abis'
@@ -117,7 +118,7 @@ function validateLaunchTerminalConfigurations(
         return
       }
       const expectedDecimals = isNativeToken(context.token) ? 18 : 6
-      const expectedCurrency = Number(BigInt(context.token) & 0xffffffffn)
+      const expectedCurrency = tokenCurrencyId(context.token as `0x${string}`)
       if (context.decimals !== expectedDecimals) {
         doubts.push({
           severity: 'critical',

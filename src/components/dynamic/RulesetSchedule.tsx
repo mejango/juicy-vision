@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { formatUnits } from 'viem'
+import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import { useThemeStore } from '../../stores'
 import {
   fetchProjectWithRuleset,
@@ -2254,7 +2255,7 @@ export default function RulesetSchedule({
                     if (currency === 2) return 'USD'
                     const token = activeFundAccessLimits?.token
                     if (!token) return `currency ${currency}`
-                    const tokenCurrency = Number(BigInt(token) & 0xffff_ffffn)
+                    const tokenCurrency = tokenCurrencyId(token as `0x${string}`)
                     if (currency !== tokenCurrency) return `currency ${currency}`
                     if (token.toLowerCase() === NATIVE_TOKEN.toLowerCase()) return 'ETH'
                     const activeChainId = effectiveSplitsChainId ?? chainIdNum

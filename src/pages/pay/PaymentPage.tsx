@@ -9,6 +9,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAccount, useConnect, useWalletClient, useSwitchChain } from 'wagmi'
 import { createPublicClient, encodeFunctionData, erc20Abi, formatUnits, http, type Address, type Hex } from 'viem'
+import { NATIVE_TOKEN, type JBChainId } from '@bananapus/nana-sdk-core'
+import { buildPayTx } from '@bananapus/nana-sdk-core/v6'
 import { useThemeStore, useAuthStore } from '../../stores'
 import Button from '../../components/ui/Button'
 import { getChainName } from '../../components/dynamic/charts/utils'
@@ -22,23 +24,6 @@ import { requestPaymentReview, type PaymentReview } from '../../utils/paymentRev
 import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../../utils/terminalPreview'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
-
-const TERMINAL_PAY_ABI = [{
-  name: 'pay',
-  type: 'function',
-  stateMutability: 'payable',
-  inputs: [
-    { name: 'projectId', type: 'uint256' },
-    { name: 'token', type: 'address' },
-    { name: 'amount', type: 'uint256' },
-    { name: 'beneficiary', type: 'address' },
-    { name: 'minReturnedTokens', type: 'uint256' },
-    { name: 'memo', type: 'string' },
-    { name: 'metadata', type: 'bytes' },
-  ],
-  outputs: [{ name: 'beneficiaryTokenCount', type: 'uint256' }],
-}] as const
 
 // Payment session types
 interface PaymentSession {
@@ -431,11 +416,18 @@ export default function PaymentPage() {
             args: [terminal, amount],
           })
         : null
-      const payData = encodeFunctionData({
-        abi: TERMINAL_PAY_ABI,
-        functionName: 'pay',
-        args: [BigInt(projectId), paymentToken, amount, walletAddress, minReturnedTokens, paymentMemo, '0x'],
+      const payTx = buildPayTx({
+        chainId: session.chainId as JBChainId,
+        terminal,
+        projectId: BigInt(projectId),
+        token: paymentToken,
+        amount,
+        beneficiary: walletAddress,
+        minReturnedTokens,
+        memo: paymentMemo,
+        metadata: '0x',
       })
+      const payData = encodeFunctionData({ abi: payTx.abi, functionName: payTx.functionName, args: payTx.args })
       const paymentReview: PaymentReview = {
         txId: session.id,
         account: walletAddress,

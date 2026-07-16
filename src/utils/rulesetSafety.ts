@@ -1,4 +1,5 @@
 import { isAddress, zeroAddress } from 'viem'
+import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import {
   JB_CONTRACTS,
   NATIVE_TOKEN,
@@ -37,7 +38,7 @@ export function assertRecognizedAccountingContexts(
     if (seen.has(token)) throw new Error(`Duplicate accounting context at index ${index}`)
     seen.add(token)
     const expectedDecimals = isNative ? 18 : 6
-    const expectedCurrency = Number(BigInt(context.token) & 0xffff_ffffn)
+    const expectedCurrency = tokenCurrencyId(context.token as `0x${string}`)
     if (context.tokenDecimals !== expectedDecimals || context.currency !== expectedCurrency) {
       throw new Error(`Accounting context is not recognized for token: ${context.token}`)
     }
