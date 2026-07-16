@@ -82,14 +82,17 @@ Verified: tsc clean; 1,484 tests pass; browser walkthrough of both flavors at de
 w/ auto-issuance, shop item editor, operator store permissions, deploy gates, draft
 restore across reload incl. step position). Zero page errors.
 
-Known 1:1 gaps (follow-ups):
-1. Fund-access limits denominate only in the accounting token — juicy's encoder
-   (`formatLimits`) rejects ETH(1)/USD(2) currencies the website allows via JBPrices.
-   The payout/surplus currency selects write state (drafts stay compatible).
-2. Per-chain NUMERIC overrides inside split rows (project ids, amounts) have no UI
-   control yet (builders honor the keys; PerChainNumControl exists but isn't wired
-   into rows).
-3. `useDataHookForCashOut` rides JBDeployTiersHookConfig (same on-chain result via
-   the omnichain 721 wrapper) instead of ruleset metadata.
+Known 1:1 gaps — 1-3 CLOSED same day (follow-up commit):
+1. CLOSED: encoder accepts USD (2) limits alongside the token currency; builders
+   emit the stage's payout/surplus currency (USD amounts 18-dec).
+2. CLOSED: PerChainNumControl wired into split rows — per-chain project ids
+   (rpid:/ppid:/pkpid:) and single-token payout amounts (num p:stage:idx).
+3. CLOSED: metadata.useDataHookForCashOut set with zero dataHook when the shop
+   redeems (website parity); encoder permits it on the atomic-721 path.
 4. Media pinning uses the browser Pinata JWT (settings store, TierEditor precedent)
    rather than the backend; metadata pinning uses the backend.
+
+Follow-up commit also: stepper labels under dots (website layout); removed the
+scroll-position compact toggle entirely (compact = WelcomeLayout events only —
+mobile chrome scrolls away naturally under the sticky prompt, which gets its
+blur/bg on mobile always).

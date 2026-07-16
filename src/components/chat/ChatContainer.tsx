@@ -845,33 +845,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => window.removeEventListener('juice:dock-scroll', handleDockScrollChange as EventListener)
   }, [])
 
-  // Mobile scroll detection - enable compact mode when scrolled
-  // In bottomOnly mode WelcomeLayout owns compact state via juice:dock-scroll;
-  // toggling it from scroll position here fights scroll anchoring (scrollTop jumps)
-  useEffect(() => {
-    if (bottomOnly) return
-    const dock = dockRef.current
-    if (!dock) return
-
-    let lastScrollTop = 0
-    const handleScroll = () => {
-      const scrollTop = dock.scrollTop
-      const scrollingDown = scrollTop > lastScrollTop
-      const atTop = scrollTop <= 10
-
-      // Enable compact mode when scrolling down, disable when at top
-      if (scrollingDown && scrollTop > 50 && !dockScrollEnabled) {
-        setDockScrollEnabled(true)
-      } else if (atTop && dockScrollEnabled) {
-        setDockScrollEnabled(false)
-      }
-
-      lastScrollTop = scrollTop
-    }
-
-    dock.addEventListener('scroll', handleScroll, { passive: true })
-    return () => dock.removeEventListener('scroll', handleScroll)
-  }, [dockScrollEnabled, bottomOnly])
+  // Compact mode is owned solely by WelcomeLayout's juice:dock-scroll events
+  // (desktop pin/unpin). On mobile the dock chrome scrolls away naturally under
+  // the sticky prompt — collapsing it from scroll position shifted the content
+  // by the collapsed height mid-gesture (view landed past the first card).
 
   // Listen for empty AI responses - show "Nudge" button when Claude stops without output
   useEffect(() => {
@@ -1600,7 +1577,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 <div
                   ref={stickyPromptRef}
                   className={`sticky top-0 left-0 right-0 z-10 w-full transition-colors duration-150 ${
-                    dockScrollEnabled
+                    dockScrollEnabled || isMobile
                       ? theme === 'dark' ? 'bg-juice-dark/50 backdrop-blur-sm' : 'bg-white/50 backdrop-blur-sm'
                       : ''
                   }`}

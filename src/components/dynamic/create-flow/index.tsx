@@ -336,24 +336,26 @@ export default function CreateFlowWizard({ defaultChainIds, onClose }: CreateFlo
 function Stepper({ state, update }: { state: CreateFlowState; update: (fn: (s: CreateFlowState) => void) => void }) {
   const isDark = useIsDark()
   const steps = stepsFor(state)
+  // Website layout: dots on one row joined by connectors, uppercase labels
+  // UNDER the dots. Connectors sit at dot height; labels don't affect them.
   return (
-    <div className="flex items-center flex-wrap gap-0.5 px-4 pt-3 pb-1">
+    <div className="flex items-start px-4 pt-4 pb-1">
       {steps.map((label, i) => (
-        <div key={label} className="flex items-center">
+        <div key={label} className={`flex items-start ${i > 0 ? 'flex-1' : ''}`}>
           {i > 0 && (
-            <div className={`w-6 h-px mx-1 ${i <= state.step ? 'bg-teal-400' : isDark ? 'bg-white/15' : 'bg-gray-300'}`} />
+            <div className={`flex-1 h-0.5 mt-[5px] mx-1 ${i <= state.step ? 'bg-teal-400' : isDark ? 'bg-white/15' : 'bg-gray-300'}`} />
           )}
           <button
             type="button"
             onClick={() => update((s) => { s.step = i })}
-            className="flex items-center gap-1.5"
+            className="flex flex-col items-center shrink-0"
           >
-            <span className={`w-2.5 h-2.5 rounded-full border ${
+            <span className={`w-3 h-3 rounded-full border ${
               i <= state.step ? 'bg-teal-400 border-teal-400' : isDark ? 'border-white/30' : 'border-gray-400'
             }`} />
-            <span className={`text-xs ${
+            <span className={`mt-1 text-[10px] uppercase tracking-wide ${
               i === state.step
-                ? isDark ? 'text-white font-medium' : 'text-gray-900 font-medium'
+                ? isDark ? 'text-white font-semibold' : 'text-gray-900 font-semibold'
                 : isDark ? 'text-gray-500' : 'text-gray-400'
             }`}>
               {label}

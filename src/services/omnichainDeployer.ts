@@ -246,6 +246,9 @@ function validateRemoteToken(value: string, fieldName: string): `0x${string}` {
   return pad(validateAddress(value, fieldName), { size: 32 })
 }
 
+/** JBPrices standard currency id for USD — usable in fund-access limits via the core USD feed. */
+const USD_CURRENCY_ID = 2
+
 /**
  * Validate a hook address. Can be zero address (no hook) or any valid address.
  */
@@ -663,6 +666,11 @@ function formatRulesetConfigurations(
   rulesetConfigurations: JBRulesetConfig[],
   chainId: number,
   acceptedTokens?: Set<string>,
+  options?: {
+    /** A 721 hook deploys atomically with the project: the omnichain deployer
+     *  rewires metadata.dataHook itself, so hook flags with a zero hook are valid. */
+    hasAtomic721?: boolean
+  },
 ) {
   if (rulesetConfigurations.length === 0) throw new Error('At least one ruleset is required')
   return rulesetConfigurations.map((ruleset, rulesetIdx) => {
@@ -684,6 +692,7 @@ function formatRulesetConfigurations(
     requireRecognizedApprovalHook(ruleset.approvalHook)
     requireRecognizedNewProjectDataHook(ruleset.metadata.dataHook)
     if (
+      !options?.hasAtomic721 &&
       (ruleset.metadata.useDataHookForPay || ruleset.metadata.useDataHookForCashOut) &&
       ruleset.metadata.dataHook.toLowerCase() === ZERO_ADDRESS.toLowerCase()
     ) {
@@ -767,8 +776,11 @@ function formatRulesetConfigurations(
           if (amount <= 0n || amount >= 1n << 224n) {
             throw new Error(`${limitField}.amount: Amount must be a positive uint224`)
           }
-          if (limit.currency !== expectedCurrency) {
-            throw new Error(`${limitField}.currency: Currency conversion is not supported in this flow`)
+          // The token's own currency id is identity (no feed); USD (2) converts
+          // via JBPrices — the core deployments ship the USD feed the website's
+          // create flow relies on for USD-denominated limits.
+          if (limit.currency !== expectedCurrency && limit.currency !== USD_CURRENCY_ID) {
+            throw new Error(`${limitField}.currency: Only the accounting token's currency or USD (2) is supported`)
           }
           if (currencies.has(limit.currency)) throw new Error(`${limitField}.currency: Duplicate currency`)
           currencies.add(limit.currency)
@@ -1299,7 +1311,7 @@ export function encodeLaunch721ProjectFor(params: {
   const acceptedTokens = new Set(formattedTerminals.flatMap(terminal =>
     terminal.accountingContextsToAccept.map(context => context.token.toLowerCase())
   ))
-  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId, acceptedTokens)
+  const formattedRulesets = formatRulesetConfigurations(rulesetConfigurations, chainId, acceptedTokens, { hasAtomic721: true })
   const formattedSuckerConfig = formatSuckerDeploymentConfiguration(
     suckerDeploymentConfiguration,
     'suckerDeploymentConfiguration',

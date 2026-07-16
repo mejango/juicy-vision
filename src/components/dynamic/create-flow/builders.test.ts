@@ -549,3 +549,50 @@ describe('buildChainConfigOverrides', () => {
     expect(overrides[1].tiers![0].initialSupply).toBe(5)
   })
 })
+
+describe('USD-denominated fund-access limits (website parity)', () => {
+  it('encodes limited payouts in USD (currency 2, 18-dec amounts) when the stage picked USD', () => {
+    const s = singleChainState()
+    s.stages[0].payoutMode = 'limited'
+    s.stages[0].payoutCurrency = 2
+    s.stages[0].payoutRecipients = [wallet(A1, 0, '500')]
+    const [rs] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
+    expect(rs.fundAccessLimitGroups[0].payoutLimits[0]).toEqual({
+      amount: parseEther('500').toString(),
+      currency: 2,
+    })
+  })
+
+  it('encodes a capped surplus allowance in USD when the stage picked USD', () => {
+    const s = singleChainState()
+    s.stages[0].surplusAllowanceOn = true
+    s.stages[0].surplusAllowanceUnlimited = false
+    s.stages[0].surplusAllowanceAmount = '25'
+    s.stages[0].surplusAllowanceCurrency = 2
+    const [rs] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
+    expect(rs.fundAccessLimitGroups[0].surplusAllowances[0]).toEqual({
+      amount: parseEther('25').toString(),
+      currency: 2,
+    })
+  })
+})
+
+describe('shop redemption rides ruleset metadata (website parity)', () => {
+  it('sets useDataHookForCashOut with a zero dataHook when the store redeems', () => {
+    const s = singleChainState()
+    s.shopEnabled = true
+    s.collection.useForRedemptions = true
+    s.nfts = [itemDraft()]
+    s.stages[0].cashOutTaxRate = 30
+    const [rs] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
+    expect(rs.metadata.useDataHookForCashOut).toBe(true)
+    expect(rs.metadata.dataHook).toBe(ZERO_ADDRESS)
+    expect(rs.metadata.cashOutTaxRate).toBe(3000)
+  })
+
+  it('leaves the flag off without store redemption', () => {
+    const s = singleChainState()
+    const [rs] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
+    expect(rs.metadata.useDataHookForCashOut).toBe(false)
+  })
+})

@@ -242,6 +242,30 @@ export function PerChainAddrControl(props: {
   )
 }
 
+export function PerChainNumControl(props: {
+  state: CreateFlowState
+  update: (fn: (s: CreateFlowState) => void) => void
+  fieldKey: string
+  placeholder?: string
+}) {
+  return (
+    <PerChainControl
+      state={props.state}
+      update={props.update}
+      fieldKey={props.fieldKey}
+      kind="num"
+      renderField={(chainId, value, setValue) => (
+        <NumberInput value={value} onChange={setValue} placeholder={props.placeholder || ''} min={0} className="w-28" />
+      )}
+    />
+  )
+}
+
+/** Per-chain PROJECT-ID key for a split slot's address key: r:→rpid:, p:→ppid:, pk:→pkpid:. */
+function pidKeyFor(perChainKey: string): string {
+  return perChainKey.replace(/^(pk|p|r):/, (_, prefix: string) => `${prefix}pid:`)
+}
+
 // ---------------------------------------------------------------------------
 // Split lock row — only when the ruleset has a duration
 // ---------------------------------------------------------------------------
@@ -349,6 +373,15 @@ export function RecipientPicker(props: {
           />
         )}
       </div>
+
+      {(rec.type === 'project' || rec.type === 'customhook') && (
+        <PerChainNumControl
+          state={props.state}
+          update={props.update}
+          fieldKey={pidKeyFor(props.perChainKey)}
+          placeholder="ID"
+        />
+      )}
 
       {rec.type === 'project' && (
         <div className="mt-1.5 space-y-1.5">
@@ -539,6 +572,16 @@ export function PayoutRow(props: {
           perChainKey={props.perChainKey}
         />
       </SplitRowShell>
+      {props.mode === 'amount' && props.perChainKey.startsWith('p:') && (
+        <div className="pl-14">
+          <PerChainNumControl
+            state={props.state}
+            update={props.update}
+            fieldKey={props.perChainKey}
+            placeholder="amount"
+          />
+        </div>
+      )}
       <SplitLockRow durationSeconds={props.durationSeconds} rec={props.rec} onChange={props.onChange} />
     </div>
   )

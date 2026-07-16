@@ -16,14 +16,12 @@
  *
  * Known deviations from the website (forced by juicy-vision's stricter
  * encode-time validation — see the final notes in each site):
- *   - Fund-access limits are always denominated in the accounting token's own
- *     currency (uint32(uint160(token))) with the token's decimals. The
- *     website allows ETH(1)/USD(2)-denominated limits (JBPrices converts);
- *     juicy-vision's encoder rejects any currency != the token-keyed id.
- *   - Ruleset metadata never sets useDataHookForCashOut/dataHook: the
- *     omnichain deployer's 721 wrapper carries useDataHookForCashOut
- *     (JBDeployTiersHookConfig.useDataHookForCashOut) and wires the hook
- *     address itself. The encoder rejects hook flags with a zero dataHook.
+ *   - Fund-access limits denominate in the accounting token's own currency
+ *     (uint32(uint160(token))) or in USD (2) via JBPrices when the stage
+ *     picked USD (18-decimal amounts) — matching the website.
+ *   - Ruleset metadata sets useDataHookForCashOut with a zero dataHook when
+ *     the shop redeems (the omnichain deployer's 721 wrapper wires the hook
+ *     address itself), exactly like the website's launch path.
  */
 
 import { isAddress, parseEther, parseUnits } from 'viem'
@@ -561,23 +559,30 @@ function assembleRuleset(
       }
       pushSplitGroup(uint256FromAddress(acct.token), payoutSplits)
     }
+    // Limits denominate in the accounting token's own currency, or USD (2)
+    // via JBPrices when the stage picked USD — USD amounts carry 18 decimals.
+    const USD = 2
+    const payoutCur = stage.payoutCurrency === USD ? USD : acct.currency
+    const payoutDecimals = stage.payoutCurrency === USD ? 18 : acct.decimals
     const payoutLimits: JBCurrencyAmountConfig[] = []
     if (stage.payoutMode === 'unlimited') {
-      payoutLimits.push({ amount: UINT224_MAX.toString(), currency: acct.currency })
+      payoutLimits.push({ amount: UINT224_MAX.toString(), currency: payoutCur })
     } else if (stage.payoutMode === 'limited') {
       const total = stage.payoutRecipients.reduce(
-        (s, _x, idx) => s + priceUnits(chainPayoutAmount(state, chainId, userStageIdx, idx), acct.decimals),
+        (s, _x, idx) => s + priceUnits(chainPayoutAmount(state, chainId, userStageIdx, idx), payoutDecimals),
         0n,
       )
-      if (total > 0n) payoutLimits.push({ amount: total.toString(), currency: acct.currency })
+      if (total > 0n) payoutLimits.push({ amount: total.toString(), currency: payoutCur })
     }
+    const saCur = stage.surplusAllowanceCurrency === USD ? USD : acct.currency
+    const saDecimals = stage.surplusAllowanceCurrency === USD ? 18 : acct.decimals
     const surplusAllowances: JBCurrencyAmountConfig[] = []
     if (stage.surplusAllowanceOn && stage.payoutMode !== 'unlimited') {
       if (stage.surplusAllowanceUnlimited) {
-        surplusAllowances.push({ amount: UINT224_MAX.toString(), currency: acct.currency })
+        surplusAllowances.push({ amount: UINT224_MAX.toString(), currency: saCur })
       } else {
-        const saAmt = priceUnits(stage.surplusAllowanceAmount, acct.decimals)
-        if (saAmt > 0n) surplusAllowances.push({ amount: saAmt.toString(), currency: acct.currency })
+        const saAmt = priceUnits(stage.surplusAllowanceAmount, saDecimals)
+        if (saAmt > 0n) surplusAllowances.push({ amount: saAmt.toString(), currency: saCur })
       }
     }
     if (payoutLimits.length || surplusAllowances.length) {
@@ -624,13 +629,11 @@ function assembleRuleset(
       ownerMustSendPayouts: !!stage.ownerMustSendPayouts,
       holdFees: !!stage.holdFees,
       scopeCashOutsToLocalBalances: !!stage.useTotalSurplusForCashOuts,
-      // The 721 shop's cash-out hookup rides on the omnichain deployer's 721
-      // wrapper (JBDeployTiersHookConfig.useDataHookForCashOut) — the ruleset
-      // metadata stays hook-free here (the encoder rejects a zero dataHook
-      // with hook flags on). storeRedeem still forces the tax-rate handling
-      // above, matching the website.
+      // Like the website: the flag is set with a zero dataHook — the omnichain
+      // deployer's 721 wrapper wires the hook itself at deploy (the encoder
+      // permits this on the atomic-721 path).
       useDataHookForPay: false,
-      useDataHookForCashOut: false,
+      useDataHookForCashOut: storeRedeem,
       dataHook: ZERO_ADDRESS,
       metadata: Number(stage.metadataExtra) || 0,
     },
