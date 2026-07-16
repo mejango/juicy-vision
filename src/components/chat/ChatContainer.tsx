@@ -1451,12 +1451,12 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 className={`[overflow-anchor:none] ${bottomOnly ? 'max-h-full dock-overflow hide-scrollbar' : `absolute bottom-0 left-0 right-0 z-30 ${isMobile ? 'max-h-[45vh]' : 'max-h-[38vh]'} border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto hide-scrollbar ` + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
               >
                 {/* Greeting - hidden when dock is pinned (compact mode) */}
-                <div className={`flex flex-col justify-end overflow-hidden ${dockScrollEnabled ? 'h-0 opacity-0' : `${isMobile ? 'h-[8vh]' : 'h-[6vh]'} opacity-100`}`}>
+                <div className={`flex flex-col justify-end overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'h-0 opacity-0' : `${isMobile ? 'h-[8vh]' : 'h-[6vh]'} opacity-100`}`}>
                   <WelcomeGreeting />
                 </div>
 
                 {/* Controls above prompt area - hidden when dock is pinned (compact mode) */}
-                <div className={`flex justify-between items-center px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0 py-0' : `max-h-20 opacity-100 ${isMobile ? 'mt-1' : ''}`}`}>
+                <div className={`flex justify-between items-center px-6 overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0 py-0' : `max-h-20 opacity-100 ${isMobile ? 'mt-1' : ''}`}`}>
                     {/* Left side: mobile-only sidebar and attachment icons */}
                     <div className={`flex items-center gap-1 ${isMobile ? '' : 'invisible'}`}>
                       {/* History sidebar toggle */}
@@ -1616,7 +1616,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   />
 
                   {/* Subtext - tight below prompt, hidden when dock is pinned */}
-                  <div className={`flex items-center justify-between px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-10 opacity-100 -mt-2 mb-3'}`}>
+                  <div className={`flex items-center justify-between px-6 overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-10 opacity-100 -mt-2 mb-3'}`}>
                     <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                       {t('dock.askAbout', 'Let\'s make it real.')}{' '}
                       {t('dock.orGoSolo', 'Or, go on your own with the')}{' '}
@@ -1683,7 +1683,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
                   {/* Material upload hints - desktop/tablet only, hidden when dock is pinned */}
                   {!isMobile && (
-                    <div className={`flex gap-2 px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100 mb-2'}`}>
+                    <div className={`flex gap-2 px-6 overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100 mb-2'}`}>
                       {[
                         { key: 'visionDoc', label: t('materials.visionDoc', 'Drop your vision doc') },
                         { key: 'masterPlan', label: t('materials.masterPlan', 'Show your master plan') },
@@ -1707,16 +1707,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 </div>
 
                 {/* Wallet info - hidden when dock is pinned (compact mode) */}
-                <div className={`overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : `max-h-16 opacity-100 ${isMobile ? 'pb-6' : ''}`}`}>
+                <div className={`overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0' : `max-h-16 opacity-100 ${isMobile ? 'pb-6' : ''}`}`}>
                   <WalletInfo />
                 </div>
 
-                {/* Conversation history - desktop/tablet only */}
-                {!isMobile && (
-                  <div className="pt-6 pb-8">
-                    <ConversationHistory />
-                  </div>
-                )}
+                {/* Conversation history - scrolling the dock reveals it */}
+                <div className="pt-6 pb-8">
+                  <ConversationHistory />
+                </div>
               </div>
             )}
 
