@@ -163,6 +163,9 @@ export function useChatScroll({
       if (isInDock) {
         // Cursor on dock - queue scroll and mark active
         queueScroll(e.deltaY)
+        // When the dock is natively scrollable the browser would apply the
+        // same delta again on top of the manual scroll (2x speed)
+        if (dock.scrollHeight > dock.clientHeight) e.preventDefault()
         window.__dockScrollActive = true
         lastMousePos = { x: e.clientX, y: e.clientY }
         refreshTimeout()

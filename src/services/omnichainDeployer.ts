@@ -12,6 +12,7 @@
  */
 
 import { createPublicClient, encodeFunctionData, http, pad } from 'viem'
+import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import {
   JB_OMNICHAIN_DEPLOYER_ABI,
   JB_OMNICHAIN_DEPLOYER_ADDRESS,
@@ -218,10 +219,6 @@ function validateUserAddress(address: string, fieldName: string): `0x${string}` 
  */
 function validateTokenAddress(address: string, fieldName: string): `0x${string}` {
   return validateAddress(address, fieldName)
-}
-
-function tokenCurrencyId(token: string): number {
-  return Number(BigInt(token) & 0xffffffffn)
 }
 
 function requireRecognizedAccountingToken(

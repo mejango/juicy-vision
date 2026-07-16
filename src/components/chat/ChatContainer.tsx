@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -25,6 +25,8 @@ import WalletPanel from '../wallet/WalletPanel'
 import { getSessionId, getSessionPseudoAddress, getCurrentUserAddress } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
 import { parseMessageContent } from '../../utils/messageParser'
+
+const CreateFlowWizard = lazy(() => import('../dynamic/CreateFlowWizard'))
 
 // getCurrentUserAddress is imported from session.ts - see that file for the
 // priority logic: SIWE wallet > Smart account (managed mode) > Pseudo-address
@@ -203,6 +205,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     } catch { return null }
   })
   const [showBetaPopover, setShowBetaPopover] = useState(false)
+  const [showCreateFlow, setShowCreateFlow] = useState(false)
   const [dockScrollEnabled, setDockScrollEnabled] = useState(false)
   const [betaPopoverPosition, setBetaPopoverPosition] = useState<'above' | 'below'>('above')
   const [betaAnchorPosition, setBetaAnchorPosition] = useState<{ top: number; bottom: number; right: number } | null>(null)
@@ -843,7 +846,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   }, [])
 
   // Mobile scroll detection - enable compact mode when scrolled
+  // In bottomOnly mode WelcomeLayout owns compact state via juice:dock-scroll;
+  // toggling it from scroll position here fights scroll anchoring (scrollTop jumps)
   useEffect(() => {
+    if (bottomOnly) return
     const dock = dockRef.current
     if (!dock) return
 
@@ -865,7 +871,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
     dock.addEventListener('scroll', handleScroll, { passive: true })
     return () => dock.removeEventListener('scroll', handleScroll)
-  }, [dockScrollEnabled])
+  }, [dockScrollEnabled, bottomOnly])
 
   // Listen for empty AI responses - show "Nudge" button when Claude stops without output
   useEffect(() => {
@@ -1442,15 +1448,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
               <div
                 ref={dockRef}
                 data-dock="true"
-                className={`${bottomOnly ? 'max-h-full dock-overflow hide-scrollbar' : `absolute bottom-0 left-0 right-0 z-30 ${isMobile ? 'max-h-[45vh]' : 'max-h-[38vh]'} border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto hide-scrollbar ` + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
+                className={`[overflow-anchor:none] ${bottomOnly ? 'max-h-full dock-overflow hide-scrollbar' : `absolute bottom-0 left-0 right-0 z-30 ${isMobile ? 'max-h-[45vh]' : 'max-h-[38vh]'} border-t-4 border-juice-orange backdrop-blur-md overflow-y-auto hide-scrollbar ` + (theme === 'dark' ? 'bg-juice-dark/75' : 'bg-white/75')}`}
               >
                 {/* Greeting - hidden when dock is pinned (compact mode) */}
-                <div className={`flex flex-col justify-end overflow-hidden ${dockScrollEnabled ? 'h-0 opacity-0' : `${isMobile ? 'h-[8vh]' : 'h-[6vh]'} opacity-100`}`}>
+                <div className={`flex flex-col justify-end overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'h-0 opacity-0' : `${isMobile ? 'h-[8vh]' : 'h-[6vh]'} opacity-100`}`}>
                   <WelcomeGreeting />
                 </div>
 
                 {/* Controls above prompt area - hidden when dock is pinned (compact mode) */}
-                <div className={`flex justify-between items-center px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0 py-0' : `max-h-20 opacity-100 ${isMobile ? 'mt-1' : ''}`}`}>
+                <div className={`flex justify-between items-center px-6 overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0 py-0' : `max-h-20 opacity-100 ${isMobile ? 'mt-1' : ''}`}`}>
                     {/* Left side: mobile-only sidebar and attachment icons */}
                     <div className={`flex items-center gap-1 ${isMobile ? '' : 'invisible'}`}>
                       {/* History sidebar toggle */}
@@ -1610,9 +1616,20 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   />
 
                   {/* Subtext - tight below prompt, hidden when dock is pinned */}
-                  <div className={`flex items-center justify-between px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-10 opacity-100 -mt-2 mb-3'}`}>
+                  <div className={`flex items-center justify-between px-6 overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-10 opacity-100 -mt-2 mb-3'}`}>
                     <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {t('dock.askAbout', 'Let\'s make it real.')}
+                      {t('dock.askAbout', 'Let\'s make it real.')}{' '}
+                      {t('dock.orGoSolo', 'Or, go on your own with the')}{' '}
+                      <button
+                        onClick={() => setShowCreateFlow(true)}
+                        className={`transition-colors ${
+                          theme === 'dark'
+                            ? 'text-juice-orange/70 hover:text-juice-orange'
+                            : 'text-juice-orange/80 hover:text-juice-orange'
+                        }`}
+                      >
+                        {t('dock.createForm', 'create form')}
+                      </button>.
                     </div>
                     <div className="flex items-center gap-2">
                       {/* Beta button */}
@@ -1666,7 +1683,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
                   {/* Material upload hints - desktop/tablet only, hidden when dock is pinned */}
                   {!isMobile && (
-                    <div className={`flex gap-2 px-6 overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100 mb-2'}`}>
+                    <div className={`flex gap-2 px-6 overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100 mb-2'}`}>
                       {[
                         { key: 'visionDoc', label: t('materials.visionDoc', 'Drop your vision doc') },
                         { key: 'masterPlan', label: t('materials.masterPlan', 'Show your master plan') },
@@ -1690,17 +1707,50 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 </div>
 
                 {/* Wallet info - hidden when dock is pinned (compact mode) */}
-                <div className={`overflow-hidden ${dockScrollEnabled ? 'max-h-0 opacity-0' : `max-h-16 opacity-100 ${isMobile ? 'pb-6' : ''}`}`}>
+                <div className={`overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0' : `max-h-16 opacity-100 ${isMobile ? 'pb-6' : ''}`}`}>
                   <WalletInfo />
                 </div>
 
-                {/* Conversation history - desktop/tablet only */}
-                {!isMobile && (
-                  <div className="pt-6 pb-8">
-                    <ConversationHistory />
-                  </div>
-                )}
+                {/* Conversation history - scrolling the dock reveals it */}
+                <div className="pt-6 pb-8">
+                  <ConversationHistory />
+                </div>
               </div>
+            )}
+
+            {/* Standalone create-flow wizard - same component the AI renders in chat */}
+            {showCreateFlow && createPortal(
+              <div className="fixed inset-0 z-50 overflow-y-auto">
+                <div className="fixed inset-0 bg-black/60" />
+                <div
+                  className="relative z-10 flex justify-center min-h-full p-4"
+                  onClick={(e) => { if (e.target === e.currentTarget) setShowCreateFlow(false) }}
+                >
+                  <div className="w-full max-w-lg my-8">
+                    <div className="flex justify-end mb-1">
+                      <button
+                        onClick={() => setShowCreateFlow(false)}
+                        className={`p-1 transition-colors ${
+                          theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+                        }`}
+                        title={t('common.close', 'Close')}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <Suspense fallback={
+                      <div className={`p-8 text-center text-sm ${theme === 'dark' ? 'text-gray-400 bg-juice-dark-lighter' : 'text-gray-500 bg-white'}`}>
+                        {t('common.loading', 'Loading...')}
+                      </div>
+                    }>
+                      <CreateFlowWizard />
+                    </Suspense>
+                  </div>
+                </div>
+              </div>,
+              document.body
             )}
           </>
         ) : (

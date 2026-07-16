@@ -2,6 +2,8 @@ import { useEffect, useCallback } from 'react'
 import { useAccount, useSwitchChain } from 'wagmi'
 import { getWalletClient } from 'wagmi/actions'
 import { createPublicClient, http, parseEther, parseUnits, encodeFunctionData, erc20Abi, type Hex, type Address, type Chain } from 'viem'
+import { NATIVE_TOKEN, jbMultiTerminalAbi, type JBChainId } from '@bananapus/nana-sdk-core'
+import { buildPayTx } from '@bananapus/nana-sdk-core/v6'
 import { useTransactionStore, useAuthStore } from '../stores'
 import { wagmiConfig } from '../config/wagmi'
 import { ALL_VIEM_CHAINS, RPC_ENDPOINTS, USDC_ADDRESSES, type SupportedChainId } from '../constants'
@@ -16,45 +18,6 @@ import { executeManagedTransaction, useManagedWallet } from './useManagedWallet'
 import { buildNftPayMetadata } from '../utils/nftPayMetadata'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
-
-// Native token address for ETH payments
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
-
-// ABI for JBMultiTerminal.pay function
-const TERMINAL_PAY_ABI = [
-  {
-    name: 'pay',
-    type: 'function',
-    stateMutability: 'payable',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'beneficiary', type: 'address' },
-      { name: 'minReturnedTokens', type: 'uint256' },
-      { name: 'memo', type: 'string' },
-      { name: 'metadata', type: 'bytes' },
-    ],
-    outputs: [{ name: 'beneficiaryTokenCount', type: 'uint256' }],
-  },
-] as const
-
-const TERMINAL_ADD_TO_BALANCE_ABI = [
-  {
-    name: 'addToBalanceOf',
-    type: 'function',
-    stateMutability: 'payable',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'shouldReturnHeldFees', type: 'bool' },
-      { name: 'memo', type: 'string' },
-      { name: 'metadata', type: 'bytes' },
-    ],
-    outputs: [],
-  },
-] as const
 
 // Chain configs
 const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
@@ -81,13 +44,20 @@ export function useTransactionExecutor() {
   const { token: authToken } = useAuthStore()
   const { address: managedAddress, isManagedMode } = useManagedWallet()
 
-  const buildPayCallData = useCallback((projectId: number, tokenAddress: Address, amount: bigint, beneficiary: Address, memo: string, metadata: Hex, minReturnedTokens: bigint): Hex => {
+  const buildPayCallData = useCallback((chainId: number, terminal: Address, projectId: number, tokenAddress: Address, amount: bigint, beneficiary: Address, memo: string, metadata: Hex, minReturnedTokens: bigint): Hex => {
     if (minReturnedTokens < 0n) throw new Error('Payment minimum cannot be negative')
-    return encodeFunctionData({
-      abi: TERMINAL_PAY_ABI,
-      functionName: 'pay',
-      args: [BigInt(projectId), tokenAddress, amount, beneficiary, minReturnedTokens, memo, metadata],
+    const payTx = buildPayTx({
+      chainId: chainId as JBChainId,
+      terminal,
+      projectId: BigInt(projectId),
+      token: tokenAddress,
+      amount,
+      beneficiary,
+      minReturnedTokens,
+      memo,
+      metadata,
     })
+    return encodeFunctionData({ abi: payTx.abi, functionName: payTx.functionName, args: payTx.args })
   }, [])
 
   const executeAddToBalanceTransaction = useCallback(
@@ -174,7 +144,7 @@ export function useTransactionExecutor() {
             })
           : null
         const callData = encodeFunctionData({
-          abi: TERMINAL_ADD_TO_BALANCE_ABI,
+          abi: jbMultiTerminalAbi,
           functionName: 'addToBalanceOf',
           args: [BigInt(projectId), tokenAddress, rawAmount, false, memo, '0x'],
         })
@@ -714,7 +684,7 @@ export function useTransactionExecutor() {
               args: [terminalAddress, projectAmount],
             })
           : null
-        const reviewedPayCallData = buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, nftMetadata, reviewedMinimum)
+        const reviewedPayCallData = buildPayCallData(chainId, terminalAddress, parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, nftMetadata, reviewedMinimum)
         const review: PaymentReview = {
           txId,
           account: currentAddress,
@@ -823,7 +793,7 @@ export function useTransactionExecutor() {
         ) {
           throw new Error('The payment quote changed. Review the payment again.')
         }
-        const payCallData = buildPayCallData(parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, nftMetadata, reviewedMinimum)
+        const payCallData = buildPayCallData(chainId, terminalAddress, parseInt(projectId), tokenAddress, projectAmount, beneficiary, memo, nftMetadata, reviewedMinimum)
         if (payCallData.toLowerCase() !== reviewedPayCallData.toLowerCase()) {
           throw new Error('The payment calldata changed. Review the payment again.')
         }

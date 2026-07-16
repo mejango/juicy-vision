@@ -1,62 +1,7 @@
 import { type PublicClient, type Address, zeroAddress } from 'viem'
+import { NATIVE_TOKEN, jbDirectoryAbi, jbRouterTerminalRegistryAbi, type JBChainId } from '@bananapus/nana-sdk-core'
+import { getAccountingContexts, resolvePaymentTerminal, tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import { JB_CONTRACTS, JB_ROUTER_TERMINAL, JB_ROUTER_TERMINAL_REGISTRY, USDC_ADDRESSES, type SupportedChainId } from '../constants'
-
-// Native token address for ETH payments
-const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
-
-// ABI for JBDirectory
-const JB_DIRECTORY_ABI = [
-  {
-    name: 'primaryTerminalOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'token', type: 'address' },
-    ],
-    outputs: [{ name: '', type: 'address' }],
-  },
-  {
-    name: 'terminalsOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'address[]' }],
-  },
-  {
-    name: 'controllerOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'address' }],
-  },
-] as const
-
-const FORWARDING_TERMINAL_ABI = [{
-  name: 'terminalOf',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [{ name: 'projectId', type: 'uint256' }],
-  outputs: [{ name: '', type: 'address' }],
-}] as const
-
-const ACCOUNTING_CONTEXTS_ABI = [{
-  name: 'accountingContextsOf',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [{ name: 'projectId', type: 'uint256' }],
-  outputs: [{
-    name: 'contexts',
-    type: 'tuple[]',
-    components: [
-      { name: 'token', type: 'address' },
-      { name: 'decimals', type: 'uint8' },
-      { name: 'currency', type: 'uint32' },
-    ],
-  }],
-}] as const
 
 // In V6 the JBSwapTerminal no longer exists. Its replacement is the
 // JBRouterTerminal (a universal terminal that accepts any token and converts
@@ -98,7 +43,7 @@ async function requireRecognizedRegistryDestination(
 ): Promise<PaymentTerminal> {
   const destination = await client.readContract({
     address: registry,
-    abi: FORWARDING_TERMINAL_ABI,
+    abi: jbRouterTerminalRegistryAbi,
     functionName: 'terminalOf',
     args: [projectId],
   })
@@ -120,7 +65,7 @@ async function requireRecognizedRouterSurface(
 ): Promise<void> {
   const terminals = await client.readContract({
     address: JB_CONTRACTS.JBDirectory,
-    abi: JB_DIRECTORY_ABI,
+    abi: jbDirectoryAbi,
     functionName: 'terminalsOf',
     args: [projectId],
   })
@@ -182,7 +127,7 @@ export async function getPaymentTerminal(
 
     const terminals = await client.readContract({
       address: JB_CONTRACTS.JBDirectory,
-      abi: JB_DIRECTORY_ABI,
+      abi: jbDirectoryAbi,
       functionName: 'terminalsOf',
       args: [projectId],
     })
@@ -198,18 +143,16 @@ export async function getPaymentTerminal(
       terminal => terminal.toLowerCase() === JB_CONTRACTS.JBMultiTerminal.toLowerCase(),
     )
     if (!multiTerminal) throw new Error('Recognized accounting terminal not found')
-    const contexts = await client.readContract({
-      address: multiTerminal,
-      abi: ACCOUNTING_CONTEXTS_ABI,
-      functionName: 'accountingContextsOf',
-      args: [projectId],
+    const contexts = await getAccountingContexts(client as PublicClient, {
+      chainId: chainId as JBChainId,
+      projectId,
     })
     const matching = contexts.filter(context => context.token.toLowerCase() === normalizedToken)
     if (matching.length !== 1) {
       throw new Error('The selected token is not a unique live accounting context')
     }
     const expectedDecimals = isNative ? 18 : 6
-    const expectedCurrency = Number(BigInt(paymentToken) & 0xffff_ffffn)
+    const expectedCurrency = tokenCurrencyId(paymentToken)
     if (
       Number(matching[0].decimals) !== expectedDecimals ||
       Number(matching[0].currency) !== expectedCurrency
@@ -219,21 +162,21 @@ export async function getPaymentTerminal(
     return { address: multiTerminal, type: 'multi' }
   }
 
-  // Query directory for the primary terminal that accepts this token
-  const terminal = await client.readContract({
-    address: JB_CONTRACTS.JBDirectory,
-    abi: JB_DIRECTORY_ABI,
-    functionName: 'primaryTerminalOf',
-    args: [projectId, paymentToken],
+  // Query directory for the primary terminal that accepts this token.
+  const resolved = await resolvePaymentTerminal(client as PublicClient, {
+    chainId: chainId as JBChainId,
+    projectId,
+    token: paymentToken,
   })
 
   // Never replace a missing directory result with a guessed direct or router
-  // terminal. A project must explicitly expose the selected payment route.
-  if (terminal === zeroAddress) {
+  // terminal. A project must explicitly expose the selected payment route:
+  // `isRouter` marks the SDK's registry fallback for a zero-address result.
+  if (resolved.isRouter) {
     throw new Error('This project does not accept the selected payment token')
   }
 
-  const recognized = requireRecognizedTerminal(terminal, 'pay')
+  const recognized = requireRecognizedTerminal(resolved.address, 'pay')
   await requireRecognizedPaymentRoute(client, projectId, recognized)
   return recognized
 }
@@ -274,7 +217,7 @@ export async function getProjectController(
 ): Promise<Address> {
   const controller = await client.readContract({
     address: JB_CONTRACTS.JBDirectory,
-    abi: JB_DIRECTORY_ABI,
+    abi: jbDirectoryAbi,
     functionName: 'controllerOf',
     args: [projectId],
   })
