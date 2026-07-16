@@ -257,13 +257,14 @@ interface StageSectionProps extends StepProps { stage: StageState; idx: number }
 
 /** The website's .create-subcard — an indented bordered container under a toggle. */
 // The website's .create-subcard "bulge": negative horizontal margins push the
-// section past the editor padding to the stage card's border, buying inline
-// rows (address fields) the full card width. Side borders only, like the source.
+// section PAST the stage card's border (editor padding 14px + border 2px,
+// -mx-5 = 20px → ~4px overhang), so it visibly pokes out of the card. The
+// opaque fill covers the card's border segment so there's no double line.
 function SubCard({ children }: { children: ReactNode }) {
   const isDark = useIsDark()
   return (
-    <div className={`border-l-2 border-r-2 -mx-3.5 my-3.5 px-4 py-3.5 ${
-      isDark ? 'border-orange-400/40 bg-white/[0.02]' : 'border-orange-300 bg-orange-50/40'
+    <div className={`border-l-2 border-r-2 -mx-5 my-3.5 px-5 py-3.5 ${
+      isDark ? 'border-orange-400/40 bg-juice-dark-lighter' : 'border-orange-300 bg-orange-50'
     }`}>
       {children}
     </div>

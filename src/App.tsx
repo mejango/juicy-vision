@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { wagmiConfig } from './config/wagmi'
 import { EnvironmentBadge } from './components/common/EnvironmentBadge'
 import { QueryErrorPanel } from './components/debug/QueryErrorPanel'
-import { ChatContainer, ProtocolActivity, MascotPanel } from './components/chat'
+import { ChatContainer, ProtocolActivity, TrendingProjects, MascotPanel } from './components/chat'
 import ParticipantAvatars from './components/chat/ParticipantAvatars'
 import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
@@ -567,9 +567,23 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
         </button>
       </div>
 
-      {/* Activity list */}
-      <div className="flex-1 overflow-y-auto px-4 hide-scrollbar">
+      {/* Activity list — top half */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 hide-scrollbar">
         <ProtocolActivity onProjectClick={onProjectClick} />
+      </div>
+
+      {/* Trending projects — bottom half (V6 only) */}
+      <div className={`px-3 py-2 border-t border-b flex items-center ${
+        theme === 'dark' ? 'border-white/10' : 'border-gray-200'
+      }`}>
+        <h2 className={`text-sm font-semibold whitespace-nowrap ${
+          theme === 'dark' ? 'text-white' : 'text-gray-900'
+        }`}>
+          {t('ui.trendingProjects', 'Trending projects')}
+        </h2>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 hide-scrollbar">
+        <TrendingProjects onProjectClick={onProjectClick} />
       </div>
     </div>
   )
