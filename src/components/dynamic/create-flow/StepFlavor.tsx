@@ -379,7 +379,7 @@ function AccountingBlock({ state, update }: StepProps) {
   }
 
   const opts: { key: AcceptKind; label: string }[] = [
-    { key: 'eth', label: 'ETH' }, { key: 'usdc', label: 'USDC' }, { key: 'custom', label: 'Custom' },
+    { key: 'eth', label: 'ETH' }, { key: 'usdc', label: 'USDC' }, { key: 'custom', label: 'Custom token' },
   ]
 
   return (
@@ -501,7 +501,7 @@ export default function StepFlavor({ state, update }: StepProps) {
               s.step = Math.min(s.step, stepsFor(s).length - 1) // clamp if the new flow has fewer steps
             })
           }}
-          options={[['custom', 'Custom'], ['revnet', 'Revnet']]}
+          options={[['custom', 'Custom project'], ['revnet', 'Revnet']]}
         />
         <Hint>
           {isRev
