@@ -169,7 +169,7 @@ export function Select(props: {
       value={props.value}
       disabled={props.disabled}
       onChange={(e) => props.onChange(e.target.value)}
-      className={`px-3 py-2 text-sm border outline-none ${
+      className={`select-caret pl-3 pr-6 py-2 text-sm border outline-none ${
         isDark ? 'bg-juice-dark border-white/15 text-white' : 'bg-white border-gray-300 text-gray-900'
       } ${props.className || 'w-auto'}`}
     >
