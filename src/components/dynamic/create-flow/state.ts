@@ -305,7 +305,9 @@ export function sanitizeState(state: CreateFlowState): CreateFlowState {
     if (k.charAt(0) === '_' || typeof src[k] === 'function') return
     c[k] = src[k]
   })
-  const clone = JSON.parse(JSON.stringify(c)) as CreateFlowState
+  // Deep clone + strip functions AND nested `_`-prefixed transients at any
+  // depth, so the exported .jb carries only durable config (website parity).
+  const clone = JSON.parse(JSON.stringify(c, (key, val) => (key.charAt(0) === '_' ? undefined : val))) as CreateFlowState
   clone.deploying = false
   clone.statusLines = []
   clone.done = false
@@ -338,7 +340,21 @@ export function mergeDraft(obj: unknown): CreateFlowState | null {
   s.customToken = mergeKnownFields(defaults.customToken, src.customToken)
   if (s.customToken.status === 'loading') s.customToken.status = 'idle'
   s.stages = (Array.isArray(src.stages) && src.stages.length > 0 ? (src.stages as unknown[]) : [null])
-    .map((st) => mergeKnownFields(createStage(), st))
+    .map((st) => {
+      const stage = mergeKnownFields(createStage(), st)
+      // Harden imported payoutByKind: valid modes only, recipients capped (website parity).
+      if (!stage.payoutByKind || typeof stage.payoutByKind !== 'object' || Array.isArray(stage.payoutByKind)) {
+        stage.payoutByKind = {}
+      } else {
+        Object.keys(stage.payoutByKind).forEach((key) => {
+          const pk = stage.payoutByKind[key] as { mode?: unknown; recipients?: unknown } | null
+          if (!pk || typeof pk !== 'object' || Array.isArray(pk)) { delete stage.payoutByKind[key]; return }
+          pk.mode = pk.mode === 'unlimited' || pk.mode === 'limited' ? pk.mode : 'none'
+          pk.recipients = Array.isArray(pk.recipients) ? pk.recipients.slice(0, 100) : []
+        })
+      }
+      return stage
+    })
   s.nfts = (Array.isArray(src.nfts) ? (src.nfts as unknown[]) : []).map((n) => mergeKnownFields(itemDraft(), n))
   // Map imported chain ids into ids this build knows; drop the rest, min 1.
   s.chainIds = (Array.isArray(src.chainIds) ? (src.chainIds as unknown[]).map(Number) : [])
