@@ -596,3 +596,27 @@ describe('shop redemption rides ruleset metadata (website parity)', () => {
     expect(rs.metadata.useDataHookForCashOut).toBe(false)
   })
 })
+
+describe('canonical per-chain override keys (website ef5fbdf)', () => {
+  it('reads payout amounts from addr[pamt:] and item supplies from addr[isup:]', async () => {
+    const s = singleChainState()
+    s.chainIds = [CHAIN_A, CHAIN_B]
+    s.stages[0].payoutMode = 'limited'
+    s.stages[0].payoutRecipients = [wallet(A1, 0, '1')]
+    s.perChain = { [CHAIN_B]: { addr: { 'pamt:0:0': '2.5' } } }
+    const [rsA] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
+    const [rsB] = buildRulesetConfigsForChain(s, CHAIN_B, 0)
+    expect(rsA.fundAccessLimitGroups[0].payoutLimits[0].amount).toBe(parseEther('1').toString())
+    expect(rsB.fundAccessLimitGroups[0].payoutLimits[0].amount).toBe(parseEther('2.5').toString())
+
+    s.shopEnabled = true
+    const item = itemDraft()
+    item.name = 'Thing'; item.price = '0.01'; item.limited = true; item.supply = '10'
+    s.nfts = [item]
+    s.perChain[CHAIN_B].addr!['isup:0'] = '3'
+    const cfg = await buildDeployTiersConfigFromState(s)
+    const overrides = buildChainConfigOverrides(s, s.chainIds, 0, cfg!.tiersConfig.tiers)
+    const bOverride = overrides.find((o) => o.chainId === CHAIN_B)
+    expect(bOverride?.tiers?.[0].initialSupply).toBe(3)
+  })
+})

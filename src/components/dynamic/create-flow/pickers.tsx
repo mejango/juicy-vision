@@ -177,6 +177,7 @@ export function PerChainControl(props: {
   update: (fn: (s: CreateFlowState) => void) => void
   fieldKey: string
   kind: 'addr' | 'num'
+  linkLabel?: string
   renderField: (chainId: number, value: string, setValue: (v: string) => void) => ReactNode
 }) {
   const isDark = useIsDark()
@@ -192,7 +193,7 @@ export function PerChainControl(props: {
           onClick={() => setOpen(true)}
           className="text-xs text-gray-500 hover:text-teal-400"
         >
-          Set per chain
+          {props.linkLabel || 'Set per chain'}
         </button>
       </div>
     )
@@ -247,13 +248,18 @@ export function PerChainNumControl(props: {
   update: (fn: (s: CreateFlowState) => void) => void
   fieldKey: string
   placeholder?: string
+  /** Custom collapsed-link label (website: 'Set amount per chain', 'Set quantity per chain'). */
+  linkLabel?: string
 }) {
   return (
     <PerChainControl
       state={props.state}
       update={props.update}
       fieldKey={props.fieldKey}
-      kind="num"
+      // All per-chain overrides live in the addr store under prefixed keys —
+      // the website's canonical scheme (ef5fbdf), shared via .jb drafts.
+      kind="addr"
+      linkLabel={props.linkLabel}
       renderField={(chainId, value, setValue) => (
         <NumberInput value={value} onChange={setValue} placeholder={props.placeholder || ''} min={0} className="w-28" />
       )}
@@ -574,13 +580,16 @@ export function PayoutRow(props: {
           perChainKey={props.perChainKey}
         />
       </SplitRowShell>
-      {props.mode === 'amount' && props.perChainKey.startsWith('p:') && (
+      {props.mode === 'amount' && (
+        // Fixed amounts can differ per chain (each chain's terminal pays out of
+        // its own balance). Canonical keys: pamt:<stage>:<idx> / pkamt:<kind>:<idx>.
         <div className="pl-14">
           <PerChainNumControl
             state={props.state}
             update={props.update}
-            fieldKey={props.perChainKey}
+            fieldKey={props.perChainKey.replace(/^(pk|p):/, (_, prefix: string) => `${prefix}amt:`)}
             placeholder="amount"
+            linkLabel="Set amount per chain"
           />
         </div>
       )}
