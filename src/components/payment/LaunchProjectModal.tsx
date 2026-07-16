@@ -7,6 +7,7 @@ import { useManagedWallet } from '../../hooks'
 import { useOmnichainLaunchProject } from '../../hooks/relayr'
 import { type JBRulesetConfig, type JBTerminalConfig } from '../../services/relayr'
 import { type ChainConfigOverride } from '../../services/omnichainDeployer'
+import { type JBSuckerBridge } from '../../utils/suckerConfig'
 import {
   fetchProjectCreationFee,
   type JBDeployTiersHookConfig,
@@ -31,6 +32,8 @@ interface LaunchProjectModalProps {
   terminalConfigurations: JBTerminalConfig[]
   /** Optional per-chain terminal/tier overrides (e.g. chain-specific USDC contexts). */
   chainConfigs?: ChainConfigOverride[]
+  /** Bridge infrastructure for auto-generated suckers ("ccip" default). */
+  suckerBridge?: JBSuckerBridge
   synchronizedStartTime: number
   memo: string
   /**
@@ -51,6 +54,7 @@ export default function LaunchProjectModal({
   rulesetConfigs,
   terminalConfigurations,
   chainConfigs,
+  suckerBridge,
   synchronizedStartTime,
   memo,
   deployTiersHookConfig,
@@ -242,6 +246,7 @@ export default function LaunchProjectModal({
         rulesetConfigurations: rulesetConfigs ?? [rulesetConfig],
         terminalConfigurations,
         chainConfigs,
+        suckerBridge,
         memo,
         forceSelfCustody,
         deployTiersHookConfig,
@@ -249,7 +254,7 @@ export default function LaunchProjectModal({
     } catch (err) {
       setCreationFeeError(err instanceof Error ? err.message : 'Project creation fee unavailable')
     }
-  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, rulesetConfigs, terminalConfigurations, chainConfigs, memo, deployTiersHookConfig, launch, creationFeesWei, reviewedMode, connectedAddress, assertCurrentAccount])
+  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, rulesetConfigs, terminalConfigurations, chainConfigs, suckerBridge, memo, deployTiersHookConfig, launch, creationFeesWei, reviewedMode, connectedAddress, assertCurrentAccount])
 
   const handleClose = useCallback(() => {
     reset()
