@@ -354,7 +354,7 @@ export function mergeDraft(obj: unknown): CreateFlowState | null {
 }
 
 /** Canonical↔testnet pairs, mirroring the website's CHAIN_PAIRS. */
-const CHAIN_PAIRS: { canon: number; testnet: number }[] = [
+export const CHAIN_PAIRS: { canon: number; testnet: number }[] = [
   { canon: 1, testnet: 11155111 },
   { canon: 10, testnet: 11155420 },
   { canon: 42161, testnet: 421614 },

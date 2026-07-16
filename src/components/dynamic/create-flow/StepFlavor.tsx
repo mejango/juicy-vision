@@ -9,7 +9,8 @@ import { erc20Abi, isAddress } from 'viem'
 import { ALL_CHAIN_IDS, CHAINS } from '../../../constants'
 import { getSafetyPublicClient } from '../../../utils/transactionSafety'
 import type { AcceptKind, CreateFlowState, ProjectType, SuckerType } from './state'
-import { chainName, stepsFor } from './state'
+import { CHAIN_PAIRS, chainName, sanitizeState, saveDraft, stepsFor } from './state'
+import { IS_TESTNET, setNetworkMode } from '../../../config/environment'
 import {
   EnsAddressInput, FieldBlock, Hint, InfoNote, InlineToggleLink, PinkNote, Select, StepHead, WarnNote, useIsDark,
 } from './controls'
@@ -137,8 +138,33 @@ function ChainBridgeBlock({ state, update }: StepProps) {
   const [bridgeOpen, setBridgeOpen] = useState(false)
   const unc = uncoveredPairs(state)
 
+  // "On [Mainnets ▾]" — the network is part of the sentence (website parity).
+  // Switching remaps the draft's chains to their pair twins, saves it, and
+  // reloads so every module-init constant re-resolves for the new mode; the
+  // wizard restores the remapped draft and re-verifies any custom token.
+  const switchNetwork = (mode: 'mainnet' | 'testnet') => {
+    if ((mode === 'testnet') === IS_TESTNET) return
+    const draft = sanitizeState(state)
+    draft.network = mode
+    draft.chainIds = draft.chainIds.map((cid) => {
+      const pair = CHAIN_PAIRS.find((p) => p.canon === cid || p.testnet === cid)
+      return pair ? (mode === 'mainnet' ? pair.canon : pair.testnet) : cid
+    })
+    if (draft.customToken.address) draft.customToken.status = 'idle'
+    saveDraft(draft)
+    setNetworkMode(mode)
+  }
+
   return (
-    <FieldBlock label="On">
+    <FieldBlock label={null}>
+      <div className="flex items-baseline gap-2.5 mb-1">
+        <span className="block text-xs font-medium">On</span>
+        <Select
+          value={IS_TESTNET ? 'testnet' : 'mainnet'}
+          onChange={(v) => switchNetwork(v as 'mainnet' | 'testnet')}
+          options={[['mainnet', 'Mainnets'], ['testnet', 'Testnets']]}
+        />
+      </div>
       <div className="flex flex-wrap gap-2">
         {ALL_CHAIN_IDS.map((id) => {
           const on = state.chainIds.includes(id)
