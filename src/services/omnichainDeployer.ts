@@ -36,6 +36,8 @@ import {
   createSalt,
   shouldConfigureSuckers,
   CCIP_SUCKER_DEPLOYER_ADDRESSES,
+  NATIVE_SUCKER_DEPLOYER_ADDRESSES,
+  type JBSuckerBridge,
   ZERO_BYTES32,
 } from '../utils/suckerConfig'
 import {
@@ -181,6 +183,13 @@ function getKnownSuckerDeployers(): Set<string> {
 
   // CCIP pair sucker deployers (same addresses on mainnet and testnet families)
   for (const targetChain of Object.values(CCIP_SUCKER_DEPLOYER_ADDRESSES)) {
+    for (const deployerAddress of Object.values(targetChain)) {
+      addresses.add(deployerAddress.toLowerCase())
+    }
+  }
+
+  // Native-bridge sucker deployers (Ethereum<->L2 standard bridges)
+  for (const targetChain of Object.values(NATIVE_SUCKER_DEPLOYER_ADDRESSES)) {
     for (const deployerAddress of Object.values(targetChain)) {
       addresses.add(deployerAddress.toLowerCase())
     }
@@ -514,6 +523,8 @@ export function buildOmnichainLaunchTransactions(params: {
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs
   /** V6 creation fee (wei) per chain; must equal JBProjects.creationFee() on each chain. */
   creationFeesWei: Record<number, string>
+  /** Bridge infrastructure for auto-generated suckers ("ccip" default). */
+  suckerBridge?: JBSuckerBridge
 }): Array<{
   chainId: number
   to: `0x${string}`
@@ -572,6 +583,7 @@ export function buildOmnichainLaunchTransactions(params: {
       const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, {
         salt: sharedSalt,
         tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
+        bridge: params.suckerBridge,
       })
       suckerConfig = {
         deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
@@ -1395,6 +1407,8 @@ export function buildOmnichainLaunch721Transactions(params: {
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs and tiers
   /** V6 creation fee (wei) per chain; must equal JBProjects.creationFee() on each chain. */
   creationFeesWei: Record<number, string>
+  /** Bridge infrastructure for auto-generated suckers ("ccip" default). */
+  suckerBridge?: JBSuckerBridge
 }): Array<{
   chainId: number
   to: `0x${string}`
@@ -1459,6 +1473,7 @@ export function buildOmnichainLaunch721Transactions(params: {
       const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, {
         salt: sharedSalt,
         tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
+        bridge: params.suckerBridge,
       })
       suckerConfig = {
         deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
