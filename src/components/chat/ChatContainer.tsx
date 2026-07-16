@@ -1745,7 +1745,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                         {t('common.loading', 'Loading...')}
                       </div>
                     }>
-                      <CreateFlowWizard />
+                      <CreateFlowWizard onClose={() => setShowCreateFlow(false)} />
                     </Suspense>
                   </div>
                 </div>
