@@ -216,6 +216,8 @@ interface ChainLookupResult {
   name: string | null
   symbol: string
   decimals: number
+  /** Failure was transport-level (RPC), not an on-chain "no contract here". */
+  rpcFail?: boolean
 }
 
 function CustomTokenBlock({ state, update }: StepProps) {
@@ -258,8 +260,11 @@ function CustomTokenBlock({ state, update }: StepProps) {
               pub.readContract({ address: addr as `0x${string}`, abi: erc20Abi, functionName: 'decimals' }),
             ])
             return { cid, ok: true, name, symbol, decimals: Number(decimals) }
-          } catch {
-            return { cid, ok: false, name: null, symbol: '', decimals: 0 }
+          } catch (e) {
+            // A transport failure must not read as "token doesn't exist" —
+            // classify it so the error can say retry (website 5317b9e).
+            const msg = String((e as Error)?.name || '') + ' ' + String((e as Error)?.message || '')
+            return { cid, ok: false, name: null, symbol: '', decimals: 0, rpcFail: /HttpRequestError|timeout|fetch|network/i.test(msg) }
           }
         }))
       } catch {
@@ -278,7 +283,11 @@ function CustomTokenBlock({ state, update }: StepProps) {
         const first = results.find((r) => r.ok)
         if (!first) {
           t.status = 'error'
-          t.error = 'No ERC-20 found at this address on any selected chain.'
+          // Name the exact chains checked (website 5317b9e); the testnet-toggle
+          // hint is website-only — juicy's chains are fixed per build.
+          t.error = results.every((r) => r.rpcFail)
+            ? 'Could not look up the token (RPC error). Try again.'
+            : `No ERC-20 found at this address on ${chainIds.map(chainName).join(', ')}.`
           t.symbol = ''
           t.decimals = null
           return
