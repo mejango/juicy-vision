@@ -256,10 +256,15 @@ interface StepProps { state: CreateFlowState; update: (fn: (s: CreateFlowState) 
 interface StageSectionProps extends StepProps { stage: StageState; idx: number }
 
 /** The website's .create-subcard — an indented bordered container under a toggle. */
+// The website's .create-subcard "bulge": negative horizontal margins push the
+// section past the editor padding to the stage card's border, buying inline
+// rows (address fields) the full card width. Side borders only, like the source.
 function SubCard({ children }: { children: ReactNode }) {
   const isDark = useIsDark()
   return (
-    <div className={`border p-3 mb-4 ${isDark ? 'border-white/10 bg-white/[0.02]' : 'border-gray-200 bg-gray-50/50'}`}>
+    <div className={`border-l-2 border-r-2 -mx-3.5 my-3.5 px-4 py-3.5 ${
+      isDark ? 'border-orange-400/40 bg-white/[0.02]' : 'border-orange-300 bg-orange-50/40'
+    }`}>
       {children}
     </div>
   )
