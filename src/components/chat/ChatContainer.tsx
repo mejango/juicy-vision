@@ -843,7 +843,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   }, [])
 
   // Mobile scroll detection - enable compact mode when scrolled
+  // In bottomOnly mode WelcomeLayout owns compact state via juice:dock-scroll;
+  // toggling it from scroll position here fights scroll anchoring (scrollTop jumps)
   useEffect(() => {
+    if (bottomOnly) return
     const dock = dockRef.current
     if (!dock) return
 
@@ -865,7 +868,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
     dock.addEventListener('scroll', handleScroll, { passive: true })
     return () => dock.removeEventListener('scroll', handleScroll)
-  }, [dockScrollEnabled])
+  }, [dockScrollEnabled, bottomOnly])
 
   // Listen for empty AI responses - show "Nudge" button when Claude stops without output
   useEffect(() => {
