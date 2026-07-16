@@ -14,7 +14,6 @@ import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyDeployRevnetParams } from '../../utils/transactionVerification'
-import { type JBSuckerBridge } from '../../utils/suckerConfig'
 import { isIpfsUri } from '../../utils/ipfs'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 
@@ -43,8 +42,6 @@ interface DeployRevnetModalProps {
   chainIds: number[]
   stageConfigurations: REVStageConfig[]
   autoDeploySuckers: boolean
-  /** Bridge infrastructure for auto-generated suckers ("ccip" default). */
-  suckerBridge?: JBSuckerBridge
   /** Optional 721 tiers hook (NFT shop) to deploy atomically with the revnet. */
   deployTiersHookConfig?: JBDeployTiersHookConfig
 }
@@ -60,7 +57,6 @@ export default function DeployRevnetModal({
   chainIds,
   stageConfigurations,
   autoDeploySuckers,
-  suckerBridge,
   deployTiersHookConfig,
 }: DeployRevnetModalProps) {
   const { theme } = useThemeStore()
@@ -243,7 +239,6 @@ export default function DeployRevnetModal({
         ticker,
         tagline,
         projectUri,
-        suckerBridge,
         configureSuckers: autoDeploySuckers && chainIds.length > 1,
         deployTiersHookConfig,
       })

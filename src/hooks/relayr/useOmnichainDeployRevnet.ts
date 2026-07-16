@@ -18,7 +18,6 @@ import { REV_DEPLOYER } from '../../constants'
 import { getSafetyPublicClient } from '../../utils/transactionSafety'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
-import type { JBSuckerBridge } from '../../utils/suckerConfig'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
 
 export interface OmnichainDeployRevnetParams {
@@ -33,8 +32,6 @@ export interface OmnichainDeployRevnetParams {
   chainConfigs?: REVChainConfigOverride[]      // Per-chain overrides for ERC20 tokens
   /** Include cross-chain suckers in the atomic revnet deployment. */
   configureSuckers?: boolean
-  /** Bridge infrastructure for auto-generated suckers ("ccip" default). */
-  suckerBridge?: JBSuckerBridge
   suckerDeploymentConfiguration?: REVSuckerDeploymentConfig
   /** When set, deploys a 721 tiers hook (NFT shop) atomically with the revnet. */
   deployTiersHookConfig?: JBDeployTiersHookConfig
@@ -384,7 +381,6 @@ export function useOmnichainDeployRevnet(
         terminalConfigurations,
         chainConfigs,
         configureSuckers,
-        suckerBridge: params.suckerBridge,
         suckerDeploymentConfiguration,
         deployTiersHookConfig,
         creationFeesWei,
