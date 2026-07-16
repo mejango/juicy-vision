@@ -134,6 +134,7 @@ function AcceptPill(props: { label: string; selected: boolean; onClick: () => vo
 // ---------------------------------------------------------------------------
 
 function ChainBridgeBlock({ state, update }: StepProps) {
+  const isDark = useIsDark()
   // Transient UI flag (the source's state._bridgeOpen) — lives outside draft state.
   const [bridgeOpen, setBridgeOpen] = useState(false)
   const unc = uncoveredPairs(state)
@@ -157,13 +158,19 @@ function ChainBridgeBlock({ state, update }: StepProps) {
 
   return (
     <FieldBlock label={null}>
-      <div className="flex items-baseline gap-2.5 mb-1">
-        <span className="block text-xs font-medium">On</span>
-        <Select
+      <div className="flex items-baseline gap-1.5 mb-1.5">
+        <span className={`block text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>On</span>
+        {/* Inline, borderless — the website's paybox-mode look, part of the sentence */}
+        <select
           value={IS_TESTNET ? 'testnet' : 'mainnet'}
-          onChange={(v) => switchNetwork(v as 'mainnet' | 'testnet')}
-          options={[['mainnet', 'Mainnets'], ['testnet', 'Testnets']]}
-        />
+          onChange={(e) => switchNetwork(e.target.value as 'mainnet' | 'testnet')}
+          className={`select-caret bg-transparent border-none pl-0 pr-5 text-xs font-semibold cursor-pointer ${
+            isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          <option value="mainnet">Mainnets</option>
+          <option value="testnet">Testnets</option>
+        </select>
       </div>
       <div className="flex flex-wrap gap-2">
         {ALL_CHAIN_IDS.map((id) => {
