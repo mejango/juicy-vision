@@ -70,6 +70,38 @@ projectsRouter.post(
   },
 );
 
+// POST /projects/pin-file - Pin project/item media (logo, cover image, item media).
+const PIN_FILE_MAX_BYTES = 25 * 1024 * 1024;
+const PIN_FILE_ALLOWED_TYPES = /^(image\/|video\/|audio\/|application\/pdf$|text\/plain$)/;
+projectsRouter.post(
+  '/pin-file',
+  optionalAuth,
+  rateLimitByUser('toolPinToIpfs'),
+  async (c) => {
+    try {
+      const body = await c.req.parseBody();
+      const file = body.file;
+      const name = typeof body.name === 'string' ? body.name.slice(0, 255) : '';
+      if (!(file instanceof File) || !name) {
+        return c.json({ success: false, error: 'A file and a name are required' }, 400);
+      }
+      if (file.size > PIN_FILE_MAX_BYTES) {
+        return c.json({ success: false, error: 'File is too large (max 25 MB)' }, 413);
+      }
+      const mimeType = file.type || 'application/octet-stream';
+      if (!PIN_FILE_ALLOWED_TYPES.test(mimeType)) {
+        return c.json({ success: false, error: 'Unsupported file type' }, 415);
+      }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const result = await getIpfsClient().pinFile(bytes, name, mimeType);
+      return c.json({ success: true, data: { uri: `ipfs://${result.cid}` } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to pin file';
+      return c.json({ success: false, error: message }, 502);
+    }
+  },
+);
+
 // POST /projects - Create a new project record
 projectsRouter.post(
   '/',

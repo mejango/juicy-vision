@@ -328,6 +328,18 @@ export interface REVStageConfig {
   issuanceCutPercent: number
   cashOutTaxRate: number
   extraMetadata: number
+  /** Explicit split rows (out of 1e9, must sum ≤ splitPercent semantics per REVDeployer);
+   *  when absent a single 100% operator split is synthesized from splitPercent. */
+  splits?: Array<{
+    percent: number
+    projectId: number | bigint
+    beneficiary: string
+    preferAddToBalance: boolean
+    lockedUntil: number
+    hook: string
+  }>
+  /** Auto-issuance entries minted when the stage starts; dropped when absent. */
+  autoIssuances?: Array<{ chainId: number; count: string; beneficiary: string }>
 }
 
 export interface JBDeployRevnetRequest {
@@ -537,18 +549,31 @@ export function encodeDeployRevnetTransaction(
     scopeCashOutsToLocalBalances: false,
     stageConfigurations: request.stageConfigurations.map(sc => ({
       startsAtOrAfter: sc.startsAtOrAfter,
-      autoIssuances: [],
+      autoIssuances: (sc.autoIssuances ?? []).map(ai => ({
+        chainId: ai.chainId,
+        count: BigInt(ai.count),
+        beneficiary: ai.beneficiary as Address,
+      })),
       splitPercent: sc.splitPercent,
-      splits: sc.splitPercent > 0
-        ? [{
-            percent: 1_000_000_000,
-            projectId: 0n,
-            beneficiary: request.splitOperator as Address,
-            preferAddToBalance: false,
-            lockedUntil: 0,
-            hook: ZERO_ADDRESS,
-          }]
-        : [],
+      splits: sc.splits
+        ? sc.splits.map(s => ({
+            percent: s.percent,
+            projectId: BigInt(s.projectId),
+            beneficiary: s.beneficiary as Address,
+            preferAddToBalance: s.preferAddToBalance,
+            lockedUntil: s.lockedUntil,
+            hook: s.hook as Address,
+          }))
+        : sc.splitPercent > 0
+          ? [{
+              percent: 1_000_000_000,
+              projectId: 0n,
+              beneficiary: request.splitOperator as Address,
+              preferAddToBalance: false,
+              lockedUntil: 0,
+              hook: ZERO_ADDRESS,
+            }]
+          : [],
       initialIssuance: BigInt(sc.initialIssuance),
       issuanceCutFrequency: sc.issuanceCutFrequency,
       issuanceCutPercent: sc.issuanceCutPercent,

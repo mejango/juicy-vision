@@ -6,6 +6,7 @@ import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { useOmnichainLaunchProject } from '../../hooks/relayr'
 import { type JBRulesetConfig, type JBTerminalConfig } from '../../services/relayr'
+import { type ChainConfigOverride } from '../../services/omnichainDeployer'
 import {
   fetchProjectCreationFee,
   type JBDeployTiersHookConfig,
@@ -25,7 +26,11 @@ interface LaunchProjectModalProps {
   projectUri: string
   chainIds: number[]
   rulesetConfig: JBRulesetConfig
+  /** Optional multi-ruleset launch (staged rulesets); overrides rulesetConfig when set. */
+  rulesetConfigs?: JBRulesetConfig[]
   terminalConfigurations: JBTerminalConfig[]
+  /** Optional per-chain terminal/tier overrides (e.g. chain-specific USDC contexts). */
+  chainConfigs?: ChainConfigOverride[]
   synchronizedStartTime: number
   memo: string
   /**
@@ -43,7 +48,9 @@ export default function LaunchProjectModal({
   projectUri,
   chainIds,
   rulesetConfig,
+  rulesetConfigs,
   terminalConfigurations,
+  chainConfigs,
   synchronizedStartTime,
   memo,
   deployTiersHookConfig,
@@ -161,11 +168,11 @@ export default function LaunchProjectModal({
       owner: effectiveOwner as `0x${string}`,
       projectUri,
       chainIds,
-      rulesetConfigurations: [rulesetConfig],
+      rulesetConfigurations: rulesetConfigs ?? [rulesetConfig],
       terminalConfigurations,
       memo,
     })
-  }, [effectiveOwner, projectUri, chainIds, rulesetConfig, terminalConfigurations, memo])
+  }, [effectiveOwner, projectUri, chainIds, rulesetConfig, rulesetConfigs, terminalConfigurations, memo])
 
   const hasWarnings = verificationResult.doubts.length > 0
   const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
@@ -232,8 +239,9 @@ export default function LaunchProjectModal({
         chainIds,
         owner: effectiveOwner,
         projectUri,
-        rulesetConfigurations: [rulesetConfig],
+        rulesetConfigurations: rulesetConfigs ?? [rulesetConfig],
         terminalConfigurations,
+        chainConfigs,
         memo,
         forceSelfCustody,
         deployTiersHookConfig,
@@ -241,7 +249,7 @@ export default function LaunchProjectModal({
     } catch (err) {
       setCreationFeeError(err instanceof Error ? err.message : 'Project creation fee unavailable')
     }
-  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, terminalConfigurations, memo, deployTiersHookConfig, launch, creationFeesWei, reviewedMode, connectedAddress, assertCurrentAccount])
+  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, rulesetConfigs, terminalConfigurations, chainConfigs, memo, deployTiersHookConfig, launch, creationFeesWei, reviewedMode, connectedAddress, assertCurrentAccount])
 
   const handleClose = useCallback(() => {
     reset()

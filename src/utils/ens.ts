@@ -141,6 +141,25 @@ export async function resolveEnsNames(addresses: string[]): Promise<(string | nu
   return results
 }
 
+// Forward-resolve an ENS name (e.g. "jango.eth") to an address. Cached in memory.
+const forwardCache = new Map<string, { address: string | null; timestamp: number }>()
+
+export async function resolveEnsToAddress(name: string): Promise<string | null> {
+  const key = name.trim().toLowerCase()
+  if (!key || !key.includes('.')) return null
+  const cached = forwardCache.get(key)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.address
+  try {
+    const address = await client.getEnsAddress({ name: key })
+    const result = address ? getAddress(address) : null
+    forwardCache.set(key, { address: result, timestamp: Date.now() })
+    return result
+  } catch {
+    forwardCache.set(key, { address: null, timestamp: Date.now() })
+    return null
+  }
+}
+
 // Truncate address for display
 export function truncateAddress(address: string): string {
   if (!address) return ''
