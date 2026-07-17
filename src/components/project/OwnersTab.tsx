@@ -8,7 +8,7 @@
  * rendered here; every other subtab comes from the dashboard via `renderSubtab`.
  */
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useThemeStore } from '../../stores'
 import { CHAINS } from '../../constants'
 import { ownersSubtabsFor, type OwnersSubtabId } from './flavor'
@@ -87,11 +87,24 @@ export default function OwnersTab({
   // open and stays mounted (hidden) after, so its fetches don't re-fire.
   const [visited, setVisited] = useState<OwnersSubtabId[]>([validInitial])
 
-  const show = (id: OwnersSubtabId) => {
-    setActive(id)
-    setVisited(previous => (previous.includes(id) ? previous : [...previous, id]))
-    onSubtabChange?.(id)
-  }
+  const show = useCallback(
+    (id: OwnersSubtabId) => {
+      setActive(id)
+      setVisited(previous => (previous.includes(id) ? previous : [...previous, id]))
+      onSubtabChange?.(id)
+    },
+    [onSubtabChange],
+  )
+
+  // The Accounts holders-table "Market [AMM]" row jumps here via a window event.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const target = (event as CustomEvent<string>).detail as OwnersSubtabId
+      if (subtabs.some(subtab => subtab.id === target)) show(target)
+    }
+    window.addEventListener('juice:goto-owners-subtab', handler)
+    return () => window.removeEventListener('juice:goto-owners-subtab', handler)
+  }, [subtabs, show])
 
   const keyText = isDark ? 'text-gray-500' : 'text-gray-400'
   const valueText = isDark ? 'text-gray-200' : 'text-gray-800'

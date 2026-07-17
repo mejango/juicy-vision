@@ -44,6 +44,7 @@ import { CHART_COLORS, PIE_COLORS } from '../../dynamic/charts/utils'
 import { RemoveLiquidityModal } from './RemoveLiquidityModal'
 import {
   ammChainAvailable,
+  POOL_MANAGER_BY_CHAIN,
   buildSplitHookActionTx,
   lpGetAmountsForLiquidity,
   lpHookErrorText,
@@ -86,6 +87,46 @@ function formatCompact(value: bigint, decimals: number): string {
 
 function formatBalance(value: bigint, decimals: number, symbol: string): string {
   return `${formatCompact(value, decimals)} ${symbol}`
+}
+
+/**
+ * A card heading with a kind tag ([AMM] / [LP]) and the contract address it
+ * refers to — matches the website's "Market [AMM] 0x…" / "Split hook [LP] 0x…".
+ */
+function SectionHeading({
+  title,
+  tag,
+  tagTitle,
+  address,
+  isDark,
+}: {
+  title: string
+  tag: string
+  tagTitle: string
+  address?: Address | null
+  isDark: boolean
+}) {
+  return (
+    <div className={`flex flex-wrap items-center gap-2 mb-3 text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+      <span>{title}</span>
+      <span
+        title={tagTitle}
+        className={`px-1 py-0.5 border text-[10px] normal-case tracking-normal ${
+          isDark ? 'border-white/20 text-gray-300' : 'border-gray-300 text-gray-600'
+        }`}
+      >
+        {tag}
+      </span>
+      {address ? (
+        <span
+          title={address}
+          className={`font-mono text-[10px] normal-case tracking-normal ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+        >
+          {truncateAddress(address)}
+        </span>
+      ) : null}
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -527,7 +568,8 @@ function SplitHookChainBlock({
             }`,
           )
         : null}
-      {kv('Claimable LP fees', formatBalance(state.claimableFees, 18, symbol))}
+      {/* Fees are routed in the terminal/accounting token (ETH/USDC), NOT the 18-dec project token. */}
+      {kv('Claimable LP fees', formatBalance(state.claimableFees, state.terminalDecimals, state.terminalSymbol))}
 
       <div className="mt-2 space-y-2">
         {!state.hasPool ? (
@@ -640,9 +682,13 @@ function SplitHookCard({ project, chainIds, chainProjects }: MarketSubtabProps) 
 
   return (
     <div className={`border p-4 ${isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'}`}>
-      <div className={`text-xs font-medium uppercase tracking-wide mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-        Split hook
-      </div>
+      <SectionHeading
+        title="Split hook"
+        tag="LP"
+        tagTitle="Uniswap V4 LP split hook — pools reserved tokens"
+        address={rows[0]?.state?.hookAddress ?? splitHookAddressFor(rows[0]?.chainId ?? 0)}
+        isDark={isDark}
+      />
       <div className="mb-3">
         <ExplainerMessage>
           Reserved {symbol} routed to this hook accumulates until the pool is seeded: Deploy pool cashes out part of the
@@ -737,7 +783,13 @@ export function MarketSubtab({ project, chainIds, chainProjects }: MarketSubtabP
   return (
     <div className="space-y-4">
       <div className={cardClass}>
-        <div className={cardTitleClass}>Market</div>
+        <SectionHeading
+          title="Market"
+          tag="AMM"
+          tagTitle="Uniswap V4 pool holding pooled LP liquidity"
+          address={ammChainAvailable(chainId) ? POOL_MANAGER_BY_CHAIN[chainId] : null}
+          isDark={isDark}
+        />
         <div className="mb-3">
           <ExplainerMessage>
             This project&rsquo;s token trades on a Uniswap pool. The market is used to fill orders that give payers more{' '}
