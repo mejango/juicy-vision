@@ -20,6 +20,7 @@ import {
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
+import type { JBSuckerBridge } from '../../utils/suckerConfig'
 import {
   ERC2771_FORWARDER_ADDRESS,
   ERC2771_FORWARDER_ABI,
@@ -40,6 +41,8 @@ export interface OmnichainLaunchProjectParams {
   memo: string
   suckerDeploymentConfiguration?: JBSuckerDeploymentConfig  // Optional: deploy suckers atomically
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides (e.g., different USDC addresses)
+  /** Bridge infrastructure for auto-generated suckers ("ccip" default). */
+  suckerBridge?: JBSuckerBridge
   forceSelfCustody?: boolean  // Force wallet signing even if managed mode is available
   /**
    * Optional: deploy a 721 NFT tiers hook WITH the project atomically.
@@ -393,6 +396,7 @@ export function useOmnichainLaunchProject(
             suckerDeploymentConfiguration,
             chainConfigs,
             creationFeesWei,
+            suckerBridge: params.suckerBridge,
           })
         : buildOmnichainLaunchTransactions({
             chainIds,
@@ -404,6 +408,7 @@ export function useOmnichainLaunchProject(
             suckerDeploymentConfiguration,
             chainConfigs,
             creationFeesWei,
+            suckerBridge: params.suckerBridge,
           })
 
       const transactions = txs.map(tx => ({

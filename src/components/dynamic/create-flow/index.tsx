@@ -309,6 +309,7 @@ export default function CreateFlowWizard({ defaultChainIds, onClose }: CreateFlo
           rulesetConfigs={launchConfigs.rulesetConfigs}
           terminalConfigurations={launchConfigs.terminalConfigurations}
           chainConfigs={launchConfigs.chainConfigs}
+          suckerBridge={state.suckerType}
           synchronizedStartTime={synchronizedStartTime}
           memo=""
           deployTiersHookConfig={deployTiersConfig}
@@ -326,6 +327,7 @@ export default function CreateFlowWizard({ defaultChainIds, onClose }: CreateFlo
           chainIds={state.chainIds}
           stageConfigurations={revnetStageConfigs}
           autoDeploySuckers={state.chainIds.length > 1}
+          suckerBridge={state.suckerType}
           deployTiersHookConfig={deployTiersConfig}
         />
       )}

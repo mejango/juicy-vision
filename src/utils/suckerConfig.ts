@@ -10,6 +10,8 @@
  */
 
 import { toHex, toBytes, pad } from 'viem'
+import { NATIVE_SUCKER_DEPLOYER_ADDRESSES as SDK_NATIVE_SUCKER_DEPLOYER_ADDRESSES } from '@bananapus/nana-sdk-core'
+import type { JBSuckerBridge } from '@bananapus/nana-sdk-core'
 
 // Native token address used by Juicebox
 export const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
@@ -155,6 +157,28 @@ export interface JBSuckerDeploymentConfig {
   salt: `0x${string}`
 }
 
+/**
+ * The bridge infrastructure to deploy v6 suckers on — the SDK's type:
+ *
+ * - `"ccip"`: Chainlink CCIP suckers. Connect any pair of supported chains and
+ *   can map any supported asset (USDC bridges as canonical USDC via CCTP).
+ * - `"native"`: OP/Base/Arbitrum standard-bridge suckers. Strongest trust
+ *   guarantees, but only connect Ethereum with an L2 (never L2<->L2), only map
+ *   the native token, and L2->L1 exits wait out the ~7-day challenge period.
+ * - `"both"`: one native sucker AND one CCIP sucker per pair, for redundancy.
+ *   Pairs or assets native bridges can't serve are covered by CCIP alone.
+ */
+export type { JBSuckerBridge } from '@bananapus/nana-sdk-core'
+
+/**
+ * Native-bridge sucker deployer addresses from the v6 SDK registry (keyed by
+ * local chain then remote chain; only Ethereum<->L2 edges exist), flattened to
+ * v6. Cross-verified against deploy-all-v6/deployments — same address on both
+ * sides of each pair, mainnet and sepolia families alike.
+ */
+export const NATIVE_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${string}`>> =
+  SDK_NATIVE_SUCKER_DEPLOYER_ADDRESSES[6] as Record<number, Record<number, `0x${string}`>>
+
 export interface ParseSuckerDeployerConfigOptions {
   /**
    * Per-chain token addresses for bridging.
@@ -162,6 +186,11 @@ export interface ParseSuckerDeployerConfigOptions {
    * If not provided, defaults to NATIVE_TOKEN for all chains.
    */
   tokenAddresses?: Record<number, `0x${string}`>
+  /**
+   * The bridge infrastructure to deploy suckers on. Defaults to "ccip"
+   * (the previous behavior of every caller).
+   */
+  bridge?: JBSuckerBridge
 }
 
 /**
@@ -198,39 +227,71 @@ export function parseSuckerDeployerConfig(
 ): JBSuckerDeploymentConfig {
   // Get all chains except the target chain
   const remoteChainIds = allChainIds.filter(chainId => chainId !== targetChainId)
+  const bridge: JBSuckerBridge = opts.bridge ?? 'ccip'
 
   // Determine local token for this chain
   // Use provided token address if available, otherwise NATIVE_TOKEN
   const localToken = opts.tokenAddresses?.[targetChainId] ?? NATIVE_TOKEN as `0x${string}`
+  const localIsNative = localToken.toLowerCase() === NATIVE_TOKEN.toLowerCase()
 
-  // Build deployer configurations for each remote chain
-  const deployerConfigurations: JBSuckerDeployerConfig[] = remoteChainIds
-    .map((remoteChainId): JBSuckerDeployerConfig | null => {
-      const deployer = CCIP_SUCKER_DEPLOYER_ADDRESSES[targetChainId]?.[remoteChainId]
+  // The CCIP sucker config for one (local -> remote) pair, or null when the
+  // route-specific deployer is absent (reported, never silently miswired).
+  const ccipConfigFor = (remoteChainId: number): JBSuckerDeployerConfig | null => {
+    const deployer = CCIP_SUCKER_DEPLOYER_ADDRESSES[targetChainId]?.[remoteChainId]
+    if (!deployer) {
+      console.warn(`No CCIP sucker deployer found for ${targetChainId} -> ${remoteChainId}`)
+      return null
+    }
+    const remoteToken = opts.tokenAddresses?.[remoteChainId] ?? NATIVE_TOKEN as `0x${string}`
+    return {
+      deployer,
+      // Zero peer = default same-address deterministic peer sucker
+      peer: ZERO_BYTES32,
+      mappings: [
+        {
+          localToken,
+          minGas: 200_000,
+          // V6 expects the remote token as bytes32 (left-padded address)
+          remoteToken: addressToBytes32(remoteToken),
+        },
+      ],
+    }
+  }
 
-      if (!deployer) {
-        console.warn(`No CCIP sucker deployer found for ${targetChainId} -> ${remoteChainId}`)
-        return null
-      }
-
-      // Determine remote token for the target chain
-      // Use provided token address if available, otherwise NATIVE_TOKEN
-      const remoteToken = opts.tokenAddresses?.[remoteChainId] ?? NATIVE_TOKEN as `0x${string}`
-
+  // The native-bridge sucker config for one pair, or null when the pair/asset
+  // can't go native and CCIP covers it (bridge "both"). SDK semantics
+  // (nana-sdk-core 91c2361): standard bridges deliver bridge-wrapped tokens
+  // (USDC.e, never canonical USDC), which would strand funds on the remote
+  // sucker — only the native token may map over a native bridge.
+  const nativeConfigFor = (remoteChainId: number): JBSuckerDeployerConfig | null => {
+    const deployer = NATIVE_SUCKER_DEPLOYER_ADDRESSES[targetChainId]?.[remoteChainId]
+    if (deployer && localIsNative) {
       return {
         deployer,
-        // Zero peer = default same-address deterministic peer sucker
         peer: ZERO_BYTES32,
         mappings: [
           {
-            localToken,
+            localToken: NATIVE_TOKEN as `0x${string}`,
             minGas: 200_000,
-            // V6 expects the remote token as bytes32 (left-padded address)
-            remoteToken: addressToBytes32(remoteToken),
+            remoteToken: addressToBytes32(NATIVE_TOKEN as `0x${string}`),
           },
         ],
       }
-    })
+    }
+    if (bridge === 'both') return null // CCIP config covers this pair/asset
+    throw new Error(
+      deployer
+        ? `Only the native token can bridge over native bridges (they deliver bridge-wrapped tokens like USDC.e); use bridge "ccip" or "both" to map other assets`
+        : `No native bridge between ${targetChainId} and ${remoteChainId} (native bridges only connect Ethereum with an L2); use bridge "ccip" or "both"`,
+    )
+  }
+
+  // One config per (remote chain, bridge kind) pair.
+  const deployerConfigurations: JBSuckerDeployerConfig[] = remoteChainIds
+    .flatMap((remoteChainId): (JBSuckerDeployerConfig | null)[] => [
+      bridge === 'ccip' ? null : nativeConfigFor(remoteChainId),
+      bridge === 'native' ? null : ccipConfigFor(remoteChainId),
+    ])
     .filter((config): config is JBSuckerDeployerConfig => config !== null)
 
   return {
