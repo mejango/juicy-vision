@@ -20,6 +20,16 @@ or fund-access structs from the model. Preserve locked or advanced routing witho
 offering to modify it. Payout percentages may total at most 100 percent, amounts
 must use the live token decimals, and the review must distinguish the user-approved
 gross amount from the expected net after any protocol fee.
+
+Fund-access semantics the model must get right when advising:
+- EMPTY fund access limits mean ZERO payouts (a fully locked treasury), not
+  unlimited. "Unlimited" is the explicit maximum (uint224 max), which the form
+  offers as a labeled choice.
+- Currency-denominated limit amounts use the terminal token's accounting decimals:
+  a $500 USD limit on a 6-decimal USDC context is 500e6, never 500e18.
+- Payout limits reset each cycle; surplus allowances apply once per ruleset.
+- Limits are per chain: the same limit configured on N chains allows N times the
+  amount in total.
 `;
 
 export const SPLITS_LIMITS_HINTS = [
@@ -36,4 +46,4 @@ export const SPLITS_LIMITS_HINTS = [
   'splitGroups',
 ];
 
-export const SPLITS_LIMITS_TOKEN_ESTIMATE = 190;
+export const SPLITS_LIMITS_TOKEN_ESTIMATE = 330;

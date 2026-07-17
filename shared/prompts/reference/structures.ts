@@ -12,6 +12,7 @@ export const STRUCTURES_CONTEXT = `
 { mustStartAtOrAfter: uint48, duration: uint32, weight: uint112, weightCutPercent: uint32,
   approvalHook: address, metadata: JBRulesetMetadata, splitGroups: JBSplitGroup[], fundAccessLimitGroups: JBFundAccessLimitGroup[] }
 \`\`\`
+Scales: weight is 18-decimal fixed point (1 = sentinel: inherit the decayed weight; 0 = no issuance); weightCutPercent out of 1_000_000_000.
 
 **JBRulesetMetadata:**
 \`\`\`
@@ -22,6 +23,7 @@ export const STRUCTURES_CONTEXT = `
   holdFees: bool, scopeCashOutsToLocalBalances: bool, useDataHookForPay: bool,
   useDataHookForCashOut: bool, dataHook: address, metadata: uint16 }
 \`\`\`
+Scales: reservedPercent and cashOutTaxRate out of 10_000; metadata has only 14 usable bits (upper 2 masked). Reads return metadata packed into a single uint256, not this struct.
 
 **JBSplitGroup:** \`{ groupId: uint256, splits: JBSplit[] }\`
 
@@ -39,7 +41,7 @@ export const STRUCTURES_CONTEXT = `
 
 **JBSuckerDeployerConfig:** \`{ deployer: address, peer: bytes32, mappings: JBTokenMapping[] }\` (peer = zero bytes32 for the default same-address peer sucker)
 
-**JBTokenMapping:** \`{ localToken: address, minGas: uint32, remoteToken: bytes32 }\` (remoteToken = remote token address left-padded to 32 bytes; NO minBridgeAmount in V6)
+**JBTokenMapping:** \`{ localToken: address, minGas: uint32, remoteToken: bytes32 }\` (remoteToken = remote token address left-padded to 32 bytes; NO minBridgeAmount in V6; minGas >= 200_000 for ERC-20 mappings)
 
 **JB721TierConfig (V6):**
 \`\`\`
@@ -50,7 +52,7 @@ export const STRUCTURES_CONTEXT = `
 
 **JB721TierConfigFlags:** \`{ allowOwnerMint: bool, useReserveBeneficiaryAsDefault: bool, transfersPausable: bool, useVotingUnits: bool, cantBeRemoved: bool, cantIncreaseDiscountPercent: bool, cantBuyWithCredits: bool }\`
 
-\`discountPercent\` uses a denominator of 200 (20% off = 40 onchain), and tiers must be sorted by category.
+\`discountPercent\` uses a denominator of 200 (20% off = 40 onchain), and tiers must be sorted by category. \`initialSupply\` "unlimited" is the convention 999_999_999 — 0 and uint32 max both revert.
 
 **JB721InitTiersConfig:** \`{ tiers: JB721TierConfig[], currency: uint32, decimals: uint8 }\`
 
@@ -63,6 +65,9 @@ export const STRUCTURES_CONTEXT = `
 **JB721TiersHookFlags:** \`{ noNewTiersWithReserves: bool, noNewTiersWithVotes: bool, noNewTiersWithOwnerMinting: bool, preventOverspending: bool, issueTokensForSplits: bool }\`
 
 **JBLaunchProjectConfig:** \`{ projectUri: string, rulesetConfigurations: JBPayDataHookRulesetConfig[], terminalConfigurations: JBTerminalConfig[], memo: string }\`
+(JBPayDataHookRulesetConfig = JBRulesetConfig minus the metadata fields the 721 hook owns; the hook fills dataHook/useDataHookForPay itself.)
+
+**JBPermissionsData:** \`{ operator: address, projectId: uint64, permissionIds: uint8[] }\` — setPermissionsFor REPLACES the operator's whole permission set; always include existing IDs to keep.
 `;
 
 export const STRUCTURES_HINTS = [
@@ -78,4 +83,4 @@ export const STRUCTURES_HINTS = [
   'JBSuckerDeploymentConfig',
 ];
 
-export const STRUCTURES_TOKEN_ESTIMATE = 600;
+export const STRUCTURES_TOKEN_ESTIMATE = 700;
