@@ -725,3 +725,78 @@ export function buildInitializeBuybackPoolRequest(args: {
     }),
   }
 }
+
+// ─── Buyback pool-init state ─────────────────────────────────────────────────
+
+const TWAP_WINDOW_OF_ABI = [
+  {
+    type: 'function',
+    name: 'twapWindowOf',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'terminalToken', type: 'address' },
+    ],
+    outputs: [{ type: 'uint256' }],
+  },
+] as const
+
+export interface PoolProbe {
+  /** Pair label, e.g. 'native' or 'USDC'. */
+  label: string
+  /** The hook's twapWindowOf for this pair — 0 means the pool isn't initialized. */
+  twapWindow: number
+}
+
+/**
+ * Derive the human pool-init state from a hook-set flag + per-pair TWAP probes.
+ * A non-zero TWAP window means that pair's Uniswap pool is initialized on the
+ * hook; every window 0 means the pool was never initialized. Pure — unit tested.
+ */
+export function derivePoolInitState(hookIsSet: boolean, probes: PoolProbe[]): string {
+  if (!hookIsSet) return 'no hook set'
+  const init = probes.filter(probe => probe.twapWindow > 0)
+  if (!init.length) return 'not initialized'
+  return init.map(probe => `${probe.label} pool (TWAP ${probe.twapWindow}s)`).join(', ')
+}
+
+/**
+ * Read the buyback pool-init state for a project on one chain: resolve the
+ * registered hook, then probe its `twapWindowOf` for the native pair (zero
+ * address — the hook stores native pool keys under address(0)) and the chain's
+ * USDC pair. Returns a human string, or null when unreadable. There is no scalar
+ * getter for the internal PoolKey, so the TWAP window is the init signal.
+ */
+export async function readPoolInitState(chainId: number, projectId: bigint): Promise<string | null> {
+  try {
+    const hook = await readBuybackHookOf(chainId, projectId)
+    if (!hook) return derivePoolInitState(false, [])
+
+    const { publicClientFor } = await import('./projectTx')
+    const { USDC_ADDRESSES } = await import('../constants/chains')
+    const client = publicClientFor(chainId)
+
+    const pairs: { label: string; token: Address }[] = [{ label: 'native', token: ZERO as Address }]
+    const usdc = (USDC_ADDRESSES as Record<number, Address>)[chainId]
+    if (usdc) pairs.push({ label: 'USDC', token: usdc })
+
+    const probes = await Promise.all(
+      pairs.map(async (pair): Promise<PoolProbe> => {
+        try {
+          const window = (await client.readContract({
+            address: hook,
+            abi: TWAP_WINDOW_OF_ABI,
+            functionName: 'twapWindowOf',
+            args: [projectId, pair.token],
+          })) as bigint
+          return { label: pair.label, twapWindow: Number(window) }
+        } catch {
+          return { label: pair.label, twapWindow: 0 }
+        }
+      }),
+    )
+    return derivePoolInitState(true, probes)
+  } catch {
+    return null
+  }
+}

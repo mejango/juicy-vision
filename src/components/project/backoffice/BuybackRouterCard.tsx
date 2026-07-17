@@ -23,6 +23,7 @@ import {
   buildSetBuybackHookRequest,
   buildSetRouterTerminalRequest,
   readBuybackHookOf,
+  readPoolInitState,
   readRouterTerminalOf,
 } from '../../../services/permissionsAdmin'
 import { BackOfficeCard, BackOfficeModal, ChainRunRows, DangerGate, chainName, shortAddress, type ChainRunState } from './shared'
@@ -76,6 +77,12 @@ interface CurrentRow {
   value: Address | null
 }
 
+/** Per-chain buyback pool-init state string (null = unreadable / not this project's chain). */
+interface PoolInitRow {
+  chainId: number
+  state: string | null
+}
+
 /** Uniswap fee is in hundredths of a bip; 1_000_000 == 100%. */
 const MAX_UNISWAP_FEE = 1_000_000
 
@@ -123,6 +130,17 @@ function summarizeCurrent(rows: CurrentRow[]): string {
   return rows.map(row => `${chainName(row.chainId)} ${row.value ? shortAddress(row.value) : 'unset'}`).join(' | ')
 }
 
+/** Collapse per-chain pool-init state strings for the card + modal "Pool:" line. */
+function summarizePoolInit(rows: PoolInitRow[]): string {
+  const known = rows.filter(row => row.state != null)
+  if (!known.length) return 'unreadable'
+  const distinct = [...new Set(known.map(row => row.state!))]
+  if (distinct.length === 1) {
+    return `${distinct[0]}${known.length === rows.length ? '' : ` (${known.length}/${rows.length} chains)`}`
+  }
+  return rows.map(row => `${chainName(row.chainId)}: ${row.state ?? '—'}`).join(' | ')
+}
+
 // ─── Action modal ────────────────────────────────────────────────────────────
 
 function BuybackRouterModal({
@@ -130,6 +148,7 @@ function BuybackRouterModal({
   resolveProjectId,
   chainIds,
   current,
+  stateSummary,
   onClose,
   onChanged,
 }: {
@@ -138,6 +157,8 @@ function BuybackRouterModal({
   chainIds: number[]
   /** The per-chain registry value shown at review time (the reverify snapshot). */
   current: CurrentRow[]
+  /** Pre-summarized state line to show as "Current:"; falls back to the registry value when absent. */
+  stateSummary?: string
   onClose: () => void
   onChanged: () => void
 }) {
@@ -261,8 +282,8 @@ function BuybackRouterModal({
     <BackOfficeModal title={action.title} onClose={onClose} busy={anyRunning} isDark={isDark}>
       <p className={`text-sm leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{action.note}</p>
       <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-        Current: {summarizeCurrent(current)}. Only the project's owner/operator can execute — anyone else's
-        transaction fails in simulation.
+        Current: {stateSummary ?? summarizeCurrent(current)}. Only the project's owner/operator can execute — anyone
+        else's transaction fails in simulation.
       </p>
 
       {action.kind === 'initPool' ? (
@@ -318,12 +339,16 @@ export function BuybackRouterCard({ resolveProjectId, chainIds }: BuybackRouterC
     setTerminal: null,
     initPool: null,
   })
+  // Pool-init state for the initPool action's "Current:" line: whether the hook's
+  // Uniswap pool is initialized (TWAP window set), rather than the hook address.
+  const [poolInit, setPoolInit] = useState<PoolInitRow[] | null>(null)
   const [open, setOpen] = useState<ActionDef | null>(null)
   const [refreshNonce, setRefreshNonce] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     setCurrentByKind({ setHook: null, setTerminal: null, initPool: null })
+    setPoolInit(null)
     const load = async (read: ActionDef['read']): Promise<CurrentRow[]> =>
       Promise.all(
         chainIds.map(async chainId => {
@@ -338,10 +363,21 @@ export function BuybackRouterCard({ resolveProjectId, chainIds }: BuybackRouterC
           }
         }),
       )
-    Promise.all([load(readBuybackHookOf), load(readRouterTerminalOf)]).then(([hooks, terminals]) => {
-      if (cancelled) return
-      setCurrentByKind({ setHook: hooks, setTerminal: terminals, initPool: hooks })
-    })
+    const loadPoolInit = async (): Promise<PoolInitRow[]> =>
+      Promise.all(
+        chainIds.map(async chainId => {
+          const pid = resolveProjectId(chainId)
+          if (pid == null) return { chainId, state: null }
+          return { chainId, state: await readPoolInitState(chainId, pid) }
+        }),
+      )
+    Promise.all([load(readBuybackHookOf), load(readRouterTerminalOf), loadPoolInit()]).then(
+      ([hooks, terminals, pools]) => {
+        if (cancelled) return
+        setCurrentByKind({ setHook: hooks, setTerminal: terminals, initPool: hooks })
+        setPoolInit(pools)
+      },
+    )
     return () => {
       cancelled = true
     }
@@ -358,17 +394,27 @@ export function BuybackRouterCard({ resolveProjectId, chainIds }: BuybackRouterC
       <div className="space-y-3">
         {ACTIONS.map(action => {
           const current = currentByKind[action.kind]
+          const isInitPool = action.kind === 'initPool'
+          // initPool shows pool-init state (TWAP window set?) rather than the hook address;
+          // the hook rows still back the modal's reverify snapshot.
+          const ready = isInitPool ? current !== null && poolInit !== null : current !== null
           return (
             <div key={action.kind} className={`border p-3 space-y-1.5 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
               <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{action.title}</div>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{action.note}</p>
               <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-                {action.kind === 'initPool' ? 'Current hook' : 'Current'}:{' '}
-                {current === null ? 'reading across chains…' : summarizeCurrent(current)}
+                {isInitPool ? 'Pool' : 'Current'}:{' '}
+                {isInitPool
+                  ? poolInit === null
+                    ? 'reading across chains…'
+                    : summarizePoolInit(poolInit)
+                  : current === null
+                    ? 'reading across chains…'
+                    : summarizeCurrent(current)}
               </p>
               <button
-                onClick={() => current && setOpen(action)}
-                disabled={current === null}
+                onClick={() => ready && setOpen(action)}
+                disabled={!ready}
                 className={`text-sm underline decoration-dotted underline-offset-2 transition-colors disabled:opacity-40 ${
                   isDark ? 'text-juice-cyan hover:text-white' : 'text-cyan-700 hover:text-gray-900'
                 }`}
@@ -386,6 +432,7 @@ export function BuybackRouterCard({ resolveProjectId, chainIds }: BuybackRouterC
           resolveProjectId={resolveProjectId}
           chainIds={chainIds}
           current={currentByKind[open.kind]!}
+          stateSummary={open.kind === 'initPool' && poolInit ? summarizePoolInit(poolInit) : undefined}
           onClose={() => setOpen(null)}
           onChanged={() => setRefreshNonce(nonce => nonce + 1)}
         />
