@@ -161,34 +161,57 @@ export interface DirectSwapOffer {
 }
 
 /**
- * Decide whether buying straight from the Uniswap pool beats paying. Ported from
- * the website's maybeOfferDirectSwap cheap branch: when previewPayFor already
- * routed the payment through the buyback AMM, the pool's full output is
- * beneficiary + reserved (pay would split it), so a direct swap keeps the
- * reserved share too. Only for plain buys — no NFT mints, not add-to-balance,
- * and the paid token must be the pool's pair token (a routed/swap currency is
- * not; the AMM preview route already implies the terminal token is the pair).
+ * Decide whether buying straight from the Uniswap pool beats paying. Ports the
+ * website's maybeOfferDirectSwap, which evaluates on BOTH pay routes:
+ *
+ *   - AMM route (cheap branch): previewPayFor already routed through the buyback
+ *     AMM, so the pool's full output is beneficiary + reserved (pay would split
+ *     it). No on-chain quote needed — a direct swap keeps the reserved share.
+ *   - ISSUANCE route (or an AMM route with no reserved advantage): the on-chain
+ *     V4 Quoter (`quote`) gives the true hook-routed pool output. Offer it
+ *     whenever that beats what pay would mint to the beneficiary.
+ *
+ * Only for plain buys — no NFT mints, not add-to-balance, and the paid token
+ * must be the pool's pair token (the caller establishes the pair-token match by
+ * only supplying a `quote`/`ammPoolId` when the paid token is the pair token; a
+ * routed/swap currency never is).
  */
 export function resolveDirectSwapOffer(params: {
   route: 'issuance' | 'amm'
   beneficiaryTokenCount: bigint
   reservedTokenCount: bigint
-  poolId: Hex | null
+  /** Pool the AMM-routed preview filled through (only set when pay routed AMM). */
+  ammPoolId: Hex | null
+  /** On-chain V4 Quoter probe for the pay amount (null when unavailable/gated off). */
+  quote: { poolId: Hex; out: bigint } | null
   hasTiers: boolean
   addsToBalance: boolean
   viaRouter: boolean
   slippageBps?: bigint
 }): DirectSwapOffer | null {
-  if (params.route !== 'amm' || !params.poolId) return null
   if (params.hasTiers || params.addsToBalance || params.viaRouter) return null
-  const quotedOut = params.beneficiaryTokenCount + params.reservedTokenCount
-  if (quotedOut <= params.beneficiaryTokenCount) return null
-  return {
-    poolId: params.poolId,
+  const payOut = params.beneficiaryTokenCount
+
+  const build = (poolId: Hex, quotedOut: bigint): DirectSwapOffer => ({
+    poolId,
     quotedOut,
     minOut: quotedOutputFloor(quotedOut, 10_000n - (params.slippageBps ?? 100n)),
-    advantage: quotedOut - params.beneficiaryTokenCount,
+    advantage: quotedOut - payOut,
+  })
+
+  // Cheap AMM branch: pay routed AMM, so the pool's full output = beneficiary + reserved.
+  if (params.route === 'amm' && params.ammPoolId) {
+    const ammFull = params.beneficiaryTokenCount + params.reservedTokenCount
+    if (ammFull > payOut) return build(params.ammPoolId, ammFull)
   }
+
+  // Quoter branch: issuance route (or AMM with no reserved advantage). Fire when
+  // the true hook-routed pool output beats what pay would mint to the beneficiary.
+  if (params.quote && params.quote.out > payOut) {
+    return build(params.quote.poolId, params.quote.out)
+  }
+
+  return null
 }
 
 const UNISWAP_APP_CHAIN_SLUGS: Record<number, string> = {
