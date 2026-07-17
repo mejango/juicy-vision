@@ -12,7 +12,7 @@
  *                no CTA here.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { encodeFunctionData, zeroAddress } from 'viem'
 import { jbControllerAbi } from '@bananapus/nana-sdk-core'
 import { useThemeStore } from '../../../stores'
@@ -37,12 +37,15 @@ import {
   type PendingReservedRow,
   type ReservedDistributionRow,
   type ReservedSplit,
+  type ChainProject,
 } from '../../../services/reservedSplits'
 
 export interface SplitsSubtabProps {
   project: Project
   /** The sucker-group chains the project lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain). Falls back to the home id. */
+  chainProjects?: ChainProject[]
   /** 'splits' = revnet per-stage view; 'reserved' = custom current-ruleset view. */
   variant: 'splits' | 'reserved'
   /** Revnet-only "Edit splits" CTA — the dashboard opens the SetSplitsForm modal. */
@@ -68,7 +71,7 @@ function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`
 }
 
-export function SplitsSubtab({ project, chainIds, variant, onEditSplits }: SplitsSubtabProps) {
+export function SplitsSubtab({ project, chainIds, chainProjects, variant, onEditSplits }: SplitsSubtabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress, run } = useGuardedTx()
@@ -87,6 +90,17 @@ export function SplitsSubtab({ project, chainIds, variant, onEditSplits }: Split
   const [pendingNonce, setPendingNonce] = useState(0)
 
   const chainKey = chainIds.join(',')
+
+  // V6 project ids are independent per chain — resolve each chain's own id for
+  // per-chain reads/txs; never use the home id off-home.
+  const pidFor = useCallback(
+    (cid: number): number | string => chainProjects?.find(cp => cp.chainId === cid)?.projectId ?? project.projectId,
+    [chainProjects, project.projectId],
+  )
+  const chainProjectList = useMemo<ChainProject[]>(
+    () => chainIds.map(cid => ({ chainId: cid, projectId: pidFor(cid) })),
+    [chainIds, pidFor],
+  )
 
   // Stages (rulesets, start-ascending) from the home chain.
   useEffect(() => {
@@ -133,7 +147,7 @@ export function SplitsSubtab({ project, chainIds, variant, onEditSplits }: Split
   // Per-chain pending reserved (null-tolerant); refreshed after a distribute.
   useEffect(() => {
     let cancelled = false
-    fetchPendingReservedPerChain(project.projectId, chainKey ? chainKey.split(',').map(Number) : [])
+    fetchPendingReservedPerChain(chainProjectList)
       .then(rows => {
         if (!cancelled) setPendingRows(rows)
       })
@@ -143,13 +157,13 @@ export function SplitsSubtab({ project, chainIds, variant, onEditSplits }: Split
     return () => {
       cancelled = true
     }
-  }, [project.projectId, chainKey, pendingNonce])
+  }, [chainProjectList, pendingNonce])
 
   // Latest distributions (revnet Splits view only), best-effort from Bendystraw.
   useEffect(() => {
     if (reserved) return
     let cancelled = false
-    fetchReservedDistributions(project.projectId, chainKey ? chainKey.split(',').map(Number) : [])
+    fetchReservedDistributions(chainProjectList)
       .then(rows => {
         if (!cancelled) setDistributions(rows)
       })
@@ -159,7 +173,7 @@ export function SplitsSubtab({ project, chainIds, variant, onEditSplits }: Split
     return () => {
       cancelled = true
     }
-  }, [project.projectId, chainKey, reserved, pendingNonce])
+  }, [chainProjectList, reserved, pendingNonce])
 
   const setStatus = useCallback(
     (chainId: number, status: DistributeStatus) => setStatuses(previous => ({ ...previous, [chainId]: status })),
@@ -175,11 +189,12 @@ export function SplitsSubtab({ project, chainIds, variant, onEditSplits }: Split
     try {
       // Resolve (and verify) the project's controller on that chain, exactly
       // like the website's controllerAddressFor before the send.
-      const { JBController } = await getContractsForProject(String(project.projectId), chainId)
+      const pid = pidFor(chainId)
+      const { JBController } = await getContractsForProject(String(pid), chainId)
       const data = encodeFunctionData({
         abi: jbControllerAbi,
         functionName: 'sendReservedTokensToSplitsOf',
-        args: [BigInt(project.projectId)],
+        args: [BigInt(pid)],
       })
       await run({
         chainId,
@@ -188,7 +203,7 @@ export function SplitsSubtab({ project, chainIds, variant, onEditSplits }: Split
         // Abort when the pending balance dropped to zero since review —
         // someone else may have distributed while this sat open.
         reverify: async () => {
-          const fresh = await readPendingReserved(project.projectId, chainId)
+          const fresh = await readPendingReserved(pid, chainId)
           if (fresh === 0n) {
             throw new Error(`Nothing left to distribute on ${chainName} — someone already distributed.`)
           }

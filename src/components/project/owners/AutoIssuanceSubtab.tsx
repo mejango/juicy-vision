@@ -8,7 +8,7 @@
  * + the Distribute action (:14403).
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { encodeFunctionData } from 'viem'
 import { type JBChainId } from '@bananapus/nana-sdk-core'
 import { buildAutoIssueTx, getAmountToAutoIssue } from '@bananapus/nana-sdk-core/v6'
@@ -19,12 +19,19 @@ import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { publicClientFor, type GuardedTxPhase } from '../../../services/projectTx'
 import type { Project } from '../../../services/bendystraw'
 import { formatTokenCount18 } from '../../../services/revnetStages'
-import { autoIssueKey, fetchAutoIssuanceRows, type AutoIssuanceRow } from '../../../services/reservedSplits'
+import {
+  autoIssueKey,
+  fetchAutoIssuanceRows,
+  type AutoIssuanceRow,
+  type ChainProject,
+} from '../../../services/reservedSplits'
 
 export interface AutoIssuanceSubtabProps {
   project: Project
   /** The sucker-group chains the revnet lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain). Falls back to the home id. */
+  chainProjects?: ChainProject[]
 }
 
 type RowStatus =
@@ -54,13 +61,23 @@ function formatUnlockDate(start: number): string {
   })
 }
 
-export function AutoIssuanceSubtab({ project, chainIds }: AutoIssuanceSubtabProps) {
+export function AutoIssuanceSubtab({ project, chainIds, chainProjects }: AutoIssuanceSubtabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress, run } = useGuardedTx()
 
   const symbol = project.tokenSymbol || 'tokens'
   const chainKey = chainIds.join(',')
+
+  // V6 project ids are independent per chain — resolve each chain's own id.
+  const pidFor = useCallback(
+    (cid: number): number | string => chainProjects?.find(cp => cp.chainId === cid)?.projectId ?? project.projectId,
+    [chainProjects, project.projectId],
+  )
+  const chainProjectList = useMemo<ChainProject[]>(
+    () => chainIds.map(cid => ({ chainId: cid, projectId: pidFor(cid) })),
+    [chainIds, pidFor],
+  )
 
   const [rows, setRows] = useState<AutoIssuanceRow[] | null>(null)
   const [loadError, setLoadError] = useState(false)
@@ -69,7 +86,7 @@ export function AutoIssuanceSubtab({ project, chainIds }: AutoIssuanceSubtabProp
   useEffect(() => {
     let cancelled = false
     setLoadError(false)
-    fetchAutoIssuanceRows(project.projectId, chainKey ? chainKey.split(',').map(Number) : [])
+    fetchAutoIssuanceRows(chainProjectList)
       .then(loaded => {
         if (!cancelled) setRows(loaded)
       })
@@ -79,7 +96,7 @@ export function AutoIssuanceSubtab({ project, chainIds }: AutoIssuanceSubtabProp
     return () => {
       cancelled = true
     }
-  }, [project.projectId, chainKey])
+  }, [chainProjectList])
 
   const setStatus = (key: string, status: RowStatus) =>
     setStatuses(previous => ({ ...previous, [key]: status }))
@@ -95,7 +112,7 @@ export function AutoIssuanceSubtab({ project, chainIds }: AutoIssuanceSubtabProp
       // beneficiary), permissionless; it mints whatever amountToAutoIssue reports.
       const request = buildAutoIssueTx({
         chainId: row.chainId as JBChainId,
-        revnetId: BigInt(project.projectId),
+        revnetId: BigInt(pidFor(row.chainId)),
         stageId: BigInt(row.stageId),
         beneficiary: row.beneficiary,
       })
@@ -113,7 +130,7 @@ export function AutoIssuanceSubtab({ project, chainIds }: AutoIssuanceSubtabProp
         reverify: async () => {
           const fresh = await getAmountToAutoIssue(publicClientFor(row.chainId), {
             chainId: row.chainId as JBChainId,
-            revnetId: BigInt(project.projectId),
+            revnetId: BigInt(pidFor(row.chainId)),
             stageId: BigInt(row.stageId),
             beneficiary: row.beneficiary,
           })

@@ -81,6 +81,16 @@ export interface PendingReservedRow {
 }
 
 /**
+ * A chain the project lives on, with the project's id ON THAT CHAIN. V6 project
+ * ids are independent per chain, so every per-chain read/tx must use the id for
+ * that specific chain — never the home id everywhere.
+ */
+export interface ChainProject {
+  chainId: number
+  projectId: number | string
+}
+
+/**
  * Zip per-chain settled pending reads back onto their chain ids. A rejected
  * chain yields `pending: null` so the UI can skip it — never a fake zero.
  */
@@ -237,13 +247,14 @@ async function defaultReadPending(projectId: string, chainId: number): Promise<b
  * a failed chain yields null. Parity: fetchPendingReservedPerChain (:15641).
  */
 export async function fetchPendingReservedPerChain(
-  projectId: number | string,
-  chainIds: readonly number[],
+  chainProjects: readonly ChainProject[],
   deps: PendingReservedDeps = {},
 ): Promise<PendingReservedRow[]> {
   const readPending = deps.readPending ?? defaultReadPending
-  const settled = await Promise.allSettled(chainIds.map(chainId => readPending(String(projectId), chainId)))
-  return assemblePendingRows(chainIds, settled)
+  const settled = await Promise.allSettled(
+    chainProjects.map(cp => readPending(String(cp.projectId), cp.chainId)),
+  )
+  return assemblePendingRows(chainProjects.map(cp => cp.chainId), settled)
 }
 
 /**
@@ -270,25 +281,33 @@ interface ReservedDistPage {
  * first, from Bendystraw (version: 6 rows only).
  */
 export async function fetchReservedDistributions(
-  projectId: number | string,
-  chainIds: readonly number[],
+  chainProjects: readonly ChainProject[],
   limit = 25,
 ): Promise<ReservedDistributionRow[]> {
-  if (!chainIds.length) return []
+  if (!chainProjects.length) return []
   const { safeRequest, getNetworkOption } = await import('./bendystraw/client')
-  const data = await safeRequest<ReservedDistPage>(
-    RESERVED_DIST_QUERY,
-    { projectId: Number(projectId), version: BENDYSTRAW_VERSION, chainIds: [...chainIds], limit },
-    getNetworkOption(chainIds[0]),
+  // Per-chain project ids differ, so query each chain by its own id and merge —
+  // a single projectId + chainId_in filter would read the wrong project off-home.
+  const pages = await Promise.all(
+    chainProjects.map(cp =>
+      safeRequest<ReservedDistPage>(
+        RESERVED_DIST_QUERY,
+        { projectId: Number(cp.projectId), version: BENDYSTRAW_VERSION, chainIds: [cp.chainId], limit },
+        getNetworkOption(cp.chainId),
+      ),
+    ),
   )
-  const items = data?.sendReservedTokensToSplitsEvents?.items
-  if (!Array.isArray(items)) throw new Error('Reserved distributions are unavailable')
-  return items.map(item => ({
-    chainId: Number(item.chainId),
-    timestamp: Number(item.timestamp),
-    txHash: String(item.txHash),
-    tokenCount: BigInt(item.tokenCount || '0'),
-  }))
+  const rows = pages.flatMap(data => {
+    const items = data?.sendReservedTokensToSplitsEvents?.items
+    if (!Array.isArray(items)) return []
+    return items.map(item => ({
+      chainId: Number(item.chainId),
+      timestamp: Number(item.timestamp),
+      txHash: String(item.txHash),
+      tokenCount: BigInt(item.tokenCount || '0'),
+    }))
+  })
+  return rows.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit)
 }
 
 const AUTO_ISSUE_PAGE_LIMIT = 500
@@ -341,16 +360,15 @@ async function fetchAutoIssueEvents(
  * Parity: loadAutoIssuanceRows (:14302).
  */
 export async function fetchAutoIssuanceRows(
-  projectId: number | string,
-  chainIds: readonly number[],
+  chainProjects: readonly ChainProject[],
 ): Promise<AutoIssuanceRow[]> {
-  const pid = Number(projectId)
-  const revChainIds = chainIds.filter(chainId => v6Address('REVOwner', chainId) !== null)
-  if (!revChainIds.length) return []
+  const revChainProjects = chainProjects.filter(cp => v6Address('REVOwner', cp.chainId) !== null)
+  if (!revChainProjects.length) return []
   const { fetchAllRulesets } = await import('./bendystraw')
 
   const perChain = await Promise.all(
-    revChainIds.map(async chainId => {
+    revChainProjects.map(async ({ chainId, projectId }) => {
+      const pid = Number(projectId)
       const [stages, storedRaw, issuedRaw] = await Promise.all([
         // fetchAllRulesets returns start-ascending stages — index-aligned across chains.
         fetchAllRulesets(String(pid), chainId),
@@ -408,7 +426,7 @@ export async function fetchAutoIssuanceRows(
     }),
   )
 
-  const chainOrder = new Map(revChainIds.map((chainId, index) => [chainId, index]))
+  const chainOrder = new Map(revChainProjects.map((cp, index) => [cp.chainId, index]))
   return perChain.flat().sort((a, b) => {
     if (a.stageStart !== b.stageStart) return a.stageStart - b.stageStart
     if (a.stageIndex !== b.stageIndex) return a.stageIndex - b.stageIndex

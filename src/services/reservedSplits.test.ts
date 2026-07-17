@@ -107,12 +107,15 @@ describe('pending-per-chain assembly', () => {
   })
 
   it('fetchPendingReservedPerChain tolerates one chain failing without dropping the others', async () => {
-    const rows = await fetchPendingReservedPerChain(42, [1, 10, 8453], {
-      readPending: async (_projectId, chainId) => {
-        if (chainId === 10) throw new Error('rpc down')
-        return BigInt(chainId)
+    const rows = await fetchPendingReservedPerChain(
+      [{ chainId: 1, projectId: 42 }, { chainId: 10, projectId: 7 }, { chainId: 8453, projectId: 9 }],
+      {
+        readPending: async (_projectId, chainId) => {
+          if (chainId === 10) throw new Error('rpc down')
+          return BigInt(chainId)
+        },
       },
-    })
+    )
     expect(rows).toEqual([
       { chainId: 1, pending: 1n },
       { chainId: 10, pending: null },
@@ -120,15 +123,19 @@ describe('pending-per-chain assembly', () => {
     ])
   })
 
-  it('fetchPendingReservedPerChain passes the project id through as a string', async () => {
-    const seen: string[] = []
-    await fetchPendingReservedPerChain(42, [1], {
-      readPending: async projectId => {
-        seen.push(projectId)
-        return 0n
+  it('fetchPendingReservedPerChain reads each chain with ITS OWN project id', async () => {
+    const seen: Array<[string, number]> = []
+    await fetchPendingReservedPerChain(
+      [{ chainId: 1, projectId: 42 }, { chainId: 10, projectId: 7 }],
+      {
+        readPending: async (projectId, chainId) => {
+          seen.push([projectId, chainId])
+          return 0n
+        },
       },
-    })
-    expect(seen).toEqual(['42'])
+    )
+    // Per-chain ids differ — chain 10 must NOT be read with the home id 42.
+    expect(seen).toEqual([['42', 1], ['7', 10]])
   })
 })
 

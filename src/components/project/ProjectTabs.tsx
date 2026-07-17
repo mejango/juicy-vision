@@ -91,6 +91,11 @@ export default function ProjectTabs(props: ProjectTabsProps) {
   const chainIds = connectedChains.length
     ? connectedChains.map(c => c.chainId)
     : [chainId]
+  // Per-chain project ids (V6 ids are independent per chain) for subtabs that
+  // read or transact on non-home chains.
+  const chainProjects = connectedChains.length
+    ? connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))
+    : [{ chainId, projectId: project.projectId }]
 
   // Loans need REVLoans (revnets only); moves and LP need a real ERC-20 to bridge/pair.
   const ownersAvailability = {
@@ -106,11 +111,11 @@ export default function ProjectTabs(props: ProjectTabsProps) {
       case 'settlement':
         return <SettlementSubtab project={project} chainIds={chainIds} />
       case 'splits':
-        return <SplitsSubtab project={project} chainIds={chainIds} variant="splits" onEditSplits={props.onEditSplits} />
+        return <SplitsSubtab project={project} chainIds={chainIds} chainProjects={chainProjects} variant="splits" onEditSplits={props.onEditSplits} />
       case 'reserved':
-        return <SplitsSubtab project={project} chainIds={chainIds} variant="reserved" />
+        return <SplitsSubtab project={project} chainIds={chainIds} chainProjects={chainProjects} variant="reserved" />
       case 'autoissuance':
-        return <AutoIssuanceSubtab project={project} chainIds={chainIds} />
+        return <AutoIssuanceSubtab project={project} chainIds={chainIds} chainProjects={chainProjects} />
       case 'loans':
         return <LoansSubtab project={project} chainIds={chainIds} />
       default:
