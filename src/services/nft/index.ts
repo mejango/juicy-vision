@@ -278,6 +278,60 @@ export async function getProjectDataHook(
 }
 
 /**
+ * Whether a project's 721 shop has item cash out (redemption) enabled — the
+ * AUTHORITATIVE flag, not the bare ruleset `useDataHookForCashOut`.
+ *
+ * On an omnichain project the ruleset data hook is JBOmnichainDeployer, whose
+ * `useDataHookForCashOut` only means "consult the deployer"; the real 721
+ * cash-out opt-in is the deployer's per-ruleset tiered721 config
+ * (`tiered721HookOf(...).useDataHookForCashOut`). When the 721 hook is the ruleset
+ * data hook directly (single-chain custom), the ruleset flag is authoritative.
+ * Revnets are token-based (cash-out hook is REVOwner) — item redemption is never
+ * offered, so this returns false.
+ */
+export async function get721ItemsCashOutEnabled(
+  projectId: string,
+  chainId: number,
+): Promise<boolean> {
+  if (!/^[1-9]\d*$/.test(projectId)) return false
+  const numericProjectId = BigInt(projectId)
+  const { chain, rpcUrl } = nftChainConfig(chainId)
+  const client = createPublicClient({ chain, transport: http(rpcUrl) })
+
+  const [controller, projectOwner] = await Promise.all([
+    client.readContract({ address: JB_CONTRACTS.JBDirectory, abi: DIRECTORY_ABI, functionName: 'controllerOf', args: [numericProjectId] }),
+    client.readContract({ address: JB_CONTRACTS.JBProjects, abi: PROJECTS_ABI, functionName: 'ownerOf', args: [numericProjectId] }),
+  ])
+  if (controller.toLowerCase() !== JB_CONTRACTS.JBController.toLowerCase()) return false
+  // Revnet: token-based, no item redemption.
+  if (projectOwner.toLowerCase() === REV_OWNER_ADDRESS.toLowerCase()) return false
+
+  const result = await client.readContract({
+    address: controller,
+    abi: JBControllerRulesetAbi,
+    functionName: 'currentRulesetOf',
+    args: [numericProjectId],
+  })
+  if (BigInt(result[0].id) === 0n) return false
+  const metadata = result[1]
+  const dataHook = metadata.dataHook
+
+  // Omnichain: the authoritative flag is the deployer's per-ruleset tiered721 config.
+  if (dataHook.toLowerCase() === JB_OMNICHAIN_DEPLOYER.toLowerCase()) {
+    const [, useDataHookForCashOut] = await client.readContract({
+      address: dataHook,
+      abi: OMNICHAIN_TIERED_HOOK_ABI,
+      functionName: 'tiered721HookOf',
+      args: [numericProjectId, BigInt(result[0].id)],
+    })
+    return Boolean(useDataHookForCashOut)
+  }
+
+  // Direct 721 data hook (single-chain custom): the ruleset flag is the 721 flag.
+  return Boolean(metadata.useDataHookForCashOut)
+}
+
+/**
  * Fetch all NFT tiers for a project's 721 hook
  * Fetches without resolved URIs (fast, low gas) - use resolveTierUri for on-chain SVGs
  */

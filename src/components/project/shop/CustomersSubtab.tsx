@@ -19,7 +19,7 @@ import { ExplainerMessage } from '../../ui/ExplainerMessage'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { truncateAddress } from '../../../utils'
 import { formatTimeAgo } from '../../../utils/activityEvents'
-import { fetchProjectWithRuleset } from '../../../services/bendystraw'
+import { get721ItemsCashOutEnabled } from '../../../services/nft'
 import {
   fetchNftMints,
   resolveShopItemNames,
@@ -80,11 +80,12 @@ export function CustomersSubtab({ projectId, chainId, chains, isRevnet }: Custom
     resolveShopItemNames(projectId, chainId).then(n => {
       if (!cancelled) setNames(n)
     })
-    fetchProjectWithRuleset(projectId, chainId)
-      .then(project => {
-        // Revnet useDataHookForCashOut means TOKEN cash out (REVOwner hook), not item
-        // redemption — the 721 redeem path is custom-projects only.
-        if (!cancelled) setRedeemEnabled(!isRevnet && Boolean(project?.currentRuleset?.useDataHookForCashOut))
+    // Authoritative 721 item-cash-out flag — for omnichain projects the bare
+    // ruleset useDataHookForCashOut only means "consult the deployer"; the real
+    // opt-in is the deployer's per-ruleset tiered721 config. (Revnets → false.)
+    get721ItemsCashOutEnabled(projectId, chainId)
+      .then(enabled => {
+        if (!cancelled) setRedeemEnabled(!isRevnet && enabled)
       })
       .catch(() => {
         if (!cancelled) setRedeemEnabled(false)
