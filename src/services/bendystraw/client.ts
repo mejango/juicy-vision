@@ -17,7 +17,7 @@ const MAINNET_CHAIN_IDS = [1, 10, 8453, 42161] as const
  * Get network option for API routing.
  * In staging (IS_TESTNET mode), mainnet chain IDs need to route to mainnet API.
  */
-function getNetworkOption(chainId: number): { network: 'mainnet' } | undefined {
+export function getNetworkOption(chainId: number): { network: 'mainnet' } | undefined {
   if (IS_TESTNET && MAINNET_CHAIN_IDS.includes(chainId as typeof MAINNET_CHAIN_IDS[number])) {
     return { network: 'mainnet' }
   }
@@ -307,7 +307,7 @@ function getClient(options?: { network?: 'mainnet' }): GraphQLClient {
  * If the circuit is open, throws an error that callers can handle gracefully
  * Errors are logged to the debug store for UI visibility
  */
-async function safeRequest<T>(
+export async function safeRequest<T>(
   document: RequestDocument,
   variables?: Variables,
   options?: { network?: 'mainnet' }
