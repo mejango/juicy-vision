@@ -1,11 +1,11 @@
 /**
  * Extras tab — port of the website's renderExtrasSection (discover.js).
  *
- * Two cards:
- *  1. "Copy this project" — reconstructs the LIVE project configuration into a
- *     .jb draft the create-flow wizard can import (no transaction).
- *  2. "Payer address" — deploy JBProjectPayer forwarding contracts via
- *     JBProjectPayerDeployer, plus the list of already-deployed payers.
+ * "Payer address" — deploy JBProjectPayer forwarding contracts via
+ * JBProjectPayerDeployer, plus the list of already-deployed payers.
+ *
+ * The "Copy this project" (.jb export) card was removed to match the website
+ * (commit 160e46e); the create flow's own Import/Export .jb covers that need.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -21,8 +21,6 @@ import {
   normalizeProjectPayerMetadata,
   type ProjectPayerRow,
 } from '../../services/projectPayers'
-import { buildProjectCreateDraft } from '../../services/projectDraftExport'
-import { exportDraftFile } from '../dynamic/create-flow/state'
 import { resolveEnsToAddress, truncateAddress } from '../../utils/ens'
 
 interface ExtrasTabProps {
@@ -117,34 +115,6 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
     return list
   }, [connectedChains, pageChainId, projectId])
 
-  // -------------------------------------------------------------------------
-  // Copy this project (.jb export)
-  // -------------------------------------------------------------------------
-  const [exportStatus, setExportStatus] = useState<Status>(IDLE)
-  const [exportBusy, setExportBusy] = useState(false)
-
-  const handleExport = useCallback(async () => {
-    if (exportBusy) return
-    setExportBusy(true)
-    setExportStatus({ kind: 'pending', text: 'Verifying live rules, funds, splits, and terminals…' })
-    try {
-      const result = await buildProjectCreateDraft(projectId, pageChainId, { tokenSymbol })
-      if (result.warnings.length
-        && !window.confirm(`${result.warnings.join('\n\n')}\n\nExport this editable .jb anyway?`)) {
-        setExportStatus({ kind: 'idle', text: 'Cancelled' })
-        return
-      }
-      exportDraftFile(result.state)
-      setExportStatus({ kind: 'success', text: 'Exported .jb. Import it from New project to review and edit.' })
-    } catch (error) {
-      setExportStatus({
-        kind: 'error',
-        text: error instanceof Error ? error.message : 'Could not safely reconstruct this project.',
-      })
-    } finally {
-      setExportBusy(false)
-    }
-  }, [exportBusy, projectId, pageChainId, tokenSymbol])
 
   // -------------------------------------------------------------------------
   // Payer address form
@@ -300,20 +270,6 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
 
   return (
     <div className="space-y-6">
-      {/* Copy this project */}
-      <div className={card}>
-        <h3 className={cardTitle}>Copy this project</h3>
-        <ExplainerMessage>
-          Take this project’s blueprint with you — export its live rules, funds, splits, and details
-          as a .jb file, import it when creating a new project, and edit anything before deploying.
-          No transaction required.
-        </ExplainerMessage>
-        {renderStatus(exportStatus)}
-        <button className={button} onClick={handleExport} disabled={exportBusy}>
-          {exportBusy ? 'Verifying…' : 'Export .jb'}
-        </button>
-      </div>
-
       {/* Payer address */}
       <div className={card}>
         <h3 className={cardTitle}>Payer address</h3>
