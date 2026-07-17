@@ -15,8 +15,13 @@ Explain the user-facing effects precisely:
   recipients, not a payout or ownership percentage
 - payout limits reserve a gross amount for payouts
 - surplus allowances draw from funds that may otherwise support cash outs
-- cash-out tax changes the curve and its maximum disables cash outs
+- cash-out tax changes the curve; at its maximum a cash out still burns the
+  tokens but returns zero
 - duration controls cycling; an approval hook may delay or reject the next rules
+- never write an off-chain revenue-share percentage into the reserved rate; the
+  reserved rate only splits newly issued shares
+- a JBDeadline approval hook whose delay exceeds the cycle duration can never
+  approve anything, locking the configuration forever
 
 The guarded form reloads the current and upcoming rules, recognized approval/data
 hooks, live accounting contexts, every split and fund-access group, connected
@@ -44,4 +49,4 @@ export const RULESETS_HINTS = [
   'schedule',
 ];
 
-export const RULESETS_TOKEN_ESTIMATE = 210;
+export const RULESETS_TOKEN_ESTIMATE = 280;
