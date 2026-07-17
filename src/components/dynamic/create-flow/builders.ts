@@ -78,12 +78,12 @@ export const DEADLINE_HOOKS: Record<string, string> = {
 }
 
 /**
- * BannyLPSplitHook (JBUniswapV4LPSplitHook) — the "Fund market" reserved-split
+ * JBP6FeeLPSplitHook (JBUniswapV4LPSplitHook) — the "Fund market" reserved-split
  * target. Same address on every chain it's deployed to; NOT deployed on
  * OP Sepolia (11155420), where lphook rows fall back to a plain wallet split
  * (mirroring the website's missing-getAddress fallthrough).
  */
-export const BANNY_LP_SPLIT_HOOK = '0xae6705c33c8b46f56878a1d4f1ce4d75fcfb6f62'
+export const JBP6_FEE_LP_SPLIT_HOOK = '0xae6705c33c8b46f56878a1d4f1ce4d75fcfb6f62'
 const LP_SPLIT_HOOK_CHAINS = new Set([1, 10, 8453, 42161, 84532, 421614, 11155111])
 
 // ---------------------------------------------------------------------------
@@ -392,7 +392,7 @@ function splitState(
   // lockedUntil only encodes when the stage actually allows locks — a stale
   // value from a draft/import must NOT reach the chain.
   const lockTs = allowLock && rec.lockedUntil ? Number(rec.lockedUntil) : 0
-  // "Fund market" reserved split → routes to the shared BannyLPSplitHook. The
+  // "Fund market" reserved split → routes to the shared JBP6FeeLPSplitHook. The
   // hook keys off the distributing project; beneficiary is pass-through.
   if (rec.type === 'lphook' && LP_SPLIT_HOOK_CHAINS.has(chainId)) {
     return {
@@ -401,7 +401,7 @@ function splitState(
       projectId: 0,
       beneficiary: addrOrZero(lpFallbackBeneficiary(state)),
       lockedUntil: lockTs,
-      hook: BANNY_LP_SPLIT_HOOK,
+      hook: JBP6_FEE_LP_SPLIT_HOOK,
     }
   }
   const addr = beneficiaryOverride != null ? beneficiaryOverride : pickResolved(rec.address, rec)
