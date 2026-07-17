@@ -134,6 +134,41 @@ export async function fetchNFTPricingContext(
   return readPricingContext(client, hookAddress)
 }
 
+const HOOK_PAY_CREDITS_ABI = [{
+  name: 'payCreditsOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [{ name: 'addr', type: 'address' }],
+  outputs: [{ name: '', type: 'uint256' }],
+}] as const
+
+/**
+ * Read a beneficiary's shop credit balance (payCreditsOf) on a recognized 721 hook.
+ * Credits are denominated in the hook's pricing unit and offset the NFT checkout total.
+ * Returns 0 for a missing beneficiary or on any read failure — credit is a discount,
+ * never a gate, so a failed read must not block checkout.
+ */
+export async function fetchPayCredits(
+  hookAddress: `0x${string}`,
+  beneficiary: `0x${string}` | null | undefined,
+  chainId: number,
+): Promise<bigint> {
+  if (!beneficiary) return 0n
+  try {
+    const { chain, rpcUrl } = nftChainConfig(chainId)
+    const client = createPublicClient({ chain, transport: http(rpcUrl) })
+    await requireRecognized721Hook(client, hookAddress)
+    return await client.readContract({
+      address: hookAddress,
+      abi: HOOK_PAY_CREDITS_ABI,
+      functionName: 'payCreditsOf',
+      args: [beneficiary],
+    })
+  } catch {
+    return 0n
+  }
+}
+
 export function getEffectiveTierPrice(
   tier: Pick<NFTTier, 'price' | 'discountPercent'>,
 ): bigint {

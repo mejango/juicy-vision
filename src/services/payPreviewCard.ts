@@ -226,6 +226,74 @@ export function fmtCountdown(secs: number): string {
   return parts.join(' ')
 }
 
+/** Shorten a hash/address for display: 0x1234…cdef. Mirrors the website's shortHex. */
+export function shortHex(value: string): string {
+  if (typeof value !== 'string' || value.length <= 12) return value
+  return `${value.slice(0, 6)}…${value.slice(-4)}`
+}
+
+/** Human routing label for the pay preview chip: "amm" → "AMM", anything else → "Issuance". */
+export function formatRoutingTag(route: 'issuance' | 'amm'): 'AMM' | 'Issuance' {
+  return route === 'amm' ? 'AMM' : 'Issuance'
+}
+
+/** The buyer-facing discount label overlaid on a shop tier ("25% off"), denominator 200. */
+export function tierDiscountLabel(discountPercent: number | undefined): string | null {
+  if (!discountPercent || discountPercent <= 0) return null
+  const pct = discountPercent / 2
+  const rendered = Number.isInteger(pct) ? String(pct) : pct.toFixed(1)
+  return `${rendered}% off`
+}
+
+export interface NftCheckoutBreakdown {
+  /** Sum of the selected tiers' effective prices × quantity, in the shop pricing unit. */
+  subtotal: bigint
+  /** Portion of the subtotal that shop credits can never cover (cantBuyWithCredits tiers). */
+  restrictedCost: bigint
+  /** Subtotal eligible for credit (subtotal − restrictedCost). */
+  eligible: bigint
+  /** Credit actually applied: min(credits, eligible). */
+  applied: bigint
+  /** Fresh payment still required: subtotal − applied. */
+  due: bigint
+}
+
+/**
+ * Split an NFT checkout into shop-credit vs fresh-payment, mirroring the website's
+ * nftCreditBreakdown. Credits only cover credit-eligible tiers; the rest ("restricted")
+ * always needs a fresh payment.
+ */
+export function computeNftCheckout(params: {
+  subtotal: bigint
+  restrictedCost: bigint
+  credits: bigint
+}): NftCheckoutBreakdown {
+  const subtotal = params.subtotal < 0n ? 0n : params.subtotal
+  const restrictedCost = params.restrictedCost < 0n ? 0n : params.restrictedCost
+  const eligible = subtotal > restrictedCost ? subtotal - restrictedCost : 0n
+  const credits = params.credits < 0n ? 0n : params.credits
+  const applied = credits < eligible ? credits : eligible
+  const due = subtotal > applied ? subtotal - applied : 0n
+  return { subtotal, restrictedCost, eligible, applied, due }
+}
+
+/**
+ * Back out how much of the project's accepted token lands onchain after a
+ * swap-via-router top-up. The buyback/issuance curve applies to both legs, so the
+ * landed accepted amount is recovered by ratio: (project tokens the routed input
+ * yields) ÷ (project tokens one accepted unit yields), scaled to accepted decimals.
+ * Returns null when the unit rate is unknown (avoid a divide-by-zero guess).
+ */
+export function landedAcceptedAfterSwap(params: {
+  routedIssuance: bigint
+  unitIssuance: bigint
+  acceptedDecimals: number
+}): bigint | null {
+  if (params.unitIssuance <= 0n || params.routedIssuance <= 0n) return null
+  const scale = 10n ** BigInt(params.acceptedDecimals)
+  return (params.routedIssuance * scale) / params.unitIssuance
+}
+
 /** Format an 18-decimal token count with exact bigint math (no float precision loss). */
 export function formatExactTokenEstimate(value: bigint, maximumFractionDigits = 2): string {
   const tokenScale = 10n ** 18n

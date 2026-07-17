@@ -149,7 +149,8 @@ export interface ProjectCardPaymentState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   // Payment details
   amount?: string
-  token?: 'ETH' | 'USDC' | 'PAY_CREDITS'
+  // 'ETH' | 'USDC' | 'PAY_CREDITS' | <custom accounting-token address>
+  token?: string
   memo?: string
   selectedChainId?: string
   // NFT tier selection (multi-select)
