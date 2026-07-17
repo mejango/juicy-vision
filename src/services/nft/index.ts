@@ -140,6 +140,33 @@ export async function fetchNFTPricingContext(
 }
 
 /**
+ * Read a beneficiary's shop credit balance (payCreditsOf) on a recognized 721 hook.
+ * Credits are denominated in the hook's pricing unit and offset the NFT checkout total.
+ * Returns 0 for a missing beneficiary or on any read failure — credit is a discount,
+ * never a gate, so a failed read must not block checkout.
+ */
+export async function fetchPayCredits(
+  hookAddress: `0x${string}`,
+  beneficiary: `0x${string}` | null | undefined,
+  chainId: number,
+): Promise<bigint> {
+  if (!beneficiary) return 0n
+  try {
+    const { chain, rpcUrl } = nftChainConfig(chainId)
+    const client = createPublicClient({ chain, transport: http(rpcUrl) })
+    await requireRecognized721Hook(client, hookAddress)
+    return await client.readContract({
+      address: hookAddress,
+      abi: HOOK_PAY_CREDITS_ABI,
+      functionName: 'payCreditsOf',
+      args: [beneficiary],
+    })
+  } catch {
+    return 0n
+  }
+}
+
+/**
  * The connected wallet's 721 "shop credit" held by a collection's hook. These
  * are 721 pay credits — overpayment left over from a prior purchase, denominated
  * in the hook's pricing currency/decimals — and are applied automatically to an

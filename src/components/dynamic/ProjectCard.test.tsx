@@ -156,6 +156,10 @@ describe('ProjectCard', () => {
           [],
         ]
       }
+      // Direct-pay currencies come from the project's actual accounting contexts (native ETH here).
+      if (functionName === 'accountingContextsOf') {
+        return [{ token: '0x000000000000000000000000000000000000EEEe', decimals: 18, currency: 61166 }]
+      }
       return 0n
     })
 
@@ -241,7 +245,7 @@ describe('ProjectCard', () => {
       expect(await screen.findByText('You get')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: '568.00 REV' })).toBeInTheDocument()
       expect(screen.getByText('Splits get 348.13 REV')).toBeInTheDocument()
-      expect(screen.getByText('issuance')).toBeInTheDocument()
+      expect(screen.getByText('Issuance')).toBeInTheDocument()
       expect(mockReadContract).toHaveBeenCalledWith(expect.objectContaining({
         functionName: 'previewPayFor',
       }))

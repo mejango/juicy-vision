@@ -5,12 +5,17 @@ import ProjectCard from './ProjectCard'
 import { useThemeStore, useTransactionStore } from '../../stores'
 import * as bendystraw from '../../services/bendystraw'
 import {
+  computeNftCheckout,
   fmtCountdown,
   formatExactTokenEstimate,
+  formatRoutingTag,
   isVerifiedZeroIssuance,
+  landedAcceptedAfterSwap,
   probeRouterPayRoute,
   readPayScheduleGate,
   resolveDirectSwapOffer,
+  shortHex,
+  tierDiscountLabel,
   uniswapPoolLink,
 } from '../../services/payPreviewCard'
 
@@ -168,6 +173,7 @@ function setupDefaultReads(options: {
   currentRuleset?: ReturnType<typeof rulesetTuple>
   upcomingRuleset?: ReturnType<typeof rulesetTuple>
   registryPreviewLive?: boolean
+  accountingContexts?: Array<{ token: string; decimals: number; currency: number }>
 } = {}) {
   const preview = options.previewResult ?? [
     rulesetTuple(),
@@ -184,6 +190,11 @@ function setupDefaultReads(options: {
     }
     if (functionName === 'currentOf') return options.currentRuleset ?? rulesetTuple()
     if (functionName === 'upcomingOf') return options.upcomingRuleset ?? rulesetTuple({ cycleNumber: 0n })
+    // Direct-pay currencies come from the project's actual accounting contexts.
+    // Default: ETH-only (native context) so ETH is direct and USDC is via-router.
+    if (functionName === 'accountingContextsOf') {
+      return options.accountingContexts ?? [{ token: NATIVE, decimals: 18, currency: 61166 }]
+    }
     return 0n
   })
 }
@@ -303,6 +314,50 @@ describe('payPreviewCard service', () => {
     it('never offers when the pool output has no advantage over paying', () => {
       expect(resolveDirectSwapOffer({ ...base, reservedTokenCount: 0n })).toBeNull()
       expect(resolveDirectSwapOffer({ ...base, poolId: null })).toBeNull()
+    })
+  })
+
+  describe('formatRoutingTag', () => {
+    it('renders human routing labels', () => {
+      expect(formatRoutingTag('amm')).toBe('AMM')
+      expect(formatRoutingTag('issuance')).toBe('Issuance')
+    })
+  })
+
+  describe('shortHex', () => {
+    it('shortens long hashes and leaves short strings alone', () => {
+      expect(shortHex(`0x${'ab'.repeat(32)}`)).toBe('0xabab…abab')
+      expect(shortHex('0x1234')).toBe('0x1234')
+    })
+  })
+
+  describe('tierDiscountLabel', () => {
+    it('halves the discount denominator and hides zero', () => {
+      expect(tierDiscountLabel(50)).toBe('25% off')
+      expect(tierDiscountLabel(0)).toBeNull()
+      expect(tierDiscountLabel(undefined)).toBeNull()
+    })
+  })
+
+  describe('computeNftCheckout', () => {
+    it('applies credit only to the eligible (non-restricted) portion', () => {
+      const b = computeNftCheckout({ subtotal: 100n, restrictedCost: 30n, credits: 100n })
+      expect(b.eligible).toBe(70n)
+      expect(b.applied).toBe(70n) // capped at eligible, never the restricted cost
+      expect(b.due).toBe(30n)
+    })
+    it('caps applied credit at the available balance', () => {
+      const b = computeNftCheckout({ subtotal: 100n, restrictedCost: 0n, credits: 40n })
+      expect(b.applied).toBe(40n)
+      expect(b.due).toBe(60n)
+    })
+  })
+
+  describe('landedAcceptedAfterSwap', () => {
+    it('recovers landed accepted units by the shared issuance ratio', () => {
+      // routed input yields 200 project tokens; 1 accepted unit yields 100 → 2 units land.
+      expect(landedAcceptedAfterSwap({ routedIssuance: 200n, unitIssuance: 100n, acceptedDecimals: 0 })).toBe(2n)
+      expect(landedAcceptedAfterSwap({ routedIssuance: 200n, unitIssuance: 0n, acceptedDecimals: 6 })).toBeNull()
     })
   })
 
@@ -446,7 +501,7 @@ describe('ProjectCard pay panel', () => {
 
       expect(await screen.findByText('You get at least', undefined, { timeout: 2000 })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: '99 REV' })).toBeInTheDocument()
-      expect(screen.getByText('amm')).toBeInTheDocument()
+      expect(screen.getByText('AMM')).toBeInTheDocument()
     })
 
     it('offers a direct pool swap when it beats paying', async () => {
