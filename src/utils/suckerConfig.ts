@@ -10,6 +10,8 @@
  */
 
 import { toHex, toBytes, pad } from 'viem'
+import { NATIVE_SUCKER_DEPLOYER_ADDRESSES as SDK_NATIVE_SUCKER_DEPLOYER_ADDRESSES } from '@bananapus/nana-sdk-core'
+import type { JBSuckerBridge } from '@bananapus/nana-sdk-core'
 
 // Native token address used by Juicebox
 export const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
@@ -156,9 +158,7 @@ export interface JBSuckerDeploymentConfig {
 }
 
 /**
- * The bridge infrastructure to deploy v6 suckers on (mirrors the SDK's
- * JBSuckerBridge — nana-sdk-core 91c2361 — so this call site is a drop-in
- * swap once that release ships):
+ * The bridge infrastructure to deploy v6 suckers on — the SDK's type:
  *
  * - `"ccip"`: Chainlink CCIP suckers. Connect any pair of supported chains and
  *   can map any supported asset (USDC bridges as canonical USDC via CCTP).
@@ -168,30 +168,16 @@ export interface JBSuckerDeploymentConfig {
  * - `"both"`: one native sucker AND one CCIP sucker per pair, for redundancy.
  *   Pairs or assets native bridges can't serve are covered by CCIP alone.
  */
-export type JBSuckerBridge = 'ccip' | 'native' | 'both'
+export type { JBSuckerBridge } from '@bananapus/nana-sdk-core'
 
 /**
- * Native-bridge sucker deployer addresses, keyed by local chain then remote
- * chain. Native bridges only connect Ethereum with an L2, so only L1<->L2
- * edges exist. Addresses from the v6 SDK registry (nana-sdk-core 91c2361),
- * cross-verified against deploy-all-v6/deployments (JBOptimismSuckerDeployer /
- * JBBaseSuckerDeployer / JBArbitrumSuckerDeployer — same address on both
- * sides of each pair).
+ * Native-bridge sucker deployer addresses from the v6 SDK registry (keyed by
+ * local chain then remote chain; only Ethereum<->L2 edges exist), flattened to
+ * v6. Cross-verified against deploy-all-v6/deployments — same address on both
+ * sides of each pair, mainnet and sepolia families alike.
  */
-const NATIVE_OP = '0x298a775c030adcedb641a89d9047ec9972674e1a' as `0x${string}`
-const NATIVE_BASE = '0x54140331902de5c3445eb0c26e15099a5a9d59e6' as `0x${string}`
-const NATIVE_ARB = '0xa12ebfca3d4e0810e4ed174e4c08277c26917acb' as `0x${string}`
-
-export const NATIVE_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${string}`>> = {
-  1: { 10: NATIVE_OP, 8453: NATIVE_BASE, 42161: NATIVE_ARB },
-  10: { 1: NATIVE_OP },
-  8453: { 1: NATIVE_BASE },
-  42161: { 1: NATIVE_ARB },
-  11155111: { 11155420: NATIVE_OP, 84532: NATIVE_BASE, 421614: NATIVE_ARB },
-  11155420: { 11155111: NATIVE_OP },
-  84532: { 11155111: NATIVE_BASE },
-  421614: { 11155111: NATIVE_ARB },
-}
+export const NATIVE_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${string}`>> =
+  SDK_NATIVE_SUCKER_DEPLOYER_ADDRESSES[6] as Record<number, Record<number, `0x${string}`>>
 
 export interface ParseSuckerDeployerConfigOptions {
   /**
