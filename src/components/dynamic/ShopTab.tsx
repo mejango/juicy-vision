@@ -6,6 +6,18 @@ import { fetchEthPrice, fetchProject } from '../../services/bendystraw'
 import { rulesetKeys, getShopStaleTime } from '../../hooks/useRulesetCache'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import NFTTierCard from './NFTTierCard'
+import { CustomersSubtab } from '../project/shop/CustomersSubtab'
+
+type ShopSubtab = 'inventory' | 'customers'
+
+// The shop subtab isn't part of the dashboard's owners-subtab hash scheme
+// (parseProjectHash only knows owners subtabs), so read/write the `#shop/…`
+// suffix locally. Only 'customers' gets a suffix; Inventory is the bare `#shop`.
+function readShopSubtabFromHash(): ShopSubtab {
+  const [rawTab, rawSub] = window.location.hash.replace(/^#/, '').split('/')
+  if (rawTab?.toLowerCase() === 'shop' && rawSub?.toLowerCase() === 'customers') return 'customers'
+  return 'inventory'
+}
 
 // Metadata extracted from on-chain resolver
 interface TierMetadata {
@@ -18,12 +30,24 @@ interface ShopTabProps {
   chainId: string
   isOwner?: boolean
   connectedChains?: Array<{ chainId: number; projectId: number }>
+  /** Which subtab to open on (defaults to the URL hash, else Inventory). */
+  initialSubtab?: ShopSubtab
   onManageTiers?: () => void
 }
 
-export default function ShopTab({ projectId, chainId, isOwner, connectedChains, onManageTiers }: ShopTabProps) {
+export default function ShopTab({ projectId, chainId, isOwner, connectedChains, initialSubtab, onManageTiers }: ShopTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+
+  // [Inventory | Customers] subtabs. Inventory is the existing shop; Customers
+  // shows who's bought + the item-redemption flow. The active subtab is mirrored
+  // into the `#shop/customers` hash so it survives reloads and deep links.
+  const [subtab, setSubtab] = useState<ShopSubtab>(() => initialSubtab ?? readShopSubtabFromHash())
+  const selectSubtab = useCallback((next: ShopSubtab) => {
+    setSubtab(next)
+    const base = '#shop'
+    window.history.replaceState(null, '', next === 'customers' ? `${base}/customers` : base)
+  }, [])
   const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all')
   // Category names extracted from on-chain metadata (category number -> name)
   const [categoryNames, setCategoryNames] = useState<Record<number, string>>({})
@@ -202,6 +226,9 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains, 
     </div>
   ) : null
 
+  // The existing shop body — inventory cards, filters, chain switcher. Rendered
+  // unchanged; only wrapped so the Customers subtab can sit beside it.
+  const renderInventory = () => {
   if (loading) {
     return (
       <div className="space-y-4">
@@ -418,6 +445,35 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains, 
             </div>
           ))}
         </div>
+      )}
+    </div>
+  )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* [Inventory | Customers] subtabs */}
+      <div className={`flex gap-1 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+        {(['inventory', 'customers'] as const).map(id => (
+          <button
+            key={id}
+            onClick={() => selectSubtab(id)}
+            className={`px-3 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
+              subtab === id
+                ? 'border-juice-orange text-juice-orange'
+                : isDark
+                  ? 'border-transparent text-gray-400 hover:text-gray-200'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {id}
+          </button>
+        ))}
+      </div>
+      {subtab === 'inventory' ? (
+        renderInventory()
+      ) : (
+        <CustomersSubtab projectId={projectId} chainId={chainIdNum} chains={availableChains} />
       )}
     </div>
   )
