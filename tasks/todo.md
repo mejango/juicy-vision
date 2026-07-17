@@ -42,37 +42,38 @@ Reference maps (from exploration agents, 2026-07-16):
 
 ### Phase 0 — foundation (orchestrator)
 - [x] Worktree + deps install
-- [ ] Tab model: flavor-dependent tab sets + subtab routing (URL `/:slug/:tab/:subtab`)
-- [ ] Revnet flavor util: owner == REVOwner (website parity) with bendystraw isRevnet
-      cross-check; operator resolution kept
-- [ ] Shared additions: SDK-backed read services (funds snapshot, you-position, pool state)
-      file skeletons + interface contracts for parallel agents
+- [x] Tab model: flavor-dependent tab sets + hash routing (src/components/project/flavor.ts)
+- [x] Guarded tx runner: src/services/projectTx.ts + src/hooks/useGuardedTx.ts
+      (reverify → approve → simulate → send → confirm; managed + self-custody)
+- [x] Revnet flavor: existing isRevnetProject (owner == REVOwner, website parity) kept
 
 ### Phase 1 — parallel batch A (disjoint files)
 - [ ] Pay card reorg (ProjectCard → website pay-card structure: mini-shop strip, mode
       select pay|add-to-balance, chain+currency selects incl. via-router, preview,
       direct-swap offer, feedback block, min-received, starts-in gate)
-- [ ] Rulesets tab: carousel card (prev/next cycles incl. projected), rule rows, diffs,
-      queue-ruleset entry, cross-chain sync check
-- [ ] Funds tab: funds card per accounting-token kind (per-chain balance/limit/surplus
-      table, payouts column + distribute, allowance column + use)
-- [ ] Overview tab: about card + edit, other-info panel, revnet price chart
-- [ ] Extras tab: copy-project .jb export (reuse create-flow draft schema) + payer-address
-      card + deploy payer tx
-- [ ] Terms tab (revnet): issuance + terms table + stage metadata decode
+- [x] Rulesets tab: carousel card (6626c95 — 21 tests: projection math, signature, diffs)
+- [x] Funds tab: per-kind cards (f2d4996 — 9 tests: unlimited sentinel, partial-failure
+      suppression, USDC 6-dec)
+- [x] Overview + Terms tabs (305cd75 — 22 tests: stage decode, issuance cuts)
+- [ ] Extras tab: copy-project .jb export + payer-address card [agent running]
 
 ### Phase 2 — parallel batch B
-- [ ] Owners/Tokens shell + Accounts subtab: You card (per-chain balance/cash-out/max-loan/LP,
-      action buttons, claim credits, your loans) + All card (donut + holders table + ENS search)
-- [ ] Settlement subtab: composition, gossip table + sync tx, bridges list, queued movements
-      + claim/execute txs; Move-between-chains 2-step modal (SDK sucker builders)
-- [ ] Loans (revnet): open loan (permission pre-step + borrowFrom), repay, loans tables,
-      fee ramp math
-- [ ] Market subtab: pool state, LP positions, add/remove liquidity, split-hook keeper card
-- [ ] Splits/Reserved + Auto Issuance subtabs: per-stage splits, pending per chain,
-      distribute, edit-splits entry, auto-issuance tables + distribute
-- [ ] Owner/Operator tab: account card (+transfer authority), edits card, buyback/router
-      card, powers card (custom), permissions card (+editor)
+- [x] Owners/Tokens shell + Accounts subtab (203267d — 19 tests; claim-credits guarded;
+      renderSubtab(id) contract for other subtab builders)
+- [x] Settlement subtab + Move-between-chains (3057765 — 36 tests: merkle vectors,
+      fee escalation, movement classification)
+- [x] Loans (revnet) (31d1018 — 20 tests: permil fee ramp, loan-id churn)
+- [x] Market subtab + LP (6be8914 partial + finish — 36 tests: tick math, counterpart)
+- [x] Splits/Reserved + Auto Issuance (5679f91 — 14 tests)
+- [x] Owner/Operator back office (3f06cf3 — 25 tests; Safe-queue cards deferred)
+
+### Phase 2.5 — graphs (user directive 2026-07-17)
+- [ ] Port ALL website charts in juicy's SVG style: revnet price ladder (issuance +
+      cash-out floor + AMM spot, range buttons), Terms issuance schedule chart;
+      LP depth/composition/ownership charts ride with the Market agent
+- [ ] KEEP juicy-only charts website lacks: VolumeChart + BalanceChart (Funds tab),
+      TokenPriceChart/PriceChart history (Rulesets), HoldersChart (Accounts)
+- [ ] Chart inventory table in PR body
 
 ### Phase 3 — integration (orchestrator)
 - [ ] Wire tabs into ProjectDashboard (desktop + mobile), event bus parity
