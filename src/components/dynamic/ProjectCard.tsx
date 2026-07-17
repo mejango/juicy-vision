@@ -30,8 +30,18 @@ import { assertCurrentProjectPayConfigurationTrusted } from '../../utils/project
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
+import { ExplainerMessage } from '../ui/ExplainerMessage'
 import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../../utils/terminalPreview'
 import { buildNftPayMetadata } from '../../utils/nftPayMetadata'
+import {
+  fmtCountdown,
+  formatExactTokenEstimate,
+  isVerifiedZeroIssuance,
+  probeRouterPayRoute,
+  readPayScheduleGate,
+  resolveDirectSwapOffer,
+  uniswapPoolLink,
+} from '../../services/payPreviewCard'
 
 // Metadata extracted from on-chain resolver
 interface OnChainTierMetadata {
@@ -151,6 +161,9 @@ interface ProjectCardProps {
   messageId?: string // For persisting payment state to server (visible to all chat users)
   embedded?: boolean // For sidebar display mode - removes outer container styling
   children?: React.ReactNode // For embedded mode - content to render inside scrollable area (e.g., Activity)
+  // Flavor for the pay explainer: revnets have locked terms, custom projects have
+  // owner-configured rulesets. Falls back to the indexed isRevnet flag when omitted.
+  isRevnet?: boolean
 }
 
 const CHAIN_INFO: Record<string, { name: string; slug: string }> = {
@@ -175,18 +188,16 @@ type PayCardPreview =
       beneficiaryTokenCount: bigint
       reservedTokenCount: bigint
       route: 'issuance' | 'amm'
+      // The exact minReturnedTokens the executor submits: equal to the quote on
+      // the issuance route, slippage-floored on the AMM route. Displayed value
+      // and submitted parameter must always match.
+      minReturnedTokens: bigint
+      // Buyback pool the AMM route filled through, when applicable.
+      buybackPoolId: Hex | null
+      // A verified zero/zero quote (weight-0 ruleset): legitimate, but the
+      // "0 tokens" output is hidden instead of shown as a broken quote.
+      zeroIssuance: boolean
     }
-
-function formatExactTokenEstimate(value: bigint, maximumFractionDigits = 2): string {
-  const tokenScale = 10n ** 18n
-  const displayScale = 10n ** BigInt(maximumFractionDigits)
-  const rounded = (value * displayScale + tokenScale / 2n) / tokenScale
-  const whole = rounded / displayScale
-  const hadFraction = value % tokenScale !== 0n
-  const fraction = (rounded % displayScale).toString().padStart(maximumFractionDigits, '0')
-  if (hadFraction) return `${whole.toLocaleString('en-US')}.${fraction}`
-  return whole.toLocaleString('en-US')
-}
 
 export type PaymentToken = 'ETH' | 'USDC' | 'PAY_CREDITS'
 
@@ -346,7 +357,7 @@ function PaymentProgress({
   )
 }
 
-export default function ProjectCard({ projectId, chainId: initialChainId = '1', messageId, embedded = false, children }: ProjectCardProps) {
+export default function ProjectCard({ projectId, chainId: initialChainId = '1', messageId, embedded = false, children, isRevnet }: ProjectCardProps) {
   // Persistent payment state (visible to all chat users)
   const { state: persistedPayment, updateState: updatePersistedPayment } = useProjectCardPaymentState(messageId)
 
@@ -369,6 +380,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
   const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [payPreview, setPayPreview] = useState<PayCardPreview>({ status: 'idle' })
+  // Unix start of the first ruleset when it is still in the future ("Starts in" gate).
+  const [payStartsAt, setPayStartsAt] = useState<number | null>(null)
+  const [countdownNow, setCountdownNow] = useState(() => Math.floor(Date.now() / 1000))
   // Full metadata from IPFS (has complete description)
   const [fullMetadata, setFullMetadata] = useState<IpfsProjectMetadata | null>(null)
   // Sucker group balance (total + per-chain breakdown)
@@ -499,6 +513,42 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       }
     }
   }, [persistedPayment])
+
+  // Read whether the project's first ruleset has started. Paying before the start
+  // reverts in the terminal, so the Pay button idles behind a live countdown.
+  useEffect(() => {
+    let cancelled = false
+    async function loadScheduleGate() {
+      try {
+        const chainIdNum = parseInt(selectedChainId)
+        const chain = VIEM_CHAINS[chainIdNum as SupportedChainId]
+        const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
+        if (!chain || !rpcUrl) return
+        const client = createPublicClient({ chain, transport: http(rpcUrl) })
+        const gate = await readPayScheduleGate(client, BigInt(currentProjectId))
+        if (!cancelled) setPayStartsAt(gate.startsAt)
+      } catch {
+        if (!cancelled) setPayStartsAt(null)
+      }
+    }
+    setPayStartsAt(null)
+    loadScheduleGate()
+    return () => {
+      cancelled = true
+    }
+  }, [currentProjectId, selectedChainId])
+
+  const notStarted = payStartsAt !== null && payStartsAt > countdownNow
+
+  // Tick the countdown once per second while the start is in the future; when it
+  // passes, the gate clears itself and the Pay button wakes up.
+  useEffect(() => {
+    if (!notStarted) return
+    const timer = setInterval(() => {
+      setCountdownNow(Math.floor(Date.now() / 1000))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [notStarted])
 
   // Fetch NFT tiers when chain changes
   useEffect(() => {
@@ -655,6 +705,18 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               if (terminal.type === 'multi' && !directContext) {
                 throw new Error(`${candidate.symbol} is not a live accounting context`)
               }
+              if (terminal.type !== 'multi') {
+                // A listed router with no pool/feed path reverts at pay time — offering
+                // the token there is a trap. Require a live previewPayFor on the registry.
+                const routable = await probeRouterPayRoute(
+                  client,
+                  terminal.address,
+                  BigInt(currentProjectId),
+                  tokenAddress,
+                  directContext?.decimals ?? candidate.decimals,
+                )
+                if (!routable) return null
+              }
               return {
                 symbol: candidate.symbol,
                 name: candidate.name,
@@ -808,15 +870,19 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           reservedTokenCount: preview[2],
           hookSpecifications: preview[3],
         })
-        if (outcome.beneficiaryTokenCount <= 0n && selectedTierIds.length === 0) {
-          throw new Error('This payment currently returns no project tokens')
-        }
+        // A verified zero/zero quote is a legitimate pay (weight-0 ruleset): keep it
+        // submittable and hide the meaningless "0 tokens" line instead of blocking.
+        const zeroIssuance = selectedTierIds.length === 0 &&
+          isVerifiedZeroIssuance(outcome.beneficiaryTokenCount, outcome.reservedTokenCount)
         if (!cancelled) {
           setPayPreview({
             status: 'ready',
             beneficiaryTokenCount: outcome.beneficiaryTokenCount,
             reservedTokenCount: outcome.reservedTokenCount,
             route: outcome.route,
+            minReturnedTokens: outcome.minReturnedTokens,
+            buybackPoolId: outcome.buyback?.poolId ?? null,
+            zeroIssuance,
           })
         }
       } catch (err) {
@@ -827,7 +893,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           setPayPreview({ status: 'unavailable', reason })
         }
       }
-    }, 250)
+    }, 400)
 
     return () => {
       cancelled = true
@@ -850,6 +916,22 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const requiresLivePayPreview = selectedToken !== 'PAY_CREDITS' && !addsToBalance
   const livePayPreviewReady = payPreview.status === 'ready'
 
+  // Direct AMM swap offer: when the buyback hook already routes this pay through the
+  // pool, buying straight from the pool keeps the reserved share too. Only for plain
+  // buys — no NFT mints, not add-to-balance, and only directly accepted pair tokens.
+  const directSwapOffer = useMemo(() => {
+    if (payPreview.status !== 'ready') return null
+    return resolveDirectSwapOffer({
+      route: payPreview.route,
+      beneficiaryTokenCount: payPreview.beneficiaryTokenCount,
+      reservedTokenCount: payPreview.reservedTokenCount,
+      poolId: payPreview.buybackPoolId,
+      hasTiers: selectedTierIds.length > 0,
+      addsToBalance,
+      viaRouter: selectedPaymentOption?.route !== 'direct',
+    })
+  }, [payPreview, selectedTierIds.length, addsToBalance, selectedPaymentOption?.route])
+
   // Check if form should be locked due to active/completed payment
   const isPaymentLocked = persistedPayment?.status && persistedPayment.status !== 'pending'
   const paymentButtonDisabled = Boolean(
@@ -857,6 +939,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     paymentSafetyError ||
     paymentSafetyLoading ||
     paying ||
+    notStarted ||
     !amount ||
     parseFloat(amount) <= 0 ||
     isPaymentLocked ||
@@ -1102,13 +1185,33 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     }
   }, [activePayment?.status, activePayment?.hash, activePayment?.error, refetchJuiceBalance, updatePersistedPayment])
 
+  const renderSelectedTierList = () => {
+    if (Object.keys(tierQuantities).length === 0) return null
+    return (
+      <div className="mt-2">
+        {Object.entries(tierQuantities).map(([tierId, qty]) => {
+          const tier = nftTiers.find((candidate) => candidate.tierId === Number(tierId))
+          if (!tier) return null
+          const exceedsSupply = qty > tier.remainingSupply
+          return (
+            <div key={tierId} className={exceedsSupply ? 'text-orange-400' : ''}>
+              {qty > 1 ? `${qty}x ` : ''}
+              {getTierDisplayName(tier)}
+              {exceedsSupply && <span className="ml-1 text-xs">(only {tier.remainingSupply} left)</span>}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   const renderPayOutcomePreview = () => {
     const muted = isDark ? 'text-gray-400' : 'text-gray-500'
 
     if (addsToBalance) {
       return (
         <div className={`mt-3 text-xs ${muted}`}>
-          Add to Balance does not issue project tokens. Choose Pay to receive them.
+          Adds to the project balance — nothing else. It does not issue project tokens; choose Pay to receive them.
         </div>
       )
     }
@@ -1125,9 +1228,64 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     }
 
     const tokenSymbol = projectTokenSymbol || project?.name.split(' ')[0].toUpperCase().slice(0, 6) || 'TOKENS'
+
+    // Direct AMM swap beats paying: the buyback hook skims the reserved % even on
+    // its swap route, while a straight pool swap keeps 100% of the output.
+    // TODO(parity): UniversalRouter execution — juicy has no Universal Router
+    // plumbing yet, so the offer links out to the pool on Uniswap instead of
+    // executing the swap in place. Never ship a half-guarded swap execution.
+    if (directSwapOffer) {
+      const poolLink = uniswapPoolLink(parseInt(selectedChainId), directSwapOffer.poolId)
+      return (
+        <div className={`mt-4 min-w-0 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`} aria-live="polite">
+          <div className={`text-xs ${muted}`}>You get at least</div>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+            <span className={`min-w-0 break-all text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {formatExactTokenEstimate(directSwapOffer.minOut)} {tokenSymbol}
+            </span>
+            <span
+              className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                isDark ? 'border-juice-cyan/50 text-juice-cyan' : 'border-cyan-400 text-cyan-700'
+              }`}
+              title="Bought straight from the Uniswap pool, bypassing pay — so the reserved % / splits take nothing"
+            >
+              swap
+            </span>
+          </div>
+          <div className={`mt-1 break-all text-xs font-medium ${muted}`}>
+            Swapping the pool directly beats paying by {formatExactTokenEstimate(directSwapOffer.advantage)} {tokenSymbol} — splits take 0 {tokenSymbol}.
+          </div>
+          {poolLink && (
+            <a
+              href={poolLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`mt-1 inline-block text-xs underline ${isDark ? 'text-juice-cyan hover:text-white' : 'text-cyan-700 hover:text-gray-900'}`}
+            >
+              Swap via Uniswap ↗
+            </a>
+          )}
+          <div className={`mt-1 text-[10px] ${muted}`}>
+            Paying below still works — it fills through the same pool, but splits keep their share.
+          </div>
+        </div>
+      )
+    }
+
+    // A verified payment can intentionally mint no tokens (weight-0 ruleset). Keep
+    // selected NFT receipts, but omit "0 tokens" and "Splits get 0 tokens" entirely.
+    if (payPreview.zeroIssuance) {
+      return (
+        <div className={`mt-3 text-xs ${muted}`} aria-live="polite">
+          This project currently issues no tokens for payments — a payment simply funds the project.
+          {renderSelectedTierList()}
+        </div>
+      )
+    }
+
     return (
       <div className={`mt-4 min-w-0 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`} aria-live="polite">
-        <div className={`text-xs ${muted}`}>You get</div>
+        <div className={`text-xs ${muted}`}>{payPreview.route === 'amm' ? 'You get at least' : 'You get'}</div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
           <button
             type="button"
@@ -1142,7 +1300,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'
             }`}
           >
-            {formatExactTokenEstimate(payPreview.beneficiaryTokenCount)} {tokenSymbol}
+            {formatExactTokenEstimate(payPreview.minReturnedTokens)} {tokenSymbol}
           </button>
           <span className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold uppercase ${
             payPreview.route === 'amm'
@@ -1161,24 +1319,72 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             Splits get {formatExactTokenEstimate(payPreview.reservedTokenCount)} {tokenSymbol}
           </div>
         )}
-        <div className={`mt-1 text-[10px] ${muted}`}>Live preview · exact minimum checked before signing.</div>
-        {Object.keys(tierQuantities).length > 0 && (
-          <div className="mt-2">
-            {Object.entries(tierQuantities).map(([tierId, qty]) => {
-              const tier = nftTiers.find((candidate) => candidate.tierId === Number(tierId))
-              if (!tier) return null
-              const exceedsSupply = qty > tier.remainingSupply
-              return (
-                <div key={tierId} className={exceedsSupply ? 'text-orange-400' : ''}>
-                  {qty > 1 ? `${qty}x ` : ''}
-                  {getTierDisplayName(tier)}
-                  {exceedsSupply && <span className="ml-1 text-xs">(only {tier.remainingSupply} left)</span>}
-                </div>
-              )
-            })}
+        {renderSelectedTierList()}
+      </div>
+    )
+  }
+
+  // Natural-language intro above the pay controls — juicy's signature is more
+  // explainer text than the website, same structure.
+  const projectIsRevnet = isRevnet ?? Boolean(project?.isRevnet)
+  const renderPayExplainer = () => {
+    const tokenSymbol = projectTokenSymbol || 'its token'
+    return (
+      <div className="mb-3">
+        <ExplainerMessage>
+          {projectIsRevnet
+            ? `Paying this revnet routes your payment into its treasury and issues ${tokenSymbol} at the current stage rate. Revnet terms are locked onchain — nobody can change the issuance schedule or take a special cut.`
+            : `Paying this project routes your payment into its treasury and issues ${tokenSymbol} under its current ruleset. The project's owner configures issuance and reserved splits, so check the quote below before paying.`}
+        </ExplainerMessage>
+      </div>
+    )
+  }
+
+  // Inline caveat near the Pay button: the minimum shown is the exact minimum the
+  // transaction enforces (issuance quotes are exact; AMM routes allow 1% slippage).
+  const renderPayCaveat = () => {
+    if (!requiresLivePayPreview || payPreview.status !== 'ready' || payPreview.zeroIssuance) return null
+    return (
+      <p className={`mt-2 text-[11px] leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+        {payPreview.route === 'amm'
+          ? 'The minimum shown is enforced onchain when you sign — AMM fills allow up to 1% slippage, and payments take no protocol fee.'
+          : 'The minimum shown is enforced onchain when you sign — issuance quotes are exact, and payments take no protocol fee.'}
+      </p>
+    )
+  }
+
+  // "Starts in" countdown — the first ruleset hasn't started, so paying reverts.
+  const renderCountdownBanner = () => {
+    if (!notStarted || payStartsAt === null) return null
+    return (
+      <div
+        className={`mb-3 flex items-center justify-between gap-2 border px-3 py-2 text-sm ${
+          isDark ? 'border-juice-cyan/40 bg-juice-cyan/10 text-juice-cyan' : 'border-cyan-300 bg-cyan-50 text-cyan-700'
+        }`}
+        role="status"
+      >
+        <span className="font-medium">Starts in</span>
+        <span className="font-mono">{fmtCountdown(payStartsAt - countdownNow)}</span>
+      </div>
+    )
+  }
+
+  // Terminal-surface warnings live at the bottom of the card, mirroring the website.
+  const renderSafetyNotices = () => {
+    if (!nftSafetyError && !paymentSafetyError) return null
+    return (
+      <>
+        {nftSafetyError && (
+          <div className={`mt-3 border p-3 text-xs ${isDark ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+            {nftSafetyError}. Payments are unavailable until this project uses a recognized hook configuration.
           </div>
         )}
-      </div>
+        {paymentSafetyError && (
+          <div className={`mt-3 border p-3 text-xs ${isDark ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-red-300 bg-red-50 text-red-800'}`}>
+            {paymentSafetyError}. Payments are blocked until the live project route is recognized.
+          </div>
+        )}
+      </>
     )
   }
 
@@ -1409,6 +1615,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
   const handlePay = async (event?: React.MouseEvent<HTMLButtonElement>) => {
     if (nftSafetyError || paymentSafetyError || paymentSafetyLoading) return
+    // Paying before the first ruleset starts reverts in the terminal.
+    if (notStarted) return
     if (!amount || parseFloat(amount) <= 0) return
     const tierSelections = Object.entries(tierQuantities).map(([tierId, quantity]) => {
       const tier = nftTiers.find((candidate) => candidate.tierId === Number(tierId))
@@ -1574,16 +1782,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               <ChainMappingWarning isDark={isDark} />
             </div>
           )}
-          {nftSafetyError && (
-            <div className={`mx-4 mt-3 border p-3 text-xs ${isDark ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
-              {nftSafetyError}. Payments are unavailable until this project uses a recognized hook configuration.
-            </div>
-          )}
-          {paymentSafetyError && (
-            <div className={`mx-4 mt-3 border p-3 text-xs ${isDark ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-red-300 bg-red-50 text-red-800'}`}>
-              {paymentSafetyError}. Payments are blocked until the live project route is recognized.
-            </div>
-          )}
+          {/* Intro explainer for this pay flavor */}
+          <div className={`px-4 pt-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}>{renderPayExplainer()}</div>
           {/* NFT Shop - scrolls away */}
           {nftTiers.length > 0 && (
             <div className={`px-4 pt-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}>
@@ -1665,6 +1865,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
           {/* Sticky pay controls - sticks to top when scrolling */}
           <div className={`sticky top-0 z-20 px-4 ${nftTiers.length > 0 ? 'py-3' : 'pt-4 pb-3'} ${isDark ? 'bg-[#222]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
+            {renderCountdownBanner()}
             {renderPaymentModeAndChainSelector()}
             <div className="flex gap-2">
               <div className="flex-1">
@@ -1758,7 +1959,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       : 'bg-green-500 hover:bg-green-600 text-black'
                   }`}
                 >
-                  {paymentSafetyLoading
+                  {notStarted
+                    ? 'Not started'
+                    : paymentSafetyLoading
                     ? 'Checking...'
                     : requiresLivePayPreview && payPreview.status === 'loading'
                     ? 'Quoting...'
@@ -1778,10 +1981,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             </div>
           </div>
 
-          {/* Content below sticky with lighter background */}
+          {/* Content below sticky with lighter background.
+              Website pay-card order: memo → feedback → status line → terminal warning. */}
           <div className={`flow-root ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}>
             <div className="px-4">
-              {renderPayOutcomePreview()}
+              {renderPayCaveat()}
 
               {/* Memo input */}
               <input
@@ -1790,13 +1994,14 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                 onChange={(e) => setMemo(e.target.value)}
                 placeholder="Add a memo (optional)"
                 disabled={isPaymentLocked}
-                className={`w-full mt-3 py-2 text-sm outline-none ${isDark ? 'bg-transparent text-white placeholder-gray-500' : 'bg-transparent text-gray-900 placeholder-gray-400'} ${
+                className={`w-full mt-1 py-2 text-sm outline-none ${isDark ? 'bg-transparent text-white placeholder-gray-500' : 'bg-transparent text-gray-900 placeholder-gray-400'} ${
                   isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
                 }`}
               />
-              <div className="pb-10" />
 
-              {/* Payment progress indicator */}
+              {renderPayOutcomePreview()}
+
+              {/* Payment progress indicator (the status line) */}
               {(activePayment || (persistedPayment && persistedPayment.status !== 'pending')) && (
                 <PaymentProgress
                   stage={activePayment?.stage}
@@ -1808,6 +2013,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   onRetry={() => setActivePaymentId(null)}
                 />
               )}
+
+              {renderSafetyNotices()}
+              <div className="pb-10" />
             </div>
           </div>
 
@@ -2036,19 +2244,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           </div>
         </div>
 
-        {/* Pay form */}
+        {/* Pay form — website pay-card order: shop strip → countdown → mode/chain →
+            amount/currency/Pay → memo → feedback → status → terminal warnings. */}
         <div className={`mb-3 px-3 pb-3 ${nftTiers.length > 0 ? 'pt-3' : 'pt-4'} ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
           {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
-          {nftSafetyError && (
-            <div className={`mb-3 border p-3 text-xs ${isDark ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
-              {nftSafetyError}. Payments are unavailable until this project uses a recognized hook configuration.
-            </div>
-          )}
-          {paymentSafetyError && (
-            <div className={`mb-3 border p-3 text-xs ${isDark ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-red-300 bg-red-50 text-red-800'}`}>
-              {paymentSafetyError}. Payments are blocked until the live project route is recognized.
-            </div>
-          )}
+          {renderPayExplainer()}
           {/* NFT Tier selector - horizontal carousel */}
           {nftTiers.length > 0 && (
             <div className="mb-3">
@@ -2127,6 +2327,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               </div>
             </div>
           )}
+
+          {renderCountdownBanner()}
 
           {renderPaymentModeAndChainSelector()}
 
@@ -2224,7 +2426,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                     : 'bg-green-500 hover:bg-green-600 text-black'
                 }`}
               >
-                {paymentSafetyLoading
+                {notStarted
+                  ? 'Not started'
+                  : paymentSafetyLoading
                   ? 'Checking...'
                   : requiresLivePayPreview && payPreview.status === 'loading'
                   ? 'Quoting...'
@@ -2243,7 +2447,23 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             </div>
           </div>
 
-          {/* Payment progress indicator - show from local state or persisted state */}
+          {renderPayCaveat()}
+
+          {/* Memo input */}
+          <input
+            type="text"
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="Add a memo (optional)"
+            disabled={isPaymentLocked}
+            className={`w-full mt-1 py-2 text-sm outline-none ${isDark ? 'bg-transparent text-white placeholder-gray-500' : 'bg-transparent text-gray-900 placeholder-gray-400'} ${
+              isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
+            }`}
+          />
+
+          {renderPayOutcomePreview()}
+
+          {/* Payment progress indicator (the status line) */}
           {(activePayment || (persistedPayment && persistedPayment.status !== 'pending')) && (
             <PaymentProgress
               stage={activePayment?.stage}
@@ -2256,19 +2476,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             />
           )}
 
-          {renderPayOutcomePreview()}
-
-          {/* Memo input */}
-          <input
-            type="text"
-            value={memo}
-            onChange={(e) => setMemo(e.target.value)}
-            placeholder="Add a memo (optional)"
-            disabled={isPaymentLocked}
-            className={`w-full mt-4 py-2 text-sm outline-none ${isDark ? 'bg-transparent text-white placeholder-gray-500' : 'bg-transparent text-gray-900 placeholder-gray-400'} ${
-              isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
-            }`}
-          />
+          {renderSafetyNotices()}
         </div>
       </div>
 
