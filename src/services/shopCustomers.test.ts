@@ -4,6 +4,7 @@ import {
   itemLabelFrom,
   tallyItems,
   rankCustomers,
+  ownersOfTier,
   type MintRow,
 } from './shopCustomers'
 
@@ -123,5 +124,38 @@ describe('rankCustomers', () => {
 
   it('skips rows with no beneficiary', () => {
     expect(rankCustomers([mint({ beneficiary: '' })])).toEqual([])
+  })
+})
+
+describe('ownersOfTier', () => {
+  const a = '0xAAaAaAaAaAaAaAaAaAaAaAaAAaAAaAaAAAaaAaaa'
+  const b = '0xBbBbBBbBBBBBBBbbBBbbbBBBbbbbBBbBBbBbBBBB'
+
+  it('returns only holders of the given tier, most-owned first', () => {
+    const rows = [
+      mint({ beneficiary: a, tierId: 1 }),
+      mint({ beneficiary: a, tierId: 1 }),
+      mint({ beneficiary: b, tierId: 1 }),
+      mint({ beneficiary: a, tierId: 2 }), // other tier — excluded
+      mint({ beneficiary: b, tierId: 2 }),
+    ]
+    expect(ownersOfTier(rows, 1)).toEqual([
+      { address: a, chainId: 1, count: 2 },
+      { address: b, chainId: 1, count: 1 },
+    ])
+  })
+
+  it('collapses case-different addresses into one holder', () => {
+    const rows = [
+      mint({ beneficiary: '0xAbc0000000000000000000000000000000000000', tierId: 3 }),
+      mint({ beneficiary: '0xabc0000000000000000000000000000000000000', tierId: 3 }),
+    ]
+    const owners = ownersOfTier(rows, 3)
+    expect(owners).toHaveLength(1)
+    expect(owners[0].count).toBe(2)
+  })
+
+  it('returns an empty list when no row matches the tier', () => {
+    expect(ownersOfTier([mint({ tierId: 1 })], 99)).toEqual([])
   })
 })
