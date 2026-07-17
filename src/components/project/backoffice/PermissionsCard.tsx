@@ -26,6 +26,7 @@ import {
   PERMISSIONS,
   permissionDescription,
   permissionLabel,
+  JB_ROOT_PERMISSION_ID,
   permissionSetsDiffer,
   preloadPermissionSelection,
   readPermissionIds,
@@ -81,6 +82,7 @@ function SetPermissionsModal({
   const [snapshots, setSnapshots] = useState<Record<number, ChainSnapshot> | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [gateChecked, setGateChecked] = useState(false)
+  const [rootConfirmed, setRootConfirmed] = useState(false)
   const [statuses, setStatuses] = useState<Record<number, ChainRunState>>({})
 
   const trimmedOperator = operatorInput.trim()
@@ -134,6 +136,10 @@ function SetPermissionsModal({
   }, [editing, operator, loadSnapshots])
 
   const ids = selection ? selectedPermissionIds(selection) : []
+  // ROOT (id 1) grants EVERYTHING — one mis-click hands over the whole project.
+  // Require an explicit second confirmation before it can be submitted.
+  const rootSelected = ids.includes(JB_ROOT_PERMISSION_ID)
+  const rootBlocked = rootSelected && !rootConfirmed
   const anyRunning = Object.values(statuses).some(status => status.kind === 'running')
   const ready = !!operator && !!selection && !!snapshots && !loadError
 
@@ -272,6 +278,24 @@ function SetPermissionsModal({
         </div>
       ) : null}
 
+      {rootSelected ? (
+        <div className={`border p-3 space-y-2 ${isDark ? 'border-red-500/50 bg-red-500/10' : 'border-red-400 bg-red-50'}`} role="alert">
+          <p className={`text-sm font-semibold ${isDark ? 'text-red-300' : 'text-red-700'}`}>
+            Full control (root) selected — this grants the operator EVERY permission on the project, equivalent to
+            handing over ownership. Anyone with root can drain funds, mint tokens, and re-permission others.
+          </p>
+          <label className={`flex items-start gap-2 text-sm cursor-pointer ${isDark ? 'text-red-200' : 'text-red-800'}`}>
+            <input
+              type="checkbox"
+              checked={rootConfirmed}
+              onChange={event => setRootConfirmed(event.target.checked)}
+              className="mt-0.5 w-4 h-4"
+            />
+            <span>I understand I am granting FULL CONTROL (root) and intend to.</span>
+          </label>
+        </div>
+      ) : null}
+
       <DangerGate
         isDark={isDark}
         text="Granting permissions lets the operator act on the project's behalf for the checked powers. Verify the address — a wrong or malicious operator can use these powers against the project. You can change or revoke them here at any time."
@@ -284,9 +308,15 @@ function SetPermissionsModal({
         chainIds={chainIds}
         statuses={statuses}
         onExecute={execute}
-        disabled={!ready || !gateChecked || anyRunning}
+        disabled={!ready || !gateChecked || rootBlocked || anyRunning}
         disabledReason={
-          !operator ? 'Enter a valid operator address first' : !ready ? 'Reading current permissions…' : 'Tick the confirmation box to proceed'
+          !operator
+            ? 'Enter a valid operator address first'
+            : !ready
+              ? 'Reading current permissions…'
+              : rootBlocked
+                ? 'Confirm the full-control (root) grant to proceed'
+                : 'Tick the confirmation box to proceed'
         }
         isDark={isDark}
       />
