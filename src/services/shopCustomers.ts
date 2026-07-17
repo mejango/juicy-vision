@@ -56,8 +56,33 @@ export interface OwnedItem {
   tierId: number
 }
 
+/** One holder of a specific item: their address, home chain, and how many they hold. */
+export interface TierOwner {
+  address: string
+  chainId: number
+  count: number
+}
+
 /** tierId → display name map. */
 export type ItemNames = Record<number, string>
+
+/** A store item's display media (for a thumbnail), resolved via the shop media resolver. */
+export interface ItemMedia {
+  name?: string
+  /** IPFS/HTTP image URI (rendered through the gateway fallback list). */
+  imageUri?: string
+  /** IPFS/HTTP animation URI (video/gif art), when the tier has one. */
+  animationUrl?: string
+}
+
+/** tierId → media map (thumbnails). */
+export type ShopItemMedia = Record<number, ItemMedia>
+
+/** The shared item name + media maps backing the Customers cards. */
+export interface ShopItemMeta {
+  names: ItemNames
+  media: ShopItemMedia
+}
 
 /** A chain the project lives on, with its per-chain project id (V6 ids differ per chain). */
 export interface ShopChain {
@@ -110,6 +135,16 @@ export function rankCustomers(rows: MintRow[]): CustomerRank[] {
   return Object.keys(byCust)
     .sort((a, b) => byCust[b].length - byCust[a].length)
     .map(k => ({ address: byCust[k][0].beneficiary, chainId: byCust[k][0].chainId, mints: byCust[k] }))
+}
+
+/**
+ * The holders of one item, most-owned first — backs the item → owners drilldown.
+ * Reuses `rankCustomers` over the tier's rows, so case-different addresses collapse
+ * to one holder and the ranking stays consistent with the All card.
+ */
+export function ownersOfTier(rows: MintRow[], tierId: number): TierOwner[] {
+  return rankCustomers(rows.filter(m => Number(m.tierId) === Number(tierId)))
+    .map(c => ({ address: c.address, chainId: c.chainId, count: c.mints.length }))
 }
 
 // --- Fetch wrappers (thin marshalling; not unit tested) ------------------
@@ -189,20 +224,33 @@ export async function fetchNftMints(chains: ShopChain[], beneficiary?: string): 
 }
 
 /**
- * Resolve every store item's display name (tierId → name) via the same media
- * resolver the shop cards use. Missing entries fall back to "Item #<id>".
+ * Resolve every store item's display name AND thumbnail media (tierId → name,
+ * tierId → media) via the same media resolver the shop cards use. Missing names
+ * fall back to "Item #<id>"; missing media renders the "#<id>" placeholder.
  */
-export async function resolveShopItemNames(projectId: string | number, chainId: number): Promise<ItemNames> {
+export async function resolveShopItemMedia(projectId: string | number, chainId: number): Promise<ShopItemMeta> {
   try {
     const tiers = await fetchProjectNFTTiers(String(projectId), chainId)
-    const map: ItemNames = {}
+    const names: ItemNames = {}
+    const media: ShopItemMedia = {}
     for (const t of tiers) {
-      if (t.name) map[Number(t.tierId)] = t.name
+      const id = Number(t.tierId)
+      if (t.name) names[id] = t.name
+      media[id] = { name: t.name, imageUri: t.imageUri, animationUrl: t.animationUrl }
     }
-    return map
+    return { names, media }
   } catch {
-    return {}
+    return { names: {}, media: {} }
   }
+}
+
+/**
+ * Resolve every store item's display name (tierId → name). Thin wrapper over
+ * `resolveShopItemMedia` so name-only callers (the redeem modal) don't pull in
+ * the media map. Missing entries fall back to "Item #<id>".
+ */
+export async function resolveShopItemNames(projectId: string | number, chainId: number): Promise<ItemNames> {
+  return (await resolveShopItemMedia(projectId, chainId)).names
 }
 
 const OWNER_OF_ABI = [{
