@@ -91,4 +91,29 @@ Reference maps (from exploration agents, 2026-07-16):
 - [ ] Fix confirmed findings, re-run suite
 
 ## Review
-(to be filled at completion)
+
+Build complete + wired (PR #26). 1,690 tests pass; tsc + eslint clean. 16 commits.
+
+### Audit status — PARTIAL (session limit hit)
+8 adversarial agents launched (tx-safety, parity, revnet semantics, integration);
+ALL terminated on the session limit (resets 2:20am). Completed a manual pass on
+the highest-risk invariants instead:
+- Guarded runner sound: 2nd reverify after switch+approval; exact-amount approval
+  re-read; managed-mode does NOT race (backend waitForTransactionReceipt blocks);
+  account/chain drift aborts at send.
+- CRITICAL regression found + FIXED (ce5d4d2): mobile lost the pay/cash-out card
+  (old mobile About tab embedded ProjectCard; renderTabs didn't). Restored.
+- switch-tab 'tokens'→'owners' remap for revnets: correct.
+- No dangerouslySetInnerHTML in ported tabs; loans have no interest-rate language;
+  no hardcoded-18-dec in owner subtabs; loans grant BURN_TOKENS not SDK ROOT.
+
+### STILL TODO before merge
+- Re-run the full tab-by-tab parity sweep + exhaustive tx-safety audit after the
+  session limit resets. The manual pass was not exhaustive.
+
+### Deferred (flagged in PR, not bugs)
+Safe-queue cards; direct-swap execution (link-out); LP partial-exit; copy-project
+refuses on 721 shops.
+
+### Upstream
+SDK loans.d.ts REVLOANS_PERMISSION_ID=1 (ROOT) is wrong for borrow — fix in juice-sdk-v4.
