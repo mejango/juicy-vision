@@ -8,21 +8,24 @@
  * (commit 160e46e); the create flow's own Import/Export .jb covers that need.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isAddress, zeroAddress } from 'viem'
 import { useThemeStore } from '../../stores'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
 import { CHAINS } from '../../constants'
 import { useGuardedTx } from '../../hooks/useGuardedTx'
+import { useOmnichainDeployProjectPayer } from '../../hooks/relayr'
 import type { GuardedTxPhase } from '../../services/projectTx'
 import {
   buildProjectPayerDeployCall,
   fetchProjectPayers,
   getProjectPayerDeployer,
   normalizeProjectPayerMetadata,
+  type ProjectPayerDeployCall,
   type ProjectPayerRow,
 } from '../../services/projectPayers'
 import { resolveEnsToAddress, truncateAddress } from '../../utils/ens'
+import PerChainAddressControl from './PerChainAddressControl'
 
 interface ExtrasTabProps {
   projectId: string
@@ -102,7 +105,7 @@ async function resolveAddressInput(raw: string, label: string): Promise<string> 
 export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedChains }: ExtrasTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { activeAddress, run } = useGuardedTx()
+  const { activeAddress, isManagedMode, run } = useGuardedTx()
 
   const pageChainId = parseInt(chainId)
   const tokenLabel = tokenSymbol || 'tokens'
@@ -126,6 +129,10 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
   const [memo, setMemo] = useState('')
   const [editable, setEditable] = useState(false)
   const [adminAddress, setAdminAddress] = useState('')
+  // Per-chain address overrides, keyed by chainId. Empty for a chain = use the
+  // global beneficiary/admin above (the website's makePerChainAddressControl).
+  const [beneficiaryOverrides, setBeneficiaryOverrides] = useState<Record<number, string>>({})
+  const [adminOverrides, setAdminOverrides] = useState<Record<number, string>>({})
 
   // Seed the admin field with the connected account when Editable is switched on.
   useEffect(() => {
@@ -138,6 +145,18 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
     chains.filter((c) => getProjectPayerDeployer(c.chainId)).map((c) => c.chainId))
   const [deployStatus, setDeployStatus] = useState<Status>(IDLE)
   const [deployBusy, setDeployBusy] = useState(false)
+  // Bundle all selected chains into one prepaid Relayr deployment instead of a
+  // guarded transaction per chain. Only meaningful for a managed account (the
+  // bundle path signs server-side, like every other omnichain flow), so it
+  // defaults on there and the sequential guarded runner stays the fallback.
+  const [useRelayr, setUseRelayr] = useState(isManagedMode)
+  // Managed auth can resolve a tick after mount; default Relayr on when it does,
+  // but only on the false→true transition so a user's later opt-out sticks.
+  const wasManaged = useRef(isManagedMode)
+  useEffect(() => {
+    if (isManagedMode && !wasManaged.current) setUseRelayr(true)
+    wasManaged.current = isManagedMode
+  }, [isManagedMode])
 
   // Existing payers (Bendystraw)
   const [payers, setPayers] = useState<ProjectPayerRow[] | null>(null)
@@ -155,6 +174,34 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
   }, [projectId, chains])
 
   useEffect(() => { loadPayers() }, [loadPayers])
+
+  // Relayr bundle path — one prepaid deployment across every selected chain.
+  const {
+    deploy: deployPayerBundle,
+    bundleState,
+    isExecuting: bundleExecuting,
+  } = useOmnichainDeployProjectPayer({
+    onSuccess: () => {
+      setDeployStatus({ kind: 'success', text: 'Payer address deployment complete via Relayr.' })
+      setDeployBusy(false)
+      loadPayers()
+    },
+    onError: (error) => {
+      setDeployStatus({ kind: 'error', text: error.message || 'Could not deploy the payer address.' })
+      setDeployBusy(false)
+    },
+  })
+
+  // Reflect bundle lifecycle into the shared status line while it processes.
+  useEffect(() => {
+    if (!bundleExecuting) return
+    const text = bundleState.status === 'creating'
+      ? 'Creating Relayr bundle…'
+      : bundleState.status === 'awaiting_payment'
+        ? 'Confirm the Relayr payment…'
+        : 'Relaying to all selected chains…'
+    setDeployStatus({ kind: 'pending', text })
+  }, [bundleExecuting, bundleState.status])
 
   // Keep the chain checklist in sync if connected chains resolve late. Chains
   // without a deployer can never be selected, so they're excluded outright.
@@ -189,8 +236,14 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
     })
   }, [payers, mode, originalPayer, beneficiary, selectedChains])
 
+  // Managed accounts can bundle every selected chain into one prepaid Relayr
+  // deployment; everyone else (and managed users who opt out) uses the guarded
+  // per-chain runner. The bundle path signs server-side, like the other
+  // omnichain flows, so it's gated on managed mode.
+  const relayrActive = useRelayr && isManagedMode
+
   const handleDeploy = useCallback(async () => {
-    if (deployBusy) return
+    if (deployBusy || bundleExecuting) return
     const targets = chains.filter((c) => selectedChains.includes(c.chainId))
     if (!targets.length) {
       setDeployStatus({ kind: 'error', text: 'Select at least one chain.' })
@@ -202,32 +255,52 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
     }
     setDeployBusy(true)
     try {
-      const resolvedBeneficiary = originalPayer
-        ? zeroAddress
-        : await resolveAddressInput(beneficiary, 'beneficiary')
-      let owner: string = zeroAddress
-      if (editable) {
-        owner = await resolveAddressInput(adminAddress || activeAddress, 'address admin')
-        if (/^0x0{40}$/i.test(owner)) throw new Error('Editable payer addresses need a nonzero address admin.')
-      }
       const metadata = normalizeProjectPayerMetadata(metadataHex)
+      // Resolve each chain's beneficiary/admin — its own per-chain override, or
+      // the global value — and build that chain's deploy call.
+      const calls: ProjectPayerDeployCall[] = []
       for (const target of targets) {
-        const call = buildProjectPayerDeployCall({
-          chainId: target.chainId,
+        const cid = target.chainId
+        const resolvedBeneficiary = originalPayer
+          ? zeroAddress
+          : await resolveAddressInput(beneficiaryOverrides[cid]?.trim() || beneficiary, 'beneficiary')
+        let owner: string = zeroAddress
+        if (editable) {
+          owner = await resolveAddressInput(adminOverrides[cid]?.trim() || adminAddress || activeAddress, 'address admin')
+          if (/^0x0{40}$/i.test(owner)) {
+            throw new Error(`Editable payer addresses need a nonzero address admin on ${chainName(cid)}.`)
+          }
+        }
+        calls.push(buildProjectPayerDeployCall({
+          chainId: cid,
           projectId: target.projectId,
           beneficiary: resolvedBeneficiary,
           memo,
           metadata,
           addToBalance: mode === 'balance',
           owner,
-        })
+        }))
+      }
+
+      if (relayrActive) {
+        // The bundle hook drives status from here; its onSuccess/onError release
+        // the busy flag and refresh the list.
+        const projectIds: Record<number, number> = {}
+        targets.forEach((t) => { projectIds[t.chainId] = t.projectId })
+        setDeployStatus({ kind: 'pending', text: 'Preparing Relayr bundle…' })
+        await deployPayerBundle({ calls, projectIds })
+        return
+      }
+
+      // Guarded per-chain runner (self-custody / Safe / non-Relayr managed).
+      for (const call of calls) {
         await run({
           chainId: call.chainId,
           to: call.to,
           data: call.data,
           onPhase: (phase) => setDeployStatus({
             kind: 'pending',
-            text: `${chainName(target.chainId)}: ${PHASE_TEXT[phase]}`,
+            text: `${chainName(call.chainId)}: ${PHASE_TEXT[phase]}`,
           }),
         })
       }
@@ -235,16 +308,16 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
         kind: 'success',
         text: `Payer address deployment complete on ${targets.length} chain${targets.length === 1 ? '' : 's'}.`,
       })
+      setDeployBusy(false)
       loadPayers()
     } catch (error) {
       setDeployStatus({
         kind: 'error',
         text: error instanceof Error ? error.message : 'Could not deploy the payer address.',
       })
-    } finally {
       setDeployBusy(false)
     }
-  }, [deployBusy, chains, selectedChains, activeAddress, originalPayer, beneficiary, editable, adminAddress, metadataHex, memo, mode, run, loadPayers])
+  }, [deployBusy, bundleExecuting, chains, selectedChains, activeAddress, originalPayer, beneficiary, beneficiaryOverrides, editable, adminAddress, adminOverrides, metadataHex, memo, mode, relayrActive, deployPayerBundle, run, loadPayers])
 
   // -------------------------------------------------------------------------
   // Shared styles
@@ -313,14 +386,28 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
             Original payer
           </label>
           {!originalPayer && (
-            <input
-              className={input}
-              type="text"
-              placeholder="0x… or name.eth"
-              value={beneficiary}
-              onChange={(e) => setBeneficiary(e.target.value)}
-              spellCheck={false}
-            />
+            <>
+              <input
+                className={input}
+                type="text"
+                placeholder="0x… or name.eth"
+                value={beneficiary}
+                onChange={(e) => setBeneficiary(e.target.value)}
+                spellCheck={false}
+              />
+              <PerChainAddressControl
+                chains={chains}
+                globalValue={beneficiary}
+                overrides={beneficiaryOverrides}
+                onChange={(cid, value) => setBeneficiaryOverrides((prev) => {
+                  const next = { ...prev }
+                  if (value) next[cid] = value; else delete next[cid]
+                  return next
+                })}
+                onClear={() => setBeneficiaryOverrides({})}
+                isDark={isDark}
+              />
+            </>
           )}
         </div>
 
@@ -351,6 +438,18 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
                 value={adminAddress}
                 onChange={(e) => setAdminAddress(e.target.value)}
                 spellCheck={false}
+              />
+              <PerChainAddressControl
+                chains={chains}
+                globalValue={adminAddress}
+                overrides={adminOverrides}
+                onChange={(cid, value) => setAdminOverrides((prev) => {
+                  const next = { ...prev }
+                  if (value) next[cid] = value; else delete next[cid]
+                  return next
+                })}
+                onClear={() => setAdminOverrides({})}
+                isDark={isDark}
               />
               <div className={subText}>
                 The address admin can later change this payer address’s destination project,
@@ -432,11 +531,32 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
           </div>
         )}
 
+        {/* Use Relayr — bundle every selected chain into one prepaid deployment.
+            Managed accounts only; self-custody keeps the guarded per-chain runner. */}
+        {isManagedMode && (
+          <label className={`flex items-center gap-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+            <input
+              type="checkbox"
+              checked={useRelayr}
+              disabled={deployBusy || bundleExecuting}
+              onChange={(e) => setUseRelayr(e.target.checked)}
+            />
+            Use Relayr
+            <span className={subText}>one prepaid payment deploys to every selected chain</span>
+          </label>
+        )}
+
         {renderStatus(deployStatus)}
-        <button className={button} onClick={handleDeploy} disabled={deployBusy || !selectedChains.length}>
-          {deployBusy
+        <button
+          className={button}
+          onClick={handleDeploy}
+          disabled={deployBusy || bundleExecuting || !selectedChains.length}
+        >
+          {deployBusy || bundleExecuting
             ? 'Deploying…'
-            : `Deploy payer address${selectedChains.length > 1 ? 'es' : ''}`}
+            : relayrActive && selectedChains.length > 1
+              ? 'Deploy payer addresses via Relayr'
+              : `Deploy payer address${selectedChains.length > 1 ? 'es' : ''}`}
         </button>
 
         {/* Deployed payer addresses */}
