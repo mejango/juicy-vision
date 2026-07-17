@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http, type Hex, type Address, type Chain, type PublicClient } from 'viem'
@@ -177,6 +177,11 @@ export default function CashOutModal({
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewRevision, setPreviewRevision] = useState(0)
+  // Ref-based in-flight lock: a state flag alone can't stop two same-tick
+  // clicks (both read the stale `false` before the first re-render). The ref
+  // is the mutex; `submitting` only mirrors it into the button's disabled UI.
+  const inFlightRef = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
 
   const chainInfo = CHAIN_INFO[chainId] || MAINNET_CHAINS[chainId] || MAINNET_CHAINS[1]
   const chainName = chainInfo.name
@@ -218,7 +223,7 @@ export default function CashOutModal({
   const hasWarnings = verificationResult.doubts.length > 0
   const hasCriticalDoubts = verificationResult.doubts.some((d) => d.severity === 'critical')
   const hasSafePreview = cashOutCount !== null && !!previewOutcome && previewOutcome.expectedReturn > 0n && previewOutcome.minimumReturn > 0n && !previewError
-  const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && hasSafePreview && !previewLoading && !!terminalAddress && !terminalLoading
+  const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && hasSafePreview && !previewLoading && !!terminalAddress && !terminalLoading && !submitting
 
   // Reset state when modal opens
   useEffect(() => {
@@ -231,6 +236,8 @@ export default function CashOutModal({
       setPreviewOutcome(null)
       setPreviewTaxRate(null)
       setPreviewError(null)
+      inFlightRef.current = false
+      setSubmitting(false)
     }
   }, [isOpen, projectId, chainId, reclaimToken, expectedTerminal])
 
@@ -370,6 +377,13 @@ export default function CashOutModal({
       return
     }
 
+    // Acquire the in-flight lock immediately before the first await. A second
+    // concurrent click returns here without entering the try (so it never
+    // resets the lock), guaranteeing only one cash out can burn tokens.
+    if (inFlightRef.current) return
+    inFlightRef.current = true
+    setSubmitting(true)
+
     try {
       assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
       if (cashOutCount === null) throw new Error('Enter a valid token amount')
@@ -488,6 +502,9 @@ export default function CashOutModal({
       console.error('Cash out failed:', err)
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
+    } finally {
+      inFlightRef.current = false
+      setSubmitting(false)
     }
   }, [
     walletClient,
