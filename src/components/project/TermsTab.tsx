@@ -16,6 +16,7 @@ import {
 } from '../../services/revnetStages'
 import { resolveBaseCurrency } from '../../utils/currency'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
+import IssuanceScheduleChart from '../dynamic/charts/IssuanceScheduleChart'
 
 // Terms tab (revnets only) — 1:1 port of website/src/discover.js
 // renderStagesSection (:13033): the "Token issuance" card (renderIssuance
@@ -187,6 +188,10 @@ export default function TermsTab({
         )}
         <div className={`mt-1 ${subTextClass}`}>
           {percentFromBasisPoints(activeStage.splitPercent)} of issuance and buybacks to splits
+        </div>
+        {/* Stepped schedule chart (website renderIssuance range row + chart) */}
+        <div className="mt-4">
+          <IssuanceScheduleChart stages={terms} tokenSymbol={sym} unit={unit} />
         </div>
       </div>
 
