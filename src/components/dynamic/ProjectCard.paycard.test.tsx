@@ -283,37 +283,80 @@ describe('payPreviewCard service', () => {
   })
 
   describe('resolveDirectSwapOffer', () => {
+    const QUOTE_POOL_ID = ('0x' + 'bb'.repeat(32)) as `0x${string}`
     const base = {
       route: 'amm' as const,
       beneficiaryTokenCount: 100n * 10n ** 18n,
       reservedTokenCount: 50n * 10n ** 18n,
-      poolId: POOL_ID,
+      ammPoolId: POOL_ID,
+      quote: null as { poolId: `0x${string}`; out: bigint } | null,
       hasTiers: false,
       addsToBalance: false,
       viaRouter: false,
     }
 
-    it('offers the full pool output with a 1% display floor', () => {
+    it('offers the full pool output with a 1% display floor (AMM cheap branch)', () => {
       const offer = resolveDirectSwapOffer(base)
       expect(offer).not.toBeNull()
+      expect(offer!.poolId).toBe(POOL_ID)
       expect(offer!.quotedOut).toBe(150n * 10n ** 18n)
       expect(offer!.minOut).toBe((150n * 10n ** 18n * 9_900n) / 10_000n)
       expect(offer!.advantage).toBe(50n * 10n ** 18n)
     })
 
-    it('never offers on the issuance route', () => {
-      expect(resolveDirectSwapOffer({ ...base, route: 'issuance' })).toBeNull()
+    it('offers on the ISSUANCE route when the Quoter output beats what pay would mint', () => {
+      // Pay mints 100 to the beneficiary; a pool swap yields 120 → offer 120.
+      const offer = resolveDirectSwapOffer({
+        ...base,
+        route: 'issuance',
+        reservedTokenCount: 0n,
+        ammPoolId: null,
+        quote: { poolId: QUOTE_POOL_ID, out: 120n * 10n ** 18n },
+      })
+      expect(offer).not.toBeNull()
+      expect(offer!.poolId).toBe(QUOTE_POOL_ID)
+      expect(offer!.quotedOut).toBe(120n * 10n ** 18n)
+      expect(offer!.minOut).toBe((120n * 10n ** 18n * 9_900n) / 10_000n)
+      expect(offer!.advantage).toBe(20n * 10n ** 18n)
+    })
+
+    it('does NOT offer on the issuance route when the pool quote loses to pay', () => {
+      expect(
+        resolveDirectSwapOffer({
+          ...base,
+          route: 'issuance',
+          ammPoolId: null,
+          quote: { poolId: QUOTE_POOL_ID, out: 90n * 10n ** 18n },
+        }),
+      ).toBeNull()
+    })
+
+    it('does NOT offer on the issuance route without an on-chain quote', () => {
+      expect(resolveDirectSwapOffer({ ...base, route: 'issuance', ammPoolId: null, quote: null })).toBeNull()
+    })
+
+    it('falls back to the Quoter when an AMM route has no reserved advantage', () => {
+      // AMM route but reserved == 0 → cheap branch has no advantage; the quote wins.
+      const offer = resolveDirectSwapOffer({
+        ...base,
+        reservedTokenCount: 0n,
+        quote: { poolId: QUOTE_POOL_ID, out: 111n * 10n ** 18n },
+      })
+      expect(offer).not.toBeNull()
+      expect(offer!.poolId).toBe(QUOTE_POOL_ID)
+      expect(offer!.quotedOut).toBe(111n * 10n ** 18n)
     })
 
     it('never offers for NFT checkouts, add-to-balance, or routed tokens', () => {
-      expect(resolveDirectSwapOffer({ ...base, hasTiers: true })).toBeNull()
-      expect(resolveDirectSwapOffer({ ...base, addsToBalance: true })).toBeNull()
-      expect(resolveDirectSwapOffer({ ...base, viaRouter: true })).toBeNull()
+      const q = { poolId: QUOTE_POOL_ID, out: 999n * 10n ** 18n }
+      expect(resolveDirectSwapOffer({ ...base, quote: q, hasTiers: true })).toBeNull()
+      expect(resolveDirectSwapOffer({ ...base, quote: q, addsToBalance: true })).toBeNull()
+      expect(resolveDirectSwapOffer({ ...base, quote: q, viaRouter: true })).toBeNull()
     })
 
-    it('never offers when the pool output has no advantage over paying', () => {
+    it('never offers when neither the AMM branch nor a quote beats paying', () => {
       expect(resolveDirectSwapOffer({ ...base, reservedTokenCount: 0n })).toBeNull()
-      expect(resolveDirectSwapOffer({ ...base, poolId: null })).toBeNull()
+      expect(resolveDirectSwapOffer({ ...base, ammPoolId: null })).toBeNull()
     })
   })
 

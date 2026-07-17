@@ -17,18 +17,24 @@ vi.mock('wagmi', () => ({
 }))
 
 // Mock viem
-vi.mock('viem', () => ({
-  formatEther: vi.fn((val) => (Number(val) / 1e18).toString()),
-  formatUnits: vi.fn((val, decimals) => (Number(val) / Math.pow(10, decimals)).toString()),
-  parseEther: vi.fn((val) => BigInt(Math.floor(Number(val) * 1e18))),
-  parseUnits: vi.fn((val, decimals) => BigInt(Math.floor(Number(val) * Math.pow(10, decimals)))),
-  createPublicClient: vi.fn(() => ({
-    getBalance: vi.fn().mockResolvedValue(BigInt(0)),
-    readContract: mockReadContract,
-  })),
-  http: vi.fn(),
-  erc20Abi: [],
-}))
+// Keep real viem (encode/keccak/event-selector helpers used at module load by
+// ammMarket, now in ProjectCard's graph); only the RPC/format helpers are faked.
+vi.mock('viem', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('viem')>()
+  return {
+    ...actual,
+    formatEther: vi.fn((val) => (Number(val) / 1e18).toString()),
+    formatUnits: vi.fn((val, decimals) => (Number(val) / Math.pow(10, decimals)).toString()),
+    parseEther: vi.fn((val) => BigInt(Math.floor(Number(val) * 1e18))),
+    parseUnits: vi.fn((val, decimals) => BigInt(Math.floor(Number(val) * Math.pow(10, decimals)))),
+    createPublicClient: vi.fn(() => ({
+      getBalance: vi.fn().mockResolvedValue(BigInt(0)),
+      readContract: mockReadContract,
+    })),
+    http: vi.fn(),
+    erc20Abi: [],
+  }
+})
 
 // Mock bendystraw service
 vi.mock('../../services/bendystraw', () => ({

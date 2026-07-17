@@ -48,6 +48,7 @@ import {
   tierDiscountLabel,
   uniswapPoolLink,
 } from '../../services/payPreviewCard'
+import { quoteDirectBuy } from '../../services/ammMarket'
 
 // Metadata extracted from on-chain resolver
 interface OnChainTierMetadata {
@@ -200,6 +201,11 @@ type PayCardPreview =
       minReturnedTokens: bigint
       // Buyback pool the AMM route filled through, when applicable.
       buybackPoolId: Hex | null
+      // On-chain V4 Quoter probe of buying straight from the buyback pool with
+      // this pay amount (plain pair-token buys only; null when gated off / no
+      // pool / no verified Quoter). Lets the direct-swap offer fire even on the
+      // ISSUANCE route when a pool swap beats what pay would mint.
+      directSwapQuote: { poolId: Hex; out: bigint } | null
       // A verified zero/zero quote (weight-0 ruleset): legitimate, but the
       // "0 tokens" output is hidden instead of shown as a broken quote.
       zeroIssuance: boolean
@@ -956,6 +962,19 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         // submittable and hide the meaningless "0 tokens" line instead of blocking.
         const zeroIssuance = selectedTierIds.length === 0 &&
           isVerifiedZeroIssuance(outcome.beneficiaryTokenCount, outcome.reservedTokenCount)
+        // Probe the buyback pool with the V4 Quoter so the direct-swap offer can
+        // fire even on the ISSUANCE route (a pool swap that beats what pay would
+        // mint). Plain pair-token buys only; quoteDirectBuy null-gates everything
+        // else (tiers/router/no pool/no verified Quoter/quote revert).
+        let directSwapQuote: { poolId: Hex; out: bigint } | null = null
+        if (selectedTierIds.length === 0 && selectedPaymentOption.route === 'direct') {
+          directSwapQuote = await quoteDirectBuy(
+            chainIdNum,
+            BigInt(currentProjectId),
+            tokenAddress,
+            paymentAmount,
+          ).catch(() => null)
+        }
         if (!cancelled) {
           setPayPreview({
             status: 'ready',
@@ -966,6 +985,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             buybackPoolId: outcome.buyback?.poolId ?? null,
             zeroIssuance,
             grossIssuance: outcome.buyback?.tokenCountWithoutHook ?? 0n,
+            directSwapQuote,
           })
         }
       } catch (err) {
@@ -1118,7 +1138,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       route: payPreview.route,
       beneficiaryTokenCount: payPreview.beneficiaryTokenCount,
       reservedTokenCount: payPreview.reservedTokenCount,
-      poolId: payPreview.buybackPoolId,
+      ammPoolId: payPreview.buybackPoolId,
+      quote: payPreview.directSwapQuote,
       hasTiers: selectedTierIds.length > 0,
       addsToBalance,
       viaRouter: selectedPaymentOption?.route !== 'direct',

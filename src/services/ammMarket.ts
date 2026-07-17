@@ -78,6 +78,25 @@ export const POSITION_MANAGER_BY_CHAIN: Record<number, Address> = {
   421614: '0xac631556d3d4019c95769033b5e719dd77124bac',
 }
 
+/**
+ * Uniswap V4 Quoter (v4-periphery) per chain — the read-only quoter that runs
+ * the pool's beforeSwap hook, so `quoteExactInputSingle` already reflects the
+ * buyback hook's optimal routing (full AMM output when the AMM wins, the JB
+ * issuance beneficiary otherwise). Sourced from website/src/discover.js
+ * (V4_QUOTER_BY_CHAIN) and cross-checked against Uniswap's canonical V4Quoter
+ * deployments. Chains absent here (e.g. OP Sepolia 11155420 — no V4 Quoter
+ * deployed) gate the direct-swap offer OFF rather than guess an address.
+ */
+export const V4_QUOTER_BY_CHAIN: Record<number, Address> = {
+  1: '0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203',
+  10: '0x1f3131a13296fb91c90870043742c3cdbff1a8d7',
+  8453: '0x0d5e0f971ed27fbff6c2837bf31316121532048d',
+  42161: '0x3972c00f7ed4885e145823eb7c655375d275a1c5',
+  11155111: '0x61b3f2011a92d183c7dbadbda940a7555ccf9227',
+  84532: '0x4a6513c898fe1b2d0e78d3b0e0a4a151589b1cba',
+  421614: '0x7de51022d70a725b508085468052e25e22b5c4c9',
+}
+
 /** Canonical Permit2 singleton (same on all chains). */
 export const PERMIT2_ADDRESS: Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 
@@ -142,6 +161,28 @@ const POOLKEY_TUPLE = [{
   type: 'tuple',
   components: [
     { type: 'address' }, { type: 'address' }, { type: 'uint24' }, { type: 'int24' }, { type: 'address' },
+  ],
+}] as const
+
+// V4Quoter.quoteExactInputSingle. The on-chain function is nonpayable (it runs
+// the hook's beforeSwap), but the quoter returns the amount normally (no revert
+// trick), so we invoke it as a plain eth_call read — declaring it `view` here
+// only satisfies viem's read typing; eth_call ignores stateMutability.
+const v4QuoterAbi = [{
+  type: 'function',
+  name: 'quoteExactInputSingle',
+  stateMutability: 'view',
+  inputs: [{
+    name: 'params', type: 'tuple', components: [
+      { name: 'poolKey', type: 'tuple', components: POOL_KEY_COMPONENTS },
+      { name: 'zeroForOne', type: 'bool' },
+      { name: 'exactAmount', type: 'uint128' },
+      { name: 'hookData', type: 'bytes' },
+    ],
+  }],
+  outputs: [
+    { name: 'amountOut', type: 'uint256' },
+    { name: 'gasEstimate', type: 'uint256' },
   ],
 }] as const
 
@@ -664,6 +705,61 @@ export async function readPoolState(chainId: number, projectId: bigint): Promise
   if (!hook || !POOL_MANAGER_BY_CHAIN[chainId]) return null
   try {
     return await readPoolStateViaHook(chainId, projectId, hook, client)
+  } catch {
+    return null
+  }
+}
+
+/** Whether the chain has a verified V4 Quoter (direct-swap detection gate). */
+export function v4QuoterAvailable(chainId: number): boolean {
+  return Boolean(V4_QUOTER_BY_CHAIN[chainId])
+}
+
+export interface DirectBuyQuote {
+  /** The pool the swap would route through. */
+  poolId: `0x${string}`
+  /** True hook-routed project-token output for the given pair-token input. */
+  out: bigint
+}
+
+/**
+ * True expected project-token output of buying straight from the buyback pool
+ * with `amountIn` of the project's PAIR (accounting) token. Runs the V4 Quoter,
+ * which executes the hook's beforeSwap — so the result already reflects the
+ * hook's optimal routing (full AMM output when the AMM wins, the JB issuance
+ * beneficiary otherwise). Mirrors the website's directSwapPoolFor + quoteDirectSwap.
+ *
+ * Returns null when: the chain has no verified Quoter (gate OFF, don't guess),
+ * there's no initialized pool, the paid token isn't the pool's pair token
+ * (a swap-via-router currency never is), or the quote reverts (e.g. 0 liquidity).
+ */
+export async function quoteDirectBuy(
+  chainId: number,
+  projectId: bigint,
+  inputToken: Address,
+  amountIn: bigint,
+): Promise<DirectBuyQuote | null> {
+  const quoter = V4_QUOTER_BY_CHAIN[chainId]
+  if (!quoter || amountIn <= 0n) return null
+  const pool = await readPoolState(chainId, projectId)
+  if (!pool) return null
+  // The paid token must BE the pool's pair token (native → zero address).
+  const normalizedIn =
+    inputToken.toLowerCase() === NATIVE_TOKEN.toLowerCase() ? zeroAddress : (inputToken.toLowerCase() as Address)
+  if (normalizedIn !== pool.pair.addr.toLowerCase()) return null
+  // Buying the project token by spending the pair token: swap pair → token.
+  // zeroForOne means currency0 → currency1, so it holds exactly when the pair is currency0.
+  const zeroForOne = pool.pairIsC0
+  try {
+    const result = (await clientFor(chainId).readContract({
+      address: quoter,
+      abi: v4QuoterAbi,
+      functionName: 'quoteExactInputSingle',
+      args: [{ poolKey: pool.key, zeroForOne, exactAmount: amountIn, hookData: '0x' }],
+    })) as readonly [bigint, bigint]
+    const out = BigInt(result[0])
+    if (out <= 0n) return null
+    return { poolId: pool.poolId, out }
   } catch {
     return null
   }
