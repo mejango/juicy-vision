@@ -29,13 +29,15 @@ interface ShopTabProps {
   projectId: string
   chainId: string
   isOwner?: boolean
+  /** Revnets are token-based — item redemption is a custom-project feature only. */
+  isRevnet?: boolean
   connectedChains?: Array<{ chainId: number; projectId: number }>
   /** Which subtab to open on (defaults to the URL hash, else Inventory). */
   initialSubtab?: ShopSubtab
   onManageTiers?: () => void
 }
 
-export default function ShopTab({ projectId, chainId, isOwner, connectedChains, initialSubtab, onManageTiers }: ShopTabProps) {
+export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connectedChains, initialSubtab, onManageTiers }: ShopTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -473,7 +475,7 @@ export default function ShopTab({ projectId, chainId, isOwner, connectedChains, 
       {subtab === 'inventory' ? (
         renderInventory()
       ) : (
-        <CustomersSubtab projectId={projectId} chainId={chainIdNum} chains={availableChains} />
+        <CustomersSubtab projectId={projectId} chainId={chainIdNum} chains={availableChains} isRevnet={isRevnet} />
       )}
     </div>
   )

@@ -10,7 +10,8 @@
  * tested; the fetch wrappers only marshal bendystraw / on-chain reads.
  */
 
-import { createPublicClient, http, encodeAbiParameters, keccak256, toHex, type Address } from 'viem'
+import { createPublicClient, http, type Address } from 'viem'
+import { build721CashOutMetadata } from '@bananapus/nana-sdk-core/v6'
 import { VIEM_CHAINS, MAINNET_VIEM_CHAINS, RPC_ENDPOINTS, MAINNET_RPC_ENDPOINTS, type SupportedChainId } from '../constants/chains'
 import { safeRequest, getNetworkOption } from './bendystraw/client'
 import { fetchProjectNFTTiers } from './nft'
@@ -66,38 +67,18 @@ export interface ShopChain {
 
 // --- Pure helpers --------------------------------------------------------
 
-// keccak256(utf8 "cashOut") — the metadata-id purpose word the 721 hook keys
-// its beforeCashOutRecordedWith lookup on.
-const CASH_OUT_PURPOSE_HASH = keccak256(toHex('cashOut'))
-
 /**
- * The JBMetadataResolver id for a 721 redemption:
- * `bytes4(idTarget[:4] XOR keccak256("cashOut")[:4])`, as 8 lowercase hex chars.
- */
-function cashOutMetadataId(idTarget: Address): string {
-  const target = idTarget.slice(2, 10).toLowerCase()
-  const purpose = CASH_OUT_PURPOSE_HASH.slice(2, 10)
-  let out = ''
-  for (let i = 0; i < 8; i += 2) {
-    out += (parseInt(target.slice(i, i + 2), 16) ^ parseInt(purpose.slice(i, i + 2), 16))
-      .toString(16)
-      .padStart(2, '0')
-  }
-  return out
-}
-
-/**
- * The metadata envelope carrying redeemed token IDs to the 721 hook.
+ * The metadata envelope carrying redeemed token IDs to the 721 hook, keyed by
+ * the hook's cash-out metadata id. `data = abi.encode(uint256[] tokenIds)`; the
+ * hook's beforeCashOutRecordedWith reads the ids and burns them.
  *
- * `[reserved 32 bytes][id (4B)][offset 0x02][pad 27B][data]` where
- * `data = abi.encode(uint256[] tokenIds)`. The hook's beforeCashOutRecordedWith
- * reads these ids, sums their cash-out weight, and burns them. Validated
- * on-chain by previewCashOutFrom — reproduce it exactly.
+ * Delegates to the SDK's `build721CashOutMetadata` (nana-sdk-core 1.3.0) — the
+ * canonical, byte-identical encoder shared across frontends. It additionally
+ * validates the ids (non-empty, unique, positive). `idTarget` MUST be the hook's
+ * METADATA_ID_TARGET (the shared implementation address), NOT the clone.
  */
 export function buildTierCashOutMetadata(idTarget: Address, tokenIds: Array<bigint | string | number>): `0x${string}` {
-  const id = cashOutMetadataId(idTarget)
-  const data = encodeAbiParameters([{ type: 'uint256[]' }], [tokenIds.map(t => BigInt(t))])
-  return `0x${'00'.repeat(32)}${id}02${'00'.repeat(27)}${data.slice(2)}` as `0x${string}`
+  return build721CashOutMetadata({ metadataIdTarget: idTarget, tokenIds: tokenIds.map(t => BigInt(t)) })
 }
 
 /** A store item's display name, falling back to "Item #<id>". */

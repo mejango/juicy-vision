@@ -33,6 +33,8 @@ import {
 import { RedeemItemsModal } from './RedeemItemsModal'
 
 export interface CustomersSubtabProps {
+  /** Revnets are token-based — item redemption (721 cash out) is custom-only. */
+  isRevnet?: boolean
   /** Home-chain project id (used to resolve item names + the redeem gate). */
   projectId: string
   /** Home chain id. */
@@ -51,7 +53,7 @@ function explorerTxUrl(chainId: number, txHash: string): string | null {
   return base ? `${base}${txHash}` : null
 }
 
-export function CustomersSubtab({ projectId, chainId, chains }: CustomersSubtabProps) {
+export function CustomersSubtab({ projectId, chainId, chains, isRevnet }: CustomersSubtabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress } = useGuardedTx()
@@ -80,7 +82,9 @@ export function CustomersSubtab({ projectId, chainId, chains }: CustomersSubtabP
     })
     fetchProjectWithRuleset(projectId, chainId)
       .then(project => {
-        if (!cancelled) setRedeemEnabled(Boolean(project?.currentRuleset?.useDataHookForCashOut))
+        // Revnet useDataHookForCashOut means TOKEN cash out (REVOwner hook), not item
+        // redemption — the 721 redeem path is custom-projects only.
+        if (!cancelled) setRedeemEnabled(!isRevnet && Boolean(project?.currentRuleset?.useDataHookForCashOut))
       })
       .catch(() => {
         if (!cancelled) setRedeemEnabled(false)
@@ -88,7 +92,7 @@ export function CustomersSubtab({ projectId, chainId, chains }: CustomersSubtabP
     return () => {
       cancelled = true
     }
-  }, [projectId, chainId])
+  }, [projectId, chainId, isRevnet])
 
   // "All" customers — every buyer across the project's chains.
   useEffect(() => {

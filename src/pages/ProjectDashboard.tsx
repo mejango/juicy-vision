@@ -429,6 +429,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             projectId={String(projectId)}
             chainId={String(chainId)}
             isOwner={isOwner}
+            isRevnet={projectIsRevnet}
             connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
             onManageTiers={() => setActiveModal('manageTiers')}
           />
