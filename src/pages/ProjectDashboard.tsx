@@ -151,6 +151,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const [revnetOperatorError, setRevnetOperatorError] = useState<string | null>(null)
   const [displayAddressEns, setDisplayAddressEns] = useState<string | null>(null)
   const [hasNftHook, setHasNftHook] = useState(false)
+  // Show Shop optimistically until the 721 probe resolves — so a #shop deep link
+  // isn't bounced and the tab doesn't pop in late (website discover.js:5814).
+  const [nftHookProbed, setNftHookProbed] = useState(false)
   const [nftHookError, setNftHookError] = useState<string | null>(null)
   const [ethPrice, setEthPrice] = useState<number | null>(null)
 
@@ -263,6 +266,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           setHasNftHook(false)
           setNftHookError('Reward configuration unavailable')
         }
+        setNftHookProbed(true)
         setEthPrice(priceResult.status === 'fulfilled' ? priceResult.value : null)
       } catch (error) {
         console.error('Failed to load project:', error)
@@ -344,11 +348,12 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     const available = projectTabsFor({
       isRevnet: projectIsRevnet,
       isMobile,
-      hasShop: hasNftHook,
+      // Optimistic until the probe resolves — only drop Shop once it comes back empty.
+      hasShop: !nftHookProbed || hasNftHook,
       hasErc20: !!project?.token,
     })
     if (!available.some(t => t.id === activeTab)) setActiveTabState('overview')
-  }, [projectIsRevnet, isMobile, hasNftHook, project?.token, activeTab])
+  }, [projectIsRevnet, isMobile, nftHookProbed, hasNftHook, project?.token, activeTab])
 
   /**
    * The tab bar + body, wired once for both layouts. Charts juicy has and the
@@ -366,7 +371,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         suckerGroupBalance={suckerGroupBalance}
         isRevnet={projectIsRevnet}
         isMobile={mobile}
-        hasShop={hasNftHook}
+        hasShop={!nftHookProbed || hasNftHook}
         hasErc20={!!project.token}
         erc20Address={(project.token as `0x${string}`) || null}
         revnetOperator={revnetOperator}

@@ -170,6 +170,7 @@ export default function ProjectTabs(props: ProjectTabsProps) {
               chainId={String(chainId)}
               isRevnet={isRevnet}
               onQueueRuleset={props.onQueueRuleset}
+              onEditSplits={() => props.onEditSplits()}
             />
             {props.rulesetsChart && (
               <>
@@ -191,6 +192,7 @@ export default function ProjectTabs(props: ProjectTabsProps) {
               isOwner={canEdit}
               onSendPayouts={props.onSendPayouts}
               onUseAllowance={props.onUseAllowance}
+              onViewRulesets={() => onTabChange('rulesets')}
             />
             {props.fundsCharts}
           </div>
