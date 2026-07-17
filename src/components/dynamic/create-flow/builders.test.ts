@@ -25,7 +25,7 @@ import {
   buildDeployTiersConfigFromState,
   buildRevnetStageConfigs,
   DEADLINE_HOOKS,
-  BANNY_LP_SPLIT_HOOK,
+  JBP6_FEE_LP_SPLIT_HOOK,
   FOREVER_SECONDS,
 } from './builders'
 import { ALL_CHAIN_IDS, JB_CONTRACTS, JB_ROUTER_TERMINAL_REGISTRY, NATIVE_TOKEN, ZERO_ADDRESS } from '../../../constants'
@@ -251,7 +251,7 @@ describe('reserved splits', () => {
     expect(sumPercents(group!.splits)).toBe(SPLITS_TOTAL)
   })
 
-  it("routes 'lphook' (fund market) rows to the BannyLPSplitHook", () => {
+  it("routes 'lphook' (fund market) rows to the JBP6FeeLPSplitHook", () => {
     const s = singleChainState()
     s.stages[0].reservedRecipients = [
       { type: 'lphook', address: '', projectId: 0, percent: 5 },
@@ -259,7 +259,7 @@ describe('reserved splits', () => {
     ]
     const [cfg] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
     const group = cfg.splitGroups.find((g) => g.groupId === '1')!
-    expect(group.splits[0].hook).toBe(BANNY_LP_SPLIT_HOOK)
+    expect(group.splits[0].hook).toBe(JBP6_FEE_LP_SPLIT_HOOK)
     expect(group.splits[0].projectId).toBe(0)
     expect(group.splits[1].hook).toBe(ZERO_ADDRESS)
   })
