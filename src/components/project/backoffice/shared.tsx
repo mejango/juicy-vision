@@ -9,6 +9,7 @@ import { useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { CHAINS } from '../../../constants'
 import type { GuardedTxPhase } from '../../../services/projectTx'
+import { isSafeAppActive } from '../../../services/safeApp'
 
 export const PHASE_LABELS: Record<GuardedTxPhase, string> = {
   reverifying: 'Re-checking on-chain state…',
@@ -183,19 +184,25 @@ export function ChainRunRows({
               </div>
             ) : null}
             {status.kind === 'done' ? (
-              <div className={`text-sm ${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                Executed on {chainName(chainId)}.{' '}
-                {chain ? (
-                  <a
-                    href={`${chain.explorerTx}${status.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-juice-cyan hover:underline"
-                  >
-                    View on explorer →
-                  </a>
-                ) : null}
-              </div>
+              isSafeAppActive() ? (
+                <div className={`text-sm ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+                  Proposed to your Safe on {chainName(chainId)} — owners must sign &amp; execute it in Safe&#123;Wallet&#125;.
+                </div>
+              ) : (
+                <div className={`text-sm ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+                  Executed on {chainName(chainId)}.{' '}
+                  {chain ? (
+                    <a
+                      href={`${chain.explorerTx}${status.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-juice-cyan hover:underline"
+                    >
+                      View on explorer →
+                    </a>
+                  ) : null}
+                </div>
+              )
             ) : null}
             {status.kind === 'error' ? (
               <div className="text-sm text-red-400" role="alert">

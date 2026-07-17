@@ -1,0 +1,10 @@
+{
+  "name": "Juicy Vision",
+  "description": "Fund your thing, your way — pay projects and run onchain actions from your Safe.",
+  "iconPath": "icons/icon-192.png",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "safe_apps_permissions": []
+}
