@@ -625,10 +625,10 @@ export default function StepDeploy({
           title="Save this exact editable project draft before deploying"
           disabled={launching}
           onClick={() => exportDraftFile(state)}
-          className={`px-3 py-1.5 text-xs border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+          className={`px-2 py-1 text-xs border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
             isDark
-              ? 'border-white/15 text-gray-300 hover:border-white/30 hover:text-white'
-              : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
+              ? 'border-white/15 text-gray-400 hover:text-white'
+              : 'border-gray-300 text-gray-500 hover:text-gray-900'
           }`}
         >
           Export your configuration
