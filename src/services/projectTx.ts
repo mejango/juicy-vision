@@ -18,13 +18,23 @@ import { ALL_VIEM_CHAINS, RPC_ENDPOINTS } from '../constants/chains'
 const CHAINS = ALL_VIEM_CHAINS as Record<number, Chain>
 import { simulateTransaction, waitForSuccessfulTransaction } from '../utils/transactionSafety'
 import { executeManagedTransaction } from '../hooks/useManagedWallet'
+import { proposeSafeTransactions, encodeApprovalTx, type SafeTx } from './safeApp'
 
 export type GuardedTxPhase = 'reverifying' | 'switching' | 'approving' | 'simulating' | 'signing' | 'pending'
 
 export interface GuardedWalletContext {
   /** True when the managed (passkey smart-account) mode is active and authenticated. */
   isManagedMode: boolean
-  /** The address transactions execute from (managed address or connected account). */
+  /**
+   * True when running inside Safe{Wallet} as a Safe App. Transactions are
+   * PROPOSED to the Safe's queue (owners sign & execute) rather than sent — so
+   * there is no mined tx to wait on, and any ERC-20 approval is batched with
+   * the main call into one atomic proposal.
+   */
+  isSafeMode?: boolean
+  /** Safe mode only: the single chain the connected Safe lives on. */
+  safeChainId?: number
+  /** The address transactions execute from (managed / Safe address or connected account). */
   activeAddress: `0x${string}`
   /** Self-custody only. */
   walletClient?: WalletClient | null
@@ -92,6 +102,38 @@ export async function runGuardedTx(ctx: GuardedWalletContext, req: GuardedTxRequ
 
   req.onPhase?.('reverifying')
   await req.reverify?.()
+
+  // Safe App: a Safe is bound to ONE chain and can't switch networks from
+  // inside the app. Re-verify + simulate still run (read-only, against the
+  // Safe's chain), but the send PROPOSES to the Safe queue — batching any
+  // ERC-20 approval + the main call into ONE atomic entry — and returns the
+  // safeTxHash WITHOUT waiting for a receipt (there is no mined tx yet; the
+  // owners sign & execute in Safe{Wallet}).
+  if (ctx.isSafeMode) {
+    if (ctx.safeChainId != null && ctx.safeChainId !== chainId) {
+      throw new Error(
+        `This Safe is on ${CHAINS[ctx.safeChainId]?.name ?? `chain ${ctx.safeChainId}`}, but this action targets ${
+          CHAINS[chainId]?.name ?? `chain ${chainId}`
+        }. A Safe App can't switch chains — open a Safe on that network to continue.`,
+      )
+    }
+
+    req.onPhase?.('simulating')
+    await simulateTransaction({ chainId, account: ctx.activeAddress, to, data, value })
+
+    // 'pending' == the propose is in flight (no dedicated phase, to avoid
+    // widening the union every consumer's PHASE_LABELS map must satisfy).
+    req.onPhase?.('pending')
+    const txs: SafeTx[] = []
+    if (req.approval) {
+      txs.push(encodeApprovalTx(req.approval.token, req.approval.spender, req.approval.amount))
+    }
+    txs.push({ to, value: `0x${value.toString(16)}`, data })
+    const safeTxHash = await proposeSafeTransactions(txs)
+
+    window.dispatchEvent(new CustomEvent('juice:project-data-invalidated', { detail: { chainId } }))
+    return safeTxHash
+  }
 
   req.onPhase?.('switching')
   await ensureWalletOnChain(ctx, chainId)
