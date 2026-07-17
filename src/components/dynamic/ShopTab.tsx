@@ -1,9 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { formatUnits } from 'viem'
 import { useThemeStore } from '../../stores'
-import { fetchProjectNFTTiers, getProjectDataHook, hasTokenUriResolver, type ResolvedNFTTier } from '../../services/nft'
+import { fetchProjectNFTTiers, getProjectDataHook, hasTokenUriResolver, fetchShopPayCredits, type ResolvedNFTTier } from '../../services/nft'
 import { fetchEthPrice, fetchProject } from '../../services/bendystraw'
 import { rulesetKeys, getShopStaleTime } from '../../hooks/useRulesetCache'
+import { useGuardedTx } from '../../hooks/useGuardedTx'
+import { isUsdcCurrency } from '../../utils/technicalDetails'
+import { truncateAddress } from '../../utils'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import NFTTierCard from './NFTTierCard'
 import { CustomersSubtab } from '../project/shop/CustomersSubtab'
@@ -40,6 +44,7 @@ interface ShopTabProps {
 export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connectedChains, initialSubtab, onManageTiers }: ShopTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
+  const { activeAddress } = useGuardedTx()
 
   // [Inventory | Customers] subtabs. Inventory is the existing shop; Customers
   // shows who's bought + the item-redemption flow. The active subtab is mirrored
@@ -50,7 +55,9 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
     const base = '#shop'
     window.history.replaceState(null, '', next === 'customers' ? `${base}/customers` : base)
   }, [])
-  const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all')
+  // Category filter is a multi-select set (null = All), mirroring website's shop
+  // (discover.js): the chip row only appears with >1 category and each chip toggles.
+  const [selectedCategories, setSelectedCategories] = useState<Set<number> | null>(null)
   // Category names extracted from on-chain metadata (category number -> name)
   const [categoryNames, setCategoryNames] = useState<Record<number, string>>({})
   // Checkout quantities from ProjectCard (synced via event)
@@ -111,6 +118,34 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
     [shopData?.storedCategoryNames],
   )
 
+  // The connected wallet's 721 shop credit on this collection's hook — overpayment
+  // held in the hook's pricing currency, applied automatically at checkout. Keyed
+  // per (chain, hook, account) so it refreshes when the wallet or chain changes.
+  const { data: payCredit } = useQuery({
+    queryKey: ['shopPayCredit', selectedChainIdNum, hookAddress, activeAddress],
+    queryFn: () => fetchShopPayCredits(hookAddress!, activeAddress!, selectedChainIdNum),
+    enabled: Boolean(hookAddress && activeAddress),
+    staleTime: 30_000,
+  })
+
+  // Format the credit in the collection's pricing currency (USD-based → "$x.xx",
+  // ETH-based → "x.xxxx ETH"), mirroring the tier price display. Any tier carries
+  // the shared pricing context; only shown when a positive credit exists.
+  const creditDisplay = useMemo(() => {
+    const pricingTier = tiers[0]
+    if (!payCredit || payCredit <= 0n || !pricingTier) return null
+    const isUsdBased = pricingTier.currency === 2 || isUsdcCurrency(pricingTier.currency)
+    const value = parseFloat(formatUnits(payCredit, pricingTier.pricingDecimals))
+    return isUsdBased ? `$${value.toFixed(2)}` : `${value.toFixed(4)} ETH`
+  }, [payCredit, tiers])
+
+  // The 721 collection (hook) address + its explorer link, for the shop footer.
+  const collectionExplorerUrl = useMemo(() => {
+    if (!hookAddress) return null
+    const base = CHAINS[selectedChainIdNum]?.explorer || MAINNET_CHAINS[selectedChainIdNum]?.explorer
+    return base ? `${base}/address/${hookAddress}` : null
+  }, [hookAddress, selectedChainIdNum])
+
   // Handle refresh button click
   const handleRefresh = useCallback(() => {
     refetch()
@@ -126,14 +161,11 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
     return () => window.removeEventListener('juice:checkout-quantities', handleCheckoutQuantities as EventListener)
   }, [])
 
-  // Extract unique categories
+  // Extract unique categories — including category 0 (labeled "General"), matching
+  // the website. Sorted ascending.
   const categories = useMemo(() => {
     const cats = new Set<number>()
-    tiers.forEach(tier => {
-      if (tier.category > 0) {
-        cats.add(tier.category)
-      }
-    })
+    tiers.forEach(tier => cats.add(tier.category || 0))
     return Array.from(cats).sort((a, b) => a - b)
   }, [tiers])
 
@@ -148,13 +180,21 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
     return grouped
   }, [tiers])
 
-  // Filtered tiers based on selection
-  const filteredTiers = useMemo(() => {
-    if (selectedCategory === 'all') {
-      return tiers
-    }
-    return tiers.filter(tier => tier.category === selectedCategory)
-  }, [tiers, selectedCategory])
+  // Categories currently shown (null selection = All).
+  const visibleCategories = useMemo(
+    () => categories.filter(cat => !selectedCategories || selectedCategories.has(cat)),
+    [categories, selectedCategories],
+  )
+
+  // Toggle a category in the multi-select set; deselecting the last returns to All.
+  const toggleCategory = useCallback((cat: number) => {
+    setSelectedCategories(prev => {
+      const next = new Set(prev ?? [])
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next.size ? next : null
+    })
+  }, [])
 
   // Handle metadata loaded from NFTTierCard (extracts category names)
   const handleTierMetadataLoaded = useCallback((tierId: number, metadata: TierMetadata) => {
@@ -171,10 +211,13 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
     }
   }, [tiers])
 
-  // Get category display name (from on-chain metadata or fallback)
+  // Get category display name (on-chain metadata → stored → fallback). Category 0
+  // is "General" when unnamed, matching the website.
   const getCategoryName = useCallback((cat: number) => {
     const stored = storedCategoryNames[String(cat)]
-    return categoryNames[cat] || (typeof stored === 'string' && stored.trim() ? stored : `Category ${cat}`)
+    if (categoryNames[cat]) return categoryNames[cat]
+    if (typeof stored === 'string' && stored.trim()) return stored
+    return cat === 0 ? 'General' : `Category ${cat}`
   }, [categoryNames, storedCategoryNames])
 
   // Per-chain inventory selector. 721 tiers/supply are strictly per-chain, so
@@ -273,12 +316,51 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
     )
   }
 
+  // The 721 collection (hook) address + explorer link. Shown once a hook resolves
+  // (both the empty and populated shop states), matching website's shop footer.
+  const collectionFooter = hookAddress ? (
+    <div className={`mt-6 pt-3 border-t text-xs ${isDark ? 'border-white/10 text-gray-500' : 'border-gray-200 text-gray-400'}`}>
+      Address:{' '}
+      {collectionExplorerUrl ? (
+        <a
+          href={collectionExplorerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-juice-cyan hover:underline font-mono"
+        >
+          {truncateAddress(hookAddress)}
+        </a>
+      ) : (
+        <span className="font-mono">{truncateAddress(hookAddress)}</span>
+      )}
+    </div>
+  ) : null
+
+  // Compact renderer for one tier card — used by both the grouped and flat layouts.
+  const renderTierCard = (tier: ResolvedNFTTier) => (
+    <div key={tier.tierId} id={`shop-tier-${tier.tierId}`}>
+      <NFTTierCard
+        tier={tier}
+        projectId={selectedProjectId}
+        chainId={selectedChainIdNum}
+        ethPrice={ethPrice ?? undefined}
+        isOwner={isOwner}
+        hookAddress={hookAddress}
+        addToCheckoutMode
+        onMetadataLoaded={handleTierMetadataLoaded}
+        connectedChains={connectedChains}
+        checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
+        hasTokenUriResolver={hookHasTokenUriResolver}
+      />
+    </div>
+  )
+
   if (tiers.length === 0) {
     return (
       <div>
         {chainSelector}
         <div className={`text-center py-12 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-          <p className="text-lg font-medium">Nothing for sale yet</p>
+          <p className="text-lg font-medium">{hookAddress ? 'No items being sold yet' : 'No NFT store available.'}</p>
           {isOwner && onManageTiers && (
             <button
               onClick={onManageTiers}
@@ -288,6 +370,7 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
             </button>
           )}
         </div>
+        {collectionFooter}
       </div>
     )
   }
@@ -332,13 +415,27 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
       {/* Per-chain inventory selector */}
       {chainSelector}
 
-      {/* Category filter chips */}
-      {categories.length > 0 && (
+      {/* Your shop credit — 721 pay credits held by this collection's hook, applied
+          automatically at checkout (mirrors website's shop-credits row). */}
+      {creditDisplay && (
+        <div
+          className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-4 text-sm"
+          title="Overpayment becomes shop credit and is applied automatically to eligible items at checkout."
+        >
+          <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>Your shop credit</span>
+          <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{creditDisplay}</span>
+          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Applied automatically at checkout</span>
+        </div>
+      )}
+
+      {/* Category filter chips — only with more than one category (incl. General).
+          Multi-select: "All" (no selection) or any subset of categories. */}
+      {categories.length > 1 && (
         <div className="flex flex-wrap gap-2 mb-6">
           <button
-            onClick={() => setSelectedCategory('all')}
+            onClick={() => setSelectedCategories(null)}
             className={`px-3 py-1.5 text-sm font-medium transition-colors border ${
-              selectedCategory === 'all'
+              !selectedCategories
                 ? 'border-juice-orange text-juice-orange'
                 : isDark
                   ? 'border-white/10 text-gray-300 hover:border-juice-orange'
@@ -350,9 +447,9 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
           {categories.map(cat => (
             <button
               key={cat}
-              onClick={() => setSelectedCategory(cat)}
+              onClick={() => toggleCategory(cat)}
               className={`px-3 py-1.5 text-sm font-medium transition-colors border ${
-                selectedCategory === cat
+                selectedCategories?.has(cat)
                   ? 'border-juice-orange text-juice-orange'
                   : isDark
                     ? 'border-white/10 text-gray-300 hover:border-juice-orange'
@@ -365,89 +462,30 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
         </div>
       )}
 
-      {/* Tiers display */}
-      {selectedCategory === 'all' && categories.length > 0 ? (
-        // Grouped by category when showing all
+      {/* Tiers display — grouped under category headings when there's more than one
+          category (respecting the selection), otherwise a flat grid. */}
+      {categories.length > 1 ? (
         <div className="space-y-8">
-          {/* Uncategorized first (if any) */}
-          {tiersByCategory[0] && tiersByCategory[0].length > 0 && (
-            <div>
-              <h3 className={`text-sm font-semibold mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {getCategoryName(0)}
-              </h3>
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                {tiersByCategory[0].map(tier => (
-                  <div key={tier.tierId} id={`shop-tier-${tier.tierId}`}>
-                    <NFTTierCard
-                      tier={tier}
-                      projectId={selectedProjectId}
-                      chainId={selectedChainIdNum}
-                      ethPrice={ethPrice ?? undefined}
-                      isOwner={isOwner}
-                      hookAddress={hookAddress}
-                      addToCheckoutMode
-                      onMetadataLoaded={handleTierMetadataLoaded}
-                      connectedChains={connectedChains}
-                      checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
-                      hasTokenUriResolver={hookHasTokenUriResolver}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {/* Then each category in order */}
-          {categories.map(cat => (
-            tiersByCategory[cat] && tiersByCategory[cat].length > 0 && (
+          {visibleCategories.map(cat => (
+            tiersByCategory[cat] && tiersByCategory[cat].length > 0 ? (
               <div key={cat}>
                 <h3 className={`text-sm font-semibold mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   {getCategoryName(cat)}
                 </h3>
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                  {tiersByCategory[cat].map(tier => (
-                    <div key={tier.tierId} id={`shop-tier-${tier.tierId}`}>
-                      <NFTTierCard
-                        tier={tier}
-                        projectId={selectedProjectId}
-                        chainId={selectedChainIdNum}
-                        ethPrice={ethPrice ?? undefined}
-                        isOwner={isOwner}
-                        hookAddress={hookAddress}
-                        addToCheckoutMode
-                        onMetadataLoaded={handleTierMetadataLoaded}
-                        connectedChains={connectedChains}
-                        checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
-                        hasTokenUriResolver={hookHasTokenUriResolver}
-                      />
-                    </div>
-                  ))}
+                  {tiersByCategory[cat].map(renderTierCard)}
                 </div>
               </div>
-            )
+            ) : null
           ))}
         </div>
       ) : (
-        // Simple grid when filtered or no categories
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTiers.map(tier => (
-            <div key={tier.tierId} id={`shop-tier-${tier.tierId}`}>
-              <NFTTierCard
-                tier={tier}
-                projectId={selectedProjectId}
-                chainId={selectedChainIdNum}
-                ethPrice={ethPrice ?? undefined}
-                isOwner={isOwner}
-                hookAddress={hookAddress}
-                addToCheckoutMode
-                onMetadataLoaded={handleTierMetadataLoaded}
-                connectedChains={connectedChains}
-                checkoutQuantity={checkoutQuantities[tier.tierId] || 0}
-                hasTokenUriResolver={hookHasTokenUriResolver}
-              />
-            </div>
-          ))}
+          {tiers.map(renderTierCard)}
         </div>
       )}
+
+      {collectionFooter}
     </div>
   )
   }
