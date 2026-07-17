@@ -78,12 +78,12 @@ export const DEADLINE_HOOKS: Record<string, string> = {
 }
 
 /**
- * BannyLPSplitHook (JBUniswapV4LPSplitHook) — the "Fund market" reserved-split
+ * JBP6FeeLPSplitHook (JBUniswapV4LPSplitHook) — the "Fund market" reserved-split
  * target. Same address on every chain it's deployed to; NOT deployed on
  * OP Sepolia (11155420), where lphook rows fall back to a plain wallet split
  * (mirroring the website's missing-getAddress fallthrough).
  */
-export const BANNY_LP_SPLIT_HOOK = '0xae6705c33c8b46f56878a1d4f1ce4d75fcfb6f62'
+export const JBP6_FEE_LP_SPLIT_HOOK = '0xae6705c33c8b46f56878a1d4f1ce4d75fcfb6f62'
 const LP_SPLIT_HOOK_CHAINS = new Set([1, 10, 8453, 42161, 84532, 421614, 11155111])
 
 // ---------------------------------------------------------------------------
@@ -170,15 +170,23 @@ function chainAddr(state: CreateFlowState, chainId: number, key: string, defStr:
   return resolvedStr(pcGet(state, chainId, 'addr', key) ?? defStr)
 }
 
-/** Per-chain payout amount for a single-token recipient (override → default). */
+/** Per-chain payout amount for a single-token recipient (override → default).
+ *  Canonical key (website ef5fbdf): addr['pamt:<stage>:<idx>']; the interim
+ *  num['p:…'] key is honored as a fallback for drafts saved before the sync. */
 function chainPayoutAmount(state: CreateFlowState, chainId: number, stageIdx: number, recipIdx: number): string | undefined {
-  return pcGet(state, chainId, 'num', `p:${stageIdx}:${recipIdx}`)
+  return pcGet(state, chainId, 'addr', `pamt:${stageIdx}:${recipIdx}`)
+    ?? pcGet(state, chainId, 'num', `p:${stageIdx}:${recipIdx}`)
     ?? state.stages[stageIdx]?.payoutRecipients[recipIdx]?.amountEth
+}
+
+/** Per-chain payout amount for a per-token (kind) recipient — multi-token projects. */
+function chainKindPayoutAmount(state: CreateFlowState, chainId: number, kindKey: string, recipIdx: number, def?: string): string | undefined {
+  return pcGet(state, chainId, 'addr', `pkamt:${kindKey}:${recipIdx}`) ?? def
 }
 
 /** Per-chain project id for a project / custom-hook split (override → default). */
 function chainProjectId(state: CreateFlowState, chainId: number, key: string, def: number): number {
-  const ov = pcGet(state, chainId, 'num', key)
+  const ov = pcGet(state, chainId, 'addr', key) ?? pcGet(state, chainId, 'num', key)
   return (ov != null ? Number(ov) : 0) || def || 0
 }
 
@@ -384,7 +392,7 @@ function splitState(
   // lockedUntil only encodes when the stage actually allows locks — a stale
   // value from a draft/import must NOT reach the chain.
   const lockTs = allowLock && rec.lockedUntil ? Number(rec.lockedUntil) : 0
-  // "Fund market" reserved split → routes to the shared BannyLPSplitHook. The
+  // "Fund market" reserved split → routes to the shared JBP6FeeLPSplitHook. The
   // hook keys off the distributing project; beneficiary is pass-through.
   if (rec.type === 'lphook' && LP_SPLIT_HOOK_CHAINS.has(chainId)) {
     return {
@@ -393,7 +401,7 @@ function splitState(
       projectId: 0,
       beneficiary: addrOrZero(lpFallbackBeneficiary(state)),
       lockedUntil: lockTs,
-      hook: BANNY_LP_SPLIT_HOOK,
+      hook: JBP6_FEE_LP_SPLIT_HOOK,
     }
   }
   const addr = beneficiaryOverride != null ? beneficiaryOverride : pickResolved(rec.address, rec)
@@ -512,7 +520,7 @@ function assembleRuleset(
         })
       } else if (pk.mode === 'limited') {
         const limitedRows = (pk.recipients || [])
-          .map((x, idx) => ({ x, idx, amount: priceUnits(x.amountEth, kind.decimals) }))
+          .map((x, idx) => ({ x, idx, amount: priceUnits(chainKindPayoutAmount(state, chainId, kind.key, idx, x.amountEth), kind.decimals) }))
           .filter((row) => row.amount > 0n)
         const totalAmt = limitedRows.reduce((s, row) => s + row.amount, 0n)
         if (totalAmt > 0n) payoutLimits.push({ amount: totalAmt.toString(), currency: cur })
@@ -736,8 +744,10 @@ export function buildChainConfigOverrides(
           if (orig == null) return tier
           const nft = state.nfts[orig]
           const out: JB721TierConfig = { ...tier }
-          // Per-chain supply override ('isupply:<idx>'); only meaningful when set.
-          const supplyOv = pcGet(state, chainId, 'num', `isupply:${orig}`)
+          // Per-chain supply override — canonical addr['isup:<idx>'] (website
+          // ef5fbdf), with the interim num['isupply:<idx>'] as fallback.
+          const supplyOv = pcGet(state, chainId, 'addr', `isup:${orig}`)
+            ?? pcGet(state, chainId, 'num', `isupply:${orig}`)
           if (supplyOv != null) out.initialSupply = clampTierInitialSupply(supplyOv, false)
           // Per-chain reserve beneficiary ('rb:<idx>').
           if (nft && tier.reserveFrequency > 0) {

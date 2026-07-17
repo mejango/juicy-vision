@@ -9,6 +9,7 @@
 import { useCallback, useState } from 'react'
 
 import { pinFileToBackend } from '../../../services/ipfsPinning'
+import { PerChainNumControl } from './pickers'
 import { itemDraft, surplusTokenLabel, type CreateFlowState, type ItemState } from './state'
 import {
   AddLink, Collapse, CurrencySelect, EnsAddressInput, FieldBlock, Hint, IdleToggle, ImagePicker,
@@ -351,6 +352,14 @@ function ItemEditor({ state, nft, idx, update }: {
       {nft.limited && (
         <FieldBlock label="Quantity">
           <TextInput value={nft.supply} placeholder="100" onChange={(v) => upd((n) => { n.supply = v.trim() })} />
+          {/* Each chain's shop carries its own inventory — the quantity can differ per chain. */}
+          <PerChainNumControl
+            state={state}
+            update={update}
+            fieldKey={`isup:${idx}`}
+            placeholder={nft.supply || '100'}
+            linkLabel="Set quantity per chain"
+          />
         </FieldBlock>
       )}
 

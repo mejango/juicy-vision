@@ -9,7 +9,8 @@ import { erc20Abi, isAddress } from 'viem'
 import { ALL_CHAIN_IDS, CHAINS } from '../../../constants'
 import { getSafetyPublicClient } from '../../../utils/transactionSafety'
 import type { AcceptKind, CreateFlowState, ProjectType, SuckerType } from './state'
-import { chainName, stepsFor } from './state'
+import { CHAIN_PAIRS, chainName, sanitizeState, saveDraft, stepsFor } from './state'
+import NetworkModeSelect from '../../../components/common/NetworkModeSelect'
 import {
   EnsAddressInput, FieldBlock, Hint, InfoNote, InlineToggleLink, PinkNote, Select, StepHead, WarnNote, useIsDark,
 } from './controls'
@@ -133,12 +134,33 @@ function AcceptPill(props: { label: string; selected: boolean; onClick: () => vo
 // ---------------------------------------------------------------------------
 
 function ChainBridgeBlock({ state, update }: StepProps) {
+  const isDark = useIsDark()
   // Transient UI flag (the source's state._bridgeOpen) — lives outside draft state.
   const [bridgeOpen, setBridgeOpen] = useState(false)
   const unc = uncoveredPairs(state)
+  const usdcAcct = state.accepts[0] === 'usdc'
+
+  // "On [Mainnets ▾]" — the network is part of the sentence (website parity).
+  // Before the mode switch reloads, remap the draft's chains to their pair
+  // twins and save it; the restored draft re-verifies any custom token.
+  const remapDraft = (mode: 'mainnet' | 'testnet') => {
+    const draft = sanitizeState(state)
+    draft.network = mode
+    draft.chainIds = draft.chainIds.map((cid) => {
+      const pair = CHAIN_PAIRS.find((p) => p.canon === cid || p.testnet === cid)
+      return pair ? (mode === 'mainnet' ? pair.canon : pair.testnet) : cid
+    })
+    if (draft.customToken.address) draft.customToken.status = 'idle'
+    saveDraft(draft)
+  }
 
   return (
-    <FieldBlock label="On">
+    <FieldBlock label={null}>
+      <div className="flex items-baseline gap-1.5 mb-1.5">
+        <span className={`block text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>On</span>
+        {/* Inline, borderless — the website's paybox-mode look, part of the sentence */}
+        <NetworkModeSelect beforeSwitch={remapDraft} />
+      </div>
       <div className="flex flex-wrap gap-2">
         {ALL_CHAIN_IDS.map((id) => {
           const on = state.chainIds.includes(id)
@@ -188,7 +210,20 @@ function ChainBridgeBlock({ state, update }: StepProps) {
               </Hint>
             </>
           )}
-          {unc.length > 0 && (
+          {/* USDC moves over CCIP only (website 6b330c4): canonical USDC over an
+              OP-stack/Arbitrum native bridge locks funds in bridge escrow. */}
+          {usdcAcct && state.suckerType === 'native' && (
+            <WarnNote>
+              USDC moves between chains over CCIP only — native bridges can’t carry canonical USDC. Choose CCIP
+              (or Native and CCIP) to link these chains.
+            </WarnNote>
+          )}
+          {usdcAcct && state.suckerType === 'both' && (
+            <InfoNote>
+              USDC moves between chains over CCIP only, so this project links its chains with CCIP suckers.
+            </InfoNote>
+          )}
+          {unc.length > 0 && !(usdcAcct && state.suckerType === 'native') && (
             <WarnNote>
               {`${unc.length} chain pair${unc.length > 1 ? 's' : ''} can’t connect with native bridges (they only link Ethereum↔L2). Choose CCIP or Native and CCIP to link L2↔L2 pairs.`}
             </WarnNote>
@@ -216,6 +251,8 @@ interface ChainLookupResult {
   name: string | null
   symbol: string
   decimals: number
+  /** Failure was transport-level (RPC), not an on-chain "no contract here". */
+  rpcFail?: boolean
 }
 
 function CustomTokenBlock({ state, update }: StepProps) {
@@ -258,8 +295,11 @@ function CustomTokenBlock({ state, update }: StepProps) {
               pub.readContract({ address: addr as `0x${string}`, abi: erc20Abi, functionName: 'decimals' }),
             ])
             return { cid, ok: true, name, symbol, decimals: Number(decimals) }
-          } catch {
-            return { cid, ok: false, name: null, symbol: '', decimals: 0 }
+          } catch (e) {
+            // A transport failure must not read as "token doesn't exist" —
+            // classify it so the error can say retry (website 5317b9e).
+            const msg = String((e as Error)?.name || '') + ' ' + String((e as Error)?.message || '')
+            return { cid, ok: false, name: null, symbol: '', decimals: 0, rpcFail: /HttpRequestError|timeout|fetch|network/i.test(msg) }
           }
         }))
       } catch {
@@ -278,7 +318,11 @@ function CustomTokenBlock({ state, update }: StepProps) {
         const first = results.find((r) => r.ok)
         if (!first) {
           t.status = 'error'
-          t.error = 'No ERC-20 found at this address on any selected chain.'
+          // Name the exact chains checked (website 5317b9e); the testnet-toggle
+          // hint is website-only — juicy's chains are fixed per build.
+          t.error = results.every((r) => r.rpcFail)
+            ? 'Could not look up the token (RPC error). Try again.'
+            : `No ERC-20 found at this address on ${chainIds.map(chainName).join(', ')}.`
           t.symbol = ''
           t.decimals = null
           return
@@ -379,7 +423,7 @@ function AccountingBlock({ state, update }: StepProps) {
   }
 
   const opts: { key: AcceptKind; label: string }[] = [
-    { key: 'eth', label: 'ETH' }, { key: 'usdc', label: 'USDC' }, { key: 'custom', label: 'Custom' },
+    { key: 'eth', label: 'ETH' }, { key: 'usdc', label: 'USDC' }, { key: 'custom', label: 'Custom token' },
   ]
 
   return (
@@ -501,7 +545,7 @@ export default function StepFlavor({ state, update }: StepProps) {
               s.step = Math.min(s.step, stepsFor(s).length - 1) // clamp if the new flow has fewer steps
             })
           }}
-          options={[['custom', 'Custom'], ['revnet', 'Revnet']]}
+          options={[['custom', 'Custom project'], ['revnet', 'Revnet']]}
         />
         <Hint>
           {isRev
