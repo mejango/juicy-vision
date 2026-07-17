@@ -311,9 +311,18 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, onOpened }: 
     const projectId = BigInt(project.projectId)
     const client = publicClientFor(chainId)
     const reviewedPrepaidFee = prepaidFee
+    // The floor comes from the quote the user actually saw in the panel — not a
+    // fresh re-quote — so the submitted minBorrowAmount equals what was reviewed.
+    const reviewedBorrowable = quote
+    if (reviewedBorrowable == null || reviewedBorrowable === 0n) {
+      setError('The loan quote is still loading. Wait for it to settle and try again.')
+      return
+    }
+    const minBorrow = borrowMinAmountFromQuote(reviewedBorrowable)
     try {
       setStep({ kind: 'checking' })
-      // Fresh quote at submit time — the source token's own accounting context.
+      // Fresh quote at submit time — abort (never silently lower the floor) if the
+      // live borrowable dropped below the reviewed minimum.
       const fresh = await quoteBorrowable(client, {
         chainId,
         revnetId: projectId,
@@ -324,7 +333,10 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, onOpened }: 
       if (fresh.borrowableNow === 0n) {
         throw new Error('Nothing borrowable yet — loans are locked until this revnet’s cash out delay passes.')
       }
-      const minBorrow = borrowMinAmountFromQuote(fresh.borrowableNow)
+      if (fresh.borrowableNow < minBorrow) {
+        setQuote(fresh.borrowableNow)
+        throw new Error('The live loan quote dropped below the reviewed minimum. Review the new quote and try again.')
+      }
       const guaranteedNet = loanOpeningAmounts(minBorrow, reviewedPrepaidFee, feeless).net
       setQuote(fresh.borrowableNow)
 
