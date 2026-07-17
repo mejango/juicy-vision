@@ -31,6 +31,15 @@ import {
 // diff highlighting against the chronologically previous cycle, an upcoming-
 // rule-changes banner, and a cross-chain sync check.
 
+/**
+ * Which split group an "Edit" CTA targets. Reserved-token splits are a single
+ * token-agnostic group; payout splits are per accounting-token (the group id is
+ * that token's address). The dashboard maps this onto the SetSplits modal.
+ */
+export type EditSplitsTarget =
+  | { group: 'reserved' }
+  | { group: 'payout'; token: string; symbol: string }
+
 export interface RulesetsTabProps {
   projectId: string
   chainId: string
@@ -38,6 +47,13 @@ export interface RulesetsTabProps {
   isRevnet?: boolean
   /** Opens the queue-ruleset flow (the dashboard wires the modal). */
   onQueueRuleset?: () => void
+  /**
+   * Opens the edit-splits flow for a split group (the dashboard wires the
+   * SetSplits modal). Shown only on the current cycle: reserved splits for any
+   * project, payout splits for non-revnets (a revnet's payouts are locked, but
+   * its operator can still edit reserved recipients).
+   */
+  onEditSplits?: (target: EditSplitsTarget) => void
 }
 
 const CHAIN_NAMES: Record<number, string> = {
@@ -58,7 +74,7 @@ function formatSplitPercent(percent: number): string {
   return `${Number.isInteger(value) ? value : Number(value.toFixed(2))}%`
 }
 
-export default function RulesetsTab({ projectId, chainId, isRevnet = false, onQueueRuleset }: RulesetsTabProps) {
+export default function RulesetsTab({ projectId, chainId, isRevnet = false, onQueueRuleset, onEditSplits }: RulesetsTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -197,6 +213,21 @@ export default function RulesetsTab({ projectId, chainId, isRevnet = false, onQu
     return <KvRow label={row.label} value={row.value} />
   }
 
+  // Subtle "Edit" CTA under a splits section (operator-gated inside the modal).
+  const EditSplitsCta = ({ onClick }: { onClick: () => void }) => (
+    <div className="mt-1.5">
+      <button
+        type="button"
+        onClick={onClick}
+        className={`text-xs underline underline-offset-2 ${
+          isDark ? 'text-juice-orange hover:text-orange-300' : 'text-orange-600 hover:text-orange-700'
+        }`}
+      >
+        Edit
+      </button>
+    </div>
+  )
+
   const SplitsList = ({ splits }: { splits: CycleSplit[] }) => {
     let total = 0
     const rows = splits.map((split, i) => {
@@ -286,10 +317,11 @@ export default function RulesetsTab({ projectId, chainId, isRevnet = false, onQu
           : `Projected (${offset})`
 
   const statusText = view.rules.approvalHook !== ZERO_ADDRESS ? 'Approval hook' : 'Unlocked'
-  let remainingLabel = 'Duration'
+  // The current cycle always reads "Remaining" (a live countdown, or "—" when
+  // it doesn't auto-cycle); other cycles read "Duration".
+  const remainingLabel = offset === 0 ? 'Remaining' : 'Duration'
   let remainingText = '—'
   if (offset === 0 && view.rules.duration > 0) {
-    remainingLabel = 'Remaining'
     const end = view.rules.start + view.rules.duration
     remainingText = end > now ? formatCountdown(end - now) : 'Ended'
   } else if (view.rules.duration > 0) {
@@ -406,12 +438,18 @@ export default function RulesetsTab({ projectId, chainId, isRevnet = false, onQu
               →
             </button>
           </div>
-          <div className={`mt-1 flex flex-wrap items-center gap-x-3 text-xs ${
+          <div className={`mt-1 flex flex-wrap items-center gap-y-1 text-xs ${
             isDark ? 'text-gray-500' : 'text-gray-400'
           }`}>
             <span>{statusText}</span>
+            <span className="mx-2 opacity-50">|</span>
             <span>{remainingLabel}: {remainingText}</span>
-            {view.relation !== 'projected' && view.rules.id > 0 && <span>ID: {view.rules.id}</span>}
+            {view.relation !== 'projected' && view.rules.id > 0 && (
+              <>
+                <span className="mx-2 opacity-50">|</span>
+                <span>ID: {view.rules.id}</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -470,6 +508,9 @@ export default function RulesetsTab({ projectId, chainId, isRevnet = false, onQu
                 <KvRow label="Surplus allowance" value={formatFundsAccessLimits(context.surplusAllowances, context)} />
                 <div className={sectionClass}>{context.symbol} PAYOUT SPLITS</div>
                 <SplitsList splits={context.payoutSplits} />
+                {offset === 0 && onEditSplits && !isRevnet && (
+                  <EditSplitsCta onClick={() => onEditSplits({ group: 'payout', token: context.token, symbol: context.symbol })} />
+                )}
               </div>
             ))}
           </div>
@@ -480,6 +521,9 @@ export default function RulesetsTab({ projectId, chainId, isRevnet = false, onQu
             ))}
             <div className={sectionClass}>RESERVED TOKEN SPLITS</div>
             <SplitsList splits={view.reservedSplits} />
+            {offset === 0 && onEditSplits && (
+              <EditSplitsCta onClick={() => onEditSplits({ group: 'reserved' })} />
+            )}
             <div className={sectionClass}>EXTENSION</div>
             {rows.map((row, i) => row.section === 'EXTENSION' && (
               <RuleRow key={row.label} row={row} before={previousRows?.[i]} />
