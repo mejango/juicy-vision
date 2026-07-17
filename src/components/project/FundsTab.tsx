@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useThemeStore } from '../../stores'
 import { CHAINS } from '../../constants'
 import {
+  fetchEthPrice,
   fetchProjectSplits,
   type JBSplitData,
   type JBSplitGroupData,
@@ -11,6 +12,7 @@ import {
   formatAccessRows,
   formatKindAmount,
   loadFundsSnapshot,
+  totalBalanceUsd,
   type FundsChainRow,
   type FundsKindSnapshot,
   type FundsSnapshot,
@@ -28,9 +30,19 @@ interface FundsTabProps {
   onSendPayouts: (kindTokenAddress: string) => void
   /** Opens the Use surplus allowance modal for the kind's home-chain token. */
   onUseAllowance: (kindTokenAddress: string) => void
+  /** Jumps to the Rulesets tab (the dashboard wires it). Renders "Current" as a link when set. */
+  onViewRulesets?: () => void
 }
 
 const SPLIT_PERCENT_DENOMINATOR = 1_000_000_000n
+
+/** Compact USD figure matching the project header (formatUsd). */
+function formatUsdTotal(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  if (value === 0) return '$0'
+  if (value > 0 && value < 0.01) return '<$0.01'
+  return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 
 function chainName(chainId: number): string {
   return CHAINS[chainId]?.name ?? `Chain ${chainId}`
@@ -166,9 +178,9 @@ function FundsKindBlock({
   splits,
   splitsAvailable,
   owner,
-  isOwner,
   onSendPayouts,
   onUseAllowance,
+  onViewRulesets,
   isDark,
 }: {
   kindSnapshot: FundsKindSnapshot
@@ -176,9 +188,9 @@ function FundsKindBlock({
   splits: JBSplitData[]
   splitsAvailable: boolean
   owner: string
-  isOwner: boolean
   onSendPayouts: (kindTokenAddress: string) => void
   onUseAllowance: (kindTokenAddress: string) => void
+  onViewRulesets?: () => void
   isDark: boolean
 }) {
   const { kind, rows, totals } = kindSnapshot
@@ -191,6 +203,19 @@ function FundsKindBlock({
       ? 'text-juice-orange border-juice-orange/50 hover:text-orange-300 hover:border-orange-300'
       : 'text-orange-600 border-orange-500 hover:text-orange-700 hover:border-orange-600'
   }`
+
+  // "Current" reads from the active ruleset — link it to the Rulesets tab when wired.
+  const currentWord = onViewRulesets ? (
+    <button
+      type="button"
+      onClick={onViewRulesets}
+      className={`underline underline-offset-2 ${isDark ? 'text-juice-orange hover:text-orange-300' : 'text-orange-600 hover:text-orange-700'}`}
+    >
+      Current
+    </button>
+  ) : (
+    'Current'
+  )
 
   return (
     <div>
@@ -234,7 +259,7 @@ function FundsKindBlock({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <div className={`${label} mb-1`}>
-            Current payout limit remaining on {chainName(homeChainId)}:
+            {currentWord} payout limit remaining on {chainName(homeChainId)}:
           </div>
           <div className={`text-sm mb-3 ${mono}`}>
             {homeRow?.ok ? formatAccessRows(homeRow.payouts, homeRow, kind.symbol) : '—'}
@@ -257,23 +282,17 @@ function FundsKindBlock({
         </div>
         <div>
           <div className={`${label} mb-1`}>
-            Current surplus allowance remaining on {chainName(homeChainId)}:
+            {currentWord} surplus allowance remaining on {chainName(homeChainId)}:
           </div>
           <div className={`text-sm mb-3 ${mono}`}>
             {homeRow?.ok ? formatAccessRows(homeRow.allowances, homeRow, kind.symbol) : '—'}
           </div>
+          {/* Not pre-disabled for non-owners: operators (not just the owner) can hold the
+              USE_ALLOWANCE permission, so the modal's live simulation is the real gate. */}
           <button
             type="button"
-            onClick={isOwner ? () => onUseAllowance(kind.homeToken) : undefined}
-            disabled={!isOwner}
-            title={isOwner ? undefined : 'Only the project owner can use the surplus allowance'}
-            className={
-              isOwner
-                ? `${buttonClass} mt-3`
-                : `px-3 py-1.5 text-xs font-medium border mt-3 cursor-not-allowed ${
-                    isDark ? 'text-gray-500 border-gray-600' : 'text-gray-400 border-gray-300'
-                  }`
-            }
+            onClick={() => onUseAllowance(kind.homeToken)}
+            className={`${buttonClass} mt-3`}
           >
             Use surplus allowance
           </button>
@@ -286,7 +305,7 @@ function FundsKindBlock({
   )
 }
 
-export default function FundsTab({ project, isOwner, onSendPayouts, onUseAllowance }: FundsTabProps) {
+export default function FundsTab({ project, onSendPayouts, onUseAllowance, onViewRulesets }: FundsTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -296,6 +315,17 @@ export default function FundsTab({ project, isOwner, onSendPayouts, onUseAllowan
   const [splitGroups, setSplitGroups] = useState<JBSplitGroupData[] | null>(null)
   const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [activeKindIndex, setActiveKindIndex] = useState(0)
+  const [ethPrice, setEthPrice] = useState<number | null>(null)
+  const [ethPriceResolved, setEthPriceResolved] = useState(false)
+
+  // ETH/USD spot for the cross-token total (only needed for multi-token projects).
+  useEffect(() => {
+    let cancelled = false
+    fetchEthPrice()
+      .then(price => { if (!cancelled) { setEthPrice(price); setEthPriceResolved(true) } })
+      .catch(() => { if (!cancelled) setEthPriceResolved(true) })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -398,6 +428,22 @@ export default function FundsTab({ project, isOwner, onSendPayouts, onUseAllowan
         </ExplainerMessage>
       </div>
 
+      {/* Cross-token USD total (multi-token projects) — the same figure as the header card. */}
+      {kinds.length > 1 && (() => {
+        const needsEthPrice = kinds.some(
+          k => k.kind.key === 'native' && k.totals.allChainsOk && (k.totals.balance ?? 0n) > 0n,
+        )
+        const totalText = needsEthPrice && !ethPriceResolved
+          ? '…'
+          : formatUsdTotal(totalBalanceUsd(kinds, ethPrice))
+        return (
+          <div className="mb-4">
+            <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Total balance</div>
+            <div className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{totalText}</div>
+          </div>
+        )
+      })()}
+
       {/* One subtab per accounting-token kind (multi-token projects only). */}
       {kinds.length > 1 && (
         <div className="flex flex-wrap gap-2 mb-4">
@@ -435,9 +481,9 @@ export default function FundsTab({ project, isOwner, onSendPayouts, onUseAllowan
         splits={splitsFor(activeKind)}
         splitsAvailable={splitGroups !== null}
         owner={project.owner}
-        isOwner={isOwner}
         onSendPayouts={onSendPayouts}
         onUseAllowance={onUseAllowance}
+        onViewRulesets={onViewRulesets}
         isDark={isDark}
       />
     </div>

@@ -139,6 +139,14 @@ describe('borrowMinAmountFromQuote', () => {
     expect(borrowMinAmountFromQuote(ONE_ETH)).toBe((ONE_ETH * 99n) / 100n)
     expect(borrowMinAmountFromQuote(0n)).toBe(0n)
   })
+
+  // A dust quote of 1 raw unit rounds the 99% floor to 0 — OpenLoanModal must
+  // abort rather than send minBorrowAmount: 0 (a value-bearing param at 0).
+  it('rounds a 1-raw-unit quote down to a 0 minimum', () => {
+    expect(borrowMinAmountFromQuote(1n)).toBe(0n)
+    // 2 is the first quote that yields a non-zero floor.
+    expect(borrowMinAmountFromQuote(2n)).toBeGreaterThan(0n)
+  })
 })
 
 describe('loanRepayCeiling', () => {

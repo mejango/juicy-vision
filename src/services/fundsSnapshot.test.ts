@@ -9,7 +9,9 @@ import {
   isUnlimitedAccessAmount,
   kindTotals,
   loadFundsSnapshot,
+  totalBalanceUsd,
   type FundsChainRow,
+  type FundsKindSnapshot,
 } from './fundsSnapshot'
 
 const NATIVE_CURRENCY = 61_166
@@ -253,5 +255,45 @@ describe('6-decimal USDC-style formatting', () => {
     expect(usedPayoutCall.args[3]).toBe(3n)
     const usedAllowanceCall = usdcChain.calls.find(call => call.functionName === 'usedSurplusAllowanceOf')!
     expect(usedAllowanceCall.args[3]).toBe(7n)
+  })
+})
+
+describe('totalBalanceUsd', () => {
+  function kindSnapshot(key: string, decimals: number, balance: bigint | null, allChainsOk = true): FundsKindSnapshot {
+    return {
+      kind: { key, symbol: key.toUpperCase(), name: '', decimals, homeToken: NATIVE_TOKEN, tokenOf: () => NATIVE_TOKEN },
+      rows: [],
+      totals: { allChainsOk, balance, surplus: balance, remainingPayout: 0n, remainingPayoutUnlimited: false },
+    }
+  }
+
+  it('sums USDC 1:1 and ETH at the given price', () => {
+    const kinds = [kindSnapshot('usdc', 6, 2_500_000n), kindSnapshot('native', 18, 1_000000000000000000n)]
+    expect(totalBalanceUsd(kinds, 3000)).toBe(2.5 + 3000)
+  })
+
+  it('returns null (never a partial sum) when a chain read failed', () => {
+    const kinds = [kindSnapshot('usdc', 6, 5_000_000n), kindSnapshot('native', 18, null, false)]
+    expect(totalBalanceUsd(kinds, 3000)).toBeNull()
+  })
+
+  it('returns null when an ETH balance is present but unpriced', () => {
+    const kinds = [kindSnapshot('native', 18, 1_000000000000000000n)]
+    expect(totalBalanceUsd(kinds, null)).toBeNull()
+  })
+
+  it('tolerates a missing ETH price when the ETH balance is zero', () => {
+    const kinds = [kindSnapshot('usdc', 6, 4_000_000n), kindSnapshot('native', 18, 0n)]
+    expect(totalBalanceUsd(kinds, null)).toBe(4)
+  })
+
+  it('returns null for a custom token holding a live, unpriceable balance', () => {
+    const kinds = [kindSnapshot('0xabc', 18, 1n)]
+    expect(totalBalanceUsd(kinds, 3000)).toBeNull()
+  })
+
+  it('values a zero-balance custom token at $0 without blocking', () => {
+    const kinds = [kindSnapshot('usdc', 6, 7_000_000n), kindSnapshot('0xabc', 18, 0n)]
+    expect(totalBalanceUsd(kinds, 3000)).toBe(7)
   })
 })

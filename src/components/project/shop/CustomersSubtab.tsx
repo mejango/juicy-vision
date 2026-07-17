@@ -291,7 +291,7 @@ export function CustomersSubtab({ projectId, chainId, chains, isRevnet }: Custom
         ) : all ? (
           <div>
             <div className={`text-sm font-medium mb-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {ranked.length} customer{ranked.length === 1 ? '' : 's'} · {all.total} item{all.total === 1 ? '' : 's'} sold
+              {ranked.length} customer{ranked.length === 1 ? '' : 's'} | {all.total} item{all.total === 1 ? '' : 's'} sold
               {all.capped ? ` (showing latest ${all.rows.length})` : ''}
             </div>
 

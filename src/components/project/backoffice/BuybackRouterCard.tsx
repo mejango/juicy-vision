@@ -76,6 +76,43 @@ interface CurrentRow {
   value: Address | null
 }
 
+/** Uniswap fee is in hundredths of a bip; 1_000_000 == 100%. */
+const MAX_UNISWAP_FEE = 1_000_000
+
+/**
+ * Validate the `initializePoolFor` inputs. `initializePoolFor` is PERMANENT, so
+ * every value-bearing param is bounded away from the footgun defaults:
+ *   - fee: an integer in (0, 1_000_000) — a 0 fee is not a real tier.
+ *   - tickSpacing: non-zero (0 would make the pool uninitializable).
+ *   - twapWindow: > 0 — a 0 window disables TWAP-manipulation protection and
+ *     invites an immediate arbitrage drain (see card danger copy).
+ *   - terminalToken: a valid address (must equal the accounting/pair token).
+ *   - sqrtPriceX96: a non-zero starting price.
+ * Returns an error string, or null when every param is safe. Pure — unit tested.
+ */
+export function validateInitPoolParams(params: {
+  fee: string
+  tickSpacing: string
+  twapWindow: string
+  terminalToken: string
+  sqrtPriceX96: string
+}): string | null {
+  const { fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96 } = params
+  if (!/^\d+$/.test(fee.trim())) return 'Enter the fee tier (e.g. 10000 = 1%)'
+  const feeNum = Number(fee.trim())
+  if (feeNum <= 0 || feeNum >= MAX_UNISWAP_FEE)
+    return 'Fee tier must be between 1 and 999999 (hundredths of a bip)'
+  if (!/^-?\d+$/.test(tickSpacing.trim())) return 'Enter the tick spacing (e.g. 200)'
+  if (BigInt(tickSpacing.trim()) === 0n) return 'Tick spacing must be non-zero'
+  if (!/^\d+$/.test(twapWindow.trim())) return 'Enter the TWAP window in seconds (e.g. 1800)'
+  if (BigInt(twapWindow.trim()) === 0n)
+    return 'TWAP window must be greater than 0 — a 0 window disables manipulation protection'
+  if (!isAddress(terminalToken.trim())) return 'Enter the terminal token address'
+  if (!/^\d+$/.test(sqrtPriceX96.trim()) || BigInt(sqrtPriceX96.trim() || '0') === 0n)
+    return 'Enter the starting sqrtPriceX96'
+  return null
+}
+
 function summarizeCurrent(rows: CurrentRow[]): string {
   const distinct = [...new Set(rows.filter(row => row.value).map(row => row.value!.toLowerCase()))]
   const setCount = rows.filter(row => row.value).length
@@ -123,12 +160,7 @@ function BuybackRouterModal({
 
   let inputError: string | null = null
   if (action.kind === 'initPool') {
-    if (!/^\d+$/.test(fee.trim())) inputError = 'Enter the fee tier (e.g. 10000 = 1%)'
-    else if (!/^-?\d+$/.test(tickSpacing.trim())) inputError = 'Enter the tick spacing (e.g. 200)'
-    else if (!/^\d+$/.test(twapWindow.trim())) inputError = 'Enter the TWAP window in seconds (e.g. 1800)'
-    else if (!isAddress(terminalToken.trim())) inputError = 'Enter the terminal token address'
-    else if (!/^\d+$/.test(sqrtPriceX96.trim()) || BigInt(sqrtPriceX96.trim() || '0') === 0n)
-      inputError = 'Enter the starting sqrtPriceX96'
+    inputError = validateInitPoolParams({ fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96 })
   } else if (!isAddress(address.trim())) {
     inputError = 'Enter a valid address'
   }
@@ -239,7 +271,7 @@ function BuybackRouterModal({
           {field('Tick spacing', tickSpacing, setTickSpacing, 'e.g. 200')}
           {field('TWAP window (seconds)', twapWindow, setTwapWindow, 'e.g. 1800')}
           {field('Terminal token', terminalToken, setTerminalToken, '0x… terminal token (pool pair)', true,
-            "The accounting token the pool pairs against — the project's terminal token on that chain.")}
+            "Must equal the project's accounting (pair) token on this chain — a mismatched token points the buyback at the wrong pool. Verify it against the token the project accepts before initializing.")}
           {field('sqrtPriceX96', sqrtPriceX96, setSqrtPriceX96, 'starting price as sqrtPriceX96', true,
             'The pool’s starting price in Uniswap sqrtPriceX96 form. Wrong values invite immediate arbitrage.')}
         </>
