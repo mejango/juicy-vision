@@ -1355,8 +1355,18 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
       </div>
 
-      {/* Tabs (bar + body) — same wiring as desktop */}
+      {/* Tabs (bar + body) — same wiring as desktop. The pay/cash-out panel leads
+          on mobile (its own left column on desktop); Activity is a tab here, so the
+          card renders childless rather than embedding the feed. */}
       <div className="flex-1 overflow-y-auto">
+        <div className={`border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <ProjectCard
+            projectId={String(projectId)}
+            chainId={String(chainId)}
+            embedded
+            isRevnet={projectIsRevnet}
+          />
+        </div>
         {renderTabs(true)}
       </div>
 
