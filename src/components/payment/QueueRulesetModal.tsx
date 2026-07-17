@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { encodeFunctionData, createPublicClient, http, isAddress, type Address } from 'viem'
@@ -196,6 +196,14 @@ export default function QueueRulesetModal({
   const [currentChainIndex, setCurrentChainIndex] = useState<number>(-1)
   const [isStarted, setIsStarted] = useState(false)
   const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
+  // Ref-based in-flight lock for the omnichain path, whose busy flag
+  // (setIsStarted) is only set AFTER an initial await — leaving a
+  // double-click window. A state flag alone can't stop two same-tick clicks
+  // (both read the stale `false`); the ref is the mutex, `submitting` mirrors
+  // it into the button UI. The legacy path already sets isStarted
+  // synchronously, so it needs no lock.
+  const inFlightRef = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
 
   // Queue targets are resolved from the live controller and current data-hook route.
   const [queueTargets, setQueueTargets] = useState<Record<number, Address>>({})
@@ -249,7 +257,7 @@ export default function QueueRulesetModal({
   const hasWarnings = verificationResult.doubts.length > 0
   const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
   const allQueueTargetsLoaded = chainRulesetData.every(cd => queueTargets[cd.chainId])
-  const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && allQueueTargetsLoaded && !controllersLoading && !controllerError
+  const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && allQueueTargetsLoaded && !controllersLoading && !controllerError && !submitting
 
   // Derive chain states from bundle state when in omnichain mode
   const effectiveChainStates = useOmnichain && bundleState.bundleId
@@ -309,6 +317,8 @@ export default function QueueRulesetModal({
       setCurrentChainIndex(-1)
       setIsStarted(false)
       setWarningsAcknowledged(false)
+      inFlightRef.current = false
+      setSubmitting(false)
       resetOmnichain()
       setUseOmnichain(isManagedMode && isOmnichain)
     }
@@ -584,6 +594,12 @@ export default function QueueRulesetModal({
     }
 
     if (useOmnichain && isOmnichain) {
+      // Acquire the in-flight lock before the first await. A second concurrent
+      // click returns here (outside the try) without resetting the lock, so
+      // only one omnichain queue flow can reach the bundle.
+      if (inFlightRef.current) return
+      inFlightRef.current = true
+      setSubmitting(true)
       try {
         const freshQueueTargets = Object.fromEntries(await Promise.all(
           chainRulesetData.map(async chainData => [
@@ -611,6 +627,9 @@ export default function QueueRulesetModal({
         const message = err instanceof Error ? err.message : 'Ruleset configuration could not be verified'
         setControllerError(message)
         onError?.(message)
+      } finally {
+        inFlightRef.current = false
+        setSubmitting(false)
       }
     } else {
       setIsStarted(true)

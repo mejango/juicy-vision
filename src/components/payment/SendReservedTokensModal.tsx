@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { encodeFunctionData, createPublicClient, http, type Chain, type Address, zeroAddress } from 'viem'
@@ -110,6 +110,11 @@ export default function SendReservedTokensModal({
   const [warningAcknowledged, setWarningAcknowledged] = useState(false)
   const [controllerAddress, setControllerAddress] = useState<Address | null>(null)
   const [controllerLoading, setControllerLoading] = useState(false)
+  // Ref-based in-flight lock: the mutex that stops two same-tick clicks (a
+  // state flag alone can't — both reads see the stale `false`). `submitting`
+  // only mirrors it into the button's disabled state for the UI.
+  const inFlightRef = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
 
   // Omnichain mode
   const [useAllChains, setUseAllChains] = useState(false)
@@ -156,7 +161,7 @@ export default function SendReservedTokensModal({
 
   const hasWarnings = verificationResult.doubts.length > 0
   const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
-  const canProceed = hasGasBalance && (!hasWarnings || warningAcknowledged) && !hasCriticalDoubts && !!controllerAddress && !controllerLoading
+  const canProceed = hasGasBalance && (!hasWarnings || warningAcknowledged) && !hasCriticalDoubts && !!controllerAddress && !controllerLoading && !submitting && !isExecuting
 
   // Reset state when modal opens
   useEffect(() => {
@@ -166,6 +171,8 @@ export default function SendReservedTokensModal({
       setError(null)
       setUseAllChains(false)
       setWarningAcknowledged(false)
+      inFlightRef.current = false
+      setSubmitting(false)
       resetOmnichain()
     }
   }, [isOpen, resetOmnichain])
@@ -215,6 +222,13 @@ export default function SendReservedTokensModal({
   }, [isOpen, projectId, chainId])
 
   const handleConfirm = useCallback(async () => {
+    // Acquire the in-flight lock before any await. A second concurrent click
+    // returns here (outside the try below) without resetting the lock, so
+    // only one distribution flow can ever reach send.
+    if (inFlightRef.current) return
+    inFlightRef.current = true
+    setSubmitting(true)
+    try {
     let reviewedPendingAmount = 0n
     const reviewedSignature = (splits ?? []).map(split => [
       split.address.toLowerCase(),
@@ -404,6 +418,10 @@ export default function SendReservedTokensModal({
       console.error('Send reserved tokens failed:', err)
       setError(err instanceof Error ? err.message : 'Transaction failed')
       setStatus('failed')
+    }
+    } finally {
+      inFlightRef.current = false
+      setSubmitting(false)
     }
   }, [walletClient, address, activeAddress, chainId, projectId, tokenAmount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, distribute, onSubmitted, assertCurrentAccount, amount, splits])
 

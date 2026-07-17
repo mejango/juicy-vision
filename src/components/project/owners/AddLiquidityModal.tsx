@@ -15,7 +15,7 @@
  * price at submit and aborts when it moved beyond the reviewed corridor.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { erc20Abi, formatUnits, parseUnits } from 'viem'
 import { useThemeStore } from '../../../stores'
@@ -99,6 +99,12 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds, chainPro
   const [pairAmount, setPairAmount] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [reloadNonce, setReloadNonce] = useState(0)
+  // Ref-based in-flight lock. execute() awaits permit2AllowanceCovers before
+  // any setStatus, so the review state + Confirm button stay live during that
+  // RPC round-trip — a double-click would mint liquidity twice. A ref (not
+  // state) is the mutex: two same-tick clicks both read a stale state `false`,
+  // but the ref flips synchronously on the first.
+  const inFlightRef = useRef(false)
 
   const symbol = project.tokenSymbol || 'tokens'
   const pidFor = useMemo(
@@ -111,6 +117,7 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds, chainPro
   useEffect(() => {
     if (isOpen) {
       setStatus({ kind: 'idle' })
+      inFlightRef.current = false
       if (!lpChains.includes(chainId)) setChainId(lpChains[0] ?? 0)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -284,6 +291,11 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds, chainPro
 
   const execute = async (plan: AddLiquidityPlan) => {
     if (!activeAddress) return
+    // Acquire the in-flight lock before the first await. A second concurrent
+    // click returns here (outside the try) without resetting the lock, so only
+    // one liquidity mint can be submitted per review.
+    if (inFlightRef.current) return
+    inFlightRef.current = true
     try {
       // 1. Each ERC-20 side (the project token always; the pair too when it's
       //    USDC) needs Permit2 coverage: ERC-20→Permit2 allowance (guarded
@@ -316,6 +328,8 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds, chainPro
       setReloadNonce(nonce => nonce + 1)
     } catch (error) {
       setStatus({ kind: 'error', message: error instanceof Error ? error.message : 'Add liquidity failed.' })
+    } finally {
+      inFlightRef.current = false
     }
   }
 
@@ -547,7 +561,8 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds, chainPro
                       <div className="flex gap-2 pt-1">
                         <button
                           onClick={() => execute(reviewPlan)}
-                          className="px-3 py-1 text-xs font-bold bg-amber-500 text-black hover:bg-amber-500/90 transition-colors"
+                          disabled={running}
+                          className="px-3 py-1 text-xs font-bold bg-amber-500 text-black hover:bg-amber-500/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Confirm & add liquidity
                         </button>
