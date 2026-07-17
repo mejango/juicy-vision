@@ -19,11 +19,9 @@ import { ChatInput } from '../components/chat'
 import BalanceChart from '../components/dynamic/charts/BalanceChart'
 import VolumeChart from '../components/dynamic/charts/VolumeChart'
 import PriceChart from '../components/dynamic/PriceChart'
+import TokenPriceChart from '../components/dynamic/charts/TokenPriceChart'
 import ActivityFeed from '../components/dynamic/ActivityFeed'
 import ProjectCard from '../components/dynamic/ProjectCard'
-import RulesetSchedule from '../components/dynamic/RulesetSchedule'
-import FundsSection from '../components/dynamic/FundsSection'
-import TokensTab from '../components/dynamic/TokensTab'
 import ShopTab from '../components/dynamic/ShopTab'
 import ProjectSummary from '../components/dynamic/ProjectSummary'
 import { hasNFTHook } from '../services/nft'
@@ -43,8 +41,9 @@ import ManageTiersForm from '../components/dynamic/ManageTiersForm'
 import SetSplitsForm from '../components/dynamic/SetSplitsForm'
 import SetUriForm from '../components/dynamic/SetUriForm'
 import { ChainMappingWarning } from '../components/dynamic/ChainMappingWarning'
+import ProjectTabs from '../components/project/ProjectTabs'
+import { parseProjectHash, projectHashFor, projectTabsFor, type OwnersSubtabId, type ProjectTabId } from '../components/project/flavor'
 
-type DashboardTab = 'about' | 'rulesets' | 'funds' | 'tokens' | 'shop'
 type ModalType =
   | 'pay' | 'cashout' | 'payouts' | 'ruleset'
   | 'reservedTokens' | 'deployErc20' | 'surplusAllowance'
@@ -68,17 +67,6 @@ const CHAIN_DISPLAY: Record<number, string> = {
   421614: 'Arb Sepolia',
 }
 
-// Strip HTML tags from description for plain text display
-function stripHtmlTags(html: string): string {
-  // Replace <br>, <br/>, </p> with newlines for proper line breaks
-  const withLineBreaks = html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-  // Remove all remaining HTML tags
-  const text = withLineBreaks.replace(/<[^>]*>/g, '')
-  // Clean up multiple newlines and trim
-  return text.replace(/\n{3,}/g, '\n\n').trim()
-}
 
 export default function ProjectDashboard({ chainId, projectId }: ProjectDashboardProps) {
   const { theme } = useThemeStore()
@@ -87,29 +75,33 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const isMobile = useIsMobile()
   const isDark = theme === 'dark'
 
-  // Initialize tab from URL hash (e.g., #shop, #tokens)
-  const getInitialTab = (): DashboardTab => {
-    const hash = window.location.hash.slice(1) // Remove #
-    const validTabs: DashboardTab[] = ['about', 'rulesets', 'funds', 'tokens', 'shop']
-    return validTabs.includes(hash as DashboardTab) ? (hash as DashboardTab) : 'about'
-  }
+  // Tab + owners-subtab from the URL hash (#owners/settlement, #shop, legacy #about…)
+  const initialHash = parseProjectHash(window.location.hash)
+  const [activeTab, setActiveTabState] = useState<ProjectTabId>(initialHash.tab ?? 'overview')
+  const [ownersSubtab, setOwnersSubtabState] = useState<OwnersSubtabId>(initialHash.subtab ?? 'accounts')
 
-  const [activeTab, setActiveTabState] = useState<DashboardTab>(getInitialTab)
-
-  // Wrapper to update both state and URL hash
-  const setActiveTab = useCallback((tab: DashboardTab) => {
-    setActiveTabState(tab)
-    window.history.replaceState(null, '', `#${tab}`)
+  // The hash is rewritten by both setters, so the flavor slug (owner/operator) stays right.
+  const isRevnetRef = useRef(false)
+  const writeHash = useCallback((tab: ProjectTabId, subtab: OwnersSubtabId | null) => {
+    window.history.replaceState(null, '', projectHashFor(tab, isRevnetRef.current, subtab))
   }, [])
+
+  const setActiveTab = useCallback((tab: ProjectTabId) => {
+    setActiveTabState(tab)
+    writeHash(tab, tab === 'owners' || tab === 'tokens' ? ownersSubtab : null)
+  }, [ownersSubtab, writeHash])
+
+  const setOwnersSubtab = useCallback((id: OwnersSubtabId) => {
+    setOwnersSubtabState(id)
+    writeHash('owners', id)
+  }, [writeHash])
 
   // Listen for hash changes (browser back/forward)
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.slice(1)
-      const validTabs: DashboardTab[] = ['about', 'rulesets', 'funds', 'tokens', 'shop']
-      if (validTabs.includes(hash as DashboardTab)) {
-        setActiveTabState(hash as DashboardTab)
-      }
+      const { tab, subtab } = parseProjectHash(window.location.hash)
+      if (tab) setActiveTabState(tab)
+      if (subtab) setOwnersSubtabState(subtab)
     }
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
@@ -138,10 +130,11 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   // Listen for generic tab switch event (e.g., from "You get" token preview)
   useEffect(() => {
     const handleSwitchTab = (e: Event) => {
-      const customEvent = e as CustomEvent<{ tab: DashboardTab }>
+      const customEvent = e as CustomEvent<{ tab: ProjectTabId }>
       const tab = customEvent.detail?.tab
       if (tab) {
-        setActiveTab(tab)
+        // 'tokens' is the custom-project label for the same surface revnets call 'owners'.
+        setActiveTab(tab === 'tokens' && isRevnetRef.current ? 'owners' : tab)
       }
     }
     window.addEventListener('juice:switch-tab', handleSwitchTab)
@@ -339,23 +332,118 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     navigate('/') // Go to home where ChatContainer will process the queued message
   }
 
-  // Tab configuration - dynamic based on project features
-  // Must be called before early returns to satisfy React hooks rules
-  const tabs: Array<{ id: DashboardTab; label: string }> = useMemo(() => {
-    const baseTabs: Array<{ id: DashboardTab; label: string }> = [
-      { id: 'about', label: 'About' },
-    ]
-    // Shop tab goes right after About (if project has NFT hook)
-    if (hasNftHook) {
-      baseTabs.push({ id: 'shop', label: 'Shop' })
-    }
-    baseTabs.push(
-      { id: 'rulesets', label: 'Rules' },
-      { id: 'funds', label: 'Funds' },
-      { id: 'tokens', label: 'Members' },
+  // The tab row itself lives in ProjectTabs (projectTabsFor decides the flavor's set).
+  // The hash writer needs the flavor without re-rendering on every tab change.
+  useEffect(() => {
+    isRevnetRef.current = projectIsRevnet
+  }, [projectIsRevnet])
+
+  // A hash naming a tab this flavor doesn't have (e.g. #funds on a revnet, or a
+  // stale #shop after the 721 probe came back empty) falls back to Overview.
+  useEffect(() => {
+    const available = projectTabsFor({
+      isRevnet: projectIsRevnet,
+      isMobile,
+      hasShop: hasNftHook,
+      hasErc20: !!project?.token,
+    })
+    if (!available.some(t => t.id === activeTab)) setActiveTabState('overview')
+  }, [projectIsRevnet, isMobile, hasNftHook, project?.token, activeTab])
+
+  /**
+   * The tab bar + body, wired once for both layouts. Charts juicy has and the
+   * website doesn't (volume/balance history, the issuance projection) ride along
+   * as slots so the tabs stay a straight port.
+   */
+  const renderTabs = (mobile: boolean) => {
+    if (!project) return null
+    return (
+      <ProjectTabs
+        project={project}
+        projectId={projectId}
+        chainId={chainId}
+        connectedChains={connectedChains}
+        suckerGroupBalance={suckerGroupBalance}
+        isRevnet={projectIsRevnet}
+        isMobile={mobile}
+        hasShop={hasNftHook}
+        hasErc20={!!project.token}
+        erc20Address={(project.token as `0x${string}`) || null}
+        canEdit={isOwner}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        ownersSubtab={ownersSubtab}
+        onOwnersSubtabChange={setOwnersSubtab}
+        activityFeed={
+          <ActivityFeed projectId={String(projectId)} chainId={String(chainId)} limit={15} />
+        }
+        priceChart={
+          <TokenPriceChart projectId={String(projectId)} chainId={String(chainId)} />
+        }
+        summary={
+          <>
+            <ProjectSummary
+              projectName={project.name}
+              balance={displayBalance}
+              volume={displayVolume}
+              paymentsCount={displayPaymentsCount}
+              balanceAvailable={balanceAvailable}
+              volumeAvailable={volumeAvailable}
+              paymentsAvailable={paymentsAvailable}
+              createdAt={project.createdAt}
+              isRevnet={projectIsRevnet}
+              hasNftHook={hasNftHook}
+              connectedChainsCount={connectedChains.length}
+              ethPrice={ethPrice}
+              currency={suckerGroupBalance?.currency}
+              decimals={suckerGroupBalance?.decimals}
+            />
+            {nftHookError && (
+              <div className={`border px-3 py-2 text-xs ${
+                isDark
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                  : 'border-amber-300 bg-amber-50 text-amber-800'
+              }`}>
+                Reward data unavailable: {nftHookError}
+              </div>
+            )}
+          </>
+        }
+        rulesetsChart={
+          <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
+        }
+        fundsCharts={
+          <>
+            <ExplainerMessage>
+              Here's how much has been contributed to the project over time.
+            </ExplainerMessage>
+            <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
+            <ExplainerMessage>
+              Here's how the project's funds have changed over time.
+            </ExplainerMessage>
+            <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
+          </>
+        }
+        shop={
+          <ShopTab
+            projectId={String(projectId)}
+            chainId={String(chainId)}
+            isOwner={isOwner}
+            connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
+            onManageTiers={() => setActiveModal('manageTiers')}
+          />
+        }
+        onQueueRuleset={() => setActiveModal('ruleset')}
+        onSendPayouts={() => setActiveModal('payouts')}
+        onUseAllowance={() => setActiveModal('surplusAllowance')}
+        onEditMetadata={() => setActiveModal('setUri')}
+        onEditToken={() => setActiveModal('deployErc20')}
+        onEditSplits={() => setActiveModal('setSplits')}
+        onDeployErc20={() => setActiveModal('deployErc20')}
+        onCashOut={() => setActiveModal('cashout')}
+      />
     )
-    return baseTabs
-  }, [hasNftHook])
+  }
 
   if (projectLoading) {
     return (
@@ -716,132 +804,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
             {/* Right: Main content (scrollable) */}
             <div className="flex-1 overflow-y-auto">
-              {/* Tab navigation */}
-              <div className={`sticky top-0 z-10 px-6 pt-4 pb-0 ${
-                isDark ? 'bg-juice-dark' : 'bg-white'
-              }`}>
-                <div className={`flex gap-6 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                  {tabs.map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`pb-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
-                        activeTab === tab.id
-                          ? 'border-juice-orange text-juice-orange'
-                          : isDark
-                            ? 'border-transparent text-gray-400 hover:text-gray-200'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="px-6 py-6 space-y-6">
-                {/* About Tab */}
-                {activeTab === 'about' && (
-                  <>
-                    {project.description ? (
-                      <p className={`text-sm whitespace-pre-line ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                        {stripHtmlTags(project.description)}
-                      </p>
-                    ) : (
-                      <p className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        No description available.
-                      </p>
-                    )}
-
-                    {/* Juicy Summary */}
-                    <ProjectSummary
-                      projectName={project.name}
-                      balance={displayBalance}
-                      volume={displayVolume}
-                      paymentsCount={displayPaymentsCount}
-                      balanceAvailable={balanceAvailable}
-                      volumeAvailable={volumeAvailable}
-                      paymentsAvailable={paymentsAvailable}
-                      createdAt={project.createdAt}
-                      isRevnet={projectIsRevnet}
-                      hasNftHook={hasNftHook}
-                      connectedChainsCount={connectedChains.length}
-                      ethPrice={ethPrice}
-                      currency={suckerGroupBalance?.currency}
-                      decimals={suckerGroupBalance?.decimals}
-                    />
-                    {nftHookError && (
-                      <div className={`border px-3 py-2 text-xs ${
-                        isDark
-                          ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-                          : 'border-amber-300 bg-amber-50 text-amber-800'
-                      }`}>
-                        Reward data unavailable: {nftHookError}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Rulesets Tab */}
-                {activeTab === 'rulesets' && (
-                  <div className="space-y-6">
-                    <ExplainerMessage>
-                      Here are the current and upcoming rules. Rulesets define how the project handles payments, membership, inventory, and access to funds.
-                    </ExplainerMessage>
-                    <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
-                    <ExplainerMessage>
-                      Here's how access to membership changes over time based on issuance cuts. Contributors from earlier windows get more than later ones.
-                    </ExplainerMessage>
-                    {/* Price forecast for revnets, issuance history for regular projects */}
-                    <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
-                  </div>
-                )}
-
-                {/* Funds Tab */}
-                {activeTab === 'funds' && (
-                  <div className="space-y-6">
-                    <ExplainerMessage>
-                      Here's the project's money. You can see the total balance, available payouts, and cash out value for members.
-                    </ExplainerMessage>
-                    <FundsSection
-                      projectId={String(projectId)}
-                      chainId={String(chainId)}
-                      isOwner={isOwner}
-                      onSendPayouts={() => setActiveModal('payouts')}
-                      onCashOut={() => setActiveModal('cashout')}
-                      isRevnet={projectIsRevnet}
-                    />
-                    <ExplainerMessage>
-                      Here's how much has been contributed to the project over time.
-                    </ExplainerMessage>
-                    <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
-                    <ExplainerMessage>
-                      Here's how the project's funds have changed over time.
-                    </ExplainerMessage>
-                    <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
-                  </div>
-                )}
-
-                {/* Tokens Tab */}
-                {activeTab === 'tokens' && (
-                  <TokensTab
-                    projectId={String(projectId)}
-                    chainId={String(chainId)}
-                    isOwner={isOwner}
-                  />
-                )}
-
-                {/* Shop Tab */}
-                {activeTab === 'shop' && (
-                  <ShopTab
-                    projectId={String(projectId)}
-                    chainId={String(chainId)}
-                    isOwner={isOwner}
-                    connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
-                    onManageTiers={() => setActiveModal('manageTiers')}
-                  />
-                )}
-              </div>
+              {renderTabs(false)}
             </div>
           </div>
 
@@ -1390,143 +1353,11 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           )}
         </div>
 
-        {/* Tab navigation */}
-        <div className="px-4 overflow-x-auto">
-          <div className={`flex gap-4 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`pb-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
-                  activeTab === tab.id
-                    ? 'border-juice-orange text-juice-orange'
-                    : isDark
-                      ? 'border-transparent text-gray-400 hover:text-gray-200'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
-        {/* About tab */}
-        {activeTab === 'about' && (
-          <>
-            {project.description ? (
-              <p className={`text-sm whitespace-pre-line ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                {stripHtmlTags(project.description)}
-              </p>
-            ) : (
-              <p className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                No description available.
-              </p>
-            )}
-
-            {/* Juicy Summary */}
-            <ProjectSummary
-              projectName={project.name}
-              balance={displayBalance}
-              volume={displayVolume}
-              paymentsCount={displayPaymentsCount}
-              balanceAvailable={balanceAvailable}
-              volumeAvailable={volumeAvailable}
-              paymentsAvailable={paymentsAvailable}
-              createdAt={project.createdAt}
-              isRevnet={projectIsRevnet}
-              hasNftHook={hasNftHook}
-              connectedChainsCount={connectedChains.length}
-              ethPrice={ethPrice}
-              currency={suckerGroupBalance?.currency}
-              decimals={suckerGroupBalance?.decimals}
-            />
-
-            {/* Pay section on mobile About tab */}
-            <ProjectCard
-              projectId={String(projectId)}
-              chainId={String(chainId)}
-              embedded
-            />
-
-            {/* Activity Feed */}
-            <div>
-              <div className={`pb-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Activity
-                </span>
-              </div>
-              <ActivityFeed
-                projectId={String(projectId)}
-                chainId={String(chainId)}
-                limit={15}
-                compact
-              />
-            </div>
-          </>
-        )}
-
-        {/* Rulesets tab */}
-        {activeTab === 'rulesets' && (
-          <div className="space-y-6">
-            <ExplainerMessage>
-              Here are the current and upcoming rules. Rulesets define how the project handles payments, membership, inventory, and access to funds.
-            </ExplainerMessage>
-            <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
-            <ExplainerMessage>
-              Here's how access to membership changes over time based on issuance cuts. Contributors from earlier windows get more than later ones.
-            </ExplainerMessage>
-            <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
-          </div>
-        )}
-
-        {/* Funds tab */}
-        {activeTab === 'funds' && (
-          <div className="space-y-6">
-            <ExplainerMessage>
-              Here's the project's money. You can see the total balance, available payouts, and cash out value for members.
-            </ExplainerMessage>
-            <FundsSection
-              projectId={String(projectId)}
-              chainId={String(chainId)}
-              isOwner={isOwner}
-              onSendPayouts={() => setActiveModal('payouts')}
-              onCashOut={() => setActiveModal('cashout')}
-              isRevnet={projectIsRevnet}
-            />
-            <ExplainerMessage>
-              Here's how much has been contributed to the project over time.
-            </ExplainerMessage>
-            <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
-            <ExplainerMessage>
-              Here's how the project's funds have changed over time.
-            </ExplainerMessage>
-            <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
-          </div>
-        )}
-
-        {/* Tokens tab */}
-        {activeTab === 'tokens' && (
-          <TokensTab
-            projectId={String(projectId)}
-            chainId={String(chainId)}
-            isOwner={isOwner}
-          />
-        )}
-
-        {/* Shop tab */}
-        {activeTab === 'shop' && (
-          <ShopTab
-            projectId={String(projectId)}
-            chainId={String(chainId)}
-            isOwner={isOwner}
-            connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
-            onManageTiers={() => setActiveModal('manageTiers')}
-          />
-        )}
+      {/* Tabs (bar + body) — same wiring as desktop */}
+      <div className="flex-1 overflow-y-auto">
+        {renderTabs(true)}
       </div>
 
       {/* Chat dock - mobile */}
