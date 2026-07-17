@@ -27,6 +27,7 @@ import {
   NATIVE_TOKEN,
   parseSuckerDeployerConfig,
   shouldConfigureSuckers,
+  type JBSuckerBridge,
 } from '../../utils/suckerConfig'
 import { requireNonzeroBytes32 } from '../../utils/erc20Safety'
 import { getProjectController } from '../../utils/paymentTerminal'
@@ -1074,6 +1075,8 @@ export interface JBDeployRevnetRequest {
   }
   terminalConfigurations?: JBTerminalConfig[]  // Default terminal configs (ETH if not specified)
   chainConfigs?: REVChainConfigOverride[]      // Per-chain overrides for ERC20 tokens
+  /** Bridge infrastructure for auto-generated suckers ("ccip" default). */
+  suckerBridge?: JBSuckerBridge
   /** Include cross-chain suckers in the atomic deployFor call. */
   configureSuckers?: boolean
   suckerDeploymentConfiguration?: REVSuckerDeploymentConfig
@@ -1232,6 +1235,7 @@ export function buildOmnichainDeployRevnetTransactions(
       const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, {
         salt: sharedSalt,
         tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
+        bridge: request.suckerBridge,
       })
       suckerConfig = {
         deployerConfigurations: generatedConfig.deployerConfigurations.map((dc: { deployer: string; peer: string; mappings: Array<{ localToken: string; minGas: number; remoteToken: string }> }) => ({

@@ -25,6 +25,7 @@ import { getSessionPseudoAddress, getCachedPseudoAddress } from './services/sess
 import { getWalletSession } from './services/siwe'
 import { useEnsNameResolved } from './hooks'
 import { PaymentReviewModal } from './components/payment'
+import NetworkModeSelect from './components/common/NetworkModeSelect'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -547,11 +548,14 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
       <div className={`px-3 py-2 border-b flex items-center justify-between ${
         theme === 'dark' ? 'border-white/10' : 'border-gray-200'
       }`}>
-        <h2 className={`text-sm font-semibold whitespace-nowrap ${
-          theme === 'dark' ? 'text-white' : 'text-gray-900'
-        }`}>
-          {t('ui.liveActivity', 'Live juicy activity')}
-        </h2>
+        <div className="flex items-baseline gap-2.5 min-w-0">
+          <h2 className={`text-sm font-semibold whitespace-nowrap ${
+            theme === 'dark' ? 'text-white' : 'text-gray-900'
+          }`}>
+            {t('ui.liveActivity', 'Live juicy activity')}
+          </h2>
+          <NetworkModeSelect />
+        </div>
         <button
           onClick={handleAddNote}
           className={`p-1 rounded transition-colors ${

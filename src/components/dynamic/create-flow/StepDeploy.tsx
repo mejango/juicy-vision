@@ -618,20 +618,22 @@ export default function StepDeploy({
         </span>
       </label>
 
-      {/* Export the exact editable draft before deploying */}
-      <button
-        type="button"
-        title="Save this exact editable project draft before deploying"
-        disabled={launching}
-        onClick={() => exportDraftFile(state)}
-        className={`w-full py-2.5 text-sm border mb-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-          isDark
-            ? 'border-white/15 text-gray-300 hover:border-white/30 hover:text-white'
-            : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-900'
-        }`}
-      >
-        Export .jb
-      </button>
+      {/* Pre-deploy export: a small right-aligned action above the full-width Launch button. */}
+      <div className="flex justify-end mb-2.5">
+        <button
+          type="button"
+          title="Save this exact editable project draft before deploying"
+          disabled={launching}
+          onClick={() => exportDraftFile(state)}
+          className={`px-2 py-1 text-xs border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            isDark
+              ? 'border-white/15 text-gray-400 hover:text-white'
+              : 'border-gray-300 text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          Export your configuration
+        </button>
+      </div>
 
       <button
         type="button"
