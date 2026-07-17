@@ -14,8 +14,10 @@
  * (project metadata / token rename / splits) via the onEdit* props.
  */
 
+import { useMemo } from 'react'
 import { useThemeStore } from '../../stores'
 import type { Project } from '../../services/bendystraw'
+import { makeProjectIdResolver } from '../../utils/projectChains'
 import { AccountCard } from './backoffice/AccountCard'
 import { PermissionsCard } from './backoffice/PermissionsCard'
 import { PowersCard } from './backoffice/PowersCard'
@@ -24,10 +26,13 @@ import { BackOfficeCard } from './backoffice/shared'
 
 export interface BackOfficeTabProps {
   project: Project
-  /** The on-chain project id (same across the sucker group). */
+  /** The home-chain project id. NOTE: V6 project ids are independent per chain —
+   *  every per-chain read/tx resolves the id ON that chain via `chainProjects`. */
   projectId: number
   /** The sucker-group chains the project lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain); reads/txs target the id ON that chain. */
+  chainProjects?: Array<{ chainId: number; projectId: number | string }>
   isRevnet: boolean
   /** Re-opens the existing "edit project metadata" flow. */
   onEditMetadata: () => void
@@ -72,6 +77,7 @@ export default function BackOfficeTab({
   project,
   projectId,
   chainIds,
+  chainProjects,
   isRevnet,
   onEditMetadata,
   onEditToken,
@@ -81,6 +87,18 @@ export default function BackOfficeTab({
   const isDark = theme === 'dark'
 
   const resolvedChainIds = chainIds.length ? chainIds : [project.chainId]
+
+  // Every card/modal below reads and transacts per chain. V6 project ids are
+  // independent per chain, so each per-chain call must use the id ON that chain
+  // — a chain absent from the map resolves to null and is skipped, NEVER read or
+  // written with the home id. Memoized on a stable key so the cards' effects
+  // don't re-run on every render (chainProjects is a fresh array each render).
+  const chainProjectsKey = (chainProjects ?? []).map(cp => `${cp.chainId}:${cp.projectId}`).join(',')
+  const resolveProjectId = useMemo(
+    () => makeProjectIdResolver(chainProjects, { chainId: project.chainId, projectId: project.projectId }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chainProjectsKey, project.chainId, project.projectId],
+  )
 
   const editRows: EditRow[] = [
     {
@@ -106,7 +124,7 @@ export default function BackOfficeTab({
   return (
     <div className="space-y-4">
       {/* 1. Account — who controls the project on each chain. */}
-      <AccountCard projectId={projectId} chainIds={resolvedChainIds} isRevnet={isRevnet} />
+      <AccountCard resolveProjectId={resolveProjectId} chainIds={resolvedChainIds} isRevnet={isRevnet} />
 
       {/* 2. Pending Multisig Transactions (Safe queue) — DEFERRED.
           Website: renderPendingSafeTxsCard / renderRevnetPendingSafeTxs slot
@@ -119,13 +137,18 @@ export default function BackOfficeTab({
       {/* 4. Powers — custom projects only: ruleset-flag-gated owner powers.
           Revnets skip this card (the operator holds a fixed permission set,
           shown read-only in Permissions below, not the owner powers). */}
-      {!isRevnet ? <PowersCard projectId={projectId} chainIds={resolvedChainIds} /> : null}
+      {!isRevnet ? <PowersCard resolveProjectId={resolveProjectId} chainIds={resolvedChainIds} /> : null}
 
       {/* 5. Buyback hook + swap router registry wiring. */}
-      <BuybackRouterCard projectId={projectId} chainIds={resolvedChainIds} />
+      <BuybackRouterCard resolveProjectId={resolveProjectId} chainIds={resolvedChainIds} />
 
       {/* 6. Permissions — operators and what each can do (revnet: read-only). */}
-      <PermissionsCard projectId={projectId} chainIds={resolvedChainIds} isRevnet={isRevnet} />
+      <PermissionsCard
+        projectId={projectId}
+        resolveProjectId={resolveProjectId}
+        chainIds={resolvedChainIds}
+        isRevnet={isRevnet}
+      />
     </div>
   )
 }

@@ -27,7 +27,8 @@ import { BackOfficeModal, ChainRunRows, DangerGate, chainName, shortAddress, typ
 export interface TransferAuthorityModalProps {
   isOpen: boolean
   onClose: () => void
-  projectId: number
+  /** Resolve the project's id ON a given chain (V6 ids differ per chain); null = not on that chain. */
+  resolveProjectId: (chainId: number) => bigint | null
   isRevnet: boolean
   /** The authority shown at review time — the current owner (custom) or operator (revnet). */
   currentAuthority: Address
@@ -38,7 +39,7 @@ export interface TransferAuthorityModalProps {
 export function TransferAuthorityModal({
   isOpen,
   onClose,
-  projectId,
+  resolveProjectId,
   isRevnet,
   currentAuthority,
   chainIds,
@@ -70,7 +71,13 @@ export function TransferAuthorityModal({
       return
     }
     const newAuthority = trimmed as Address
-    const pid = BigInt(projectId)
+    // This chain's OWN project id (V6 ids differ per chain). A chain that isn't
+    // this project's chain is never transferred with the home id.
+    const pid = resolveProjectId(chainId)
+    if (pid == null) {
+      setStatus(chainId, { kind: 'error', message: `This project is not on ${chainName(chainId)}.` })
+      return
+    }
     try {
       const request = isRevnet
         ? buildSetOperatorRequest({ chainId, to: newAuthority, projectId: pid })
